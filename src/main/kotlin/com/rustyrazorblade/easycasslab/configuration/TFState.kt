@@ -98,6 +98,21 @@ class TFState(
     }
 
     /**
+     * Retrieves the VPC ID from Terraform state.
+     *
+     * @return VPC ID if a VPC exists in the state, null otherwise
+     */
+    fun getVpcId(): String? {
+        val resource =
+            state.resources
+                .firstOrNull { it.type == "aws_vpc" }
+                ?: return null
+
+        val instance = resource.instances.firstOrNull() ?: return null
+        return instance.attributes["id"] as? String
+    }
+
+    /**
      * Retrieves EMR cluster information from Terraform state.
      *
      * @return EMRClusterInfo if an EMR cluster exists in the state, null otherwise

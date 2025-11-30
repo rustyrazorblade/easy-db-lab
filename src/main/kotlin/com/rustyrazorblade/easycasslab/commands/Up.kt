@@ -11,7 +11,7 @@ import com.rustyrazorblade.easycasslab.configuration.ClusterStateManager
 import com.rustyrazorblade.easycasslab.configuration.ServerType
 import com.rustyrazorblade.easycasslab.configuration.User
 import com.rustyrazorblade.easycasslab.containers.Terraform
-import com.rustyrazorblade.easycasslab.providers.RetryUtil
+import com.rustyrazorblade.easycasslab.providers.aws.RetryUtil
 import com.rustyrazorblade.easycasslab.services.K3sAgentService
 import com.rustyrazorblade.easycasslab.services.K3sService
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -70,6 +70,8 @@ class Up(
             val allHosts = tfstate.getAllHostsAsMap()
             clusterState.updateHosts(allHosts)
             clusterState.markInfrastructureUp()
+            // Store VPC ID for use by other commands (e.g., down)
+            clusterState.vpcId = tfstate.getVpcId()
             clusterStateManager.save(clusterState)
             outputHandler.handleMessage("Cluster state updated: ${allHosts.values.flatten().size} hosts tracked")
         } catch (e: Exception) {

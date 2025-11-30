@@ -16,7 +16,8 @@ import com.rustyrazorblade.easycasslab.configuration.ClusterStateManager
 import com.rustyrazorblade.easycasslab.configuration.InitConfig
 import com.rustyrazorblade.easycasslab.configuration.User
 import com.rustyrazorblade.easycasslab.containers.Terraform
-import com.rustyrazorblade.easycasslab.providers.AWS
+import com.rustyrazorblade.easycasslab.providers.aws.AWS
+import com.rustyrazorblade.easycasslab.providers.aws.VpcService
 import com.rustyrazorblade.easycasslab.providers.aws.terraform.AWSConfiguration
 import com.rustyrazorblade.easycasslab.providers.aws.terraform.EBSConfiguration
 import com.rustyrazorblade.easycasslab.providers.aws.terraform.EBSType
@@ -46,6 +47,7 @@ class Init(
     private val userConfig: User by inject()
     private val aws: AWS by inject()
     private val clusterStateManager: ClusterStateManager by inject()
+    private val vpcService: VpcService by inject()
 
     companion object {
         private const val DEFAULT_CASSANDRA_INSTANCE_COUNT = 3
@@ -171,6 +173,12 @@ class Init(
     )
     var clean = false
 
+    @Option(
+        names = ["--vpc"],
+        description = ["Use an existing VPC ID instead of creating a new one"],
+    )
+    var existingVpcId: String? = null
+
     override fun execute() {
         validateParameters()
 
@@ -182,7 +190,12 @@ class Init(
 
         outputHandler.handleMessage("Initializing directory")
 
-        val config = buildAWSConfiguration(clusterState)
+        // Create or use existing VPC
+        val vpcId = createOrUseVpc(clusterState)
+        clusterState.vpcId = vpcId
+        clusterStateManager.save(clusterState)
+
+        val config = buildAWSConfiguration(clusterState, vpcId)
         configureAWSSettings(config)
 
         initializeTerraform(config)
@@ -200,6 +213,22 @@ class Init(
                 )
             }
         }
+    }
+
+    /**
+     * Creates a new VPC or uses an existing one if --vpc was provided.
+     */
+    private fun createOrUseVpc(clusterState: ClusterState): String {
+        if (existingVpcId != null) {
+            outputHandler.handleMessage("Using existing VPC: $existingVpcId")
+            return existingVpcId!!
+        }
+
+        outputHandler.handleMessage("Creating VPC for cluster: ${clusterState.name}")
+        val vpcTags = mapOf("easy_cass_lab" to "1", "ClusterId" to clusterState.clusterId)
+        val vpcId = vpcService.findOrCreateVpc(name, "10.0.0.0/16", vpcTags)
+        outputHandler.handleMessage("VPC created: $vpcId")
+        return vpcId
     }
 
     private fun validateParameters() {
@@ -281,7 +310,11 @@ class Init(
         return state
     }
 
-    private fun buildAWSConfiguration(clusterState: ClusterState): AWSConfiguration {
+    @Suppress("UnusedParameter")
+    private fun buildAWSConfiguration(
+        clusterState: ClusterState,
+        vpcId: String,
+    ): AWSConfiguration {
         val ebs = EBSConfiguration(ebsType, ebsSize, ebsIops, ebsThroughput, ebsOptimized)
         return AWSConfiguration(
             name,

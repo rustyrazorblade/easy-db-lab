@@ -1,7 +1,6 @@
-package com.rustyrazorblade.easycasslab.providers
+package com.rustyrazorblade.easycasslab.providers.aws
 
 import com.rustyrazorblade.easycasslab.Constants
-import com.rustyrazorblade.easycasslab.configuration.AWSPolicy
 import com.rustyrazorblade.easycasslab.output.OutputHandler
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry

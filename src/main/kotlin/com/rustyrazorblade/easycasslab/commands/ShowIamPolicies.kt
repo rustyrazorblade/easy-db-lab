@@ -3,7 +3,7 @@ package com.rustyrazorblade.easycasslab.commands
 import com.rustyrazorblade.easycasslab.Context
 import com.rustyrazorblade.easycasslab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easycasslab.configuration.User
-import com.rustyrazorblade.easycasslab.providers.AWS
+import com.rustyrazorblade.easycasslab.providers.aws.AWS
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Parameters

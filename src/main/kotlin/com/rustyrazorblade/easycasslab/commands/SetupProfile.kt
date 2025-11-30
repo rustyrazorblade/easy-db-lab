@@ -1,15 +1,16 @@
 package com.rustyrazorblade.easycasslab.commands
 
 import com.github.ajalt.mordant.TermColors
+import com.rustyrazorblade.easycasslab.Constants
 import com.rustyrazorblade.easycasslab.Context
 import com.rustyrazorblade.easycasslab.Utils
 import com.rustyrazorblade.easycasslab.configuration.Arch
 import com.rustyrazorblade.easycasslab.configuration.User
 import com.rustyrazorblade.easycasslab.configuration.UserConfigProvider
-import com.rustyrazorblade.easycasslab.providers.AWS
 import com.rustyrazorblade.easycasslab.providers.aws.AMIValidationException
 import com.rustyrazorblade.easycasslab.providers.aws.AMIValidator
-import com.rustyrazorblade.easycasslab.providers.aws.PackerInfrastructureService
+import com.rustyrazorblade.easycasslab.providers.aws.AWS
+import com.rustyrazorblade.easycasslab.providers.aws.AwsInfrastructureService
 import com.rustyrazorblade.easycasslab.services.AWSResourceSetupService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -34,7 +35,7 @@ class SetupProfile(
 ) : PicoBaseCommand(context) {
     private val userConfigProvider: UserConfigProvider by inject()
     private val awsResourceSetup: AWSResourceSetupService by inject()
-    private val packerInfra: PackerInfrastructureService by inject()
+    private val awsInfra: AwsInfrastructureService by inject()
     private val amiValidator: AMIValidator by inject()
 
     override fun execute() {
@@ -180,7 +181,7 @@ class SetupProfile(
         // Create Packer VPC infrastructure
         outputHandler.handleMessage("Creating Packer VPC infrastructure...")
 
-        packerInfra.ensureInfrastructure()
+        awsInfra.ensurePackerInfrastructure(Constants.Network.SSH_PORT)
 
         outputHandler.handleMessage("Packer VPC infrastructure ready")
 

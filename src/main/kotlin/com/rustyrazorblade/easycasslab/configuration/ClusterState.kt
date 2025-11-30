@@ -32,10 +32,6 @@ enum class InfrastructureStatus {
     UNKNOWN,
 }
 
-data class AWS(
-    var vpcId: String = "",
-)
-
 /**
  * Configuration from Init command to preserve cluster setup parameters
  * All fields have defaults to ensure backward compatibility with older state files
@@ -82,6 +78,8 @@ data class ClusterState(
     var infrastructureStatus: InfrastructureStatus = InfrastructureStatus.UNKNOWN,
     // All hosts in the cluster by server type
     var hosts: Map<ServerType, List<ClusterHost>> = emptyMap(),
+    // VPC ID for the cluster - the core resource that contains all infrastructure
+    var vpcId: String? = null,
 ) {
     /**
      * Update hosts from TFState

@@ -1,6 +1,8 @@
-package com.rustyrazorblade.easycasslab.configuration
+package com.rustyrazorblade.easycasslab.providers.aws
 
 import com.rustyrazorblade.easycasslab.Constants
+import com.rustyrazorblade.easycasslab.configuration.Policy
+import com.rustyrazorblade.easycasslab.configuration.User
 
 /**
  * Centralized AWS policy definitions for easy-cass-lab.

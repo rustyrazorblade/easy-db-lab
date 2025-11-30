@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easycasslab.providers.aws
 
-import com.rustyrazorblade.easycasslab.providers.RetryUtil
 import com.rustyrazorblade.easycasslab.providers.aws.model.AMI
 import io.github.resilience4j.retry.Retry
 import software.amazon.awssdk.services.ec2.Ec2Client

@@ -46,3 +46,18 @@ typealias ResourceName = String
  * Resource description text
  */
 typealias ResourceDescription = String
+
+/**
+ * AWS EC2 instance identifier (e.g., "i-123abc456def")
+ */
+typealias InstanceId = String
+
+/**
+ * AWS EMR cluster identifier (e.g., "j-123ABC456DEF")
+ */
+typealias ClusterId = String
+
+/**
+ * AWS NAT Gateway identifier (e.g., "nat-123abc456def")
+ */
+typealias NatGatewayId = String

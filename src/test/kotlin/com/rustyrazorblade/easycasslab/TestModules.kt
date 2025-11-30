@@ -7,8 +7,8 @@ import com.rustyrazorblade.easycasslab.di.TFStateProvider
 import com.rustyrazorblade.easycasslab.di.contextModule
 import com.rustyrazorblade.easycasslab.output.BufferedOutputHandler
 import com.rustyrazorblade.easycasslab.output.OutputHandler
-import com.rustyrazorblade.easycasslab.providers.AWS
 import com.rustyrazorblade.easycasslab.providers.aws.AMIValidator
+import com.rustyrazorblade.easycasslab.providers.aws.AWS
 import com.rustyrazorblade.easycasslab.providers.ssh.DefaultSSHConfiguration
 import com.rustyrazorblade.easycasslab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easycasslab.providers.ssh.SSHConfiguration

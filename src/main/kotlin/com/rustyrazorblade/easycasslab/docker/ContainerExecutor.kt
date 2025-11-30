@@ -6,7 +6,7 @@ import com.github.dockerjava.api.model.Frame
 import com.rustyrazorblade.easycasslab.DockerClientInterface
 import com.rustyrazorblade.easycasslab.DockerException
 import com.rustyrazorblade.easycasslab.output.OutputHandler
-import com.rustyrazorblade.easycasslab.providers.RetryUtil
+import com.rustyrazorblade.easycasslab.providers.aws.RetryUtil
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
 import org.koin.core.component.KoinComponent

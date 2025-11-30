@@ -2,6 +2,7 @@ package com.rustyrazorblade.easycasslab.providers
 
 import com.rustyrazorblade.easycasslab.BaseKoinTest
 import com.rustyrazorblade.easycasslab.Constants
+import com.rustyrazorblade.easycasslab.providers.aws.AWS
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows

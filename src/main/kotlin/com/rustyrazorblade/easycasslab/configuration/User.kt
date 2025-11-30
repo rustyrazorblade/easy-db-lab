@@ -4,8 +4,8 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.github.ajalt.mordant.TermColors
 import com.rustyrazorblade.easycasslab.Constants
 import com.rustyrazorblade.easycasslab.Context
-import com.rustyrazorblade.easycasslab.configuration.AWSPolicy
 import com.rustyrazorblade.easycasslab.output.OutputHandler
+import com.rustyrazorblade.easycasslab.providers.aws.AWSPolicy
 import com.rustyrazorblade.easycasslab.providers.aws.EC2
 import io.github.oshai.kotlinlogging.KotlinLogging
 import software.amazon.awssdk.core.exception.SdkServiceException

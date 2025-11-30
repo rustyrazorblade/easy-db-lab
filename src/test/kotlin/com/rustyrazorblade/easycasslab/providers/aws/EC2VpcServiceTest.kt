@@ -416,6 +416,7 @@ internal class EC2VpcServiceTest {
         val existingPermission =
             IpPermission
                 .builder()
+                .ipProtocol("tcp")
                 .fromPort(22)
                 .toPort(22)
                 .ipRanges(
@@ -442,7 +443,7 @@ internal class EC2VpcServiceTest {
             describeResponse,
         )
 
-        vpcService.authorizeSecurityGroupIngress("sg-12345", 22, "0.0.0.0/0")
+        vpcService.authorizeSecurityGroupIngress("sg-12345", 22, 22, "0.0.0.0/0", "tcp")
 
         verify(mockEc2Client, never()).authorizeSecurityGroupIngress(any<AuthorizeSecurityGroupIngressRequest>())
     }
@@ -469,7 +470,7 @@ internal class EC2VpcServiceTest {
             AuthorizeSecurityGroupIngressResponse.builder().build(),
         )
 
-        vpcService.authorizeSecurityGroupIngress("sg-12345", 22, "0.0.0.0/0")
+        vpcService.authorizeSecurityGroupIngress("sg-12345", 22, 22, "0.0.0.0/0", "tcp")
 
         val authCaptor = argumentCaptor<AuthorizeSecurityGroupIngressRequest>()
         verify(mockEc2Client).authorizeSecurityGroupIngress(authCaptor.capture())
@@ -495,7 +496,7 @@ internal class EC2VpcServiceTest {
         )
 
         assertThrows<IllegalArgumentException> {
-            vpcService.authorizeSecurityGroupIngress("sg-12345", 22, "0.0.0.0/0")
+            vpcService.authorizeSecurityGroupIngress("sg-12345", 22, 22, "0.0.0.0/0", "tcp")
         }
     }
 
@@ -532,7 +533,7 @@ internal class EC2VpcServiceTest {
         )
 
         // Should not throw exception - should handle duplicate gracefully
-        vpcService.authorizeSecurityGroupIngress("sg-12345", 22, "0.0.0.0/0")
+        vpcService.authorizeSecurityGroupIngress("sg-12345", 22, 22, "0.0.0.0/0", "tcp")
 
         verify(mockEc2Client).authorizeSecurityGroupIngress(any<AuthorizeSecurityGroupIngressRequest>())
     }

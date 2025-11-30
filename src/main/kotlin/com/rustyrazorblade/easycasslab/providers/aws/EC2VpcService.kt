@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easycasslab.providers.aws
 
 import com.rustyrazorblade.easycasslab.output.OutputHandler
-import com.rustyrazorblade.easycasslab.providers.RetryUtil
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
 import software.amazon.awssdk.services.ec2.Ec2Client
@@ -108,6 +107,7 @@ class EC2VpcService(
         name: ResourceName,
         cidr: Cidr,
         tags: Map<String, String>,
+        availabilityZone: String?,
     ): SubnetId {
         // Try to find existing subnet by Name tag and VPC ID
         val existingSubnetId = findSubnetByNameAndVpc(name, vpcId)
@@ -120,22 +120,29 @@ class EC2VpcService(
         }
 
         // Create new subnet
-        log.info { "Creating subnet: $name in VPC: $vpcId with CIDR: $cidr" }
+        val azInfo = availabilityZone?.let { " in AZ: $it" } ?: ""
+        log.info { "Creating subnet: $name in VPC: $vpcId with CIDR: $cidr$azInfo" }
         outputHandler.handleMessage("Creating subnet: $name")
 
         val allTags = tags + ("Name" to name)
         log.debug { "Subnet tags being applied: $allTags" }
         val tagSpecification = buildTagSpecification("subnet", allTags)
 
-        val createRequest =
+        val createRequestBuilder =
             CreateSubnetRequest
                 .builder()
                 .vpcId(vpcId)
                 .cidrBlock(cidr)
                 .tagSpecifications(tagSpecification)
-                .build()
 
-        log.debug { "CreateSubnet request: vpcId=$vpcId, cidr=$cidr, tags=${tagSpecification.tags()}" }
+        // Add availability zone if specified
+        if (availabilityZone != null) {
+            createRequestBuilder.availabilityZone(availabilityZone)
+        }
+
+        val createRequest = createRequestBuilder.build()
+
+        log.debug { "CreateSubnet request: vpcId=$vpcId, cidr=$cidr, az=$availabilityZone, tags=${tagSpecification.tags()}" }
         val createResponse = withRetry("create-subnet") { ec2Client.createSubnet(createRequest) }
         val subnetId = createResponse.subnet().subnetId()
 
@@ -291,8 +298,10 @@ class EC2VpcService(
 
     override fun authorizeSecurityGroupIngress(
         securityGroupId: SecurityGroupId,
-        port: Int,
+        fromPort: Int,
+        toPort: Int,
         cidr: Cidr,
+        protocol: String,
     ) {
         // Check if rule already exists
         val describeRequest =
@@ -309,13 +318,15 @@ class EC2VpcService(
 
         val existingRule =
             securityGroups[0].ipPermissions().any { permission ->
-                permission.fromPort() == port &&
-                    permission.toPort() == port &&
+                permission.fromPort() == fromPort &&
+                    permission.toPort() == toPort &&
+                    permission.ipProtocol() == protocol &&
                     permission.ipRanges().any { it.cidrIp() == cidr }
             }
 
         if (existingRule) {
-            log.info { "Ingress rule already exists for port $port from $cidr" }
+            val portDesc = if (fromPort == toPort) "port $fromPort" else "ports $fromPort-$toPort"
+            log.info { "Ingress rule already exists for $portDesc from $cidr ($protocol)" }
             return
         }
 
@@ -324,9 +335,9 @@ class EC2VpcService(
             val ipPermission =
                 IpPermission
                     .builder()
-                    .ipProtocol("tcp")
-                    .fromPort(port)
-                    .toPort(port)
+                    .ipProtocol(protocol)
+                    .fromPort(fromPort)
+                    .toPort(toPort)
                     .ipRanges(
                         IpRange
                             .builder()
@@ -342,8 +353,9 @@ class EC2VpcService(
                     .build()
 
             ec2Client.authorizeSecurityGroupIngress(authorizeRequest)
-            log.info { "Added ingress rule for port $port from $cidr" }
-            outputHandler.handleMessage("Configured security group ingress rule for SSH (port $port)")
+            val portDesc = if (fromPort == toPort) "port $fromPort" else "ports $fromPort-$toPort"
+            log.info { "Added ingress rule for $portDesc from $cidr ($protocol)" }
+            outputHandler.handleMessage("Configured security group ingress rule for $portDesc")
         } catch (e: Ec2Exception) {
             if (e.awsErrorDetails()?.errorCode() == "InvalidPermission.Duplicate") {
                 log.info { "Ingress rule already exists, continuing" }

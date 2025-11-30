@@ -1,12 +1,13 @@
 package com.rustyrazorblade.easycasslab.commands
 
+import com.rustyrazorblade.easycasslab.Constants
 import com.rustyrazorblade.easycasslab.Context
 import com.rustyrazorblade.easycasslab.annotations.RequireDocker
 import com.rustyrazorblade.easycasslab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easycasslab.commands.mixins.BuildArgsMixin
 import com.rustyrazorblade.easycasslab.configuration.User
 import com.rustyrazorblade.easycasslab.containers.Packer
-import com.rustyrazorblade.easycasslab.providers.aws.PackerInfrastructureService
+import com.rustyrazorblade.easycasslab.providers.aws.AwsInfrastructureService
 import com.rustyrazorblade.easycasslab.services.AWSResourceSetupService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -27,7 +28,7 @@ class BuildBaseImage(
     @Mixin
     var buildArgs = BuildArgsMixin()
 
-    private val packerInfrastructure: PackerInfrastructureService by inject()
+    private val awsInfrastructure: AwsInfrastructureService by inject()
     private val awsResourceSetupService: AWSResourceSetupService by inject()
     private val userConfig: User by inject()
 
@@ -41,7 +42,7 @@ class BuildBaseImage(
         awsResourceSetupService.ensureAWSResources(userConfig)
 
         // Ensure Packer VPC infrastructure exists before building
-        packerInfrastructure.ensureInfrastructure()
+        awsInfrastructure.ensurePackerInfrastructure(Constants.Network.SSH_PORT)
 
         val packer = Packer(context, "base")
         packer.build("base.pkr.hcl", buildArgs)

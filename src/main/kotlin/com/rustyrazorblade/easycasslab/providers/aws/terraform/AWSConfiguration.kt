@@ -12,7 +12,7 @@ import com.rustyrazorblade.easycasslab.configuration.Arch
 import com.rustyrazorblade.easycasslab.configuration.ClusterS3Path
 import com.rustyrazorblade.easycasslab.configuration.ServerType
 import com.rustyrazorblade.easycasslab.configuration.User
-import com.rustyrazorblade.easycasslab.providers.AWS
+import com.rustyrazorblade.easycasslab.providers.aws.AWS
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
 import java.net.URL

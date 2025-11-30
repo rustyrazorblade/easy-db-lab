@@ -5,6 +5,7 @@ import com.rustyrazorblade.easycasslab.configuration.ClusterStateManager
 import com.rustyrazorblade.easycasslab.configuration.EMRClusterInfo
 import com.rustyrazorblade.easycasslab.configuration.TFState
 import com.rustyrazorblade.easycasslab.configuration.User
+import com.rustyrazorblade.easycasslab.providers.aws.EMRSparkService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test

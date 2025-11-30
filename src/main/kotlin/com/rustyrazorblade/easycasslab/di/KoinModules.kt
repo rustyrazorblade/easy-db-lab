@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easycasslab.di
 
 import com.rustyrazorblade.easycasslab.Context
+import com.rustyrazorblade.easycasslab.providers.aws.awsModule
 import com.rustyrazorblade.easycasslab.providers.docker.dockerModule
 import com.rustyrazorblade.easycasslab.providers.ssh.sshModule
 import com.rustyrazorblade.easycasslab.services.servicesModule

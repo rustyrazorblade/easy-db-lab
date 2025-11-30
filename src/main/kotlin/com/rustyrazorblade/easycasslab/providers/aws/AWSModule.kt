@@ -1,20 +1,8 @@
-package com.rustyrazorblade.easycasslab.di
+package com.rustyrazorblade.easycasslab.providers.aws
 
 import com.rustyrazorblade.easycasslab.configuration.User
 import com.rustyrazorblade.easycasslab.output.OutputHandler
-import com.rustyrazorblade.easycasslab.providers.AWS
-import com.rustyrazorblade.easycasslab.providers.aws.AMIService
-import com.rustyrazorblade.easycasslab.providers.aws.AMIValidationService
-import com.rustyrazorblade.easycasslab.providers.aws.AMIValidator
-import com.rustyrazorblade.easycasslab.providers.aws.EC2Service
-import com.rustyrazorblade.easycasslab.providers.aws.EC2VpcService
-import com.rustyrazorblade.easycasslab.providers.aws.EMRTeardownService
-import com.rustyrazorblade.easycasslab.providers.aws.InfrastructureTeardownService
-import com.rustyrazorblade.easycasslab.providers.aws.PackerInfrastructureService
-import com.rustyrazorblade.easycasslab.providers.aws.S3ObjectStore
-import com.rustyrazorblade.easycasslab.providers.aws.VpcService
 import com.rustyrazorblade.easycasslab.services.AWSResourceSetupService
-import com.rustyrazorblade.easycasslab.services.EMRSparkService
 import com.rustyrazorblade.easycasslab.services.ObjectStore
 import com.rustyrazorblade.easycasslab.services.SparkService
 import org.koin.dsl.module
@@ -45,7 +33,7 @@ import software.amazon.awssdk.services.sts.StsClient
  * - AMIService: High-level AMI lifecycle management
  * - AMIValidator: AMI validation service with retry logic and architecture verification
  * - VpcService: Generic VPC infrastructure management
- * - PackerInfrastructureService: Packer-specific VPC infrastructure orchestration
+ * - AwsInfrastructureService: VPC infrastructure orchestration for packer and clusters
  * - SparkService: Spark job lifecycle management for EMR clusters
  * - ObjectStore: Cloud-agnostic object storage interface (S3 implementation)
  *
@@ -138,9 +126,9 @@ val awsModule =
             )
         }
 
-        // Provide PackerInfrastructureService as singleton
+        // Provide AwsInfrastructureService as singleton
         single {
-            PackerInfrastructureService(
+            AwsInfrastructureService(
                 get<VpcService>(),
                 get<OutputHandler>(),
             )

@@ -11,7 +11,7 @@ import com.rustyrazorblade.easycasslab.configuration.ClusterStateManager
 import com.rustyrazorblade.easycasslab.configuration.ServerType
 import com.rustyrazorblade.easycasslab.configuration.User
 import com.rustyrazorblade.easycasslab.containers.Terraform
-import com.rustyrazorblade.easycasslab.providers.RetryUtil
+import com.rustyrazorblade.easycasslab.providers.aws.RetryUtil
 import com.rustyrazorblade.easycasslab.services.K3sAgentService
 import com.rustyrazorblade.easycasslab.services.K3sService
 import io.github.oshai.kotlinlogging.KotlinLogging

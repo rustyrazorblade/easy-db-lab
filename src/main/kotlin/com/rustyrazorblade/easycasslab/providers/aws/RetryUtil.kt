@@ -1,4 +1,4 @@
-package com.rustyrazorblade.easycasslab.providers
+package com.rustyrazorblade.easycasslab.providers.aws
 
 import com.rustyrazorblade.easycasslab.Constants
 import com.rustyrazorblade.easycasslab.DockerException

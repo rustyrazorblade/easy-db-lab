@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easycasslab.providers.aws
 
 import com.rustyrazorblade.easycasslab.output.OutputHandler
-import com.rustyrazorblade.easycasslab.providers.RetryUtil
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
 import software.amazon.awssdk.services.emr.EmrClient

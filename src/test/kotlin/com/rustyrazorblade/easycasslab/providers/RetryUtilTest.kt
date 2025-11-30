@@ -2,6 +2,7 @@ package com.rustyrazorblade.easycasslab.providers
 
 import com.rustyrazorblade.easycasslab.Constants
 import com.rustyrazorblade.easycasslab.DockerException
+import com.rustyrazorblade.easycasslab.providers.aws.RetryUtil
 import org.apache.sshd.common.SshException
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Nested

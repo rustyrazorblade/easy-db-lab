@@ -20,7 +20,7 @@ data class DiscoveredResources(
     /**
      * Returns true if this VPC is the packer infrastructure VPC.
      */
-    fun isPackerVpc(): Boolean = vpcName == PackerInfrastructureService.VPC_NAME
+    fun isPackerVpc(): Boolean = vpcName == InfrastructureConfig.PACKER_VPC_NAME
 
     /**
      * Returns true if there are any resources to delete.

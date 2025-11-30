@@ -166,10 +166,10 @@ class InfrastructureTeardownService(
         log.info { "Starting teardown of packer infrastructure (dryRun=$dryRun)" }
         outputHandler.handleMessage("Finding packer infrastructure VPC...")
 
-        val packerVpcId = vpcService.findVpcByName(PackerInfrastructureService.VPC_NAME)
+        val packerVpcId = vpcService.findVpcByName(InfrastructureConfig.PACKER_VPC_NAME)
 
         if (packerVpcId == null) {
-            outputHandler.handleMessage("No packer VPC found (${PackerInfrastructureService.VPC_NAME})")
+            outputHandler.handleMessage("No packer VPC found (${InfrastructureConfig.PACKER_VPC_NAME})")
             return TeardownResult.success(emptyList())
         }
 

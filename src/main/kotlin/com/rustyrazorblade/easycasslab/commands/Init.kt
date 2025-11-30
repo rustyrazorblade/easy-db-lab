@@ -16,7 +16,7 @@ import com.rustyrazorblade.easycasslab.configuration.ClusterStateManager
 import com.rustyrazorblade.easycasslab.configuration.InitConfig
 import com.rustyrazorblade.easycasslab.configuration.User
 import com.rustyrazorblade.easycasslab.containers.Terraform
-import com.rustyrazorblade.easycasslab.providers.AWS
+import com.rustyrazorblade.easycasslab.providers.aws.AWS
 import com.rustyrazorblade.easycasslab.providers.aws.VpcService
 import com.rustyrazorblade.easycasslab.providers.aws.terraform.AWSConfiguration
 import com.rustyrazorblade.easycasslab.providers.aws.terraform.EBSConfiguration

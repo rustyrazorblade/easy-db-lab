@@ -30,6 +30,7 @@ interface VpcService {
      * @param name The name to use for the subnet (applied as Name tag)
      * @param cidr The CIDR block for the subnet (e.g., "10.0.1.0/24")
      * @param tags Additional tags to apply to the subnet
+     * @param availabilityZone Optional availability zone for the subnet
      * @return The subnet ID
      */
     fun findOrCreateSubnet(
@@ -37,6 +38,7 @@ interface VpcService {
         name: ResourceName,
         cidr: Cidr,
         tags: Map<String, String>,
+        availabilityZone: String? = null,
     ): SubnetId
 
     /**
@@ -88,13 +90,17 @@ interface VpcService {
      * Adds an ingress rule to a security group if it doesn't already exist.
      *
      * @param securityGroupId The security group ID
-     * @param port The port to allow (e.g., 22 for SSH)
+     * @param fromPort The starting port of the range (e.g., 22 for SSH)
+     * @param toPort The ending port of the range (same as fromPort for single port)
      * @param cidr The CIDR block to allow traffic from (e.g., "0.0.0.0/0")
+     * @param protocol The IP protocol (default: "tcp")
      */
     fun authorizeSecurityGroupIngress(
         securityGroupId: SecurityGroupId,
-        port: Int,
+        fromPort: Int,
+        toPort: Int,
         cidr: Cidr,
+        protocol: String = "tcp",
     )
 
     // ==================== Discovery Methods ====================

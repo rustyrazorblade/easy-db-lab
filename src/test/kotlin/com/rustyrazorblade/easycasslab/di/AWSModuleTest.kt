@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easycasslab.di
 
 import com.rustyrazorblade.easycasslab.configuration.User
+import com.rustyrazorblade.easycasslab.providers.aws.awsModule
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.koin.core.context.startKoin

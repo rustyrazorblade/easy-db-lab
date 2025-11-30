@@ -5,7 +5,7 @@ import com.rustyrazorblade.easycasslab.Constants
 import com.rustyrazorblade.easycasslab.configuration.User
 import com.rustyrazorblade.easycasslab.configuration.UserConfigProvider
 import com.rustyrazorblade.easycasslab.output.OutputHandler
-import com.rustyrazorblade.easycasslab.providers.AWS
+import com.rustyrazorblade.easycasslab.providers.aws.AWS
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test

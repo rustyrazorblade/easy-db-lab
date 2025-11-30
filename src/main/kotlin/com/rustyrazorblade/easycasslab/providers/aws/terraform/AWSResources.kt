@@ -6,7 +6,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.rustyrazorblade.easycasslab.Constants
 import com.rustyrazorblade.easycasslab.commands.mixins.SparkInitMixin
-import com.rustyrazorblade.easycasslab.providers.AWS
+import com.rustyrazorblade.easycasslab.providers.aws.AWS
 
 typealias Ami = String
 

@@ -1,12 +1,12 @@
 package com.rustyrazorblade.easycasslab.services
 
 import com.rustyrazorblade.easycasslab.Constants
-import com.rustyrazorblade.easycasslab.configuration.AWSPolicy
 import com.rustyrazorblade.easycasslab.configuration.User
 import com.rustyrazorblade.easycasslab.configuration.UserConfigProvider
 import com.rustyrazorblade.easycasslab.output.OutputHandler
-import com.rustyrazorblade.easycasslab.providers.AWS
-import com.rustyrazorblade.easycasslab.providers.RetryUtil
+import com.rustyrazorblade.easycasslab.providers.aws.AWS
+import com.rustyrazorblade.easycasslab.providers.aws.AWSPolicy
+import com.rustyrazorblade.easycasslab.providers.aws.RetryUtil
 import io.github.resilience4j.retry.Retry
 
 /**

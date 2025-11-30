@@ -2,7 +2,6 @@ package com.rustyrazorblade.easycasslab.providers.aws
 
 import com.rustyrazorblade.easycasslab.configuration.Arch
 import com.rustyrazorblade.easycasslab.output.OutputHandler
-import com.rustyrazorblade.easycasslab.providers.AWS
 import com.rustyrazorblade.easycasslab.providers.aws.model.AMI
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry

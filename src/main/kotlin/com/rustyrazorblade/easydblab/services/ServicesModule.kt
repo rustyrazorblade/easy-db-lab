@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.AWS
@@ -67,6 +68,16 @@ val servicesModule =
         single<ClusterBackupService> {
             DefaultClusterBackupService(
                 get<ObjectStore>(),
+                get<OutputHandler>(),
+            )
+        }
+
+        // Unified backup/restore service coordinating state reconstruction and file operations
+        single<BackupRestoreService> {
+            DefaultBackupRestoreService(
+                get<StateReconstructionService>(),
+                get<ClusterBackupService>(),
+                get<ClusterStateManager>(),
                 get<OutputHandler>(),
             )
         }

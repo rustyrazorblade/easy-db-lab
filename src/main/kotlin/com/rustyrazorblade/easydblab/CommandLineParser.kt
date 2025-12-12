@@ -66,8 +66,7 @@ import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
-import com.rustyrazorblade.easydblab.services.ClusterBackupService
-import com.rustyrazorblade.easydblab.services.StateReconstructionService
+import com.rustyrazorblade.easydblab.services.BackupRestoreService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
@@ -331,48 +330,17 @@ class CommandLineParser(
         vpcId: String,
         force: Boolean,
     ) {
-        val clusterStateManager: ClusterStateManager by inject()
-        val stateReconstructionService: StateReconstructionService by inject()
-        val clusterBackupService: ClusterBackupService by inject()
+        val backupRestoreService: BackupRestoreService by inject()
 
-        // Check if state.json already exists
-        if (clusterStateManager.exists() && !force) {
-            error(
-                "state.json already exists. Use --force to overwrite, or remove the file manually.\n" +
-                    "Warning: Overwriting will lose any local configuration.",
-            )
-        }
-
-        outputHandler.handleMessage("Reconstructing state from VPC: $vpcId")
-        val reconstructedState = stateReconstructionService.reconstructFromVpc(vpcId)
-        clusterStateManager.save(reconstructedState)
-        outputHandler.handleMessage("State reconstructed successfully:")
-        outputHandler.handleMessage("  Cluster name: ${reconstructedState.name}")
-        outputHandler.handleMessage("  Cluster ID: ${reconstructedState.clusterId}")
-        outputHandler.handleMessage("  Hosts: ${reconstructedState.hosts.values.sumOf { it.size }}")
-        outputHandler.handleMessage("  S3 bucket: ${reconstructedState.s3Bucket ?: "not found"}")
-
-        // Restore cluster configuration files from S3 if S3 bucket is configured
-        if (reconstructedState.s3Bucket != null) {
-            outputHandler.handleMessage("Restoring cluster configuration from S3...")
-            val workingDirectory = context.workingDirectory.absolutePath
-            val restoreResult = clusterBackupService.restoreAll(workingDirectory, reconstructedState)
-
-            restoreResult
-                .onSuccess { result ->
-                    if (result.hasRestores()) {
-                        outputHandler.handleMessage("Configuration restored from S3:")
-                        for (target in result.successfulTargets) {
-                            outputHandler.handleMessage("  - ${target.displayName}")
-                        }
-                    } else {
-                        outputHandler.handleMessage("No configuration files found in S3 to restore")
-                    }
-                }.onFailure { error ->
-                    logger.warn(error) { "Failed to restore configuration from S3" }
-                    outputHandler.handleMessage("Warning: Failed to restore configuration from S3: ${error.message}")
-                }
-        }
+        backupRestoreService
+            .restoreFromVpc(
+                vpcId = vpcId,
+                workingDirectory = context.workingDirectory.absolutePath,
+                force = force,
+            ).onFailure { error ->
+                logger.error(error) { "Failed to restore from VPC: $vpcId" }
+                throw error
+            }
     }
 
     /**
@@ -384,7 +352,7 @@ class CommandLineParser(
      */
     private fun performIncrementalBackup() {
         val clusterStateManager: ClusterStateManager by inject()
-        val clusterBackupService: ClusterBackupService by inject()
+        val backupRestoreService: BackupRestoreService by inject()
 
         // Skip if no state file exists
         if (!clusterStateManager.exists()) {
@@ -398,7 +366,7 @@ class CommandLineParser(
             return
         }
 
-        clusterBackupService
+        backupRestoreService
             .backupChanged(context.workingDirectory.absolutePath, state)
             .onSuccess { result ->
                 if (result.filesUploaded > 0) {

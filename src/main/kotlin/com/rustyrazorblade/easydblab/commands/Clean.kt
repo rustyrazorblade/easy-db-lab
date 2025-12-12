@@ -25,22 +25,14 @@ class Clean(
     companion object {
         val filesToClean =
             listOf(
-                "create_provisioning_resources.sh",
                 "cassandra.patch.yaml",
-                "jmx.options",
-                "seeds.txt",
-                "stress_ips.txt",
-                "hosts.txt",
                 "sshConfig",
                 "env.sh",
                 "environment.sh",
                 "setup_instance.sh",
-                "logs",
                 "state.json",
-                "axonops-dashboards.json",
                 "cassandra_versions.yaml",
                 "axonops-workbench.json",
-                "easy-cass-mcp.json",
                 ".socks5-proxy-state",
                 "kubeconfig",
             )
@@ -48,11 +40,8 @@ class Clean(
         val directoriesToClean =
             listOf(
                 "provisioning",
-                "control",
                 "cassandra",
-                "stress",
                 "k8s",
-                "5.0",
             )
     }
 

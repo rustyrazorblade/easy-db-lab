@@ -50,21 +50,6 @@ class CleanTest : BaseKoinTest() {
     }
 
     @Test
-    fun `clean deletes logs directory from working directory`() {
-        // Create logs directory with content
-        val logsDir = File(workingDir, "logs")
-        logsDir.mkdir()
-        File(logsDir, "test.log").createNewFile()
-
-        assertThat(logsDir).exists()
-
-        val testContext = TestContextFactory.createTestContext(tempDir, workingDirectory = workingDir)
-        Clean(testContext).execute()
-
-        assertThat(logsDir).doesNotExist()
-    }
-
-    @Test
     fun `clean does not delete artifacts directory if it contains files`() {
         // Create artifacts directory with content
         val artifactsDir = File(workingDir, "artifacts")
@@ -124,25 +109,16 @@ class CleanTest : BaseKoinTest() {
     }
 
     @Test
-    fun `clean deletes ssh config and host files`() {
-        // Create ssh config and related files
+    fun `clean deletes ssh config file`() {
+        // Create ssh config file
         val sshConfig = File(workingDir, "sshConfig")
-        val hostsFile = File(workingDir, "hosts.txt")
-        val seedsFile = File(workingDir, "seeds.txt")
-
         sshConfig.createNewFile()
-        hostsFile.createNewFile()
-        seedsFile.createNewFile()
 
         assertThat(sshConfig).exists()
-        assertThat(hostsFile).exists()
-        assertThat(seedsFile).exists()
 
         val testContext = TestContextFactory.createTestContext(tempDir, workingDirectory = workingDir)
         Clean(testContext).execute()
 
         assertThat(sshConfig).doesNotExist()
-        assertThat(hostsFile).doesNotExist()
-        assertThat(seedsFile).doesNotExist()
     }
 }

@@ -400,9 +400,9 @@ internal class ClusterBackupServiceTest {
             // Then
             assertThat(result.isSuccess).isTrue()
             val backupResult = result.getOrThrow()
-            assertThat(backupResult.kubeconfigBackedUp).isTrue()
-            assertThat(backupResult.k8sManifestsBackedUp).isTrue()
-            assertThat(backupResult.cassandraPatchBackedUp).isTrue()
+            assertThat(backupResult.isBackedUp(BackupTarget.KUBECONFIG)).isTrue()
+            assertThat(backupResult.isBackedUp(BackupTarget.K8S_MANIFESTS)).isTrue()
+            assertThat(backupResult.isBackedUp(BackupTarget.CASSANDRA_PATCH)).isTrue()
             assertThat(backupResult.filesBackedUp).isEqualTo(3) // kubeconfig + 1 manifest + cassandra.patch.yaml
         }
 
@@ -418,9 +418,7 @@ internal class ClusterBackupServiceTest {
             // Then
             assertThat(result.isSuccess).isTrue()
             val backupResult = result.getOrThrow()
-            assertThat(backupResult.kubeconfigBackedUp).isFalse()
-            assertThat(backupResult.k8sManifestsBackedUp).isFalse()
-            assertThat(backupResult.cassandraPatchBackedUp).isFalse()
+            assertThat(backupResult.successfulTargets).isEmpty()
             assertThat(backupResult.filesBackedUp).isEqualTo(0)
         }
     }
@@ -450,9 +448,9 @@ internal class ClusterBackupServiceTest {
             // Then
             assertThat(result.isSuccess).isTrue()
             val restoreResult = result.getOrThrow()
-            assertThat(restoreResult.kubeconfigRestored).isTrue()
-            assertThat(restoreResult.k8sManifestsRestored).isTrue()
-            assertThat(restoreResult.cassandraPatchRestored).isTrue()
+            assertThat(restoreResult.isRestored(BackupTarget.KUBECONFIG)).isTrue()
+            assertThat(restoreResult.isRestored(BackupTarget.K8S_MANIFESTS)).isTrue()
+            assertThat(restoreResult.isRestored(BackupTarget.CASSANDRA_PATCH)).isTrue()
         }
 
         @Test
@@ -474,9 +472,7 @@ internal class ClusterBackupServiceTest {
             // Then
             assertThat(result.isSuccess).isTrue()
             val restoreResult = result.getOrThrow()
-            assertThat(restoreResult.kubeconfigRestored).isFalse()
-            assertThat(restoreResult.k8sManifestsRestored).isFalse()
-            assertThat(restoreResult.cassandraPatchRestored).isFalse()
+            assertThat(restoreResult.successfulTargets).isEmpty()
             assertThat(restoreResult.filesRestored).isEqualTo(0)
         }
     }

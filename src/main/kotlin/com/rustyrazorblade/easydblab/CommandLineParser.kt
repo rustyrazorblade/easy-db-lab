@@ -360,16 +360,10 @@ class CommandLineParser(
 
             restoreResult
                 .onSuccess { result ->
-                    if (result.filesRestored > 0) {
+                    if (result.hasRestores()) {
                         outputHandler.handleMessage("Configuration restored from S3:")
-                        if (result.kubeconfigRestored) {
-                            outputHandler.handleMessage("  - kubeconfig")
-                        }
-                        if (result.k8sManifestsRestored) {
-                            outputHandler.handleMessage("  - k8s manifests")
-                        }
-                        if (result.cassandraPatchRestored) {
-                            outputHandler.handleMessage("  - cassandra.patch.yaml")
+                        for (target in result.successfulTargets) {
+                            outputHandler.handleMessage("  - ${target.displayName}")
                         }
                     } else {
                         outputHandler.handleMessage("No configuration files found in S3 to restore")

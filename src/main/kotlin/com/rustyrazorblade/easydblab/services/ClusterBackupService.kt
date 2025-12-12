@@ -162,48 +162,36 @@ interface ClusterBackupService {
 /**
  * Result of a backup operation.
  *
- * @property kubeconfigBackedUp Whether kubeconfig was successfully backed up
- * @property k8sManifestsBackedUp Whether k8s manifests were successfully backed up
- * @property cassandraPatchBackedUp Whether cassandra.patch.yaml was successfully backed up
- * @property cassandraConfigBackedUp Whether cassandra/ directory was successfully backed up
- * @property cassandraVersionsBackedUp Whether cassandra_versions.yaml was successfully backed up
- * @property environmentScriptBackedUp Whether environment.sh was successfully backed up
- * @property setupInstanceScriptBackedUp Whether setup_instance.sh was successfully backed up
- * @property filesBackedUp Total number of files backed up
+ * @property successfulTargets Set of BackupTargets that were successfully backed up
+ * @property filesBackedUp Total number of files backed up (including directory contents)
  */
 data class BackupResult(
-    val kubeconfigBackedUp: Boolean = false,
-    val k8sManifestsBackedUp: Boolean = false,
-    val cassandraPatchBackedUp: Boolean = false,
-    val cassandraConfigBackedUp: Boolean = false,
-    val cassandraVersionsBackedUp: Boolean = false,
-    val environmentScriptBackedUp: Boolean = false,
-    val setupInstanceScriptBackedUp: Boolean = false,
+    val successfulTargets: Set<BackupTarget> = emptySet(),
     val filesBackedUp: Int = 0,
-)
+) {
+    /** Returns true if the specified target was successfully backed up. */
+    fun isBackedUp(target: BackupTarget): Boolean = target in successfulTargets
+
+    /** Returns true if any files were backed up. */
+    fun hasBackups(): Boolean = filesBackedUp > 0
+}
 
 /**
  * Result of a restore operation.
  *
- * @property kubeconfigRestored Whether kubeconfig was successfully restored
- * @property k8sManifestsRestored Whether k8s manifests were successfully restored
- * @property cassandraPatchRestored Whether cassandra.patch.yaml was successfully restored
- * @property cassandraConfigRestored Whether cassandra/ directory was successfully restored
- * @property cassandraVersionsRestored Whether cassandra_versions.yaml was successfully restored
- * @property environmentScriptRestored Whether environment.sh was successfully restored
- * @property setupInstanceScriptRestored Whether setup_instance.sh was successfully restored
- * @property filesRestored Total number of files restored
+ * @property successfulTargets Set of BackupTargets that were successfully restored
+ * @property filesRestored Total number of files restored (including directory contents)
  */
 data class RestoreResult(
-    val kubeconfigRestored: Boolean = false,
-    val k8sManifestsRestored: Boolean = false,
-    val cassandraPatchRestored: Boolean = false,
-    val cassandraConfigRestored: Boolean = false,
-    val cassandraVersionsRestored: Boolean = false,
-    val environmentScriptRestored: Boolean = false,
-    val setupInstanceScriptRestored: Boolean = false,
+    val successfulTargets: Set<BackupTarget> = emptySet(),
     val filesRestored: Int = 0,
-)
+) {
+    /** Returns true if the specified target was successfully restored. */
+    fun isRestored(target: BackupTarget): Boolean = target in successfulTargets
+
+    /** Returns true if any files were restored. */
+    fun hasRestores(): Boolean = filesRestored > 0
+}
 
 /**
  * Enumeration of backup targets with their local paths, S3 path mappings, and metadata.
@@ -261,7 +249,7 @@ class DefaultClusterBackupService(
         runCatching {
             validateS3Bucket(clusterState)
             val s3Root = ClusterS3Path.from(clusterState)
-            val results = mutableMapOf<BackupTarget, Boolean>()
+            val successfulTargets = mutableSetOf<BackupTarget>()
             var filesBackedUp = 0
 
             for (target in BackupTarget.entries) {
@@ -274,7 +262,6 @@ class DefaultClusterBackupService(
                     }
 
                 if (!existsAndValid) {
-                    results[target] = false
                     continue
                 }
 
@@ -287,10 +274,10 @@ class DefaultClusterBackupService(
                     filesBackedUp++
                 }
                 outputHandler.handleMessage("${target.displayName} backed up to S3: ${s3Path.toUri()}")
-                results[target] = true
+                successfulTargets.add(target)
             }
 
-            toBackupResult(results, filesBackedUp)
+            BackupResult(successfulTargets, filesBackedUp)
         }
 
     override fun restoreAll(
@@ -300,7 +287,7 @@ class DefaultClusterBackupService(
         runCatching {
             validateS3Bucket(clusterState)
             val s3Root = ClusterS3Path.from(clusterState)
-            val results = mutableMapOf<BackupTarget, Boolean>()
+            val successfulTargets = mutableSetOf<BackupTarget>()
             var filesRestored = 0
 
             for (target in BackupTarget.entries) {
@@ -313,7 +300,6 @@ class DefaultClusterBackupService(
                     }
 
                 if (!existsInS3) {
-                    results[target] = false
                     continue
                 }
 
@@ -329,10 +315,10 @@ class DefaultClusterBackupService(
                     filesRestored++
                 }
                 outputHandler.handleMessage("${target.displayName} restored from S3: ${s3Path.toUri()}")
-                results[target] = true
+                successfulTargets.add(target)
             }
 
-            toRestoreResult(results, filesRestored)
+            RestoreResult(successfulTargets, filesRestored)
         }
 
     override fun backupKubeconfig(
@@ -617,52 +603,6 @@ class DefaultClusterBackupService(
             .digest()
             .joinToString("") { "%02x".format(it) }
     }
-
-    /**
-     * Converts a Map of BackupTarget results to a BackupResult.
-     * Used by data-driven backup iteration to produce the legacy result type.
-     *
-     * @param results Map of BackupTarget to success boolean
-     * @param filesCount Total number of files backed up
-     * @return BackupResult with all fields populated from the map
-     */
-    private fun toBackupResult(
-        results: Map<BackupTarget, Boolean>,
-        filesCount: Int,
-    ): BackupResult =
-        BackupResult(
-            kubeconfigBackedUp = results[BackupTarget.KUBECONFIG] ?: false,
-            k8sManifestsBackedUp = results[BackupTarget.K8S_MANIFESTS] ?: false,
-            cassandraPatchBackedUp = results[BackupTarget.CASSANDRA_PATCH] ?: false,
-            cassandraConfigBackedUp = results[BackupTarget.CASSANDRA_CONFIG] ?: false,
-            cassandraVersionsBackedUp = results[BackupTarget.CASSANDRA_VERSIONS] ?: false,
-            environmentScriptBackedUp = results[BackupTarget.ENVIRONMENT_SCRIPT] ?: false,
-            setupInstanceScriptBackedUp = results[BackupTarget.SETUP_INSTANCE_SCRIPT] ?: false,
-            filesBackedUp = filesCount,
-        )
-
-    /**
-     * Converts a Map of BackupTarget results to a RestoreResult.
-     * Used by data-driven restore iteration to produce the legacy result type.
-     *
-     * @param results Map of BackupTarget to success boolean
-     * @param filesCount Total number of files restored
-     * @return RestoreResult with all fields populated from the map
-     */
-    private fun toRestoreResult(
-        results: Map<BackupTarget, Boolean>,
-        filesCount: Int,
-    ): RestoreResult =
-        RestoreResult(
-            kubeconfigRestored = results[BackupTarget.KUBECONFIG] ?: false,
-            k8sManifestsRestored = results[BackupTarget.K8S_MANIFESTS] ?: false,
-            cassandraPatchRestored = results[BackupTarget.CASSANDRA_PATCH] ?: false,
-            cassandraConfigRestored = results[BackupTarget.CASSANDRA_CONFIG] ?: false,
-            cassandraVersionsRestored = results[BackupTarget.CASSANDRA_VERSIONS] ?: false,
-            environmentScriptRestored = results[BackupTarget.ENVIRONMENT_SCRIPT] ?: false,
-            setupInstanceScriptRestored = results[BackupTarget.SETUP_INSTANCE_SCRIPT] ?: false,
-            filesRestored = filesCount,
-        )
 
     companion object {
         private val log = KotlinLogging.logger {}

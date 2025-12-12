@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.output.OutputHandler
@@ -207,23 +206,27 @@ data class RestoreResult(
 )
 
 /**
- * Enumeration of backup targets with their local paths and type information.
- * Used for incremental backup to track which files have changed.
+ * Enumeration of backup targets with their local paths, S3 path mappings, and metadata.
+ * This is the single source of truth for all backup/restore operations.
  *
  * @property localPath The relative path from the working directory
  * @property isDirectory True if this target is a directory, false if it's a file
+ * @property s3PathProvider Lambda that returns the S3 path for this target given a root ClusterS3Path
+ * @property displayName Human-readable name for logging and user output
  */
 enum class BackupTarget(
     val localPath: String,
     val isDirectory: Boolean,
+    val s3PathProvider: (ClusterS3Path) -> ClusterS3Path,
+    val displayName: String,
 ) {
-    KUBECONFIG("kubeconfig", false),
-    K8S_MANIFESTS("k8s", true),
-    CASSANDRA_PATCH("cassandra.patch.yaml", false),
-    CASSANDRA_CONFIG("cassandra", true),
-    CASSANDRA_VERSIONS("cassandra_versions.yaml", false),
-    ENVIRONMENT_SCRIPT("environment.sh", false),
-    SETUP_INSTANCE_SCRIPT("setup_instance.sh", false),
+    KUBECONFIG("kubeconfig", false, { it.kubeconfig() }, "Kubeconfig"),
+    K8S_MANIFESTS("k8s", true, { it.k8s() }, "K8s manifests"),
+    CASSANDRA_PATCH("cassandra.patch.yaml", false, { it.cassandraPatch() }, "Cassandra patch"),
+    CASSANDRA_CONFIG("cassandra", true, { it.cassandraConfig() }, "Cassandra config"),
+    CASSANDRA_VERSIONS("cassandra_versions.yaml", false, { it.cassandraVersions() }, "Cassandra versions"),
+    ENVIRONMENT_SCRIPT("environment.sh", false, { it.environmentScript() }, "Environment script"),
+    SETUP_INSTANCE_SCRIPT("setup_instance.sh", false, { it.setupInstanceScript() }, "Setup instance script"),
 }
 
 /**
@@ -258,90 +261,36 @@ class DefaultClusterBackupService(
         runCatching {
             validateS3Bucket(clusterState)
             val s3Root = ClusterS3Path.from(clusterState)
-
-            var kubeconfigBackedUp = false
-            var k8sManifestsBackedUp = false
-            var cassandraPatchBackedUp = false
-            var cassandraConfigBackedUp = false
-            var cassandraVersionsBackedUp = false
-            var environmentScriptBackedUp = false
-            var setupInstanceScriptBackedUp = false
+            val results = mutableMapOf<BackupTarget, Boolean>()
             var filesBackedUp = 0
 
-            // Backup kubeconfig
-            val kubeconfigPath = File(workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).toPath()
-            if (kubeconfigPath.toFile().exists()) {
-                backupKubeconfig(kubeconfigPath, clusterState).getOrThrow()
-                kubeconfigBackedUp = true
-                filesBackedUp++
+            for (target in BackupTarget.entries) {
+                val localFile = File(workingDirectory, target.localPath)
+                val existsAndValid =
+                    if (target.isDirectory) {
+                        localFile.exists() && localFile.isDirectory
+                    } else {
+                        localFile.exists()
+                    }
+
+                if (!existsAndValid) {
+                    results[target] = false
+                    continue
+                }
+
+                val s3Path = target.s3PathProvider(s3Root)
+                if (target.isDirectory) {
+                    val uploadResult = objectStore.uploadDirectory(localFile.toPath(), s3Path, showProgress = true)
+                    filesBackedUp += uploadResult.filesUploaded
+                } else {
+                    objectStore.uploadFile(localFile, s3Path, showProgress = true)
+                    filesBackedUp++
+                }
+                outputHandler.handleMessage("${target.displayName} backed up to S3: ${s3Path.toUri()}")
+                results[target] = true
             }
 
-            // Backup k8s manifests
-            val k8sDir = File(workingDirectory, Constants.K8s.MANIFEST_DIR).toPath()
-            if (k8sDir.toFile().exists() && k8sDir.toFile().isDirectory) {
-                val result = objectStore.uploadDirectory(k8sDir, s3Root.k8s(), showProgress = true)
-                k8sManifestsBackedUp = true
-                filesBackedUp += result.filesUploaded
-            }
-
-            // Backup cassandra.patch.yaml
-            val cassandraPatchPath = File(workingDirectory, Constants.ConfigPaths.CASSANDRA_PATCH_FILE).toPath()
-            if (cassandraPatchPath.toFile().exists()) {
-                backupCassandraPatch(cassandraPatchPath, clusterState).getOrThrow()
-                cassandraPatchBackedUp = true
-                filesBackedUp++
-            }
-
-            // Backup cassandra/ directory
-            val cassandraConfigDir = File(workingDirectory, CASSANDRA_CONFIG_LOCAL_DIR).toPath()
-            if (cassandraConfigDir.toFile().exists() && cassandraConfigDir.toFile().isDirectory) {
-                val s3Path = s3Root.cassandraConfig()
-                val result = objectStore.uploadDirectory(cassandraConfigDir, s3Path, showProgress = true)
-                cassandraConfigBackedUp = true
-                filesBackedUp += result.filesUploaded
-                outputHandler.handleMessage("Cassandra config backed up to S3: ${s3Path.toUri()}")
-            }
-
-            // Backup cassandra_versions.yaml
-            val cassandraVersionsPath = File(workingDirectory, CASSANDRA_VERSIONS_LOCAL_FILE).toPath()
-            if (cassandraVersionsPath.toFile().exists()) {
-                val s3Path = s3Root.cassandraVersions()
-                objectStore.uploadFile(cassandraVersionsPath.toFile(), s3Path, showProgress = true)
-                cassandraVersionsBackedUp = true
-                filesBackedUp++
-                outputHandler.handleMessage("Cassandra versions backed up to S3: ${s3Path.toUri()}")
-            }
-
-            // Backup environment.sh
-            val environmentPath = File(workingDirectory, ENVIRONMENT_LOCAL_FILE).toPath()
-            if (environmentPath.toFile().exists()) {
-                val s3Path = s3Root.environmentScript()
-                objectStore.uploadFile(environmentPath.toFile(), s3Path, showProgress = true)
-                environmentScriptBackedUp = true
-                filesBackedUp++
-                outputHandler.handleMessage("Environment script backed up to S3: ${s3Path.toUri()}")
-            }
-
-            // Backup setup_instance.sh
-            val setupInstancePath = File(workingDirectory, SETUP_INSTANCE_LOCAL_FILE).toPath()
-            if (setupInstancePath.toFile().exists()) {
-                val s3Path = s3Root.setupInstanceScript()
-                objectStore.uploadFile(setupInstancePath.toFile(), s3Path, showProgress = true)
-                setupInstanceScriptBackedUp = true
-                filesBackedUp++
-                outputHandler.handleMessage("Setup instance script backed up to S3: ${s3Path.toUri()}")
-            }
-
-            BackupResult(
-                kubeconfigBackedUp = kubeconfigBackedUp,
-                k8sManifestsBackedUp = k8sManifestsBackedUp,
-                cassandraPatchBackedUp = cassandraPatchBackedUp,
-                cassandraConfigBackedUp = cassandraConfigBackedUp,
-                cassandraVersionsBackedUp = cassandraVersionsBackedUp,
-                environmentScriptBackedUp = environmentScriptBackedUp,
-                setupInstanceScriptBackedUp = setupInstanceScriptBackedUp,
-                filesBackedUp = filesBackedUp,
-            )
+            toBackupResult(results, filesBackedUp)
         }
 
     override fun restoreAll(
@@ -351,97 +300,39 @@ class DefaultClusterBackupService(
         runCatching {
             validateS3Bucket(clusterState)
             val s3Root = ClusterS3Path.from(clusterState)
-
-            var kubeconfigRestored = false
-            var k8sManifestsRestored = false
-            var cassandraPatchRestored = false
-            var cassandraConfigRestored = false
-            var cassandraVersionsRestored = false
-            var environmentScriptRestored = false
-            var setupInstanceScriptRestored = false
+            val results = mutableMapOf<BackupTarget, Boolean>()
             var filesRestored = 0
 
-            // Restore kubeconfig
-            if (kubeconfigExistsInS3(clusterState)) {
-                val kubeconfigPath = File(workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).toPath()
-                restoreKubeconfig(kubeconfigPath, clusterState).getOrThrow()
-                kubeconfigRestored = true
-                filesRestored++
-            }
+            for (target in BackupTarget.entries) {
+                val s3Path = target.s3PathProvider(s3Root)
+                val existsInS3 =
+                    if (target.isDirectory) {
+                        objectStore.directoryExists(s3Path)
+                    } else {
+                        objectStore.fileExists(s3Path)
+                    }
 
-            // Restore k8s manifests
-            if (k8sManifestsExistInS3(clusterState)) {
-                val k8sDir = File(workingDirectory, Constants.K8s.MANIFEST_DIR).toPath()
-                restoreK8sManifests(k8sDir, clusterState).getOrThrow()
-                k8sManifestsRestored = true
-                // Count restored files
-                val k8sDirFile = k8sDir.toFile()
-                if (k8sDirFile.exists()) {
-                    filesRestored += k8sDirFile.walkTopDown().filter { it.isFile }.count()
+                if (!existsInS3) {
+                    results[target] = false
+                    continue
                 }
-            }
 
-            // Restore cassandra.patch.yaml
-            if (cassandraPatchExistsInS3(clusterState)) {
-                val cassandraPatchPath = File(workingDirectory, Constants.ConfigPaths.CASSANDRA_PATCH_FILE).toPath()
-                restoreCassandraPatch(cassandraPatchPath, clusterState).getOrThrow()
-                cassandraPatchRestored = true
-                filesRestored++
-            }
-
-            // Restore cassandra/ directory
-            if (cassandraConfigExistsInS3(clusterState)) {
-                val cassandraConfigDir = File(workingDirectory, CASSANDRA_CONFIG_LOCAL_DIR).toPath()
-                val s3Path = s3Root.cassandraConfig()
-                objectStore.downloadDirectory(s3Path, cassandraConfigDir, showProgress = true)
-                cassandraConfigRestored = true
-                val configDirFile = cassandraConfigDir.toFile()
-                if (configDirFile.exists()) {
-                    filesRestored += configDirFile.walkTopDown().filter { it.isFile }.count()
+                val localPath = File(workingDirectory, target.localPath).toPath()
+                if (target.isDirectory) {
+                    objectStore.downloadDirectory(s3Path, localPath, showProgress = true)
+                    val localDir = localPath.toFile()
+                    if (localDir.exists()) {
+                        filesRestored += localDir.walkTopDown().filter { it.isFile }.count()
+                    }
+                } else {
+                    objectStore.downloadFile(s3Path, localPath, showProgress = true)
+                    filesRestored++
                 }
-                outputHandler.handleMessage("Cassandra config restored from S3: ${s3Path.toUri()}")
+                outputHandler.handleMessage("${target.displayName} restored from S3: ${s3Path.toUri()}")
+                results[target] = true
             }
 
-            // Restore cassandra_versions.yaml
-            if (cassandraVersionsExistsInS3(clusterState)) {
-                val cassandraVersionsPath = File(workingDirectory, CASSANDRA_VERSIONS_LOCAL_FILE).toPath()
-                val s3Path = s3Root.cassandraVersions()
-                objectStore.downloadFile(s3Path, cassandraVersionsPath, showProgress = true)
-                cassandraVersionsRestored = true
-                filesRestored++
-                outputHandler.handleMessage("Cassandra versions restored from S3: ${s3Path.toUri()}")
-            }
-
-            // Restore environment.sh
-            if (environmentScriptExistsInS3(clusterState)) {
-                val environmentPath = File(workingDirectory, ENVIRONMENT_LOCAL_FILE).toPath()
-                val s3Path = s3Root.environmentScript()
-                objectStore.downloadFile(s3Path, environmentPath, showProgress = true)
-                environmentScriptRestored = true
-                filesRestored++
-                outputHandler.handleMessage("Environment script restored from S3: ${s3Path.toUri()}")
-            }
-
-            // Restore setup_instance.sh
-            if (setupInstanceScriptExistsInS3(clusterState)) {
-                val setupInstancePath = File(workingDirectory, SETUP_INSTANCE_LOCAL_FILE).toPath()
-                val s3Path = s3Root.setupInstanceScript()
-                objectStore.downloadFile(s3Path, setupInstancePath, showProgress = true)
-                setupInstanceScriptRestored = true
-                filesRestored++
-                outputHandler.handleMessage("Setup instance script restored from S3: ${s3Path.toUri()}")
-            }
-
-            RestoreResult(
-                kubeconfigRestored = kubeconfigRestored,
-                k8sManifestsRestored = k8sManifestsRestored,
-                cassandraPatchRestored = cassandraPatchRestored,
-                cassandraConfigRestored = cassandraConfigRestored,
-                cassandraVersionsRestored = cassandraVersionsRestored,
-                environmentScriptRestored = environmentScriptRestored,
-                setupInstanceScriptRestored = setupInstanceScriptRestored,
-                filesRestored = filesRestored,
-            )
+            toRestoreResult(results, filesRestored)
         }
 
     override fun backupKubeconfig(
@@ -591,26 +482,6 @@ class DefaultClusterBackupService(
         return objectStore.fileExists(s3Path)
     }
 
-    private fun cassandraConfigExistsInS3(clusterState: ClusterState): Boolean = fileExistsInS3(clusterState) { it.cassandraConfig() }
-
-    private fun cassandraVersionsExistsInS3(clusterState: ClusterState): Boolean = fileExistsInS3(clusterState) { it.cassandraVersions() }
-
-    private fun environmentScriptExistsInS3(clusterState: ClusterState): Boolean = fileExistsInS3(clusterState) { it.environmentScript() }
-
-    private fun setupInstanceScriptExistsInS3(clusterState: ClusterState): Boolean =
-        fileExistsInS3(clusterState) { it.setupInstanceScript() }
-
-    private fun fileExistsInS3(
-        clusterState: ClusterState,
-        pathProvider: (ClusterS3Path) -> ClusterS3Path,
-    ): Boolean {
-        if (clusterState.s3Bucket == null) {
-            return false
-        }
-        val s3Path = pathProvider(ClusterS3Path.from(clusterState))
-        return objectStore.fileExists(s3Path) || objectStore.directoryExists(s3Path)
-    }
-
     private fun validateS3Bucket(clusterState: ClusterState) {
         requireNotNull(clusterState.s3Bucket) {
             "S3 bucket not configured for cluster '${clusterState.name}'"
@@ -674,29 +545,12 @@ class DefaultClusterBackupService(
         s3Root: ClusterS3Path,
     ) {
         val localPath = File(workingDirectory, target.localPath).toPath()
+        val s3Path = target.s3PathProvider(s3Root)
 
-        when (target) {
-            BackupTarget.KUBECONFIG -> {
-                objectStore.uploadFile(localPath.toFile(), s3Root.kubeconfig(), showProgress = false)
-            }
-            BackupTarget.K8S_MANIFESTS -> {
-                objectStore.uploadDirectory(localPath, s3Root.k8s(), showProgress = false)
-            }
-            BackupTarget.CASSANDRA_PATCH -> {
-                objectStore.uploadFile(localPath.toFile(), s3Root.cassandraPatch(), showProgress = false)
-            }
-            BackupTarget.CASSANDRA_CONFIG -> {
-                objectStore.uploadDirectory(localPath, s3Root.cassandraConfig(), showProgress = false)
-            }
-            BackupTarget.CASSANDRA_VERSIONS -> {
-                objectStore.uploadFile(localPath.toFile(), s3Root.cassandraVersions(), showProgress = false)
-            }
-            BackupTarget.ENVIRONMENT_SCRIPT -> {
-                objectStore.uploadFile(localPath.toFile(), s3Root.environmentScript(), showProgress = false)
-            }
-            BackupTarget.SETUP_INSTANCE_SCRIPT -> {
-                objectStore.uploadFile(localPath.toFile(), s3Root.setupInstanceScript(), showProgress = false)
-            }
+        if (target.isDirectory) {
+            objectStore.uploadDirectory(localPath, s3Path, showProgress = false)
+        } else {
+            objectStore.uploadFile(localPath.toFile(), s3Path, showProgress = false)
         }
     }
 
@@ -764,12 +618,54 @@ class DefaultClusterBackupService(
             .joinToString("") { "%02x".format(it) }
     }
 
+    /**
+     * Converts a Map of BackupTarget results to a BackupResult.
+     * Used by data-driven backup iteration to produce the legacy result type.
+     *
+     * @param results Map of BackupTarget to success boolean
+     * @param filesCount Total number of files backed up
+     * @return BackupResult with all fields populated from the map
+     */
+    private fun toBackupResult(
+        results: Map<BackupTarget, Boolean>,
+        filesCount: Int,
+    ): BackupResult =
+        BackupResult(
+            kubeconfigBackedUp = results[BackupTarget.KUBECONFIG] ?: false,
+            k8sManifestsBackedUp = results[BackupTarget.K8S_MANIFESTS] ?: false,
+            cassandraPatchBackedUp = results[BackupTarget.CASSANDRA_PATCH] ?: false,
+            cassandraConfigBackedUp = results[BackupTarget.CASSANDRA_CONFIG] ?: false,
+            cassandraVersionsBackedUp = results[BackupTarget.CASSANDRA_VERSIONS] ?: false,
+            environmentScriptBackedUp = results[BackupTarget.ENVIRONMENT_SCRIPT] ?: false,
+            setupInstanceScriptBackedUp = results[BackupTarget.SETUP_INSTANCE_SCRIPT] ?: false,
+            filesBackedUp = filesCount,
+        )
+
+    /**
+     * Converts a Map of BackupTarget results to a RestoreResult.
+     * Used by data-driven restore iteration to produce the legacy result type.
+     *
+     * @param results Map of BackupTarget to success boolean
+     * @param filesCount Total number of files restored
+     * @return RestoreResult with all fields populated from the map
+     */
+    private fun toRestoreResult(
+        results: Map<BackupTarget, Boolean>,
+        filesCount: Int,
+    ): RestoreResult =
+        RestoreResult(
+            kubeconfigRestored = results[BackupTarget.KUBECONFIG] ?: false,
+            k8sManifestsRestored = results[BackupTarget.K8S_MANIFESTS] ?: false,
+            cassandraPatchRestored = results[BackupTarget.CASSANDRA_PATCH] ?: false,
+            cassandraConfigRestored = results[BackupTarget.CASSANDRA_CONFIG] ?: false,
+            cassandraVersionsRestored = results[BackupTarget.CASSANDRA_VERSIONS] ?: false,
+            environmentScriptRestored = results[BackupTarget.ENVIRONMENT_SCRIPT] ?: false,
+            setupInstanceScriptRestored = results[BackupTarget.SETUP_INSTANCE_SCRIPT] ?: false,
+            filesRestored = filesCount,
+        )
+
     companion object {
         private val log = KotlinLogging.logger {}
-        private const val CASSANDRA_CONFIG_LOCAL_DIR = "cassandra"
-        private const val CASSANDRA_VERSIONS_LOCAL_FILE = "cassandra_versions.yaml"
-        private const val ENVIRONMENT_LOCAL_FILE = "environment.sh"
-        private const val SETUP_INSTANCE_LOCAL_FILE = "setup_instance.sh"
         private const val HASH_BUFFER_SIZE = 8192
     }
 }

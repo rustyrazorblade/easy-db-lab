@@ -221,4 +221,40 @@ class ClusterS3PathTest {
         assertThat(original.toString()).isEqualTo("s3://my-bucket")
         assertThat(resolved.toString()).isEqualTo("s3://my-bucket/subdir")
     }
+
+    @Test
+    fun `kubeconfig returns correct path`() {
+        val path = ClusterS3Path.root("my-bucket")
+        val kubeconfigPath = path.kubeconfig()
+
+        assertThat(kubeconfigPath.toString())
+            .isEqualTo("s3://my-bucket/k3s/kubeconfig")
+    }
+
+    @Test
+    fun `k8s returns correct path`() {
+        val path = ClusterS3Path.root("my-bucket")
+        val k8sPath = path.k8s()
+
+        assertThat(k8sPath.toString())
+            .isEqualTo("s3://my-bucket/k8s")
+    }
+
+    @Test
+    fun `config returns correct path`() {
+        val path = ClusterS3Path.root("my-bucket")
+        val configPath = path.config()
+
+        assertThat(configPath.toString())
+            .isEqualTo("s3://my-bucket/config")
+    }
+
+    @Test
+    fun `cassandraPatch returns correct path`() {
+        val path = ClusterS3Path.root("my-bucket")
+        val cassandraPatchPath = path.cassandraPatch()
+
+        assertThat(cassandraPatchPath.toString())
+            .isEqualTo("s3://my-bucket/config/cassandra.patch.yaml")
+    }
 }

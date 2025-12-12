@@ -172,6 +172,9 @@ object Constants {
         const val CASSANDRA_SIDECAR_CONFIG = "cassandra/cassandra-sidecar.yaml"
         const val CASSANDRA_REMOTE_SIDECAR_DIR = "/etc/cassandra-sidecar"
         const val CASSANDRA_REMOTE_SIDECAR_CONFIG = "$CASSANDRA_REMOTE_SIDECAR_DIR/cassandra-sidecar.yaml"
+
+        // Local config files
+        const val CASSANDRA_PATCH_FILE = "cassandra.patch.yaml"
     }
 
     // Cassandra Sidecar configuration

@@ -36,6 +36,11 @@ data class ClusterS3Path(
         private const val BACKUPS_DIR = "backups"
         private const val LOGS_DIR = "logs"
         private const val DATA_DIR = "data"
+        private const val K3S_DIR = "k3s"
+        private const val KUBECONFIG_FILE = "kubeconfig"
+        private const val K8S_DIR = "k8s"
+        private const val CONFIG_DIR = "config"
+        private const val CASSANDRA_PATCH_FILE = "cassandra.patch.yaml"
 
         /**
          * Create a ClusterS3Path from ClusterState.
@@ -206,4 +211,32 @@ data class ClusterS3Path(
      * @return Path: s3://bucket/data
      */
     fun data(): ClusterS3Path = resolve(DATA_DIR)
+
+    /**
+     * Path for K3s kubeconfig file.
+     *
+     * @return Path: s3://bucket/k3s/kubeconfig
+     */
+    fun kubeconfig(): ClusterS3Path = resolve(K3S_DIR).resolve(KUBECONFIG_FILE)
+
+    /**
+     * Path for Kubernetes manifests directory.
+     *
+     * @return Path: s3://bucket/k8s
+     */
+    fun k8s(): ClusterS3Path = resolve(K8S_DIR)
+
+    /**
+     * Path for cluster configuration files directory.
+     *
+     * @return Path: s3://bucket/config
+     */
+    fun config(): ClusterS3Path = resolve(CONFIG_DIR)
+
+    /**
+     * Path for Cassandra patch configuration file.
+     *
+     * @return Path: s3://bucket/config/cassandra.patch.yaml
+     */
+    fun cassandraPatch(): ClusterS3Path = resolve(CONFIG_DIR).resolve(CASSANDRA_PATCH_FILE)
 }

@@ -65,6 +65,7 @@ import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
+import com.rustyrazorblade.easydblab.services.ClusterBackupService
 import com.rustyrazorblade.easydblab.services.StateReconstructionService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.KoinComponent
@@ -308,7 +309,8 @@ class CommandLineParser(
      * Handles state reconstruction from a VPC ID.
      *
      * This is triggered when --vpc-id is provided on the command line.
-     * It reconstructs the local state.json from AWS resources associated with the VPC.
+     * It reconstructs the local state.json from AWS resources associated with the VPC,
+     * and restores cluster configuration files (kubeconfig, k8s manifests, cassandra.patch.yaml) from S3.
      *
      * @param vpcId The VPC ID to reconstruct state from
      * @param force If true, overwrites existing state.json
@@ -320,6 +322,7 @@ class CommandLineParser(
     ) {
         val clusterStateManager: ClusterStateManager by inject()
         val stateReconstructionService: StateReconstructionService by inject()
+        val clusterBackupService: ClusterBackupService by inject()
 
         // Check if state.json already exists
         if (clusterStateManager.exists() && !force) {
@@ -337,6 +340,34 @@ class CommandLineParser(
         outputHandler.handleMessage("  Cluster ID: ${reconstructedState.clusterId}")
         outputHandler.handleMessage("  Hosts: ${reconstructedState.hosts.values.sumOf { it.size }}")
         outputHandler.handleMessage("  S3 bucket: ${reconstructedState.s3Bucket ?: "not found"}")
+
+        // Restore cluster configuration files from S3 if S3 bucket is configured
+        if (reconstructedState.s3Bucket != null) {
+            outputHandler.handleMessage("Restoring cluster configuration from S3...")
+            val workingDirectory = context.workingDirectory.absolutePath
+            val restoreResult = clusterBackupService.restoreAll(workingDirectory, reconstructedState)
+
+            restoreResult
+                .onSuccess { result ->
+                    if (result.filesRestored > 0) {
+                        outputHandler.handleMessage("Configuration restored from S3:")
+                        if (result.kubeconfigRestored) {
+                            outputHandler.handleMessage("  - kubeconfig")
+                        }
+                        if (result.k8sManifestsRestored) {
+                            outputHandler.handleMessage("  - k8s manifests")
+                        }
+                        if (result.cassandraPatchRestored) {
+                            outputHandler.handleMessage("  - cassandra.patch.yaml")
+                        }
+                    } else {
+                        outputHandler.handleMessage("No configuration files found in S3 to restore")
+                    }
+                }.onFailure { error ->
+                    logger.warn(error) { "Failed to restore configuration from S3" }
+                    outputHandler.handleMessage("Warning: Failed to restore configuration from S3: ${error.message}")
+                }
+        }
     }
 
     /**

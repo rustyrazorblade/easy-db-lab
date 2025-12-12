@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import org.assertj.core.api.Assertions.assertThat
@@ -23,7 +24,9 @@ class K3sClusterServiceTest {
     private lateinit var k3sService: K3sService
     private lateinit var k3sAgentService: K3sAgentService
     private lateinit var outputHandler: OutputHandler
+    private lateinit var clusterBackupService: ClusterBackupService
     private lateinit var service: K3sClusterService
+    private lateinit var serviceWithBackup: K3sClusterService
 
     @TempDir
     lateinit var tempDir: Path
@@ -33,11 +36,23 @@ class K3sClusterServiceTest {
         k3sService = mock()
         k3sAgentService = mock()
         outputHandler = mock()
+        clusterBackupService = mock()
+
+        // Service without backup capability (for backward compatibility tests)
         service =
             DefaultK3sClusterService(
                 k3sService = k3sService,
                 k3sAgentService = k3sAgentService,
                 outputHandler = outputHandler,
+            )
+
+        // Service with backup capability
+        serviceWithBackup =
+            DefaultK3sClusterService(
+                k3sService = k3sService,
+                k3sAgentService = k3sAgentService,
+                outputHandler = outputHandler,
+                clusterBackupService = clusterBackupService,
             )
     }
 
@@ -281,6 +296,78 @@ class K3sClusterServiceTest {
 
             assertThat(result.isSuccessful).isFalse()
         }
+
+        @Test
+        fun `should backup kubeconfig to S3 when ClusterState is provided`() {
+            val clusterState = createClusterState()
+            val config = createConfig(clusterState = clusterState)
+            setupSuccessfulServerStart()
+            whenever(clusterBackupService.backupKubeconfig(any(), eq(clusterState)))
+                .thenReturn(Result.success(Unit))
+
+            val result = serviceWithBackup.setupCluster(config)
+
+            assertThat(result.kubeconfigBackedUp).isTrue()
+            verify(clusterBackupService).backupKubeconfig(eq(config.kubeconfigPath), eq(clusterState))
+        }
+
+        @Test
+        fun `should not attempt backup when ClusterState is not provided`() {
+            val config = createConfig() // No clusterState
+            setupSuccessfulServerStart()
+
+            val result = serviceWithBackup.setupCluster(config)
+
+            assertThat(result.kubeconfigBackedUp).isFalse()
+            verify(clusterBackupService, never()).backupKubeconfig(any(), any())
+        }
+
+        @Test
+        fun `should not attempt backup when S3 bucket is not configured`() {
+            val clusterState =
+                ClusterState(
+                    name = "test",
+                    versions = mutableMapOf(),
+                    s3Bucket = null,
+                )
+            val config = createConfig(clusterState = clusterState)
+            setupSuccessfulServerStart()
+
+            val result = serviceWithBackup.setupCluster(config)
+
+            assertThat(result.kubeconfigBackedUp).isFalse()
+            verify(clusterBackupService, never()).backupKubeconfig(any(), any())
+        }
+
+        @Test
+        fun `should handle backup failure gracefully`() {
+            val clusterState = createClusterState()
+            val config = createConfig(clusterState = clusterState)
+            setupSuccessfulServerStart()
+            whenever(clusterBackupService.backupKubeconfig(any(), any()))
+                .thenReturn(Result.failure(RuntimeException("S3 upload failed")))
+
+            val result = serviceWithBackup.setupCluster(config)
+
+            // Setup should still succeed even if backup fails
+            assertThat(result.isSuccessful).isTrue()
+            assertThat(result.kubeconfigBackedUp).isFalse()
+            // Backup failure should NOT be added to errors (it's non-critical)
+            assertThat(result.errors).isEmpty()
+        }
+
+        @Test
+        fun `should still succeed when backup service is not available`() {
+            val clusterState = createClusterState()
+            val config = createConfig(clusterState = clusterState)
+            setupSuccessfulServerStart()
+
+            // Use service without backup capability
+            val result = service.setupCluster(config)
+
+            assertThat(result.isSuccessful).isTrue()
+            assertThat(result.kubeconfigBackedUp).isFalse()
+        }
     }
 
     @Nested
@@ -323,12 +410,14 @@ class K3sClusterServiceTest {
     private fun createConfig(
         workerHosts: Map<ServerType, List<ClusterHost>> = emptyMap(),
         hostFilter: String = "",
+        clusterState: ClusterState? = null,
     ): K3sClusterConfig =
         K3sClusterConfig(
             controlHost = createClusterHost("control0", "10.0.1.1"),
             workerHosts = workerHosts,
             kubeconfigPath = tempDir.resolve("kubeconfig"),
             hostFilter = hostFilter,
+            clusterState = clusterState,
         )
 
     private fun createClusterHost(
@@ -341,5 +430,12 @@ class K3sClusterServiceTest {
             alias = alias,
             availabilityZone = "us-west-2a",
             instanceId = "i-$alias",
+        )
+
+    private fun createClusterState(): ClusterState =
+        ClusterState(
+            name = "test-cluster",
+            versions = mutableMapOf(),
+            s3Bucket = "easy-db-lab-test-abc12345",
         )
 }

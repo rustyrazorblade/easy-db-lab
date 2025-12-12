@@ -118,6 +118,29 @@ interface ObjectStore {
     ): DownloadDirectoryResult
 
     /**
+     * Uploads all files from a local directory to cloud storage.
+     * Preserves directory structure relative to the local directory.
+     *
+     * @param localDir The local directory to upload from
+     * @param remotePath The cloud storage path prefix to upload to
+     * @param showProgress If true, displays progress to user via OutputHandler
+     * @return UploadDirectoryResult with stats about the upload
+     */
+    fun uploadDirectory(
+        localDir: Path,
+        remotePath: ClusterS3Path,
+        showProgress: Boolean = true,
+    ): UploadDirectoryResult
+
+    /**
+     * Checks if any files exist under a cloud storage prefix.
+     *
+     * @param remotePath The cloud storage path prefix to check
+     * @return true if at least one file exists under the prefix, false otherwise
+     */
+    fun directoryExists(remotePath: ClusterS3Path): Boolean
+
+    /**
      * Represents a file in cloud storage with metadata.
      *
      * @property path The cloud storage path to this file
@@ -162,6 +185,19 @@ interface ObjectStore {
     data class DownloadDirectoryResult(
         val localDir: Path,
         val filesDownloaded: Int,
+        val totalBytes: Long,
+    )
+
+    /**
+     * Result of a directory upload operation.
+     *
+     * @property remotePath The cloud storage path where files were uploaded
+     * @property filesUploaded Number of files uploaded
+     * @property totalBytes Total bytes uploaded
+     */
+    data class UploadDirectoryResult(
+        val remotePath: ClusterS3Path,
+        val filesUploaded: Int,
         val totalBytes: Long,
     )
 }

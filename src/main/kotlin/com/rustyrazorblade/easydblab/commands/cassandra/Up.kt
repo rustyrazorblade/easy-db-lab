@@ -430,6 +430,7 @@ class Up(
                     ),
                 kubeconfigPath = File(context.workingDirectory, "kubeconfig").toPath(),
                 hostFilter = hosts.hostList,
+                clusterState = workingState,
             )
 
         val result = k3sClusterService.setupCluster(config)

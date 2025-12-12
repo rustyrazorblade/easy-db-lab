@@ -62,4 +62,12 @@ val servicesModule =
                 get<AWS>(),
             )
         }
+
+        // Cluster backup service for S3 backup/restore of cluster configuration files
+        single<ClusterBackupService> {
+            DefaultClusterBackupService(
+                get<ObjectStore>(),
+                get<OutputHandler>(),
+            )
+        }
     }

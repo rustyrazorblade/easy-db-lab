@@ -251,6 +251,52 @@ class S3ObjectStore(
         return ObjectStore.DownloadDirectoryResult(localDir, filesDownloaded, totalBytes)
     }
 
+    override fun uploadDirectory(
+        localDir: Path,
+        remotePath: ClusterS3Path,
+        showProgress: Boolean,
+    ): ObjectStore.UploadDirectoryResult {
+        val localDirFile = localDir.toFile()
+        require(localDirFile.exists() && localDirFile.isDirectory) {
+            "Local directory does not exist or is not a directory: ${localDir.toAbsolutePath()}"
+        }
+
+        val files =
+            localDirFile
+                .walkTopDown()
+                .filter { it.isFile }
+                .toList()
+
+        if (showProgress) {
+            outputHandler.handleMessage("Found ${files.size} files to upload to ${remotePath.toUri()}")
+        }
+
+        var totalBytes = 0L
+        var filesUploaded = 0
+
+        for (file in files) {
+            // Calculate relative path from the local directory
+            val relativePath = localDir.relativize(file.toPath()).toString()
+            val targetPath = remotePath.resolve(relativePath)
+
+            // Upload the file
+            uploadFile(file, targetPath, showProgress = false)
+            totalBytes += file.length()
+            filesUploaded++
+        }
+
+        if (showProgress) {
+            outputHandler.handleMessage("Uploaded $filesUploaded files to ${remotePath.toUri()}")
+        }
+
+        return ObjectStore.UploadDirectoryResult(remotePath, filesUploaded, totalBytes)
+    }
+
+    override fun directoryExists(remotePath: ClusterS3Path): Boolean {
+        val files = listFiles(remotePath, recursive = false)
+        return files.isNotEmpty()
+    }
+
     /**
      * Creates a HeadObjectRequest for the given S3 path.
      *

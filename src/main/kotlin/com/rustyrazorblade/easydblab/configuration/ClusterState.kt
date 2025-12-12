@@ -177,6 +177,9 @@ data class ClusterState(
     var infrastructure: InfrastructureState? = null,
     // S3 bucket for this environment (per-cluster bucket, created during 'up')
     var s3Bucket: String? = null,
+    // SHA-256 hashes of backed-up configuration files for incremental backup
+    // Maps BackupTarget enum name to hex-encoded hash
+    var backupHashes: Map<String, String> = emptyMap(),
 ) {
     /**
      * Update hosts

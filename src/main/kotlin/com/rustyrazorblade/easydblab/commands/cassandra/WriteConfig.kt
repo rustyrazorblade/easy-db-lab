@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.commands.cassandra
 
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.annotations.TriggerBackup
 import com.rustyrazorblade.easydblab.commands.PicoCommand
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
@@ -18,6 +19,7 @@ import java.io.File
  * Write a new cassandra configuration patch file.
  */
 @RequireProfileSetup
+@TriggerBackup
 @Command(
     name = "write-config",
     aliases = ["wc"],

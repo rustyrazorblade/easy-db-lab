@@ -4,6 +4,7 @@ import com.github.ajalt.mordant.TermColors
 import com.rustyrazorblade.easydblab.annotations.RequireDocker
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
+import com.rustyrazorblade.easydblab.annotations.TriggerBackup
 import com.rustyrazorblade.easydblab.commands.BuildBaseImage
 import com.rustyrazorblade.easydblab.commands.BuildCassandraImage
 import com.rustyrazorblade.easydblab.commands.BuildImage
@@ -301,7 +302,17 @@ class CommandLineParser(
                     }
                 }
                 // Execute the command using default RunLast strategy
-                CommandLine.RunLast().execute(parseResult)
+                val exitCode = CommandLine.RunLast().execute(parseResult)
+
+                // After successful execution, check for @TriggerBackup annotation
+                if (exitCode == 0 && currentParseResult != null) {
+                    val cmd = currentParseResult.commandSpec().userObject()
+                    if (cmd::class.annotations.any { it is TriggerBackup }) {
+                        performIncrementalBackup()
+                    }
+                }
+
+                exitCode
             }
     }
 
@@ -368,6 +379,44 @@ class CommandLineParser(
                     outputHandler.handleMessage("Warning: Failed to restore configuration from S3: ${error.message}")
                 }
         }
+    }
+
+    /**
+     * Performs incremental backup of configuration files to S3.
+     *
+     * This is called after commands annotated with @TriggerBackup complete successfully.
+     * It computes hashes of all backup targets and uploads only files that have changed
+     * since the last backup.
+     */
+    private fun performIncrementalBackup() {
+        val clusterStateManager: ClusterStateManager by inject()
+        val clusterBackupService: ClusterBackupService by inject()
+
+        // Skip if no state file exists
+        if (!clusterStateManager.exists()) {
+            return
+        }
+
+        val state = clusterStateManager.load()
+
+        // Skip if no S3 bucket configured
+        if (state.s3Bucket.isNullOrBlank()) {
+            return
+        }
+
+        clusterBackupService
+            .backupChanged(context.workingDirectory.absolutePath, state)
+            .onSuccess { result ->
+                if (result.filesUploaded > 0) {
+                    // Update state with new hashes
+                    state.backupHashes = state.backupHashes + result.updatedHashes
+                    clusterStateManager.save(state)
+                    outputHandler.handleMessage("Backed up ${result.filesUploaded} changed configuration files to S3")
+                }
+            }.onFailure { e ->
+                logger.warn(e) { "Incremental backup failed" }
+                outputHandler.handleMessage("Warning: Incremental backup failed: ${e.message}")
+            }
     }
 
     /**

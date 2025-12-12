@@ -257,4 +257,40 @@ class ClusterS3PathTest {
         assertThat(cassandraPatchPath.toString())
             .isEqualTo("s3://my-bucket/config/cassandra.patch.yaml")
     }
+
+    @Test
+    fun `cassandraConfig returns correct path`() {
+        val path = ClusterS3Path.root("my-bucket")
+        val cassandraConfigPath = path.cassandraConfig()
+
+        assertThat(cassandraConfigPath.toString())
+            .isEqualTo("s3://my-bucket/config/cassandra-config")
+    }
+
+    @Test
+    fun `cassandraVersions returns correct path`() {
+        val path = ClusterS3Path.root("my-bucket")
+        val cassandraVersionsPath = path.cassandraVersions()
+
+        assertThat(cassandraVersionsPath.toString())
+            .isEqualTo("s3://my-bucket/config/cassandra_versions.yaml")
+    }
+
+    @Test
+    fun `environmentScript returns correct path`() {
+        val path = ClusterS3Path.root("my-bucket")
+        val environmentScriptPath = path.environmentScript()
+
+        assertThat(environmentScriptPath.toString())
+            .isEqualTo("s3://my-bucket/config/environment.sh")
+    }
+
+    @Test
+    fun `setupInstanceScript returns correct path`() {
+        val path = ClusterS3Path.root("my-bucket")
+        val setupInstanceScriptPath = path.setupInstanceScript()
+
+        assertThat(setupInstanceScriptPath.toString())
+            .isEqualTo("s3://my-bucket/config/setup_instance.sh")
+    }
 }

@@ -5,6 +5,7 @@ import com.github.ajalt.mordant.TermColors
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.annotations.TriggerBackup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.ServerType
@@ -24,6 +25,7 @@ import kotlin.system.exitProcess
  */
 @McpCommand
 @RequireProfileSetup
+@TriggerBackup
 @Command(
     name = "use",
     description = ["Use a Cassandra version (3.0, 3.11, 4.0, 4.1)"],

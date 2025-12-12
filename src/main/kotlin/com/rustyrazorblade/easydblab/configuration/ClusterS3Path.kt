@@ -41,6 +41,10 @@ data class ClusterS3Path(
         private const val K8S_DIR = "k8s"
         private const val CONFIG_DIR = "config"
         private const val CASSANDRA_PATCH_FILE = "cassandra.patch.yaml"
+        private const val CASSANDRA_CONFIG_DIR = "cassandra-config"
+        private const val CASSANDRA_VERSIONS_FILE = "cassandra_versions.yaml"
+        private const val ENVIRONMENT_FILE = "environment.sh"
+        private const val SETUP_INSTANCE_FILE = "setup_instance.sh"
 
         /**
          * Create a ClusterS3Path from ClusterState.
@@ -239,4 +243,32 @@ data class ClusterS3Path(
      * @return Path: s3://bucket/config/cassandra.patch.yaml
      */
     fun cassandraPatch(): ClusterS3Path = resolve(CONFIG_DIR).resolve(CASSANDRA_PATCH_FILE)
+
+    /**
+     * Path for Cassandra configuration directory (local cassandra/ dir).
+     *
+     * @return Path: s3://bucket/config/cassandra-config
+     */
+    fun cassandraConfig(): ClusterS3Path = resolve(CONFIG_DIR).resolve(CASSANDRA_CONFIG_DIR)
+
+    /**
+     * Path for cassandra_versions.yaml file.
+     *
+     * @return Path: s3://bucket/config/cassandra_versions.yaml
+     */
+    fun cassandraVersions(): ClusterS3Path = resolve(CONFIG_DIR).resolve(CASSANDRA_VERSIONS_FILE)
+
+    /**
+     * Path for environment.sh file.
+     *
+     * @return Path: s3://bucket/config/environment.sh
+     */
+    fun environmentScript(): ClusterS3Path = resolve(CONFIG_DIR).resolve(ENVIRONMENT_FILE)
+
+    /**
+     * Path for setup_instance.sh file.
+     *
+     * @return Path: s3://bucket/config/setup_instance.sh
+     */
+    fun setupInstanceScript(): ClusterS3Path = resolve(CONFIG_DIR).resolve(SETUP_INSTANCE_FILE)
 }

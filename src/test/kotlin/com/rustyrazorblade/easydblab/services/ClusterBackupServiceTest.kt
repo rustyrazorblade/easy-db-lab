@@ -583,6 +583,194 @@ internal class ClusterBackupServiceTest {
         }
     }
 
+    @Nested
+    inner class BackupChanged {
+        @Test
+        fun `should upload all files on first backup when no stored hashes exist`() {
+            // Given
+            val workingDir = tempDir.absolutePath
+            File(tempDir, "kubeconfig").writeText("apiVersion: v1\nclusters: []")
+            File(tempDir, "cassandra.patch.yaml").writeText("cassandra:\n  jvm_options: -Xmx4G")
+            val clusterState = createClusterState()
+
+            whenever(mockObjectStore.uploadFile(any<File>(), any(), any()))
+                .thenReturn(ObjectStore.UploadResult(ClusterS3Path.from(clusterState).kubeconfig(), 100L))
+
+            // When
+            val result = service.backupChanged(workingDir, clusterState)
+
+            // Then
+            assertThat(result.isSuccess).isTrue()
+            val backupResult = result.getOrThrow()
+            assertThat(backupResult.filesUploaded).isEqualTo(2) // kubeconfig + cassandra.patch.yaml
+            assertThat(backupResult.filesSkipped).isEqualTo(0)
+            assertThat(backupResult.updatedHashes).hasSize(2)
+            assertThat(backupResult.updatedHashes).containsKeys(
+                BackupTarget.KUBECONFIG.name,
+                BackupTarget.CASSANDRA_PATCH.name,
+            )
+        }
+
+        @Test
+        fun `should skip unchanged files when hashes match`() {
+            // Given
+            val workingDir = tempDir.absolutePath
+            val kubeconfigContent = "apiVersion: v1\nclusters: []"
+            File(tempDir, "kubeconfig").writeText(kubeconfigContent)
+
+            // Pre-compute the hash to simulate a previous backup
+            val preComputedHash = computeHash(kubeconfigContent)
+            val clusterState =
+                createClusterState().copy(
+                    backupHashes = mapOf(BackupTarget.KUBECONFIG.name to preComputedHash),
+                )
+
+            // When
+            val result = service.backupChanged(workingDir, clusterState)
+
+            // Then
+            assertThat(result.isSuccess).isTrue()
+            val backupResult = result.getOrThrow()
+            assertThat(backupResult.filesUploaded).isEqualTo(0)
+            assertThat(backupResult.filesSkipped).isEqualTo(1)
+            assertThat(backupResult.updatedHashes).isEmpty()
+
+            // Verify no uploads occurred
+            verify(mockObjectStore, never()).uploadFile(any<File>(), any(), any())
+        }
+
+        @Test
+        fun `should upload only changed files when some hashes differ`() {
+            // Given
+            val workingDir = tempDir.absolutePath
+            val kubeconfigContent = "apiVersion: v1\nclusters: []"
+            val patchContent = "cassandra:\n  jvm_options: -Xmx4G"
+
+            File(tempDir, "kubeconfig").writeText(kubeconfigContent)
+            File(tempDir, "cassandra.patch.yaml").writeText(patchContent)
+
+            // Pre-compute kubeconfig hash but not cassandra.patch.yaml (simulating a changed file)
+            val preComputedHash = computeHash(kubeconfigContent)
+            val clusterState =
+                createClusterState().copy(
+                    backupHashes = mapOf(BackupTarget.KUBECONFIG.name to preComputedHash),
+                )
+
+            whenever(mockObjectStore.uploadFile(any<File>(), any(), any()))
+                .thenReturn(ObjectStore.UploadResult(ClusterS3Path.from(clusterState).cassandraPatch(), 50L))
+
+            // When
+            val result = service.backupChanged(workingDir, clusterState)
+
+            // Then
+            assertThat(result.isSuccess).isTrue()
+            val backupResult = result.getOrThrow()
+            assertThat(backupResult.filesUploaded).isEqualTo(1) // Only cassandra.patch.yaml
+            assertThat(backupResult.filesSkipped).isEqualTo(1) // kubeconfig unchanged
+            assertThat(backupResult.updatedHashes).containsOnlyKeys(BackupTarget.CASSANDRA_PATCH.name)
+        }
+
+        @Test
+        fun `should handle directory backup targets correctly`() {
+            // Given
+            val workingDir = tempDir.absolutePath
+            File(tempDir, "k8s").mkdirs()
+            File(tempDir, "k8s/deployment.yaml").writeText("apiVersion: apps/v1")
+            File(tempDir, "k8s/service.yaml").writeText("apiVersion: v1")
+            val clusterState = createClusterState()
+
+            whenever(mockObjectStore.uploadDirectory(any<Path>(), any(), any()))
+                .thenReturn(ObjectStore.UploadDirectoryResult(ClusterS3Path.from(clusterState).k8s(), 2, 200L))
+
+            // When
+            val result = service.backupChanged(workingDir, clusterState)
+
+            // Then
+            assertThat(result.isSuccess).isTrue()
+            val backupResult = result.getOrThrow()
+            assertThat(backupResult.updatedHashes).containsKey(BackupTarget.K8S_MANIFESTS.name)
+            verify(mockObjectStore).uploadDirectory(any<Path>(), any(), eq(false))
+        }
+
+        @Test
+        fun `should return failure when s3Bucket is not configured`() {
+            // Given
+            val workingDir = tempDir.absolutePath
+            File(tempDir, "kubeconfig").writeText("apiVersion: v1")
+            val clusterState =
+                ClusterState(
+                    name = "test-cluster",
+                    versions = mutableMapOf(),
+                    s3Bucket = null,
+                )
+
+            // When
+            val result = service.backupChanged(workingDir, clusterState)
+
+            // Then
+            assertThat(result.isFailure).isTrue()
+            assertThat(result.exceptionOrNull()).isInstanceOf(IllegalArgumentException::class.java)
+            verify(mockObjectStore, never()).uploadFile(any<File>(), any(), any())
+        }
+
+        @Test
+        fun `should produce consistent hashes for same file content`() {
+            // Given
+            val workingDir = tempDir.absolutePath
+            val content = "consistent content"
+            File(tempDir, "kubeconfig").writeText(content)
+            val clusterState = createClusterState()
+
+            whenever(mockObjectStore.uploadFile(any<File>(), any(), any()))
+                .thenReturn(ObjectStore.UploadResult(ClusterS3Path.from(clusterState).kubeconfig(), 100L))
+
+            // When
+            val result1 = service.backupChanged(workingDir, clusterState)
+            val hash1 = result1.getOrThrow().updatedHashes[BackupTarget.KUBECONFIG.name]
+
+            // Create fresh state and backup again
+            val clusterState2 = createClusterState()
+            val result2 = service.backupChanged(workingDir, clusterState2)
+            val hash2 = result2.getOrThrow().updatedHashes[BackupTarget.KUBECONFIG.name]
+
+            // Then
+            assertThat(hash1).isEqualTo(hash2)
+        }
+
+        @Test
+        fun `should produce different hashes for different file content`() {
+            // Given
+            val workingDir = tempDir.absolutePath
+            File(tempDir, "kubeconfig").writeText("content version 1")
+            val clusterState = createClusterState()
+
+            whenever(mockObjectStore.uploadFile(any<File>(), any(), any()))
+                .thenReturn(ObjectStore.UploadResult(ClusterS3Path.from(clusterState).kubeconfig(), 100L))
+
+            // When - first backup
+            val result1 = service.backupChanged(workingDir, clusterState)
+            val hash1 = result1.getOrThrow().updatedHashes[BackupTarget.KUBECONFIG.name]
+
+            // Modify file content
+            File(tempDir, "kubeconfig").writeText("content version 2")
+            val clusterState2 = createClusterState()
+            val result2 = service.backupChanged(workingDir, clusterState2)
+            val hash2 = result2.getOrThrow().updatedHashes[BackupTarget.KUBECONFIG.name]
+
+            // Then
+            assertThat(hash1).isNotEqualTo(hash2)
+        }
+
+        /**
+         * Helper to compute SHA-256 hash of a string (matching the service's implementation).
+         */
+        private fun computeHash(content: String): String {
+            val digest = java.security.MessageDigest.getInstance("SHA-256")
+            digest.update(content.toByteArray())
+            return digest.digest().joinToString("") { "%02x".format(it) }
+        }
+    }
+
     private fun createClusterState(): ClusterState =
         ClusterState(
             name = "test-cluster",

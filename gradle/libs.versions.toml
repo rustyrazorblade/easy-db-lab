@@ -8,7 +8,7 @@ kotlinx-io = "0.8.2"
 
 
 # Logging
-logback = "1.5.22"
+logback = "1.5.23"
 kotlin-logging = "7.0.13"
 
 # Jackson

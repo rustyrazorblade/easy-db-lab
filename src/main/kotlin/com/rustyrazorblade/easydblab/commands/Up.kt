@@ -21,6 +21,8 @@ import com.rustyrazorblade.easydblab.providers.aws.DiscoveredInstance
 import com.rustyrazorblade.easydblab.providers.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.providers.aws.InstanceSpecFactory
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
+import com.rustyrazorblade.easydblab.providers.aws.S3ObjectStore
+import com.rustyrazorblade.easydblab.providers.aws.SQSService
 import com.rustyrazorblade.easydblab.providers.aws.VpcNetworkingConfig
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.services.ClusterConfigurationService
@@ -30,6 +32,7 @@ import com.rustyrazorblade.easydblab.services.HostOperationsService
 import com.rustyrazorblade.easydblab.services.InstanceProvisioningConfig
 import com.rustyrazorblade.easydblab.services.K3sClusterConfig
 import com.rustyrazorblade.easydblab.services.K3sClusterService
+import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.OptionalServicesConfig
 import com.rustyrazorblade.easydblab.services.RegistryService
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -75,6 +78,8 @@ class Up : PicoBaseCommand() {
     private val k3sClusterService: K3sClusterService by inject()
     private val registryService: RegistryService by inject()
     private val commandExecutor: CommandExecutor by inject()
+    private val sqsService: SQSService by inject()
+    private val objectStore: ObjectStore by inject()
 
     // Working copy loaded during execute() - modified and saved
     private lateinit var workingState: ClusterState
@@ -107,6 +112,7 @@ class Up : PicoBaseCommand() {
                 ?: error("No init config found. Please run 'easy-db-lab init' first.")
 
         createS3BucketIfNeeded(initConfig)
+        createSqsQueueIfNeeded()
         reapplyS3Policy()
         provisionInfrastructure(initConfig)
         writeConfigurationFiles()
@@ -154,6 +160,71 @@ class Up : PicoBaseCommand() {
         clusterStateManager.save(workingState)
 
         outputHandler.handleMessage("S3 bucket created and configured: $bucketName")
+    }
+
+    /**
+     * Creates the SQS queue for log ingestion if it doesn't already exist.
+     * Also configures S3 bucket notifications to send EMR log events to the queue.
+     */
+    private fun createSqsQueueIfNeeded() {
+        if (!workingState.sqsQueueUrl.isNullOrBlank()) {
+            log.debug { "SQS queue already configured: ${workingState.sqsQueueUrl}" }
+            return
+        }
+
+        val s3Bucket =
+            workingState.s3Bucket
+                ?: error("S3 bucket not configured. This is required for log ingestion.")
+
+        // Create SQS queue
+        val bucketArn = "arn:aws:s3:::$s3Bucket"
+        val queueInfo =
+            sqsService
+                .createLogIngestQueue(workingState.clusterId, bucketArn)
+                .getOrThrow()
+
+        // Configure S3 bucket notifications
+        val s3ObjectStore =
+            objectStore as? S3ObjectStore
+                ?: error("ObjectStore is not S3ObjectStore. S3 is required for log ingestion.")
+
+        s3ObjectStore
+            .configureEMRLogNotifications(s3Bucket, queueInfo.queueArn)
+            .getOrThrow()
+
+        // Verify the notification was configured correctly
+        validateLogPipeline(s3ObjectStore, s3Bucket, queueInfo.queueArn)
+
+        // Update state
+        workingState.updateSqsQueue(queueInfo.queueUrl, queueInfo.queueArn)
+        clusterStateManager.save(workingState)
+
+        outputHandler.handleMessage("SQS queue configured for log ingestion: ${queueInfo.queueUrl}")
+    }
+
+    /**
+     * Validates that the log ingestion pipeline is correctly configured.
+     * Throws an exception if S3 bucket notifications are not set up to send to the SQS queue.
+     */
+    private fun validateLogPipeline(
+        s3ObjectStore: S3ObjectStore,
+        bucket: String,
+        expectedQueueArn: String,
+    ) {
+        outputHandler.handleMessage("Validating log ingestion pipeline...")
+
+        val notifConfig = s3ObjectStore.getBucketNotificationConfiguration(bucket)
+        val hasEMRNotification =
+            notifConfig.queueConfigurations().any { it.queueArn() == expectedQueueArn }
+
+        if (!hasEMRNotification) {
+            throw IllegalStateException(
+                "S3 bucket notifications are not configured correctly. " +
+                    "EMR logs at s3://$bucket/${Constants.EMR.S3_LOG_PREFIX} will not trigger SQS notifications.",
+            )
+        }
+
+        outputHandler.handleMessage("✓ S3 → SQS notifications configured correctly")
     }
 
     /**

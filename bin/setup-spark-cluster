@@ -1,0 +1,175 @@
+#!/bin/bash
+#
+# Set up a cluster with Cassandra 5.0 and Spark (EMR) enabled.
+#
+# This script provisions the infrastructure and starts Cassandra, leaving
+# the cluster ready for Spark bulk write jobs.
+#
+# Clusters are created under ./clusters/<name>/
+#
+# Usage:
+#   setup-spark-cluster [options]
+#
+# Options:
+#   --name <name>         Cluster name (default: spark-<timestamp>)
+#   --db <count>          Number of Cassandra nodes (default: 3)
+#   --app <count>         Number of app/stress nodes (default: 0)
+#   --no-clean            Don't clean existing cluster state
+#   --cassandra <version> Cassandra version (default: 5.0)
+#
+# Examples:
+#   setup-spark-cluster
+#   setup-spark-cluster --name my-spark-test --db 6
+#   setup-spark-cluster --cassandra 4.1
+#
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Disable AWS CLI pager
+export AWS_PAGER=""
+
+# Default values - use timestamp for unique cluster name
+CLUSTER_NAME="spark-$(date +%s)"
+DB_COUNT="3"
+APP_COUNT="0"
+CLEAN="--clean"
+CASSANDRA_VERSION="5.0"
+
+usage() {
+    sed -n '2,24p' "$0" | sed 's/^# //' | sed 's/^#//'
+    exit 1
+}
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --name)
+            CLUSTER_NAME="$2"
+            shift 2
+            ;;
+        --db)
+            DB_COUNT="$2"
+            shift 2
+            ;;
+        --app)
+            APP_COUNT="$2"
+            shift 2
+            ;;
+        --no-clean)
+            CLEAN=""
+            shift
+            ;;
+        --cassandra)
+            CASSANDRA_VERSION="$2"
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            ;;
+        *)
+            echo "Error: Unknown option $1"
+            usage
+            ;;
+    esac
+done
+
+# Create cluster directory
+CLUSTER_DIR="$PROJECT_ROOT/clusters/$CLUSTER_NAME"
+mkdir -p "$CLUSTER_DIR"
+
+echo "=== Setup Spark Cluster ==="
+echo "  Cluster name: $CLUSTER_NAME"
+echo "  Cluster dir: $CLUSTER_DIR"
+echo "  Cassandra nodes: $DB_COUNT"
+echo "  App nodes: $APP_COUNT"
+echo "  Cassandra version: $CASSANDRA_VERSION"
+echo ""
+
+echo "=== Building easy-db-lab ==="
+(cd "$PROJECT_ROOT" && ./gradlew shadowjar installdist -q)
+
+# Change to cluster directory for all subsequent operations
+cd "$CLUSTER_DIR"
+
+echo "=== Initializing and provisioning cluster with Spark enabled ==="
+easy-db-lab init "$CLUSTER_NAME" --spark.enable $CLEAN --db "$DB_COUNT" --app "$APP_COUNT" --up
+
+# Source env.sh for ssh wrapper
+if [ -f "$CLUSTER_DIR/env.sh" ]; then
+    # shellcheck disable=SC1091
+    source "$CLUSTER_DIR/env.sh"
+else
+    echo "Error: env.sh not found after 'easy-db-lab up'"
+    exit 1
+fi
+
+# Get datacenter from state.json
+DC=$(jq -r '.initConfig.region' "$CLUSTER_DIR/state.json")
+if [ -z "$DC" ] || [ "$DC" = "null" ]; then
+    echo "Error: Could not read region from state.json"
+    exit 1
+fi
+echo "Datacenter: $DC"
+
+echo "=== Setting up Cassandra $CASSANDRA_VERSION ==="
+easy-db-lab cassandra use "$CASSANDRA_VERSION"
+
+# Apply storage_compatibility_mode patch for Cassandra 5.x
+if [[ "$CASSANDRA_VERSION" == 5* ]]; then
+    echo "=== Patching storage_compatibility_mode for Cassandra 5 bulk writer ==="
+    echo "storage_compatibility_mode: NONE" >> "$CLUSTER_DIR/cassandra.patch.yaml"
+    easy-db-lab cassandra update-config
+fi
+
+echo "=== Starting Cassandra ==="
+easy-db-lab cassandra start
+
+# Get cluster info
+echo ""
+echo "=== Cluster Ready ==="
+echo "  Cluster directory: $CLUSTER_DIR"
+echo "  Datacenter: $DC"
+
+# Get Cassandra hosts
+HOST_COUNT=$(jq -r '.hosts.Cassandra | length' "$CLUSTER_DIR/state.json")
+HOSTS=""
+for i in $(seq 0 $((HOST_COUNT - 1))); do
+    IP=$(jq -r ".hosts.Cassandra[$i].privateIp" "$CLUSTER_DIR/state.json")
+    if [ -n "$HOSTS" ]; then
+        HOSTS="$HOSTS,$IP"
+    else
+        HOSTS="$IP"
+    fi
+done
+echo "  Cassandra hosts: $HOSTS"
+
+# Get EMR cluster info
+EMR_CLUSTER_ID=$(jq -r '.emrCluster.clusterId' "$CLUSTER_DIR/state.json")
+EMR_STATE=$(jq -r '.emrCluster.state' "$CLUSTER_DIR/state.json")
+echo "  EMR Cluster ID: $EMR_CLUSTER_ID"
+echo "  EMR State: $EMR_STATE"
+
+# Get S3 bucket
+S3_BUCKET=$(jq -r '.s3Bucket' "$CLUSTER_DIR/state.json")
+echo "  S3 Bucket: $S3_BUCKET"
+
+echo ""
+echo "=== Next Steps ==="
+echo "  Run Spark bulk write jobs with:"
+echo "    spark-bulk-write direct --rows 10000"
+echo "    spark-bulk-write s3 --rows 10000"
+echo "    spark-bulk-write connector --rows 10000"
+echo ""
+echo "  Or submit jobs directly with:"
+echo "    easy-db-lab spark submit --jar <path> --main-class <class> --conf key=value"
+echo ""
+echo "  To tear down the cluster:"
+echo "    easy-db-lab down"
+echo ""
+echo "=== Entering cluster directory ==="
+
+# Start a new shell in the cluster directory
+exec $SHELL

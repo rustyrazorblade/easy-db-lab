@@ -21,7 +21,8 @@ val kubernetesModule =
         factory<KubernetesClientFactory> {
             val proxyService = get<SocksProxyService>()
             ProxiedKubernetesClientFactory(
-                proxyHost = "localhost",
+                // Use 127.0.0.1 for consistency with SOCKS proxy binding
+                proxyHost = "127.0.0.1",
                 proxyPort = proxyService.getLocalPort(),
             )
         }

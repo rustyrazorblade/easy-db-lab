@@ -22,6 +22,8 @@ nav:
     - Cluster Setup: user-guide/cluster-setup.md
     - Cassandra: user-guide/installing-cassandra.md
     - Kubernetes: user-guide/kubernetes.md
+    - SSH Proxying: user-guide/ssh-proxying.md
+    - Victoria Logs: user-guide/victoria-logs.md
     - Spark: user-guide/spark.md
     - ClickHouse: user-guide/clickhouse.md
     - Shell Aliases: user-guide/shell-aliases.md
@@ -34,6 +36,8 @@ nav:
     - Publishing: development/publishing.md
     - Testing: development/testing.md
     - End-to-End Testing: development/end-to-end-testing.md
+    - Spark: development/spark.md
+    - SOCKS Proxy Architecture: development/socks-proxy.md
     - Fabric8 Server-Side Apply: development/fabric8-server-side-apply.md
 
 markdown_extensions:

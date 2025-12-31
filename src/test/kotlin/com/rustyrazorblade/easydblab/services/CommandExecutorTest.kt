@@ -38,6 +38,7 @@ class CommandExecutorTest : BaseKoinTest() {
     private lateinit var mockOutputHandler: OutputHandler
     private lateinit var mockUserConfigProvider: UserConfigProvider
     private lateinit var mockDockerClientProvider: DockerClientProvider
+    private lateinit var mockResourceManager: ResourceManager
     private lateinit var mockUserConfig: User
     private lateinit var commandExecutor: DefaultCommandExecutor
 
@@ -52,6 +53,7 @@ class CommandExecutorTest : BaseKoinTest() {
                 single<OutputHandler> { mockOutputHandler }
                 single<UserConfigProvider> { mockUserConfigProvider }
                 single<DockerClientProvider> { mockDockerClientProvider }
+                single<ResourceManager> { mockResourceManager }
                 single<User> { mockUserConfig }
             },
         )
@@ -64,6 +66,7 @@ class CommandExecutorTest : BaseKoinTest() {
         mockOutputHandler = mock()
         mockUserConfigProvider = mock()
         mockDockerClientProvider = mock()
+        mockResourceManager = mock()
         mockUserConfig = mock()
 
         // Default: profile is already set up
@@ -76,6 +79,7 @@ class CommandExecutorTest : BaseKoinTest() {
                 outputHandler = mockOutputHandler,
                 userConfigProvider = mockUserConfigProvider,
                 dockerClientProvider = mockDockerClientProvider,
+                resourceManager = mockResourceManager,
             )
     }
 

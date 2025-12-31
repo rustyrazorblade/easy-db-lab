@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vector-s3
+  namespace: default
+  labels:
+    app.kubernetes.io/name: vector
+    app.kubernetes.io/component: s3-logs
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vector-s3
+  template:
+    metadata:
+      labels:
+        app: vector-s3
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      nodeSelector:
+        node-role.kubernetes.io/master: "true"
+      tolerations:
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: vector
+          image: timberio/vector:0.34.1-alpine
+          args:
+            - --config
+            - /etc/vector/vector.yaml
+          env:
+            - name: AWS_REGION
+              valueFrom:
+                configMapKeyRef:
+                  name: cluster-config
+                  key: aws_region
+            - name: SQS_QUEUE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: cluster-config
+                  key: sqs_queue_url
+          resources:
+            limits:
+              memory: 256Mi
+            requests:
+              memory: 64Mi
+              cpu: 50m
+          volumeMounts:
+            - name: config
+              mountPath: /etc/vector
+            - name: data
+              mountPath: /var/lib/vector
+      volumes:
+        - name: config
+          configMap:
+            name: vector-s3-config
+        - name: data
+          hostPath:
+            path: /var/lib/vector-s3

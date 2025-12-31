@@ -1,0 +1,195 @@
+#!/bin/bash
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+BULK_WRITER_DIR="$PROJECT_ROOT/bulk-writer"
+
+# Default values
+ROW_COUNT="${1:-1000}"
+PARALLELISM="${2:-2}"
+REPLICATION_FACTOR="${3:-1}"
+KEYSPACE="bulk_test"
+TABLE="data"
+LOCAL_DC="dc1"
+
+echo "=== Local Bulk Writer Test ==="
+echo "Row count: $ROW_COUNT"
+echo "Parallelism: $PARALLELISM"
+echo "Replication factor: $REPLICATION_FACTOR"
+echo ""
+
+echo "=== Step 1: Building bulk-writer shadow JAR ==="
+(cd "$PROJECT_ROOT" && ./gradlew :bulk-writer:shadowJar -q)
+
+# Find the built JAR
+JAR_FILE=$(ls "$BULK_WRITER_DIR/build/libs/bulk-writer-"*".jar" 2>/dev/null | grep -v sources | grep -v javadoc | head -1)
+if [ -z "$JAR_FILE" ]; then
+    echo "Error: Could not find bulk-writer JAR"
+    exit 1
+fi
+JAR_NAME=$(basename "$JAR_FILE")
+echo "Using JAR: $JAR_NAME"
+echo ""
+
+echo "=== Step 2: Validating Cassandra config ==="
+if command -v yq &> /dev/null; then
+    if ! yq eval '.' "$BULK_WRITER_DIR/cassandra.yaml" > /dev/null 2>&1; then
+        echo "Error: cassandra.yaml is invalid YAML"
+        yq eval '.' "$BULK_WRITER_DIR/cassandra.yaml"
+        exit 1
+    fi
+    echo "cassandra.yaml is valid YAML"
+else
+    echo "Warning: yq not found, skipping YAML validation"
+fi
+echo ""
+
+echo "=== Step 3: Starting Docker Compose services ==="
+cd "$BULK_WRITER_DIR"
+
+# Clean up any existing containers (handles orphaned containers from previous runs)
+echo "Cleaning up any existing containers..."
+docker compose down -v --remove-orphans 2>/dev/null || true
+docker rm -f cassandra sidecar spark-master spark-worker 2>/dev/null || true
+
+if ! docker compose up -d; then
+    echo "Error: Docker Compose failed to start services"
+    docker compose logs cassandra
+    exit 1
+fi
+
+echo ""
+echo "=== Step 4: Waiting for Cassandra to be ready ==="
+echo "This may take 1-2 minutes for Cassandra to start..."
+MAX_WAIT=120
+WAITED=0
+while ! docker compose exec -T cassandra cqlsh -e "describe keyspaces" > /dev/null 2>&1; do
+    if [ $WAITED -ge $MAX_WAIT ]; then
+        echo "Error: Cassandra did not become ready in $MAX_WAIT seconds"
+        docker compose logs cassandra
+        exit 1
+    fi
+    echo "  Waiting for Cassandra... ($WAITED/$MAX_WAIT seconds)"
+    sleep 5
+    WAITED=$((WAITED + 5))
+done
+echo "Cassandra is ready!"
+echo ""
+
+echo "=== Step 5: Waiting for Sidecar to be ready ==="
+MAX_WAIT=120
+WAITED=0
+# Sidecar container has no curl/wget, so check from host or use cassandra container
+while true; do
+    # Use cassandra container (shares network with sidecar) to check health
+    if docker compose exec -T cassandra curl -s http://localhost:9043/api/v1/__health > /dev/null 2>&1; then
+        break
+    fi
+    if [ $WAITED -ge $MAX_WAIT ]; then
+        echo "Error: Sidecar health check failed after $MAX_WAIT seconds"
+        docker compose logs sidecar | tail -50
+        exit 1
+    fi
+    echo "  Waiting for Sidecar... ($WAITED/$MAX_WAIT seconds)"
+    sleep 5
+    WAITED=$((WAITED + 5))
+done
+echo "Sidecar is ready!"
+echo ""
+
+echo "=== Step 6: Waiting for Spark master to be ready ==="
+MAX_WAIT=60
+WAITED=0
+# Check if Spark master is running by checking if spark-master container is healthy
+while ! docker compose exec -T spark-master sh -c "ls /opt/spark/bin/spark-submit" > /dev/null 2>&1; do
+    if [ $WAITED -ge $MAX_WAIT ]; then
+        echo "Error: Spark master did not become ready in $MAX_WAIT seconds"
+        docker compose logs spark-master
+        exit 1
+    fi
+    echo "  Waiting for Spark master... ($WAITED/$MAX_WAIT seconds)"
+    sleep 5
+    WAITED=$((WAITED + 5))
+done
+# Give Spark master time to start listening
+sleep 5
+echo "Spark master is ready!"
+echo ""
+
+# Give worker a moment to register
+echo "=== Step 7: Waiting for Spark worker to register ==="
+sleep 10
+echo "Spark cluster should be ready!"
+echo ""
+
+echo "=== Step 8: Submitting bulk writer job ==="
+# Since sidecar uses network_mode: "service:cassandra", both ports (9042 CQL, 9043 sidecar)
+# are accessible via the cassandra container's static IP
+SIDECAR_CONTACT="10.99.0.2"
+echo "Configuration:"
+echo "  sidecarContactPoints: $SIDECAR_CONTACT"
+echo "  keyspace: $KEYSPACE"
+echo "  table: $TABLE"
+echo "  localDc: $LOCAL_DC"
+echo "  rowCount: $ROW_COUNT"
+echo "  parallelism: $PARALLELISM"
+echo "  replicationFactor: $REPLICATION_FACTOR"
+echo ""
+
+# Submit the job using Spark properties
+set -x
+docker compose exec -T spark-master /opt/spark/bin/spark-submit \
+    --master spark://spark-master:7077 \
+    --class com.rustyrazorblade.easydblab.spark.DirectBulkWriter \
+    --conf "spark.easydblab.sidecar.contactPoints=$SIDECAR_CONTACT" \
+    --conf "spark.easydblab.keyspace=$KEYSPACE" \
+    --conf "spark.easydblab.table=$TABLE" \
+    --conf "spark.easydblab.localDc=$LOCAL_DC" \
+    --conf "spark.easydblab.rowCount=$ROW_COUNT" \
+    --conf "spark.easydblab.parallelism=$PARALLELISM" \
+    --conf "spark.easydblab.replicationFactor=$REPLICATION_FACTOR" \
+    "/jars/$JAR_NAME"
+set +x
+
+echo ""
+echo "=== Step 9: Verifying data ==="
+docker compose exec -T cassandra cqlsh -e "SELECT COUNT(*) FROM $KEYSPACE.$TABLE;"
+echo ""
+echo "Sample data:"
+docker compose exec -T cassandra cqlsh -e "SELECT * FROM $KEYSPACE.$TABLE LIMIT 5;"
+
+echo ""
+echo "=== Step 10: Debug - Checking staging directory ==="
+echo "Files in staging directory:"
+docker compose exec -T cassandra find /var/lib/cassandra/staging -type f -ls 2>/dev/null || echo "  (empty or not found)"
+echo ""
+echo "Staging directory structure:"
+docker compose exec -T cassandra ls -laR /var/lib/cassandra/staging/ 2>/dev/null || echo "  (empty or not found)"
+
+echo ""
+echo "=== Step 11: Debug - Checking Cassandra import logs ==="
+echo "Import-related log entries:"
+docker compose exec -T cassandra grep -E "(Loading new SSTables|srcPaths|No new SSTables)" /var/log/cassandra/system.log 2>/dev/null | tail -20 || echo "  (no import logs found)"
+
+echo ""
+echo "=== Step 12: Debug - Checking data directory ==="
+echo "SSTable files in data directory:"
+docker compose exec -T cassandra find /var/lib/cassandra/data/$KEYSPACE -name "*.db" -type f 2>/dev/null | head -20 || echo "  (no SSTable files found)"
+
+echo ""
+echo "=== Step 13: Debug - Checking sidecar logs ==="
+echo "Upload/import activity in sidecar:"
+docker compose logs sidecar 2>&1 | grep -E "(upload|import|SSTable|staging)" | tail -30 || echo "  (no relevant sidecar logs)"
+
+echo ""
+echo "=== Test complete! ==="
+echo ""
+echo "To inspect the cluster:"
+echo "  cd $BULK_WRITER_DIR"
+echo "  docker compose exec cassandra cqlsh"
+echo ""
+echo "To view Spark UI: http://localhost:8080"
+echo ""
+echo "To stop the cluster:"
+echo "  cd $BULK_WRITER_DIR && docker compose down -v"

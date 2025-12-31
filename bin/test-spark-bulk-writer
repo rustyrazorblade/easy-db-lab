@@ -1,0 +1,234 @@
+#!/bin/bash
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Disable AWS CLI pager to prevent hanging on output
+export AWS_PAGER=""
+
+CLUSTER_NAME="${1:-spark-bulk-test}"
+
+echo "=== Building bulk-writer JAR ==="
+(cd "$PROJECT_ROOT" && ./gradlew :bulk-writer:jar -q)
+./gradlew shadowjar installdist
+
+# Find the built JAR (version number is appended)
+JAR_FILE=$(ls "$PROJECT_ROOT/bulk-writer/build/libs/bulk-writer-"*.jar 2>/dev/null | head -1)
+if [ -z "$JAR_FILE" ]; then
+    echo "Error: Could not find bulk-writer JAR"
+    exit 1
+fi
+echo "Using JAR: $JAR_FILE"
+
+echo "=== Initializing and provision cluster with Spark enabled ==="
+easy-db-lab init "$CLUSTER_NAME" --spark.enable --clean --db 3 --app 0 --up
+
+# Source env.sh for ssh wrapper (uses sshConfig)
+if [ -f "$PROJECT_ROOT/env.sh" ]; then
+    source "$PROJECT_ROOT/env.sh"
+else
+    echo "Error: env.sh not found after 'easy-db-lab up'"
+    exit 1
+fi
+
+# Get datacenter from state.json
+DC=$(jq -r '.initConfig.region' "$PROJECT_ROOT/state.json")
+if [ -z "$DC" ] || [ "$DC" = "null" ]; then
+    echo "Error: Could not read region from state.json"
+    exit 1
+fi
+echo "Datacenter: $DC"
+
+echo "=== Setting up Cassandra 5.0 ==="
+easy-db-lab cassandra use 5.0
+
+echo "=== Patching storage_compatibility_mode for Cassandra 5 bulk writer ==="
+echo "storage_compatibility_mode: NONE" >> "$PROJECT_ROOT/cassandra.patch.yaml"
+easy-db-lab cassandra update-config
+
+echo "=== Starting Cassandra ==="
+easy-db-lab cassandra start
+
+echo "=== Getting Cassandra hosts ==="
+# Get private IPs for all Cassandra nodes (hosts -c gives public IPs, we need private)
+HOST_COUNT=$(easy-db-lab hosts -c | tr ',' '\n' | wc -l)
+SIDECAR_HOSTS=""
+for i in $(seq 0 $((HOST_COUNT - 1))); do
+    IP=$(easy-db-lab ip db$i --private)
+    if [ -n "$SIDECAR_HOSTS" ]; then
+        SIDECAR_HOSTS="$SIDECAR_HOSTS,$IP"
+    else
+        SIDECAR_HOSTS="$IP"
+    fi
+done
+echo "Hosts: $SIDECAR_HOSTS"
+
+echo "=== Submitting bulk writer job ==="
+# Configuration is passed via Spark properties (--conf)
+# The bulk writer will automatically create the keyspace (NetworkTopologyStrategy) and table
+
+# Enable command tracing for spark commands (useful for rerunning on failure)
+set -x
+
+# Capture spark submit result (don't exit on failure)
+SPARK_EXIT_CODE=0
+easy-db-lab spark submit \
+  --jar "$JAR_FILE" \
+  --main-class com.rustyrazorblade.easydblab.spark.DirectBulkWriter \
+  --conf "spark.easydblab.sidecar.contactPoints=$SIDECAR_HOSTS" \
+  --conf "spark.easydblab.keyspace=bulk_test" \
+  --conf "spark.easydblab.table=data" \
+  --conf "spark.easydblab.localDc=$DC" \
+  --conf "spark.easydblab.rowCount=1000" \
+  --conf "spark.easydblab.parallelism=4" \
+  --conf "spark.easydblab.replicationFactor=1" \
+  --wait || SPARK_EXIT_CODE=$?
+
+set +x
+
+# Get cluster info for diagnostics
+S3_BUCKET=$(jq -r '.s3Bucket' "$PROJECT_ROOT/state.json")
+EMR_CLUSTER_ID=$(jq -r '.emrCluster.clusterId' "$PROJECT_ROOT/state.json")
+
+if [ $SPARK_EXIT_CODE -ne 0 ]; then
+    echo ""
+    echo "=== SPARK JOB FAILED (exit code: $SPARK_EXIT_CODE) ==="
+    echo ""
+
+    # Get the most recent step ID from the EMR cluster
+    echo "Fetching failed step details..."
+    STEP_INFO=$(aws emr list-steps --cluster-id "$EMR_CLUSTER_ID" --step-states FAILED --max-items 1 2>/dev/null || echo "")
+
+    if [ -n "$STEP_INFO" ]; then
+        STEP_ID=$(echo "$STEP_INFO" | jq -r '.Steps[0].Id // empty')
+
+        if [ -n "$STEP_ID" ]; then
+            echo "Failed Step ID: $STEP_ID"
+            echo ""
+
+            # Download and display stderr.gz
+            STDERR_S3_PATH="s3://$S3_BUCKET/spark/emr-logs/$EMR_CLUSTER_ID/steps/$STEP_ID/stderr.gz"
+            echo "=== Waiting for EMR to upload logs to S3... ==="
+
+            # Wait up to 60 seconds for logs to appear
+            STDERR_TMP=$(mktemp)
+            LOG_FOUND=false
+            for i in {1..12}; do
+                if aws s3 cp "$STDERR_S3_PATH" "$STDERR_TMP" 2>/dev/null; then
+                    LOG_FOUND=true
+                    break
+                fi
+                echo "  Waiting for logs... (attempt $i/12)"
+                sleep 5
+            done
+
+            if [ "$LOG_FOUND" = true ]; then
+                echo ""
+                echo "=== STDERR CONTENTS (last 100 lines) ==="
+                gunzip -c "$STDERR_TMP" | tail -100
+                echo "=== END STDERR ==="
+                rm -f "$STDERR_TMP"
+
+                # Also show controller log for additional context
+                CONTROLLER_S3_PATH="s3://$S3_BUCKET/spark/emr-logs/$EMR_CLUSTER_ID/steps/$STEP_ID/controller.gz"
+                CONTROLLER_TMP=$(mktemp)
+                if aws s3 cp "$CONTROLLER_S3_PATH" "$CONTROLLER_TMP" 2>/dev/null; then
+                    echo ""
+                    echo "=== CONTROLLER LOG ==="
+                    gunzip -c "$CONTROLLER_TMP"
+                    echo "=== END CONTROLLER ==="
+                    rm -f "$CONTROLLER_TMP"
+                fi
+            else
+                echo ""
+                echo "Warning: Logs not available after 60 seconds"
+                echo "Try manually: aws s3 cp $STDERR_S3_PATH - | gunzip"
+            fi
+        fi
+    fi
+
+    SPARK_FAILED=true
+else
+    echo "=== Verifying data ==="
+    easy-db-lab cassandra cql "SELECT COUNT(*) FROM bulk_test.data;"
+    echo ""
+    echo "=== Sample data ==="
+    easy-db-lab cassandra cql "SELECT * FROM bulk_test.data LIMIT 10;"
+    SPARK_FAILED=false
+fi
+
+echo "=== Diagnosing Log Pipeline ==="
+
+# Get SQS queue URL (S3_BUCKET and EMR_CLUSTER_ID already set above)
+SQS_QUEUE_URL=$(jq -r '.sqsQueueUrl' "$PROJECT_ROOT/state.json")
+
+if [ -z "$S3_BUCKET" ] || [ "$S3_BUCKET" = "null" ]; then
+    echo "Warning: Could not read s3Bucket from state.json"
+else
+    echo ""
+    echo "=== Step 1: Check EMR logs in S3 ==="
+    echo "S3 Bucket: $S3_BUCKET"
+    echo "EMR Cluster ID: $EMR_CLUSTER_ID"
+    echo "Listing logs at s3://$S3_BUCKET/spark/emr-logs/..."
+    aws s3 ls "s3://$S3_BUCKET/spark/emr-logs/" --recursive || echo "No logs found or error accessing S3"
+fi
+
+if [ -z "$SQS_QUEUE_URL" ] || [ "$SQS_QUEUE_URL" = "null" ]; then
+    echo "Warning: Could not read sqsQueueUrl from state.json"
+else
+    echo ""
+    echo "=== Step 2: Check SQS queue messages ==="
+    echo "SQS Queue URL: $SQS_QUEUE_URL"
+    aws sqs get-queue-attributes \
+        --queue-url "$SQS_QUEUE_URL" \
+        --attribute-names ApproximateNumberOfMessages ApproximateNumberOfMessagesNotVisible \
+        2>/dev/null || echo "Error accessing SQS queue"
+fi
+
+if [ -n "$S3_BUCKET" ] && [ "$S3_BUCKET" != "null" ]; then
+    echo ""
+    echo "=== Step 3: Check S3 bucket notification configuration ==="
+    NOTIFICATION_CONFIG=$(aws s3api get-bucket-notification-configuration --bucket "$S3_BUCKET" 2>/dev/null)
+    echo "$NOTIFICATION_CONFIG"
+
+    # Check if the prefix is correct (should be spark/emr-logs/)
+    CURRENT_PREFIX=$(echo "$NOTIFICATION_CONFIG" | jq -r '.QueueConfigurations[0].Filter.Key.FilterRules[] | select(.Name == "Prefix") | .Value' 2>/dev/null)
+    if [ "$CURRENT_PREFIX" = "emr-logs/" ]; then
+        echo ""
+        echo "WARNING: S3 notification prefix is WRONG!"
+        echo "  Current: emr-logs/"
+        echo "  Expected: spark/emr-logs/"
+        echo "  This cluster was created before the prefix fix. Recreate with 'easy-db-lab down && easy-db-lab up'"
+    elif [ "$CURRENT_PREFIX" = "spark/emr-logs/" ]; then
+        echo ""
+        echo "OK: S3 notification prefix is correct (spark/emr-logs/)"
+    fi
+fi
+
+echo ""
+echo "=== Step 4: Check Vector S3 pod status ==="
+ssh control0 "kubectl get pods -l app=vector-s3 -o wide" 2>/dev/null || echo "Error checking Vector S3 pod"
+
+echo ""
+echo "=== Step 5: Check Vector S3 pod logs (last 20 lines) ==="
+ssh control0 "kubectl logs -l app=vector-s3 --tail=20" 2>/dev/null || echo "Error getting Vector S3 logs"
+
+echo ""
+echo "=== Step 6: Check Victoria Logs status ==="
+ssh control0 "kubectl get pods -l app=victorialogs -o wide" 2>/dev/null || echo "Error checking Victoria Logs pod"
+
+echo ""
+echo "=== Step 7: Query Victoria Logs for EMR logs ==="
+# Query Victoria Logs for any EMR logs in the last hour
+CONTROL_IP=$(jq -r '.controlHost.publicIp // .hosts.Control[0].publicIp' "$PROJECT_ROOT/state.json")
+if [ -n "$CONTROL_IP" ] && [ "$CONTROL_IP" != "null" ]; then
+    echo "Querying Victoria Logs at $CONTROL_IP:9428..."
+    curl -s "http://$CONTROL_IP:9428/select/logsql/query?query=source:emr&limit=5" 2>/dev/null || echo "Error querying Victoria Logs (may not be accessible externally)"
+fi
+
+echo ""
+echo "=== Log Pipeline Diagnosis Complete ==="
+
+echo "=== Test complete ==="
+

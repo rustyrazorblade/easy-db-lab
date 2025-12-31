@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.configuration.s3Path
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.SparkService
+import com.rustyrazorblade.easydblab.services.VictoriaLogsService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
 import software.amazon.awssdk.services.emr.EmrClient
@@ -49,6 +50,7 @@ class EMRSparkService(
     private val outputHandler: OutputHandler,
     private val objectStore: ObjectStore,
     private val clusterStateManager: ClusterStateManager,
+    private val victoriaLogsService: VictoriaLogsService,
 ) : SparkService {
     private val log = KotlinLogging.logger {}
 
@@ -63,6 +65,8 @@ class EMRSparkService(
         mainClass: String,
         jobArgs: List<String>,
         jobName: String?,
+        sparkConf: Map<String, String>,
+        envVars: Map<String, String>,
     ): Result<String> =
         runCatching {
             val stepName = jobName ?: mainClass.split(".").last()
@@ -71,7 +75,7 @@ class EMRSparkService(
                 HadoopJarStepConfig
                     .builder()
                     .jar(Constants.EMR.COMMAND_RUNNER_JAR)
-                    .args(buildSparkSubmitArgs(jarPath, mainClass, jobArgs))
+                    .args(buildSparkSubmitArgs(jarPath, mainClass, jobArgs, sparkConf, envVars))
                     .build()
 
             val stepConfig =
@@ -140,6 +144,87 @@ class EMRSparkService(
                     currentStatus
                 }
                 StepState.FAILED -> {
+                    val s3Bucket = clusterStateManager.load().s3Bucket ?: "UNKNOWN_BUCKET"
+                    val emrLogsPath = "${Constants.EMR.S3_LOG_PREFIX}$clusterId/steps/$stepId/"
+
+                    // Get detailed step information for debugging
+                    val stepDetails = getStepDetails(clusterId, stepId).getOrNull()
+                    if (stepDetails != null) {
+                        outputHandler.handleMessage(stepDetails.toDisplayString())
+                    } else {
+                        outputHandler.handleMessage(
+                            """
+                            |=== Job Failed ===
+                            |Step ID: $stepId
+                            |Failure: ${currentStatus.failureDetails ?: "Unknown reason"}
+                            """.trimMargin(),
+                        )
+                    }
+
+                    // Query and display logs from Victoria Logs
+                    outputHandler.handleMessage("\n=== Step Logs ===")
+                    try {
+                        // Wait briefly for logs to be ingested
+                        Thread.sleep(Constants.EMR.LOG_INGESTION_WAIT_MS)
+
+                        val logsResult =
+                            victoriaLogsService.query(
+                                query = "step_id:$stepId",
+                                timeRange = "1h",
+                                limit = Constants.EMR.MAX_LOG_LINES,
+                            )
+
+                        logsResult
+                            .onSuccess { logs ->
+                                if (logs.isEmpty()) {
+                                    outputHandler.handleMessage("No logs found yet. Try: easy-db-lab spark logs --step-id $stepId")
+                                } else {
+                                    logs.forEach { outputHandler.handleMessage(it) }
+                                    outputHandler.handleMessage("\nFound ${logs.size} log entries.")
+                                }
+                            }.onFailure { e ->
+                                outputHandler.handleMessage("Could not query logs: ${e.message}")
+                                outputHandler.handleMessage("Try: easy-db-lab spark logs --step-id $stepId")
+                            }
+                    } catch (e: Exception) {
+                        log.warn { "Failed to query Victoria Logs: ${e.message}" }
+                        outputHandler.handleMessage("Could not query logs automatically.")
+                        outputHandler.handleMessage("Try: easy-db-lab spark logs --step-id $stepId")
+                    }
+
+                    // Automatically download and display logs
+                    outputHandler.handleMessage("\n=== Downloading Step Logs ===")
+                    try {
+                        downloadStepLogs(clusterId, stepId)
+                            .onFailure { e ->
+                                outputHandler.handleMessage("Could not download logs: ${e.message}")
+                                outputHandler.handleMessage(
+                                    """
+                                    |
+                                    |=== Manual Debug Commands ===
+                                    |  # Check step details
+                                    |  aws emr describe-step --cluster-id $clusterId --step-id $stepId
+                                    |
+                                    |  # View stderr directly from S3
+                                    |  aws s3 cp s3://$s3Bucket/${emrLogsPath}stderr.gz - | gunzip
+                                    """.trimMargin(),
+                                )
+                            }
+                    } catch (e: Exception) {
+                        log.warn { "Failed to download step logs: ${e.message}" }
+                        outputHandler.handleMessage(
+                            """
+                            |
+                            |=== Manual Debug Commands ===
+                            |  # Check step details
+                            |  aws emr describe-step --cluster-id $clusterId --step-id $stepId
+                            |
+                            |  # View stderr directly from S3
+                            |  aws s3 cp s3://$s3Bucket/${emrLogsPath}stderr.gz - | gunzip
+                            """.trimMargin(),
+                        )
+                    }
+
                     val errorMessage = "Job failed: ${currentStatus.failureDetails ?: "Unknown reason"}"
                     log.error { errorMessage }
                     error(errorMessage)
@@ -180,6 +265,81 @@ class EMRSparkService(
                 )
             }
         }
+
+    override fun getStepDetails(
+        clusterId: String,
+        stepId: String,
+    ): Result<SparkService.StepDetails> =
+        runCatching {
+            val describeRequest =
+                DescribeStepRequest
+                    .builder()
+                    .clusterId(clusterId)
+                    .stepId(stepId)
+                    .build()
+
+            executeWithRetry("emr-describe-step-details") {
+                val response = emrClient.describeStep(describeRequest)
+                val step = response.step()
+                val status = step.status()
+                val hadoopJarConfig = step.config()
+
+                // Extract main class and args from the command line args
+                // Format: spark-submit --class MainClass [--conf ...] s3://bucket/jar.jar [app args]
+                val allArgs = hadoopJarConfig?.args() ?: emptyList<String>()
+                val mainClass = extractMainClass(allArgs)
+                val jarPath = extractJarPath(allArgs)
+                val appArgs = extractAppArgs(allArgs)
+
+                SparkService.StepDetails(
+                    stepId = step.id(),
+                    name = step.name(),
+                    state = status.state(),
+                    stateChangeReasonCode = status.stateChangeReason()?.code()?.toString(),
+                    stateChangeReasonMessage = status.stateChangeReason()?.message(),
+                    failureReason = status.failureDetails()?.reason(),
+                    failureMessage = status.failureDetails()?.message(),
+                    failureLogFile = status.failureDetails()?.logFile(),
+                    creationTime = status.timeline()?.creationDateTime(),
+                    startTime = status.timeline()?.startDateTime(),
+                    endTime = status.timeline()?.endDateTime(),
+                    jarPath = jarPath,
+                    mainClass = mainClass,
+                    args = appArgs,
+                )
+            }
+        }
+
+    /**
+     * Extracts the main class from spark-submit arguments.
+     * Looks for --class followed by the class name.
+     */
+    private fun extractMainClass(args: List<String>): String? {
+        val classIndex = args.indexOf("--class")
+        return if (classIndex >= 0 && classIndex + 1 < args.size) {
+            args[classIndex + 1]
+        } else {
+            null
+        }
+    }
+
+    /**
+     * Extracts the JAR path from spark-submit arguments.
+     * The JAR is typically the first s3:// argument after all options.
+     */
+    private fun extractJarPath(args: List<String>): String? = args.find { it.startsWith("s3://") && it.endsWith(".jar") }
+
+    /**
+     * Extracts application arguments (args after the JAR file).
+     */
+    private fun extractAppArgs(args: List<String>): List<String> {
+        val jarIndex = args.indexOfFirst { it.startsWith("s3://") && it.endsWith(".jar") }
+        return if (jarIndex >= 0 && jarIndex + 1 < args.size) {
+            args.drop(jarIndex + 1)
+        } else {
+            emptyList()
+        }
+    }
 
     override fun validateCluster(): Result<EMRClusterInfo> =
         runCatching {
@@ -305,6 +465,7 @@ class EMRSparkService(
             outputHandler.handleMessage("Downloading step logs to: $localLogsDir")
 
             // Download both stdout and stderr
+            var logsDownloaded = 0
             for (logType in listOf(SparkService.LogType.STDOUT, SparkService.LogType.STDERR)) {
                 val logPath =
                     s3Path
@@ -325,10 +486,32 @@ class EMRSparkService(
                     // Remove the .gz file after decompression
                     Files.deleteIfExists(localGzFile)
                     outputHandler.handleMessage("Downloaded: ${logType.name.lowercase()}")
+                    logsDownloaded++
                 } catch (e: Exception) {
                     log.warn { "Could not download ${logType.filename}: ${e.message}" }
-                    // Continue with other logs - some may not exist yet
+                    outputHandler.handleMessage("Could not download ${logType.name.lowercase()} (logs may not be available yet)")
                 }
+            }
+
+            if (logsDownloaded == 0) {
+                val s3Bucket = clusterState.s3Bucket ?: "UNKNOWN_BUCKET"
+                val emrLogsPath = "${Constants.EMR.S3_LOG_PREFIX}$clusterId/steps/$stepId/"
+                outputHandler.handleMessage(
+                    """
+                    |
+                    |No logs were available. EMR logs typically take 30-60 seconds to upload after job completion.
+                    |
+                    |=== Manual Debug Commands ===
+                    |  # Retry log download
+                    |  easy-db-lab spark logs --step-id $stepId
+                    |
+                    |  # Check step details
+                    |  aws emr describe-step --cluster-id $clusterId --step-id $stepId
+                    |
+                    |  # View stderr directly from S3 (once available)
+                    |  aws s3 cp s3://$s3Bucket/${emrLogsPath}stderr.gz - | gunzip
+                    """.trimMargin(),
+                )
             }
 
             // Display stderr content if it exists (most useful for debugging)
@@ -375,13 +558,41 @@ class EMRSparkService(
      * @param jarPath S3 path to the JAR file
      * @param mainClass Main class to execute
      * @param jobArgs Application arguments
+     * @param sparkConf Spark configuration properties
+     * @param envVars Environment variables for executor and app master
      * @return List of command-line arguments for spark-submit
      */
     private fun buildSparkSubmitArgs(
         jarPath: String,
         mainClass: String,
         jobArgs: List<String>,
-    ): List<String> = listOf(Constants.EMR.SPARK_SUBMIT_COMMAND, "--class", mainClass, jarPath) + jobArgs
+        sparkConf: Map<String, String>,
+        envVars: Map<String, String>,
+    ): List<String> {
+        val args = mutableListOf(Constants.EMR.SPARK_SUBMIT_COMMAND)
+
+        // Add Spark configuration properties via --conf
+        // spark-submit sets these as system properties, which SparkConf(true) picks up
+        sparkConf.forEach { (key, value) ->
+            args.add("--conf")
+            args.add("$key=$value")
+        }
+
+        // Add environment variables (to both executor and app master)
+        envVars.forEach { (key, value) ->
+            args.add("--conf")
+            args.add("spark.executorEnv.$key=$value")
+            args.add("--conf")
+            args.add("spark.yarn.appMasterEnv.$key=$value")
+        }
+
+        args.add("--class")
+        args.add(mainClass)
+        args.add(jarPath)
+        args.addAll(jobArgs)
+
+        return args
+    }
 
     /**
      * Executes an EMR API operation with retry logic.

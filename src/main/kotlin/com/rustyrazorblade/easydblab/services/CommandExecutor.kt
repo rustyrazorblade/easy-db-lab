@@ -75,6 +75,7 @@ class DefaultCommandExecutor(
     private val outputHandler: OutputHandler,
     private val userConfigProvider: UserConfigProvider,
     private val dockerClientProvider: DockerClientProvider,
+    private val resourceManager: ResourceManager,
 ) : CommandExecutor,
     KoinComponent {
     // Lazy injection - only resolves when first accessed (defers AWS dependency chain)
@@ -103,22 +104,31 @@ class DefaultCommandExecutor(
         // VPC reconstruction from environment variable (if set)
         handleVpcReconstructionFromEnv()
 
-        val exitCode = executeWithLifecycle(command)
+        try {
+            val exitCode = executeWithLifecycle(command)
 
-        // Process scheduled commands (each with full lifecycle)
-        // Stop on first failure
-        while (scheduledQueue.get().isNotEmpty()) {
-            val commandFactory = scheduledQueue.get().removeFirst()
-            val scheduledCommand = commandFactory()
-            val scheduledExitCode = executeWithLifecycle(scheduledCommand)
-            if (scheduledExitCode != 0) {
-                // Clear remaining scheduled commands on failure
-                scheduledQueue.get().clear()
-                return scheduledExitCode
+            // Process scheduled commands (each with full lifecycle)
+            // Stop on first failure
+            while (scheduledQueue.get().isNotEmpty()) {
+                val commandFactory = scheduledQueue.get().removeFirst()
+                val scheduledCommand = commandFactory()
+                val scheduledExitCode = executeWithLifecycle(scheduledCommand)
+                if (scheduledExitCode != 0) {
+                    // Clear remaining scheduled commands on failure
+                    scheduledQueue.get().clear()
+                    return scheduledExitCode
+                }
+            }
+
+            return exitCode
+        } finally {
+            // Clean up resources in non-interactive mode (CLI commands)
+            // In interactive mode (REPL/Server), resources stay open for reuse
+            if (!context.isInteractive) {
+                log.debug { "Non-interactive mode: cleaning up resources" }
+                resourceManager.closeAll()
             }
         }
-
-        return exitCode
     }
 
     /**

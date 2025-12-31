@@ -41,11 +41,30 @@
         "s3:PutBucketPolicy",
         "s3:GetBucketPolicy",
         "s3:PutBucketTagging",
-        "s3:GetBucketTagging"
+        "s3:GetBucketTagging",
+        "s3:PutBucketNotification",
+        "s3:GetBucketNotification"
       ],
       "Resource": [
         "arn:aws:s3:::easy-db-lab-*",
         "arn:aws:s3:::easy-db-lab-*/*"
+      ]
+    },
+    {
+      "Sid": "SQSPermissions",
+      "Effect": "Allow",
+      "Action": [
+        "sqs:CreateQueue",
+        "sqs:DeleteQueue",
+        "sqs:GetQueueUrl",
+        "sqs:GetQueueAttributes",
+        "sqs:SetQueueAttributes",
+        "sqs:ListQueues",
+        "sqs:ReceiveMessage",
+        "sqs:DeleteMessage"
+      ],
+      "Resource": [
+        "arn:aws:sqs:*:ACCOUNT_ID:easy-db-lab-*"
       ]
     }
   ]

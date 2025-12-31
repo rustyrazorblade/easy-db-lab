@@ -1,0 +1,128 @@
+#!/bin/bash
+#
+# Submit DirectBulkWriter to an existing Spark/EMR cluster
+# Usage: bin/submit-direct-bulk-writer [rowCount] [parallelism] [replicationFactor]
+#
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Disable AWS CLI pager
+export AWS_PAGER=""
+
+# Default args
+ROW_COUNT="${1:-1000}"
+PARALLELISM="${2:-4}"
+REPLICATION_FACTOR="${3:-1}"
+
+echo "=== Building bulk-writer JAR ==="
+(cd "$PROJECT_ROOT" && ./gradlew :bulk-writer:shadowJar -q)
+
+JAR_FILE=$(ls "$PROJECT_ROOT/bulk-writer/build/libs/bulk-writer"*.jar 2>/dev/null | grep -v sources | grep -v javadoc | head -1)
+if [ -z "$JAR_FILE" ] || [ ! -f "$JAR_FILE" ]; then
+    echo "Error: Could not find bulk-writer JAR in bulk-writer/build/libs/"
+    exit 1
+fi
+echo "Using JAR: $JAR_FILE"
+
+# Get cluster info from state.json
+if [ ! -f "$PROJECT_ROOT/state.json" ]; then
+    echo "Error: state.json not found. Is a cluster running?"
+    exit 1
+fi
+
+DC=$(jq -r '.initConfig.region' "$PROJECT_ROOT/state.json")
+if [ -z "$DC" ] || [ "$DC" = "null" ]; then
+    echo "Error: Could not read region from state.json"
+    exit 1
+fi
+
+# Get Cassandra hosts (private IPs)
+SIDECAR_HOSTS=$(jq -r '.hosts.Cassandra | map(.privateIp) | join(",")' "$PROJECT_ROOT/state.json")
+
+echo "Hosts: $SIDECAR_HOSTS"
+echo "Datacenter: $DC"
+echo "Rows: $ROW_COUNT, Parallelism: $PARALLELISM, RF: $REPLICATION_FACTOR"
+echo ""
+
+echo "=== Submitting bulk writer job ==="
+
+# Capture spark submit result (don't exit on failure)
+set +e
+easy-db-lab spark submit \
+    --jar "$JAR_FILE" \
+    --main-class com.rustyrazorblade.easydblab.spark.DirectBulkWriter \
+    --args "$SIDECAR_HOSTS" bulk_test data "$DC" "$ROW_COUNT" "$PARALLELISM" "$REPLICATION_FACTOR" \
+    --wait
+SPARK_EXIT_CODE=$?
+set -e
+
+# Get cluster info for diagnostics
+S3_BUCKET=$(jq -r '.s3Bucket' "$PROJECT_ROOT/state.json")
+EMR_CLUSTER_ID=$(jq -r '.emrCluster.clusterId' "$PROJECT_ROOT/state.json")
+
+if [ $SPARK_EXIT_CODE -ne 0 ]; then
+    echo ""
+    echo "=== SPARK JOB FAILED (exit code: $SPARK_EXIT_CODE) ==="
+    echo ""
+
+    # Get the most recent step ID from the EMR cluster
+    echo "Fetching failed step details..."
+    STEP_INFO=$(aws emr list-steps --cluster-id "$EMR_CLUSTER_ID" --step-states FAILED --max-items 1 2>/dev/null || echo "")
+
+    if [ -n "$STEP_INFO" ]; then
+        STEP_ID=$(echo "$STEP_INFO" | jq -r '.Steps[0].Id // empty')
+
+        if [ -n "$STEP_ID" ]; then
+            echo "Failed Step ID: $STEP_ID"
+            echo ""
+
+            # Download and display stderr.gz
+            STDERR_S3_PATH="s3://$S3_BUCKET/spark/emr-logs/$EMR_CLUSTER_ID/steps/$STEP_ID/stderr.gz"
+            echo "=== Waiting for EMR to upload logs to S3... ==="
+
+            # Wait up to 60 seconds for logs to appear
+            STDERR_TMP=$(mktemp)
+            LOG_FOUND=false
+            for i in {1..12}; do
+                if aws s3 cp "$STDERR_S3_PATH" "$STDERR_TMP" 2>/dev/null; then
+                    LOG_FOUND=true
+                    break
+                fi
+                echo "  Waiting for logs... (attempt $i/12)"
+                sleep 5
+            done
+
+            if [ "$LOG_FOUND" = true ]; then
+                echo ""
+                echo "=== STDERR CONTENTS (last 100 lines) ==="
+                gunzip -c "$STDERR_TMP" | tail -100
+                echo "=== END STDERR ==="
+                rm -f "$STDERR_TMP"
+
+                # Also show controller log for additional context
+                CONTROLLER_S3_PATH="s3://$S3_BUCKET/spark/emr-logs/$EMR_CLUSTER_ID/steps/$STEP_ID/controller.gz"
+                CONTROLLER_TMP=$(mktemp)
+                if aws s3 cp "$CONTROLLER_S3_PATH" "$CONTROLLER_TMP" 2>/dev/null; then
+                    echo ""
+                    echo "=== CONTROLLER LOG ==="
+                    gunzip -c "$CONTROLLER_TMP"
+                    echo "=== END CONTROLLER ==="
+                    rm -f "$CONTROLLER_TMP"
+                fi
+            else
+                echo ""
+                echo "Warning: Logs not available after 60 seconds"
+                echo "Try manually: aws s3 cp $STDERR_S3_PATH - | gunzip"
+            fi
+        fi
+    fi
+else
+    echo ""
+    echo "=== Verifying data ==="
+    easy-db-lab cassandra cql "SELECT COUNT(*) FROM bulk_test.data;"
+fi
+
+echo ""
+echo "=== Done ==="

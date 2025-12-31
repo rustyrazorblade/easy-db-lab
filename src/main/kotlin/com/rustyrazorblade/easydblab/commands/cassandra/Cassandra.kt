@@ -21,8 +21,10 @@ import picocli.CommandLine.Spec
     description = ["Cassandra cluster management and tooling operations"],
     mixinStandardHelpOptions = true,
     subcommands = [
+        Cql::class,
         DownloadConfig::class,
         ListVersions::class,
+        Nodetool::class,
         Restart::class,
         Start::class,
         Stop::class,

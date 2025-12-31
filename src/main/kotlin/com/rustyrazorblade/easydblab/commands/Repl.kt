@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.commands.spark.Spark
 import com.rustyrazorblade.easydblab.di.KoinCommandFactory
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.DefaultCommandExecutor
+import com.rustyrazorblade.easydblab.services.ResourceManager
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.jline.console.SystemRegistry
 import org.jline.console.impl.SystemRegistryImpl
@@ -23,6 +24,7 @@ import org.jline.terminal.Terminal
 import org.jline.terminal.TerminalBuilder
 import org.jline.widget.TailTipWidgets
 import org.koin.core.component.get
+import org.koin.core.component.inject
 import picocli.CommandLine
 import picocli.CommandLine.Command
 import picocli.shell.jline3.PicocliCommands
@@ -88,11 +90,16 @@ class ShellCommands : Runnable {
     description = ["Start interactive REPL with full tab completion"],
 )
 class Repl : PicoBaseCommand() {
+    private val resourceManager: ResourceManager by inject()
+
     companion object {
         private val log = KotlinLogging.logger {}
     }
 
     override fun execute() {
+        // Mark context as interactive so CQL sessions stay open across commands
+        context.isInteractive = true
+
         try {
             val terminal = createTerminal()
             val commandLine = createCommandLine(terminal)
@@ -126,6 +133,10 @@ class Repl : PicoBaseCommand() {
         } catch (e: Exception) {
             log.error(e) { "Error in REPL" }
             outputHandler.handleError("Error starting REPL: ${e.message ?: e::class.simpleName}", e)
+        } finally {
+            // Clean up resources on REPL exit
+            log.debug { "REPL exiting, cleaning up resources" }
+            resourceManager.closeAll()
         }
     }
 

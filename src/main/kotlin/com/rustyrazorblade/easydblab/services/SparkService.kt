@@ -28,6 +28,8 @@ interface SparkService {
      * @param mainClass Main class to execute
      * @param jobArgs Arguments to pass to the Spark application
      * @param jobName Optional job name (defaults to main class)
+     * @param sparkConf Spark configuration properties (passed as --conf key=value)
+     * @param envVars Environment variables (passed to both executor and app master)
      * @return Result containing the EMR step ID on success, or error on failure
      */
     fun submitJob(
@@ -36,6 +38,8 @@ interface SparkService {
         mainClass: String,
         jobArgs: List<String> = listOf(),
         jobName: String? = null,
+        sparkConf: Map<String, String> = emptyMap(),
+        envVars: Map<String, String> = emptyMap(),
     ): Result<String>
 
     /**
@@ -137,6 +141,21 @@ interface SparkService {
     ): Result<Path>
 
     /**
+     * Gets detailed information about a step (equivalent to `aws emr describe-step`).
+     *
+     * This returns comprehensive step information including timing, configuration,
+     * and failure details which is useful for debugging failed jobs.
+     *
+     * @param clusterId The EMR cluster ID
+     * @param stepId The EMR step ID
+     * @return Result containing the detailed step information, or error on failure
+     */
+    fun getStepDetails(
+        clusterId: String,
+        stepId: String,
+    ): Result<StepDetails>
+
+    /**
      * Represents the status of a Spark job.
      *
      * @property state The current EMR step state
@@ -163,6 +182,80 @@ interface SparkService {
         val state: StepState,
         val startTime: Instant?,
     )
+
+    /**
+     * Detailed step information for debugging (equivalent to `aws emr describe-step`).
+     *
+     * @property stepId The EMR step ID
+     * @property name The step name
+     * @property state The current EMR step state
+     * @property stateChangeReasonCode Code indicating why state changed (e.g., "PENDING")
+     * @property stateChangeReasonMessage Detailed reason for state change
+     * @property failureReason Reason for failure if applicable
+     * @property failureMessage Detailed failure message
+     * @property failureLogFile S3 path to the failure log file
+     * @property creationTime When the step was created
+     * @property startTime When the step started running
+     * @property endTime When the step completed
+     * @property jarPath The JAR file being executed
+     * @property mainClass The main class being executed
+     * @property args The arguments passed to the step
+     */
+    data class StepDetails(
+        val stepId: String,
+        val name: String,
+        val state: StepState,
+        val stateChangeReasonCode: String?,
+        val stateChangeReasonMessage: String?,
+        val failureReason: String?,
+        val failureMessage: String?,
+        val failureLogFile: String?,
+        val creationTime: Instant?,
+        val startTime: Instant?,
+        val endTime: Instant?,
+        val jarPath: String?,
+        val mainClass: String?,
+        val args: List<String>,
+    ) {
+        /**
+         * Format the step details for display.
+         */
+        fun toDisplayString(): String =
+            buildString {
+                appendLine("=== Step Details ===")
+                appendLine("Step ID: $stepId")
+                appendLine("Name: $name")
+                appendLine("State: $state")
+                stateChangeReasonCode?.let { appendLine("State Change Reason Code: $it") }
+                stateChangeReasonMessage?.let { appendLine("State Change Reason: $it") }
+                appendLine()
+                appendLine("=== Timeline ===")
+                creationTime?.let { appendLine("Created: $it") }
+                startTime?.let { appendLine("Started: $it") }
+                endTime?.let { appendLine("Ended: $it") }
+                if (startTime != null && endTime != null) {
+                    val durationSeconds =
+                        java.time.Duration
+                            .between(startTime, endTime)
+                            .seconds
+                    appendLine("Duration: ${durationSeconds}s")
+                }
+                appendLine()
+                appendLine("=== Configuration ===")
+                jarPath?.let { appendLine("JAR: $it") }
+                mainClass?.let { appendLine("Main Class: $it") }
+                if (args.isNotEmpty()) {
+                    appendLine("Args: ${args.joinToString(" ")}")
+                }
+                if (failureReason != null || failureMessage != null) {
+                    appendLine()
+                    appendLine("=== Failure Details ===")
+                    failureReason?.let { appendLine("Reason: $it") }
+                    failureMessage?.let { appendLine("Message: $it") }
+                    failureLogFile?.let { appendLine("Log File: $it") }
+                }
+            }
+    }
 
     /**
      * Types of EMR step logs available in S3.

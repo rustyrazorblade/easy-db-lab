@@ -15,6 +15,8 @@ import picocli.CommandLine.Spec
     description = ["AWS resource discovery and management operations"],
     mixinStandardHelpOptions = true,
     subcommands = [
+        Region::class,
+        S3Bucket::class,
         Vpcs::class,
     ],
 )

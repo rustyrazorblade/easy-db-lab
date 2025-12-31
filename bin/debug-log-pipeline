@@ -1,0 +1,238 @@
+#!/bin/bash
+#
+# Debug the Victoria Logs pipeline
+# Checks: S3 logs, SQS queue, Vector pods, Victoria Logs
+#
+# Don't exit on error - we want to see all diagnostic output
+set +e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Disable AWS CLI pager
+export AWS_PAGER=""
+
+# Source env.sh for SSH aliases
+if [ -f "$PROJECT_ROOT/env.sh" ]; then
+    source "$PROJECT_ROOT/env.sh"
+fi
+
+if [ ! -f "$PROJECT_ROOT/state.json" ]; then
+    echo "Error: state.json not found. Is a cluster running?"
+    exit 1
+fi
+
+# Get cluster info
+S3_BUCKET=$(jq -r '.s3Bucket' "$PROJECT_ROOT/state.json")
+EMR_CLUSTER_ID=$(jq -r '.emrCluster.clusterId' "$PROJECT_ROOT/state.json")
+SQS_QUEUE_URL=$(jq -r '.sqsQueueUrl' "$PROJECT_ROOT/state.json")
+CONTROL_IP=$(jq -r '.controlHost.publicIp // .hosts.Control[0].publicIp' "$PROJECT_ROOT/state.json")
+
+echo "=== Log Pipeline Debug ==="
+echo "S3 Bucket: $S3_BUCKET"
+echo "EMR Cluster: $EMR_CLUSTER_ID"
+echo "SQS Queue: $SQS_QUEUE_URL"
+echo "Control IP: $CONTROL_IP"
+echo ""
+
+# Step 1: Check EMR logs in S3
+echo "=== Step 1: EMR Logs in S3 ==="
+if [ -n "$S3_BUCKET" ] && [ "$S3_BUCKET" != "null" ]; then
+    echo "Listing s3://$S3_BUCKET/spark/emr-logs/..."
+    aws s3 ls "s3://$S3_BUCKET/spark/emr-logs/" --recursive 2>/dev/null | tail -20 || echo "No logs found"
+else
+    echo "Warning: S3 bucket not configured"
+fi
+echo ""
+
+# Step 2: Check SQS queue current state
+echo "=== Step 2: SQS Queue Status ==="
+if [ -n "$SQS_QUEUE_URL" ] && [ "$SQS_QUEUE_URL" != "null" ]; then
+    aws sqs get-queue-attributes \
+        --queue-url "$SQS_QUEUE_URL" \
+        --attribute-names ApproximateNumberOfMessages ApproximateNumberOfMessagesNotVisible ApproximateNumberOfMessagesDelayed \
+        || echo "Error accessing SQS queue (see error above)"
+
+    # Get queue name from URL for CloudWatch metrics
+    QUEUE_NAME=$(echo "$SQS_QUEUE_URL" | awk -F'/' '{print $NF}')
+    REGION=$(jq -r '.initConfig.region' "$PROJECT_ROOT/state.json")
+
+    echo ""
+    echo "=== SQS CloudWatch Metrics (last 1 hour) ==="
+
+    # Messages sent to queue (from S3 notifications)
+    SENT=$(aws cloudwatch get-metric-statistics \
+        --namespace AWS/SQS \
+        --metric-name NumberOfMessagesSent \
+        --dimensions Name=QueueName,Value="$QUEUE_NAME" \
+        --start-time "$(date -u -d '1 hour ago' '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date -u -v-1H '+%Y-%m-%dT%H:%M:%SZ')" \
+        --end-time "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+        --period 3600 \
+        --statistics Sum \
+        --query 'Datapoints[0].Sum' \
+        --output text 2>/dev/null)
+    echo "  Messages sent (from S3):     ${SENT:-0}"
+
+    # Messages received (by Vector)
+    RECEIVED=$(aws cloudwatch get-metric-statistics \
+        --namespace AWS/SQS \
+        --metric-name NumberOfMessagesReceived \
+        --dimensions Name=QueueName,Value="$QUEUE_NAME" \
+        --start-time "$(date -u -d '1 hour ago' '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date -u -v-1H '+%Y-%m-%dT%H:%M:%SZ')" \
+        --end-time "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+        --period 3600 \
+        --statistics Sum \
+        --query 'Datapoints[0].Sum' \
+        --output text 2>/dev/null)
+    echo "  Messages received (by consumer): ${RECEIVED:-0}"
+
+    # Messages deleted (successfully processed)
+    DELETED=$(aws cloudwatch get-metric-statistics \
+        --namespace AWS/SQS \
+        --metric-name NumberOfMessagesDeleted \
+        --dimensions Name=QueueName,Value="$QUEUE_NAME" \
+        --start-time "$(date -u -d '1 hour ago' '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date -u -v-1H '+%Y-%m-%dT%H:%M:%SZ')" \
+        --end-time "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+        --period 3600 \
+        --statistics Sum \
+        --query 'Datapoints[0].Sum' \
+        --output text 2>/dev/null)
+    echo "  Messages deleted (processed):    ${DELETED:-0}"
+
+    if [ "$SENT" = "None" ] || [ -z "$SENT" ] || [ "$SENT" = "0" ]; then
+        echo ""
+        echo "  WARNING: No messages sent to queue in the last hour."
+        echo "  This means S3 notifications are not triggering."
+    fi
+else
+    echo "Warning: SQS queue not configured"
+fi
+echo ""
+
+# Step 3: Check S3 bucket notification configuration
+echo "=== Step 3: S3 Bucket Notifications ==="
+if [ -n "$S3_BUCKET" ] && [ "$S3_BUCKET" != "null" ]; then
+    NOTIFICATION_CONFIG=$(aws s3api get-bucket-notification-configuration --bucket "$S3_BUCKET" 2>&1)
+    if [ -z "$NOTIFICATION_CONFIG" ] || [ "$NOTIFICATION_CONFIG" = "{}" ]; then
+        echo "WARNING: No S3 bucket notifications configured!"
+        echo "Run 'easy-db-lab up' to configure log pipeline."
+    else
+        echo "$NOTIFICATION_CONFIG" | jq . 2>/dev/null || echo "$NOTIFICATION_CONFIG"
+    fi
+
+    # Check prefix
+    CURRENT_PREFIX=$(echo "$NOTIFICATION_CONFIG" | jq -r '.QueueConfigurations[0].Filter.Key.FilterRules[] | select(.Name == "Prefix") | .Value' 2>/dev/null)
+    if [ "$CURRENT_PREFIX" = "emr-logs/" ]; then
+        echo ""
+        echo "WARNING: S3 notification prefix is WRONG!"
+        echo "  Current: emr-logs/"
+        echo "  Expected: spark/emr-logs/"
+    elif [ "$CURRENT_PREFIX" = "spark/emr-logs/" ]; then
+        echo ""
+        echo "OK: S3 notification prefix is correct (spark/emr-logs/)"
+    fi
+else
+    echo "Warning: S3 bucket not configured"
+fi
+echo ""
+
+# Step 4: Check Vector S3 pod
+echo "=== Step 4: Vector S3 Pod Status ==="
+kubectl get pods -l app=vector-s3 -o wide 2>&1 || echo "Error checking Vector S3 pod"
+echo ""
+
+# Step 5: Vector S3 pod logs
+echo "=== Step 5: Vector S3 Logs (last 30 lines) ==="
+kubectl logs -l app=vector-s3 --tail=30 2>&1 || echo "Error getting Vector S3 logs"
+echo ""
+
+# Step 5b: Vector S3 metrics (if available)
+echo "=== Step 5b: Vector S3 Metrics ==="
+VECTOR_POD=$(kubectl get pods -l app=vector-s3 -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+if [ -n "$VECTOR_POD" ]; then
+    echo "Checking Vector internal metrics..."
+    # Vector S3 exposes metrics on port 9599 (9598 is used by vector node daemonset)
+    METRICS=$(kubectl exec "$VECTOR_POD" -- wget -qO- http://localhost:9599/metrics 2>/dev/null | grep -E "^vector_component_(received|sent)_events_total" | head -20)
+    if [ -n "$METRICS" ]; then
+        echo "$METRICS"
+    else
+        echo "No Vector metrics available (metrics endpoint may not be enabled)"
+    fi
+else
+    echo "Vector S3 pod not found"
+fi
+echo ""
+
+# Step 6: Check Vector DaemonSet (node logs)
+echo "=== Step 6: Vector DaemonSet Status ==="
+kubectl get pods -l app=vector -o wide 2>&1 || echo "Error checking Vector DaemonSet"
+echo ""
+
+# Step 7: Victoria Logs pod
+echo "=== Step 7: Victoria Logs Pod Status ==="
+kubectl get pods -l app=victorialogs -o wide 2>&1 || echo "Error checking Victoria Logs pod"
+echo ""
+
+# Step 8: Victoria Logs recent entries
+echo "=== Step 8: Victoria Logs - Recent EMR Logs ==="
+if [ -n "$CONTROL_IP" ] && [ "$CONTROL_IP" != "null" ]; then
+    echo "Querying for EMR logs (last 1h)..."
+    RESULT=$(curl -s "http://$CONTROL_IP:9428/select/logsql/query?query=source:emr&limit=10" 2>/dev/null)
+    if [ -n "$RESULT" ]; then
+        echo "$RESULT" | head -20
+    else
+        echo "No EMR logs found or Victoria Logs not accessible"
+    fi
+else
+    echo "Control IP not available"
+fi
+echo ""
+
+# Step 9: Victoria Logs all sources
+echo "=== Step 9: Victoria Logs - All Sources (sample) ==="
+if [ -n "$CONTROL_IP" ] && [ "$CONTROL_IP" != "null" ]; then
+    echo "Querying all logs..."
+    curl -s "http://$CONTROL_IP:9428/select/logsql/query?query=*&limit=5" 2>/dev/null | head -20 || echo "Error querying Victoria Logs"
+fi
+echo ""
+
+# Step 10: Check cluster-config ConfigMap
+echo "=== Step 10: Cluster Config ConfigMap ==="
+kubectl get configmap cluster-config -o yaml 2>&1 || echo "ConfigMap not found"
+echo ""
+
+# Step 11: Troubleshooting Summary
+echo "=== Troubleshooting Summary ==="
+
+# Check if messages are being sent but not received
+if [ "$SENT" != "None" ] && [ -n "$SENT" ] && [ "$SENT" != "0" ]; then
+    if [ "$RECEIVED" = "None" ] || [ -z "$RECEIVED" ] || [ "$RECEIVED" = "0" ]; then
+        echo ""
+        echo "ISSUE DETECTED: Messages sent to SQS but not received by Vector"
+        echo "Likely cause: Vector S3 pod not running or unable to connect to SQS"
+        echo "Solution:"
+        echo "  1. Check Vector S3 pod logs: kubectl logs -l app=vector-s3"
+        echo "  2. Restart Vector S3 pod: kubectl rollout restart deployment/vector-s3"
+    fi
+fi
+
+if [ "$SENT" = "None" ] || [ -z "$SENT" ] || [ "$SENT" = "0" ]; then
+    echo ""
+    echo "ISSUE DETECTED: No messages sent from S3 to SQS in the last hour"
+    echo "Likely causes:"
+    echo "  1. S3 bucket notifications not configured"
+    echo "  2. Wrong S3 prefix in notifications (should be spark/emr-logs/)"
+    echo "  3. No new EMR logs uploaded in the last hour"
+    echo "Solution: Re-run 'easy-db-lab up' to reconfigure S3 notifications"
+fi
+
+# Check if Vector S3 pod is not running
+VECTOR_STATUS=$(kubectl get pods -l app=vector-s3 -o jsonpath='{.items[0].status.phase}' 2>/dev/null)
+if [ "$VECTOR_STATUS" != "Running" ]; then
+    echo ""
+    echo "ISSUE DETECTED: Vector S3 pod is not running (status: ${VECTOR_STATUS:-not found})"
+    echo "Solution: Check pod events: kubectl describe pods -l app=vector-s3"
+fi
+
+echo ""
+echo "=== Debug Complete ==="

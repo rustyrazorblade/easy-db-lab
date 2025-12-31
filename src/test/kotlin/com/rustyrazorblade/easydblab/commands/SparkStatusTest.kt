@@ -17,7 +17,6 @@ import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import software.amazon.awssdk.services.emr.model.StepState
-import java.nio.file.Paths
 import java.time.Instant
 
 class SparkStatusTest : BaseKoinTest() {
@@ -51,7 +50,6 @@ class SparkStatusTest : BaseKoinTest() {
     fun `command has sensible defaults`() {
         val command = SparkStatus()
         assertThat(command.stepId).isNull()
-        assertThat(command.downloadLogs).isFalse()
     }
 
     @Test
@@ -97,8 +95,6 @@ class SparkStatusTest : BaseKoinTest() {
         // Then - should NOT call listJobs since step-id was explicit
         verify(mockSparkService, never()).listJobs(any(), any())
         verify(mockSparkService).getJobStatus(eq("j-TEST123"), eq("s-EXPLICIT123"))
-        // Should NOT download logs since --logs flag is not set
-        verify(mockSparkService, never()).downloadStepLogs(any(), any())
     }
 
     @Test
@@ -138,8 +134,6 @@ class SparkStatusTest : BaseKoinTest() {
         // Then - should call listJobs to get most recent
         verify(mockSparkService).listJobs(eq("j-TEST123"), eq(1))
         verify(mockSparkService).getJobStatus(eq("j-TEST123"), eq("s-RECENT123"))
-        // Should NOT download logs since --logs flag is not set
-        verify(mockSparkService, never()).downloadStepLogs(any(), any())
     }
 
     @Test
@@ -158,35 +152,6 @@ class SparkStatusTest : BaseKoinTest() {
         assertThatThrownBy { command.execute() }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("No jobs found")
-    }
-
-    @Test
-    fun `execute should download logs when --logs flag is set`() {
-        // Initialize mocks before use
-        initMocks()
-
-        // Given
-        val command = SparkStatus()
-        command.stepId = "s-STEP123"
-        command.downloadLogs = true
-
-        val jobStatus =
-            SparkService.JobStatus(
-                state = StepState.COMPLETED,
-                stateChangeReason = null,
-                failureDetails = null,
-            )
-
-        whenever(mockSparkService.validateCluster()).thenReturn(Result.success(validClusterInfo))
-        whenever(mockSparkService.getJobStatus(any(), any())).thenReturn(Result.success(jobStatus))
-        whenever(mockSparkService.downloadStepLogs(eq("j-TEST123"), eq("s-STEP123")))
-            .thenReturn(Result.success(Paths.get("logs", "j-TEST123", "s-STEP123")))
-
-        // When
-        command.execute()
-
-        // Then - should call downloadStepLogs with the cluster and step ID
-        verify(mockSparkService).downloadStepLogs(eq("j-TEST123"), eq("s-STEP123"))
     }
 
     @Test

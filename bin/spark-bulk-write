@@ -1,0 +1,334 @@
+#!/bin/bash
+#
+# Run a Spark bulk write job against the current active cluster.
+#
+# NOTE: This script must be run from a cluster directory (e.g., clusters/my-cluster)
+#       where state.json exists.
+#
+# Usage:
+#   cd clusters/my-cluster && spark-bulk-write <job-type> [options]
+#
+# Job types:
+#   direct    - DirectBulkWriter (DIRECT transport via Sidecar)
+#   s3        - S3BulkWriter (S3_COMPAT transport via Sidecar)
+#   connector - StandardConnectorWriter (standard Spark Cassandra Connector)
+#
+# Options:
+#   --keyspace <name>     Keyspace name (default: bulk_test)
+#   --table <name>        Table name (default: data)
+#   --rows <count>        Number of rows to write (default: 1000000)
+#   --parallelism <num>   Number of partitions (default: 10)
+#   --rf <num>            Replication factor (default: 1)
+#   --compaction <name>   Compaction strategy (e.g., LeveledCompactionStrategy)
+#   --skip-ddl            Skip keyspace/table creation
+#   --s3-bucket <bucket>  S3 bucket for S3 job type (default: from cluster config)
+#   --no-wait             Don't wait for job completion
+#   --build               Force rebuild of bulk-writer JAR
+#
+# Examples:
+#   spark-bulk-write direct --rows 10000
+#   spark-bulk-write s3 --rows 1000000 --parallelism 20
+#   spark-bulk-write connector --keyspace myks --table mytable
+#
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+CLUSTER_DIR="$(pwd)"
+
+echo "Cluster dir: $CLUSTER_DIR"
+echo "Project dir: $PROJECT_ROOT"
+
+# Disable AWS CLI pager
+export AWS_PAGER=""
+
+# Default values
+KEYSPACE="bulk_test"
+TABLE="data"
+ROW_COUNT="1000000"
+PARALLELISM="10"
+REPLICATION_FACTOR="1"
+COMPACTION=""
+SKIP_DDL="false"
+S3_BUCKET=""
+WAIT="--wait"
+FORCE_BUILD="false"
+
+usage() {
+    sed -n '2,29p' "$0" | sed 's/^# //' | sed 's/^#//'
+    exit 1
+}
+
+# Parse arguments
+JOB_TYPE=""
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        direct|s3|connector)
+            JOB_TYPE="$1"
+            shift
+            ;;
+        --keyspace)
+            KEYSPACE="$2"
+            shift 2
+            ;;
+        --table)
+            TABLE="$2"
+            shift 2
+            ;;
+        --rows)
+            ROW_COUNT="$2"
+            shift 2
+            ;;
+        --parallelism)
+            PARALLELISM="$2"
+            shift 2
+            ;;
+        --rf)
+            REPLICATION_FACTOR="$2"
+            shift 2
+            ;;
+        --compaction)
+            COMPACTION="$2"
+            shift 2
+            ;;
+        --skip-ddl)
+            SKIP_DDL="true"
+            shift
+            ;;
+        --s3-bucket)
+            S3_BUCKET="$2"
+            shift 2
+            ;;
+        --no-wait)
+            WAIT=""
+            shift
+            ;;
+        --build)
+            FORCE_BUILD="true"
+            shift
+            ;;
+        -h|--help)
+            usage
+            ;;
+        *)
+            echo "Error: Unknown option $1"
+            usage
+            ;;
+    esac
+done
+
+if [ -z "$JOB_TYPE" ]; then
+    echo "Error: Job type required (direct, s3, or connector)"
+    usage
+fi
+
+# Check for active cluster (state.json must exist in current directory)
+if [ ! -f "state.json" ]; then
+    echo "Error: state.json not found in current directory."
+    echo "This script must be run from a cluster directory (e.g., clusters/my-cluster)."
+    echo "Current directory: $CLUSTER_DIR"
+    exit 1
+fi
+
+# Health check functions
+check_cassandra_health() {
+    echo "=== Checking Cassandra health ==="
+    local max_retries=30
+    local retry_interval=10
+    local attempt=0
+
+    while [ $attempt -lt $max_retries ]; do
+        if easy-db-lab cassandra cql "DESCRIBE KEYSPACES" > /dev/null 2>&1; then
+            echo "  Cassandra is healthy and responding to CQL"
+            return 0
+        fi
+        attempt=$((attempt + 1))
+        echo "  Waiting for Cassandra... (attempt $attempt/$max_retries)"
+        sleep $retry_interval
+    done
+
+    echo "Error: Cassandra is not responding after $max_retries attempts"
+    echo "Try running: easy-db-lab cassandra cql 'DESCRIBE KEYSPACES'"
+    return 1
+}
+
+check_sidecar_health() {
+    local host_alias=$1
+    echo "=== Checking Sidecar health on $host_alias ==="
+    local max_retries=30
+    local retry_interval=10
+    local attempt=0
+
+    # Get SSH config path (in cluster directory)
+    local ssh_config="$CLUSTER_DIR/sshConfig"
+    if [ ! -f "$ssh_config" ]; then
+        echo "Error: SSH config not found at $ssh_config"
+        return 1
+    fi
+
+    # Get the private IP - Sidecar listens on private IP, not localhost
+    local private_ip
+    private_ip=$(easy-db-lab ip "$host_alias" --private)
+    if [ -z "$private_ip" ]; then
+        echo "Error: Could not get private IP for $host_alias"
+        return 1
+    fi
+
+    while [ $attempt -lt $max_retries ]; do
+        # Sidecar health endpoint is on port 9043, listening on private IP
+        if ssh -F "$ssh_config" "$host_alias" "curl -s -o /dev/null -w '%{http_code}' http://${private_ip}:9043/api/v1/__health" 2>/dev/null | grep -q "200"; then
+            echo "  Sidecar is healthy and responding on $private_ip:9043"
+            return 0
+        fi
+        attempt=$((attempt + 1))
+        echo "  Waiting for Sidecar... (attempt $attempt/$max_retries)"
+        sleep $retry_interval
+    done
+
+    echo "Error: Sidecar is not responding after $max_retries attempts"
+    echo "Try running: ssh -F $ssh_config $host_alias 'curl http://${private_ip}:9043/api/v1/__health'"
+    return 1
+}
+
+# Run health checks before submitting job
+check_cassandra_health || exit 1
+if [ "$JOB_TYPE" != "connector" ]; then
+    # Sidecar is only needed for direct and s3 job types
+    check_sidecar_health "db0" || exit 1
+fi
+echo ""
+
+# Find or build JAR based on job type
+if [ "$JOB_TYPE" = "connector" ]; then
+    # StandardConnectorWriter uses connector-writer module (spark-cassandra-connector)
+    JAR_FILE=$(ls "$PROJECT_ROOT/connector-writer/build/libs/connector-writer-"*.jar 2>/dev/null | head -1)
+    if [ -z "$JAR_FILE" ] || [ "$FORCE_BUILD" = "true" ]; then
+        echo "=== Building connector-writer JAR ==="
+        (cd "$PROJECT_ROOT" && ./gradlew :connector-writer:jar -q)
+        JAR_FILE=$(ls "$PROJECT_ROOT/connector-writer/build/libs/connector-writer-"*.jar 2>/dev/null | head -1)
+        if [ -z "$JAR_FILE" ]; then
+            echo "Error: Could not find connector-writer JAR after build"
+            exit 1
+        fi
+    fi
+else
+    # DirectBulkWriter and S3BulkWriter use bulk-writer module (cassandra-analytics)
+    JAR_FILE=$(ls "$PROJECT_ROOT/bulk-writer/build/libs/bulk-writer-"*.jar 2>/dev/null | head -1)
+    if [ -z "$JAR_FILE" ] || [ "$FORCE_BUILD" = "true" ]; then
+        echo "=== Building bulk-writer JAR ==="
+        (cd "$PROJECT_ROOT" && ./gradlew :bulk-writer:jar -q)
+        JAR_FILE=$(ls "$PROJECT_ROOT/bulk-writer/build/libs/bulk-writer-"*.jar 2>/dev/null | head -1)
+        if [ -z "$JAR_FILE" ]; then
+            echo "Error: Could not find bulk-writer JAR after build"
+            exit 1
+        fi
+    fi
+fi
+echo "Using JAR: $JAR_FILE"
+
+# Get datacenter (region) via CLI
+DC=$(easy-db-lab aws region)
+if [ -z "$DC" ]; then
+    echo "Error: Could not get region. Run 'easy-db-lab init' first."
+    exit 1
+fi
+
+# Get Cassandra hosts (private IPs) via CLI
+# hosts -c returns comma-separated public IPs, use it to get count
+HOST_COUNT=$(easy-db-lab hosts -c | tr ',' '\n' | wc -l)
+if [ "$HOST_COUNT" -eq 0 ]; then
+    echo "Error: No Cassandra hosts found"
+    exit 1
+fi
+
+HOSTS=""
+for i in $(seq 0 $((HOST_COUNT - 1))); do
+    IP=$(easy-db-lab ip "db$i" --private)
+    if [ -n "$HOSTS" ]; then
+        HOSTS="$HOSTS,$IP"
+    else
+        HOSTS="$IP"
+    fi
+done
+
+echo "=== Configuration ==="
+echo "  Job type: $JOB_TYPE"
+echo "  Datacenter: $DC"
+echo "  Hosts: $HOSTS"
+echo "  Keyspace: $KEYSPACE"
+echo "  Table: $TABLE"
+echo "  Rows: $ROW_COUNT"
+echo "  Parallelism: $PARALLELISM"
+echo "  Replication Factor: $REPLICATION_FACTOR"
+echo "  Compaction: ${COMPACTION:-default}"
+echo "  Skip DDL: $SKIP_DDL"
+
+# Build conf options based on job type
+CONF_OPTS=""
+
+case $JOB_TYPE in
+    direct)
+        MAIN_CLASS="com.rustyrazorblade.easydblab.spark.DirectBulkWriter"
+        CONF_OPTS="$CONF_OPTS --conf spark.easydblab.sidecar.contactPoints=$HOSTS"
+        ;;
+    s3)
+        MAIN_CLASS="com.rustyrazorblade.easydblab.spark.S3BulkWriter"
+        CONF_OPTS="$CONF_OPTS --conf spark.easydblab.sidecar.contactPoints=$HOSTS"
+
+        # Get S3 bucket via CLI if not provided
+        if [ -z "$S3_BUCKET" ]; then
+            S3_BUCKET=$(easy-db-lab aws s3-bucket 2>/dev/null || true)
+        fi
+        if [ -z "$S3_BUCKET" ]; then
+            echo "Error: S3 bucket required for s3 job type. Use --s3-bucket or run 'easy-db-lab up'"
+            exit 1
+        fi
+        echo "  S3 Bucket: $S3_BUCKET"
+        CONF_OPTS="$CONF_OPTS --conf spark.easydblab.s3.bucket=$S3_BUCKET"
+        ;;
+    connector)
+        MAIN_CLASS="com.rustyrazorblade.easydblab.spark.StandardConnectorWriter"
+        CONF_OPTS="$CONF_OPTS --conf spark.easydblab.cassandra.host=$HOSTS"
+        ;;
+esac
+
+# Common configuration
+CONF_OPTS="$CONF_OPTS --conf spark.easydblab.keyspace=$KEYSPACE"
+CONF_OPTS="$CONF_OPTS --conf spark.easydblab.table=$TABLE"
+CONF_OPTS="$CONF_OPTS --conf spark.easydblab.localDc=$DC"
+CONF_OPTS="$CONF_OPTS --conf spark.easydblab.rowCount=$ROW_COUNT"
+CONF_OPTS="$CONF_OPTS --conf spark.easydblab.parallelism=$PARALLELISM"
+CONF_OPTS="$CONF_OPTS --conf spark.easydblab.replicationFactor=$REPLICATION_FACTOR"
+
+if [ "$SKIP_DDL" = "true" ]; then
+    CONF_OPTS="$CONF_OPTS --conf spark.easydblab.skipDdl=true"
+fi
+
+if [ -n "$COMPACTION" ]; then
+    CONF_OPTS="$CONF_OPTS --conf spark.easydblab.compaction=$COMPACTION"
+fi
+
+echo ""
+echo "=== Submitting $JOB_TYPE job ==="
+
+# Build and execute the command
+# shellcheck disable=SC2086
+easy-db-lab spark submit \
+    --jar "$JAR_FILE" \
+    --main-class "$MAIN_CLASS" \
+    $CONF_OPTS \
+    $WAIT
+
+EXIT_CODE=$?
+
+if [ $EXIT_CODE -eq 0 ] && [ -n "$WAIT" ]; then
+    echo ""
+    echo "=== Verifying data ==="
+    easy-db-lab cassandra cql "SELECT COUNT(*) FROM $KEYSPACE.$TABLE;"
+    echo ""
+    echo "=== Sample data ==="
+    easy-db-lab cassandra cql "SELECT * FROM $KEYSPACE.$TABLE LIMIT 5;"
+fi
+
+exit $EXIT_CODE

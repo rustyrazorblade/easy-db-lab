@@ -84,6 +84,9 @@ dependencies {
     // Docker
     implementation(libs.bundles.docker)
 
+    // HTTP Client (OkHttp for SOCKS proxy support)
+    implementation(libs.okhttp)
+
     // Project dependencies
     implementation(project(":core"))
 
@@ -113,6 +116,9 @@ dependencies {
 
     // Kubernetes
     implementation(libs.fabric8.kubernetes.client)
+
+    // Cassandra Driver
+    implementation(libs.cassandra.driver.core)
 
     // Testing
     testImplementation(libs.bundles.testing)

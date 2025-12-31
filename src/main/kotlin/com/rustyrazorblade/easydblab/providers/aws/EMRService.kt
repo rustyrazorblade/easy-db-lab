@@ -78,14 +78,23 @@ class EMRService(
                 .instanceCount(config.coreInstanceCount)
                 .build()
 
-        val instancesConfig =
+        val instancesConfigBuilder =
             JobFlowInstancesConfig
                 .builder()
                 .ec2SubnetId(config.subnetId)
                 .ec2KeyName(config.ec2KeyName)
                 .instanceGroups(masterInstanceGroup, coreInstanceGroup)
                 .keepJobFlowAliveWhenNoSteps(true)
-                .build()
+
+        // Add additional security groups if specified (needed for EMR to access Cassandra)
+        if (config.additionalSecurityGroups.isNotEmpty()) {
+            instancesConfigBuilder
+                .additionalMasterSecurityGroups(config.additionalSecurityGroups)
+                .additionalSlaveSecurityGroups(config.additionalSecurityGroups)
+            log.info { "Adding security groups to EMR: ${config.additionalSecurityGroups}" }
+        }
+
+        val instancesConfig = instancesConfigBuilder.build()
 
         val requestBuilder =
             RunJobFlowRequest

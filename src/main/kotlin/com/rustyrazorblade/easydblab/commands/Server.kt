@@ -45,6 +45,9 @@ class Server : PicoBaseCommand() {
     )
 
     override fun execute() {
+        // Mark context as interactive so CQL sessions stay open across commands
+        context.isInteractive = true
+
         log.info { "Starting easy-db-lab MCP server..." }
 
         try {

@@ -126,35 +126,7 @@ This command:
 
 Available versions: 3.0, 3.11, 4.0, 4.1, 5.0, 5.0-HEAD, trunk
 
-### Step 2: Generate Configuration
-
-```bash
-easy-db-lab cassandra write-config
-```
-
-This creates `cassandra.patch.yaml` with cluster-specific settings:
-
-```yaml
-cluster_name: "my-cluster"
-num_tokens: 4
-seed_provider:
-  class_name: "org.apache.cassandra.locator.SimpleSeedProvider"
-  parameters:
-    seeds: "10.0.1.28"
-hints_directory: "/mnt/db1/cassandra/hints"
-data_file_directories:
-  - "/mnt/db1/cassandra/data"
-commitlog_directory: "/mnt/db1/cassandra/commitlog"
-concurrent_reads: 64
-concurrent_writes: 64
-trickle_fsync: true
-endpoint_snitch: "Ec2Snitch"
-```
-
-!!! info "Auto-Injected Fields"
-    `listen_address` and `rpc_address` are automatically injected per-node with each host's private IP address. You don't need to specify them in the patch file.
-
-### Step 3: Customize Configuration (Optional)
+### Step 2: Customize Configuration (Optional)
 
 Edit `cassandra.patch.yaml` to customize settings:
 
@@ -172,7 +144,7 @@ Common customizations:
 | `concurrent_writes` | Max concurrent write operations | 64 |
 | `endpoint_snitch` | Network topology snitch | Ec2Snitch |
 
-### Step 4: Apply Configuration
+### Step 3: Apply Configuration
 
 ```bash
 easy-db-lab cassandra update-config
@@ -186,13 +158,13 @@ To apply and restart Cassandra in one command:
 easy-db-lab cassandra update-config --restart
 ```
 
-### Step 5: Start Cassandra
+### Step 4: Start Cassandra
 
 ```bash
 easy-db-lab cassandra start
 ```
 
-### Step 6: Verify Cluster
+### Step 5: Verify Cluster
 
 Check cluster status:
 
@@ -275,7 +247,6 @@ easy-db-lab down
 | Provision infrastructure | `easy-db-lab up` |
 | Initialize and provision | `easy-db-lab init <name> --up` |
 | Select Cassandra version | `easy-db-lab cassandra use <version>` |
-| Generate config patch | `easy-db-lab cassandra write-config` |
 | Apply configuration | `easy-db-lab cassandra update-config` |
 | Start Cassandra | `easy-db-lab cassandra start` |
 | Stop Cassandra | `easy-db-lab cassandra stop` |

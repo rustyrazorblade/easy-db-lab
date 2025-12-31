@@ -250,6 +250,7 @@ class DefaultClusterProvisioningService(
                             createEmrCluster(
                                 initConfig = servicesConfig.initConfig,
                                 subnetId = servicesConfig.subnetId,
+                                securityGroupId = servicesConfig.securityGroupId,
                                 tags = servicesConfig.tags,
                                 clusterState = servicesConfig.clusterState,
                                 keyName = instanceConfig.userConfig.keyName,
@@ -352,6 +353,7 @@ class DefaultClusterProvisioningService(
     private fun createEmrCluster(
         initConfig: InitConfig,
         subnetId: String,
+        securityGroupId: String,
         tags: Map<String, String>,
         clusterState: ClusterState,
         keyName: String,
@@ -367,6 +369,7 @@ class DefaultClusterProvisioningService(
                 masterInstanceType = initConfig.sparkMasterInstanceType,
                 coreInstanceType = initConfig.sparkWorkerInstanceType,
                 coreInstanceCount = initConfig.sparkWorkerCount,
+                additionalSecurityGroups = listOf(securityGroupId),
                 tags = tags,
             )
 

@@ -4,6 +4,8 @@ import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
+import com.rustyrazorblade.easydblab.driver.CqlSessionFactory
+import com.rustyrazorblade.easydblab.driver.DefaultCqlSessionFactory
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.EC2InstanceService
@@ -25,7 +27,15 @@ import org.koin.dsl.module
  */
 val servicesModule =
     module {
+        // Resource manager for centralized cleanup - must be singleton
+        singleOf(::DefaultResourceManager) bind ResourceManager::class
+
         factoryOf(::DefaultCassandraService) bind CassandraService::class
+
+        // CQL session factory and service - singleton for session caching in REPL/Server mode
+        singleOf(::DefaultCqlSessionFactory) bind CqlSessionFactory::class
+        singleOf(::DefaultCqlSessionService) bind CqlSessionService::class
+
         factoryOf(::EC2RegistryService) bind RegistryService::class
         factoryOf(::DefaultK3sService) bind K3sService::class
         factoryOf(::DefaultK3sAgentService) bind K3sAgentService::class
@@ -95,6 +105,7 @@ val servicesModule =
                 get<OutputHandler>(),
                 get<UserConfigProvider>(),
                 get<DockerClientProvider>(),
+                get<ResourceManager>(),
             )
         }
     }

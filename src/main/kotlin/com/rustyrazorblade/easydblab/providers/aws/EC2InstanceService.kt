@@ -8,7 +8,9 @@ import software.amazon.awssdk.services.ec2.model.BlockDeviceMapping
 import software.amazon.awssdk.services.ec2.model.DescribeInstancesRequest
 import software.amazon.awssdk.services.ec2.model.EbsBlockDevice
 import software.amazon.awssdk.services.ec2.model.Filter
+import software.amazon.awssdk.services.ec2.model.HttpTokensState
 import software.amazon.awssdk.services.ec2.model.IamInstanceProfileSpecification
+import software.amazon.awssdk.services.ec2.model.InstanceMetadataOptionsRequest
 import software.amazon.awssdk.services.ec2.model.InstanceStateName
 import software.amazon.awssdk.services.ec2.model.InstanceType
 import software.amazon.awssdk.services.ec2.model.ResourceType
@@ -112,6 +114,18 @@ class EC2InstanceService(
 
         if (blockDeviceMappings.isNotEmpty()) {
             requestBuilder.blockDeviceMappings(blockDeviceMappings)
+        }
+
+        // Control nodes need hop limit of 2 so containers (K3s pods) can access IMDS
+        if (config.serverType == ServerType.Control) {
+            requestBuilder.metadataOptions(
+                InstanceMetadataOptionsRequest
+                    .builder()
+                    .httpTokens(HttpTokensState.REQUIRED)
+                    .httpPutResponseHopLimit(2)
+                    .httpEndpoint("enabled")
+                    .build(),
+            )
         }
 
         val request = requestBuilder.build()

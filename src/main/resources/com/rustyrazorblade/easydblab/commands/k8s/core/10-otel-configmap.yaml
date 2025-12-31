@@ -25,6 +25,16 @@ data:
               scrape_interval: 5s
               static_configs:
                 - targets: ['localhost:9363']
+            - job_name: 'vector-node'
+              scrape_interval: 15s
+              static_configs:
+                - targets: ['localhost:9598']
+              # Vector node DaemonSet runs on all nodes
+            - job_name: 'vector-s3'
+              scrape_interval: 15s
+              static_configs:
+                - targets: ['localhost:9599']
+              # Vector S3 only runs on master node, will fail gracefully on other nodes
       filelog/clickhouse-server:
         include:
           - /mnt/db1/clickhouse/logs/*.log

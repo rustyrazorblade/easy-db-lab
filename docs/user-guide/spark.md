@@ -134,3 +134,132 @@ val df = spark.read
 ```
 
 Ensure your JAR includes the Spark Cassandra Connector dependency and configure the Cassandra host in your Spark application.
+
+## Bulk Writer
+
+The `bulk-writer` subproject provides high-performance bulk data loading into Cassandra using [Apache Cassandra Analytics](https://github.com/apache/cassandra-analytics). It generates SSTables directly and imports them via Cassandra Sidecar.
+
+### Transport Modes
+
+| Mode | Class | Use Case |
+|------|-------|----------|
+| Direct | `DirectBulkWriter` | Lower latency, direct sidecar connection |
+| S3 | `S3BulkWriter` | Large datasets, network isolation, S3 staging |
+
+### Building the Bulk Writer
+
+#### Step 1: Pre-build Cassandra Analytics (one-time)
+
+The cassandra-analytics library requires JDK 11 to build. A Docker-based script handles this:
+
+```bash
+bin/build-cassandra-analytics
+```
+
+This script:
+
+1. Clones `apache/cassandra-analytics` to `.cassandra-analytics/`
+2. Builds inside Docker with JDK 11
+3. Copies JARs to `bulk-writer/libs/`
+
+Options:
+
+- `--force` - Rebuild even if JARs exist
+- `--branch <branch>` - Use a specific branch (default: trunk)
+
+**Note**: The `.cassandra-analytics/` directory and `bulk-writer/libs/*.jar` are gitignored. Each developer runs this once locally.
+
+#### Step 2: Build the Bulk Writer JAR
+
+```bash
+./gradlew :bulk-writer:jar
+```
+
+Output: `bulk-writer/build/libs/bulk-writer-*.jar` (~140MB fat JAR)
+
+### Usage
+
+#### Direct Mode
+
+Writes SSTables directly to Cassandra via Sidecar:
+
+```bash
+easy-db-lab spark submit \
+  --jar bulk-writer/build/libs/bulk-writer-*.jar \
+  --main-class com.rustyrazorblade.easydblab.spark.DirectBulkWriter \
+  --args "host1,host2,host3 mykeyspace mytable datacenter1 1000000 10" \
+  --wait
+```
+
+#### S3 Mode
+
+Writes SSTables to S3, then Sidecar imports them:
+
+```bash
+S3_BUCKET=my-bucket easy-db-lab spark submit \
+  --jar bulk-writer/build/libs/bulk-writer-*.jar \
+  --main-class com.rustyrazorblade.easydblab.spark.S3BulkWriter \
+  --args "host1,host2,host3 mykeyspace mytable datacenter1 1000000 10" \
+  --wait
+```
+
+#### Arguments
+
+```
+<sidecar-hosts> <keyspace> <table> <datacenter> [rowCount] [parallelism]
+```
+
+| Argument | Description | Default |
+|----------|-------------|---------|
+| sidecar-hosts | Comma-separated Sidecar host list | Required |
+| keyspace | Target Cassandra keyspace | Required |
+| table | Target Cassandra table | Required |
+| datacenter | Local datacenter name | Required |
+| rowCount | Number of rows to generate | 1000000 |
+| parallelism | Spark partitions | 10 |
+
+### Test Script
+
+A minimal test script is provided:
+
+```bash
+bin/test-spark-bulk-writer
+```
+
+This script:
+
+1. Sources `env.sh` (for SSH config)
+2. Builds the JAR
+3. Gets hosts from `easy-db-lab hosts`
+4. Gets datacenter from `state.json`
+5. Creates a test keyspace/table via SSH + cqlsh
+6. Submits a DirectBulkWriter job
+7. Verifies data was written
+
+**Note**: The script sources `env.sh` which wraps `ssh` to use the generated `sshConfig` file. This enables SSH access to cluster nodes.
+
+### GitHub Actions / CI
+
+The Docker-based build works in CI environments:
+
+```yaml
+- name: Build Cassandra Analytics
+  run: bin/build-cassandra-analytics
+
+- name: Build Bulk Writer
+  run: ./gradlew :bulk-writer:jar
+```
+
+GitHub Actions runners include Docker, so no additional setup is needed.
+
+### Table Schema
+
+The bulk writer generates test data with this schema:
+
+```sql
+CREATE TABLE <keyspace>.<table> (
+    id bigint PRIMARY KEY,
+    course blob,
+    marks bigint
+);
+```

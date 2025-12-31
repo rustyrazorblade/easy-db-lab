@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.services.AWSResourceSetupService
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.SparkService
+import com.rustyrazorblade.easydblab.services.VictoriaLogsService
 import org.koin.dsl.module
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider
@@ -17,6 +18,7 @@ import software.amazon.awssdk.services.emr.EmrClient
 import software.amazon.awssdk.services.iam.IamClient
 import software.amazon.awssdk.services.opensearch.OpenSearchClient
 import software.amazon.awssdk.services.s3.S3Client
+import software.amazon.awssdk.services.sqs.SqsClient
 import software.amazon.awssdk.services.sts.StsClient
 
 /**
@@ -38,6 +40,8 @@ import software.amazon.awssdk.services.sts.StsClient
  * - AwsInfrastructureService: VPC infrastructure orchestration for packer and clusters
  * - SparkService: Spark job lifecycle management for EMR clusters
  * - ObjectStore: Cloud-agnostic object storage interface (S3 implementation)
+ * - SqsClient: AWS SQS client for message queue operations
+ * - SQSService: SQS queue management for log ingestion
  *
  * Note: AWSCredentialsManager is no longer registered here - it's created directly by
  * Packer classes that need it, since they already have Context.
@@ -104,6 +108,14 @@ val awsModule =
 
         single {
             OpenSearchClient
+                .builder()
+                .region(get<Region>())
+                .credentialsProvider(get<AwsCredentialsProvider>())
+                .build()
+        }
+
+        single {
+            SqsClient
                 .builder()
                 .region(get<Region>())
                 .credentialsProvider(get<AwsCredentialsProvider>())
@@ -178,6 +190,7 @@ val awsModule =
                 get<OutputHandler>(),
                 get<ObjectStore>(),
                 get<ClusterStateManager>(),
+                get<VictoriaLogsService>(),
             )
         }
 
@@ -227,4 +240,12 @@ val awsModule =
 
         // Provide InstanceSpecFactory as singleton
         single<InstanceSpecFactory> { DefaultInstanceSpecFactory() }
+
+        // Provide SQSService as singleton
+        single<SQSService> {
+            AWSSQSService(
+                get<SqsClient>(),
+                get<OutputHandler>(),
+            )
+        }
     }

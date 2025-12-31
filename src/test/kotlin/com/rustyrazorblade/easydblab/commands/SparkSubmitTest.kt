@@ -133,7 +133,7 @@ class SparkSubmitTest : BaseKoinTest() {
 
         // Set up mocks
         whenever(mockSparkService.validateCluster()).thenReturn(Result.success(validClusterInfo))
-        whenever(mockSparkService.submitJob(any(), any(), any(), any(), any()))
+        whenever(mockSparkService.submitJob(any(), any(), any(), any(), anyOrNull(), any(), any()))
             .thenReturn(Result.success("s-STEPID"))
 
         // When
@@ -147,6 +147,8 @@ class SparkSubmitTest : BaseKoinTest() {
             "com.example.Main",
             emptyList(),
             null,
+            emptyMap(),
+            emptyMap(),
         )
     }
 
@@ -183,7 +185,7 @@ class SparkSubmitTest : BaseKoinTest() {
         whenever(mockSparkService.validateCluster()).thenReturn(Result.success(validClusterInfo))
         whenever(mockObjectStore.uploadFile(any(), any(), any()))
             .thenReturn(ObjectStore.UploadResult(expectedS3Path, localJar.length()))
-        whenever(mockSparkService.submitJob(any(), any(), any(), any(), any()))
+        whenever(mockSparkService.submitJob(any(), any(), any(), any(), anyOrNull(), any(), any()))
             .thenReturn(Result.success("s-STEPID"))
 
         // When
@@ -197,6 +199,8 @@ class SparkSubmitTest : BaseKoinTest() {
             "com.example.Main",
             emptyList(),
             null,
+            emptyMap(),
+            emptyMap(),
         )
     }
 
@@ -243,6 +247,8 @@ class SparkSubmitTest : BaseKoinTest() {
                 any(),
                 any<List<String>>(),
                 anyOrNull(),
+                any(),
+                any(),
             ),
         ).thenReturn(Result.failure(RuntimeException("EMR API error")))
 

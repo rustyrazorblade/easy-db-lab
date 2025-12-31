@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.services.SparkService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
+import software.amazon.awssdk.services.emr.model.StepState
 
 /**
  * Check the status of a Spark job on the EMR cluster.
@@ -17,7 +18,9 @@ import picocli.CommandLine.Option
  * Usage:
  * - `spark status` - Shows status of most recent job
  * - `spark status --step-id s-XXXXX` - Shows status of specific job
- * - `spark status --logs` - Shows status and downloads step logs (stdout, stderr)
+ * - `spark status --verbose` - Shows detailed step information (equivalent to `aws emr describe-step`)
+ *
+ * To view logs, use: easy-db-lab spark logs --step-id <step-id>
  */
 @McpCommand
 @RequireProfileSetup
@@ -35,10 +38,10 @@ class SparkStatus : PicoBaseCommand() {
     var stepId: String? = null
 
     @Option(
-        names = ["--logs"],
-        description = ["Download step logs (stdout, stderr)"],
+        names = ["--verbose", "-v"],
+        description = ["Show detailed step information (equivalent to aws emr describe-step)"],
     )
-    var downloadLogs: Boolean = false
+    var verbose: Boolean = false
 
     override fun execute() {
         // Validate cluster exists and is accessible
@@ -53,36 +56,51 @@ class SparkStatus : PicoBaseCommand() {
         val targetStepId =
             stepId ?: getMostRecentStepId(clusterInfo.clusterId)
 
-        outputHandler.handleMessage("Checking status for step: $targetStepId")
-
-        // Get job status
-        val jobStatus =
-            sparkService
-                .getJobStatus(clusterInfo.clusterId, targetStepId)
-                .getOrElse { error ->
-                    error(error.message ?: "Failed to get job status")
-                }
-
-        // Display status information
-        outputHandler.handleMessage("Step ID: $targetStepId")
-        outputHandler.handleMessage("State: ${jobStatus.state}")
-        jobStatus.stateChangeReason?.let {
-            outputHandler.handleMessage("Reason: $it")
-        }
-        jobStatus.failureDetails?.let {
-            outputHandler.handleMessage("Failure Details: $it")
-        }
-
-        // Download step logs if requested
-        if (downloadLogs) {
-            val logsDir =
+        if (verbose) {
+            // Show detailed step information
+            val stepDetails =
                 sparkService
-                    .downloadStepLogs(clusterInfo.clusterId, targetStepId)
+                    .getStepDetails(clusterInfo.clusterId, targetStepId)
                     .getOrElse { error ->
-                        outputHandler.handleError("Failed to download logs: ${error.message}")
-                        return
+                        error(error.message ?: "Failed to get step details")
                     }
-            outputHandler.handleMessage("Step logs saved to: $logsDir")
+            outputHandler.handleMessage(stepDetails.toDisplayString())
+        } else {
+            // Show basic status
+            val jobStatus =
+                sparkService
+                    .getJobStatus(clusterInfo.clusterId, targetStepId)
+                    .getOrElse { error ->
+                        error(error.message ?: "Failed to get job status")
+                    }
+
+            // Build status output
+            val statusInfo =
+                buildString {
+                    appendLine("Step ID: $targetStepId")
+                    appendLine("State: ${jobStatus.state}")
+                    jobStatus.stateChangeReason?.let {
+                        appendLine("Reason: $it")
+                    }
+                    jobStatus.failureDetails?.let {
+                        appendLine("Failure Details: $it")
+                    }
+                }
+            outputHandler.handleMessage(statusInfo.trimEnd())
+
+            // Show log query hint for failed jobs
+            if (jobStatus.state == StepState.FAILED) {
+                outputHandler.handleMessage(
+                    """
+                    |
+                    |For more details, run:
+                    |  easy-db-lab spark status --step-id $targetStepId --verbose
+                    |
+                    |View logs with:
+                    |  easy-db-lab spark logs --step-id $targetStepId
+                    """.trimMargin(),
+                )
+            }
         }
     }
 

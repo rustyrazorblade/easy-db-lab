@@ -10,6 +10,12 @@ data class Context(
     val easyDbLabUserDirectory: File,
     val isMcp: Boolean = false,
     /**
+     * Indicates if running in an interactive mode (REPL or MCP server) where
+     * resources like CQL sessions should be kept open across commands.
+     * Mutable so REPL can set this after context creation.
+     */
+    var isInteractive: Boolean = false,
+    /**
      * Working directory for lab operations (cluster state, logs, etc.).
      * Defaults to the JVM's current working directory.
      * Can be overridden in tests to use a temp directory.
@@ -20,12 +26,17 @@ data class Context(
         /**
          * Create a Context for regular CLI execution
          */
-        fun forCli(easyDbLabUserDirectory: File): Context = Context(easyDbLabUserDirectory, isMcp = false)
+        fun forCli(easyDbLabUserDirectory: File): Context = Context(easyDbLabUserDirectory, isMcp = false, isInteractive = false)
 
         /**
          * Create a Context for MCP server execution
          */
-        fun forMcp(easyDbLabUserDirectory: File): Context = Context(easyDbLabUserDirectory, isMcp = true)
+        fun forMcp(easyDbLabUserDirectory: File): Context = Context(easyDbLabUserDirectory, isMcp = true, isInteractive = true)
+
+        /**
+         * Create a Context for REPL execution
+         */
+        fun forRepl(easyDbLabUserDirectory: File): Context = Context(easyDbLabUserDirectory, isMcp = false, isInteractive = true)
     }
 
     val log = KotlinLogging.logger {}

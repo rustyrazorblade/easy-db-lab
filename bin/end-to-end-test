@@ -89,7 +89,10 @@ done
 step_build_project() {
     echo "=== Building project ==="
     if [ "$ENABLE_SPARK" = true ]; then
-        (cd "$PROJECT_ROOT" && ./gradlew clean test shadowJar installDist :spark-connector-test1:jar)
+        # Pre-build cassandra-analytics with JDK 11 for bulk-writer
+        echo "=== Pre-building Cassandra Analytics (JDK 11) ==="
+        "$PROJECT_ROOT/bin/build-cassandra-analytics"
+        (cd "$PROJECT_ROOT" && ./gradlew clean test shadowJar installDist :spark-connector-test1:jar :bulk-writer:jar)
     else
         (cd "$PROJECT_ROOT" && ./gradlew clean test shadowJar installDist)
     fi
@@ -602,6 +605,34 @@ step_spark_status() {
     easy-db-lab spark logs
 }
 
+step_bulk_writer_direct() {
+    if [ "$ENABLE_SPARK" != true ]; then
+        echo "=== Skipping bulk writer test (use --spark to enable) ==="
+        return 0
+    fi
+    if [ "$ENABLE_CASSANDRA" != true ]; then
+        echo "=== Skipping bulk writer test (use --cassandra to enable for table creation) ==="
+        return 0
+    fi
+
+    echo "=== Creating bulk writer test table ==="
+    local db0_private=$(easy-db-lab ip db0 --private)
+    ssh db0 "cqlsh $db0_private -e \"CREATE KEYSPACE IF NOT EXISTS bulk_test WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};\""
+    ssh db0 "cqlsh $db0_private -e \"CREATE TABLE IF NOT EXISTS bulk_test.data (id bigint PRIMARY KEY, course blob, marks bigint);\""
+
+    echo "=== Submitting bulk writer (direct mode) to EMR ==="
+    local sidecar_hosts=$(easy-db-lab hosts --type cassandra --private | tr '\n' ',' | sed 's/,$//')
+
+    easy-db-lab spark submit \
+      --jar "$PROJECT_ROOT/bulk-writer/build/libs/bulk-writer.jar" \
+      --main-class com.rustyrazorblade.easydblab.spark.DirectBulkWriter \
+      --args "$sidecar_hosts" bulk_test data datacenter1 10000 4 \
+      --wait
+
+    echo "=== Verifying bulk write results ==="
+    ssh db0 "cqlsh $db0_private -e 'SELECT COUNT(*) FROM bulk_test.data;'"
+}
+
 step_clickhouse_start() {
     if [ "$ENABLE_CLICKHOUSE" != true ]; then
         echo "=== Skipping ClickHouse deployment (use --clickhouse to enable) ==="
@@ -786,6 +817,35 @@ step_test_observability() {
     echo "=== Observability stack test completed ==="
 }
 
+step_test_logs_query() {
+    echo "=== Testing logs query command ==="
+
+    # Query logs using the CLI - this tests the full pipeline:
+    # Vector -> VictoriaLogs -> VictoriaLogsService -> CLI output
+    echo "=== Querying all logs (should have systemd/journald logs) ==="
+    local log_output=$(easy-db-lab logs query --since 1h --limit 10 2>&1) || true
+    echo "$log_output"
+
+    # Check if we got any results (not just error messages)
+    if echo "$log_output" | grep -q "Found .* log entries"; then
+        echo "=== Logs query returned results: OK ==="
+    elif echo "$log_output" | grep -q "No logs found"; then
+        echo "WARNING: No logs found yet - Vector may need more time to ingest"
+    elif echo "$log_output" | grep -q "Failed to query logs"; then
+        echo "ERROR: Logs query failed"
+        echo "$log_output"
+        return 1
+    fi
+
+    # If Spark is enabled, check for EMR logs
+    if [ "$ENABLE_SPARK" = true ]; then
+        echo "=== Querying EMR logs ==="
+        easy-db-lab logs query --source emr --since 1h --limit 5 || true
+    fi
+
+    echo "=== Logs query test completed ==="
+}
+
 step_teardown() {
     echo "=== Tearing down cluster ==="
     easy-db-lab down --yes
@@ -826,6 +886,7 @@ STEPS_WORKDIR=(
     "step_stress_k8s:Run stress K8s test"
     "step_spark_submit:Submit Spark job"
     "step_spark_status:Check Spark status"
+    "step_bulk_writer_direct:Test bulk writer (direct)"
     "step_clickhouse_start:Start ClickHouse"
     "step_clickhouse_test:Test ClickHouse"
     "step_clickhouse_stop:Stop ClickHouse"
@@ -833,6 +894,7 @@ STEPS_WORKDIR=(
     "step_opensearch_test:Test OpenSearch"
     "step_opensearch_stop:Stop OpenSearch"
     "step_test_observability:Test observability stack"
+    "step_test_logs_query:Test logs query command"
     "step_teardown:Teardown cluster"
 )
 

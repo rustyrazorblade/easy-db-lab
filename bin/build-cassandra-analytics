@@ -1,0 +1,126 @@
+#!/bin/bash
+#
+# Pre-build Apache Cassandra Analytics with JDK 11
+#
+# This script clones and builds the cassandra-analytics library using JDK 11
+# (via SDKMAN), since the project requires JDK 11 for building.
+#
+# Modules that support Maven publishing are published to ~/.m2/repository.
+# Internal modules (five-zero, etc.) are built and available in build output.
+#
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+ANALYTICS_DIR="$PROJECT_ROOT/.cassandra-analytics"
+
+# Parse arguments
+FORCE_REBUILD=false
+ANALYTICS_BRANCH="trunk"
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --force)
+            FORCE_REBUILD=true
+            shift
+            ;;
+        --branch)
+            ANALYTICS_BRANCH="$2"
+            shift 2
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Usage: $0 [--force] [--branch <branch>]"
+            exit 1
+            ;;
+    esac
+done
+
+# Check if already built
+CORE_JAR="$ANALYTICS_DIR/cassandra-analytics-core/build/libs"
+if [ -d "$CORE_JAR" ] && [ "$(ls -A $CORE_JAR 2>/dev/null)" ] && [ "$FORCE_REBUILD" = false ]; then
+    echo "Cassandra Analytics already built"
+    echo "Use --force to rebuild"
+    exit 0
+fi
+
+echo "=== Building Apache Cassandra Analytics with JDK 11 ==="
+
+# Clone or update the repository
+if [ -d "$ANALYTICS_DIR" ]; then
+    echo "=== Updating existing clone ==="
+    (cd "$ANALYTICS_DIR" && git fetch origin && git checkout "$ANALYTICS_BRANCH" && git pull origin "$ANALYTICS_BRANCH" 2>/dev/null || true)
+else
+    echo "=== Cloning cassandra-analytics ==="
+    git clone --depth 1 --branch "$ANALYTICS_BRANCH" https://github.com/apache/cassandra-analytics.git "$ANALYTICS_DIR"
+fi
+
+# Initialize SDKMAN
+if [ -f "$HOME/.sdkman/bin/sdkman-init.sh" ]; then
+    source "$HOME/.sdkman/bin/sdkman-init.sh"
+else
+    echo "Error: SDKMAN not found. Install it from https://sdkman.io/"
+    exit 1
+fi
+
+# Switch to JDK 11
+echo "=== Switching to JDK 11 via SDKMAN ==="
+sdk use java 11.0.29-amzn || {
+    echo "Error: JDK 11.0.29-amzn not found. Install with: sdk install java 11.0.29-amzn"
+    exit 1
+}
+
+cd "$ANALYTICS_DIR"
+
+# Build only the modules we need (skip integration-framework which needs dtest jars)
+echo "=== Building required modules ==="
+./gradlew clean \
+    :cassandra-analytics-core:assemble \
+    :cassandra-bridge:assemble \
+    :cassandra-five-zero:assemble \
+    :cassandra-five-zero-bridge:assemble \
+    :cassandra-five-zero-types:assemble \
+    :cassandra-analytics-common:assemble \
+    :cassandra-analytics-sidecar-client:assemble \
+    :cassandra-analytics-spark-converter:assemble \
+    :cassandra-analytics-spark-five-zero-converter:assemble \
+    -x test \
+    -x checkstyleMain \
+    -x checkstyleTest \
+    -x checkstyleTestFixtures \
+    -x rat
+
+# Publish common modules first (artifactType=common)
+echo "=== Publishing common modules to local Maven ==="
+./gradlew \
+    :analytics-sidecar-client-common:publishToMavenLocal \
+    :analytics-sidecar-vertx-client:publishToMavenLocal \
+    :analytics-sidecar-vertx-client-shaded:publishToMavenLocal \
+    :cassandra-analytics-common:publishToMavenLocal \
+    :cassandra-analytics-sidecar-client:publishToMavenLocal \
+    -PartifactType=common \
+    -x test \
+    -x checkstyleMain \
+    -x checkstyleTest \
+    -x checkstyleTestFixtures \
+    -x rat
+
+# Publish spark modules (artifactType=spark)
+echo "=== Publishing spark modules to local Maven ==="
+./gradlew \
+    :cassandra-analytics-core:publishToMavenLocal \
+    :cassandra-bridge:publishToMavenLocal \
+    :cassandra-analytics-spark-converter:publishToMavenLocal \
+    -PartifactType=spark \
+    -x test \
+    -x checkstyleMain \
+    -x checkstyleTest \
+    -x checkstyleTestFixtures \
+    -x rat
+
+echo ""
+echo "=== Build complete ==="
+echo "Maven artifacts: ~/.m2/repository/org/apache/cassandra/"
+echo "Build output: $ANALYTICS_DIR/*/build/libs/"

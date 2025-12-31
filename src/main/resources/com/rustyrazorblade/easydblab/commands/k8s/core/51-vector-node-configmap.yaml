@@ -1,0 +1,118 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vector-node-config
+  namespace: default
+  labels:
+    app.kubernetes.io/name: vector
+    app.kubernetes.io/component: node-logs
+data:
+  vector.yaml: |
+    api:
+      enabled: true
+      address: "0.0.0.0:9598"
+
+    sources:
+      # Internal metrics for monitoring Vector itself
+      internal_metrics:
+        type: internal_metrics
+      # All files under /var/log
+      var_log:
+        type: file
+        include:
+          - /var/log/**/*.log
+          - /var/log/messages
+          - /var/log/syslog
+        exclude:
+          - /var/log/**/*.gz
+          - /var/log/**/*.old
+        read_from: end
+
+      # Cassandra logs (on db nodes)
+      cassandra_logs:
+        type: file
+        include:
+          - /mnt/db1/cassandra/logs/*.log
+        exclude:
+          - /mnt/db1/cassandra/logs/*.gz
+        read_from: end
+
+      # ClickHouse logs (on db nodes with ClickHouse)
+      clickhouse_logs:
+        type: file
+        include:
+          - /mnt/db1/clickhouse/logs/*.log
+          - /mnt/db1/clickhouse/keeper/logs/*.log
+        exclude:
+          - /mnt/db1/clickhouse/**/*.gz
+        read_from: end
+
+      # systemd journal
+      journald:
+        type: journald
+        current_boot_only: true
+        include_units:
+          - cassandra.service
+          - docker.service
+          - k3s.service
+          - sshd.service
+
+    transforms:
+      parse_logs:
+        type: remap
+        inputs:
+          - var_log
+          - cassandra_logs
+          - clickhouse_logs
+          - journald
+        source: |
+          # Normalize message field - journald uses MESSAGE (uppercase)
+          if exists(.MESSAGE) {
+            .message = del(.MESSAGE)
+          }
+
+          # Extract source from file path
+          if exists(.file) {
+            .source = "file"
+            path = to_string!(.file)
+
+            if contains(path, "/cassandra/") {
+              .source = "cassandra"
+            } else if contains(path, "/clickhouse/") {
+              .source = "clickhouse"
+              if contains(path, "/keeper/") {
+                .component = "keeper"
+              } else {
+                .component = "server"
+              }
+            } else if contains(path, "/var/log/") {
+              .source = "system"
+            }
+          } else if exists(._SYSTEMD_UNIT) {
+            .source = "systemd"
+            .unit = del(._SYSTEMD_UNIT)
+          }
+
+          # Add hostname
+          .host = get_env_var!("HOSTNAME")
+
+          # Add timestamp if not present
+          if !exists(.timestamp) {
+            .timestamp = now()
+          }
+
+    sinks:
+      victorialogs:
+        type: elasticsearch
+        inputs:
+          - parse_logs
+        endpoints:
+          - "http://${VICTORIA_LOGS_HOST}:9428/insert/elasticsearch/"
+        api_version: v8
+        compression: gzip
+        healthcheck:
+          enabled: false
+        query:
+          _msg_field: message
+          _time_field: timestamp
+          _stream_fields: source,host,unit,component

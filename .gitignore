@@ -23,10 +23,9 @@ build/
 /terraform.tfstate
 /terraform.tfvars
 /terraform.tfstate.backup
-logs/
+/logs/
 sshConfig
 /scripts
-logs
 /authorized_keys
 
 
@@ -153,3 +152,8 @@ CLAUDE.local.md
 # MkDocs build output
 site/
 .claude/settings.local.json
+
+# Cassandra Analytics build artifacts (see bin/build-cassandra-analytics)
+.cassandra-analytics/
+bulk-writer/libs/*.jar
+clusters/

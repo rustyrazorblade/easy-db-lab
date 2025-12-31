@@ -27,7 +27,8 @@ jobs:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
       - name: Run tests
-        run: ./gradlew test --no-daemon
+        # Exclude bulk-writer module - requires cassandra-analytics SNAPSHOTs from local Maven
+        run: ./gradlew test --no-daemon -x :bulk-writer:compileJava -x :bulk-writer:test
 
       - name: Upload test results
         if: always()

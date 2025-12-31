@@ -1,14 +1,73 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# =============================================================================
+# Dev Container Management Script
+# =============================================================================
+#
+# This script wraps devcontainer CLI commands. If the script fails, you can
+# run the underlying commands directly:
+#
+# MANUAL COMMANDS:
+# ----------------
+# start/up:
+#   devcontainer up --workspace-folder /path/to/easy-db-lab
+#
+# stop:
+#   docker stop $(docker ps -q --filter "label=devcontainer.local_folder=/path/to/easy-db-lab")
+#
+# rebuild:
+#   devcontainer up --workspace-folder /path/to/easy-db-lab --remove-existing-container
+#
+# build:
+#   devcontainer build --workspace-folder /path/to/easy-db-lab
+#
+# shell:
+#   devcontainer exec --workspace-folder /path/to/easy-db-lab /bin/zsh
+#
+# exec <cmd>:
+#   devcontainer exec --workspace-folder /path/to/easy-db-lab <cmd>
+#
+# claude:
+#   devcontainer exec --workspace-folder /path/to/easy-db-lab claude --allow-dangerously-skip-permissions
+#
+# test:
+#   devcontainer exec --workspace-folder /path/to/easy-db-lab ./gradlew test
+#
+# docs:
+#   devcontainer exec --workspace-folder /path/to/easy-db-lab mkdocs build -f config/mkdocs.yml
+#
+# docs-serve:
+#   devcontainer exec --workspace-folder /path/to/easy-db-lab mkdocs serve -f config/mkdocs.yml -a 0.0.0.0:8000 --livereload
+#
+# logs:
+#   docker logs <container_id>
+#
+# status:
+#   docker ps --filter "label=devcontainer.local_folder=/path/to/easy-db-lab"
+#
+# down:
+#   docker compose -p <project> down
+#   # or: docker rm -f <container_id>
+#
+# clean:
+#   docker compose -p <project> down -v
+#   docker image prune -f
+#
+# =============================================================================
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 WORKSPACE_FOLDER="$PROJECT_ROOT"
 
-# Build mount args for Claude config if ENABLE_CLAUDE=1
+# Build mount args for Claude credentials if ENABLE_CLAUDE=1
 CLAUDE_MOUNT_ARGS=()
 if [[ "${ENABLE_CLAUDE:-}" == "1" ]]; then
-    CLAUDE_MOUNT_ARGS=(--mount "type=bind,source=$HOME/.claude,target=/home/node/.claude")
+    if [[ -f "$HOME/.claude/.credentials.json" ]]; then
+        CLAUDE_MOUNT_ARGS=(--mount "type=bind,source=$HOME/.claude/.credentials.json,target=/home/node/.claude/.credentials.json")
+    else
+        echo -e "${YELLOW}Warning: ~/.claude/.credentials.json not found. Claude auth will not persist.${NC}"
+    fi
 fi
 
 # Colors for output

@@ -4,30 +4,31 @@ import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.services.SparkService
+import com.rustyrazorblade.easydblab.services.VictoriaLogsService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
 
 /**
- * Download EMR logs from S3 to local directory.
+ * Query EMR/Spark logs from Victoria Logs.
  *
- * By default, downloads only the step-specific logs (stdout and stderr) which are
- * most useful for debugging Spark job failures. Use --all to download the complete
- * EMR logs directory including node logs, container logs, and other infrastructure logs.
+ * Logs are collected from S3 by Vector and stored in Victoria Logs on the control node.
+ * This command queries Victoria Logs to display step logs.
  *
  * Usage:
- * - `spark logs` - Downloads step logs (stdout, stderr) for most recent job
- * - `spark logs --step-id s-XXXXX` - Downloads step logs for specific job
- * - `spark logs --all` - Downloads all EMR logs (node logs, containers, etc.)
+ * - `spark logs` - Query logs for most recent job
+ * - `spark logs --step-id s-XXXXX` - Query logs for specific job
+ * - `spark logs --limit 500` - Limit number of log lines returned
  */
 @McpCommand
 @RequireProfileSetup
 @Command(
     name = "logs",
-    description = ["Download EMR logs from S3"],
+    description = ["Query Spark/EMR logs from Victoria Logs"],
 )
 class SparkLogs : PicoBaseCommand() {
     private val sparkService: SparkService by inject()
+    private val victoriaLogsService: VictoriaLogsService by inject()
 
     @Option(
         names = ["--step-id"],
@@ -35,11 +36,18 @@ class SparkLogs : PicoBaseCommand() {
     )
     var stepId: String? = null
 
+    @Suppress("MagicNumber")
     @Option(
-        names = ["--all"],
-        description = ["Download all EMR logs (node logs, containers, etc.) instead of just step logs"],
+        names = ["--limit", "-n"],
+        description = ["Maximum number of log lines to return (default: 100)"],
     )
-    var downloadAll: Boolean = false
+    var limit: Int = 100
+
+    @Option(
+        names = ["--since"],
+        description = ["Time range: 1h, 30m, 1d (default: 1d)"],
+    )
+    var since: String = "1d"
 
     override fun execute() {
         // Validate cluster exists and is accessible
@@ -54,23 +62,40 @@ class SparkLogs : PicoBaseCommand() {
         val targetStepId =
             stepId ?: getMostRecentStepId(clusterInfo.clusterId)
 
-        val logsDir =
-            if (downloadAll) {
-                outputHandler.handleMessage("Downloading all EMR logs (this may take a while)...")
-                sparkService
-                    .downloadAllLogs(targetStepId)
-                    .getOrElse { error ->
-                        error(error.message ?: "Failed to download logs")
-                    }
-            } else {
-                sparkService
-                    .downloadStepLogs(clusterInfo.clusterId, targetStepId)
-                    .getOrElse { error ->
-                        error(error.message ?: "Failed to download step logs")
-                    }
-            }
+        outputHandler.handleMessage("Querying logs for step: $targetStepId\n")
 
-        outputHandler.handleMessage("Logs saved to: $logsDir")
+        // Query Victoria Logs for EMR logs matching this step ID
+        val query = "source:emr AND \"$targetStepId\""
+        val logs =
+            victoriaLogsService
+                .query(query, since, limit)
+                .getOrElse { exception ->
+                    outputHandler.handleError("Failed to query logs: ${exception.message}")
+                    outputHandler.handleMessage(
+                        """
+                        |Tips:
+                        |  - Ensure observability stack is deployed: easy-db-lab k8 apply
+                        |  - Check if Victoria Logs is running: kubectl get pods
+                        |  - Logs may take a few minutes to be ingested from S3
+                        """.trimMargin(),
+                    )
+                    return
+                }
+
+        if (logs.isEmpty()) {
+            outputHandler.handleMessage(
+                """
+                |No logs found for step $targetStepId
+                |
+                |Tips:
+                |  - Logs may take a few minutes to be ingested from S3
+                |  - Try increasing the time range with --since 1d
+                """.trimMargin(),
+            )
+        } else {
+            outputHandler.handleMessage(logs.joinToString("\n"))
+            outputHandler.handleMessage("\nFound ${logs.size} log entries.")
+        }
     }
 
     /**

@@ -68,7 +68,8 @@ class MinaSocksProxyService(
         // Find an available port dynamically
         val port = findAvailablePort()
         actualLocalPort = port
-        localAddress = SshdSocketAddress("localhost", port)
+        // Use explicit 127.0.0.1 to avoid IPv4/IPv6 resolution issues with "localhost"
+        localAddress = SshdSocketAddress("127.0.0.1", port)
 
         log.info { "Starting SOCKS5 proxy to ${gatewayHost.alias} (${gatewayHost.publicIp}) on port $port" }
 
@@ -83,7 +84,9 @@ class MinaSocksProxyService(
         val clientSession = extractClientSession(sshClient)
 
         // Start dynamic port forwarding (SOCKS5 proxy)
-        clientSession.startDynamicPortForwarding(localAddress)
+        log.info { "Starting dynamic port forwarding on $localAddress" }
+        val boundAddress = clientSession.startDynamicPortForwarding(localAddress)
+        log.info { "Dynamic port forwarding bound to: $boundAddress" }
 
         session = clientSession
         state =
@@ -93,7 +96,10 @@ class MinaSocksProxyService(
                 startTime = Instant.now(),
             )
 
-        log.info { "SOCKS5 proxy started successfully on localhost:$port" }
+        // Verify the proxy is accepting connections
+        verifyProxyAcceptingConnections(port)
+
+        log.info { "SOCKS5 proxy started successfully on 127.0.0.1:$port via gateway ${gatewayHost.publicIp}" }
         return state!!
     }
 
@@ -104,6 +110,33 @@ class MinaSocksProxyService(
         ServerSocket(0).use { socket ->
             socket.localPort
         }
+
+    /**
+     * Verify that the SOCKS proxy is accepting connections.
+     * This does a simple TCP connect test to ensure the port is open.
+     */
+    @Suppress("MagicNumber")
+    private fun verifyProxyAcceptingConnections(port: Int) {
+        val maxRetries = 5
+        val retryDelayMs = 100L
+        val connectTimeoutMs = 1000
+
+        repeat(maxRetries) { attempt ->
+            try {
+                java.net.Socket().use { socket ->
+                    socket.connect(java.net.InetSocketAddress("127.0.0.1", port), connectTimeoutMs)
+                }
+                log.debug { "SOCKS proxy verified accepting connections on port $port (attempt ${attempt + 1})" }
+                return
+            } catch (e: Exception) {
+                log.debug { "SOCKS proxy not ready yet (attempt ${attempt + 1}): ${e.message}" }
+                if (attempt < maxRetries - 1) {
+                    Thread.sleep(retryDelayMs)
+                }
+            }
+        }
+        log.warn { "Could not verify SOCKS proxy is accepting connections, proceeding anyway" }
+    }
 
     override fun stop() {
         lock.withLock { stopInternal() }

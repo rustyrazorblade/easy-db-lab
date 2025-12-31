@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.di
 
 import com.rustyrazorblade.easydblab.kubernetes.kubernetesModule
+import com.rustyrazorblade.easydblab.observability.observabilityModule
 import com.rustyrazorblade.easydblab.providers.aws.awsModule
 import com.rustyrazorblade.easydblab.providers.docker.dockerModule
 import com.rustyrazorblade.easydblab.providers.ssh.sshModule
@@ -24,6 +25,7 @@ object KoinModules {
             sshModule,
             proxyModule,
             kubernetesModule,
+            observabilityModule,
             awsModule,
             servicesModule,
             configurationModule,

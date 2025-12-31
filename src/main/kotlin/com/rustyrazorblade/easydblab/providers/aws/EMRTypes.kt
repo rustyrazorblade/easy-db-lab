@@ -16,6 +16,8 @@ import com.rustyrazorblade.easydblab.Constants
  * @property serviceRole IAM service role for EMR
  * @property jobFlowRole IAM role for EC2 instances in the cluster
  * @property applications List of applications to install (e.g., ["Spark"])
+ * @property additionalSecurityGroups Additional security groups to attach to EMR instances
+ *                                    (needed for EMR to access other EC2 instances like Cassandra)
  * @property tags Tags to apply to the cluster
  */
 data class EMRClusterConfig(
@@ -30,6 +32,7 @@ data class EMRClusterConfig(
     val serviceRole: String = Constants.AWS.Roles.EMR_SERVICE_ROLE,
     val jobFlowRole: String = Constants.AWS.Roles.EMR_EC2_ROLE,
     val applications: List<String> = listOf("Spark"),
+    val additionalSecurityGroups: List<String> = emptyList(),
     val tags: Map<String, String>,
 )
 

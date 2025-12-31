@@ -40,6 +40,15 @@ object Constants {
 
         // Log display settings
         const val STDERR_TAIL_LINES = 100
+
+        // S3 prefix for EMR logs (used by S3 notifications and Vector)
+        const val S3_LOG_PREFIX = "spark/emr-logs/"
+
+        // Log ingestion wait time (ms) - time to wait for logs to be ingested into Victoria Logs
+        const val LOG_INGESTION_WAIT_MS = 5000L
+
+        // Maximum log lines to display on job failure
+        const val MAX_LOG_LINES = 100
     }
 
     // Retry configuration

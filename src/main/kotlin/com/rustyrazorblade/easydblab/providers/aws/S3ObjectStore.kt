@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.providers.aws
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.services.ObjectStore
@@ -7,12 +8,22 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest
+import software.amazon.awssdk.services.s3.model.Event
+import software.amazon.awssdk.services.s3.model.FilterRule
+import software.amazon.awssdk.services.s3.model.FilterRuleName
+import software.amazon.awssdk.services.s3.model.GetBucketNotificationConfigurationRequest
+import software.amazon.awssdk.services.s3.model.GetBucketNotificationConfigurationResponse
 import software.amazon.awssdk.services.s3.model.GetObjectRequest
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException
+import software.amazon.awssdk.services.s3.model.NotificationConfiguration
+import software.amazon.awssdk.services.s3.model.NotificationConfigurationFilter
+import software.amazon.awssdk.services.s3.model.PutBucketNotificationConfigurationRequest
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
+import software.amazon.awssdk.services.s3.model.QueueConfiguration
 import software.amazon.awssdk.services.s3.model.S3Exception
+import software.amazon.awssdk.services.s3.model.S3KeyFilter
 import java.io.File
 import java.nio.file.Path
 
@@ -312,4 +323,94 @@ class S3ObjectStore(
             .bucket(remotePath.bucket)
             .key(remotePath.getKey())
             .build()
+
+    /**
+     * Configures S3 bucket notifications to send EMR log events to an SQS queue.
+     *
+     * When objects are created in the spark/emr-logs/ prefix, S3 will send a notification
+     * to the specified SQS queue. Vector can then poll the queue to ingest logs.
+     *
+     * @param bucket The S3 bucket name
+     * @param queueArn The ARN of the SQS queue to receive notifications
+     * @param prefix The S3 key prefix to monitor (default: Constants.EMR.S3_LOG_PREFIX)
+     * @return Result indicating success or containing an exception on failure
+     */
+    fun configureEMRLogNotifications(
+        bucket: String,
+        queueArn: String,
+        prefix: String = Constants.EMR.S3_LOG_PREFIX,
+    ): Result<Unit> =
+        runCatching {
+            outputHandler.handleMessage("Configuring S3 bucket notifications for EMR logs...")
+
+            val filterRule =
+                FilterRule
+                    .builder()
+                    .name(FilterRuleName.PREFIX)
+                    .value(prefix)
+                    .build()
+
+            val keyFilter =
+                S3KeyFilter
+                    .builder()
+                    .filterRules(filterRule)
+                    .build()
+
+            val notificationFilter =
+                NotificationConfigurationFilter
+                    .builder()
+                    .key(keyFilter)
+                    .build()
+
+            val queueConfig =
+                QueueConfiguration
+                    .builder()
+                    .id("emr-logs-to-sqs")
+                    .queueArn(queueArn)
+                    .events(Event.S3_OBJECT_CREATED)
+                    .filter(notificationFilter)
+                    .build()
+
+            val notificationConfig =
+                NotificationConfiguration
+                    .builder()
+                    .queueConfigurations(queueConfig)
+                    .build()
+
+            val request =
+                PutBucketNotificationConfigurationRequest
+                    .builder()
+                    .bucket(bucket)
+                    .notificationConfiguration(notificationConfig)
+                    .build()
+
+            val retryConfig = RetryUtil.createAwsRetryConfig<Unit>()
+            val retry = Retry.of("s3-put-notification", retryConfig)
+
+            Retry
+                .decorateRunnable(retry) {
+                    s3Client.putBucketNotificationConfiguration(request)
+                    log.info { "Configured S3 bucket notifications for $bucket with prefix $prefix" }
+                }.run()
+
+            outputHandler.handleMessage("S3 bucket notifications configured for EMR logs")
+        }
+
+    /**
+     * Retrieves the current bucket notification configuration.
+     *
+     * Used to verify that S3 → SQS notifications are correctly configured
+     * for the EMR log ingestion pipeline.
+     *
+     * @param bucket The S3 bucket name
+     * @return The notification configuration for the bucket
+     */
+    fun getBucketNotificationConfiguration(bucket: String): GetBucketNotificationConfigurationResponse {
+        val request =
+            GetBucketNotificationConfigurationRequest
+                .builder()
+                .bucket(bucket)
+                .build()
+        return s3Client.getBucketNotificationConfiguration(request)
+    }
 }

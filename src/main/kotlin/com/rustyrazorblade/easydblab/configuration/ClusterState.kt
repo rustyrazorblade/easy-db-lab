@@ -177,6 +177,10 @@ data class ClusterState(
     var infrastructure: InfrastructureState? = null,
     // S3 bucket for this environment (per-cluster bucket, created during 'up')
     var s3Bucket: String? = null,
+    // SQS queue URL for log ingestion (receives S3 notifications for EMR logs)
+    var sqsQueueUrl: String? = null,
+    // SQS queue ARN for log ingestion (used for S3 bucket notification policy)
+    var sqsQueueArn: String? = null,
     // SHA-256 hashes of backed-up configuration files for incremental backup
     // Maps BackupTarget enum name to hex-encoded hash
     var backupHashes: Map<String, String> = emptyMap(),
@@ -211,6 +215,18 @@ data class ClusterState(
     fun updateInfrastructure(infrastructure: InfrastructureState?) {
         this.infrastructure = infrastructure
         this.vpcId = infrastructure?.vpcId
+        this.lastAccessedAt = Instant.now()
+    }
+
+    /**
+     * Update SQS queue info for log ingestion
+     */
+    fun updateSqsQueue(
+        queueUrl: String?,
+        queueArn: String?,
+    ) {
+        this.sqsQueueUrl = queueUrl
+        this.sqsQueueArn = queueArn
         this.lastAccessedAt = Instant.now()
     }
 

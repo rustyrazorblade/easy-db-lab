@@ -61,6 +61,20 @@ class SparkSubmit : PicoBaseCommand() {
     )
     var jobName: String? = null
 
+    @Option(
+        names = ["--conf"],
+        description = ["Spark configuration (key=value), can be repeated"],
+        arity = "0..*",
+    )
+    var sparkConf: List<String> = listOf()
+
+    @Option(
+        names = ["--env"],
+        description = ["Environment variable (KEY=value), can be repeated"],
+        arity = "0..*",
+    )
+    var envVars: List<String> = listOf()
+
     override fun execute() {
         // Validate cluster exists and is in valid state
         val clusterInfo =
@@ -79,6 +93,22 @@ class SparkSubmit : PicoBaseCommand() {
                 uploadJarToS3(jarPath)
             }
 
+        // Parse --conf options into map
+        val sparkConfMap =
+            sparkConf.associate { conf ->
+                val parts = conf.split("=", limit = 2)
+                require(parts.size == 2) { "Invalid --conf format: $conf (expected key=value)" }
+                parts[0] to parts[1]
+            }
+
+        // Parse --env options into map
+        val envVarsMap =
+            envVars.associate { env ->
+                val parts = env.split("=", limit = 2)
+                require(parts.size == 2) { "Invalid --env format: $env (expected KEY=value)" }
+                parts[0] to parts[1]
+            }
+
         // Submit job to EMR
         val stepId =
             sparkService
@@ -88,6 +118,8 @@ class SparkSubmit : PicoBaseCommand() {
                     mainClass = mainClass,
                     jobArgs = jobArgs,
                     jobName = jobName,
+                    sparkConf = sparkConfMap,
+                    envVars = envVarsMap,
                 ).getOrElse { exception ->
                     error(exception.message ?: "Failed to submit Spark job")
                 }

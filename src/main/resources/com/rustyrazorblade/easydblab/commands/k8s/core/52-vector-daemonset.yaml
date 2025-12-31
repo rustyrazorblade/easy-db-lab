@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: vector
+  namespace: default
+  labels:
+    app.kubernetes.io/name: vector
+    app.kubernetes.io/component: node-logs
+spec:
+  selector:
+    matchLabels:
+      app: vector
+  template:
+    metadata:
+      labels:
+        app: vector
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      tolerations:
+        - operator: Exists  # Run on all nodes including master
+      containers:
+        - name: vector
+          image: timberio/vector:0.34.1-alpine
+          args:
+            - --config
+            - /etc/vector/vector.yaml
+          env:
+            - name: HOSTNAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: VICTORIA_LOGS_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: cluster-config
+                  key: control_node_ip
+          resources:
+            limits:
+              memory: 256Mi
+            requests:
+              memory: 64Mi
+              cpu: 50m
+          volumeMounts:
+            - name: config
+              mountPath: /etc/vector
+            - name: var-log
+              mountPath: /var/log
+              readOnly: true
+            - name: journal
+              mountPath: /var/log/journal
+              readOnly: true
+            - name: machine-id
+              mountPath: /etc/machine-id
+              readOnly: true
+            - name: mnt-db1
+              mountPath: /mnt/db1
+              readOnly: true
+            - name: data
+              mountPath: /var/lib/vector
+      volumes:
+        - name: config
+          configMap:
+            name: vector-node-config
+        - name: var-log
+          hostPath:
+            path: /var/log
+        - name: journal
+          hostPath:
+            path: /var/log/journal
+        - name: machine-id
+          hostPath:
+            path: /etc/machine-id
+        - name: mnt-db1
+          hostPath:
+            path: /mnt/db1
+        - name: data
+          hostPath:
+            path: /var/lib/vector

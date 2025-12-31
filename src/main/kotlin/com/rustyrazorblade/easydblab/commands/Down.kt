@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredResources
 import com.rustyrazorblade.easydblab.providers.aws.InfrastructureTeardownService
+import com.rustyrazorblade.easydblab.providers.aws.SQSService
 import com.rustyrazorblade.easydblab.providers.aws.TeardownMode
 import com.rustyrazorblade.easydblab.providers.aws.TeardownResult
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -68,6 +69,7 @@ class Down : PicoBaseCommand() {
     var autoApprove = false
 
     private val teardownService: InfrastructureTeardownService by inject()
+    private val sqsService: SQSService by inject()
     private val log = KotlinLogging.logger {}
 
     data class Socks5ProxyState(
@@ -340,16 +342,35 @@ class Down : PicoBaseCommand() {
         try {
             if (clusterStateManager.exists()) {
                 val clusterState = clusterStateManager.load()
+
+                // Delete SQS queue if it exists
+                deleteSqsQueue(clusterState.sqsQueueUrl)
+
                 clusterState.markInfrastructureDown()
                 clusterState.updateHosts(emptyMap())
                 clusterState.updateEmrCluster(null)
                 clusterState.updateOpenSearchDomain(null)
                 clusterState.updateInfrastructure(null)
+                clusterState.updateSqsQueue(null, null)
                 clusterStateManager.save(clusterState)
                 outputHandler.handleMessage("Cluster state updated: infrastructure marked as DOWN")
             }
         } catch (e: Exception) {
             log.warn(e) { "Failed to update cluster state, continuing anyway" }
+        }
+    }
+
+    /**
+     * Deletes the SQS queue for log ingestion if it exists.
+     */
+    private fun deleteSqsQueue(queueUrl: String?) {
+        if (queueUrl.isNullOrBlank()) {
+            log.debug { "No SQS queue to delete" }
+            return
+        }
+
+        sqsService.deleteLogIngestQueue(queueUrl).onFailure { error ->
+            log.warn(error) { "Failed to delete SQS queue: $queueUrl" }
         }
     }
 }

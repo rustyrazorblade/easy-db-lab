@@ -7,6 +7,7 @@ import org.koin.dsl.module
  *
  * Provides:
  * - SocksProxyService as a singleton (manages proxy lifecycle across requests in server mode)
+ * - HttpClientFactory for creating HTTP clients that use the SOCKS proxy
  *
  * Note: SSHConnectionProvider must be provided by sshModule
  */
@@ -16,4 +17,7 @@ val proxyModule =
         // in server mode. In CLI mode, it's started/stopped per command.
         // Port is dynamically selected at startup to avoid conflicts.
         single<SocksProxyService> { MinaSocksProxyService(get()) }
+
+        // HTTP client factory - uses SOCKS proxy for accessing private endpoints
+        single<HttpClientFactory> { ProxiedHttpClientFactory(get()) }
     }

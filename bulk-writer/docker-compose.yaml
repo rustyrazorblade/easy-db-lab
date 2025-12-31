@@ -1,0 +1,98 @@
+# Docker Compose for local bulk-writer testing
+# Usage: docker compose up -d
+# Then run: bin/test-local-bulk-writer
+#
+# Network setup:
+#   - Sidecar uses network_mode: "service:cassandra" to share Cassandra's network namespace
+#   - Both CQL (9042) and Sidecar API (9043) are accessible via 'cassandra' hostname
+#   - Spark connects to cassandra:9043 for bulk writes, sidecar connects to localhost:9042
+#   - Uses linux/amd64 platform for sidecar (no ARM64 build available)
+
+services:
+  cassandra:
+    image: cassandra:5.0
+    container_name: cassandra
+    entrypoint: ["/docker-entrypoint-wrapper.sh"]
+    ports:
+      - "9042:9042"
+      - "9043:9043"
+    environment:
+      - CASSANDRA_CLUSTER_NAME=TestCluster
+      - CASSANDRA_DC=dc1
+      - CASSANDRA_ENDPOINT_SNITCH=GossipingPropertyFileSnitch
+      - CASSANDRA_LISTEN_ADDRESS=auto
+      - CASSANDRA_BROADCAST_ADDRESS=10.99.0.2
+      - CASSANDRA_RPC_ADDRESS=0.0.0.0
+      # LOCAL_JMX=yes allows unauthenticated JMX from localhost only
+      # Since sidecar shares cassandra's network namespace, localhost JMX works
+      - LOCAL_JMX=yes
+      - MAX_HEAP_SIZE=1G
+    volumes:
+      - ./cassandra-data:/var/lib/cassandra
+      - ./cassandra.yaml:/etc/cassandra/cassandra.yaml
+      - ./docker-entrypoint-wrapper.sh:/docker-entrypoint-wrapper.sh:ro
+    healthcheck:
+      test: ["CMD", "cqlsh", "-e", "describe keyspaces"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 90s
+    networks:
+      bulk-writer-net:
+        ipv4_address: 10.99.0.2
+
+  sidecar:
+    image: ghcr.io/apache/cassandra-sidecar:latest
+    platform: linux/amd64
+    container_name: sidecar
+    network_mode: "service:cassandra"
+    # Run as cassandra user (uid=999) to match Cassandra container for staging directory permissions
+    user: "999:999"
+    depends_on:
+      cassandra:
+        condition: service_healthy
+    volumes:
+      - ./sidecar-config.yaml:/conf/sidecar.yaml:ro
+      # Sidecar needs write access to staging directory for SSTable uploads
+      - ./cassandra-data:/var/lib/cassandra
+
+  spark-master:
+    image: apache/spark:3.5.7
+    platform: linux/amd64
+    container_name: spark-master
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
+    ports:
+      - "8080:8080"
+      - "7077:7077"
+    environment:
+      - SPARK_MASTER_HOST=spark-master
+      - SPARK_NO_DAEMONIZE=true
+    volumes:
+      - ./build/libs:/jars:ro
+    networks:
+      bulk-writer-net:
+        ipv4_address: 10.99.0.10
+
+  spark-worker:
+    image: apache/spark:3.5.7
+    platform: linux/amd64
+    container_name: spark-worker
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
+    depends_on:
+      - spark-master
+    environment:
+      - SPARK_WORKER_MEMORY=2G
+      - SPARK_WORKER_CORES=2
+      - SPARK_NO_DAEMONIZE=true
+    volumes:
+      - ./build/libs:/jars:ro
+    networks:
+      bulk-writer-net:
+        ipv4_address: 10.99.0.11
+
+networks:
+  bulk-writer-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.99.0.0/24

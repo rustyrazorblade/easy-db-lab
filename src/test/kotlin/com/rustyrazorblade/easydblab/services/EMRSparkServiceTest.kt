@@ -37,6 +37,7 @@ class EMRSparkServiceTest : BaseKoinTest() {
     private lateinit var mockEmrClient: EmrClient
     private lateinit var mockObjectStore: ObjectStore
     private lateinit var mockClusterStateManager: ClusterStateManager
+    private lateinit var mockVictoriaLogsService: VictoriaLogsService
     private lateinit var sparkService: SparkService
 
     private val testClusterId = "j-ABC123DEF456"
@@ -66,7 +67,8 @@ class EMRSparkServiceTest : BaseKoinTest() {
                 single<EmrClient> { mockEmrClient }
                 single<ObjectStore> { mockObjectStore }
                 single<ClusterStateManager> { mockClusterStateManager }
-                factory<SparkService> { EMRSparkService(get(), get(), get(), get()) }
+                single<VictoriaLogsService> { mockVictoriaLogsService }
+                factory<SparkService> { EMRSparkService(get(), get(), get(), get(), get()) }
             },
         )
 
@@ -75,6 +77,7 @@ class EMRSparkServiceTest : BaseKoinTest() {
         mockEmrClient = mock()
         mockObjectStore = mock()
         mockClusterStateManager = mock()
+        mockVictoriaLogsService = mock()
         sparkService = getKoin().get()
     }
 
@@ -414,6 +417,18 @@ class EMRSparkServiceTest : BaseKoinTest() {
 
         whenever(mockEmrClient.describeStep(any<DescribeStepRequest>()))
             .thenReturn(response)
+
+        // Mock cluster state for S3 bucket lookup
+        val clusterState =
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+                s3Bucket = "test-bucket",
+            )
+        whenever(mockClusterStateManager.load()).thenReturn(clusterState)
+
+        // Mock Victoria Logs query (returns empty logs)
+        whenever(mockVictoriaLogsService.query(any(), any(), any())).thenReturn(Result.success(emptyList()))
 
         // When
         val result = sparkService.waitForJobCompletion(testClusterId, testStepId)

@@ -1,0 +1,94 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vector-s3-config
+  namespace: default
+  labels:
+    app.kubernetes.io/name: vector
+    app.kubernetes.io/component: s3-logs
+data:
+  vector.yaml: |
+    api:
+      enabled: true
+      address: "0.0.0.0:9599"
+
+    sources:
+      # Internal metrics for monitoring Vector itself
+      internal_metrics:
+        type: internal_metrics
+
+      emr_logs:
+        type: aws_s3
+        region: "${AWS_REGION}"
+        compression: auto
+        sqs:
+          queue_url: "${SQS_QUEUE_URL}"
+          delete_message: true
+
+    transforms:
+      parse_emr:
+        type: remap
+        inputs:
+          - emr_logs
+        source: |
+          # Parse S3 key patterns:
+          # - spark/emr-logs/{cluster-id}/steps/{step-id}/{stdout|stderr|controller}.gz
+          # - spark/emr-logs/{cluster-id}/node/{instance-id}/applications/{app}/{file}.gz
+          # - spark/emr-logs/{cluster-id}/node/{instance-id}/daemons/{daemon}/{file}.gz
+          # - spark/emr-logs/{cluster-id}/node/{instance-id}/provision-node/...
+          # - spark/emr-logs/{cluster-id}/node/{instance-id}/setup-devices/...
+          .source = "emr"
+
+          if exists(.file) {
+            file_path = to_string!(.file)
+            parts = split(file_path, "/")
+
+            # parts[0]=spark, parts[1]=emr-logs, parts[2]=cluster-id
+            .emr_cluster_id = get(parts, [2]) ?? "unknown"
+
+            # Determine log category based on path structure
+            category = get(parts, [3]) ?? "unknown"
+
+            if category == "steps" {
+              # Step logs: parts[4]=step-id, parts[5]=log-file
+              .log_category = "step"
+              .step_id = get(parts, [4]) ?? "unknown"
+              log_file = get(parts, [5]) ?? "unknown"
+              .log_type = replace!(log_file, r'\.gz$', "")
+              .host = "emr-master"
+            } else if category == "node" {
+              # Node logs: parts[4]=instance-id, parts[5]=subcategory
+              .log_category = get(parts, [5]) ?? "node"
+              .instance_id = get(parts, [4]) ?? "unknown"
+              .host = get(parts, [4]) ?? "unknown"
+              # Get the log file name (last part)
+              log_file = get(parts, [-1]) ?? "unknown"
+              .log_type = replace!(log_file, r'\.gz$', "")
+            } else {
+              .log_category = category
+              .host = "emr"
+              log_file = get(parts, [-1]) ?? "unknown"
+              .log_type = replace!(log_file, r'\.gz$', "")
+            }
+          }
+
+          # Add timestamp if not present
+          if !exists(.timestamp) {
+            .timestamp = now()
+          }
+
+    sinks:
+      victorialogs:
+        type: elasticsearch
+        inputs:
+          - parse_emr
+        endpoints:
+          - "http://localhost:9428/insert/elasticsearch/"
+        api_version: v8
+        compression: gzip
+        healthcheck:
+          enabled: false
+        query:
+          _msg_field: message
+          _time_field: timestamp
+          _stream_fields: source,emr_cluster_id,step_id,log_category,log_type,host,instance_id

@@ -57,7 +57,10 @@ class UpdateConfig : PicoBaseCommand() {
             outputHandler.handleMessage("Uploading $file to $it")
 
             val yaml = context.yaml.readTree(Path.of(file).inputStream())
-            (yaml as ObjectNode).put("listen_address", it.private).put("rpc_address", it.private)
+            (yaml as ObjectNode)
+                .put("listen_address", it.private)
+                .put("rpc_address", it.private)
+                .put("broadcast_rpc_address", it.private)
 
             outputHandler.handleMessage("Patching $it")
             val tmp = Files.createTempFile("easydblab", "yaml")

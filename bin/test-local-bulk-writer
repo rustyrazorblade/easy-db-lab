@@ -1,4 +1,26 @@
 #!/bin/bash
+#
+# Test the Spark bulk writer locally using Docker Compose.
+# Starts Cassandra, Sidecar, and Spark containers, then runs a bulk write job.
+#
+# Usage:
+#   bin/test-local-bulk-writer [options]
+#
+# Options:
+#   --rows <count>        Number of rows to write (default: 1000)
+#   --parallelism <num>   Number of Spark partitions for generation (default: 2)
+#   --partitions <count>  Number of Cassandra partitions to distribute data across (default: 100)
+#   --rf <num>            Replication factor (default: 1)
+#   --keyspace <name>     Keyspace name (default: bulk_test)
+#   --table <name>        Table name (default: data_<timestamp> for uniqueness)
+#   -h, --help            Show this help message
+#
+# Examples:
+#   bin/test-local-bulk-writer
+#   bin/test-local-bulk-writer --rows 10000
+#   bin/test-local-bulk-writer --rows 100000 --parallelism 4 --partitions 1000
+#   bin/test-local-bulk-writer --keyspace myks --table mytable --rows 5000
+#
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -6,21 +28,72 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BULK_WRITER_DIR="$PROJECT_ROOT/bulk-writer"
 
 # Default values
-ROW_COUNT="${1:-1000}"
-PARALLELISM="${2:-2}"
-REPLICATION_FACTOR="${3:-1}"
+ROW_COUNT="1000"
+PARALLELISM="2"
+PARTITION_COUNT="100"
+REPLICATION_FACTOR="1"
 KEYSPACE="bulk_test"
-TABLE="data"
+TABLE=""  # Empty means auto-generate with timestamp
 LOCAL_DC="dc1"
+
+usage() {
+    sed -n '2,22p' "$0" | sed 's/^# //' | sed 's/^#//'
+    exit 1
+}
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --rows)
+            ROW_COUNT="$2"
+            shift 2
+            ;;
+        --parallelism)
+            PARALLELISM="$2"
+            shift 2
+            ;;
+        --partitions)
+            PARTITION_COUNT="$2"
+            shift 2
+            ;;
+        --rf)
+            REPLICATION_FACTOR="$2"
+            shift 2
+            ;;
+        --keyspace)
+            KEYSPACE="$2"
+            shift 2
+            ;;
+        --table)
+            TABLE="$2"
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            ;;
+        *)
+            echo "Error: Unknown option $1"
+            usage
+            ;;
+    esac
+done
+
+# Generate unique table name if not provided
+if [ -z "$TABLE" ]; then
+    TABLE="data_$(date +%s)"
+fi
 
 echo "=== Local Bulk Writer Test ==="
 echo "Row count: $ROW_COUNT"
 echo "Parallelism: $PARALLELISM"
+echo "Partition count: $PARTITION_COUNT"
 echo "Replication factor: $REPLICATION_FACTOR"
+echo "Keyspace: $KEYSPACE"
+echo "Table: $TABLE"
 echo ""
 
 echo "=== Step 1: Building bulk-writer shadow JAR ==="
-(cd "$PROJECT_ROOT" && ./gradlew :bulk-writer:shadowJar -q)
+(cd "$PROJECT_ROOT" && ./gradlew :spark-shared:clean :bulk-writer:clean :bulk-writer:shadowJar -q)
 
 # Find the built JAR
 JAR_FILE=$(ls "$BULK_WRITER_DIR/build/libs/bulk-writer-"*".jar" 2>/dev/null | grep -v sources | grep -v javadoc | head -1)
@@ -134,6 +207,7 @@ echo "  table: $TABLE"
 echo "  localDc: $LOCAL_DC"
 echo "  rowCount: $ROW_COUNT"
 echo "  parallelism: $PARALLELISM"
+echo "  partitionCount: $PARTITION_COUNT"
 echo "  replicationFactor: $REPLICATION_FACTOR"
 echo ""
 
@@ -148,6 +222,7 @@ docker compose exec -T spark-master /opt/spark/bin/spark-submit \
     --conf "spark.easydblab.localDc=$LOCAL_DC" \
     --conf "spark.easydblab.rowCount=$ROW_COUNT" \
     --conf "spark.easydblab.parallelism=$PARALLELISM" \
+    --conf "spark.easydblab.partitionCount=$PARTITION_COUNT" \
     --conf "spark.easydblab.replicationFactor=$REPLICATION_FACTOR" \
     "/jars/$JAR_NAME"
 set +x

@@ -82,6 +82,7 @@ easy-db-lab spark submit \
   --conf "spark.easydblab.localDc=$DC" \
   --conf "spark.easydblab.rowCount=1000" \
   --conf "spark.easydblab.parallelism=4" \
+  --conf "spark.easydblab.partitionCount=100" \
   --conf "spark.easydblab.replicationFactor=1" \
   --wait || SPARK_EXIT_CODE=$?
 

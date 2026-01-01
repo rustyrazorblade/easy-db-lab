@@ -616,9 +616,8 @@ step_bulk_writer_direct() {
     fi
 
     echo "=== Creating bulk writer test table ==="
-    local db0_private=$(easy-db-lab ip db0 --private)
-    ssh db0 "cqlsh $db0_private -e \"CREATE KEYSPACE IF NOT EXISTS bulk_test WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};\""
-    ssh db0 "cqlsh $db0_private -e \"CREATE TABLE IF NOT EXISTS bulk_test.data (id bigint PRIMARY KEY, course blob, marks bigint);\""
+    easy-db-lab cassandra cql "CREATE KEYSPACE IF NOT EXISTS bulk_test WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}"
+    easy-db-lab cassandra cql "CREATE TABLE IF NOT EXISTS bulk_test.data (id bigint PRIMARY KEY, course blob, marks bigint)"
 
     echo "=== Submitting bulk writer (direct mode) to EMR ==="
     local sidecar_hosts=$(easy-db-lab hosts --type cassandra --private | tr '\n' ',' | sed 's/,$//')
@@ -630,7 +629,7 @@ step_bulk_writer_direct() {
       --wait
 
     echo "=== Verifying bulk write results ==="
-    ssh db0 "cqlsh $db0_private -e 'SELECT COUNT(*) FROM bulk_test.data;'"
+    easy-db-lab cassandra cql "SELECT COUNT(*) FROM bulk_test.data"
 }
 
 step_clickhouse_start() {

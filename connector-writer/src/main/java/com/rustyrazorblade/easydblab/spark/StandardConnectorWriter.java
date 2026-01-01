@@ -1,8 +1,6 @@
 package com.rustyrazorblade.easydblab.spark;
 
 import org.apache.spark.SparkConf;
-import org.apache.spark.api.java.JavaRDD;
-import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
@@ -45,12 +43,12 @@ public class StandardConnectorWriter {
     public static final String PROP_LOCAL_DC = "spark.easydblab.localDc";
     public static final String PROP_ROW_COUNT = "spark.easydblab.rowCount";
     public static final String PROP_PARALLELISM = "spark.easydblab.parallelism";
+    public static final String PROP_PARTITION_COUNT = "spark.easydblab.partitionCount";
     public static final String PROP_REPLICATION_FACTOR = "spark.easydblab.replicationFactor";
     public static final String PROP_SKIP_DDL = "spark.easydblab.skipDdl";
     public static final String PROP_COMPACTION = "spark.easydblab.compaction";
 
     private SparkSession spark;
-    private JavaSparkContext javaSparkContext;
     private DataGenerator dataGenerator = new BulkTestDataGenerator();
 
     // Configuration loaded from SparkConf
@@ -58,8 +56,9 @@ public class StandardConnectorWriter {
     private String keyspace;
     private String table;
     private String localDc;
-    private int rowCount = 1000000;
+    private long rowCount = 1000000L;
     private int parallelism = 10;
+    private long partitionCount = 10000L;
     private int replicationFactor = 3;
     private boolean skipDdl = false;
     private String compaction;
@@ -98,8 +97,6 @@ public class StandardConnectorWriter {
         spark = SparkSession.builder()
             .config(conf)
             .getOrCreate();
-
-        javaSparkContext = new JavaSparkContext(spark.sparkContext());
     }
 
     /**
@@ -111,12 +108,21 @@ public class StandardConnectorWriter {
         // Required properties
         cassandraHost = getRequiredProperty(conf, PROP_CASSANDRA_HOST);
         keyspace = getRequiredProperty(conf, PROP_KEYSPACE);
-        table = getRequiredProperty(conf, PROP_TABLE);
         localDc = getRequiredProperty(conf, PROP_LOCAL_DC);
 
+        // Table name: use provided value or generate unique default with timestamp
+        String providedTable = getOptionalProperty(conf, PROP_TABLE);
+        if (providedTable != null) {
+            table = providedTable;
+        } else {
+            long timestamp = System.currentTimeMillis() / 1000;
+            table = "data_" + timestamp;
+        }
+
         // Optional properties with defaults
-        rowCount = getIntProperty(conf, PROP_ROW_COUNT, 1000000);
+        rowCount = getLongProperty(conf, PROP_ROW_COUNT, 1_000_000L);
         parallelism = getIntProperty(conf, PROP_PARALLELISM, 10);
+        partitionCount = getLongProperty(conf, PROP_PARTITION_COUNT, 10_000L);
         replicationFactor = getIntProperty(conf, PROP_REPLICATION_FACTOR, 3);
         skipDdl = getBooleanProperty(conf, PROP_SKIP_DDL, false);
         compaction = getOptionalProperty(conf, PROP_COMPACTION);
@@ -132,6 +138,7 @@ public class StandardConnectorWriter {
         System.out.println("  localDc: " + localDc);
         System.out.println("  rowCount: " + rowCount);
         System.out.println("  parallelism: " + parallelism);
+        System.out.println("  partitionCount: " + partitionCount);
         System.out.println("  replicationFactor: " + replicationFactor);
         System.out.println("  skipDdl: " + skipDdl);
         System.out.println("  compaction: " + (compaction != null ? compaction : "(default)"));
@@ -144,12 +151,13 @@ public class StandardConnectorWriter {
             System.err.println("Required properties:");
             System.err.println("  --conf " + PROP_CASSANDRA_HOST + "=<hosts>");
             System.err.println("  --conf " + PROP_KEYSPACE + "=<keyspace>");
-            System.err.println("  --conf " + PROP_TABLE + "=<table>");
             System.err.println("  --conf " + PROP_LOCAL_DC + "=<datacenter>");
             System.err.println("");
             System.err.println("Optional properties:");
+            System.err.println("  --conf " + PROP_TABLE + "=<table> (default: data_<timestamp>)");
             System.err.println("  --conf " + PROP_ROW_COUNT + "=<count> (default: 1000000)");
             System.err.println("  --conf " + PROP_PARALLELISM + "=<num> (default: 10)");
+            System.err.println("  --conf " + PROP_PARTITION_COUNT + "=<count> (default: 10000)");
             System.err.println("  --conf " + PROP_REPLICATION_FACTOR + "=<rf> (default: 3)");
             System.err.println("  --conf " + PROP_SKIP_DDL + "=true|false (default: false)");
             System.err.println("  --conf " + PROP_COMPACTION + "=<strategy> (e.g., LeveledCompactionStrategy)");
@@ -172,6 +180,13 @@ public class StandardConnectorWriter {
         return defaultValue;
     }
 
+    private long getLongProperty(SparkConf conf, String key, long defaultValue) {
+        if (conf.contains(key)) {
+            return Long.parseLong(conf.get(key));
+        }
+        return defaultValue;
+    }
+
     private boolean getBooleanProperty(SparkConf conf, String key, boolean defaultValue) {
         if (conf.contains(key)) {
             return Boolean.parseBoolean(conf.get(key));
@@ -190,10 +205,10 @@ public class StandardConnectorWriter {
     }
 
     private void writeData() {
-        System.out.println("Generating " + rowCount + " rows with parallelism " + parallelism);
+        System.out.println("Generating " + rowCount + " rows across " +
+            partitionCount + " partitions with parallelism " + parallelism);
 
-        JavaRDD<Row> rows = dataGenerator.generate(javaSparkContext, rowCount, parallelism);
-        Dataset<Row> df = spark.createDataFrame(rows, dataGenerator.getSchema());
+        Dataset<Row> df = dataGenerator.generate(spark, rowCount, parallelism, partitionCount);
 
         System.out.println("Writing to " + keyspace + "." + table + " via Spark Cassandra Connector");
 

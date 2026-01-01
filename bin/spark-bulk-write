@@ -16,8 +16,9 @@
 # Options:
 #   --keyspace <name>     Keyspace name (default: bulk_test)
 #   --table <name>        Table name (default: data)
-#   --rows <count>        Number of rows to write (default: 1000000)
-#   --parallelism <num>   Number of partitions (default: 10)
+#   --rows <count>        Number of rows to write (default: 1000000, supports billions)
+#   --parallelism <num>   Number of Spark partitions for generation (default: 10)
+#   --partitions <count>  Number of Cassandra partitions to distribute data across (default: 10000)
 #   --rf <num>            Replication factor (default: 1)
 #   --compaction <name>   Compaction strategy (e.g., LeveledCompactionStrategy)
 #   --skip-ddl            Skip keyspace/table creation
@@ -48,6 +49,7 @@ KEYSPACE="bulk_test"
 TABLE="data"
 ROW_COUNT="1000000"
 PARALLELISM="10"
+PARTITION_COUNT="10000"
 REPLICATION_FACTOR="1"
 COMPACTION=""
 SKIP_DDL="false"
@@ -82,6 +84,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --parallelism)
             PARALLELISM="$2"
+            shift 2
+            ;;
+        --partitions)
+            PARTITION_COUNT="$2"
             shift 2
             ;;
         --rf)
@@ -260,6 +266,7 @@ echo "  Keyspace: $KEYSPACE"
 echo "  Table: $TABLE"
 echo "  Rows: $ROW_COUNT"
 echo "  Parallelism: $PARALLELISM"
+echo "  Partition Count: $PARTITION_COUNT"
 echo "  Replication Factor: $REPLICATION_FACTOR"
 echo "  Compaction: ${COMPACTION:-default}"
 echo "  Skip DDL: $SKIP_DDL"
@@ -299,6 +306,7 @@ CONF_OPTS="$CONF_OPTS --conf spark.easydblab.table=$TABLE"
 CONF_OPTS="$CONF_OPTS --conf spark.easydblab.localDc=$DC"
 CONF_OPTS="$CONF_OPTS --conf spark.easydblab.rowCount=$ROW_COUNT"
 CONF_OPTS="$CONF_OPTS --conf spark.easydblab.parallelism=$PARALLELISM"
+CONF_OPTS="$CONF_OPTS --conf spark.easydblab.partitionCount=$PARTITION_COUNT"
 CONF_OPTS="$CONF_OPTS --conf spark.easydblab.replicationFactor=$REPLICATION_FACTOR"
 
 if [ "$SKIP_DDL" = "true" ]; then

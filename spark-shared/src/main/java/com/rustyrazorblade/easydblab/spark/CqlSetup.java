@@ -78,8 +78,9 @@ public class CqlSetup implements AutoCloseable {
     }
 
     /**
-     * Create table with the fixed bulk writer schema if it doesn't exist.
-     * Schema: id bigint PRIMARY KEY, course blob, marks bigint
+     * Create table with the bulk writer clustered schema if it doesn't exist.
+     * Schema: partition_id bigint, sequence_id bigint, course blob, marks bigint
+     *         PRIMARY KEY ((partition_id), sequence_id)
      *
      * @param keyspace Keyspace name
      * @param table Table name
@@ -89,8 +90,13 @@ public class CqlSetup implements AutoCloseable {
     }
 
     /**
-     * Create table with the fixed bulk writer schema and optional compaction strategy.
-     * Schema: id bigint PRIMARY KEY, course blob, marks bigint
+     * Create table with the bulk writer clustered schema and optional compaction strategy.
+     * Schema: partition_id bigint, sequence_id bigint, course blob, marks bigint
+     *         PRIMARY KEY ((partition_id), sequence_id)
+     *
+     * This schema supports TB-scale data with:
+     * - partition_id: distributes data across configurable number of partitions
+     * - sequence_id: clustering column for sequential ordering within partitions
      *
      * @param keyspace Keyspace name
      * @param table Table name
@@ -103,9 +109,11 @@ public class CqlSetup implements AutoCloseable {
         StringBuilder cql = new StringBuilder();
         cql.append(String.format(
             "CREATE TABLE IF NOT EXISTS %s.%s (" +
-            "id bigint PRIMARY KEY, " +
+            "partition_id bigint, " +
+            "sequence_id bigint, " +
             "course blob, " +
-            "marks bigint)",
+            "marks bigint, " +
+            "PRIMARY KEY ((partition_id), sequence_id))",
             keyspace, table));
 
         if (compaction != null && !compaction.isEmpty()) {

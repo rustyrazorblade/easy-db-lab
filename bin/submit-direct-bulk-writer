@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Submit DirectBulkWriter to an existing Spark/EMR cluster
-# Usage: bin/submit-direct-bulk-writer [rowCount] [parallelism] [replicationFactor]
+# Usage: bin/submit-direct-bulk-writer [rowCount] [parallelism] [partitionCount] [replicationFactor]
 #
 set -e
 
@@ -14,7 +14,8 @@ export AWS_PAGER=""
 # Default args
 ROW_COUNT="${1:-1000}"
 PARALLELISM="${2:-4}"
-REPLICATION_FACTOR="${3:-1}"
+PARTITION_COUNT="${3:-100}"
+REPLICATION_FACTOR="${4:-1}"
 
 echo "=== Building bulk-writer JAR ==="
 (cd "$PROJECT_ROOT" && ./gradlew :bulk-writer:shadowJar -q)
@@ -43,7 +44,7 @@ SIDECAR_HOSTS=$(jq -r '.hosts.Cassandra | map(.privateIp) | join(",")' "$PROJECT
 
 echo "Hosts: $SIDECAR_HOSTS"
 echo "Datacenter: $DC"
-echo "Rows: $ROW_COUNT, Parallelism: $PARALLELISM, RF: $REPLICATION_FACTOR"
+echo "Rows: $ROW_COUNT, Parallelism: $PARALLELISM, Partitions: $PARTITION_COUNT, RF: $REPLICATION_FACTOR"
 echo ""
 
 echo "=== Submitting bulk writer job ==="
@@ -53,7 +54,14 @@ set +e
 easy-db-lab spark submit \
     --jar "$JAR_FILE" \
     --main-class com.rustyrazorblade.easydblab.spark.DirectBulkWriter \
-    --args "$SIDECAR_HOSTS" bulk_test data "$DC" "$ROW_COUNT" "$PARALLELISM" "$REPLICATION_FACTOR" \
+    --conf "spark.easydblab.sidecar.contactPoints=$SIDECAR_HOSTS" \
+    --conf "spark.easydblab.keyspace=bulk_test" \
+    --conf "spark.easydblab.table=data" \
+    --conf "spark.easydblab.localDc=$DC" \
+    --conf "spark.easydblab.rowCount=$ROW_COUNT" \
+    --conf "spark.easydblab.parallelism=$PARALLELISM" \
+    --conf "spark.easydblab.partitionCount=$PARTITION_COUNT" \
+    --conf "spark.easydblab.replicationFactor=$REPLICATION_FACTOR" \
     --wait
 SPARK_EXIT_CODE=$?
 set -e

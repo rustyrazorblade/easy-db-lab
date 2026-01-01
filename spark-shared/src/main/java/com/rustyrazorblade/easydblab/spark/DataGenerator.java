@@ -1,13 +1,16 @@
 package com.rustyrazorblade.easydblab.spark;
 
-import org.apache.spark.api.java.JavaRDD;
-import org.apache.spark.api.java.JavaSparkContext;
+import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
+import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.types.StructType;
 
 /**
  * Interface for generating test data for Spark write performance comparison.
- * Implementations should use seeded Random for reproducibility.
+ * Implementations should use deterministic column expressions for reproducibility.
+ *
+ * Uses DataFrame API with lazy evaluation for TB-scale data generation without
+ * memory pressure.
  */
 public interface DataGenerator {
     /**
@@ -16,12 +19,13 @@ public interface DataGenerator {
     StructType getSchema();
 
     /**
-     * Generates test data as an RDD of Rows.
+     * Generates test data as a DataFrame using lazy evaluation.
      *
-     * @param sc Spark context
-     * @param rowCount Total number of rows to generate
-     * @param parallelism Number of partitions (also used as seed distribution)
-     * @return RDD of Rows matching getSchema()
+     * @param spark SparkSession for DataFrame creation
+     * @param rowCount Total number of rows to generate (supports billions)
+     * @param parallelism Number of Spark partitions for parallel generation
+     * @param partitionCount Number of Cassandra partitions to distribute data across
+     * @return DataFrame matching getSchema()
      */
-    JavaRDD<Row> generate(JavaSparkContext sc, int rowCount, int parallelism);
+    Dataset<Row> generate(SparkSession spark, long rowCount, int parallelism, long partitionCount);
 }

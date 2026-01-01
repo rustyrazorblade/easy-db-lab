@@ -17,6 +17,9 @@
 #   --no-clean            Don't clean existing cluster state
 #   --cassandra <version> Cassandra version (default: 5.0)
 #
+# Storage: 1TB gp3 EBS with 16K IOPS, 128 MB/s throughput
+# Spark: r5.xlarge instances (32GB RAM)
+#
 # Examples:
 #   setup-spark-cluster
 #   setup-spark-cluster --name my-spark-test --db 6
@@ -38,8 +41,17 @@ APP_COUNT="0"
 CLEAN="--clean"
 CASSANDRA_VERSION="5.0"
 
+# EBS configuration for high-performance storage
+EBS_TYPE="gp3"
+EBS_SIZE="1024"        # 1TB
+EBS_IOPS="16000"       # 16K IOPS
+EBS_THROUGHPUT="128"   # 128 MB/s
+
+# Spark instance type with at least 32GB RAM
+SPARK_INSTANCE_TYPE="r5.xlarge"
+
 usage() {
-    sed -n '2,24p' "$0" | sed 's/^# //' | sed 's/^#//'
+    sed -n '2,27p' "$0" | sed 's/^# //' | sed 's/^#//'
     exit 1
 }
 
@@ -86,6 +98,8 @@ echo "  Cluster dir: $CLUSTER_DIR"
 echo "  Cassandra nodes: $DB_COUNT"
 echo "  App nodes: $APP_COUNT"
 echo "  Cassandra version: $CASSANDRA_VERSION"
+echo "  EBS: ${EBS_SIZE}GB $EBS_TYPE (${EBS_IOPS} IOPS, ${EBS_THROUGHPUT} MB/s)"
+echo "  Spark instance: $SPARK_INSTANCE_TYPE (32GB RAM)"
 echo ""
 
 echo "=== Building easy-db-lab ==="
@@ -95,7 +109,19 @@ echo "=== Building easy-db-lab ==="
 cd "$CLUSTER_DIR"
 
 echo "=== Initializing and provisioning cluster with Spark enabled ==="
-easy-db-lab init "$CLUSTER_NAME" --spark.enable $CLEAN --db "$DB_COUNT" --app "$APP_COUNT" --up
+easy-db-lab init "$CLUSTER_NAME" \
+    --spark.enable \
+    --spark.master.instance.type "$SPARK_INSTANCE_TYPE" \
+    --spark.worker.instance.type "$SPARK_INSTANCE_TYPE" \
+    --ebs.type "$EBS_TYPE" \
+    --ebs.size "$EBS_SIZE" \
+    --ebs.iops "$EBS_IOPS" \
+    --ebs.throughput "$EBS_THROUGHPUT" \
+    --ebs.optimized \
+    $CLEAN \
+    --db "$DB_COUNT" \
+    --app "$APP_COUNT" \
+    --up
 
 # Source env.sh for ssh wrapper
 if [ -f "$CLUSTER_DIR/env.sh" ]; then

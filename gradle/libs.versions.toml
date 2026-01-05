@@ -25,7 +25,7 @@ kotlinx-coroutines = "1.10.2"
 jupiter = "5.5.2"
 assertj = "3.27.6"
 mockito-kotlin = "6.1.0"
-testcontainers = "1.21.3"
+testcontainers = "1.21.4"
 
 # CLI and UI
 picocli = "4.7.7"

@@ -21,5 +21,5 @@ dependencies {
     compileOnly("org.apache.spark:spark-sql_$scalaVersion:$sparkVersion")
 
     // Cassandra Driver for CQL setup
-    implementation("org.apache.cassandra:java-driver-core:4.18.1")
+    implementation("org.apache.cassandra:java-driver-core:4.19.2")
 }

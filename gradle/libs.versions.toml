@@ -58,7 +58,7 @@ cassandra-driver = "4.19.2"
 # Other
 classgraph = "4.8.184"
 resilience4j = "2.3.0"
-fabric8-kubernetes = "7.4.0"
+fabric8-kubernetes = "7.5.0"
 
 # Gradle Plugins
 shadow = "8.1.1"

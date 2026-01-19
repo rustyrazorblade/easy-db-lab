@@ -13,7 +13,7 @@ kotlin-logging = "7.0.14"
 
 # Jackson
 jackson-dataformat = "2.20.1"
-jackson-kotlin = "2.20.+"
+jackson-kotlin = "2.21.+"
 
 # Kotlinx Serialization
 kotlinx-serialization = "1.9.0"

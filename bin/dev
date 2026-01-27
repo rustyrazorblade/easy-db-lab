@@ -210,7 +210,8 @@ cmd_claude() {
     local container_id
     container_id=$(get_container_id)
     if [[ -z "$container_id" ]]; then
-        error "Dev container not running. Run '$(basename "$0") start' first."
+        info "Dev container not running. Starting it..."
+        cmd_start
     fi
     devcontainer exec --workspace-folder "$WORKSPACE_FOLDER" claude --allow-dangerously-skip-permissions
 }

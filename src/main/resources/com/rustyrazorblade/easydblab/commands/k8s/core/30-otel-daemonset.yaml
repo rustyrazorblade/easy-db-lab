@@ -17,9 +17,7 @@ spec:
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
       tolerations:
-        - key: node-role.kubernetes.io/master
-          operator: Exists
-          effect: NoSchedule
+        - operator: Exists  # Run on all nodes including master
       containers:
         - name: otel-collector
           image: otel/opentelemetry-collector-contrib:latest

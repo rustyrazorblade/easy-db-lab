@@ -93,8 +93,9 @@ spec:
               umask 0022
               exec /entrypoint.sh
           resources:
-            limits:
-              memory: 4Gi
+            # To set memory limits, add:
+            # limits:
+            #   memory: 4Gi
             requests:
               memory: 2Gi
               cpu: 500m

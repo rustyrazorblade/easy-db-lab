@@ -127,9 +127,13 @@ class K8Apply : PicoBaseCommand() {
                 "control_node_ip" to controlNode.privateIp,
                 "aws_region" to region,
                 "sqs_queue_url" to (sqsQueueUrl ?: ""),
+                "s3_bucket" to (clusterState.s3Bucket ?: ""),
             )
 
-        log.info { "Creating cluster-config ConfigMap with: control_node_ip=${controlNode.privateIp}, region=$region" }
+        log.info {
+            "Creating cluster-config ConfigMap with: control_node_ip=${controlNode.privateIp}, " +
+                "region=$region, s3_bucket=${clusterState.s3Bucket}"
+        }
 
         k8sService
             .createConfigMap(

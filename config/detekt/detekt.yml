@@ -299,7 +299,7 @@ naming:
     parameterPattern: '[a-z][A-Za-z0-9]*'
     privateParameterPattern: '[a-z][A-Za-z0-9]*'
     excludeClassPattern: '$^'
-    excludes: ['**/terraform/**', '**/configuration/Prometheus.kt', '**/configuration/TFState.kt', '**/configuration/CassandraVersion.kt']
+    excludes: ['**/configuration/Prometheus.kt', '**/configuration/CassandraVersion.kt']
   EnumNaming:
     active: true
     enumEntryPattern: '[A-Z][_a-zA-Z0-9]*'
@@ -363,7 +363,7 @@ naming:
     variablePattern: '[a-z][A-Za-z0-9]*'
     privateVariablePattern: '(_)?[a-z][A-Za-z0-9]*'
     excludeClassPattern: '$^'
-    excludes: ['**/terraform/**', '**/commands/Init.kt']
+    excludes: ['**/commands/Init.kt']
 
 performance:
   active: true

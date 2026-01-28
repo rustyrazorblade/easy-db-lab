@@ -90,7 +90,8 @@ Commands:
     shell           Open interactive shell in container
     exec <cmd>      Execute command in container
     claude          Start Claude Code (with --allow-dangerously-skip-permissions)
-    test            Run Gradle tests
+    test            Run Gradle tests (auto-builds cassandra-analytics if needed)
+    build-analytics Build cassandra-analytics dependencies (for bulk-writer)
     docs            Build documentation (MkDocs)
     docs-serve      Serve documentation locally with live reload
     logs [-f]       View container logs (-f to follow)
@@ -216,6 +217,17 @@ cmd_claude() {
     devcontainer exec --workspace-folder "$WORKSPACE_FOLDER" claude --allow-dangerously-skip-permissions
 }
 
+cmd_build_analytics() {
+    check_devcontainer
+    local container_id
+    container_id=$(get_container_id)
+    if [[ -z "$container_id" ]]; then
+        error "Dev container not running. Run '$(basename "$0") start' first."
+    fi
+    info "Building Cassandra Analytics dependencies..."
+    devcontainer exec --workspace-folder "$WORKSPACE_FOLDER" bin/build-cassandra-analytics "$@"
+}
+
 cmd_test() {
     check_devcontainer
     local container_id
@@ -223,6 +235,15 @@ cmd_test() {
     if [[ -z "$container_id" ]]; then
         error "Dev container not running. Run '$(basename "$0") start' first."
     fi
+
+    # Check if cassandra-analytics Maven artifacts exist inside the container
+    local maven_artifact="/home/node/.m2/repository/org/apache/cassandra/cassandra-analytics-core_spark3_2.12/0.3-SNAPSHOT"
+    if ! devcontainer exec --workspace-folder "$WORKSPACE_FOLDER" test -d "$maven_artifact" 2>/dev/null; then
+        info "Cassandra Analytics not found - building automatically..."
+        info "(This is a one-time setup, takes a few minutes)"
+        cmd_build_analytics
+    fi
+
     info "Running Gradle tests..."
     devcontainer exec --workspace-folder "$WORKSPACE_FOLDER" ./gradlew test
 }
@@ -356,6 +377,10 @@ case "${1:-help}" in
         ;;
     test)
         cmd_test
+        ;;
+    build-analytics)
+        shift
+        cmd_build_analytics "$@"
         ;;
     docs)
         cmd_docs

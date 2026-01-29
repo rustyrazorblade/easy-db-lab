@@ -157,3 +157,6 @@ site/
 .cassandra-analytics/
 bulk-writer/libs/*.jar
 clusters/
+
+# Claude Code config (mounted in devcontainer)
+.devcontainer/claude/

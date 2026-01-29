@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tempo
+  namespace: default
+  labels:
+    app.kubernetes.io/name: tempo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tempo
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tempo
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      nodeSelector:
+        node-role.kubernetes.io/master: "true"
+      tolerations:
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: tempo
+          image: grafana/tempo:2.6.1
+          args:
+            - -config.file=/etc/tempo/tempo.yaml
+            - -config.expand-env=true
+          env:
+            - name: AWS_REGION
+              valueFrom:
+                configMapKeyRef:
+                  name: cluster-config
+                  key: aws_region
+            - name: S3_BUCKET
+              valueFrom:
+                configMapKeyRef:
+                  name: cluster-config
+                  key: s3_bucket
+          ports:
+            - containerPort: 3200
+              hostPort: 3200
+              protocol: TCP
+            - containerPort: 4320
+              hostPort: 4320
+              protocol: TCP
+            - containerPort: 4321
+              hostPort: 4321
+              protocol: TCP
+          resources:
+            limits:
+              memory: 512Mi
+            requests:
+              memory: 256Mi
+              cpu: 100m
+          volumeMounts:
+            - name: config
+              mountPath: /etc/tempo
+            - name: wal
+              mountPath: /var/tempo
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: 3200
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 3200
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      volumes:
+        - name: config
+          configMap:
+            name: tempo-config
+        - name: wal
+          emptyDir: {}

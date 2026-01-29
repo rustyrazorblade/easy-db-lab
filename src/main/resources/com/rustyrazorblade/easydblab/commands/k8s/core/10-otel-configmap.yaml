@@ -8,6 +8,12 @@ metadata:
 data:
   otel-collector-config.yaml: |
     receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
       hostmetrics:
         collection_interval: 10s
         scrapers:
@@ -89,6 +95,10 @@ data:
         endpoint: http://victorialogs.default.svc.cluster.local:9428/insert/opentelemetry
         tls:
           insecure: true
+      otlp/tempo:
+        endpoint: tempo.default.svc.cluster.local:4320
+        tls:
+          insecure: true
 
     extensions:
       health_check:
@@ -98,10 +108,14 @@ data:
       extensions: [health_check]
       pipelines:
         metrics:
-          receivers: [hostmetrics, prometheus]
+          receivers: [otlp, hostmetrics, prometheus]
           processors: [memory_limiter, resourcedetection, batch]
           exporters: [prometheusremotewrite]
         logs:
-          receivers: [filelog/clickhouse-server, filelog/clickhouse-keeper]
+          receivers: [otlp, filelog/clickhouse-server, filelog/clickhouse-keeper]
           processors: [memory_limiter, resourcedetection, batch]
           exporters: [otlphttp/victorialogs]
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, resourcedetection, batch]
+          exporters: [otlp/tempo]

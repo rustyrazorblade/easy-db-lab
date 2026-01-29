@@ -3,8 +3,6 @@ FROM node:20
 ARG TZ
 ENV TZ="$TZ"
 
-ARG CLAUDE_CODE_VERSION=latest
-
 # Install basic development tools and iptables/ipset
 RUN apt-get update && apt-get install -y --no-install-recommends \
     less \
@@ -51,9 +49,9 @@ RUN SNIPPET="export PROMPT_COMMAND='history -a' && export HISTFILE=/commandhisto
 # Set `DEVCONTAINER` environment variable to help with orientation
 ENV DEVCONTAINER=true
 
-# Create workspace and config directories and set permissions
-RUN mkdir -p /workspace /home/node/.claude && \
-    chown -R node:node /workspace /home/node/.claude
+# Create workspace directory
+RUN mkdir -p /workspace && \
+    chown -R node:node /workspace
 
 WORKDIR /workspace
 
@@ -62,21 +60,6 @@ RUN ARCH=$(dpkg --print-architecture) && \
     wget "https://github.com/dandavison/delta/releases/download/${GIT_DELTA_VERSION}/git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb" && \
     sudo dpkg -i "git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb" && \
     rm "git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb"
-
-# Install SDKMAN and JVM tools
-ENV SDKMAN_DIR=/usr/local/sdkman
-RUN curl -s "https://get.sdkman.io" | bash \
-    && bash -c "source $SDKMAN_DIR/bin/sdkman-init.sh && \
-    sdk install java 21-tem && \
-    sdk install kotlin && \
-    sdk install gradle" \
-    && chmod -R 755 $SDKMAN_DIR \
-    && chown -R node:node $SDKMAN_DIR
-
-ENV JAVA_HOME=$SDKMAN_DIR/candidates/java/current
-ENV KOTLIN_HOME=$SDKMAN_DIR/candidates/kotlin/current
-ENV GRADLE_HOME=$SDKMAN_DIR/candidates/gradle/current
-ENV PATH=$JAVA_HOME/bin:$KOTLIN_HOME/bin:$GRADLE_HOME/bin:$PATH
 
 # Allow node user to run sudo without password (required for docker-in-docker)
 RUN echo "node ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/node
@@ -105,11 +88,20 @@ RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/
     -a "export PROMPT_COMMAND='history -a' && export HISTFILE=/commandhistory/.bash_history" \
     -x
 
-# Install Claude and ast-grep
-RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} @ast-grep/cli
+# Install ast-grep
+RUN npm install -g @ast-grep/cli
 
-# Install uv for Serena MCP server
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+# Install Claude Code using native installer
+RUN curl -fsSL https://claude.ai/install.sh | bash
 ENV PATH="/home/node/.local/bin:$PATH"
 
-USER node
+# Install SDKMAN and Java versions
+# Java 21 is the default for the project, Java 11 is needed for cassandra-analytics
+ENV SDKMAN_DIR="/home/node/.sdkman"
+RUN curl -s "https://get.sdkman.io" | bash
+RUN bash -c "source $SDKMAN_DIR/bin/sdkman-init.sh && \
+    sdk install java 21.0.5-tem && \
+    sdk install java 11.0.25-tem && \
+    sdk default java 21.0.5-tem"
+ENV PATH="$SDKMAN_DIR/candidates/java/current/bin:$PATH"
+ENV JAVA_HOME="$SDKMAN_DIR/candidates/java/current"

@@ -173,6 +173,7 @@ object Constants {
         const val VICTORIALOGS_PORT = 9428
         const val S3MANAGER_PORT = 8080
         const val REGISTRY_PORT = 5000
+        const val TEMPO_PORT = 3200
     }
 
     // OpenSearch configuration

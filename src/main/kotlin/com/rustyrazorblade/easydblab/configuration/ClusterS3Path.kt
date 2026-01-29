@@ -45,6 +45,7 @@ data class ClusterS3Path(
         private const val CASSANDRA_VERSIONS_FILE = "cassandra_versions.yaml"
         private const val ENVIRONMENT_FILE = "environment.sh"
         private const val SETUP_INSTANCE_FILE = "setup_instance.sh"
+        private const val TEMPO_DIR = "tempo"
 
         /**
          * Create a ClusterS3Path from ClusterState.
@@ -215,6 +216,13 @@ data class ClusterS3Path(
      * @return Path: s3://bucket/data
      */
     fun data(): ClusterS3Path = resolve(DATA_DIR)
+
+    /**
+     * Path for Tempo trace storage.
+     *
+     * @return Path: s3://bucket/tempo
+     */
+    fun tempo(): ClusterS3Path = resolve(TEMPO_DIR)
 
     /**
      * Path for K3s kubeconfig file.

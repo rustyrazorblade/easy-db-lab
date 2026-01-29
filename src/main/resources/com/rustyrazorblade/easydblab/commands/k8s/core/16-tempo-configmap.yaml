@@ -1,0 +1,63 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tempo-config
+  namespace: default
+  labels:
+    app.kubernetes.io/name: tempo
+data:
+  tempo.yaml: |
+    stream_over_http_enabled: true
+    server:
+      http_listen_port: 3200
+      grpc_listen_port: 9096
+
+    query_frontend:
+      search:
+        duration_slo: 5s
+        throughput_bytes_slo: 1.073741824e+09
+      trace_by_id:
+        duration_slo: 5s
+
+    distributor:
+      receivers:
+        otlp:
+          protocols:
+            grpc:
+              endpoint: 0.0.0.0:4320
+            http:
+              endpoint: 0.0.0.0:4321
+
+    ingester:
+      max_block_duration: 5m
+
+    compactor:
+      compaction:
+        block_retention: 48h
+
+    metrics_generator:
+      registry:
+        external_labels:
+          source: tempo
+          cluster: easy-db-lab
+      storage:
+        path: /var/tempo/generator/wal
+        remote_write:
+          - url: http://victoriametrics.default.svc.cluster.local:8428/api/v1/write
+            send_exemplars: true
+
+    storage:
+      trace:
+        backend: s3
+        wal:
+          path: /var/tempo/wal
+        s3:
+          bucket: ${S3_BUCKET}
+          endpoint: s3.${AWS_REGION}.amazonaws.com
+          region: ${AWS_REGION}
+          prefix: tempo/
+
+    overrides:
+      defaults:
+        metrics_generator:
+          processors: [service-graphs, span-metrics]

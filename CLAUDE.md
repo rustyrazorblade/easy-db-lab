@@ -66,6 +66,45 @@ Practice **reasonable TDD**:
 
 ## Development Setup
 
+### Java Version Management (SDKMAN)
+
+The devcontainer uses SDKMAN to manage Java versions:
+- **Java 21** (Temurin) - Default for the main project
+- **Java 11** (Temurin) - Required for building cassandra-analytics
+
+SDKMAN is pre-configured in the devcontainer with both versions installed and Java 21 as the default.
+
+**Why two versions?** The `bulk-writer` module depends on `cassandra-analytics` which requires JDK 11 to build. The `bin/build-cassandra-analytics` script automatically switches to JDK 11 for that build.
+
+**Common commands:**
+```bash
+# Check current Java version
+java -version
+
+# List installed versions
+sdk list java
+
+# Temporarily use a different version (current shell only)
+sdk use java 11.0.25-tem
+
+# Switch default version permanently
+sdk default java 21.0.5-tem
+```
+
+### Building Cassandra Analytics Dependencies
+
+The `bulk-writer` module depends on cassandra-analytics SNAPSHOT artifacts that aren't published to Maven Central. Run `bin/dev test` and they will be built automatically if missing. To manually build or rebuild:
+
+```bash
+# Build cassandra-analytics (auto-skips if already built)
+bin/dev build-analytics
+
+# Force rebuild
+bin/dev build-analytics --force
+```
+
+This clones the cassandra-analytics repo, builds with JDK 11, and publishes artifacts to the local Maven repository (`~/.m2/repository`).
+
 ### Pre-commit Hook Installation
 
 Install the ktlint pre-commit hook to automatically check code style before commits:
@@ -153,6 +192,13 @@ For more details, see [packer/README.md](packer/README.md) and [packer/TESTING.m
 - Always ensure files end with a newline
 - Tests should extend BaseKoinTest to use Koin DI
 - Use resilience4j for retry logic instead of custom retry loops
+- Use AssertJ assertions, not JUnit assertions
+- Constants and magic numbers should be stored in com.rustyrazorblade.easydblab.Constants
+- When migrating code, it is not necessary to maintain backwards compatibility
+- Fail fast is usually preferred
+- Always use @TempDir for temporary directories in tests - JUnit handles lifecycle automatically
+- **Never disable functionality as a solution.** If something isn't working, fix the root cause. Adding flags to skip features, making things optional, or suggesting users disable components is not an acceptable solution.
+- **Configuration problems require configuration fixes.** If a service can't connect to a dependency, the fix is to provide the correct endpoint/credentials, not to make the dependency optional.
 
 ### Retry Logic with Resilience4j
 
@@ -221,55 +267,70 @@ val aws = AWS(mockClients)
 
 The project uses `mockito-kotlin` for mocking. See `AWSTest.kt` for complete examples.
 
-## Hostname and IP Management
+## Cluster State Management
 
 ### Overview
-The codebase manages hostnames and IP addresses through the `TFState` class, which parses Terraform state to extract host information for provisioned instances.
+The codebase manages cluster state through the `ClusterState` class, which tracks host information, infrastructure resources, and configuration. State is persisted to a local `state.json` file and managed by `ClusterStateManager`.
 
 ### Key Components
 
-#### 1. Host Data Class (`configuration/Host.kt`)
-Represents a single host with:
-- `public`: Public IP address
-- `private`: Private/internal IP address
-- `alias`: Host alias (e.g., "db0", "app0", "control0")
+#### 1. ClusterHost Data Class (`configuration/ClusterState.kt`)
+Represents a single host in the cluster:
+- `publicIp`: Public IP address
+- `privateIp`: Private/internal IP address
+- `alias`: Host alias (e.g., "db0", "stress0", "control0")
 - `availabilityZone`: AWS availability zone
+- `instanceId`: EC2 instance ID for lifecycle management
 
 #### 2. ServerType Enum (`configuration/ServerType.kt`)
 Defines three server types:
-- `Cassandra`: Cassandra database nodes
-- `Stress`: Stress testing nodes
-- `Control`: Control/monitoring nodes
+- `Cassandra`: Cassandra database nodes (alias prefix: "db")
+- `Stress`: Stress testing nodes (alias prefix: "app")
+- `Control`: Control/monitoring nodes (alias prefix: "control")
 
-#### 3. TFState Class (`configuration/TFState.kt`)
-Parses Terraform state and provides methods to retrieve host information:
-- `getHosts(serverType: ServerType)`: Returns list of hosts for a given server type
-- `withHosts(serverType: ServerType, hostFilter: Hosts, action: (Host) -> Unit)`: Executes action on filtered hosts
+#### 3. ClusterState Class (`configuration/ClusterState.kt`)
+Central state object containing:
+- `hosts`: Map of ServerType to list of ClusterHost instances
+- `clusterId`: Unique identifier for EC2 tag-based discovery
+- `infrastructure`: VPC, subnet, security group IDs for cleanup
+- `initConfig`: Configuration from `Init` command
+- `emrCluster`: Optional EMR cluster state for Spark jobs
+- `openSearchDomain`: Optional OpenSearch domain state
 
-#### 4. Commands (`commands/*`)
+#### 4. ClusterStateManager (`configuration/ClusterStateManager.kt`)
+Handles persistence of ClusterState:
+- `load()`: Read state from `state.json`
+- `save(state)`: Write state to `state.json`
+- `updateHosts(hosts)`: Load, update hosts, and save atomically
 
-PicoCLI subcommands.  Most run then exit.  There are two exceptions:
+#### 5. Commands (`commands/*`)
+
+PicoCLI subcommands. Most run then exit. There are two exceptions:
 
 - Repl: Starts a REPL to reduce typing
 - Server: Starts an MCP server for AI Agents (run via `easy-db-lab server`).
-
 
 ### Common Patterns
 
 #### Getting Host IPs
 ```kotlin
 // Get the internal IP of the first Cassandra node
-val cassandraHost = context.tfstate.getHosts(ServerType.Cassandra).first().private
+val cassandraHosts = clusterState.hosts[ServerType.Cassandra] ?: emptyList()
+val firstCassandraIp = cassandraHosts.first().privateIp
 
 // Get all Cassandra hosts
-val allCassandraHosts = context.tfstate.getHosts(ServerType.Cassandra)
+val allCassandraHosts = clusterState.hosts[ServerType.Cassandra] ?: emptyList()
 
 // Iterate over control nodes
-context.tfstate.withHosts(ServerType.Control, hosts) { host ->
-    // host.public - public IP
-    // host.private - internal IP
+clusterState.hosts[ServerType.Control]?.forEach { host ->
+    // host.publicIp - public IP
+    // host.privateIp - internal IP
     // host.alias - hostname alias
+    // host.instanceId - EC2 instance ID
 }
+
+// Get the first control host (convenience method)
+val controlHost = clusterState.getControlHost()
 ```
 
 #### Docker Compose Templating
@@ -289,10 +350,6 @@ Local OTel nodes are forwarding metrics to the control node.
 
 ## Documentation
 
-User documentation is in `docs/` (MkDocs format).
-- Don't use wildcard imports.
-- Always use assertj style assertions, not the raw junit ones.
-- Constants and magic numbers should be stored in com.rustyrazorblade.easydblab.Constants
-- When migrating code, it is not necessary to maintain backwards compability.
-- Fail fast is usually preferred.
-- Always use @TempDir for temporary directories in tests - JUnit handles lifecycle automatically
+User documentation is in `docs/` (MkDocs format).  When making user facing changes, make sure the docs for that feature are up to date.
+
+If I refer to Kubernetes configs or k8 configs, I am referring to these: `src/main/resources/com/rustyrazorblade/easydblab/commands/k8s/` by default.

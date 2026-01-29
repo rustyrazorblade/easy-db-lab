@@ -87,16 +87,7 @@ data:
 
         <remote_servers>
             <easy_db_lab>
-                <shard>
-                    <replica>
-                        <host>clickhouse-0.clickhouse.default.svc.cluster.local</host>
-                        <port>9000</port>
-                    </replica>
-                    <replica>
-                        <host>clickhouse-1.clickhouse.default.svc.cluster.local</host>
-                        <port>9000</port>
-                    </replica>
-                </shard>
+                <!-- Shards are generated dynamically by ClickHouseStart -->
             </easy_db_lab>
         </remote_servers>
 

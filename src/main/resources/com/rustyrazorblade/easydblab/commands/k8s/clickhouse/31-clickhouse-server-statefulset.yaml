@@ -76,12 +76,15 @@ spec:
             - containerPort: 9363
               name: metrics
           env:
-            - name: SHARD
-              value: "1"
             - name: REPLICA
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
+            - name: REPLICAS_PER_SHARD
+              valueFrom:
+                configMapKeyRef:
+                  name: clickhouse-cluster-config
+                  key: replicas-per-shard
           envFrom:
             - secretRef:
                 name: clickhouse-s3-credentials
@@ -90,6 +93,12 @@ spec:
             - /bin/bash
             - -c
             - |
+              # Calculate shard from pod ordinal
+              # REPLICA env var is the pod name (clickhouse-X), extract X and compute shard
+              # Note: Can't use $HOSTNAME because hostNetwork=true makes it the EC2 hostname
+              ORDINAL=${REPLICA##*-}
+              export SHARD=$(( (ORDINAL / REPLICAS_PER_SHARD) + 1 ))
+              echo "Pod $REPLICA: ordinal=$ORDINAL, SHARD=$SHARD, REPLICAS_PER_SHARD=$REPLICAS_PER_SHARD"
               umask 0022
               exec /entrypoint.sh
           resources:
@@ -133,7 +142,14 @@ spec:
             items:
               - key: users.xml
                 path: users.xml
-        - name: data
-          hostPath:
-            path: /mnt/db1/clickhouse
-            type: DirectoryOrCreate
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          app.kubernetes.io/name: clickhouse-server
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-storage
+        resources:
+          requests:
+            storage: 100Gi

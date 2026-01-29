@@ -17,6 +17,9 @@ object Constants {
         const val CONTROL = "control"
     }
 
+    // Kubernetes labels
+    const val NODE_ORDINAL_LABEL = "easydblab.com/node-ordinal"
+
     // Time-related constants
     object Time {
         const val SECONDS_PER_MINUTE = 60

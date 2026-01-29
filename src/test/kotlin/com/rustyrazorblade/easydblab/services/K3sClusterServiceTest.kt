@@ -145,7 +145,7 @@ class K3sClusterServiceTest {
                 any(),
                 eq("https://10.0.1.1:6443"),
                 eq("test-token-12345"),
-                eq(mapOf("type" to "db")),
+                eq(mapOf("type" to "db", "node-ordinal" to "0")),
             )
         }
 
@@ -373,22 +373,47 @@ class K3sClusterServiceTest {
     @Nested
     inner class GetNodeLabels {
         @Test
-        fun `should return cassandra labels for Cassandra type`() {
-            val labels = service.getNodeLabels(ServerType.Cassandra)
+        fun `should return cassandra labels with node-ordinal for Cassandra type`() {
+            val host = createClusterHost("db0", "10.0.0.1")
+            val labels = service.getNodeLabels(ServerType.Cassandra, host)
 
-            assertThat(labels).isEqualTo(mapOf("type" to "db"))
+            assertThat(labels).isEqualTo(mapOf("type" to "db", "node-ordinal" to "0"))
+        }
+
+        @Test
+        fun `should parse ordinal from different aliases`() {
+            val host1 = createClusterHost("db1", "10.0.0.1")
+            val host5 = createClusterHost("db5", "10.0.0.2")
+            val host99 = createClusterHost("db99", "10.0.0.3")
+
+            assertThat(service.getNodeLabels(ServerType.Cassandra, host1))
+                .isEqualTo(mapOf("type" to "db", "node-ordinal" to "1"))
+            assertThat(service.getNodeLabels(ServerType.Cassandra, host5))
+                .isEqualTo(mapOf("type" to "db", "node-ordinal" to "5"))
+            assertThat(service.getNodeLabels(ServerType.Cassandra, host99))
+                .isEqualTo(mapOf("type" to "db", "node-ordinal" to "99"))
+        }
+
+        @Test
+        fun `should default to ordinal 0 for invalid alias format`() {
+            val host = createClusterHost("invalid", "10.0.0.1")
+            val labels = service.getNodeLabels(ServerType.Cassandra, host)
+
+            assertThat(labels).isEqualTo(mapOf("type" to "db", "node-ordinal" to "0"))
         }
 
         @Test
         fun `should return stress labels for Stress type`() {
-            val labels = service.getNodeLabels(ServerType.Stress)
+            val host = createClusterHost("stress0", "10.0.0.2")
+            val labels = service.getNodeLabels(ServerType.Stress, host)
 
             assertThat(labels).isEqualTo(mapOf("type" to "app"))
         }
 
         @Test
         fun `should return empty labels for Control type`() {
-            val labels = service.getNodeLabels(ServerType.Control)
+            val host = createClusterHost("control0", "10.0.1.1")
+            val labels = service.getNodeLabels(ServerType.Control, host)
 
             assertThat(labels).isEmpty()
         }

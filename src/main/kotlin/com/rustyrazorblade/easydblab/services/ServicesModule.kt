@@ -31,6 +31,7 @@ val servicesModule =
         singleOf(::DefaultResourceManager) bind ResourceManager::class
 
         factoryOf(::DefaultCassandraService) bind CassandraService::class
+        factoryOf(::DefaultClickHouseConfigService) bind ClickHouseConfigService::class
 
         // CQL session factory and service - singleton for session caching in REPL/Server mode
         singleOf(::DefaultCqlSessionFactory) bind CqlSessionFactory::class

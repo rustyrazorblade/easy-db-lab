@@ -2,23 +2,35 @@
 
 **[Documentation](https://rustyrazorblade.github.io/easy-db-lab/)**
 
-Formerly known as easy-cass-lab, this project aims to make the process of creating lab environments for database testing in AWS.
+A tool for creating database lab environments in AWS. Designed for testing, benchmarking, and learning.
 
-**Note:** The project was recently renamed from easy-cass-lab. Some internal code still uses the old naming.
+## Features
 
-Cassandra Specific Features:
+### Databases
 
-* Quickly create an environment using any version of Cassandra from 2.2 up to trunk
-* Build custom AMIs with your own branches of Cassandra
-* Test mixed configurations of Cassandra and java versions
-* Run load tests using cassandra-easy-stress
+- **Apache Cassandra** - Versions 2.2 through trunk, mixed version clusters, custom branches
+- **ClickHouse** - Sharded clusters with configurable replication, distributed tables, S3 storage
+- **Any K8s-compatible database** - Deploy via Kubernetes manifests
 
-The aims of the project were recently expanded to include more general database testing.  Some of the useful features:
+### Infrastructure
 
-* Profile and generate flame graphs
-* Run any database supporting Kubernetes
-* Provision Spark EMR clusters
-* Collect kernel metrics with bcc-tools
+- **AWS EC2** - Automated provisioning with configurable instance types
+- **Kubernetes (K3s)** - Lightweight K8s on all nodes for deploying databases and tools
+- **Spark EMR** - Provision EMR clusters for analytics workloads
+- **S3 Integration** - Object storage for ClickHouse and data pipelines
+
+### Observability
+
+- **Prometheus and Grafana** - Pre-configured dashboards for all supported databases
+- **OpenTelemetry** - Distributed tracing and metrics collection
+- **Flame Graphs** - CPU and wall-clock profiling with async-profiler
+- **Kernel Metrics** - bcc-tools for low-level performance analysis
+
+### Developer Experience
+
+- **MCP Server** - AI assistant integration for cluster management
+- **Interactive CLI** - REPL mode for reduced typing
+- **Homebrew and Docker** - Multiple installation options
 
 ## Custom AMI
 

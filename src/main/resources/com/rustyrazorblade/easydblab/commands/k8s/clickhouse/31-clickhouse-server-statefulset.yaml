@@ -76,8 +76,6 @@ spec:
             - containerPort: 9363
               name: metrics
           env:
-            - name: SHARD
-              value: "1"
             - name: REPLICA
               valueFrom:
                 fieldRef:
@@ -90,6 +88,11 @@ spec:
             - /bin/bash
             - -c
             - |
+              # Calculate SHARD from pod ordinal and replicas-per-shard
+              ORDINAL=${HOSTNAME##*-}
+              REPLICAS_PER_SHARD=$(cat /etc/clickhouse-server/cluster-topology/replicas-per-shard)
+              export SHARD=$((ORDINAL / REPLICAS_PER_SHARD + 1))
+              echo "Pod $HOSTNAME: ordinal=$ORDINAL, replicas-per-shard=$REPLICAS_PER_SHARD, SHARD=$SHARD"
               umask 0022
               exec /entrypoint.sh
           resources:
@@ -105,6 +108,9 @@ spec:
               readOnly: true
             - name: users
               mountPath: /etc/clickhouse-server/users.d
+              readOnly: true
+            - name: cluster-topology
+              mountPath: /etc/clickhouse-server/cluster-topology
               readOnly: true
             - name: data
               mountPath: /mnt/db1/clickhouse
@@ -133,6 +139,9 @@ spec:
             items:
               - key: users.xml
                 path: users.xml
+        - name: cluster-topology
+          configMap:
+            name: clickhouse-cluster-topology
         - name: data
           hostPath:
             path: /mnt/db1/clickhouse

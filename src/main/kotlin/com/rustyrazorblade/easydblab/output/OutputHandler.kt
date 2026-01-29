@@ -475,7 +475,6 @@ fun OutputHandler.displayObservabilityAccess(controlNodeIp: String) {
     handleMessage("  Grafana:         http://$controlNodeIp:${Constants.K8s.GRAFANA_PORT}")
     handleMessage("  VictoriaMetrics: http://$controlNodeIp:${Constants.K8s.VICTORIAMETRICS_PORT}")
     handleMessage("  VictoriaLogs:    http://$controlNodeIp:${Constants.K8s.VICTORIALOGS_PORT}")
-    handleMessage("  Tempo:           http://$controlNodeIp:${Constants.K8s.TEMPO_PORT}")
     handleMessage("")
 }
 

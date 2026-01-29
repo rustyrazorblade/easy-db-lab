@@ -38,7 +38,7 @@ If you're looking for tools to help manage Cassandra in *production* environment
 ### Analytics and Data Services
 
 - **Apache Spark**: EMR-based Spark clusters for analytics workloads
-- **ClickHouse**: Deploy ClickHouse clusters with S3-tiered storage
+- **[ClickHouse](user-guide/clickhouse.md)**: Deploy ClickHouse clusters with S3-tiered storage
 - **OpenSearch**: Optional OpenSearch domains for search and analytics
 
 ### Monitoring and Observability

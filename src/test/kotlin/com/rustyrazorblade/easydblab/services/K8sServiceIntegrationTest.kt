@@ -50,6 +50,7 @@ class K8sServiceIntegrationTest {
         CONFIGMAP,
         DAEMONSET,
         DEPLOYMENT,
+        STATEFULSET,
     }
 
     /**
@@ -243,6 +244,18 @@ class K8sServiceIntegrationTest {
                         .get()
                 assertThat(deployment)
                     .withFailMessage("Deployment '${testCase.resourceName}' was not created")
+                    .isNotNull
+            }
+            ResourceType.STATEFULSET -> {
+                val statefulSet =
+                    client
+                        .apps()
+                        .statefulSets()
+                        .inNamespace(DEFAULT_NAMESPACE)
+                        .withName(testCase.resourceName)
+                        .get()
+                assertThat(statefulSet)
+                    .withFailMessage("StatefulSet '${testCase.resourceName}' was not created")
                     .isNotNull
             }
         }

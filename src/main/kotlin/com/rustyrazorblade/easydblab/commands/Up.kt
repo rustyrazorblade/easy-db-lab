@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.annotations.TriggerBackup
 import com.rustyrazorblade.easydblab.commands.cassandra.WriteConfig
 import com.rustyrazorblade.easydblab.commands.k8.K8Apply
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
+import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.InfrastructureState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
@@ -32,6 +33,7 @@ import com.rustyrazorblade.easydblab.services.HostOperationsService
 import com.rustyrazorblade.easydblab.services.InstanceProvisioningConfig
 import com.rustyrazorblade.easydblab.services.K3sClusterConfig
 import com.rustyrazorblade.easydblab.services.K3sClusterService
+import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.OptionalServicesConfig
 import com.rustyrazorblade.easydblab.services.RegistryService
@@ -76,6 +78,7 @@ class Up : PicoBaseCommand() {
     private val clusterProvisioningService: ClusterProvisioningService by inject()
     private val clusterConfigurationService: ClusterConfigurationService by inject()
     private val k3sClusterService: K3sClusterService by inject()
+    private val k8sService: K8sService by inject()
     private val registryService: RegistryService by inject()
     private val commandExecutor: CommandExecutor by inject()
     private val sqsService: SQSService by inject()
@@ -547,7 +550,56 @@ class Up : PicoBaseCommand() {
             }
         }
 
+        // Label db nodes with ordinals for StatefulSet pod-to-node pinning
+        labelDbNodesWithOrdinals(controlHosts.first())
+
+        // Apply common K8s resources (StorageClass, etc.)
+        applyCommonK8sManifests(controlHosts.first())
+
         commandExecutor.execute { K8Apply() }
+    }
+
+    /**
+     * Labels db nodes with ordinal values for StatefulSet pod-to-node pinning.
+     *
+     * This enables databases (ClickHouse, Kafka, etc.) to guarantee that pod X runs on node X
+     * by using Local PersistentVolumes with node affinity.
+     */
+    private fun labelDbNodesWithOrdinals(controlHost: ClusterHost) {
+        val dbHosts = workingState.hosts[ServerType.Cassandra] ?: emptyList()
+        if (dbHosts.isEmpty()) {
+            log.warn { "No db nodes found, skipping node labeling" }
+            return
+        }
+
+        outputHandler.handleMessage("Labeling ${dbHosts.size} db nodes with ordinals...")
+
+        dbHosts.forEachIndexed { index, host ->
+            val nodeName = host.alias
+            val labels = mapOf(Constants.NODE_ORDINAL_LABEL to index.toString())
+
+            k8sService.labelNode(controlHost, nodeName, labels).getOrElse { exception ->
+                log.warn(exception) { "Failed to label node $nodeName with ordinal $index" }
+            }
+        }
+
+        outputHandler.handleMessage("Node labeling complete")
+    }
+
+    /**
+     * Applies common K8s manifests that are shared across all database deployments.
+     *
+     * This includes the local-storage StorageClass needed for Local PersistentVolumes.
+     */
+    private fun applyCommonK8sManifests(controlHost: ClusterHost) {
+        k8sService
+            .applyManifests(
+                controlHost,
+                java.nio.file.Path
+                    .of("k8s/common"),
+            ).getOrElse { exception ->
+                log.warn(exception) { "Failed to apply common K8s manifests" }
+            }
     }
 
     /**

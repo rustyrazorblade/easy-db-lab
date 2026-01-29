@@ -95,14 +95,20 @@ interface K3sClusterService {
     fun setupCluster(config: K3sClusterConfig): K3sSetupResult
 
     /**
-     * Gets the node labels for a given server type.
+     * Gets the node labels for a given server type and host.
      *
      * Labels are used by Kubernetes for node selection and scheduling.
+     * For Cassandra nodes, includes a node-ordinal label parsed from the host alias
+     * (e.g., "db0" → node-ordinal=0) to support node pinning for Local Persistent Volumes.
      *
      * @param serverType The server type
+     * @param host The cluster host to get labels for
      * @return Map of label key-value pairs
      */
-    fun getNodeLabels(serverType: ServerType): Map<String, String>
+    fun getNodeLabels(
+        serverType: ServerType,
+        host: ClusterHost,
+    ): Map<String, String>
 }
 
 /**
@@ -260,13 +266,13 @@ class DefaultK3sClusterService(
         val allThreads = mutableListOf<Thread>()
 
         workerServerTypes.forEach { serverType ->
-            val nodeLabels = getNodeLabels(serverType)
             val hosts =
                 config.workerHosts[serverType]?.filter {
                     hostFilter.isEmpty() || it.alias in hostFilter
                 } ?: emptyList()
 
             hosts.forEach { clusterHost ->
+                val nodeLabels = getNodeLabels(serverType, clusterHost)
                 allThreads.add(
                     kotlin.concurrent.thread(start = true, name = "k3s-agent-${clusterHost.alias}") {
                         val result = setupSingleAgent(clusterHost, serverUrl, nodeToken, nodeLabels)
@@ -324,9 +330,19 @@ class DefaultK3sClusterService(
         )
     }
 
-    override fun getNodeLabels(serverType: ServerType): Map<String, String> =
+    override fun getNodeLabels(
+        serverType: ServerType,
+        host: ClusterHost,
+    ): Map<String, String> =
         when (serverType) {
-            ServerType.Cassandra -> mapOf("type" to "db")
+            ServerType.Cassandra -> {
+                // Parse ordinal from alias: "db0" → 0, "db1" → 1, etc.
+                val ordinal = host.alias.removePrefix("db").toIntOrNull() ?: 0
+                mapOf(
+                    "type" to "db",
+                    "node-ordinal" to ordinal.toString(),
+                )
+            }
             ServerType.Stress -> mapOf("type" to "app")
             ServerType.Control -> emptyMap()
         }

@@ -277,6 +277,63 @@ interface K8sService {
         namespace: String,
         name: String,
     ): Result<Unit>
+
+    /**
+     * Applies a Kubernetes manifest from YAML content.
+     *
+     * @param controlHost The control node running the K3s server
+     * @param yamlContent YAML content to apply
+     * @return Result indicating success or failure
+     */
+    fun applyYaml(
+        controlHost: ClusterHost,
+        yamlContent: String,
+    ): Result<Unit>
+
+    /**
+     * Labels a Kubernetes node.
+     *
+     * @param controlHost The control node running the K3s server
+     * @param nodeName The name of the node to label
+     * @param labels Map of label keys to values
+     * @return Result indicating success or failure
+     */
+    fun labelNode(
+        controlHost: ClusterHost,
+        nodeName: String,
+        labels: Map<String, String>,
+    ): Result<Unit>
+
+    /**
+     * Creates Local PersistentVolumes for a database with node affinity.
+     *
+     * Creates one PV per node, with each PV having node affinity to ensure
+     * pods are pinned to specific nodes. This is used to guarantee pod-to-node
+     * mapping for StatefulSets.
+     *
+     * PVs are pre-bound to specific PVCs using claimRef, ensuring deterministic
+     * binding (e.g., data-clickhouse-0 PVC always binds to the PV on node ordinal 0).
+     *
+     * @param controlHost The control node running the K3s server
+     * @param dbName Name of the database/StatefulSet (e.g., "clickhouse")
+     * @param localPath Path on the node where data is stored
+     * @param count Number of PVs to create (one per node)
+     * @param storageSize Size of each PV (e.g., "100Gi"). Kubernetes requires a capacity.
+     * @param storageClass Name of the StorageClass to use
+     * @param namespace Namespace where the StatefulSet runs (for claimRef binding)
+     * @param volumeClaimTemplateName Name of the volumeClaimTemplate in the StatefulSet
+     * @return Result indicating success or failure
+     */
+    fun createLocalPersistentVolumes(
+        controlHost: ClusterHost,
+        dbName: String,
+        localPath: String,
+        count: Int,
+        storageSize: String,
+        storageClass: String = "local-storage",
+        namespace: String = "default",
+        volumeClaimTemplateName: String = "data",
+    ): Result<Unit>
 }
 
 /**
@@ -1051,5 +1108,118 @@ class DefaultK8sService(
             }
 
             outputHandler.handleMessage("Deleted ConfigMap: $name")
+        }
+
+    override fun applyYaml(
+        controlHost: ClusterHost,
+        yamlContent: String,
+    ): Result<Unit> =
+        runCatching {
+            log.info { "Applying YAML content via SOCKS proxy" }
+
+            createClient(controlHost).use { client ->
+                ManifestApplier.applyYaml(client, yamlContent)
+                log.info { "YAML content applied successfully" }
+            }
+        }
+
+    override fun labelNode(
+        controlHost: ClusterHost,
+        nodeName: String,
+        labels: Map<String, String>,
+    ): Result<Unit> =
+        runCatching {
+            log.info { "Labeling node $nodeName with labels: $labels" }
+
+            createClient(controlHost).use { client ->
+                val node =
+                    client.nodes().withName(nodeName).get()
+                        ?: error("Node $nodeName not found")
+
+                val existingLabels = node.metadata.labels ?: mutableMapOf()
+                val updatedLabels = existingLabels.toMutableMap()
+                updatedLabels.putAll(labels)
+
+                client.nodes().withName(nodeName).edit { n ->
+                    n.metadata.labels = updatedLabels
+                    n
+                }
+
+                log.info { "Labeled node $nodeName" }
+            }
+        }
+
+    override fun createLocalPersistentVolumes(
+        controlHost: ClusterHost,
+        dbName: String,
+        localPath: String,
+        count: Int,
+        storageSize: String,
+        storageClass: String,
+        namespace: String,
+        volumeClaimTemplateName: String,
+    ): Result<Unit> =
+        runCatching {
+            log.info { "Creating $count Local PVs for $dbName" }
+
+            createClient(controlHost).use { client ->
+                for (ordinal in 0 until count) {
+                    // PVC naming convention: {volumeClaimTemplateName}-{statefulSetName}-{ordinal}
+                    // e.g., data-clickhouse-0, data-clickhouse-1, etc.
+                    val pvcName = "$volumeClaimTemplateName-$dbName-$ordinal"
+                    // Use same name for PV to make relationship clear
+                    val pvName = pvcName
+
+                    // Check if PV already exists
+                    val existing = client.persistentVolumes().withName(pvName).get()
+                    if (existing != null) {
+                        log.info { "PV $pvName already exists, skipping" }
+                        continue
+                    }
+
+                    val pv =
+                        io.fabric8.kubernetes.api.model
+                            .PersistentVolumeBuilder()
+                            .withNewMetadata()
+                            .withName(pvName)
+                            .addToLabels("app.kubernetes.io/name", dbName)
+                            .addToLabels("app.kubernetes.io/component", "data")
+                            .endMetadata()
+                            .withNewSpec()
+                            .addToCapacity(
+                                "storage",
+                                io.fabric8.kubernetes.api.model
+                                    .Quantity(storageSize),
+                            ).withAccessModes("ReadWriteOnce")
+                            .withPersistentVolumeReclaimPolicy("Retain")
+                            .withStorageClassName(storageClass)
+                            .withNewLocal()
+                            .withPath(localPath)
+                            .endLocal()
+                            // Pre-bind to specific PVC to guarantee deterministic binding
+                            .withNewClaimRef()
+                            .withName(pvcName)
+                            .withNamespace(namespace)
+                            .endClaimRef()
+                            .withNewNodeAffinity()
+                            .withNewRequired()
+                            .addNewNodeSelectorTerm()
+                            .addNewMatchExpression()
+                            .withKey(Constants.NODE_ORDINAL_LABEL)
+                            .withOperator("In")
+                            .withValues(ordinal.toString())
+                            .endMatchExpression()
+                            .endNodeSelectorTerm()
+                            .endRequired()
+                            .endNodeAffinity()
+                            .endSpec()
+                            .build()
+
+                    client.persistentVolumes().resource(pv).create()
+                    log.info { "Created PV $pvName pre-bound to PVC $pvcName on node ordinal $ordinal" }
+                }
+
+                outputHandler.handleMessage("Created $count Local PVs for $dbName")
+            }
         }
 }

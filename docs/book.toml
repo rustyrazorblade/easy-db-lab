@@ -1,0 +1,18 @@
+[book]
+title = "easy-db-lab"
+description = "A tool for building lab environments for database testing"
+authors = ["Jon Haddad"]
+language = "en"
+src = "."
+
+[build]
+build-dir = "../site"
+
+[output.html]
+git-repository-url = "https://github.com/rustyrazorblade/easy-db-lab"
+edit-url-template = "https://github.com/rustyrazorblade/easy-db-lab/edit/main/docs/{path}"
+additional-css = ["mdbook-admonish.css"]
+
+[preprocessor.admonish]
+command = "mdbook-admonish"
+assets_version = "3.1.0" # do not edit: managed by `mdbook-admonish install`

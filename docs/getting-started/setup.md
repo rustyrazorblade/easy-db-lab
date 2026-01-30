@@ -62,8 +62,9 @@ Your profile is saved to:
 ~/.easy-db-lab/profiles/default/settings.yaml
 ```
 
-!!! tip
-    Use a different profile by setting `EASY_CASS_LAB_PROFILE` environment variable before running setup.
+```admonish tip
+Use a different profile by setting `EASY_CASS_LAB_PROFILE` environment variable before running setup.
+```
 
 ## Step 2: Getting IAM Policies
 
@@ -100,8 +101,9 @@ For teams with multiple users, we recommend creating managed policies attached t
 3. **Attach all policies** to the group
 4. **Add users** to the group
 
-!!! warning
-    Inline policies have a 5,120 byte limit which may not fit all three policies. Use managed policies instead.
+```admonish warning
+Inline policies have a 5,120 byte limit which may not fit all three policies. Use managed policies instead.
+```
 
 ## Step 3: Build Custom AMI (Optional)
 
@@ -131,8 +133,9 @@ easy-db-lab build-image --arch ARM64
 easy-db-lab build-image --region eu-west-1
 ```
 
-!!! note
-    Building an AMI takes approximately 10-15 minutes. Docker must be installed and running.
+```admonish note
+Building an AMI takes approximately 10-15 minutes. Docker must be installed and running.
+```
 
 ## Environment Variables
 

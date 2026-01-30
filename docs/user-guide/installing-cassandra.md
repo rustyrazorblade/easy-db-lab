@@ -99,8 +99,9 @@ trickle_fsync: true
 endpoint_snitch: "Ec2Snitch"
 ```
 
-!!! info "Auto-Injected Fields"
-    `listen_address` and `rpc_address` are automatically injected with each node's private IP. Do not include them in your patch file.
+```admonish info title="Auto-Injected Fields"
+`listen_address` and `rpc_address` are automatically injected with each node's private IP. Do not include them in your patch file.
+```
 
 ### Apply Configuration
 

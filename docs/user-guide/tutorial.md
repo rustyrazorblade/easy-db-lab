@@ -2,8 +2,9 @@
 
 This tutorial walks you through creating a Cassandra cluster from scratch, covering initialization, infrastructure provisioning, and Cassandra configuration.
 
-!!! note "Prerequisites"
-    Before starting, ensure you've completed the [Setup](../getting-started/setup.md) process by running `easy-db-lab setup-profile`.
+```admonish note title="Prerequisites"
+Before starting, ensure you've completed the [Setup](../getting-started/setup.md) process by running `easy-db-lab setup-profile`.
+```
 
 ## Part 1: Initialize Your Cluster
 
@@ -236,8 +237,9 @@ When finished, destroy the cluster infrastructure:
 easy-db-lab down
 ```
 
-!!! warning
-    This permanently destroys all EC2 instances, the VPC, and associated resources. S3 buckets are retained for state recovery.
+```admonish warning
+This permanently destroys all EC2 instances, the VPC, and associated resources. S3 buckets are retained for state recovery.
+```
 
 ## Quick Reference
 

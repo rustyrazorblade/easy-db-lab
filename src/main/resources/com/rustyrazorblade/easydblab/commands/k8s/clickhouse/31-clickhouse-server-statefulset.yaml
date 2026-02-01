@@ -98,7 +98,16 @@ spec:
               # Note: Can't use $HOSTNAME because hostNetwork=true makes it the EC2 hostname
               ORDINAL=${REPLICA##*-}
               export SHARD=$(( (ORDINAL / REPLICAS_PER_SHARD) + 1 ))
+
+              # Append ordinal to S3 endpoint for per-replica isolation
+              if [ -z "$CLICKHOUSE_S3_ENDPOINT" ]; then
+                echo "ERROR: CLICKHOUSE_S3_ENDPOINT is required but not set"
+                exit 1
+              fi
+              export CLICKHOUSE_S3_ENDPOINT="${CLICKHOUSE_S3_ENDPOINT}${ORDINAL}/"
+
               echo "Pod $REPLICA: ordinal=$ORDINAL, SHARD=$SHARD, REPLICAS_PER_SHARD=$REPLICAS_PER_SHARD"
+              echo "S3 endpoint: $CLICKHOUSE_S3_ENDPOINT"
               umask 0022
               exec /entrypoint.sh
           resources:

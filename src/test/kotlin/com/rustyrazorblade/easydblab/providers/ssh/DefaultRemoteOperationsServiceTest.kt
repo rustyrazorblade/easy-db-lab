@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.providers.ssh
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.Host
+import com.rustyrazorblade.easydblab.observability.TelemetryProvider
 import com.rustyrazorblade.easydblab.ssh.ISSHClient
 import com.rustyrazorblade.easydblab.ssh.Response
 import org.assertj.core.api.Assertions.assertThat
@@ -21,6 +22,7 @@ class DefaultRemoteOperationsServiceTest :
     private lateinit var service: DefaultRemoteOperationsService
     private lateinit var mockSSHConnectionProvider: SSHConnectionProvider
     private lateinit var mockSSHClient: ISSHClient
+    private lateinit var mockTelemetryProvider: TelemetryProvider
     private lateinit var host: Host
 
     companion object {
@@ -35,6 +37,7 @@ class DefaultRemoteOperationsServiceTest :
         listOf(
             org.koin.dsl.module {
                 single { mockSSHConnectionProvider }
+                single<TelemetryProvider> { mockTelemetryProvider }
             },
         )
 
@@ -42,10 +45,18 @@ class DefaultRemoteOperationsServiceTest :
     fun setup() {
         mockSSHConnectionProvider = mock()
         mockSSHClient = mock()
+        mockTelemetryProvider = mock()
         host = Host(TEST_HOST_NAME, TEST_HOST_IP, "", "seed")
 
         // Setup the mock to return our mock SSH client
         whenever(mockSSHConnectionProvider.getConnection(any())).thenReturn(mockSSHClient)
+
+        // Mock withSpan to just execute the block
+        whenever(mockTelemetryProvider.withSpan<Any>(any(), any(), any())).thenAnswer { invocation ->
+            @Suppress("UNCHECKED_CAST")
+            val block = invocation.getArgument<() -> Any>(2)
+            block()
+        }
 
         // Get the service from DI (it will use our mocked SSHConnectionProvider)
         val sshConnectionProvider: SSHConnectionProvider by inject()

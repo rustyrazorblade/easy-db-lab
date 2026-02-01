@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.di
 
 import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.observability.observabilityModule
 import com.rustyrazorblade.easydblab.providers.aws.awsModule
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -35,9 +36,9 @@ internal class AWSModuleTest : KoinTest {
             }
 
         try {
-            // Start Koin with awsModule and testModule
+            // Start Koin with awsModule, observabilityModule, and testModule
             startKoin {
-                modules(awsModule, testModule)
+                modules(observabilityModule, awsModule, testModule)
             }
 
             // Get the credentials provider from Koin
@@ -70,9 +71,9 @@ internal class AWSModuleTest : KoinTest {
             }
 
         try {
-            // Start Koin with awsModule and testModule
+            // Start Koin with awsModule, observabilityModule, and testModule
             startKoin {
-                modules(awsModule, testModule)
+                modules(observabilityModule, awsModule, testModule)
             }
 
             // Get the credentials provider from Koin
@@ -110,9 +111,9 @@ internal class AWSModuleTest : KoinTest {
             }
 
         try {
-            // Start Koin with awsModule and testModule
+            // Start Koin with awsModule, observabilityModule, and testModule
             startKoin {
-                modules(awsModule, testModule)
+                modules(observabilityModule, awsModule, testModule)
             }
 
             // Get the EMR client from Koin

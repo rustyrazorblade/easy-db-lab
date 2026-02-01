@@ -26,6 +26,7 @@
 - [Commands](reference/commands.md)
 - [Ports](reference/ports.md)
 - [Log Infrastructure](reference/log-infrastructure.md)
+- [OpenTelemetry](reference/opentelemetry.md)
 
 # Development
 

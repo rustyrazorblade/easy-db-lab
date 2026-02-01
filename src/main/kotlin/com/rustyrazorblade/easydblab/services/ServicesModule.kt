@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.driver.CqlSessionFactory
 import com.rustyrazorblade.easydblab.driver.DefaultCqlSessionFactory
+import com.rustyrazorblade.easydblab.observability.TelemetryProvider
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.EC2InstanceService
@@ -107,6 +108,7 @@ val servicesModule =
                 get<UserConfigProvider>(),
                 get<DockerClientProvider>(),
                 get<ResourceManager>(),
+                get<TelemetryProvider>(),
             )
         }
     }

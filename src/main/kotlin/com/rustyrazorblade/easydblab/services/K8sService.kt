@@ -6,6 +6,8 @@ import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import com.rustyrazorblade.easydblab.kubernetes.ManifestApplier
 import com.rustyrazorblade.easydblab.kubernetes.ProxiedKubernetesClientFactory
+import com.rustyrazorblade.easydblab.observability.TelemetryNames
+import com.rustyrazorblade.easydblab.observability.TelemetryProvider
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import io.fabric8.kubernetes.client.KubernetesClient
@@ -348,6 +350,7 @@ interface K8sService {
 class DefaultK8sService(
     private val socksProxyService: SocksProxyService,
     private val outputHandler: OutputHandler,
+    private val telemetryProvider: TelemetryProvider,
 ) : K8sService {
     private val log = KotlinLogging.logger {}
 
@@ -384,39 +387,46 @@ class DefaultK8sService(
         manifestPath: Path,
     ): Result<Unit> =
         runCatching {
-            log.info { "Applying K8s manifests from $manifestPath via SOCKS proxy" }
+            val attributes =
+                mapOf(
+                    TelemetryNames.Attributes.HOST_ALIAS to controlHost.alias,
+                    TelemetryNames.Attributes.FILE_PATH_LOCAL to manifestPath.toString(),
+                )
+            telemetryProvider.withSpan(TelemetryNames.Spans.K8S_APPLY_MANIFESTS, attributes) {
+                log.info { "Applying K8s manifests from $manifestPath via SOCKS proxy" }
 
-            createClient(controlHost).use { client ->
-                outputHandler.handleMessage("Applying K8s manifests...")
+                createClient(controlHost).use { client ->
+                    outputHandler.handleMessage("Applying K8s manifests...")
 
-                val pathFile = manifestPath.toFile()
-                val manifestFiles =
-                    if (pathFile.isFile) {
-                        // Single file - apply just this file
-                        listOf(pathFile)
-                    } else {
-                        // Directory - get all YAML files sorted lexicographically
-                        // Files use number prefixes (00-, 10-, etc.) to ensure correct ordering
-                        pathFile
-                            .listFiles { file ->
-                                file.extension == "yaml" || file.extension == "yml"
-                            }?.sorted() ?: emptyList()
+                    val pathFile = manifestPath.toFile()
+                    val manifestFiles =
+                        if (pathFile.isFile) {
+                            // Single file - apply just this file
+                            listOf(pathFile)
+                        } else {
+                            // Directory - get all YAML files sorted lexicographically
+                            // Files use number prefixes (00-, 10-, etc.) to ensure correct ordering
+                            pathFile
+                                .listFiles { file ->
+                                    file.extension == "yaml" || file.extension == "yml"
+                                }?.sorted() ?: emptyList()
+                        }
+
+                    check(manifestFiles.isNotEmpty()) { "No manifest files found at $manifestPath" }
+
+                    log.info { "Found ${manifestFiles.size} manifest files to apply" }
+                    manifestFiles.forEachIndexed { index, file ->
+                        log.info { "  [$index] ${file.name}" }
                     }
 
-                check(manifestFiles.isNotEmpty()) { "No manifest files found at $manifestPath" }
+                    for ((index, file) in manifestFiles.withIndex()) {
+                        log.info { "Processing manifest ${index + 1}/${manifestFiles.size}: ${file.name}" }
+                        ManifestApplier.applyManifest(client, file)
+                    }
 
-                log.info { "Found ${manifestFiles.size} manifest files to apply" }
-                manifestFiles.forEachIndexed { index, file ->
-                    log.info { "  [$index] ${file.name}" }
+                    log.info { "All ${manifestFiles.size} manifests applied successfully" }
+                    outputHandler.handleMessage("K8s manifests applied successfully")
                 }
-
-                for ((index, file) in manifestFiles.withIndex()) {
-                    log.info { "Processing manifest ${index + 1}/${manifestFiles.size}: ${file.name}" }
-                    ManifestApplier.applyManifest(client, file)
-                }
-
-                log.info { "All ${manifestFiles.size} manifests applied successfully" }
-                outputHandler.handleMessage("K8s manifests applied successfully")
             }
         }
 
@@ -600,21 +610,28 @@ class DefaultK8sService(
         namespace: String,
     ): Result<Unit> =
         runCatching {
-            log.debug { "Deleting namespace $namespace via SOCKS proxy" }
+            val attributes =
+                mapOf(
+                    TelemetryNames.Attributes.HOST_ALIAS to controlHost.alias,
+                    TelemetryNames.Attributes.K8S_NAMESPACE to namespace,
+                )
+            telemetryProvider.withSpan(TelemetryNames.Spans.K8S_DELETE_NAMESPACE, attributes) {
+                log.debug { "Deleting namespace $namespace via SOCKS proxy" }
 
-            outputHandler.handleMessage("Deleting $namespace namespace...")
+                outputHandler.handleMessage("Deleting $namespace namespace...")
 
-            createClient(controlHost).use { client ->
-                val ns = client.namespaces().withName(namespace).get()
-                if (ns != null) {
-                    client.namespaces().withName(namespace).delete()
-                    log.info { "Deleted namespace: $namespace" }
-                } else {
-                    log.info { "Namespace $namespace does not exist, nothing to delete" }
+                createClient(controlHost).use { client ->
+                    val ns = client.namespaces().withName(namespace).get()
+                    if (ns != null) {
+                        client.namespaces().withName(namespace).delete()
+                        log.info { "Deleted namespace: $namespace" }
+                    } else {
+                        log.info { "Namespace $namespace does not exist, nothing to delete" }
+                    }
                 }
-            }
 
-            outputHandler.handleMessage("Namespace $namespace deleted")
+                outputHandler.handleMessage("Namespace $namespace deleted")
+            }
         }
 
     override fun deleteResourcesByLabel(
@@ -843,20 +860,28 @@ class DefaultK8sService(
         replicas: Int,
     ): Result<Unit> =
         runCatching {
-            log.info { "Scaling StatefulSet $statefulSetName in namespace $namespace to $replicas replicas" }
+            val attributes =
+                mapOf(
+                    TelemetryNames.Attributes.HOST_ALIAS to controlHost.alias,
+                    TelemetryNames.Attributes.K8S_NAMESPACE to namespace,
+                    TelemetryNames.Attributes.K8S_RESOURCE_NAME to statefulSetName,
+                )
+            telemetryProvider.withSpan(TelemetryNames.Spans.K8S_SCALE_STATEFULSET, attributes) {
+                log.info { "Scaling StatefulSet $statefulSetName in namespace $namespace to $replicas replicas" }
 
-            createClient(controlHost).use { client ->
-                client
-                    .apps()
-                    .statefulSets()
-                    .inNamespace(namespace)
-                    .withName(statefulSetName)
-                    .scale(replicas)
+                createClient(controlHost).use { client ->
+                    client
+                        .apps()
+                        .statefulSets()
+                        .inNamespace(namespace)
+                        .withName(statefulSetName)
+                        .scale(replicas)
 
-                log.info { "StatefulSet $statefulSetName scaled to $replicas replicas" }
+                    log.info { "StatefulSet $statefulSetName scaled to $replicas replicas" }
+                }
+
+                outputHandler.handleMessage("Scaled $statefulSetName to $replicas replicas")
             }
-
-            outputHandler.handleMessage("Scaled $statefulSetName to $replicas replicas")
         }
 
     override fun createJob(
@@ -1115,11 +1140,17 @@ class DefaultK8sService(
         yamlContent: String,
     ): Result<Unit> =
         runCatching {
-            log.info { "Applying YAML content via SOCKS proxy" }
+            val attributes =
+                mapOf(
+                    TelemetryNames.Attributes.HOST_ALIAS to controlHost.alias,
+                )
+            telemetryProvider.withSpan(TelemetryNames.Spans.K8S_APPLY_YAML, attributes) {
+                log.info { "Applying YAML content via SOCKS proxy" }
 
-            createClient(controlHost).use { client ->
-                ManifestApplier.applyYaml(client, yamlContent)
-                log.info { "YAML content applied successfully" }
+                createClient(controlHost).use { client ->
+                    ManifestApplier.applyYaml(client, yamlContent)
+                    log.info { "YAML content applied successfully" }
+                }
             }
         }
 

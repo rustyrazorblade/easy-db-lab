@@ -11,13 +11,13 @@ import org.koin.dsl.module
  *
  * This module provides services for logging, metrics, and monitoring:
  * - VictoriaLogsService: Query logs from Victoria Logs
- *
- * Future additions may include:
- * - Metrics services (Victoria Metrics)
- * - Tracing services
- * - Alerting services
+ * - TelemetryProvider: OpenTelemetry tracing and metrics
  */
 val observabilityModule =
     module {
         factoryOf(::DefaultVictoriaLogsService) bind VictoriaLogsService::class
+
+        // TelemetryProvider - singleton because it manages SDK lifecycle
+        // Uses TelemetryFactory to create the appropriate implementation based on environment
+        single<TelemetryProvider> { TelemetryFactory.create() }
     }

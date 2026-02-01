@@ -11,6 +11,8 @@ import com.rustyrazorblade.easydblab.commands.PicoCommand
 import com.rustyrazorblade.easydblab.commands.SetupProfile
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
+import com.rustyrazorblade.easydblab.observability.TelemetryNames
+import com.rustyrazorblade.easydblab.observability.TelemetryProvider
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -76,6 +78,7 @@ class DefaultCommandExecutor(
     private val userConfigProvider: UserConfigProvider,
     private val dockerClientProvider: DockerClientProvider,
     private val resourceManager: ResourceManager,
+    private val telemetryProvider: TelemetryProvider,
 ) : CommandExecutor,
     KoinComponent {
     // Lazy injection - only resolves when first accessed (defers AWS dependency chain)
@@ -138,18 +141,45 @@ class DefaultCommandExecutor(
      * 3. Handle post-success actions
      */
     private fun executeWithLifecycle(command: PicoCommand): Int {
+        val commandName = command::class.simpleName ?: "Unknown"
+        val startTime = System.currentTimeMillis()
+
         // 1. Check requirements (may exit process on failure or run setup)
         checkRequirements(command)
 
         // 2. Execute with PicoCommand lifecycle (@PreExecute, execute(), @PostExecute)
+        // Wrap in telemetry span
         val exitCode =
-            try {
-                command.call()
-            } catch (e: Exception) {
-                log.error(e) { "Command execution failed" }
-                outputHandler.handleError(e.message ?: "Command execution failed")
-                Constants.ExitCodes.ERROR
+            telemetryProvider.withSpan(
+                TelemetryNames.Spans.COMMAND_EXECUTE,
+                mapOf(TelemetryNames.Attributes.COMMAND_NAME to commandName),
+            ) {
+                try {
+                    command.call()
+                } catch (e: Exception) {
+                    log.error(e) { "Command execution failed" }
+                    outputHandler.handleError(e.message ?: "Command execution failed")
+                    Constants.ExitCodes.ERROR
+                }
             }
+
+        // Record metrics
+        val durationMs = System.currentTimeMillis() - startTime
+        telemetryProvider.recordDuration(
+            TelemetryNames.Metrics.COMMAND_DURATION,
+            durationMs,
+            mapOf(
+                TelemetryNames.Attributes.COMMAND_NAME to commandName,
+                TelemetryNames.Attributes.SUCCESS to (exitCode == 0).toString(),
+            ),
+        )
+        telemetryProvider.incrementCounter(
+            TelemetryNames.Metrics.COMMAND_COUNT,
+            mapOf(
+                TelemetryNames.Attributes.COMMAND_NAME to commandName,
+                TelemetryNames.Attributes.SUCCESS to (exitCode == 0).toString(),
+            ),
+        )
 
         // 3. Post-success actions
         if (exitCode == 0) {

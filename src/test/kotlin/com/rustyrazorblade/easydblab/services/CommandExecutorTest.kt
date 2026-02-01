@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
+import com.rustyrazorblade.easydblab.observability.TelemetryProvider
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import org.assertj.core.api.Assertions.assertThat
@@ -39,6 +40,7 @@ class CommandExecutorTest : BaseKoinTest() {
     private lateinit var mockUserConfigProvider: UserConfigProvider
     private lateinit var mockDockerClientProvider: DockerClientProvider
     private lateinit var mockResourceManager: ResourceManager
+    private lateinit var mockTelemetryProvider: TelemetryProvider
     private lateinit var mockUserConfig: User
     private lateinit var commandExecutor: DefaultCommandExecutor
 
@@ -54,6 +56,7 @@ class CommandExecutorTest : BaseKoinTest() {
                 single<UserConfigProvider> { mockUserConfigProvider }
                 single<DockerClientProvider> { mockDockerClientProvider }
                 single<ResourceManager> { mockResourceManager }
+                single<TelemetryProvider> { mockTelemetryProvider }
                 single<User> { mockUserConfig }
             },
         )
@@ -67,10 +70,18 @@ class CommandExecutorTest : BaseKoinTest() {
         mockUserConfigProvider = mock()
         mockDockerClientProvider = mock()
         mockResourceManager = mock()
+        mockTelemetryProvider = mock()
         mockUserConfig = mock()
 
         // Default: profile is already set up
         whenever(mockUserConfigProvider.isSetup()).thenReturn(true)
+
+        // Mock withSpan to just execute the block
+        whenever(mockTelemetryProvider.withSpan<Any>(any(), any(), any())).thenAnswer { invocation ->
+            @Suppress("UNCHECKED_CAST")
+            val block = invocation.getArgument<() -> Any>(2)
+            block()
+        }
 
         commandExecutor =
             DefaultCommandExecutor(
@@ -80,6 +91,7 @@ class CommandExecutorTest : BaseKoinTest() {
                 userConfigProvider = mockUserConfigProvider,
                 dockerClientProvider = mockDockerClientProvider,
                 resourceManager = mockResourceManager,
+                telemetryProvider = mockTelemetryProvider,
             )
     }
 

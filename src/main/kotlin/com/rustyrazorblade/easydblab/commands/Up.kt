@@ -144,6 +144,9 @@ class Up : PicoBaseCommand() {
      * Creates the S3 bucket for this environment if it doesn't already exist.
      * Each environment gets its own dedicated bucket for isolation.
      * The bucket is tagged with the ClusterId to enable state reconstruction.
+     *
+     * If the EASY_DB_LAB_S3_BUCKET environment variable is set, that bucket
+     * will be used instead of creating a new one.
      */
     private fun createS3BucketIfNeeded(initConfig: InitConfig) {
         if (!workingState.s3Bucket.isNullOrBlank()) {
@@ -151,18 +154,27 @@ class Up : PicoBaseCommand() {
             return
         }
 
-        val shortUuid = workingState.clusterId.take(BUCKET_UUID_LENGTH)
-        val bucketName = "easy-db-lab-${initConfig.name}-$shortUuid"
+        // Check for environment variable override
+        val envBucket = System.getenv(Constants.Environment.S3_BUCKET)
+        val bucketName =
+            if (!envBucket.isNullOrBlank()) {
+                outputHandler.handleMessage("Using S3 bucket from environment: $envBucket")
+                envBucket
+            } else {
+                val shortUuid = workingState.clusterId.take(BUCKET_UUID_LENGTH)
+                val generatedName = "easy-db-lab-${initConfig.name}-$shortUuid"
+                outputHandler.handleMessage("Creating S3 bucket: $generatedName")
+                aws.createS3Bucket(generatedName)
+                generatedName
+            }
 
-        outputHandler.handleMessage("Creating S3 bucket: $bucketName")
-        aws.createS3Bucket(bucketName)
         aws.putS3BucketPolicy(bucketName)
         aws.tagS3Bucket(bucketName, mapOf("ClusterId" to workingState.clusterId) + initConfig.tags)
 
         workingState.s3Bucket = bucketName
         clusterStateManager.save(workingState)
 
-        outputHandler.handleMessage("S3 bucket created and configured: $bucketName")
+        outputHandler.handleMessage("S3 bucket configured: $bucketName")
     }
 
     /**
@@ -258,10 +270,12 @@ class Up : PicoBaseCommand() {
         // Create new VPC
         outputHandler.handleMessage("Creating VPC for cluster: ${initConfig.name}")
         val vpcTags =
-            mapOf(
-                Constants.Vpc.TAG_KEY to Constants.Vpc.TAG_VALUE,
-                "ClusterId" to workingState.clusterId,
-            ) + initConfig.tags
+            buildMap {
+                put(Constants.Vpc.TAG_KEY, Constants.Vpc.TAG_VALUE)
+                put("ClusterId", workingState.clusterId)
+                workingState.s3Bucket?.let { put("bucket", it) }
+                putAll(initConfig.tags)
+            }
 
         val vpcId = vpcService.createVpc(initConfig.name, Constants.Vpc.DEFAULT_CIDR, vpcTags)
         outputHandler.handleMessage("VPC created: $vpcId")

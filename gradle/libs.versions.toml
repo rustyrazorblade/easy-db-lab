@@ -61,8 +61,9 @@ resilience4j = "2.3.0"
 fabric8-kubernetes = "7.5.0"
 
 # OpenTelemetry
-opentelemetry = "1.40.0"
-opentelemetry-instrumentation = "2.16.0-alpha"
+opentelemetry = "1.45.0"
+opentelemetry-instrumentation = "2.11.0-alpha"
+opentelemetry-semconv = "1.29.0-alpha"
 
 # Gradle Plugins
 shadow = "8.1.1"
@@ -161,7 +162,11 @@ cassandra-driver-core = { module = "org.apache.cassandra:java-driver-core", vers
 # OpenTelemetry
 opentelemetry-api = { module = "io.opentelemetry:opentelemetry-api", version.ref = "opentelemetry" }
 opentelemetry-sdk = { module = "io.opentelemetry:opentelemetry-sdk", version.ref = "opentelemetry" }
+opentelemetry-sdk-extension-autoconfigure = { module = "io.opentelemetry:opentelemetry-sdk-extension-autoconfigure", version.ref = "opentelemetry" }
 opentelemetry-exporter-otlp = { module = "io.opentelemetry:opentelemetry-exporter-otlp", version.ref = "opentelemetry" }
+opentelemetry-semconv = { module = "io.opentelemetry.semconv:opentelemetry-semconv", version.ref = "opentelemetry-semconv" }
+opentelemetry-semconv-incubating = { module = "io.opentelemetry.semconv:opentelemetry-semconv-incubating", version.ref = "opentelemetry-semconv" }
+opentelemetry-instrumentation-logback = { module = "io.opentelemetry.instrumentation:opentelemetry-logback-appender-1.0", version.ref = "opentelemetry-instrumentation" }
 opentelemetry-aws-sdk = { module = "io.opentelemetry.instrumentation:opentelemetry-aws-sdk-2.2", version.ref = "opentelemetry-instrumentation" }
 opentelemetry-okhttp = { module = "io.opentelemetry.instrumentation:opentelemetry-okhttp-3.0", version.ref = "opentelemetry-instrumentation" }
 
@@ -198,7 +203,7 @@ sshd = ["sshd-core", "sshd-scp"]
 resilience4j = ["resilience4j-retry", "resilience4j-kotlin"]
 
 # OpenTelemetry bundle
-opentelemetry = ["opentelemetry-api", "opentelemetry-sdk", "opentelemetry-exporter-otlp", "opentelemetry-aws-sdk", "opentelemetry-okhttp"]
+opentelemetry = ["opentelemetry-api", "opentelemetry-sdk", "opentelemetry-exporter-otlp", "opentelemetry-aws-sdk", "opentelemetry-okhttp", "opentelemetry-instrumentation-logback"]
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

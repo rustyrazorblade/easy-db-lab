@@ -13,5 +13,14 @@ VERSION=$(grep '^version' "${APP_HOME}/gradle.properties" | cut -d '=' -f2)
 
 JAR="${APP_HOME}/build/libs/easy-db-lab-${VERSION}-all.jar"
 
-java -Deasydblab.version=$VERSION -Deasydblab.apphome=$APP_HOME -jar $JAR "$@"
+# Start OTel collector
+if ! docker compose -f "${APP_HOME}/docker-compose.yml" up -d > /dev/null 2>&1; then
+    echo "Failed to start OTel collector" >&2
+    exit 1
+fi
 
+# Discover the dynamically assigned port
+OTEL_PORT=$(docker compose -f "${APP_HOME}/docker-compose.yml" port otel-collector 4317 2>/dev/null | cut -d: -f2)
+export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:${OTEL_PORT}"
+
+java -Deasydblab.version=$VERSION -Deasydblab.apphome=$APP_HOME -jar $JAR "$@"

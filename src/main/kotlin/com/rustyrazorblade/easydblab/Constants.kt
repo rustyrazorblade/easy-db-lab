@@ -122,6 +122,7 @@ object Constants {
     // Environment variables
     object Environment {
         const val USER_DIR = "EASY_DB_LAB_USER_DIR"
+        const val S3_BUCKET = "EASY_DB_LAB_S3_BUCKET"
     }
 
     // AWS configuration

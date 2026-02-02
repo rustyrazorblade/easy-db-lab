@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.commands.BuildBaseImage
 import com.rustyrazorblade.easydblab.commands.BuildCassandraImage
 import com.rustyrazorblade.easydblab.commands.BuildImage
 import com.rustyrazorblade.easydblab.commands.Clean
+import com.rustyrazorblade.easydblab.commands.Commands
 import com.rustyrazorblade.easydblab.commands.ConfigureAWS
 import com.rustyrazorblade.easydblab.commands.ConfigureAxonOps
 import com.rustyrazorblade.easydblab.commands.Down
@@ -54,6 +55,7 @@ import kotlin.system.exitProcess
     mixinStandardHelpOptions = true,
     subcommands = [
         // Top-level commands
+        Commands::class,
         Version::class,
         Clean::class,
         Down::class,

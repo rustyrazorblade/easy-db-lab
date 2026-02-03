@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.annotations.TriggerBackup
 import com.rustyrazorblade.easydblab.commands.cassandra.WriteConfig
 import com.rustyrazorblade.easydblab.commands.k8.K8Apply
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
+import com.rustyrazorblade.easydblab.commands.tailscale.TailscaleStart
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.InfrastructureState
@@ -277,7 +278,7 @@ class Up : PicoBaseCommand() {
                 putAll(initConfig.tags)
             }
 
-        val vpcId = vpcService.createVpc(initConfig.name, Constants.Vpc.DEFAULT_CIDR, vpcTags)
+        val vpcId = vpcService.createVpc(initConfig.name, initConfig.cidr, vpcTags)
         outputHandler.handleMessage("VPC created: $vpcId")
 
         // Save VPC ID to state
@@ -315,6 +316,7 @@ class Up : PicoBaseCommand() {
                 availabilityZones = availabilityZones,
                 isOpen = initConfig.open,
                 tags = initConfig.tags,
+                vpcCidr = initConfig.cidr,
             )
         val vpcInfra = awsInfrastructureService.setupVpcNetworking(vpcNetworkingConfig) { getExternalIpAddress() }
         val subnetIds = vpcInfra.subnetIds
@@ -525,9 +527,29 @@ class Up : PicoBaseCommand() {
             commandExecutor.execute { SetupInstance() }
             startK3sOnAllNodes()
 
+            startTailscaleIfConfigured()
+
             if (userConfig.axonOpsKey.isNotBlank() && userConfig.axonOpsOrg.isNotBlank()) {
                 outputHandler.handleMessage("Setting up axonops for ${userConfig.axonOpsOrg}")
                 commandExecutor.execute { ConfigureAxonOps() }
+            }
+        }
+    }
+
+    /**
+     * Starts Tailscale VPN on the control node if credentials are configured.
+     *
+     * This enables secure remote access to the cluster through Tailscale's VPN.
+     * If Tailscale fails to start, a warning is logged but the up command continues.
+     */
+    private fun startTailscaleIfConfigured() {
+        if (userConfig.tailscaleClientId.isNotBlank() && userConfig.tailscaleClientSecret.isNotBlank()) {
+            outputHandler.handleMessage("Starting Tailscale VPN...")
+            try {
+                commandExecutor.execute { TailscaleStart() }
+            } catch (e: Exception) {
+                outputHandler.handleMessage("Warning: Failed to start Tailscale: ${e.message}")
+                outputHandler.handleMessage("You can manually start it later with: easy-db-lab tailscale start")
             }
         }
     }

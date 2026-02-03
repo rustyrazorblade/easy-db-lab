@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.providers.aws
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.network.CidrBlock
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import io.github.oshai.kotlinlogging.KotlinLogging
 
@@ -185,17 +186,18 @@ class AwsInfrastructureService(
         outputHandler.handleMessage("Setting up VPC networking for: ${config.clusterName}")
 
         val baseTags = config.tags + mapOf("easy_cass_lab" to "1", "ClusterId" to config.clusterId)
+        val cidrBlock = CidrBlock(config.vpcCidr)
 
         // Construct full availability zone names
         val fullAzNames = config.availabilityZones.map { config.region + it }
 
-        // Create subnets in each AZ
+        // Create subnets in each AZ using the configured CIDR
         val subnetIds =
             fullAzNames.mapIndexed { index, az ->
                 vpcService.findOrCreateSubnet(
                     vpcId = config.vpcId,
                     name = "${config.clusterName}-subnet-$index",
-                    cidr = Constants.Vpc.subnetCidr(index),
+                    cidr = cidrBlock.subnetCidr(index),
                     tags = baseTags,
                     availabilityZone = az,
                 )
@@ -232,14 +234,14 @@ class AwsInfrastructureService(
             securityGroupId,
             Constants.Network.MIN_PORT,
             Constants.Network.MAX_PORT,
-            Constants.Vpc.DEFAULT_CIDR,
+            config.vpcCidr,
             "tcp",
         )
         vpcService.authorizeSecurityGroupIngress(
             securityGroupId,
             Constants.Network.MIN_PORT,
             Constants.Network.MAX_PORT,
-            Constants.Vpc.DEFAULT_CIDR,
+            config.vpcCidr,
             "udp",
         )
 

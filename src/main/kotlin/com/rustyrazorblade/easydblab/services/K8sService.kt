@@ -339,13 +339,14 @@ interface K8sService {
 }
 
 /**
- * Default implementation of K8sService using fabric8 Kubernetes client via SOCKS proxy.
+ * Default implementation of K8sService using fabric8 Kubernetes client.
  *
- * This implementation connects to the K3s cluster through a SOCKS5 proxy tunnel,
- * allowing direct API access to private clusters.
+ * This implementation always connects to the K3s cluster through a SOCKS5 proxy tunnel.
+ * The proxy ensures reliable connectivity regardless of local network configuration.
  *
  * @property socksProxyService Service for managing the SOCKS5 proxy connection
  * @property outputHandler Handler for user-facing output messages
+ * @property telemetryProvider Provider for observability telemetry
  */
 class DefaultK8sService(
     private val socksProxyService: SocksProxyService,
@@ -355,26 +356,24 @@ class DefaultK8sService(
     private val log = KotlinLogging.logger {}
 
     /**
-     * Creates a Kubernetes client connected via SOCKS proxy.
+     * Creates a Kubernetes client using SOCKS proxy for reliable internal network access.
      */
     fun createClient(controlHost: ClusterHost): KubernetesClient {
         log.info { "Creating K8s client for ${controlHost.alias} (${controlHost.privateIp})" }
 
-        // Ensure proxy is running
+        // Always use SOCKS proxy for internal K8s operations
         socksProxyService.ensureRunning(controlHost)
         val proxyPort = socksProxyService.getLocalPort()
-        log.info { "SOCKS proxy running on localhost:$proxyPort" }
 
-        // Create factory with current proxy port
+        val kubeconfigPath = Path.of(Constants.K3s.LOCAL_KUBECONFIG)
+        log.info { "Using kubeconfig from $kubeconfigPath" }
+        log.info { "Using proxied Kubernetes client on localhost:$proxyPort" }
+
         val clientFactory =
             ProxiedKubernetesClientFactory(
                 proxyHost = "localhost",
                 proxyPort = proxyPort,
             )
-
-        // Create client using local kubeconfig
-        val kubeconfigPath = Path.of(Constants.K3s.LOCAL_KUBECONFIG)
-        log.info { "Using kubeconfig from $kubeconfigPath" }
 
         val client = clientFactory.createClient(kubeconfigPath)
         log.info { "K8s client created, master URL: ${client.configuration.masterUrl}" }

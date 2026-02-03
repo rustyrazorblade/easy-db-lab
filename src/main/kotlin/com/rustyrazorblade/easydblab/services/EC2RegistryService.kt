@@ -108,7 +108,7 @@ class EC2RegistryService(
         val resourcePath = "/com/rustyrazorblade/easydblab/commands/$scriptName"
         val scriptContent =
             this::class.java.getResourceAsStream(resourcePath)
-                ?: throw IllegalStateException("Script not found: $resourcePath")
+                ?: error("Script not found: $resourcePath")
 
         val tempFile = Files.createTempFile("registry-", "-$scriptName")
         try {

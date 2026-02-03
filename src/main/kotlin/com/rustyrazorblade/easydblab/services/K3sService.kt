@@ -212,10 +212,8 @@ class DefaultK3sService(
         kubeconfigPath: Path,
     ): Result<List<KubernetesJob>> =
         runCatching {
-            // Start the SOCKS proxy to the control node
             socksProxyService.ensureRunning(controlHost)
 
-            // Create Kubernetes service with the proxy
             val clientFactory =
                 ProxiedKubernetesClientFactory(
                     proxyHost = "localhost",
@@ -232,10 +230,8 @@ class DefaultK3sService(
         kubeconfigPath: Path,
     ): Result<List<KubernetesPod>> =
         runCatching {
-            // Start the SOCKS proxy to the control node
             socksProxyService.ensureRunning(controlHost)
 
-            // Create Kubernetes service with the proxy
             val clientFactory =
                 ProxiedKubernetesClientFactory(
                     proxyHost = "localhost",

@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.configuration
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.commands.Init
 import java.time.Instant
 import java.util.UUID
@@ -99,6 +100,7 @@ data class InitConfig(
     val opensearchInstanceCount: Int = 1,
     val opensearchVersion: String = "2.11",
     val opensearchEbsSize: Int = 100,
+    val cidr: String = Constants.Vpc.DEFAULT_CIDR,
 ) {
     companion object {
         /**
@@ -141,6 +143,7 @@ data class InitConfig(
                 opensearchInstanceCount = init.opensearch.instanceCount,
                 opensearchVersion = init.opensearch.version,
                 opensearchEbsSize = init.opensearch.ebsSize,
+                cidr = init.cidr,
             )
     }
 }

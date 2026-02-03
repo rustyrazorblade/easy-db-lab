@@ -51,10 +51,11 @@ data class Context(
     var profileDir = File(profilesDir, profile)
 
     init {
+        if (profile.isEmpty()) {
+            profile = "default"
+        }
         profileDir.mkdirs()
     }
-
-    val home = File(System.getProperty("user.home"))
 
     /**
      * Version is either supplied by the in-repo script,

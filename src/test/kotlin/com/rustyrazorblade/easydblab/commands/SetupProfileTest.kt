@@ -83,8 +83,103 @@ class SetupProfileTest : BaseKoinTest() {
     @Nested
     inner class WhenProfileAlreadySetUp {
         @Test
-        fun `execute returns early when all required fields exist with static credentials`() {
+        fun `execute prompts for each optional field when profile exists`() {
             // Given - all required fields already exist with static credentials
+
+            val existingConfig =
+                mapOf(
+                    "email" to "test@example.com",
+                    "region" to "us-west-2",
+                    "awsAccessKey" to "AKIATEST",
+                    "awsSecret" to "secret123",
+                    "axonOpsOrg" to "myorg",
+                )
+            whenever(mockUserConfigProvider.loadExistingConfig()).thenReturn(existingConfig)
+
+            // Mock getUserConfig to return a User object
+            val userConfig =
+                com.rustyrazorblade.easydblab.configuration.User(
+                    email = "test@example.com",
+                    region = "us-west-2",
+                    keyName = "test-key",
+                    awsProfile = "",
+                    awsAccessKey = "AKIATEST",
+                    awsSecret = "secret123",
+                )
+            whenever(mockUserConfigProvider.getUserConfig()).thenReturn(userConfig)
+
+            // User presses Enter for all fields (keeps existing values)
+            testPrompter = TestPrompter()
+            setupTestModule()
+
+            // When
+            val command = SetupProfile()
+            command.execute()
+
+            // Then - should prompt for each optional field individually
+            // Note: Tailscale device tag is hardcoded to "tag:easy-db-lab" and not prompted
+            assertThat(testPrompter.wasPromptedFor("AxonOps Org?")).isTrue()
+            assertThat(testPrompter.wasPromptedFor("AxonOps Key?")).isTrue()
+            assertThat(testPrompter.wasPromptedFor("Tailscale OAuth Client ID?")).isTrue()
+            assertThat(testPrompter.wasPromptedFor("Tailscale OAuth Client Secret?")).isTrue()
+
+            // Should display masked existing value for axonOpsOrg
+            assertThat(testPrompter.getCallLog().any { it.question.contains("[m****]") }).isTrue()
+
+            // Should display profile configured message
+            val output = bufferedOutput.messages.joinToString("\n")
+            assertThat(output).contains("Profile 'default' is already configured")
+            assertThat(output).contains("Configuration updated!")
+
+            // Should not call any AWS operations
+            verify(mockAwsResourceSetup, never()).ensureAWSResources(any())
+        }
+
+        @Test
+        fun `execute shows masked values in prompts`() {
+            // Given - profile exists with existing optional values
+            val existingConfig =
+                mapOf(
+                    "email" to "test@example.com",
+                    "region" to "us-west-2",
+                    "awsProfile" to "my-profile",
+                    "axonOpsOrg" to "acme-corp",
+                    "axonOpsKey" to "secret-key-123",
+                    "tailscaleClientId" to "tskey-client-abc",
+                    "tailscaleClientSecret" to "tskey-secret-xyz",
+                    "tailscaleTag" to "tag:my-lab",
+                )
+            whenever(mockUserConfigProvider.loadExistingConfig()).thenReturn(existingConfig)
+
+            val userConfig =
+                com.rustyrazorblade.easydblab.configuration.User(
+                    email = "test@example.com",
+                    region = "us-west-2",
+                    keyName = "test-key",
+                    awsProfile = "my-profile",
+                    awsAccessKey = "",
+                    awsSecret = "",
+                )
+            whenever(mockUserConfigProvider.getUserConfig()).thenReturn(userConfig)
+
+            testPrompter = TestPrompter()
+            setupTestModule()
+
+            // When
+            val command = SetupProfile()
+            command.execute()
+
+            // Then - prompts should show masked values like [a****]
+            // Note: Tailscale device tag is hardcoded and not prompted
+            val callLog = testPrompter.getCallLog()
+            assertThat(callLog.any { it.question.contains("AxonOps Org?") && it.question.contains("[a****]") }).isTrue()
+            assertThat(callLog.any { it.question.contains("AxonOps Key?") && it.question.contains("[s****]") }).isTrue()
+            assertThat(callLog.any { it.question.contains("Tailscale OAuth Client ID?") && it.question.contains("[t****]") }).isTrue()
+        }
+
+        @Test
+        fun `execute shows not set for empty values`() {
+            // Given - profile exists but no optional values configured
             val existingConfig =
                 mapOf(
                     "email" to "test@example.com",
@@ -94,43 +189,64 @@ class SetupProfileTest : BaseKoinTest() {
                 )
             whenever(mockUserConfigProvider.loadExistingConfig()).thenReturn(existingConfig)
 
+            val userConfig =
+                com.rustyrazorblade.easydblab.configuration.User(
+                    email = "test@example.com",
+                    region = "us-west-2",
+                    keyName = "test-key",
+                    awsProfile = "",
+                    awsAccessKey = "AKIATEST",
+                    awsSecret = "secret123",
+                )
+            whenever(mockUserConfigProvider.getUserConfig()).thenReturn(userConfig)
+
+            testPrompter = TestPrompter()
+            setupTestModule()
+
             // When
             val command = SetupProfile()
             command.execute()
 
-            // Then - should not prompt for anything
-            assertThat(testPrompter.getCallLog()).isEmpty()
-
-            // Should display "already set up" message
-            assertThat(bufferedOutput.messages.joinToString("\n")).contains("Profile is already set up!")
-
-            // Should not call any AWS operations
-            verify(mockAwsResourceSetup, never()).ensureAWSResources(any())
+            // Then - prompts should show "(not set)" for empty values
+            val callLog = testPrompter.getCallLog()
+            assertThat(callLog.any { it.question.contains("AxonOps Org?") && it.question.contains("(not set)") }).isTrue()
         }
 
         @Test
-        fun `execute returns early when profile-based auth is configured`() {
-            // Given - profile-based auth is already configured
+        fun `execute updates value when user provides new input`() {
+            // Given - profile exists with existing values
             val existingConfig =
                 mapOf(
                     "email" to "test@example.com",
                     "region" to "us-west-2",
-                    "awsProfile" to "my-profile",
+                    "awsAccessKey" to "AKIATEST",
+                    "awsSecret" to "secret123",
+                    "axonOpsOrg" to "old-org",
                 )
             whenever(mockUserConfigProvider.loadExistingConfig()).thenReturn(existingConfig)
+
+            val userConfig =
+                com.rustyrazorblade.easydblab.configuration.User(
+                    email = "test@example.com",
+                    region = "us-west-2",
+                    keyName = "test-key",
+                    awsProfile = "",
+                    awsAccessKey = "AKIATEST",
+                    awsSecret = "secret123",
+                )
+            whenever(mockUserConfigProvider.getUserConfig()).thenReturn(userConfig)
+
+            // User provides new value for AxonOps Org
+            testPrompter = TestPrompter(mapOf("AxonOps Org?" to "new-org"))
+            setupTestModule()
 
             // When
             val command = SetupProfile()
             command.execute()
 
-            // Then - should not prompt for anything
-            assertThat(testPrompter.getCallLog()).isEmpty()
-
-            // Should display "already set up" message
-            assertThat(bufferedOutput.messages.joinToString("\n")).contains("Profile is already set up!")
-
-            // Should not call any AWS operations
-            verify(mockAwsResourceSetup, never()).ensureAWSResources(any())
+            // Then - userConfig should be updated and saved
+            assertThat(userConfig.axonOpsOrg).isEqualTo("new-org")
+            verify(mockUserConfigProvider).saveUserConfig(userConfig)
         }
     }
 
@@ -526,8 +642,45 @@ class SetupProfileTest : BaseKoinTest() {
     @Nested
     inner class SkippableFields {
         @Test
-        fun `skippable fields return empty without prompting`() {
-            // Given - existing config has required fields but not optional ones
+        fun `skippable fields with empty default are not prompted during initial setup`() {
+            // Given - config is missing required fields (not fully set up yet)
+            // Include keyName and s3Bucket to skip AWS resource creation
+            whenever(mockUserConfigProvider.loadExistingConfig()).thenReturn(
+                mapOf(
+                    "keyName" to "test-key",
+                    "s3Bucket" to "test-bucket",
+                ),
+            )
+
+            testPrompter =
+                TestPrompter(
+                    mapOf(
+                        "email" to "user@test.com",
+                        "region" to "us-west-2",
+                        "AWS Profile" to "",
+                        "AWS Access Key" to "AKIATEST123",
+                        "AWS Secret" to "secretkey123",
+                        "IAM policies" to "N",
+                    ),
+                )
+            setupTestModule()
+
+            // When
+            val command = SetupProfile()
+            command.execute()
+
+            // Then - Fields with empty defaults should NOT be prompted (they're skippable)
+            // Tailscale device tag is hardcoded to "tag:easy-db-lab" and never prompted
+            assertThat(testPrompter.wasPromptedFor("AxonOps Org")).isFalse()
+            assertThat(testPrompter.wasPromptedFor("AxonOps Key")).isFalse()
+            assertThat(testPrompter.wasPromptedFor("Tailscale OAuth Client ID")).isFalse()
+            assertThat(testPrompter.wasPromptedFor("Tailscale OAuth Client Secret")).isFalse()
+            assertThat(testPrompter.wasPromptedFor("Tailscale device tag")).isFalse()
+        }
+
+        @Test
+        fun `optional fields are always prompted when existing profile is detected`() {
+            // Given - existing config has required fields
             val existingConfig =
                 mapOf(
                     "email" to "test@example.com",
@@ -537,12 +690,30 @@ class SetupProfileTest : BaseKoinTest() {
                 )
             whenever(mockUserConfigProvider.loadExistingConfig()).thenReturn(existingConfig)
 
+            val userConfig =
+                com.rustyrazorblade.easydblab.configuration.User(
+                    email = "test@example.com",
+                    region = "us-west-2",
+                    keyName = "test-key",
+                    awsProfile = "",
+                    awsAccessKey = "AKIATEST",
+                    awsSecret = "secret123",
+                )
+            whenever(mockUserConfigProvider.getUserConfig()).thenReturn(userConfig)
+
+            testPrompter = TestPrompter()
+            setupTestModule()
+
             // When
             val command = SetupProfile()
             command.execute()
 
-            // Then - AxonOps fields should not be prompted (they're skippable)
-            assertThat(testPrompter.wasPromptedFor("AxonOps")).isFalse()
+            // Then - All optional fields are prompted (user can press Enter to skip)
+            // Note: Tailscale device tag is hardcoded and not prompted
+            assertThat(testPrompter.wasPromptedFor("AxonOps Org?")).isTrue()
+            assertThat(testPrompter.wasPromptedFor("AxonOps Key?")).isTrue()
+            assertThat(testPrompter.wasPromptedFor("Tailscale OAuth Client ID?")).isTrue()
+            assertThat(testPrompter.wasPromptedFor("Tailscale OAuth Client Secret?")).isTrue()
         }
     }
 

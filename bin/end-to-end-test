@@ -130,7 +130,7 @@ step_init_cluster() {
         echo "=== EBS volumes enabled (gp3, 256GB) ==="
     fi
     local created_timestamp=$(date +%s)
-    easy-db-lab init -c 3 -i c5.2xlarge test --clean --up -s 1 --tag "created=$created_timestamp" $spark_opts $ebs_opts
+    easy-db-lab init -c 3 -i c5.2xlarge test --clean --up -s 1 --tag "created=$created_timestamp" --cidr 10.14.0.0/20 $spark_opts $ebs_opts
 }
 
 step_setup_kubectl() {
@@ -500,8 +500,9 @@ step_registry_push_pull() {
 
     # Pull busybox locally and use skopeo to push to private registry
     # skopeo routes through SOCKS5 proxy (configured in env.sh)
-    echo "=== Pulling busybox and pushing to private registry via skopeo ==="
-    docker pull busybox:latest
+    # Must pull linux/amd64 since EC2 instances are x86_64
+    echo "=== Pulling busybox (amd64) and pushing to private registry via skopeo ==="
+    docker pull --platform linux/amd64 busybox:latest
     skopeo copy --dest-tls-verify=false \
         docker-daemon:busybox:latest \
         docker://${registry}/busybox:e2e

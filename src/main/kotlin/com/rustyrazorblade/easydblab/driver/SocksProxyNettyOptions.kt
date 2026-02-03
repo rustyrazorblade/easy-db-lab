@@ -26,6 +26,7 @@ class SocksProxyNettyOptions(
 ) : DefaultNettyOptions(context) {
     companion object {
         private val log = KotlinLogging.logger {}
+        private const val SOCKS5_CONNECT_TIMEOUT_MS = 30_000L
     }
 
     init {
@@ -77,7 +78,7 @@ class SocksProxyNettyOptions(
                     // This must be added AFTER the original pipeline is set up, so it
                     // intercepts connections before any other handlers process them
                     val proxyHandler = Socks5ProxyHandler(InetSocketAddress(proxyHost, proxyPort))
-                    proxyHandler.setConnectTimeoutMillis(30000L)
+                    proxyHandler.setConnectTimeoutMillis(SOCKS5_CONNECT_TIMEOUT_MS)
                     pipeline.addFirst("socks5-proxy", proxyHandler)
 
                     log.info { "Added SOCKS5 proxy handler to channel pipeline" }

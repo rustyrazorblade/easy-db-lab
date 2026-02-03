@@ -132,6 +132,53 @@ class InfrastructureConfigTest {
 
             assertThat(config.tags).containsEntry(Constants.Vpc.TAG_KEY, Constants.Vpc.TAG_VALUE)
         }
+
+        @Test
+        fun `should use custom CIDR for subnets when provided`() {
+            val customCidr = "172.16.0.0/16"
+            val config =
+                InfrastructureConfig.forCluster(
+                    clusterName = "test-cluster",
+                    availabilityZones = listOf("us-west-2a", "us-west-2b", "us-west-2c"),
+                    sshCidrs = listOf("0.0.0.0/0"),
+                    sshPort = 22,
+                    vpcCidr = customCidr,
+                )
+
+            assertThat(config.vpcCidr).isEqualTo(customCidr)
+            assertThat(config.subnets[0].cidr).isEqualTo("172.16.1.0/24")
+            assertThat(config.subnets[1].cidr).isEqualTo("172.16.2.0/24")
+            assertThat(config.subnets[2].cidr).isEqualTo("172.16.3.0/24")
+        }
+
+        @Test
+        fun `should use custom CIDR for security group VPC internal rules`() {
+            val customCidr = "192.168.0.0/16"
+            val config =
+                InfrastructureConfig.forCluster(
+                    clusterName = "test-cluster",
+                    availabilityZones = listOf("us-west-2a"),
+                    sshCidrs = listOf("1.2.3.4/32"),
+                    sshPort = 22,
+                    vpcCidr = customCidr,
+                )
+
+            val vpcInternalTcp =
+                config.securityGroupRules.find {
+                    it.protocol == "tcp" &&
+                        it.fromPort == Constants.Network.MIN_PORT &&
+                        it.toPort == Constants.Network.MAX_PORT
+                }
+            val vpcInternalUdp =
+                config.securityGroupRules.find {
+                    it.protocol == "udp" &&
+                        it.fromPort == Constants.Network.MIN_PORT &&
+                        it.toPort == Constants.Network.MAX_PORT
+                }
+
+            assertThat(vpcInternalTcp?.cidr).isEqualTo(customCidr)
+            assertThat(vpcInternalUdp?.cidr).isEqualTo(customCidr)
+        }
     }
 
     @Nested
@@ -212,7 +259,7 @@ class InfrastructureConfigTest {
     }
 
     @Nested
-    inner class VpcNetworkingConfig {
+    inner class VpcNetworkingConfigTests {
         @Test
         fun `should have default empty tags`() {
             val config =
@@ -242,6 +289,38 @@ class InfrastructureConfigTest {
                 )
 
             assertThat(config.tags).containsEntry("Environment", "test")
+        }
+
+        @Test
+        fun `should have default CIDR when not specified`() {
+            val config =
+                VpcNetworkingConfig(
+                    vpcId = "vpc-123",
+                    clusterName = "test",
+                    clusterId = "cluster-123",
+                    region = "us-west-2",
+                    availabilityZones = listOf("a"),
+                    isOpen = false,
+                )
+
+            assertThat(config.vpcCidr).isEqualTo(Constants.Vpc.DEFAULT_CIDR)
+        }
+
+        @Test
+        fun `should support custom CIDR`() {
+            val customCidr = "172.16.0.0/16"
+            val config =
+                VpcNetworkingConfig(
+                    vpcId = "vpc-123",
+                    clusterName = "test",
+                    clusterId = "cluster-123",
+                    region = "us-west-2",
+                    availabilityZones = listOf("a"),
+                    isOpen = false,
+                    vpcCidr = customCidr,
+                )
+
+            assertThat(config.vpcCidr).isEqualTo(customCidr)
         }
     }
 }

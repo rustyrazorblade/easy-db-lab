@@ -36,7 +36,6 @@ data class ClusterS3Path(
         private const val BACKUPS_DIR = "backups"
         private const val LOGS_DIR = "logs"
         private const val DATA_DIR = "data"
-        private const val K3S_DIR = "k3s"
         private const val KUBECONFIG_FILE = "kubeconfig"
         private const val K8S_DIR = "k8s"
         private const val CONFIG_DIR = "config"

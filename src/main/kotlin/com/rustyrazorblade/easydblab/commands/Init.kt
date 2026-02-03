@@ -14,6 +14,7 @@ import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.network.CidrBlock
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import io.github.classgraph.ClassGraph
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -192,6 +193,12 @@ class Init : PicoBaseCommand() {
     )
     var existingVpcId: String? = null
 
+    @Option(
+        names = ["--cidr"],
+        description = ["VPC CIDR block (default: 10.0.0.0/16). Must be /20 or larger."],
+    )
+    var cidr: String = Constants.Vpc.DEFAULT_CIDR
+
     override fun execute() {
         validateParameters()
 
@@ -234,6 +241,8 @@ class Init : PicoBaseCommand() {
         require(ebsSize > 0) { "EBS size must be positive" }
         require(ebsIops >= 0) { "EBS IOPS cannot be negative" }
         require(ebsThroughput >= 0) { "EBS throughput cannot be negative" }
+        // Validate CIDR block format and prefix length
+        CidrBlock(cidr)
     }
 
     private fun checkExistingFiles() {

@@ -4,7 +4,6 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.observability.TelemetryProvider
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
-import com.rustyrazorblade.easydblab.proxy.SocksProxyState
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -14,7 +13,6 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
-import java.time.Instant
 
 /**
  * Test suite for K8sService following TDD principles.
@@ -35,13 +33,6 @@ class K8sServiceTest : BaseKoinTest() {
             alias = "control0",
             availabilityZone = "us-west-2a",
             instanceId = "i-test123",
-        )
-
-    private val testProxyState =
-        SocksProxyState(
-            localPort = 1080,
-            gatewayHost = testClusterHost,
-            startTime = Instant.now(),
         )
 
     override fun additionalTestModules(): List<Module> =
@@ -68,24 +59,23 @@ class K8sServiceTest : BaseKoinTest() {
         k8sService = getKoin().get()
     }
 
-    // ========== PROXY CONNECTION TESTS ==========
+    // ========== SOCKS PROXY TESTS ==========
 
     @Test
-    fun `applyManifests should ensure SOCKS proxy is running`() {
+    fun `applyManifests should always use SOCKS proxy`() {
         // Given
         val manifestDir = createTestManifestDir()
-        whenever(mockSocksProxyService.ensureRunning(any())).thenReturn(testProxyState)
         whenever(mockSocksProxyService.getLocalPort()).thenReturn(1080)
 
-        // When - This will fail because there's no real kubeconfig, but we can verify proxy was started
+        // When - This will fail because there's no real kubeconfig, but we can verify SOCKS proxy was started
         val result = k8sService.applyManifests(testClusterHost, manifestDir)
 
-        // Then - Verify proxy service was called
+        // Then - Verify SOCKS proxy service was called
         verify(mockSocksProxyService).ensureRunning(testClusterHost)
     }
 
     @Test
-    fun `applyManifests should return failure when proxy fails to start`() {
+    fun `applyManifests should return failure when SOCKS proxy fails`() {
         // Given
         val manifestDir = createTestManifestDir()
         whenever(mockSocksProxyService.ensureRunning(any()))
@@ -101,20 +91,19 @@ class K8sServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `getObservabilityStatus should ensure SOCKS proxy is running`() {
+    fun `getObservabilityStatus should always use SOCKS proxy`() {
         // Given
-        whenever(mockSocksProxyService.ensureRunning(any())).thenReturn(testProxyState)
         whenever(mockSocksProxyService.getLocalPort()).thenReturn(1080)
 
         // When - This will fail because there's no real kubeconfig
         val result = k8sService.getObservabilityStatus(testClusterHost)
 
-        // Then - Verify proxy service was called
+        // Then - Verify SOCKS proxy service was called
         verify(mockSocksProxyService).ensureRunning(testClusterHost)
     }
 
     @Test
-    fun `getObservabilityStatus should return failure when proxy fails`() {
+    fun `getObservabilityStatus should return failure when SOCKS proxy fails`() {
         // Given
         whenever(mockSocksProxyService.ensureRunning(any()))
             .thenThrow(RuntimeException("Connection refused"))
@@ -129,20 +118,19 @@ class K8sServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `deleteObservability should ensure SOCKS proxy is running`() {
+    fun `deleteObservability should always use SOCKS proxy`() {
         // Given
-        whenever(mockSocksProxyService.ensureRunning(any())).thenReturn(testProxyState)
         whenever(mockSocksProxyService.getLocalPort()).thenReturn(1080)
 
         // When
         val result = k8sService.deleteObservability(testClusterHost)
 
-        // Then - Verify proxy service was called
+        // Then - Verify SOCKS proxy service was called
         verify(mockSocksProxyService).ensureRunning(testClusterHost)
     }
 
     @Test
-    fun `deleteObservability should return failure when proxy fails`() {
+    fun `deleteObservability should return failure when SOCKS proxy fails`() {
         // Given
         whenever(mockSocksProxyService.ensureRunning(any()))
             .thenThrow(RuntimeException("Permission denied"))
@@ -157,20 +145,19 @@ class K8sServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `waitForPodsReady should ensure SOCKS proxy is running`() {
+    fun `waitForPodsReady should always use SOCKS proxy`() {
         // Given
-        whenever(mockSocksProxyService.ensureRunning(any())).thenReturn(testProxyState)
         whenever(mockSocksProxyService.getLocalPort()).thenReturn(1080)
 
         // When
         val result = k8sService.waitForPodsReady(testClusterHost, 60)
 
-        // Then - Verify proxy service was called
+        // Then - Verify SOCKS proxy service was called
         verify(mockSocksProxyService).ensureRunning(testClusterHost)
     }
 
     @Test
-    fun `waitForPodsReady should return failure when proxy fails`() {
+    fun `waitForPodsReady should return failure when SOCKS proxy fails`() {
         // Given
         whenever(mockSocksProxyService.ensureRunning(any()))
             .thenThrow(RuntimeException("Network unreachable"))

@@ -31,6 +31,7 @@ import com.rustyrazorblade.easydblab.commands.k8.K8
 import com.rustyrazorblade.easydblab.commands.logs.Logs
 import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearch
 import com.rustyrazorblade.easydblab.commands.spark.Spark
+import com.rustyrazorblade.easydblab.commands.tailscale.Tailscale
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.di.KoinCommandFactory
 import com.rustyrazorblade.easydblab.output.OutputHandler
@@ -85,6 +86,7 @@ import kotlin.system.exitProcess
         OpenSearch::class,
         Aws::class,
         Logs::class,
+        Tailscale::class,
     ],
 )
 class EasyDBLabCommand : Runnable {
@@ -149,7 +151,7 @@ class CommandLineParser : KoinComponent {
         val exitCode = commandLine.execute(*input)
 
         // Show profile setup hint if no command was provided and profile not configured
-        if (input.isEmpty() || (input.size == 1 && (input[0] == "--help" || input[0] == "-h"))) {
+        if (isHelpRequested(input)) {
             val userConfigProvider: UserConfigProvider by inject()
             if (!userConfigProvider.isSetup()) {
                 with(TermColors()) {
@@ -170,4 +172,9 @@ class CommandLineParser : KoinComponent {
             exitProcess(exitCode)
         }
     }
+
+    /**
+     * Determines if the input represents a help request (no command or explicit help flag).
+     */
+    private fun isHelpRequested(input: Array<String>): Boolean = input.isEmpty() || input.singleOrNull() in listOf("--help", "-h")
 }

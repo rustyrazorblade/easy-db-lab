@@ -38,6 +38,10 @@ data class User(
     var awsSecret: String,
     var axonOpsOrg: String = "",
     var axonOpsKey: String = "",
+    // Tailscale OAuth credentials for VPN access
+    var tailscaleClientId: String = "",
+    var tailscaleClientSecret: String = "",
+    var tailscaleTag: String = Constants.Tailscale.DEFAULT_DEVICE_TAG,
     // Profile-level S3 bucket for shared resources (AMIs, base images, etc.)
     var s3Bucket: String = "",
 ) {

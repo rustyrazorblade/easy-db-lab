@@ -26,7 +26,9 @@ interface CqlSessionService : AutoCloseable {
 }
 
 /**
- * Default implementation using Java Driver v4 with SOCKS proxy.
+ * Default implementation using Java Driver v4.
+ *
+ * Always uses SOCKS proxy for reliable connections to Cassandra.
  *
  * The session is cached for reuse in REPL/Server mode.
  * Registers with [ResourceManager] when session is created for centralized cleanup.
@@ -39,6 +41,9 @@ class DefaultCqlSessionService(
 ) : CqlSessionService {
     companion object {
         private val log = KotlinLogging.logger {}
+        private const val CQL_LOG_PREVIEW_LENGTH = 100
+        private const val MIN_COLUMN_WIDTH = 10
+        private const val HEX_DISPLAY_LIMIT = 16
     }
 
     // Cached session for reuse
@@ -49,7 +54,7 @@ class DefaultCqlSessionService(
     override fun execute(cql: String): Result<String> =
         runCatching {
             val session = getOrCreateSession()
-            log.debug { "Executing CQL: ${cql.take(100)}..." }
+            log.debug { "Executing CQL: ${cql.take(CQL_LOG_PREVIEW_LENGTH)}..." }
 
             val resultSet = session.execute(cql)
             formatResultSet(resultSet)
@@ -74,7 +79,11 @@ class DefaultCqlSessionService(
         // Use the datacenter from the first host or default to region
         val datacenter =
             clusterState.initConfig?.region
-                ?: throw IllegalStateException("No region/datacenter found in cluster state")
+                ?: error("No region/datacenter found in cluster state")
+
+        // Ensure SOCKS proxy is running
+        val gatewayHost = cassandraHosts.first()
+        socksProxyService.ensureRunning(gatewayHost)
 
         // Return cached session if valid
         cachedSession?.let { session ->
@@ -84,17 +93,14 @@ class DefaultCqlSessionService(
             session.close()
         }
 
-        // Ensure SOCKS proxy is running through the first Cassandra host
-        val gatewayHost = cassandraHosts.first()
-        val proxyState = socksProxyService.ensureRunning(gatewayHost)
-
-        log.info { "Creating new CqlSession through SOCKS proxy on port ${proxyState.localPort}" }
-
         // Get all private IPs
         val contactPoints = cassandraHosts.map { it.privateIp }
 
-        // Create and cache the session
-        val session = sessionFactory.createSession(contactPoints, datacenter, proxyState.localPort)
+        // Create session through SOCKS proxy
+        val proxyPort = socksProxyService.getLocalPort()
+        log.info { "Creating new CqlSession through SOCKS proxy on port $proxyPort" }
+        val session = sessionFactory.createSession(contactPoints, datacenter, proxyPort)
+
         cachedSession = session
         cachedDatacenter = datacenter
 
@@ -118,7 +124,7 @@ class DefaultCqlSessionService(
         // Header
         val headers = (0 until columnDefinitions.size()).map { columnDefinitions[it].name.asCql(false) }
         sb.appendLine(headers.joinToString(" | "))
-        sb.appendLine(headers.map { "-".repeat(it.length.coerceAtLeast(10)) }.joinToString("-+-"))
+        sb.appendLine(headers.map { "-".repeat(it.length.coerceAtLeast(MIN_COLUMN_WIDTH)) }.joinToString("-+-"))
 
         // Rows
         for (row in resultSet) {
@@ -143,6 +149,6 @@ class DefaultCqlSessionService(
         val bytes = ByteArray(buffer.remaining())
         buffer.duplicate().get(bytes)
         val hex = bytes.joinToString("") { "%02x".format(it) }
-        return if (hex.length > 16) "0x${hex.take(16)}..." else "0x$hex"
+        return if (hex.length > HEX_DISPLAY_LIMIT) "0x${hex.take(HEX_DISPLAY_LIMIT)}..." else "0x$hex"
     }
 }

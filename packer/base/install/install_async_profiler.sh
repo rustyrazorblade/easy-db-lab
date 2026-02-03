@@ -17,7 +17,7 @@ fi
 
 echo "ARCH is set to: $ARCH"
 
-RELEASE_VERSION="4.0"
+RELEASE_VERSION="4.3"
 RELEASE="async-profiler-${RELEASE_VERSION}-linux-${ARCH}"
 ARCHIVE="${RELEASE}.tar.gz"
 

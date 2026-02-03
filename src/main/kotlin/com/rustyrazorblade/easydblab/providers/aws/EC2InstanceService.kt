@@ -70,7 +70,7 @@ class EC2InstanceService(
             val subnetId = config.subnetIds[instanceIndex % config.subnetIds.size]
             val alias = "${config.serverType.serverType}$instanceIndex"
 
-            val instance = createSingleInstance(config, subnetId, alias, instanceIndex)
+            val instance = createSingleInstance(config, subnetId, alias)
             instances.add(instance)
 
             log.info { "Created instance ${instance.instanceId} ($alias) in subnet $subnetId" }
@@ -90,7 +90,6 @@ class EC2InstanceService(
         config: InstanceCreationConfig,
         subnetId: SubnetId,
         alias: String,
-        index: Int,
     ): CreatedInstance {
         val tagSpec = buildTagSpecification(config, alias)
         val blockDeviceMappings = buildBlockDeviceMappings(config.ebsConfig)

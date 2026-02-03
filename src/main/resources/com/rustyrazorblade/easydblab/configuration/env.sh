@@ -29,9 +29,14 @@ rsync() { command rsync -ave "ssh -F $SSH_CONFIG" "$@"; }
 # Configure kubectl to use the K3s cluster kubeconfig (if it exists)
 if [ -f "$CLUSTER_DIR/kubeconfig" ]; then
   export KUBECONFIG="$CLUSTER_DIR/kubeconfig"
-  # k9s function to ensure kubeconfig is passed explicitly
-  # (k9s has historical issues with KUBECONFIG env var)
-  k9s() { HTTPS_PROXY="socks5://localhost:$SOCKS5_PROXY_PORT" command k9s --kubeconfig "$KUBECONFIG" "$@"; }
+  # k9s function - uses proxy only when Tailscale is not connected
+  k9s() {
+    if is-tailscale-connected; then
+      command k9s --kubeconfig "$KUBECONFIG" "$@"
+    else
+      HTTPS_PROXY="socks5://localhost:$SOCKS5_PROXY_PORT" command k9s --kubeconfig "$KUBECONFIG" "$@"
+    fi
+  }
 fi
 
 # general purpose function for executing commands on all cassandra nodes
@@ -129,6 +134,22 @@ c-flame-sepworker() {
 SOCKS5_PROXY_PID=""
 SOCKS5_PROXY_PORT=1080
 
+# Check if Tailscale is connected on control node
+# Returns 0 (true) if connected, 1 (false) otherwise
+is-tailscale-connected() {
+  # Check if tailscale command exists locally
+  if ! command -v tailscale &>/dev/null; then
+    return 1
+  fi
+
+  # Check if Tailscale is connected locally
+  local ts_status
+  ts_status=$(tailscale status --json 2>/dev/null)
+
+  # Check if BackendState is "Running"
+  [ -n "$ts_status" ] && echo "$ts_status" | grep -q '"BackendState":.*"Running"'
+}
+
 # Proxy wrapper for commands that need to access internal network (10.x.x.x)
 # Usage: with-proxy curl http://10.0.1.50:8080/api
 with-proxy() {
@@ -139,23 +160,35 @@ with-proxy() {
   "$@"
 }
 
-# kubectl wrapper that routes through SOCKS5 proxy to reach K3s API server
+# kubectl wrapper - uses proxy only when Tailscale is not connected
 kubectl() {
-  HTTPS_PROXY="socks5://localhost:$SOCKS5_PROXY_PORT" command kubectl "$@"
+  if is-tailscale-connected; then
+    command kubectl "$@"
+  else
+    HTTPS_PROXY="socks5://localhost:$SOCKS5_PROXY_PORT" command kubectl "$@"
+  fi
 }
 
-# curl wrapper that routes through SOCKS5 proxy to reach internal cluster IPs
+# curl wrapper - uses proxy only when Tailscale is not connected
 curl() {
-  ALL_PROXY="socks5h://localhost:$SOCKS5_PROXY_PORT" command curl "$@"
+  if is-tailscale-connected; then
+    command curl "$@"
+  else
+    ALL_PROXY="socks5h://localhost:$SOCKS5_PROXY_PORT" command curl "$@"
+  fi
 }
 
-# skopeo wrapper that routes through SOCKS5 proxy to reach internal container registries
+# skopeo wrapper - uses proxy only when Tailscale is not connected
 skopeo() {
-  ALL_PROXY="socks5h://localhost:$SOCKS5_PROXY_PORT" \
-  HTTP_PROXY="socks5h://localhost:$SOCKS5_PROXY_PORT" \
-  HTTPS_PROXY="socks5h://localhost:$SOCKS5_PROXY_PORT" \
-  NO_PROXY="localhost,127.0.0.1" \
-  command skopeo "$@"
+  if is-tailscale-connected; then
+    command skopeo "$@"
+  else
+    ALL_PROXY="socks5h://localhost:$SOCKS5_PROXY_PORT" \
+    HTTP_PROXY="socks5h://localhost:$SOCKS5_PROXY_PORT" \
+    HTTPS_PROXY="socks5h://localhost:$SOCKS5_PROXY_PORT" \
+    NO_PROXY="localhost,127.0.0.1" \
+    command skopeo "$@"
+  fi
 }
 
 # Start SOCKS5 proxy via SSH dynamic port forwarding
@@ -362,5 +395,10 @@ clickhouse-query() {
   with-proxy curl -s -u "default:default" "http://${control_ip}:8123/" -d "$query"
 }
 
-# Automatically start SOCKS5 proxy
-start-socks5
+# Conditionally start SOCKS5 proxy based on Tailscale status
+if is-tailscale-connected; then
+  echo -e "${NC_BOLD}[INFO]${NC} Tailscale VPN is connected - skipping SOCKS5 proxy."
+  echo "  Direct network access to VPC resources is available."
+else
+  start-socks5
+fi

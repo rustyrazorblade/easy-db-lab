@@ -186,6 +186,8 @@ tasks.test {
     }
 
     doFirst {
+        environment("EASY_DB_LAB_PROFILE", "default")
+
         println("========================================")
         println("Test Execution Configuration:")
         println("  Available processors: $processors")

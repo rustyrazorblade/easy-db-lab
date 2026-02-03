@@ -43,13 +43,11 @@ object ClusterConfigWriter {
      *
      * @param writer BufferedWriter to write environment file to
      * @param hosts Map of server types to their hosts
-     * @param identityFile Path to the SSH identity file (for embedded SSH config generation)
      * @param clusterName Name of the cluster for prompt customization
      */
     fun writeEnvironmentFile(
         writer: BufferedWriter,
         hosts: Map<ServerType, List<ClusterHost>>,
-        identityFile: String,
         clusterName: String,
     ) {
         // write the initial SSH aliases

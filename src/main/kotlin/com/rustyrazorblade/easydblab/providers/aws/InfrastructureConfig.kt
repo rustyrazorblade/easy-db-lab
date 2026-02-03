@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.providers.aws
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.network.CidrBlock
 
 /**
  * Configuration for setting up networking within an existing VPC.
@@ -24,6 +25,7 @@ data class VpcNetworkingConfig(
     val availabilityZones: List<String>,
     val isOpen: Boolean,
     val tags: Map<String, String> = emptyMap(),
+    val vpcCidr: String = Constants.Vpc.DEFAULT_CIDR,
 )
 
 /**
@@ -134,18 +136,21 @@ data class InfrastructureConfig(
          * @param availabilityZones List of availability zones to create subnets in
          * @param sshCidrs CIDRs allowed to SSH into the cluster
          * @param sshPort SSH port number
+         * @param vpcCidr VPC CIDR block for subnet calculation and security group rules
          */
         fun forCluster(
             clusterName: String,
             availabilityZones: List<String>,
             sshCidrs: List<String>,
             sshPort: Int,
+            vpcCidr: String = Constants.Vpc.DEFAULT_CIDR,
         ): InfrastructureConfig {
+            val cidrBlock = CidrBlock(vpcCidr)
             val subnets =
                 availabilityZones.mapIndexed { index, az ->
                     SubnetConfig(
                         name = "easy-db-lab-$clusterName-subnet-$index",
-                        cidr = Constants.Vpc.subnetCidr(index),
+                        cidr = cidrBlock.subnetCidr(index),
                         availabilityZone = az,
                     )
                 }
@@ -160,7 +165,7 @@ data class InfrastructureConfig(
                 SecurityGroupRule(
                     Constants.Network.MIN_PORT,
                     Constants.Network.MAX_PORT,
-                    Constants.Vpc.DEFAULT_CIDR,
+                    vpcCidr,
                     "tcp",
                 ),
             )
@@ -168,14 +173,14 @@ data class InfrastructureConfig(
                 SecurityGroupRule(
                     Constants.Network.MIN_PORT,
                     Constants.Network.MAX_PORT,
-                    Constants.Vpc.DEFAULT_CIDR,
+                    vpcCidr,
                     "udp",
                 ),
             )
 
             return InfrastructureConfig(
                 vpcName = "easy-db-lab-$clusterName",
-                vpcCidr = Constants.Vpc.DEFAULT_CIDR,
+                vpcCidr = vpcCidr,
                 subnets = subnets,
                 securityGroupName = "easy-db-lab-$clusterName-sg",
                 securityGroupDescription = "Security group for easy-db-lab cluster: $clusterName",

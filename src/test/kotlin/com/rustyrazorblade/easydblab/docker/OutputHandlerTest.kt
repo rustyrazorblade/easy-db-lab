@@ -6,9 +6,8 @@ import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.CompositeOutputHandler
 import com.rustyrazorblade.easydblab.output.ConsoleOutputHandler
 import com.rustyrazorblade.easydblab.output.LoggerOutputHandler
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertFalse
-import org.junit.jupiter.api.Assertions.assertTrue
+import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
@@ -21,8 +20,8 @@ class OutputHandlerTest {
 
         handler.handleFrame(frame)
 
-        assertEquals("Hello World\n", handler.stdout)
-        assertEquals("", handler.stderr)
+        assertThat(handler.stdout).isEqualTo("Hello World\n")
+        assertThat(handler.stderr).isEmpty()
     }
 
     @Test
@@ -32,8 +31,8 @@ class OutputHandlerTest {
 
         handler.handleFrame(frame)
 
-        assertEquals("", handler.stdout)
-        assertEquals("Error occurred\n", handler.stderr)
+        assertThat(handler.stdout).isEmpty()
+        assertThat(handler.stderr).isEqualTo("Error occurred\n")
     }
 
     @Test
@@ -43,7 +42,7 @@ class OutputHandlerTest {
         handler.handleMessage("Status update 1")
         handler.handleMessage("Status update 2")
 
-        assertEquals(listOf("Status update 1", "Status update 2"), handler.messages)
+        assertThat(handler.messages).containsExactly("Status update 1", "Status update 2")
     }
 
     @Test
@@ -54,9 +53,9 @@ class OutputHandlerTest {
         handler.handleError("Error occurred", exception)
         handler.handleError("Another error", null)
 
-        assertEquals(2, handler.errors.size)
-        assertEquals("Error occurred" to exception, handler.errors[0])
-        assertEquals("Another error" to null, handler.errors[1])
+        assertThat(handler.errors).hasSize(2)
+        assertThat(handler.errors[0]).isEqualTo("Error occurred" to exception)
+        assertThat(handler.errors[1]).isEqualTo("Another error" to null)
     }
 
     @Test
@@ -68,10 +67,10 @@ class OutputHandlerTest {
 
         handler.clear()
 
-        assertEquals("", handler.stdout)
-        assertEquals("", handler.stderr)
-        assertTrue(handler.messages.isEmpty())
-        assertTrue(handler.errors.isEmpty())
+        assertThat(handler.stdout).isEmpty()
+        assertThat(handler.stderr).isEmpty()
+        assertThat(handler.messages).isEmpty()
+        assertThat(handler.errors).isEmpty()
     }
 
     @Test
@@ -100,8 +99,8 @@ class OutputHandlerTest {
             val outContent = capturedOut.toString()
             val errContent = capturedErr.toString()
 
-            assertEquals("stdout textmessage text\n", outContent)
-            assertEquals("stderr texterror text\n", errContent)
+            assertThat(outContent).isEqualTo("stdout textmessage text\n")
+            assertThat(errContent).isEqualTo("stderr texterror text\n")
         } finally {
             System.setOut(originalOut)
             System.setErr(originalErr)
@@ -120,34 +119,34 @@ class OutputHandlerTest {
         composite.handleError("test error", null)
 
         // Both handlers should receive the same data
-        assertEquals("test data", handler1.stdout)
-        assertEquals("test data", handler2.stdout)
-        assertEquals(listOf("test message"), handler1.messages)
-        assertEquals(listOf("test message"), handler2.messages)
-        assertEquals(1, handler1.errors.size)
-        assertEquals(1, handler2.errors.size)
+        assertThat(handler1.stdout).isEqualTo("test data")
+        assertThat(handler2.stdout).isEqualTo("test data")
+        assertThat(handler1.messages).containsExactly("test message")
+        assertThat(handler2.messages).containsExactly("test message")
+        assertThat(handler1.errors).hasSize(1)
+        assertThat(handler2.errors).hasSize(1)
     }
 
     @Test
     fun `CompositeOutputHandler can be created empty and handlers added dynamically`() {
         val composite = CompositeOutputHandler()
-        assertEquals(0, composite.getHandlerCount())
+        assertThat(composite.getHandlerCount()).isZero()
 
         val handler1 = BufferedOutputHandler()
         val handler2 = BufferedOutputHandler()
 
         composite.addHandler(handler1)
-        assertEquals(1, composite.getHandlerCount())
-        assertTrue(composite.hasHandler(handler1))
+        assertThat(composite.getHandlerCount()).isEqualTo(1)
+        assertThat(composite.hasHandler(handler1)).isTrue()
 
         composite.addHandler(handler2)
-        assertEquals(2, composite.getHandlerCount())
-        assertTrue(composite.hasHandler(handler2))
+        assertThat(composite.getHandlerCount()).isEqualTo(2)
+        assertThat(composite.hasHandler(handler2)).isTrue()
 
         // Test output goes to both handlers
         composite.handleMessage("dynamic test")
-        assertEquals(listOf("dynamic test"), handler1.messages)
-        assertEquals(listOf("dynamic test"), handler2.messages)
+        assertThat(handler1.messages).containsExactly("dynamic test")
+        assertThat(handler2.messages).containsExactly("dynamic test")
     }
 
     @Test
@@ -156,21 +155,21 @@ class OutputHandlerTest {
         val handler2 = BufferedOutputHandler()
         val composite = CompositeOutputHandler(handler1, handler2)
 
-        assertEquals(2, composite.getHandlerCount())
+        assertThat(composite.getHandlerCount()).isEqualTo(2)
 
         // Remove handler1
-        assertTrue(composite.removeHandler(handler1))
-        assertEquals(1, composite.getHandlerCount())
-        assertFalse(composite.hasHandler(handler1))
-        assertTrue(composite.hasHandler(handler2))
+        assertThat(composite.removeHandler(handler1)).isTrue()
+        assertThat(composite.getHandlerCount()).isEqualTo(1)
+        assertThat(composite.hasHandler(handler1)).isFalse()
+        assertThat(composite.hasHandler(handler2)).isTrue()
 
         // Output should only go to handler2 now
         composite.handleMessage("after removal")
-        assertEquals(emptyList<String>(), handler1.messages)
-        assertEquals(listOf("after removal"), handler2.messages)
+        assertThat(handler1.messages).isEmpty()
+        assertThat(handler2.messages).containsExactly("after removal")
 
         // Try to remove non-existent handler
-        assertFalse(composite.removeHandler(handler1))
+        assertThat(composite.removeHandler(handler1)).isFalse()
     }
 
     @Test
@@ -179,17 +178,17 @@ class OutputHandlerTest {
         val handler2 = BufferedOutputHandler()
         val composite = CompositeOutputHandler(handler1, handler2)
 
-        assertEquals(2, composite.getHandlerCount())
+        assertThat(composite.getHandlerCount()).isEqualTo(2)
 
         composite.removeAllHandlers()
-        assertEquals(0, composite.getHandlerCount())
-        assertFalse(composite.hasHandler(handler1))
-        assertFalse(composite.hasHandler(handler2))
+        assertThat(composite.getHandlerCount()).isZero()
+        assertThat(composite.hasHandler(handler1)).isFalse()
+        assertThat(composite.hasHandler(handler2)).isFalse()
 
         // No output should be processed
         composite.handleMessage("after clear")
-        assertEquals(emptyList<String>(), handler1.messages)
-        assertEquals(emptyList<String>(), handler2.messages)
+        assertThat(handler1.messages).isEmpty()
+        assertThat(handler2.messages).isEmpty()
     }
 
     @Test
@@ -198,15 +197,13 @@ class OutputHandlerTest {
         val composite = CompositeOutputHandler()
 
         composite.addHandler(handler)
-        assertEquals(1, composite.getHandlerCount())
+        assertThat(composite.getHandlerCount()).isEqualTo(1)
 
         // Adding the same handler again should throw
-        val exception =
-            org.junit.jupiter.api.assertThrows<IllegalArgumentException> {
-                composite.addHandler(handler)
-            }
-        assertEquals("Handler already exists in composite", exception.message)
-        assertEquals(1, composite.getHandlerCount())
+        assertThatThrownBy { composite.addHandler(handler) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessage("Handler already exists in composite")
+        assertThat(composite.getHandlerCount()).isEqualTo(1)
     }
 
     @Test
@@ -216,22 +213,21 @@ class OutputHandlerTest {
         val composite = CompositeOutputHandler(handler1, handler2)
 
         val handlersList = composite.getHandlers()
-        assertEquals(2, handlersList.size)
-        assertTrue(handlersList.contains(handler1))
-        assertTrue(handlersList.contains(handler2))
+        assertThat(handlersList).hasSize(2)
+        assertThat(handlersList).contains(handler1, handler2)
 
         // Modifying the returned list should not affect the composite
         val mutableList = handlersList as? MutableList
         if (mutableList != null) {
             mutableList.clear()
         }
-        assertEquals(2, composite.getHandlerCount()) // Should still be 2
+        assertThat(composite.getHandlerCount()).isEqualTo(2) // Should still be 2
     }
 
     @Test
     fun `CompositeOutputHandler handles empty handler list gracefully`() {
         val composite = CompositeOutputHandler()
-        assertEquals(0, composite.getHandlerCount())
+        assertThat(composite.getHandlerCount()).isZero()
 
         // These operations should not throw exceptions
         composite.handleFrame(Frame(StreamType.STDOUT, "test".toByteArray()))

@@ -129,7 +129,6 @@ class DefaultClusterConfigurationService(
             ClusterConfigWriter.writeEnvironmentFile(
                 writer,
                 clusterState.hosts,
-                sshKeyPath,
                 clusterState.name,
             )
         }

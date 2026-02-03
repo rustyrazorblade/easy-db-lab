@@ -133,6 +133,11 @@ class StressStart : PicoBaseCommand() {
     }
 
     /**
+     * Known stress subcommands that don't require "run" prefix.
+     */
+    private fun isStressSubcommand(arg: String): Boolean = arg in listOf("run", "list", "info", "fields")
+
+    /**
      * Builds the command arguments for cassandra-easy-stress.
      * Uses passthrough args from user, adding defaults for host, dc, and profile if needed.
      */
@@ -146,7 +151,7 @@ class StressStart : PicoBaseCommand() {
         if (stressArgs.isNotEmpty()) {
             // Check if this looks like a "run" command (starts with workload name or has run keyword)
             val firstArg = stressArgs.first()
-            if (firstArg != "run" && firstArg != "list" && firstArg != "info" && firstArg != "fields") {
+            if (!isStressSubcommand(firstArg)) {
                 // Assume it's a workload name, prepend "run"
                 args.add("run")
             }

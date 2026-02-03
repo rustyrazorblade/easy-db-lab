@@ -129,6 +129,11 @@ build {
     script = "install/install_k3s.sh"
   }
 
+  # install tailscale (disabled, not auto-started)
+  provisioner "shell" {
+    script = "install/install_tailscale.sh"
+  }
+
   # install k9s (Kubernetes TUI)
   provisioner "shell" {
     script = "install/install_k9s.sh"

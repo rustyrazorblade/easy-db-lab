@@ -51,13 +51,13 @@ interface VictoriaLogsService {
 }
 
 /**
- * Default implementation of VictoriaLogsService that queries Victoria Logs via SOCKS proxy.
+ * Default implementation of VictoriaLogsService that queries Victoria Logs.
  *
- * This implementation connects to Victoria Logs through the SOCKS5 proxy using OkHttp,
- * which has native SOCKS5 proxy support (unlike Java's HttpClient).
+ * Always uses SOCKS5 proxy for reliable connections to Victoria Logs
+ * running on the control node's private IP.
  *
  * @property socksProxyService Service for managing the SOCKS5 proxy connection
- * @property httpClientFactory Factory for creating HTTP clients that use the proxy
+ * @property httpClientFactory Factory for creating proxied HTTP clients
  * @property clusterStateManager Manager for loading cluster state to find control node
  */
 class DefaultVictoriaLogsService(
@@ -89,17 +89,16 @@ class DefaultVictoriaLogsService(
             val controlHost = controlHosts.first()
 
             // Ensure SOCKS proxy is running
-            log.info { "Starting SOCKS proxy to ${controlHost.alias} (${controlHost.publicIp})..." }
             socksProxyService.ensureRunning(controlHost)
-            val proxyPort = socksProxyService.getLocalPort()
-            log.info { "SOCKS proxy running on 127.0.0.1:$proxyPort" }
 
-            // Create OkHttp client with SOCKS proxy
+            // Create HTTP client through SOCKS proxy
+            val proxyPort = socksProxyService.getLocalPort()
+            log.info { "Using proxied HTTP client on port $proxyPort" }
             val httpClient = httpClientFactory.createClient()
 
             // Build the request URL
             val url = buildQueryUrl(controlHost.privateIp, query, timeRange, limit)
-            log.info { "Querying Victoria Logs: $url via SOCKS proxy on port $proxyPort" }
+            log.info { "Querying Victoria Logs: $url" }
 
             val request =
                 Request

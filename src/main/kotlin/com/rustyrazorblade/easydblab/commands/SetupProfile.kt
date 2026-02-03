@@ -46,10 +46,36 @@ class SetupProfile : PicoBaseCommand() {
         val existingConfig = userConfigProvider.loadExistingConfig()
 
         if (isProfileAlreadySetUp(existingConfig)) {
-            outputHandler.handleMessage("Profile is already set up!")
+            handleExistingProfile(existingConfig)
             return
         }
 
+        runFullSetup(existingConfig)
+    }
+
+    /**
+     * Handles the case when profile already exists.
+     * Prompts for each optional field individually, allowing updates.
+     */
+    private fun handleExistingProfile(existingConfig: Map<String, Any>) {
+        outputHandler.handleMessage("Profile '${context.profile}' is already configured.")
+        outputHandler.handleMessage("Press Enter to keep existing value, or type a new value to update.\n")
+
+        // Load existing config as User object
+        val userConfig = userConfigProvider.getUserConfig()
+
+        // Collect optional info, allowing updates
+        collectAndSaveOptionalInfoWithUpdate(existingConfig, userConfig)
+
+        with(TermColors()) {
+            outputHandler.handleMessage(green("\nConfiguration updated!"))
+        }
+    }
+
+    /**
+     * Runs the full setup process for new profiles.
+     */
+    private fun runFullSetup(existingConfig: Map<String, Any>) {
         showWelcomeMessage()
 
         // Retry loop for credential collection and validation
@@ -230,11 +256,15 @@ class SetupProfile : PicoBaseCommand() {
             awsSecret = credentials.awsSecret,
             axonOpsOrg = existingConfig["axonOpsOrg"] as? String ?: "",
             axonOpsKey = existingConfig["axonOpsKey"] as? String ?: "",
+            tailscaleClientId = existingConfig["tailscaleClientId"] as? String ?: "",
+            tailscaleClientSecret = existingConfig["tailscaleClientSecret"] as? String ?: "",
+            tailscaleTag = existingConfig["tailscaleTag"] as? String ?: Constants.Tailscale.DEFAULT_DEVICE_TAG,
             s3Bucket = existingConfig["s3Bucket"] as? String ?: "",
         )
 
     /**
      * Collects optional configuration info and saves the updated config.
+     * Used during initial setup - skips prompts for fields with no default.
      */
     private fun collectAndSaveOptionalInfo(
         existingConfig: Map<String, Any>,
@@ -254,9 +284,128 @@ class SetupProfile : PicoBaseCommand() {
         userConfig.axonOpsOrg = axonOpsOrg
         userConfig.axonOpsKey = axonOpsKey
 
+        // Collect optional Tailscale credentials
+        outputHandler.handleMessage(
+            """
+
+            --- Tailscale VPN Setup (optional) ---
+            Tailscale provides secure VPN access to your cluster.
+
+            Setup steps:
+            1. Go to https://login.tailscale.com/admin/acls
+            2. Add to your ACL policy:
+               "tagOwners": {
+                 "${Constants.Tailscale.DEFAULT_DEVICE_TAG}": ["autogroup:admin"]
+               }
+            3. Go to https://login.tailscale.com/admin/settings/oauth
+            4. Create OAuth client with 'Devices: Write' scope
+            5. Under 'Add tags', add: ${Constants.Tailscale.DEFAULT_DEVICE_TAG}
+
+            """.trimIndent(),
+        )
+        val tailscaleClientId =
+            promptIfMissing(
+                existingConfig,
+                PromptField("tailscaleClientId", "Tailscale OAuth Client ID", "", skippable = true),
+            )
+        val tailscaleClientSecret =
+            promptIfMissing(
+                existingConfig,
+                PromptField("tailscaleClientSecret", "Tailscale OAuth Client Secret", "", secret = true, skippable = true),
+            )
+
+        userConfig.tailscaleClientId = tailscaleClientId
+        userConfig.tailscaleClientSecret = tailscaleClientSecret
+
         userConfigProvider.saveUserConfig(userConfig)
         outputHandler.handleMessage("Configuration saved")
     }
+
+    /**
+     * Collects optional configuration info for update mode.
+     * Always prompts for each field, showing current value as default.
+     * Empty input keeps the existing value.
+     */
+    private fun collectAndSaveOptionalInfoWithUpdate(
+        existingConfig: Map<String, Any>,
+        userConfig: User,
+    ) {
+        // AxonOps settings
+        outputHandler.handleMessage("--- AxonOps Configuration ---")
+        userConfig.axonOpsOrg =
+            promptForUpdate(
+                "AxonOps Org",
+                existingConfig["axonOpsOrg"] as? String ?: "",
+            )
+        userConfig.axonOpsKey =
+            promptForUpdate(
+                "AxonOps Key",
+                existingConfig["axonOpsKey"] as? String ?: "",
+                secret = true,
+            )
+
+        // Tailscale settings
+        outputHandler.handleMessage(
+            """
+
+            --- Tailscale VPN Configuration ---
+            Setup steps (if not already done):
+            1. Go to https://login.tailscale.com/admin/acls
+            2. Add to your ACL policy:
+               "tagOwners": {
+                 "${Constants.Tailscale.DEFAULT_DEVICE_TAG}": ["autogroup:admin"]
+               }
+            3. Go to https://login.tailscale.com/admin/settings/oauth
+            4. Create OAuth client with 'Devices: Write' scope
+            5. Under 'Add tags', add: ${Constants.Tailscale.DEFAULT_DEVICE_TAG}
+            """.trimIndent(),
+        )
+        userConfig.tailscaleClientId =
+            promptForUpdate(
+                "Tailscale OAuth Client ID",
+                existingConfig["tailscaleClientId"] as? String ?: "",
+            )
+        userConfig.tailscaleClientSecret =
+            promptForUpdate(
+                "Tailscale OAuth Client Secret",
+                existingConfig["tailscaleClientSecret"] as? String ?: "",
+                secret = true,
+            )
+
+        userConfigProvider.saveUserConfig(userConfig)
+        outputHandler.handleMessage("\nConfiguration saved")
+    }
+
+    /**
+     * Prompts for a field update, showing masked current value.
+     * Format: "Field? [A****]" where A is first char and **** masks the rest.
+     * Empty values show "(not set)".
+     */
+    private fun promptForUpdate(
+        fieldName: String,
+        currentValue: String,
+        secret: Boolean = false,
+    ): String {
+        val displayValue = maskValue(currentValue)
+
+        val prompt = "$fieldName? [$displayValue]"
+        val input = prompter.prompt(prompt, "", secret)
+
+        // Empty input means keep current value
+        return input.ifEmpty { currentValue }
+    }
+
+    /**
+     * Masks a value for display, showing first character + asterisks.
+     * Example: "myvalue" -> "m****"
+     * Empty values return "(not set)".
+     */
+    private fun maskValue(value: String): String =
+        when {
+            value.isEmpty() -> "(not set)"
+            value.length == 1 -> "${value[0]}****"
+            else -> "${value[0]}****"
+        }
 
     /**
      * Ensures all required AWS resources exist.
@@ -454,7 +603,7 @@ class SetupProfile : PicoBaseCommand() {
         outputHandler.handleMessage(
             """
             Welcome to the easy-db-lab interactive setup for profile '${context.profile}'.
-            (To use a different profile, set the EASY_CASS_LAB_PROFILE environment variable)
+            (To use a different profile, set the EASY_DB_LAB_PROFILE environment variable)
 
             **** IMPORTANT ****
 

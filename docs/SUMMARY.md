@@ -15,7 +15,6 @@
 - [Cassandra](user-guide/installing-cassandra.md)
 - [Kubernetes](user-guide/kubernetes.md)
 - [Network Connectivity](user-guide/network-connectivity.md)
-- [SSH Proxying](user-guide/ssh-proxying.md)
 - [Victoria Logs](user-guide/victoria-logs.md)
 - [Spark](user-guide/spark.md)
 - [ClickHouse](user-guide/clickhouse.md)

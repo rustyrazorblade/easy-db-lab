@@ -41,7 +41,7 @@ object TelemetryFactory {
         } else {
             log.info { "OpenTelemetry enabled: exporting to $endpoint" }
             try {
-                OtelTelemetryProvider(endpoint)
+                OtelTelemetryProvider()
             } catch (e: Exception) {
                 log.error(e) { "Failed to initialize OpenTelemetry, falling back to no-op" }
                 NoOpTelemetryProvider()

@@ -8,148 +8,55 @@ import io.opentelemetry.api.metrics.Meter
 import io.opentelemetry.api.trace.StatusCode
 import io.opentelemetry.api.trace.Tracer
 import io.opentelemetry.context.Context
-import io.opentelemetry.exporter.otlp.logs.OtlpGrpcLogRecordExporter
-import io.opentelemetry.exporter.otlp.metrics.OtlpGrpcMetricExporter
-import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter
 import io.opentelemetry.instrumentation.logback.appender.v1_0.OpenTelemetryAppender
 import io.opentelemetry.sdk.OpenTelemetrySdk
-import io.opentelemetry.sdk.logs.SdkLoggerProvider
-import io.opentelemetry.sdk.logs.export.BatchLogRecordProcessor
-import io.opentelemetry.sdk.metrics.SdkMeterProvider
-import io.opentelemetry.sdk.metrics.export.PeriodicMetricReader
-import io.opentelemetry.sdk.resources.Resource
-import io.opentelemetry.sdk.trace.SdkTracerProvider
-import io.opentelemetry.sdk.trace.export.BatchSpanProcessor
-import java.time.Duration
+import io.opentelemetry.sdk.autoconfigure.AutoConfiguredOpenTelemetrySdk
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 private val log = KotlinLogging.logger {}
 
 /**
- * OpenTelemetry implementation of TelemetryProvider.
+ * OpenTelemetry implementation of TelemetryProvider using auto-configuration.
  *
- * Exports traces, metrics, and logs via gRPC to the configured OTLP endpoint.
- * This implementation is used when OTEL_EXPORTER_OTLP_ENDPOINT is set.
+ * Uses AutoConfiguredOpenTelemetrySdk to automatically read standard OTEL environment variables:
+ * - OTEL_EXPORTER_OTLP_ENDPOINT: The OTLP endpoint for exporting telemetry
+ * - OTEL_RESOURCE_ATTRIBUTES: Additional resource attributes (key=value,key2=value2)
+ * - OTEL_SERVICE_NAME: Service name (defaults to "easy-db-lab" if not set)
  *
  * Features:
- * - Batch span processing for efficient trace export
- * - Periodic metric reading with configurable interval
+ * - Automatic configuration from environment variables
  * - Log export via Logback appender bridge
  * - Resource attributes for service identification
  * - Graceful shutdown with flush on exit
- *
- * @param endpoint The OTLP gRPC endpoint (e.g., "http://localhost:4317")
  */
-class OtelTelemetryProvider(
-    private val endpoint: String,
-) : TelemetryProvider {
+class OtelTelemetryProvider : TelemetryProvider {
     private val openTelemetry: OpenTelemetry
-    private val sdkTracerProvider: SdkTracerProvider
-    private val sdkMeterProvider: SdkMeterProvider
-    private val sdkLoggerProvider: SdkLoggerProvider
+    private val sdk: OpenTelemetrySdk
 
     // Cache for histograms and counters to avoid recreation
     private val histogramCache = ConcurrentHashMap<String, io.opentelemetry.api.metrics.LongHistogram>()
     private val counterCache = ConcurrentHashMap<String, io.opentelemetry.api.metrics.LongCounter>()
 
     init {
-        log.info { "Initializing OpenTelemetry with endpoint: $endpoint" }
+        log.info { "Initializing OpenTelemetry with auto-configuration" }
 
-        // Build resource with service information
-        val resource =
-            Resource
-                .getDefault()
-                .merge(
-                    Resource.create(
-                        Attributes.of(
-                            AttributeKey.stringKey("service.name"),
-                            TelemetryNames.SERVICE_NAME,
-                            AttributeKey.stringKey("service.version"),
-                            getVersion(),
-                            AttributeKey.stringKey("host.name"),
-                            getHostName(),
-                        ),
-                    ),
-                )
-
-        // Configure span exporter
-        val spanExporter =
-            OtlpGrpcSpanExporter
+        val autoConfiguredSdk =
+            AutoConfiguredOpenTelemetrySdk
                 .builder()
-                .setEndpoint(endpoint)
-                .setTimeout(Duration.ofSeconds(EXPORT_TIMEOUT_SECONDS))
+                .addResourceCustomizer { envResource, _ ->
+                    OtelResourceBuilder.buildResource(envResource)
+                }.disableShutdownHook() // We handle shutdown manually
                 .build()
 
-        // Configure tracer provider with batch processor
-        sdkTracerProvider =
-            SdkTracerProvider
-                .builder()
-                .setResource(resource)
-                .addSpanProcessor(
-                    BatchSpanProcessor
-                        .builder(spanExporter)
-                        .setScheduleDelay(Duration.ofMillis(BATCH_DELAY_MS))
-                        .setMaxQueueSize(MAX_QUEUE_SIZE)
-                        .setMaxExportBatchSize(MAX_BATCH_SIZE)
-                        .build(),
-                ).build()
-
-        // Configure metric exporter
-        val metricExporter =
-            OtlpGrpcMetricExporter
-                .builder()
-                .setEndpoint(endpoint)
-                .setTimeout(Duration.ofSeconds(EXPORT_TIMEOUT_SECONDS))
-                .build()
-
-        // Configure meter provider with periodic reader
-        sdkMeterProvider =
-            SdkMeterProvider
-                .builder()
-                .setResource(resource)
-                .registerMetricReader(
-                    PeriodicMetricReader
-                        .builder(metricExporter)
-                        .setInterval(Duration.ofSeconds(METRIC_EXPORT_INTERVAL_SECONDS))
-                        .build(),
-                ).build()
-
-        // Configure log exporter
-        val logExporter =
-            OtlpGrpcLogRecordExporter
-                .builder()
-                .setEndpoint(endpoint)
-                .setTimeout(Duration.ofSeconds(EXPORT_TIMEOUT_SECONDS))
-                .build()
-
-        // Configure logger provider with batch processor
-        sdkLoggerProvider =
-            SdkLoggerProvider
-                .builder()
-                .setResource(resource)
-                .addLogRecordProcessor(
-                    BatchLogRecordProcessor
-                        .builder(logExporter)
-                        .setScheduleDelay(Duration.ofMillis(BATCH_DELAY_MS))
-                        .setMaxQueueSize(MAX_QUEUE_SIZE)
-                        .setMaxExportBatchSize(MAX_BATCH_SIZE)
-                        .build(),
-                ).build()
-
-        // Build the OpenTelemetry instance
-        openTelemetry =
-            OpenTelemetrySdk
-                .builder()
-                .setTracerProvider(sdkTracerProvider)
-                .setMeterProvider(sdkMeterProvider)
-                .setLoggerProvider(sdkLoggerProvider)
-                .build()
+        sdk = autoConfiguredSdk.openTelemetrySdk
+        openTelemetry = sdk
 
         // Install the Logback appender bridge to export logs via OTel
         OpenTelemetryAppender.install(openTelemetry)
 
-        log.info { "OpenTelemetry initialized successfully" }
+        // Log effective configuration for debugging
+        logEffectiveConfiguration()
     }
 
     override fun getTracer(name: String): Tracer = openTelemetry.getTracer(name)
@@ -228,18 +135,10 @@ class OtelTelemetryProvider(
     override fun shutdown() {
         log.info { "Shutting down OpenTelemetry..." }
         try {
-            // Flush and shutdown tracer provider
-            sdkTracerProvider.forceFlush().join(SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            sdkTracerProvider.shutdown().join(SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-
-            // Flush and shutdown meter provider
-            sdkMeterProvider.forceFlush().join(SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            sdkMeterProvider.shutdown().join(SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-
-            // Flush and shutdown logger provider
-            sdkLoggerProvider.forceFlush().join(SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            sdkLoggerProvider.shutdown().join(SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-
+            sdk.sdkTracerProvider.forceFlush().join(SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            sdk.sdkMeterProvider.forceFlush().join(SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            sdk.sdkLoggerProvider.forceFlush().join(SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            sdk.shutdown().join(SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             log.info { "OpenTelemetry shutdown complete" }
         } catch (e: Exception) {
             log.warn(e) { "Error during OpenTelemetry shutdown" }
@@ -263,23 +162,19 @@ class OtelTelemetryProvider(
         return builder.build()
     }
 
-    private fun getVersion(): String = System.getProperty("easydblab.version", "unknown")
+    private fun logEffectiveConfiguration() {
+        val endpoint = System.getenv("OTEL_EXPORTER_OTLP_ENDPOINT") ?: "default"
+        val resourceAttrs = System.getenv("OTEL_RESOURCE_ATTRIBUTES")
 
-    private fun getHostName(): String =
-        try {
-            java.net.InetAddress
-                .getLocalHost()
-                .hostName
-        } catch (e: Exception) {
-            "unknown"
+        log.info { "OpenTelemetry initialized successfully" }
+        log.info { "  Endpoint: $endpoint" }
+        log.info { "  Service name: ${TelemetryNames.SERVICE_NAME}" }
+        if (!resourceAttrs.isNullOrBlank()) {
+            log.info { "  Resource attributes from env: $resourceAttrs" }
         }
+    }
 
     companion object {
-        private const val EXPORT_TIMEOUT_SECONDS = 10L
-        private const val BATCH_DELAY_MS = 1000L
-        private const val MAX_QUEUE_SIZE = 2048
-        private const val MAX_BATCH_SIZE = 512
-        private const val METRIC_EXPORT_INTERVAL_SECONDS = 30L
         private const val SHUTDOWN_TIMEOUT_SECONDS = 5L
     }
 }

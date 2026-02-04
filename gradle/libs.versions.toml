@@ -203,7 +203,7 @@ sshd = ["sshd-core", "sshd-scp"]
 resilience4j = ["resilience4j-retry", "resilience4j-kotlin"]
 
 # OpenTelemetry bundle
-opentelemetry = ["opentelemetry-api", "opentelemetry-sdk", "opentelemetry-exporter-otlp", "opentelemetry-aws-sdk", "opentelemetry-okhttp", "opentelemetry-instrumentation-logback"]
+opentelemetry = ["opentelemetry-api", "opentelemetry-sdk", "opentelemetry-sdk-extension-autoconfigure", "opentelemetry-exporter-otlp", "opentelemetry-aws-sdk", "opentelemetry-okhttp", "opentelemetry-instrumentation-logback"]
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

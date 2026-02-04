@@ -336,10 +336,9 @@ step_verify_restore() {
 
     echo "VPC ID: $vpc_id"
 
-    # Create restore directory
-    local restore_dir="restore"
-    echo "=== Creating restore directory: $restore_dir ==="
-    mkdir -p "$restore_dir"
+    # Create temporary restore directory
+    local restore_dir=$(mktemp -d)
+    echo "=== Using temporary restore directory: $restore_dir ==="
 
     # Change into restore directory and run status with EASY_DB_LAB_RESTORE_VPC env var
     echo "=== Running status with EASY_DB_LAB_RESTORE_VPC to trigger restore ==="

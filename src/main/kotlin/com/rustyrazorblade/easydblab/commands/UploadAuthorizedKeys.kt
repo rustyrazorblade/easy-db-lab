@@ -36,9 +36,6 @@ class UploadAuthorizedKeys : PicoBaseCommand() {
 
     val authorizedKeysExtra = "~/.ssh/authorized_keys_extra"
 
-    @Suppress("UnusedPrivateProperty")
-    val authorizedKeys = "~/.ssh/authorized_keys"
-
     override fun execute() {
         val path = Paths.get(localDir)
         if (!path.exists()) {

@@ -16,7 +16,7 @@
   "appPort": [8000],
   "runArgs": ["--cap-add=NET_ADMIN", "--cap-add=NET_RAW"],
   "customizations": {},
-    "remoteUser": "node",
+  "remoteUser": "node",
   "mounts": [
     "source=claude-code-bashhistory-${devcontainerId},target=/commandhistory,type=volume",
     "source=${localWorkspaceFolder}/.devcontainer/claude,target=/home/node/.claude,type=bind"

@@ -24,6 +24,7 @@ import picocli.CommandLine.Spec
     description = ["Query logs from Victoria Logs"],
     mixinStandardHelpOptions = true,
     subcommands = [
+        LogsBackup::class,
         LogsQuery::class,
     ],
 )

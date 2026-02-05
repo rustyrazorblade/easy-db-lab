@@ -253,3 +253,33 @@ The `logs query` command uses the internal SOCKS5 proxy to connect to Victoria L
 1. Ensure the cluster is running: `easy-db-lab status`
 2. The proxy is started automatically when needed
 3. Check that control node is accessible: `ssh control0 hostname`
+
+## Backup
+
+Victoria Logs data can be backed up to S3 for disaster recovery.
+
+### Creating a Backup
+
+```bash
+# Backup to cluster's default S3 bucket
+easy-db-lab logs backup
+
+# Backup to a custom S3 location
+easy-db-lab logs backup --dest s3://my-backup-bucket/victorialogs
+```
+
+By default, backups are stored at:
+`s3://{cluster-bucket}/victorialogs/{timestamp}/`
+
+Use `--dest` to override the destination bucket and path.
+
+### What Gets Backed Up
+
+- All log partitions (organized by date)
+- Complete log history up to retention period (7 days default)
+
+### Notes
+
+- Backups are created by syncing the data directory to S3
+- The process is non-disruptive; log ingestion continues during backup
+- Persistent storage at `/mnt/db1/victorialogs` ensures logs survive pod restarts

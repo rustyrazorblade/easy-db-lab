@@ -45,6 +45,8 @@ data class ClusterS3Path(
         private const val ENVIRONMENT_FILE = "environment.sh"
         private const val SETUP_INSTANCE_FILE = "setup_instance.sh"
         private const val TEMPO_DIR = "tempo"
+        private const val VICTORIA_METRICS_DIR = "victoriametrics"
+        private const val VICTORIA_LOGS_DIR = "victorialogs"
 
         /**
          * Create a ClusterS3Path from ClusterState.
@@ -278,4 +280,18 @@ data class ClusterS3Path(
      * @return Path: s3://bucket/config/setup_instance.sh
      */
     fun setupInstanceScript(): ClusterS3Path = resolve(CONFIG_DIR).resolve(SETUP_INSTANCE_FILE)
+
+    /**
+     * Path for VictoriaMetrics backups.
+     *
+     * @return Path: s3://bucket/victoriametrics
+     */
+    fun victoriaMetrics(): ClusterS3Path = resolve(VICTORIA_METRICS_DIR)
+
+    /**
+     * Path for VictoriaLogs backups.
+     *
+     * @return Path: s3://bucket/victorialogs
+     */
+    fun victoriaLogs(): ClusterS3Path = resolve(VICTORIA_LOGS_DIR)
 }

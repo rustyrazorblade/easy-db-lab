@@ -293,4 +293,40 @@ class ClusterS3PathTest {
         assertThat(setupInstanceScriptPath.toString())
             .isEqualTo("s3://my-bucket/config/setup_instance.sh")
     }
+
+    @Test
+    fun `victoriaMetrics returns correct path`() {
+        val path = ClusterS3Path.root("my-bucket")
+        val victoriaMetricsPath = path.victoriaMetrics()
+
+        assertThat(victoriaMetricsPath.toString())
+            .isEqualTo("s3://my-bucket/victoriametrics")
+    }
+
+    @Test
+    fun `victoriaLogs returns correct path`() {
+        val path = ClusterS3Path.root("my-bucket")
+        val victoriaLogsPath = path.victoriaLogs()
+
+        assertThat(victoriaLogsPath.toString())
+            .isEqualTo("s3://my-bucket/victorialogs")
+    }
+
+    @Test
+    fun `victoriaMetrics can be chained with resolve for timestamp`() {
+        val path = ClusterS3Path.root("my-bucket")
+        val backupPath = path.victoriaMetrics().resolve("20240101-120000")
+
+        assertThat(backupPath.toString())
+            .isEqualTo("s3://my-bucket/victoriametrics/20240101-120000")
+    }
+
+    @Test
+    fun `victoriaLogs can be chained with resolve for timestamp`() {
+        val path = ClusterS3Path.root("my-bucket")
+        val backupPath = path.victoriaLogs().resolve("20240101-120000")
+
+        assertThat(backupPath.toString())
+            .isEqualTo("s3://my-bucket/victorialogs/20240101-120000")
+    }
 }

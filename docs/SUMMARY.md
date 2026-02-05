@@ -16,6 +16,7 @@
 - [Kubernetes](user-guide/kubernetes.md)
 - [Network Connectivity](user-guide/network-connectivity.md)
 - [Victoria Logs](user-guide/victoria-logs.md)
+- [Victoria Metrics](user-guide/victoria-metrics.md)
 - [Spark](user-guide/spark.md)
 - [ClickHouse](user-guide/clickhouse.md)
 - [Shell Aliases](user-guide/shell-aliases.md)

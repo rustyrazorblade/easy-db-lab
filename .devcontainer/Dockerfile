@@ -24,15 +24,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     nano \
     vim \
     curl \
+    wget \
     zip \
     python3 \
     python3-pip \
     python3-venv \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# Install MkDocs and Cinder theme for documentation
-COPY docs/requirements.txt /tmp/docs-requirements.txt
-RUN pip3 install --break-system-packages -r /tmp/docs-requirements.txt
 
 # Ensure default node user has access to /usr/local/share
 RUN mkdir -p /usr/local/share/npm-global && \

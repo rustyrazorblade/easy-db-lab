@@ -29,6 +29,7 @@ import com.rustyrazorblade.easydblab.commands.cassandra.Cassandra
 import com.rustyrazorblade.easydblab.commands.clickhouse.ClickHouse
 import com.rustyrazorblade.easydblab.commands.k8.K8
 import com.rustyrazorblade.easydblab.commands.logs.Logs
+import com.rustyrazorblade.easydblab.commands.metrics.Metrics
 import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearch
 import com.rustyrazorblade.easydblab.commands.spark.Spark
 import com.rustyrazorblade.easydblab.commands.tailscale.Tailscale
@@ -86,6 +87,7 @@ import kotlin.system.exitProcess
         OpenSearch::class,
         Aws::class,
         Logs::class,
+        Metrics::class,
         Tailscale::class,
     ],
 )

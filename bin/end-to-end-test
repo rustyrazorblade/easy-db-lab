@@ -845,6 +845,60 @@ step_test_logs_query() {
     echo "=== Logs query test completed ==="
 }
 
+step_test_metrics_backup() {
+    echo "=== Testing VictoriaMetrics backup ==="
+
+    # Run metrics backup command
+    easy-db-lab metrics backup
+
+    # Extract S3 bucket from state.json
+    local s3_bucket=$(jq -r '.s3Bucket' state.json)
+    if [ -z "$s3_bucket" ] || [ "$s3_bucket" = "null" ]; then
+        echo "ERROR: S3 bucket not found in state.json"
+        return 1
+    fi
+
+    # Verify backup was created in S3
+    echo "=== Checking VictoriaMetrics backup in S3 ==="
+    local backup_count=$(aws s3 ls "s3://${s3_bucket}/victoriametrics/" 2>/dev/null | wc -l)
+    if [ "$backup_count" -gt 0 ]; then
+        echo "  victoriametrics backup: OK ($backup_count entries)"
+        aws s3 ls "s3://${s3_bucket}/victoriametrics/" | head -5
+    else
+        echo "ERROR: VictoriaMetrics backup not found in S3"
+        return 1
+    fi
+
+    echo "=== VictoriaMetrics backup test completed ==="
+}
+
+step_test_logs_backup() {
+    echo "=== Testing VictoriaLogs backup ==="
+
+    # Run logs backup command
+    easy-db-lab logs backup
+
+    # Extract S3 bucket from state.json
+    local s3_bucket=$(jq -r '.s3Bucket' state.json)
+    if [ -z "$s3_bucket" ] || [ "$s3_bucket" = "null" ]; then
+        echo "ERROR: S3 bucket not found in state.json"
+        return 1
+    fi
+
+    # Verify backup was created in S3
+    echo "=== Checking VictoriaLogs backup in S3 ==="
+    local backup_count=$(aws s3 ls "s3://${s3_bucket}/victorialogs/" 2>/dev/null | wc -l)
+    if [ "$backup_count" -gt 0 ]; then
+        echo "  victorialogs backup: OK ($backup_count entries)"
+        aws s3 ls "s3://${s3_bucket}/victorialogs/" | head -5
+    else
+        echo "ERROR: VictoriaLogs backup not found in S3"
+        return 1
+    fi
+
+    echo "=== VictoriaLogs backup test completed ==="
+}
+
 step_teardown() {
     echo "=== Tearing down cluster ==="
     easy-db-lab down --yes
@@ -894,6 +948,8 @@ STEPS_WORKDIR=(
     "step_opensearch_stop:Stop OpenSearch"
     "step_test_observability:Test observability stack"
     "step_test_logs_query:Test logs query command"
+    "step_test_metrics_backup:Test VictoriaMetrics backup"
+    "step_test_logs_backup:Test VictoriaLogs backup"
     "step_teardown:Teardown cluster"
 )
 

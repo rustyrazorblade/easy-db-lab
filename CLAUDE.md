@@ -199,6 +199,10 @@ For more details, see [packer/README.md](packer/README.md) and [packer/TESTING.m
 - Always use @TempDir for temporary directories in tests - JUnit handles lifecycle automatically
 - **Never disable functionality as a solution.** If something isn't working, fix the root cause. Adding flags to skip features, making things optional, or suggesting users disable components is not an acceptable solution.
 - **Configuration problems require configuration fixes.** If a service can't connect to a dependency, the fix is to provide the correct endpoint/credentials, not to make the dependency optional.
+- Include testing when planning.  Integration tests use TestContainers.
+- When planning, iterate with me.  Ask questions.  Don't automatically add features I didn't ask for.  Ask if I want them first.
+- Include updates to the documentation as part of planning.
+- CRITICAL: Tests must pass, in CI, on my local, and in the devcontainer.  It is UNACCEPTABLE to say that tests are only failing in devcontainers and to ignore them.
 
 ### Retry Logic with Resilience4j
 

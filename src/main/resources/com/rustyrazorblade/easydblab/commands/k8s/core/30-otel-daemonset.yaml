@@ -41,6 +41,15 @@ spec:
               protocol: TCP
               name: health
           env:
+            - name: HOSTNAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: CLUSTER_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: cluster-config
+                  key: cluster_name
             - name: GOMEMLIMIT
               value: "256MiB"
           resources:

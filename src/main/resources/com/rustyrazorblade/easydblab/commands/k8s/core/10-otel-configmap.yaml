@@ -31,16 +31,31 @@ data:
               scrape_interval: 5s
               static_configs:
                 - targets: ['localhost:9363']
+              relabel_configs:
+                - target_label: instance
+                  replacement: '${env:HOSTNAME}:9363'
+                - target_label: cluster
+                  replacement: '${env:CLUSTER_NAME}'
             - job_name: 'vector-node'
               scrape_interval: 15s
               static_configs:
                 - targets: ['localhost:9598']
               # Vector node DaemonSet runs on all nodes
+              relabel_configs:
+                - target_label: instance
+                  replacement: '${env:HOSTNAME}:9598'
+                - target_label: cluster
+                  replacement: '${env:CLUSTER_NAME}'
             - job_name: 'vector-s3'
               scrape_interval: 15s
               static_configs:
                 - targets: ['localhost:9599']
               # Vector S3 only runs on master node, will fail gracefully on other nodes
+              relabel_configs:
+                - target_label: instance
+                  replacement: '${env:HOSTNAME}:9599'
+                - target_label: cluster
+                  replacement: '${env:CLUSTER_NAME}'
       filelog/clickhouse-server:
         include:
           - /mnt/db1/clickhouse/logs/*.log

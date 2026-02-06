@@ -102,12 +102,13 @@ class K8Apply : PicoBaseCommand() {
     }
 
     /**
-     * Creates the cluster-config ConfigMap with runtime values needed by Vector.
+     * Creates the cluster-config ConfigMap with runtime values needed by Vector and OTel.
      *
      * This ConfigMap provides:
      * - control_node_ip: IP address for Vector DaemonSet to send logs to Victoria Logs
      * - aws_region: AWS region for Vector S3 source
      * - sqs_queue_url: SQS queue URL for EMR log notifications
+     * - cluster_name: Cluster name for OTel Prometheus relabel_configs (Grafana dashboard labels)
      */
     private fun createClusterConfigMap(controlNode: ClusterHost) {
         val region = clusterState.initConfig?.region ?: user.region
@@ -128,6 +129,7 @@ class K8Apply : PicoBaseCommand() {
                 "aws_region" to region,
                 "sqs_queue_url" to (sqsQueueUrl ?: ""),
                 "s3_bucket" to (clusterState.s3Bucket ?: ""),
+                "cluster_name" to (clusterState.initConfig?.name ?: "cluster"),
             )
 
         log.info {

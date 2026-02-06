@@ -63,6 +63,7 @@ class UploadAuthorizedKeys : PicoBaseCommand() {
         val upload = doUpload(authorizedKeysExtraFile)
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList) { upload(it.toHost()) }
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Stress, "") { upload(it.toHost()) }
+        hostOperationsService.withHosts(clusterState.hosts, ServerType.Control, "") { upload(it.toHost()) }
     }
 
     private fun doUpload(authorizedKeysFile: File) =

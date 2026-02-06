@@ -28,7 +28,7 @@ jobs:
 
       - name: Run tests
         # Exclude bulk-writer module - requires cassandra-analytics SNAPSHOTs from local Maven
-        run: ./gradlew test --no-daemon -x :bulk-writer:compileJava -x :bulk-writer:test
+        run: ./gradlew test koverXmlReport --no-daemon -x :bulk-writer:compileJava -x :bulk-writer:test
 
       - name: Upload test results
         if: always()
@@ -48,6 +48,16 @@ jobs:
           path: build/test-results/test/*.xml
           reporter: java-junit
           fail-on-error: false
+
+      - name: Kover coverage report
+        uses: mi-kas/kover-report@v1
+        if: always()
+        with:
+          path: build/reports/kover/report.xml
+          title: Code Coverage
+          update-comment: true
+          min-coverage-overall: 80
+          min-coverage-changed-files: 80
 
       - name: Upload coverage reports
         if: always()

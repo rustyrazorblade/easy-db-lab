@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.commands
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequireDocker
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.mcp.McpServer
@@ -29,6 +30,12 @@ class Server : PicoBaseCommand() {
     )
     var port: Int = 0
 
+    @Option(
+        names = ["--refresh", "-r"],
+        description = ["Status cache refresh interval in seconds (default: 30)"],
+    )
+    var refreshInterval: Long = Constants.Time.DEFAULT_STATUS_REFRESH_SECONDS
+
     companion object {
         private val log = KotlinLogging.logger {}
     }
@@ -51,7 +58,7 @@ class Server : PicoBaseCommand() {
         log.info { "Starting easy-db-lab MCP server..." }
 
         try {
-            val server = McpServer()
+            val server = McpServer(refreshInterval)
             server.start(port) { actualPort ->
                 // Generate .mcp.json with actual port
                 val config =

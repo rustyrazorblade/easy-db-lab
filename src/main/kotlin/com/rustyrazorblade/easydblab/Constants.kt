@@ -27,6 +27,7 @@ object Constants {
         const val MILLIS_PER_MINUTE = 60_000L
         const val THREAD_SLEEP_DELAY_MS = 10L
         const val THREAD_JOIN_TIMEOUT_MS = 1000L
+        const val DEFAULT_STATUS_REFRESH_SECONDS = 30L
     }
 
     // EMR configuration

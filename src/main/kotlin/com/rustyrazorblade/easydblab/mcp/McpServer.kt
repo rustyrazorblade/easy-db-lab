@@ -7,11 +7,14 @@ import com.rustyrazorblade.easydblab.output.FilteringChannelOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputEvent
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import io.github.oshai.kotlinlogging.KotlinLogging
+import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.install
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import io.ktor.server.response.respond
+import io.ktor.server.response.respondText
+import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import io.ktor.server.sse.SSE
@@ -41,7 +44,7 @@ import kotlin.concurrent.thread
 import kotlin.getValue
 
 @Serializable
-data class StatusResponse(
+data class ServerStatusResponse(
     val status: String,
     val command: String,
     @SerialName("runtime_seconds") val runtimeSeconds: Long,
@@ -50,9 +53,12 @@ data class StatusResponse(
 )
 
 /** MCP server implementation using the official SDK. */
-class McpServer : KoinComponent {
+class McpServer(
+    private val refreshIntervalSeconds: Long = DEFAULT_REFRESH_INTERVAL_SECONDS,
+) : KoinComponent {
     companion object {
         private val log = KotlinLogging.logger {}
+        private const val DEFAULT_REFRESH_INTERVAL_SECONDS = 30L
     }
 
     private val context: Context by inject()
@@ -60,6 +66,7 @@ class McpServer : KoinComponent {
 
     private val toolRegistry = McpToolRegistry()
     private val executionSemaphore = Semaphore(1) // Only allow one tool execution at a time
+    private val statusCache = StatusCache(refreshIntervalSeconds)
 
     // Status tracking components
     private val outputChannel = Channel<OutputEvent>(Channel.UNLIMITED)
@@ -113,7 +120,7 @@ class McpServer : KoinComponent {
             val messages = messageBuffer.getAndClearMessages()
 
             val statusResponse =
-                StatusResponse(
+                ServerStatusResponse(
                     status = status,
                     command = currentCommand ?: "none",
                     runtimeSeconds = runtimeSeconds,
@@ -271,6 +278,7 @@ class McpServer : KoinComponent {
             registerServerTools(server)
             registerAllPrompts(server)
             messageBuffer.start()
+            statusCache.start()
 
             startEmbeddedServer(port, server, onStarted)
         } catch (e: IllegalStateException) {
@@ -343,6 +351,28 @@ class McpServer : KoinComponent {
                         }
 
                         transport.handlePostMessage(call)
+                    }
+                    get("/status") {
+                        val live = call.request.queryParameters["live"]?.toBoolean() ?: false
+                        val section = call.request.queryParameters["section"]
+
+                        if (live) {
+                            statusCache.forceRefresh()
+                        }
+
+                        try {
+                            val json = statusCache.getStatus(section)
+                            if (json == null) {
+                                call.respond(
+                                    HttpStatusCode.ServiceUnavailable,
+                                    "Status not yet available",
+                                )
+                            } else {
+                                call.respondText(json, ContentType.Application.Json)
+                            }
+                        } catch (e: IllegalArgumentException) {
+                            call.respond(HttpStatusCode.BadRequest, e.message ?: "Invalid request")
+                        }
                     }
                 }
             }.start(wait = false)

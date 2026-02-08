@@ -8,12 +8,9 @@ import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.OpenSearchClusterState
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
-import com.rustyrazorblade.easydblab.configuration.s3Path
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.DomainState
 import com.rustyrazorblade.easydblab.providers.aws.EC2InstanceService
-import com.rustyrazorblade.easydblab.providers.aws.EMRClusterConfig
-import com.rustyrazorblade.easydblab.providers.aws.EMRService
 import com.rustyrazorblade.easydblab.providers.aws.InstanceCreationConfig
 import com.rustyrazorblade.easydblab.providers.aws.InstanceSpec
 import com.rustyrazorblade.easydblab.providers.aws.OpenSearchDomainConfig
@@ -122,7 +119,7 @@ interface ClusterProvisioningService {
  */
 class DefaultClusterProvisioningService(
     private val ec2InstanceService: EC2InstanceService,
-    private val emrService: EMRService,
+    private val emrProvisioningService: EMRProvisioningService,
     private val openSearchService: OpenSearchService,
     private val outputHandler: OutputHandler,
     private val aws: com.rustyrazorblade.easydblab.providers.aws.AWS,
@@ -243,28 +240,35 @@ class DefaultClusterProvisioningService(
 
         // EMR thread
         if (servicesConfig.initConfig.sparkEnabled) {
-            allThreads.add(
-                thread(start = true, name = "create-EMR") {
-                    try {
-                        val cluster =
-                            createEmrCluster(
-                                initConfig = servicesConfig.initConfig,
-                                subnetId = servicesConfig.subnetId,
-                                securityGroupId = servicesConfig.securityGroupId,
-                                tags = servicesConfig.tags,
-                                clusterState = servicesConfig.clusterState,
-                                keyName = instanceConfig.userConfig.keyName,
-                            )
-                        synchronized(stateLock) {
-                            emrCluster = cluster
-                            onEmrCreated(cluster)
+            if (servicesConfig.clusterState.emrCluster != null) {
+                outputHandler.handleMessage("EMR cluster already exists, skipping creation")
+            } else {
+                allThreads.add(
+                    thread(start = true, name = "create-EMR") {
+                        try {
+                            val cluster =
+                                emrProvisioningService.provisionEmrCluster(
+                                    clusterName = servicesConfig.initConfig.name,
+                                    masterInstanceType = servicesConfig.initConfig.sparkMasterInstanceType,
+                                    workerInstanceType = servicesConfig.initConfig.sparkWorkerInstanceType,
+                                    workerCount = servicesConfig.initConfig.sparkWorkerCount,
+                                    subnetId = servicesConfig.subnetId,
+                                    securityGroupId = servicesConfig.securityGroupId,
+                                    keyName = instanceConfig.userConfig.keyName,
+                                    clusterState = servicesConfig.clusterState,
+                                    tags = servicesConfig.tags,
+                                )
+                            synchronized(stateLock) {
+                                emrCluster = cluster
+                                onEmrCreated(cluster)
+                            }
+                        } catch (e: Exception) {
+                            log.error(e) { "Failed to create EMR cluster" }
+                            threadErrors["EMR cluster"] = e
                         }
-                    } catch (e: Exception) {
-                        log.error(e) { "Failed to create EMR cluster" }
-                        threadErrors["EMR cluster"] = e
-                    }
-                },
-            )
+                    },
+                )
+            }
         }
 
         // OpenSearch thread
@@ -348,40 +352,6 @@ class DefaultClusterProvisioningService(
                 instanceId = instance.instanceId,
             )
         }
-    }
-
-    private fun createEmrCluster(
-        initConfig: InitConfig,
-        subnetId: String,
-        securityGroupId: String,
-        tags: Map<String, String>,
-        clusterState: ClusterState,
-        keyName: String,
-    ): EMRClusterState {
-        outputHandler.handleMessage("Creating EMR Spark cluster...")
-
-        val emrConfig =
-            EMRClusterConfig(
-                clusterName = "${initConfig.name}-spark",
-                logUri = clusterState.s3Path().emrLogs().toString(),
-                subnetId = subnetId,
-                ec2KeyName = keyName,
-                masterInstanceType = initConfig.sparkMasterInstanceType,
-                coreInstanceType = initConfig.sparkWorkerInstanceType,
-                coreInstanceCount = initConfig.sparkWorkerCount,
-                additionalSecurityGroups = listOf(securityGroupId),
-                tags = tags,
-            )
-
-        val result = emrService.createCluster(emrConfig)
-        val readyResult = emrService.waitForClusterReady(result.clusterId)
-
-        return EMRClusterState(
-            clusterId = readyResult.clusterId,
-            clusterName = readyResult.clusterName,
-            masterPublicDns = readyResult.masterPublicDns,
-            state = readyResult.state,
-        )
     }
 
     private fun createOpenSearchDomain(

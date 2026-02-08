@@ -4,13 +4,18 @@ easy-db-lab supports provisioning Apache Spark clusters via AWS EMR for analytic
 
 ## Enabling Spark
 
-Spark is enabled during cluster initialization with the `--spark.enable` flag:
+There are two ways to enable Spark:
+
+### Option 1: During Init (before `up`)
+
+Enable Spark during cluster initialization with the `--spark.enable` flag. The EMR cluster will be created automatically when you run `up`:
 
 ```bash
 easy-db-lab init --spark.enable
+easy-db-lab up
 ```
 
-### Spark Configuration Options
+#### Init Spark Configuration Options
 
 | Option | Description | Default |
 |--------|-------------|---------|
@@ -19,7 +24,7 @@ easy-db-lab init --spark.enable
 | `--spark.worker.instance.type` | Worker node instance type | m5.xlarge |
 | `--spark.worker.instance.count` | Number of worker nodes | 3 |
 
-### Example with Custom Configuration
+#### Example with Custom Configuration
 
 ```bash
 easy-db-lab init \
@@ -27,6 +32,33 @@ easy-db-lab init \
   --spark.master.instance.type m5.2xlarge \
   --spark.worker.instance.type m5.4xlarge \
   --spark.worker.instance.count 5
+```
+
+### Option 2: After `up` (standalone `spark init`)
+
+Add Spark to an existing environment that is already running. This is useful when you forgot to pass `--spark.enable` during `init`, or when you decide to add Spark later:
+
+```bash
+easy-db-lab spark init
+```
+
+Prerequisites: `easy-db-lab init` and `easy-db-lab up` must have been run first.
+
+#### Spark Init Configuration Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--master.instance.type` | Master node instance type | m5.xlarge |
+| `--worker.instance.type` | Worker node instance type | m5.xlarge |
+| `--worker.instance.count` | Number of worker nodes | 3 |
+
+#### Example with Custom Configuration
+
+```bash
+easy-db-lab spark init \
+  --master.instance.type m5.2xlarge \
+  --worker.instance.type m5.4xlarge \
+  --worker.instance.count 5
 ```
 
 ## Submitting Spark Jobs

@@ -218,11 +218,10 @@ class DefaultTailscaleService(
         operation: String,
     ): String {
         if (!response.isSuccessful) {
-            val errorBody = response.body?.string() ?: "No error details"
+            val errorBody = response.body.string()
             throw TailscaleApiException("Failed to $operation: ${response.code} - $errorBody")
         }
-        return response.body?.string()
-            ?: throw TailscaleApiException("Empty response body from $operation")
+        return response.body.string()
     }
 
     override fun startTailscale(

@@ -110,12 +110,12 @@ class DefaultVictoriaLogsService(
             httpClient.newCall(request).execute().use { response ->
                 if (response.code != HTTP_OK) {
                     throw RuntimeException(
-                        "Victoria Logs query failed with status ${response.code}: ${response.body?.string()}",
+                        "Victoria Logs query failed with status ${response.code}: ${response.body.string()}",
                     )
                 }
 
                 // Parse the NDJSON response (newline-delimited JSON)
-                val body = response.body?.string() ?: ""
+                val body = response.body.string()
                 parseNdjsonResponse(body)
             }
         }

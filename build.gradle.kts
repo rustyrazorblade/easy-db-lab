@@ -46,6 +46,9 @@ ktor {
         enabled = true
         codeInferenceEnabled = true
     }
+    fatJar {
+        archiveFileName.set("${project.name}-${project.version}-all.jar")
+    }
 }
 
 tasks.named<CreateStartScripts>("startScripts") {

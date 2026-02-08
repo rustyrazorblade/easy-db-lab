@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.proxy
 
+import com.rustyrazorblade.easydblab.services.ResourceManager
 import org.koin.dsl.module
 
 /**
@@ -19,5 +20,10 @@ val proxyModule =
         single<SocksProxyService> { MinaSocksProxyService(get()) }
 
         // HTTP client factory - uses SOCKS proxy for accessing private endpoints
-        single<HttpClientFactory> { ProxiedHttpClientFactory(get()) }
+        // Registered with ResourceManager so the cached OkHttpClient is cleaned up on exit
+        single<HttpClientFactory> {
+            ProxiedHttpClientFactory(get()).also { factory ->
+                get<ResourceManager>().register(factory)
+            }
+        }
     }

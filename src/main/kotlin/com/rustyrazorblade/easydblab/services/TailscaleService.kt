@@ -39,7 +39,7 @@ class TailscaleApiException(
  * 2. Use the access token to generate an ephemeral auth key
  * 3. Use the auth key to authenticate the Tailscale daemon
  */
-interface TailscaleService {
+interface TailscaleService : AutoCloseable {
     /**
      * Generates an ephemeral Tailscale auth key using OAuth credentials.
      *
@@ -303,4 +303,10 @@ class DefaultTailscaleService(
             val backendState = status["BackendState"] as? String
             backendState == "Running"
         }
+
+    override fun close() {
+        log.info { "Shutting down TailscaleService OkHttp client" }
+        httpClient.dispatcher.executorService.shutdown()
+        httpClient.connectionPool.evictAll()
+    }
 }

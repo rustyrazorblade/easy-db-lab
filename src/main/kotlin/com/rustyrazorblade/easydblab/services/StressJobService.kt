@@ -280,7 +280,7 @@ class DefaultStressJobService(
     /**
      * Builds the Kubernetes Job YAML for a stress job.
      */
-    private fun buildJobYaml(
+    internal fun buildJobYaml(
         jobName: String,
         image: String,
         contactPoints: String,
@@ -300,10 +300,9 @@ class DefaultStressJobService(
                 ""
             }
 
-        val volumesYaml =
+        val profileVolumeYaml =
             if (profileConfigMapName != null) {
                 """
-      volumes:
         - name: profiles
           configMap:
             name: $profileConfigMapName"""
@@ -348,7 +347,41 @@ $argsYaml
               memory: "1Gi"
               cpu: "500m"
             limits:
-              memory: "4Gi"$volumeMountsYaml$volumesYaml
+              memory: "4Gi"$volumeMountsYaml
+        - name: otel-sidecar
+          image: otel/opentelemetry-collector-contrib:latest
+          args:
+            - --config=/etc/otel/otel-stress-sidecar-config.yaml
+          env:
+            - name: K8S_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: HOST_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: CLUSTER_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: cluster-config
+                  key: cluster_name
+            - name: GOMEMLIMIT
+              value: "64MiB"
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "25m"
+            limits:
+              memory: "64Mi"
+          volumeMounts:
+            - name: otel-sidecar-config
+              mountPath: /etc/otel
+              readOnly: true
+      volumes:
+        - name: otel-sidecar-config
+          configMap:
+            name: otel-stress-sidecar-config$profileVolumeYaml
 """.trimStart()
     }
 

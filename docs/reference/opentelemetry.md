@@ -72,6 +72,20 @@ The following metrics are exported:
 | `easydblab.k8s.operation.duration` | Histogram | K8s operation duration (ms) |
 | `easydblab.k8s.operation.count` | Counter | Number of K8s operations |
 
+## Stress Job Metrics
+
+When running cassandra-easy-stress as K8s Jobs, metrics are automatically collected via an OTel collector sidecar container. The sidecar scrapes the stress process's Prometheus endpoint (`localhost:9500`) and forwards metrics via OTLP to the node's OTel DaemonSet, which then exports them to VictoriaMetrics.
+
+The Prometheus scrape job is named `cassandra-stress`. The following labels are available in Grafana:
+
+| Label | Source | Description |
+|-------|--------|-------------|
+| `host_name` | DaemonSet `resourcedetection` processor | K8s node name where the pod runs |
+| `instance` | Sidecar `relabel_configs` | Node name with port (e.g., `ip-10-0-1-50:9500`) |
+| `cluster` | Sidecar `relabel_configs` | Cluster name from `cluster-config` ConfigMap |
+
+Short-lived stress commands (`list`, `info`, `fields`) do not include the sidecar since they complete quickly and don't produce meaningful metrics.
+
 ## Configuration
 
 The following environment variables are supported:

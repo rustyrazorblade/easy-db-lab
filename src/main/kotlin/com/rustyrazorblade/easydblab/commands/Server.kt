@@ -31,6 +31,12 @@ class Server : PicoBaseCommand() {
     var port: Int = 0
 
     @Option(
+        names = ["--bind", "-b"],
+        description = ["Address to bind the server to (default: 127.0.0.1)"],
+    )
+    var bind: String = "127.0.0.1"
+
+    @Option(
         names = ["--refresh", "-r"],
         description = ["Status cache refresh interval in seconds (default: 30)"],
     )
@@ -59,7 +65,7 @@ class Server : PicoBaseCommand() {
 
         try {
             val server = McpServer(refreshInterval)
-            server.start(port) { actualPort ->
+            server.start(port, bind) { actualPort ->
                 // Generate .mcp.json with actual port
                 val config =
                     McpConfiguration(
@@ -68,7 +74,7 @@ class Server : PicoBaseCommand() {
                                 "easy-db-lab" to
                                     McpServerConfig(
                                         type = "sse",
-                                        url = "http://localhost:$actualPort/sse",
+                                        url = "http://$bind:$actualPort/sse",
                                     ),
                             ),
                     )

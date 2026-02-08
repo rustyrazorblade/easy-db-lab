@@ -272,6 +272,7 @@ class McpServer(
 
     fun start(
         port: Int,
+        bind: String = "127.0.0.1",
         onStarted: (actualPort: Int) -> Unit,
     ) {
         try {
@@ -284,7 +285,7 @@ class McpServer(
             messageBuffer.start()
             statusCache.start()
 
-            startEmbeddedServer(port, server, onStarted)
+            startEmbeddedServer(port, bind, server, onStarted)
         } catch (e: IllegalStateException) {
             log.error { "Transport error: ${e.message}" }
             throw e
@@ -321,13 +322,14 @@ class McpServer(
 
     private fun startEmbeddedServer(
         port: Int,
+        bind: String,
         server: Server,
         onStarted: (actualPort: Int) -> Unit,
     ) {
         val serverSessions = ConcurrentMap<String, ServerSession>()
 
         val ktorServer =
-            embeddedServer(Netty, host = "127.0.0.1", port = port) {
+            embeddedServer(Netty, host = bind, port = port) {
                 install(SSE)
                 routing {
                     swaggerUI("/swagger") {
@@ -428,8 +430,8 @@ class McpServer(
             """
             Starting MCP server on port $actualPort...
 
-            Server is now available at: http://127.0.0.1:$actualPort/sse
-            Swagger UI available at:    http://127.0.0.1:$actualPort/swagger
+            Server is now available at: http://$bind:$actualPort/sse
+            Swagger UI available at:    http://$bind:$actualPort/swagger
             """.trimIndent(),
         )
 

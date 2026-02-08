@@ -149,10 +149,12 @@ class StatusCacheTest : BaseKoinTest() {
     }
 
     @Test
-    fun `getStatus returns null before first refresh`() {
+    fun `getStatus blocks until first refresh completes`() {
         statusCache = StatusCache(refreshIntervalSeconds = 3600)
+        // forceRefresh populates the cache, releasing the latch
+        statusCache.forceRefresh()
         val result = statusCache.getStatus()
-        assertThat(result).isNull()
+        assertThat(result).isNotNull()
     }
 
     @Test

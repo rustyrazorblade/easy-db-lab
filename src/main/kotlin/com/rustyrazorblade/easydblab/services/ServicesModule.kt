@@ -51,11 +51,19 @@ val servicesModule =
         // Cluster configuration service for writing config files
         factoryOf(::DefaultClusterConfigurationService) bind ClusterConfigurationService::class
 
+        // EMR provisioning service for Spark cluster creation
+        single<EMRProvisioningService> {
+            DefaultEMRProvisioningService(
+                get<EMRService>(),
+                get<OutputHandler>(),
+            )
+        }
+
         // Cluster provisioning service for parallel instance creation
         single<ClusterProvisioningService> {
             DefaultClusterProvisioningService(
                 get<EC2InstanceService>(),
-                get<EMRService>(),
+                get<EMRProvisioningService>(),
                 get<OpenSearchService>(),
                 get<OutputHandler>(),
                 get<AWS>(),

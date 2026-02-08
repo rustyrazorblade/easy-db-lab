@@ -12,8 +12,6 @@ import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.CreatedInstance
 import com.rustyrazorblade.easydblab.providers.aws.DomainState
 import com.rustyrazorblade.easydblab.providers.aws.EC2InstanceService
-import com.rustyrazorblade.easydblab.providers.aws.EMRClusterResult
-import com.rustyrazorblade.easydblab.providers.aws.EMRService
 import com.rustyrazorblade.easydblab.providers.aws.InstanceCreationConfig
 import com.rustyrazorblade.easydblab.providers.aws.InstanceSpec
 import com.rustyrazorblade.easydblab.providers.aws.OpenSearchDomainResult
@@ -33,7 +31,7 @@ import org.mockito.kotlin.whenever
  */
 class ClusterProvisioningServiceTest {
     private lateinit var ec2InstanceService: EC2InstanceService
-    private lateinit var emrService: EMRService
+    private lateinit var emrProvisioningService: EMRProvisioningService
     private lateinit var openSearchService: OpenSearchService
     private lateinit var outputHandler: OutputHandler
     private lateinit var aws: AWS
@@ -43,7 +41,7 @@ class ClusterProvisioningServiceTest {
     @BeforeEach
     fun setup() {
         ec2InstanceService = mock()
-        emrService = mock()
+        emrProvisioningService = mock()
         openSearchService = mock()
         outputHandler = mock()
         aws = mock()
@@ -53,7 +51,7 @@ class ClusterProvisioningServiceTest {
         service =
             DefaultClusterProvisioningService(
                 ec2InstanceService = ec2InstanceService,
-                emrService = emrService,
+                emrProvisioningService = emrProvisioningService,
                 openSearchService = openSearchService,
                 outputHandler = outputHandler,
                 aws = aws,
@@ -300,8 +298,19 @@ class ClusterProvisioningServiceTest {
             val servicesConfig = createServicesConfig(initConfig)
 
             setupMockInstanceCreation()
-            whenever(emrService.createCluster(any()))
-                .thenThrow(RuntimeException("EMR failed"))
+            whenever(
+                emrProvisioningService.provisionEmrCluster(
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                ),
+            ).thenThrow(RuntimeException("EMR failed"))
 
             val result =
                 service.provisionAll(
@@ -345,7 +354,17 @@ class ClusterProvisioningServiceTest {
                     onOpenSearchCreated = { },
                 )
 
-            verify(emrService, never()).createCluster(any())
+            verify(emrProvisioningService, never()).provisionEmrCluster(
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+            )
             assertThat(result.emrCluster).isNull()
         }
     }
@@ -380,23 +399,27 @@ class ClusterProvisioningServiceTest {
         }
 
     private fun setupMockEmrCreation() {
-        val createResult =
-            EMRClusterResult(
-                clusterId = "j-12345",
-                clusterName = "test-spark",
-                masterPublicDns = null,
-                state = "STARTING",
-            )
-        val readyResult =
-            EMRClusterResult(
+        val emrState =
+            EMRClusterState(
                 clusterId = "j-12345",
                 clusterName = "test-spark",
                 masterPublicDns = "ec2-1-2-3-4.compute.amazonaws.com",
                 state = "RUNNING",
             )
 
-        whenever(emrService.createCluster(any())).thenReturn(createResult)
-        whenever(emrService.waitForClusterReady(any(), any())).thenReturn(readyResult)
+        whenever(
+            emrProvisioningService.provisionEmrCluster(
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+            ),
+        ).thenReturn(emrState)
     }
 
     private fun setupMockOpenSearchCreation() {

@@ -66,7 +66,7 @@ opentelemetry-instrumentation = "2.11.0-alpha"
 opentelemetry-semconv = "1.29.0-alpha"
 
 # Gradle Plugins
-shadow = "8.1.1"
+shadow = "9.1.0"
 versions = "0.53.0"
 ktlint = "14.0.1"
 detekt = "1.23.8"
@@ -107,6 +107,9 @@ ktor-server-core = { module = "io.ktor:ktor-server-core", version.ref = "ktor" }
 ktor-server-netty = { module = "io.ktor:ktor-server-netty", version.ref = "ktor" }
 ktor-server-content-negotiation = { module = "io.ktor:ktor-server-content-negotiation", version.ref = "ktor" }
 ktor-serialization-jackson = { module = "io.ktor:ktor-serialization-jackson", version.ref = "ktor" }
+ktor-server-openapi = { module = "io.ktor:ktor-server-openapi", version.ref = "ktor" }
+ktor-server-swagger = { module = "io.ktor:ktor-server-swagger", version.ref = "ktor" }
+ktor-server-routing-openapi = { module = "io.ktor:ktor-server-routing-openapi", version.ref = "ktor" }
 
 # Koin DI
 koin-bom = { module = "io.insert-koin:koin-bom", version.ref = "koin" }
@@ -184,7 +187,7 @@ testing = ["junit-jupiter", "assertj-core", "mockito-kotlin"]
 testcontainers = ["testcontainers-core", "testcontainers-junit", "testcontainers-cassandra", "testcontainers-k3s", "testcontainers-localstack"]
 
 # Ktor bundle
-ktor = ["ktor-server-core", "ktor-server-netty", "ktor-server-content-negotiation", "ktor-serialization-jackson"]
+ktor = ["ktor-server-core", "ktor-server-netty", "ktor-server-content-negotiation", "ktor-serialization-jackson", "ktor-server-openapi", "ktor-server-swagger", "ktor-server-routing-openapi"]
 
 # Koin bundle
 koin = ["koin-core"]
@@ -208,9 +211,10 @@ opentelemetry = ["opentelemetry-api", "opentelemetry-sdk", "opentelemetry-sdk-ex
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
-shadow = { id = "com.github.johnrengelman.shadow", version.ref = "shadow" }
+shadow = { id = "com.gradleup.shadow", version.ref = "shadow" }
 versions = { id = "com.github.ben-manes.versions", version.ref = "versions" }
 ktlint = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlint" }
 detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
 kover = { id = "org.jetbrains.kotlinx.kover", version.ref = "kover" }
 jib = { id = "com.google.cloud.tools.jib", version.ref = "jib" }
+ktor = { id = "io.ktor.plugin", version.ref = "ktor" }

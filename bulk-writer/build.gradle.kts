@@ -1,7 +1,7 @@
 plugins {
     java
     application
-    id("com.gradleup.shadow") version "8.3.5"
+    id("com.gradleup.shadow")
 }
 
 val sparkVersion = "3.5.7"

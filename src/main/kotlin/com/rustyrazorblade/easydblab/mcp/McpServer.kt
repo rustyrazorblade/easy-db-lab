@@ -9,12 +9,16 @@ import com.rustyrazorblade.easydblab.output.OutputHandler
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
+import io.ktor.openapi.OpenApiInfo
 import io.ktor.server.application.install
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
+import io.ktor.server.plugins.swagger.swaggerUI
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
+import io.ktor.server.routing.openapi.OpenApiDocSource
+import io.ktor.server.routing.openapi.describe
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import io.ktor.server.sse.SSE
@@ -326,6 +330,10 @@ class McpServer(
             embeddedServer(Netty, host = "127.0.0.1", port = port) {
                 install(SSE)
                 routing {
+                    swaggerUI("/swagger") {
+                        info = OpenApiInfo("easy-db-lab MCP Server", context.version.toString())
+                        source = OpenApiDocSource.Routing()
+                    }
                     sse("/sse") {
                         val transport = SseServerTransport("/message", this)
                         val serverSession = server.createSession(transport)
@@ -373,6 +381,33 @@ class McpServer(
                         } catch (e: IllegalArgumentException) {
                             call.respond(HttpStatusCode.BadRequest, e.message ?: "Invalid request")
                         }
+                    }.describe {
+                        summary = "Get cluster environment status"
+                        description = "Returns cached status of the cluster environment " +
+                            "including nodes, networking, Cassandra version, and more."
+                        parameters {
+                            query("live") {
+                                description = "Force a live refresh of status data before responding"
+                                required = false
+                            }
+                            query("section") {
+                                description = "Return only a specific section. " +
+                                    "Valid values: ${StatusCache.VALID_SECTIONS.joinToString(", ")}"
+                                required = false
+                            }
+                        }
+                        responses {
+                            HttpStatusCode.OK {
+                                description = "JSON status response"
+                                ContentType.Application.Json()
+                            }
+                            HttpStatusCode.BadRequest {
+                                description = "Invalid section parameter"
+                            }
+                            HttpStatusCode.ServiceUnavailable {
+                                description = "Status not yet available (cache warming up)"
+                            }
+                        }
                     }
                 }
             }.start(wait = false)
@@ -394,6 +429,7 @@ class McpServer(
             Starting MCP server on port $actualPort...
 
             Server is now available at: http://127.0.0.1:$actualPort/sse
+            Swagger UI available at:    http://127.0.0.1:$actualPort/swagger
             """.trimIndent(),
         )
 

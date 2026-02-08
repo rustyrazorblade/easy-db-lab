@@ -18,6 +18,7 @@ plugins {
     alias(libs.plugins.detekt)
     alias(libs.plugins.kover)
     alias(libs.plugins.jib)
+    alias(libs.plugins.ktor)
 }
 
 group = "com.rustyrazorblade"
@@ -38,6 +39,13 @@ application {
             "-Deasydblab.ami.name=rustyrazorblade/images/easy-db-lab-cassandra-amd64-$version",
             "-Deasydblab.version=$version",
         )
+}
+
+ktor {
+    openApi {
+        enabled = true
+        codeInferenceEnabled = true
+    }
 }
 
 tasks.named<CreateStartScripts>("startScripts") {

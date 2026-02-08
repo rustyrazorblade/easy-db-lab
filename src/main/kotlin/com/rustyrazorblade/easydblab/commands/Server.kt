@@ -14,7 +14,6 @@ import java.io.File
 /**
  * Starts the MCP (Model Context Protocol) server for AI assistant integration.
  */
-@RequireDocker
 @RequireProfileSetup
 @Command(
     name = "server",

@@ -13,10 +13,14 @@ private val log = KotlinLogging.logger {}
  *
  * Abstracts the client creation to allow different configurations
  * (direct connection, SOCKS proxy, etc.)
+ *
+ * Implementations should cache and reuse clients. Call [close] to release
+ * background threads (HTTP/2 readers, connection pool) when done.
  */
-interface HttpClientFactory {
+interface HttpClientFactory : AutoCloseable {
     /**
-     * Create an OkHttp client configured for proxy access.
+     * Get an OkHttp client configured for proxy access.
+     * Implementations should return a cached singleton client.
      *
      * @return Configured OkHttpClient ready for HTTP requests
      */
@@ -39,18 +43,39 @@ class ProxiedHttpClientFactory(
         private const val READ_TIMEOUT_SECONDS = 30L
     }
 
+    @Volatile
+    private var cachedClient: OkHttpClient? = null
+
     override fun createClient(): OkHttpClient {
-        val proxyPort = socksProxyService.getLocalPort()
-        log.info { "Creating OkHttp client with SOCKS5 proxy on 127.0.0.1:$proxyPort" }
+        cachedClient?.let { return it }
 
-        // Use explicit 127.0.0.1 to match the SOCKS proxy binding and avoid IPv4/IPv6 issues
-        val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", proxyPort))
+        synchronized(this) {
+            cachedClient?.let { return it }
 
-        return OkHttpClient
-            .Builder()
-            .proxy(proxy)
-            .connectTimeout(CONNECTION_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            .build()
+            val proxyPort = socksProxyService.getLocalPort()
+            log.info { "Creating OkHttp client with SOCKS5 proxy on 127.0.0.1:$proxyPort" }
+
+            val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", proxyPort))
+
+            val client =
+                OkHttpClient
+                    .Builder()
+                    .proxy(proxy)
+                    .connectTimeout(CONNECTION_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                    .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                    .build()
+
+            cachedClient = client
+            return client
+        }
+    }
+
+    override fun close() {
+        cachedClient?.let { client ->
+            log.info { "Shutting down cached OkHttp client" }
+            client.dispatcher.executorService.shutdown()
+            client.connectionPool.evictAll()
+            cachedClient = null
+        }
     }
 }

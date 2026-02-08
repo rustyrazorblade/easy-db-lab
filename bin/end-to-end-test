@@ -217,6 +217,83 @@ step_list_hosts() {
     easy-db-lab cassandra list
 }
 
+step_test_mcp_server() {
+    echo "=== Testing MCP server /status endpoint ==="
+
+    # Remove stale .mcp.json if present
+    rm -f .mcp.json
+
+    # Start the MCP server in the background on a random port
+    local server_port=9852
+    easy-db-lab server --port $server_port &
+    local server_pid=$!
+    local server_url="http://127.0.0.1:${server_port}"
+
+    # Wait for the server to accept connections
+    local timeout=120
+    local elapsed=0
+    while [ $elapsed -lt $timeout ]; do
+        if curl -s -o /dev/null "${server_url}/status" 2>/dev/null; then
+            echo "MCP server ready at: $server_url"
+            break
+        fi
+        sleep 2
+        elapsed=$((elapsed + 2))
+    done
+
+    if [ $elapsed -ge $timeout ]; then
+        echo "ERROR: MCP server did not become ready within ${timeout}s"
+        kill "$server_pid" 2>/dev/null || true
+        return 1
+    fi
+
+    # Call /status endpoint
+    echo "=== Calling /status endpoint ==="
+    local http_code
+    local response
+    response=$(curl -s -w "\n%{http_code}" "${server_url}/status")
+    http_code=$(echo "$response" | tail -1)
+    local body
+    body=$(echo "$response" | sed '$d')
+
+    echo "HTTP status code: $http_code"
+    echo "Response body (first 20 lines):"
+    echo "$body" | head -20
+
+    # Verify HTTP 200
+    if [ "$http_code" != "200" ]; then
+        echo "ERROR: Expected HTTP 200, got $http_code"
+        kill "$server_pid" 2>/dev/null || true
+        return 1
+    fi
+
+    # Verify response contains cluster data
+    if echo "$body" | jq -e '.cluster' > /dev/null 2>&1; then
+        echo "Response contains cluster data: OK"
+    else
+        echo "ERROR: Response does not contain expected cluster data"
+        kill "$server_pid" 2>/dev/null || true
+        return 1
+    fi
+
+    # Verify response contains nodes data
+    if echo "$body" | jq -e '.nodes' > /dev/null 2>&1; then
+        echo "Response contains nodes data: OK"
+    else
+        echo "ERROR: Response does not contain expected nodes data"
+        kill "$server_pid" 2>/dev/null || true
+        return 1
+    fi
+
+    # Clean up
+    echo "=== Stopping MCP server ==="
+    kill "$server_pid" 2>/dev/null || true
+    wait "$server_pid" 2>/dev/null || true
+    rm -f .mcp.json
+
+    echo "=== MCP server /status test passed ==="
+}
+
 step_verify_s3_backup() {
     echo "=== Verifying S3 config backup ==="
 
@@ -927,6 +1004,7 @@ STEPS_WORKDIR=(
     "step_verify_vpc_tags:Verify VPC tags"
     "step_registry_push_pull:Test registry push/pull"
     "step_list_hosts:List hosts"
+    "step_test_mcp_server:Test MCP server status endpoint"
     "step_verify_s3_backup:Verify S3 backup"
     "step_setup_cassandra:Setup Cassandra"
     "step_verify_cassandra_backup:Verify Cassandra backup"

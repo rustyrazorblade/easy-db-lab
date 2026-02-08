@@ -28,6 +28,8 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Timer
 import java.util.TimerTask
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
@@ -43,6 +45,7 @@ class StatusCache(
     companion object {
         private val log = KotlinLogging.logger {}
         private const val DEFAULT_REFRESH_INTERVAL_SECONDS = 30L
+        private const val INITIALIZATION_TIMEOUT_SECONDS = 60L
         private const val HOURS_PER_DAY = 24
         private val DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
 
@@ -73,6 +76,7 @@ class StatusCache(
 
     private val lock = ReentrantLock()
     private val timer = Timer("status-cache-refresh", true)
+    private val initializedLatch = CountDownLatch(1)
 
     @Volatile
     private var cachedResponse: StatusResponse? = null
@@ -109,12 +113,14 @@ class StatusCache(
 
     /**
      * Get the cached status as a JSON string.
+     * Blocks until the cache has been populated at least once (up to 60 seconds).
      *
      * @param section Optional section name to return only that section
-     * @return JSON string, or null if no data has been cached yet
+     * @return JSON string, or null if the cache could not be populated within the timeout
      * @throws IllegalArgumentException if the section name is invalid
      */
     fun getStatus(section: String? = null): String? {
+        initializedLatch.await(INITIALIZATION_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         val response = cachedResponse ?: return null
         if (section == null) {
             return json.encodeToString(StatusResponse.serializer(), response)
@@ -188,11 +194,13 @@ class StatusCache(
                 if (!clusterStateManager.exists()) {
                     log.debug { "No cluster state found, skipping refresh" }
                     cachedResponse = null
+                    initializedLatch.countDown()
                     return
                 }
 
                 val clusterState = clusterStateManager.load()
                 cachedResponse = buildStatusResponse(clusterState)
+                initializedLatch.countDown()
                 log.debug { "Status cache refreshed" }
             } catch (e: Exception) {
                 log.warn(e) { "Failed to refresh status cache" }

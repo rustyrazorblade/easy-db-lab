@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.annotations.RequireDocker
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.mcp.McpServer
 import io.github.oshai.kotlinlogging.KotlinLogging

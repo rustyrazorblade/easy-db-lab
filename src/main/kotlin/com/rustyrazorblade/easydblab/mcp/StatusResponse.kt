@@ -36,6 +36,7 @@ data class NodeInfo(
     val privateIp: String,
     val availabilityZone: String,
     val state: String? = null,
+    val instanceType: String? = null,
 )
 
 @Serializable

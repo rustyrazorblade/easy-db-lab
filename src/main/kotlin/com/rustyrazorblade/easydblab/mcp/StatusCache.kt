@@ -273,6 +273,7 @@ class StatusCache(
                 privateIp = host.privateIp,
                 availabilityZone = host.availabilityZone,
                 state = instanceStates[host.instanceId]?.state?.uppercase(),
+                instanceType = instanceStates[host.instanceId]?.instanceType,
             )
         }
 

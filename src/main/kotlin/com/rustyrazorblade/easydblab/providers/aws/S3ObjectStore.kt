@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
+import software.amazon.awssdk.core.exception.SdkClientException
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest
 import software.amazon.awssdk.services.s3.model.Event
@@ -25,6 +26,7 @@ import software.amazon.awssdk.services.s3.model.QueueConfiguration
 import software.amazon.awssdk.services.s3.model.S3Exception
 import software.amazon.awssdk.services.s3.model.S3KeyFilter
 import java.io.File
+import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Path
 
 /**
@@ -106,11 +108,25 @@ class S3ObjectStore(
         val retryConfig = RetryUtil.createAwsRetryConfig<Unit>()
         val retry = Retry.of("s3-download", retryConfig)
 
-        Retry
-            .decorateRunnable(retry) {
-                s3Client.getObject(getRequest, localPath)
-                log.info { "Downloaded ${remotePath.toUri()} to $localPath" }
-            }.run()
+        try {
+            Retry
+                .decorateRunnable(retry) {
+                    s3Client.getObject(getRequest, localPath)
+                    log.info { "Downloaded ${remotePath.toUri()} to $localPath" }
+                }.run()
+        } catch (e: SdkClientException) {
+            val hasFileExists =
+                generateSequence(e as Throwable) { it.cause }
+                    .any { it is FileAlreadyExistsException }
+            if (hasFileExists) {
+                log.info { "File already exists, skipping download: $localPath" }
+                return ObjectStore.DownloadResult(
+                    localPath = localPath,
+                    fileSize = localPath.toFile().length(),
+                )
+            }
+            throw e
+        }
 
         if (showProgress) {
             outputHandler.handleMessage("Download complete: $localPath")

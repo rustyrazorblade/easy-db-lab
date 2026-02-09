@@ -117,6 +117,7 @@ class StatusCacheTest : BaseKoinTest() {
                     publicIp = "54.1.2.3",
                     privateIp = "10.0.1.100",
                     availabilityZone = "us-west-2a",
+                    instanceType = "r3.2xlarge",
                 ),
                 InstanceDetails(
                     instanceId = "i-control0",
@@ -124,6 +125,7 @@ class StatusCacheTest : BaseKoinTest() {
                     publicIp = "54.1.2.4",
                     privateIp = "10.0.1.200",
                     availabilityZone = "us-west-2a",
+                    instanceType = "m5.xlarge",
                 ),
             ),
         )
@@ -215,6 +217,20 @@ class StatusCacheTest : BaseKoinTest() {
     }
 
     @Test
+    fun `node instanceType is populated from EC2`() {
+        statusCache = StatusCache(refreshIntervalSeconds = 3600)
+        statusCache.forceRefresh()
+
+        val result = statusCache.getStatus("nodes")
+        val nodes = Json.parseToJsonElement(result!!).jsonObject
+        val dbNodes = nodes["database"]!!.toString()
+        val controlNodes = nodes["control"]!!.toString()
+
+        assertThat(dbNodes).contains("r3.2xlarge")
+        assertThat(controlNodes).contains("m5.xlarge")
+    }
+
+    @Test
     fun `networking section contains infrastructure data`() {
         statusCache = StatusCache(refreshIntervalSeconds = 3600)
         statusCache.forceRefresh()
@@ -301,6 +317,7 @@ class StatusCacheTest : BaseKoinTest() {
                     publicIp = null,
                     privateIp = "10.0.1.100",
                     availabilityZone = "us-west-2a",
+                    instanceType = "r3.2xlarge",
                 ),
                 InstanceDetails(
                     instanceId = "i-control0",
@@ -308,6 +325,7 @@ class StatusCacheTest : BaseKoinTest() {
                     publicIp = null,
                     privateIp = "10.0.1.200",
                     availabilityZone = "us-west-2a",
+                    instanceType = "m5.xlarge",
                 ),
             ),
         )

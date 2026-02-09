@@ -14,6 +14,7 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import software.amazon.awssdk.core.exception.SdkClientException
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest
 import software.amazon.awssdk.services.s3.model.DeleteObjectResponse
@@ -30,6 +31,7 @@ import software.amazon.awssdk.services.s3.model.S3Exception
 import software.amazon.awssdk.services.s3.model.S3Object
 import software.amazon.awssdk.services.s3.paginators.ListObjectsV2Iterable
 import java.io.File
+import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Path
 import java.time.Instant
 
@@ -437,5 +439,59 @@ class S3ObjectStoreTest : BaseKoinTest() {
         assertThatThrownBy {
             objectStore.deleteFile(s3Path)
         }.isInstanceOf(S3Exception::class.java)
+    }
+
+    // ========== FILE ALREADY EXISTS TESTS ==========
+
+    @Test
+    fun `downloadFile returns result when file already exists`(
+        @TempDir tempDir: Path,
+    ) {
+        // Given
+        val s3Path = ClusterS3Path.root("test-bucket").spark().resolve("test.jar")
+        val localPath = tempDir.resolve("existing.jar")
+        val existingContent = "existing content"
+        localPath.toFile().writeText(existingContent)
+
+        objectStore = get()
+
+        val fileAlreadyExists = FileAlreadyExistsException(localPath.toString())
+        val ioException = java.io.IOException("Failed to write", fileAlreadyExists)
+        val sdkException = SdkClientException.builder().cause(ioException).build()
+
+        whenever(mockS3Client.getObject(any<GetObjectRequest>(), any<Path>()))
+            .thenThrow(sdkException)
+
+        // When
+        val result = objectStore.downloadFile(s3Path, localPath, showProgress = false)
+
+        // Then
+        assertThat(result.localPath).isEqualTo(localPath)
+        assertThat(result.fileSize).isEqualTo(existingContent.length.toLong())
+    }
+
+    @Test
+    fun `downloadFile rethrows SdkClientException without FileAlreadyExistsException`(
+        @TempDir tempDir: Path,
+    ) {
+        // Given
+        val s3Path = ClusterS3Path.root("test-bucket").spark().resolve("test.jar")
+        val localPath = tempDir.resolve("downloaded.jar")
+
+        objectStore = get()
+
+        val sdkException =
+            SdkClientException
+                .builder()
+                .message("Some other error")
+                .build()
+
+        whenever(mockS3Client.getObject(any<GetObjectRequest>(), any<Path>()))
+            .thenThrow(sdkException)
+
+        // When/Then
+        assertThatThrownBy {
+            objectStore.downloadFile(s3Path, localPath)
+        }.isInstanceOf(SdkClientException::class.java)
     }
 }

@@ -329,6 +329,7 @@ class EC2InstanceService(
                     publicIp = instance.publicIpAddress(),
                     privateIp = instance.privateIpAddress(),
                     availabilityZone = instance.placement().availabilityZone(),
+                    instanceType = instance.instanceType()?.toString(),
                 )
             }
         }

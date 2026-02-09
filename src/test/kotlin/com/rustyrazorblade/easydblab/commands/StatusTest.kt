@@ -454,6 +454,7 @@ class StatusTest : BaseKoinTest() {
                     publicIp = "54.1.2.3",
                     privateIp = "10.0.1.100",
                     availabilityZone = "us-west-2a",
+                    instanceType = "r3.2xlarge",
                 ),
                 InstanceDetails(
                     instanceId = "i-db1",
@@ -461,6 +462,7 @@ class StatusTest : BaseKoinTest() {
                     publicIp = "54.1.2.4",
                     privateIp = "10.0.1.101",
                     availabilityZone = "us-west-2b",
+                    instanceType = "r3.2xlarge",
                 ),
                 InstanceDetails(
                     instanceId = "i-app0",
@@ -468,6 +470,7 @@ class StatusTest : BaseKoinTest() {
                     publicIp = "54.2.3.4",
                     privateIp = "10.0.2.100",
                     availabilityZone = "us-west-2a",
+                    instanceType = "m5.xlarge",
                 ),
                 InstanceDetails(
                     instanceId = "i-control0",
@@ -475,6 +478,7 @@ class StatusTest : BaseKoinTest() {
                     publicIp = "54.3.4.5",
                     privateIp = "10.0.3.100",
                     availabilityZone = "us-west-2a",
+                    instanceType = "m5.xlarge",
                 ),
             )
 

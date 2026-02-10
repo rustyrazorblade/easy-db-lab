@@ -22,6 +22,7 @@ include "spark-shared"
 include "spark-connector-test1"
 include "bulk-writer"
 include "connector-writer"
+include "cassandra-metrics-collector"
 
 dependencyResolutionManagement {
     repositories {

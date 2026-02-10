@@ -6,6 +6,7 @@ plugins {
     alias(libs.plugins.shadow)
     alias(libs.plugins.ktlint)
     alias(libs.plugins.detekt)
+    alias(libs.plugins.jib)
 }
 
 group = "com.rustyrazorblade"
@@ -52,6 +53,51 @@ tasks.test {
         showCauses = true
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
     }
+}
+
+jib {
+    from {
+        image = "eclipse-temurin:21-jre"
+    }
+    to {
+        image = "ghcr.io/rustyrazorblade/cassandra-metrics-collector"
+        tags = (System.getProperty("jib.to.tags") ?: "latest").split(",").toSet()
+        auth {
+            username = System.getenv("GITHUB_ACTOR") ?: ""
+            password = System.getenv("GITHUB_TOKEN") ?: ""
+        }
+    }
+    container {
+        mainClass = "com.rustyrazorblade.cassandrametrics.MainKt"
+        jvmFlags =
+            listOf(
+                "-Xmx256M",
+            )
+        environment =
+            mapOf(
+                "JAVA_TOOL_OPTIONS" to "-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0",
+            )
+        ports = listOf("9601")
+        creationTime = "USE_CURRENT_TIMESTAMP"
+        filesModificationTime = "EPOCH_PLUS_SECOND"
+        format = com.google.cloud.tools.jib.api.buildplan.ImageFormat.OCI
+        labels.set(
+            mapOf(
+                "org.opencontainers.image.source" to "https://github.com/rustyrazorblade/easy-db-lab",
+                "org.opencontainers.image.description" to
+                    "Cassandra virtual table metrics collector with Prometheus endpoint",
+                "org.opencontainers.image.licenses" to "Apache-2.0",
+            ),
+        )
+    }
+}
+
+tasks.named("jib") {
+    notCompatibleWithConfigurationCache("Jib plugin doesn't fully support configuration cache yet")
+}
+
+tasks.named("jibDockerBuild") {
+    notCompatibleWithConfigurationCache("Jib plugin doesn't fully support configuration cache yet")
 }
 
 sourceSets {

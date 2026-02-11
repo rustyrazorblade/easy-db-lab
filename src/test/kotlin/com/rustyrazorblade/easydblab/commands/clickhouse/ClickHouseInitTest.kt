@@ -76,11 +76,12 @@ class ClickHouseInitTest : BaseKoinTest() {
     @Test
     fun `init overwrites existing clickhouse config`() {
         val state = createTestState()
-        state.clickHouseConfig = ClickHouseConfig(s3CacheSize = "5Gi")
+        state.clickHouseConfig = ClickHouseConfig(s3CacheSize = "5Gi", s3CacheOnWrite = true)
         whenever(mockClusterStateManager.load()).thenReturn(state)
 
         val command = ClickHouseInit()
         command.s3CacheSize = "100Gi"
+        command.s3CacheOnWrite = false
         command.execute()
 
         val captor = argumentCaptor<ClusterState>()
@@ -88,5 +89,39 @@ class ClickHouseInitTest : BaseKoinTest() {
 
         val savedState = captor.firstValue
         assertThat(savedState.clickHouseConfig!!.s3CacheSize).isEqualTo("100Gi")
+        assertThat(savedState.clickHouseConfig!!.s3CacheOnWrite).isFalse()
+    }
+
+    @Test
+    fun `init saves s3 cache on write to cluster state`() {
+        val state = createTestState()
+        whenever(mockClusterStateManager.load()).thenReturn(state)
+
+        val command = ClickHouseInit()
+        command.s3CacheOnWrite = false
+        command.execute()
+
+        val captor = argumentCaptor<ClusterState>()
+        verify(mockClusterStateManager).save(captor.capture())
+
+        val savedState = captor.firstValue
+        assertThat(savedState.clickHouseConfig).isNotNull
+        assertThat(savedState.clickHouseConfig!!.s3CacheOnWrite).isFalse()
+    }
+
+    @Test
+    fun `init uses default s3 cache on write when not specified`() {
+        val state = createTestState()
+        whenever(mockClusterStateManager.load()).thenReturn(state)
+
+        val command = ClickHouseInit()
+        command.execute()
+
+        val captor = argumentCaptor<ClusterState>()
+        verify(mockClusterStateManager).save(captor.capture())
+
+        val savedState = captor.firstValue
+        assertThat(savedState.clickHouseConfig).isNotNull
+        assertThat(savedState.clickHouseConfig!!.s3CacheOnWrite).isTrue()
     }
 }

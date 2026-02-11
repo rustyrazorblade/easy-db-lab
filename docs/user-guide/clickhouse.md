@@ -25,11 +25,15 @@ Use `clickhouse init` to configure ClickHouse settings before starting the clust
 ```bash
 # Configure S3 cache size (default: 10Gi)
 easy-db-lab clickhouse init --s3-cache 50Gi
+
+# Disable write-through caching
+easy-db-lab clickhouse init --s3-cache-on-write false
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--s3-cache` | Size of the local S3 cache | 10Gi |
+| `--s3-cache-on-write` | Cache data during write operations | true |
 
 Configuration is saved to the cluster state and applied when you run `clickhouse start`.
 
@@ -216,7 +220,7 @@ If you omit the `storage_policy` setting, tables use local storage by default.
 
 ### S3 Storage (`s3_main`)
 
-The S3 policy stores data in your configured S3 bucket with a local cache for frequently accessed data. The cache size defaults to 10Gi and can be configured with `clickhouse init --s3-cache`. This is ideal for large datasets where storage cost matters more than latency.
+The S3 policy stores data in your configured S3 bucket with a local cache for frequently accessed data. The cache size defaults to 10Gi and can be configured with `clickhouse init --s3-cache`. Write-through caching is enabled by default (`--s3-cache-on-write true`), which caches data during writes so subsequent reads can be served from cache immediately. This is ideal for large datasets where storage cost matters more than latency.
 
 **Prerequisite**: Your cluster must be initialized with an S3 bucket. Set this during `init`:
 

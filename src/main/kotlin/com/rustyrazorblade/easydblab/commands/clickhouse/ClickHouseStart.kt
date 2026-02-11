@@ -185,10 +185,13 @@ class ClickHouseStart : PicoBaseCommand() {
                 error("Failed to apply ClickHouse manifests: ${exception.message}")
             }
 
-        // Create cluster config with replicas-per-shard and s3-cache-size for pods
+        // Create cluster config with replicas-per-shard, s3-cache-size, and s3-cache-on-write for pods
         val s3CacheSize =
             clusterState.clickHouseConfig?.s3CacheSize
                 ?: Constants.ClickHouse.DEFAULT_S3_CACHE_SIZE
+        val s3CacheOnWrite =
+            clusterState.clickHouseConfig?.s3CacheOnWrite
+                ?: Constants.ClickHouse.DEFAULT_S3_CACHE_ON_WRITE
 
         k8sService
             .createConfigMap(
@@ -199,6 +202,7 @@ class ClickHouseStart : PicoBaseCommand() {
                     mapOf(
                         "replicas-per-shard" to replicasPerShard.toString(),
                         "s3-cache-size" to s3CacheSize,
+                        "s3-cache-on-write" to s3CacheOnWrite.toString(),
                     ),
                 labels = mapOf("app.kubernetes.io/name" to "clickhouse-server"),
             ).getOrElse { exception ->

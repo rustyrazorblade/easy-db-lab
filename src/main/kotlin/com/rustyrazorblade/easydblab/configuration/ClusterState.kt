@@ -149,6 +149,13 @@ data class InitConfig(
 }
 
 /**
+ * ClickHouse-specific configuration stored in cluster state.
+ */
+data class ClickHouseConfig(
+    val s3CacheSize: String = Constants.ClickHouse.DEFAULT_S3_CACHE_SIZE,
+)
+
+/**
  * Pure data class representing cluster state.
  * Persistence is handled by ClusterStateManager.
  */
@@ -187,6 +194,8 @@ data class ClusterState(
     // SHA-256 hashes of backed-up configuration files for incremental backup
     // Maps BackupTarget enum name to hex-encoded hash
     var backupHashes: Map<String, String> = emptyMap(),
+    // ClickHouse-specific configuration
+    var clickHouseConfig: ClickHouseConfig? = null,
 ) {
     /**
      * Update hosts
@@ -230,6 +239,14 @@ data class ClusterState(
     ) {
         this.sqsQueueUrl = queueUrl
         this.sqsQueueArn = queueArn
+        this.lastAccessedAt = Instant.now()
+    }
+
+    /**
+     * Update ClickHouse configuration
+     */
+    fun updateClickHouseConfig(config: ClickHouseConfig) {
+        this.clickHouseConfig = config
         this.lastAccessedAt = Instant.now()
     }
 

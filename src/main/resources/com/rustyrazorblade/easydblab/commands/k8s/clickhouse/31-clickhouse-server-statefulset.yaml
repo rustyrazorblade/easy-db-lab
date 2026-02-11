@@ -85,6 +85,11 @@ spec:
                 configMapKeyRef:
                   name: clickhouse-cluster-config
                   key: replicas-per-shard
+            - name: CLICKHOUSE_S3_CACHE_SIZE
+              valueFrom:
+                configMapKeyRef:
+                  name: clickhouse-cluster-config
+                  key: s3-cache-size
           envFrom:
             - secretRef:
                 name: clickhouse-s3-credentials

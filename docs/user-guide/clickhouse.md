@@ -18,6 +18,21 @@ easy-db-lab init my-cluster --db 6 --up
 easy-db-lab clickhouse start
 ```
 
+## Configuring ClickHouse
+
+Use `clickhouse init` to configure ClickHouse settings before starting the cluster:
+
+```bash
+# Configure S3 cache size (default: 10Gi)
+easy-db-lab clickhouse init --s3-cache 50Gi
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--s3-cache` | Size of the local S3 cache | 10Gi |
+
+Configuration is saved to the cluster state and applied when you run `clickhouse start`.
+
 ## Starting ClickHouse
 
 To deploy ClickHouse on an existing cluster:
@@ -172,7 +187,7 @@ ClickHouse is configured with two storage policies. You select the policy when c
 
 | Aspect | `local` | `s3_main` |
 |--------|---------|-----------|
-| **Storage Location** | Local NVMe disks | S3 bucket with 10GB local cache |
+| **Storage Location** | Local NVMe disks | S3 bucket with configurable local cache |
 | **Performance** | Best latency, highest throughput | Higher latency, cache-dependent |
 | **Capacity** | Limited by disk size | Virtually unlimited |
 | **Cost** | Included in instance cost | S3 storage + request costs |
@@ -201,7 +216,7 @@ If you omit the `storage_policy` setting, tables use local storage by default.
 
 ### S3 Storage (`s3_main`)
 
-The S3 policy stores data in your configured S3 bucket with a 10GB local cache for frequently accessed data. This is ideal for large datasets where storage cost matters more than latency.
+The S3 policy stores data in your configured S3 bucket with a local cache for frequently accessed data. The cache size defaults to 10Gi and can be configured with `clickhouse init --s3-cache`. This is ideal for large datasets where storage cost matters more than latency.
 
 **Prerequisite**: Your cluster must be initialized with an S3 bucket. Set this during `init`:
 

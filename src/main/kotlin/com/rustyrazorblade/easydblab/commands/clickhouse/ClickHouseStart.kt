@@ -185,13 +185,21 @@ class ClickHouseStart : PicoBaseCommand() {
                 error("Failed to apply ClickHouse manifests: ${exception.message}")
             }
 
-        // Create cluster config with replicas-per-shard for shard calculation in pods
+        // Create cluster config with replicas-per-shard and s3-cache-size for pods
+        val s3CacheSize =
+            clusterState.clickHouseConfig?.s3CacheSize
+                ?: Constants.ClickHouse.DEFAULT_S3_CACHE_SIZE
+
         k8sService
             .createConfigMap(
                 controlHost = controlNode,
                 namespace = Constants.ClickHouse.NAMESPACE,
                 name = "clickhouse-cluster-config",
-                data = mapOf("replicas-per-shard" to replicasPerShard.toString()),
+                data =
+                    mapOf(
+                        "replicas-per-shard" to replicasPerShard.toString(),
+                        "s3-cache-size" to s3CacheSize,
+                    ),
                 labels = mapOf("app.kubernetes.io/name" to "clickhouse-server"),
             ).getOrElse { exception ->
                 error("Failed to create ClickHouse cluster config: ${exception.message}")
@@ -239,7 +247,10 @@ class ClickHouseStart : PicoBaseCommand() {
         outputHandler.handleMessage("Storage policies available:")
         outputHandler.handleMessage("  - local: Local disk storage")
         if (!bucket.isNullOrBlank()) {
-            outputHandler.handleMessage("  - s3_main: S3 with local cache (bucket: $bucket)")
+            val s3CacheSize =
+                clusterState.clickHouseConfig?.s3CacheSize
+                    ?: Constants.ClickHouse.DEFAULT_S3_CACHE_SIZE
+            outputHandler.handleMessage("  - s3_main: S3 with local cache (bucket: $bucket, cache: $s3CacheSize)")
         }
         outputHandler.handleMessage(
             """

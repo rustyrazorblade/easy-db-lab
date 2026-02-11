@@ -21,6 +21,7 @@ import picocli.CommandLine.Spec
     mixinStandardHelpOptions = true,
     subcommands = [
         ClickHouseGenerateDashboards::class,
+        ClickHouseInit::class,
         ClickHouseStart::class,
         ClickHouseStatus::class,
         ClickHouseStop::class,

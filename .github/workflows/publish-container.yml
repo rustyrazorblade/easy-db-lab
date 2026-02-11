@@ -8,8 +8,6 @@ on:
     workflows: ["PR Checks"]
     types:
       - completed
-    branches:
-      - main
 
 jobs:
   publish:
@@ -46,44 +44,40 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract version
-        id: version
+      - name: Determine tags
+        id: tags
         run: |
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
             VERSION=${GITHUB_REF#refs/tags/v}
-            echo "version=$VERSION" >> $GITHUB_OUTPUT
-            echo "is_tag=true" >> $GITHUB_OUTPUT
+            echo "tags=latest,$VERSION,v$VERSION" >> $GITHUB_OUTPUT
+            echo "first_tag=latest" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.event.workflow_run.head_branch }}" == "main" ]]; then
+            echo "tags=latest" >> $GITHUB_OUTPUT
+            echo "first_tag=latest" >> $GITHUB_OUTPUT
           else
-            VERSION=$(grep "^version=" gradle.properties | cut -d'=' -f2)
-            echo "version=$VERSION" >> $GITHUB_OUTPUT
-            echo "is_tag=false" >> $GITHUB_OUTPUT
+            BRANCH="${{ github.event.workflow_run.head_branch }}"
+            TAG=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g' | cut -c1-128)
+            echo "tags=$TAG" >> $GITHUB_OUTPUT
+            echo "first_tag=$TAG" >> $GITHUB_OUTPUT
           fi
 
-      - name: Build and push container (tag)
-        if: steps.version.outputs.is_tag == 'true'
+      - name: Build and push container
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION=${{ steps.version.outputs.version }}
           ./gradlew jib --no-daemon \
-            -Djib.to.tags=latest,$VERSION,v$VERSION
-
-      - name: Build and push container (main)
-        if: steps.version.outputs.is_tag != 'true'
-        env:
-          GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./gradlew jib --no-daemon
+            -Djib.to.tags=${{ steps.tags.outputs.tags }}
 
       - name: Test container
         run: |
-          docker pull ghcr.io/rustyrazorblade/easy-db-lab:latest
-          docker run --rm ghcr.io/rustyrazorblade/easy-db-lab:latest --help
+          FIRST_TAG=${{ steps.tags.outputs.first_tag }}
+          docker pull ghcr.io/rustyrazorblade/easy-db-lab:$FIRST_TAG
+          docker run --rm ghcr.io/rustyrazorblade/easy-db-lab:$FIRST_TAG --help
 
       - name: Scan container image
         uses: anchore/scan-action@v7
         with:
-          image: ghcr.io/rustyrazorblade/easy-db-lab:latest
+          image: ghcr.io/rustyrazorblade/easy-db-lab:${{ steps.tags.outputs.first_tag }}
           fail-build: false
           severity-cutoff: high

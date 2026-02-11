@@ -362,6 +362,13 @@ class ClickHouseConfigServiceTest {
         assertThat(realConfigXml).doesNotContain("<max_size>10Gi</max_size>")
     }
 
+    @Test
+    fun `config template uses from_env for s3 cache on write`() {
+        val realConfigXml = loadConfigXmlFromResources()
+
+        assertThat(realConfigXml).contains("from_env=\"CLICKHOUSE_S3_CACHE_ON_WRITE\"")
+    }
+
     // Helper methods
 
     private fun loadConfigXmlFromResources(): String {

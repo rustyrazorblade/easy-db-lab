@@ -90,6 +90,11 @@ spec:
                 configMapKeyRef:
                   name: clickhouse-cluster-config
                   key: s3-cache-size
+            - name: CLICKHOUSE_S3_CACHE_ON_WRITE
+              valueFrom:
+                configMapKeyRef:
+                  name: clickhouse-cluster-config
+                  key: s3-cache-on-write
           envFrom:
             - secretRef:
                 name: clickhouse-s3-credentials

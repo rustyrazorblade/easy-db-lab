@@ -44,6 +44,7 @@ data:
                     <disk>s3_disk</disk>
                     <path>/mnt/db1/clickhouse/disks/s3_cache/</path>
                     <max_size from_env="CLICKHOUSE_S3_CACHE_SIZE"/>
+                    <cache_on_write_operations from_env="CLICKHOUSE_S3_CACHE_ON_WRITE"/>
                 </s3_cache>
             </disks>
             <policies>

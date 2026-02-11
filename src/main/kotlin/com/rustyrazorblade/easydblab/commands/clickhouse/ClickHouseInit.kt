@@ -27,13 +27,20 @@ class ClickHouseInit : PicoBaseCommand() {
     )
     var s3CacheSize: String = Constants.ClickHouse.DEFAULT_S3_CACHE_SIZE
 
+    @Option(
+        names = ["--s3-cache-on-write"],
+        description = ["Cache data during write operations (default: true)"],
+    )
+    var s3CacheOnWrite: Boolean = Constants.ClickHouse.DEFAULT_S3_CACHE_ON_WRITE
+
     override fun execute() {
         val state = clusterStateManager.load()
-        val config = ClickHouseConfig(s3CacheSize = s3CacheSize)
+        val config = ClickHouseConfig(s3CacheSize = s3CacheSize, s3CacheOnWrite = s3CacheOnWrite)
         state.updateClickHouseConfig(config)
         clusterStateManager.save(state)
 
         outputHandler.handleMessage("ClickHouse configuration saved.")
         outputHandler.handleMessage("  S3 cache size: $s3CacheSize")
+        outputHandler.handleMessage("  S3 cache on write: $s3CacheOnWrite")
     }
 }

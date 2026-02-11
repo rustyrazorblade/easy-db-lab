@@ -201,6 +201,7 @@ object Constants {
         const val MINIMUM_NODES_REQUIRED = 3
         const val S3_SECRET_NAME = "clickhouse-s3-credentials"
         const val DEFAULT_S3_CACHE_SIZE = "10Gi"
+        const val DEFAULT_S3_CACHE_ON_WRITE = true
     }
 
     // Cassandra stress testing configuration

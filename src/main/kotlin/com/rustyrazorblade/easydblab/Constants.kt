@@ -200,6 +200,7 @@ object Constants {
         const val NATIVE_PORT = 9000
         const val MINIMUM_NODES_REQUIRED = 3
         const val S3_SECRET_NAME = "clickhouse-s3-credentials"
+        const val DEFAULT_S3_CACHE_SIZE = "10Gi"
     }
 
     // Cassandra stress testing configuration

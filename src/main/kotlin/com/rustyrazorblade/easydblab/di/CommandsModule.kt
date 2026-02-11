@@ -37,6 +37,7 @@ import com.rustyrazorblade.easydblab.commands.cassandra.stress.StressLogs
 import com.rustyrazorblade.easydblab.commands.cassandra.stress.StressStart
 import com.rustyrazorblade.easydblab.commands.cassandra.stress.StressStatus
 import com.rustyrazorblade.easydblab.commands.cassandra.stress.StressStop
+import com.rustyrazorblade.easydblab.commands.clickhouse.ClickHouseInit
 import com.rustyrazorblade.easydblab.commands.clickhouse.ClickHouseStart
 import com.rustyrazorblade.easydblab.commands.clickhouse.ClickHouseStatus
 import com.rustyrazorblade.easydblab.commands.clickhouse.ClickHouseStop
@@ -102,6 +103,7 @@ val commandsModule =
         factory { StressStop() }
 
         // ClickHouse subcommands
+        factory { ClickHouseInit() }
         factory { ClickHouseStart() }
         factory { ClickHouseStatus() }
         factory { ClickHouseStop() }

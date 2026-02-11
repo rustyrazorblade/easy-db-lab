@@ -43,7 +43,7 @@ data:
                     <type>cache</type>
                     <disk>s3_disk</disk>
                     <path>/mnt/db1/clickhouse/disks/s3_cache/</path>
-                    <max_size>10Gi</max_size>
+                    <max_size from_env="CLICKHOUSE_S3_CACHE_SIZE"/>
                 </s3_cache>
             </disks>
             <policies>

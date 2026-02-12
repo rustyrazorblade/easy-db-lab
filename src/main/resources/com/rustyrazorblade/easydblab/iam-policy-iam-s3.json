@@ -43,7 +43,10 @@
         "s3:PutBucketTagging",
         "s3:GetBucketTagging",
         "s3:PutBucketNotification",
-        "s3:GetBucketNotification"
+        "s3:GetBucketNotification",
+        "s3:PutMetricsConfiguration",
+        "s3:GetMetricsConfiguration",
+        "s3:DeleteMetricsConfiguration"
       ],
       "Resource": [
         "arn:aws:s3:::easy-db-lab-*",

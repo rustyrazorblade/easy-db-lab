@@ -178,9 +178,10 @@ sealed class AWSPolicy {
                                 action =
                                     IamPolicyAction.multiple(
                                         listOf(
-                                            "cloudwatch:GetMetricData",
-                                            "cloudwatch:GetMetricStatistics",
-                                            "cloudwatch:ListMetrics",
+                                            "cloudwatch:*",
+                                            "ec2:DescribeRegions",
+                                            "oam:ListSinks",
+                                            "oam:ListAttachedLinks",
                                         ),
                                     ),
                                 resource = IamPolicyResource.single("*"),

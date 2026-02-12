@@ -75,7 +75,7 @@ data class GrafanaDatasourceConfig(
                             jsonData =
                                 mapOf(
                                     "defaultRegion" to region,
-                                    "authType" to "ec2_iam_role",
+                                    "authType" to "default",
                                 ),
                         ),
                     ),

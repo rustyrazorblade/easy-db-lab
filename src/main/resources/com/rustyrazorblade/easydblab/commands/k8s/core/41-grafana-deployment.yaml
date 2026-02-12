@@ -81,6 +81,12 @@ spec:
             - name: dashboard-s3
               mountPath: /var/lib/grafana/dashboards/s3
               readOnly: true
+            - name: dashboard-emr
+              mountPath: /var/lib/grafana/dashboards/emr
+              readOnly: true
+            - name: dashboard-opensearch
+              mountPath: /var/lib/grafana/dashboards/opensearch
+              readOnly: true
             - name: data
               mountPath: /var/lib/grafana
           livenessProbe:
@@ -116,6 +122,14 @@ spec:
         - name: dashboard-s3
           configMap:
             name: grafana-dashboard-s3
+            optional: true
+        - name: dashboard-emr
+          configMap:
+            name: grafana-dashboard-emr
+            optional: true
+        - name: dashboard-opensearch
+          configMap:
+            name: grafana-dashboard-opensearch
             optional: true
         - name: data
           emptyDir: {}

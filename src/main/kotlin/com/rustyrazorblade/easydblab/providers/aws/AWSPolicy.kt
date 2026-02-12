@@ -179,7 +179,7 @@ sealed class AWSPolicy {
                                     IamPolicyAction.multiple(
                                         listOf(
                                             "cloudwatch:*",
-                                            "ec2:DescribeRegions",
+                                            "ec2:*",
                                             "oam:ListSinks",
                                             "oam:ListAttachedLinks",
                                         ),

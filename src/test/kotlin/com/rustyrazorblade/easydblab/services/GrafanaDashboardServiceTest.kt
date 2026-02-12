@@ -48,17 +48,19 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `extractDashboardResources finds all 5 dashboard files from core and clickhouse`() {
+    fun `extractDashboardResources finds all 7 dashboard files from core and clickhouse`() {
         val service = DefaultGrafanaDashboardService(mockK8sService, getKoin().get())
         val files = service.extractDashboardResources()
 
-        assertThat(files).hasSize(5)
+        assertThat(files).hasSize(7)
 
         // Verify all expected dashboard files are present
         val fileNames = files.map { it.name }
         assertThat(fileNames).contains("14-grafana-dashboards-configmap.yaml")
         assertThat(fileNames).contains("15-grafana-dashboard-system.yaml")
         assertThat(fileNames).contains("16-grafana-dashboard-s3.yaml")
+        assertThat(fileNames).contains("17-grafana-dashboard-emr.yaml")
+        assertThat(fileNames).contains("18-grafana-dashboard-opensearch.yaml")
         assertThat(fileNames).contains("14-grafana-dashboard-clickhouse.yaml")
         assertThat(fileNames).contains("17-grafana-dashboard-clickhouse-logs.yaml")
     }
@@ -115,8 +117,8 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
         // Verify datasources ConfigMap was created
         verify(mockK8sService).createConfigMap(any(), any(), eq("grafana-datasources"), any(), any())
 
-        // Verify applyManifests was called for each of the 5 dashboard files
-        verify(mockK8sService, org.mockito.kotlin.times(5)).applyManifests(any(), any())
+        // Verify applyManifests was called for each of the 7 dashboard files
+        verify(mockK8sService, org.mockito.kotlin.times(7)).applyManifests(any(), any())
     }
 
     @Test

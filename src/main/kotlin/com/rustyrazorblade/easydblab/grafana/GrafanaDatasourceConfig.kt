@@ -72,6 +72,7 @@ data class GrafanaDatasourceConfig(
                         GrafanaDatasource(
                             name = "CloudWatch",
                             type = "cloudwatch",
+                            uid = "cloudwatch",
                             jsonData =
                                 mapOf(
                                     "defaultRegion" to region,

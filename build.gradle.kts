@@ -199,6 +199,7 @@ tasks.test {
 
     doFirst {
         environment("EASY_DB_LAB_PROFILE", "default")
+        environment("TESTCONTAINERS_RYUK_DISABLED", "true")
 
         println("========================================")
         println("Test Execution Configuration:")

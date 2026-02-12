@@ -9,6 +9,7 @@ import org.junit.jupiter.api.assertThrows
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import software.amazon.awssdk.services.iam.IamClient
@@ -25,10 +26,14 @@ import software.amazon.awssdk.services.s3.model.Bucket
 import software.amazon.awssdk.services.s3.model.BucketAlreadyOwnedByYouException
 import software.amazon.awssdk.services.s3.model.CreateBucketRequest
 import software.amazon.awssdk.services.s3.model.CreateBucketResponse
+import software.amazon.awssdk.services.s3.model.DeleteBucketMetricsConfigurationRequest
+import software.amazon.awssdk.services.s3.model.DeleteBucketMetricsConfigurationResponse
 import software.amazon.awssdk.services.s3.model.GetBucketTaggingRequest
 import software.amazon.awssdk.services.s3.model.GetBucketTaggingResponse
 import software.amazon.awssdk.services.s3.model.ListBucketsResponse
 import software.amazon.awssdk.services.s3.model.NoSuchBucketException
+import software.amazon.awssdk.services.s3.model.PutBucketMetricsConfigurationRequest
+import software.amazon.awssdk.services.s3.model.PutBucketMetricsConfigurationResponse
 import software.amazon.awssdk.services.s3.model.PutBucketTaggingRequest
 import software.amazon.awssdk.services.s3.model.PutBucketTaggingResponse
 import software.amazon.awssdk.services.s3.model.S3Exception
@@ -602,5 +607,62 @@ internal class AWSTest :
 
         // Verify
         assertThat(result).isNull()
+    }
+
+    @Test
+    fun `enableBucketRequestMetrics should call putBucketMetricsConfiguration`() {
+        val bucketName = "test-bucket"
+
+        whenever(mockS3Client.putBucketMetricsConfiguration(any<PutBucketMetricsConfigurationRequest>()))
+            .thenReturn(PutBucketMetricsConfigurationResponse.builder().build())
+
+        aws.enableBucketRequestMetrics(bucketName)
+
+        verify(mockS3Client).putBucketMetricsConfiguration(any<PutBucketMetricsConfigurationRequest>())
+    }
+
+    @Test
+    fun `enableBucketRequestMetrics should use correct configuration ID`() {
+        val bucketName = "test-bucket"
+
+        whenever(mockS3Client.putBucketMetricsConfiguration(any<PutBucketMetricsConfigurationRequest>()))
+            .thenReturn(PutBucketMetricsConfigurationResponse.builder().build())
+
+        aws.enableBucketRequestMetrics(bucketName)
+
+        val captor = argumentCaptor<PutBucketMetricsConfigurationRequest>()
+        verify(mockS3Client).putBucketMetricsConfiguration(captor.capture())
+
+        assertThat(captor.firstValue.id()).isEqualTo(Constants.S3.METRICS_CONFIGURATION_ID)
+        assertThat(captor.firstValue.bucket()).isEqualTo(bucketName)
+    }
+
+    @Test
+    fun `disableBucketRequestMetrics should call deleteBucketMetricsConfiguration`() {
+        val bucketName = "test-bucket"
+
+        whenever(mockS3Client.deleteBucketMetricsConfiguration(any<DeleteBucketMetricsConfigurationRequest>()))
+            .thenReturn(DeleteBucketMetricsConfigurationResponse.builder().build())
+
+        aws.disableBucketRequestMetrics(bucketName)
+
+        verify(mockS3Client).deleteBucketMetricsConfiguration(any<DeleteBucketMetricsConfigurationRequest>())
+    }
+
+    @Test
+    fun `disableBucketRequestMetrics should handle not found gracefully`() {
+        val bucketName = "test-bucket"
+
+        whenever(mockS3Client.deleteBucketMetricsConfiguration(any<DeleteBucketMetricsConfigurationRequest>()))
+            .thenThrow(
+                S3Exception
+                    .builder()
+                    .statusCode(404)
+                    .message("not found")
+                    .build(),
+            )
+
+        // Should not throw
+        aws.disableBucketRequestMetrics(bucketName)
     }
 }

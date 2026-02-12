@@ -18,7 +18,10 @@ import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.BucketAlreadyExistsException
 import software.amazon.awssdk.services.s3.model.BucketAlreadyOwnedByYouException
 import software.amazon.awssdk.services.s3.model.CreateBucketRequest
+import software.amazon.awssdk.services.s3.model.DeleteBucketMetricsConfigurationRequest
 import software.amazon.awssdk.services.s3.model.GetBucketTaggingRequest
+import software.amazon.awssdk.services.s3.model.MetricsConfiguration
+import software.amazon.awssdk.services.s3.model.PutBucketMetricsConfigurationRequest
 import software.amazon.awssdk.services.s3.model.PutBucketTaggingRequest
 import software.amazon.awssdk.services.s3.model.S3Exception
 import software.amazon.awssdk.services.s3.model.Tag
@@ -529,6 +532,68 @@ class AWS(
 
         log.info { "No bucket found with tag $tagKey=$tagValue" }
         return null
+    }
+
+    /**
+     * Enables S3 request metrics on a bucket for CloudWatch monitoring.
+     * Configures whole-bucket metrics (no prefix/tag filter).
+     * Idempotent — overwrites any existing configuration with the same ID.
+     *
+     * @param bucketName The S3 bucket to enable metrics on
+     */
+    fun enableBucketRequestMetrics(bucketName: String) {
+        val metricsConfig =
+            MetricsConfiguration
+                .builder()
+                .id(Constants.S3.METRICS_CONFIGURATION_ID)
+                .build()
+
+        val request =
+            PutBucketMetricsConfigurationRequest
+                .builder()
+                .bucket(bucketName)
+                .id(Constants.S3.METRICS_CONFIGURATION_ID)
+                .metricsConfiguration(metricsConfig)
+                .build()
+
+        val retryConfig = RetryUtil.createAwsRetryConfig<Unit>()
+        val retry = Retry.of("s3-enable-bucket-metrics", retryConfig)
+        Retry
+            .decorateRunnable(retry) {
+                s3Client.putBucketMetricsConfiguration(request)
+                log.info { "Enabled S3 request metrics on bucket: $bucketName" }
+            }.run()
+    }
+
+    /**
+     * Disables S3 request metrics on a bucket to stop CloudWatch charges.
+     * Safe to call even if metrics were never enabled.
+     *
+     * @param bucketName The S3 bucket to disable metrics on
+     */
+    fun disableBucketRequestMetrics(bucketName: String) {
+        val request =
+            DeleteBucketMetricsConfigurationRequest
+                .builder()
+                .bucket(bucketName)
+                .id(Constants.S3.METRICS_CONFIGURATION_ID)
+                .build()
+
+        try {
+            val retryConfig = RetryUtil.createAwsRetryConfig<Unit>()
+            val retry = Retry.of("s3-disable-bucket-metrics", retryConfig)
+            Retry
+                .decorateRunnable(retry) {
+                    s3Client.deleteBucketMetricsConfiguration(request)
+                }.run()
+            log.info { "Disabled S3 request metrics on bucket: $bucketName" }
+        } catch (e: S3Exception) {
+            if (e.statusCode() == Constants.HttpStatus.NOT_FOUND) {
+                log.info { "No metrics configuration found on bucket: $bucketName (already disabled)" }
+            } else {
+                throw e
+            }
+        }
     }
 
     /**

@@ -193,6 +193,7 @@ For more details, see [packer/README.md](packer/README.md) and [packer/TESTING.m
 - Tests should extend BaseKoinTest to use Koin DI
 - Use resilience4j for retry logic instead of custom retry loops
 - Use AssertJ assertions, not JUnit assertions
+- For serialization, use kotlinx.serialization, not Jackson.  Jackson usage in this codebase is deprecated.
 - Constants and magic numbers should be stored in com.rustyrazorblade.easydblab.Constants
 - When migrating code, it is not necessary to maintain backwards compatibility
 - Fail fast is usually preferred

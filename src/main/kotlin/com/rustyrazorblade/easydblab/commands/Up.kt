@@ -171,6 +171,8 @@ class Up : PicoBaseCommand() {
 
         aws.putS3BucketPolicy(bucketName)
         aws.tagS3Bucket(bucketName, mapOf("ClusterId" to workingState.clusterId) + initConfig.tags)
+        aws.enableBucketRequestMetrics(bucketName)
+        outputHandler.handleMessage("S3 request metrics enabled for CloudWatch monitoring")
 
         workingState.s3Bucket = bucketName
         clusterStateManager.save(workingState)

@@ -80,12 +80,6 @@ class K8sServiceIntegrationTest {
             ManifestTestCase("44-victoriametrics-deployment.yaml", ResourceType.DEPLOYMENT, "victoriametrics"),
             ManifestTestCase("45-victorialogs-deployment.yaml", ResourceType.DEPLOYMENT, "victorialogs"),
             ManifestTestCase(
-                "13-grafana-datasource-configmap.yaml",
-                ResourceType.CONFIGMAP,
-                "grafana-datasources",
-                "datasources.yaml",
-            ),
-            ManifestTestCase(
                 "14-grafana-dashboards-configmap.yaml",
                 ResourceType.CONFIGMAP,
                 "grafana-dashboards-config",

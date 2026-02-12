@@ -5,6 +5,7 @@ import com.fasterxml.jackson.module.kotlin.readValue
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredResources
 import com.rustyrazorblade.easydblab.providers.aws.InfrastructureTeardownService
 import com.rustyrazorblade.easydblab.providers.aws.SQSService
@@ -70,6 +71,7 @@ class Down : PicoBaseCommand() {
 
     private val teardownService: InfrastructureTeardownService by inject()
     private val sqsService: SQSService by inject()
+    private val aws: AWS by inject()
     private val log = KotlinLogging.logger {}
 
     data class Socks5ProxyState(
@@ -346,6 +348,9 @@ class Down : PicoBaseCommand() {
                 // Delete SQS queue if it exists
                 deleteSqsQueue(clusterState.sqsQueueUrl)
 
+                // Disable S3 request metrics to stop CloudWatch charges
+                disableS3RequestMetrics(clusterState.s3Bucket)
+
                 clusterState.markInfrastructureDown()
                 clusterState.updateHosts(emptyMap())
                 clusterState.updateEmrCluster(null)
@@ -371,6 +376,25 @@ class Down : PicoBaseCommand() {
 
         sqsService.deleteLogIngestQueue(queueUrl).onFailure { error ->
             log.warn(error) { "Failed to delete SQS queue: $queueUrl" }
+        }
+    }
+
+    /**
+     * Disables S3 request metrics to stop CloudWatch billing.
+     * The bucket itself is preserved for data retention.
+     */
+    @Suppress("TooGenericExceptionCaught")
+    private fun disableS3RequestMetrics(bucketName: String?) {
+        if (bucketName.isNullOrBlank()) {
+            log.debug { "No S3 bucket to disable metrics for" }
+            return
+        }
+
+        try {
+            aws.disableBucketRequestMetrics(bucketName)
+            outputHandler.handleMessage("Disabled S3 request metrics on bucket: $bucketName")
+        } catch (e: Exception) {
+            log.warn(e) { "Failed to disable S3 request metrics: $bucketName" }
         }
     }
 }

@@ -76,12 +76,12 @@ class ClickHouseInitTest : BaseKoinTest() {
     @Test
     fun `init overwrites existing clickhouse config`() {
         val state = createTestState()
-        state.clickHouseConfig = ClickHouseConfig(s3CacheSize = "5Gi", s3CacheOnWrite = true)
+        state.clickHouseConfig = ClickHouseConfig(s3CacheSize = "5Gi", s3CacheOnWrite = "true")
         whenever(mockClusterStateManager.load()).thenReturn(state)
 
         val command = ClickHouseInit()
         command.s3CacheSize = "100Gi"
-        command.s3CacheOnWrite = false
+        command.s3CacheOnWrite = "false"
         command.execute()
 
         val captor = argumentCaptor<ClusterState>()
@@ -89,7 +89,7 @@ class ClickHouseInitTest : BaseKoinTest() {
 
         val savedState = captor.firstValue
         assertThat(savedState.clickHouseConfig!!.s3CacheSize).isEqualTo("100Gi")
-        assertThat(savedState.clickHouseConfig!!.s3CacheOnWrite).isFalse()
+        assertThat(savedState.clickHouseConfig!!.s3CacheOnWrite).isEqualTo("false")
     }
 
     @Test
@@ -98,7 +98,7 @@ class ClickHouseInitTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(state)
 
         val command = ClickHouseInit()
-        command.s3CacheOnWrite = false
+        command.s3CacheOnWrite = "false"
         command.execute()
 
         val captor = argumentCaptor<ClusterState>()
@@ -106,7 +106,7 @@ class ClickHouseInitTest : BaseKoinTest() {
 
         val savedState = captor.firstValue
         assertThat(savedState.clickHouseConfig).isNotNull
-        assertThat(savedState.clickHouseConfig!!.s3CacheOnWrite).isFalse()
+        assertThat(savedState.clickHouseConfig!!.s3CacheOnWrite).isEqualTo("false")
     }
 
     @Test
@@ -122,6 +122,6 @@ class ClickHouseInitTest : BaseKoinTest() {
 
         val savedState = captor.firstValue
         assertThat(savedState.clickHouseConfig).isNotNull
-        assertThat(savedState.clickHouseConfig!!.s3CacheOnWrite).isTrue()
+        assertThat(savedState.clickHouseConfig!!.s3CacheOnWrite).isEqualTo(Constants.ClickHouse.DEFAULT_S3_CACHE_ON_WRITE)
     }
 }

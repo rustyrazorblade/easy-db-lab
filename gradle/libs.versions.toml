@@ -17,6 +17,7 @@ jackson-kotlin = "2.21.+"
 
 # Kotlinx Serialization
 kotlinx-serialization = "1.9.0"
+kaml = "0.77.0"
 
 # Kotlinx Coroutines
 kotlinx-coroutines = "1.10.2"
@@ -143,6 +144,7 @@ classgraph = { module = "io.github.classgraph:classgraph", version.ref = "classg
 
 # Kotlinx Serialization
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
+kaml = { module = "com.charleskorn.kaml:kaml", version.ref = "kaml" }
 
 # Kotlinx Coroutines
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }

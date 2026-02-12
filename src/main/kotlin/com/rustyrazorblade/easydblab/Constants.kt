@@ -85,6 +85,11 @@ object Constants {
         // 10 attempts × 3s = ~30 seconds max wait time
         const val MAX_LOG_RETRIEVAL_RETRIES = 10
         const val LOG_RETRIEVAL_RETRY_DELAY_MS = 3000L
+
+        // VPC teardown: Retries on DependencyViolation errors during resource deletion
+        // 5 attempts with exponential backoff: 5s, 10s, 20s, 40s
+        const val MAX_VPC_TEARDOWN_RETRIES = 5
+        const val VPC_TEARDOWN_BACKOFF_BASE_MS = 5000L
     }
 
     // Exit codes

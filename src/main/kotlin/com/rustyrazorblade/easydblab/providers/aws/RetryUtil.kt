@@ -7,6 +7,7 @@ import io.github.resilience4j.retry.Retry
 import io.github.resilience4j.retry.RetryConfig
 import org.apache.sshd.common.SshException
 import software.amazon.awssdk.awscore.exception.AwsServiceException
+import software.amazon.awssdk.services.ec2.model.Ec2Exception
 import software.amazon.awssdk.services.iam.model.EntityAlreadyExistsException
 import software.amazon.awssdk.services.iam.model.IamException
 import software.amazon.awssdk.services.s3.model.S3Exception
@@ -271,6 +272,47 @@ object RetryUtil {
                 }
             }.build()
 
+    /**
+     * Creates retry configuration for VPC teardown deletion operations.
+     *
+     * During VPC teardown, resources may have lingering dependencies (e.g., ENIs
+     * still detaching after OpenSearch/NAT gateway deletion). AWS returns
+     * DependencyViolation (400) errors for these transient states.
+     *
+     * - 5 attempts with longer exponential backoff (5s, 10s, 20s, 40s)
+     * - Retries on Ec2Exception with error code "DependencyViolation"
+     * - Retries on 5xx server errors
+     * - Does NOT retry on other 4xx client errors
+     *
+     * @return RetryConfig configured for VPC teardown deletion operations
+     */
+    fun <T> createVpcTeardownRetryConfig(): RetryConfig =
+        RetryConfig
+            .custom<T>()
+            .maxAttempts(Constants.Retry.MAX_VPC_TEARDOWN_RETRIES)
+            .intervalFunction { attemptCount ->
+                // Exponential backoff: 5s, 10s, 20s, 40s
+                Constants.Retry.VPC_TEARDOWN_BACKOFF_BASE_MS * (1L shl (attemptCount - 1))
+            }.retryOnException { throwable ->
+                when {
+                    throwable !is Ec2Exception -> false
+                    throwable.awsErrorDetails()?.errorCode() == "DependencyViolation" -> {
+                        log.warn {
+                            "DependencyViolation during VPC teardown - will retry: ${throwable.message}"
+                        }
+                        true
+                    }
+                    throwable.statusCode() in
+                        Constants.HttpStatus.SERVER_ERROR_MIN..Constants.HttpStatus.SERVER_ERROR_MAX -> {
+                        log.warn {
+                            "AWS service error ${throwable.statusCode()} during VPC teardown - will retry"
+                        }
+                        true
+                    }
+                    else -> false
+                }
+            }.build()
+
     // ==================== Helper Functions ====================
 
     /**
@@ -306,6 +348,22 @@ object RetryUtil {
         operation: () -> T,
     ): T {
         val retryConfig = createEC2InstanceRetryConfig<T>()
+        val retry = Retry.of(operationName, retryConfig)
+        return Retry.decorateSupplier(retry, operation).get()
+    }
+
+    /**
+     * Executes an operation with VPC teardown retry logic (handles DependencyViolation).
+     *
+     * @param operationName Name of the operation for logging and metrics
+     * @param operation The operation to execute with retry logic
+     * @return The result of the operation
+     */
+    fun <T> withVpcTeardownRetry(
+        operationName: String,
+        operation: () -> T,
+    ): T {
+        val retryConfig = createVpcTeardownRetryConfig<T>()
         val retry = Retry.of(operationName, retryConfig)
         return Retry.decorateSupplier(retry, operation).get()
     }

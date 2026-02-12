@@ -8,6 +8,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import software.amazon.awssdk.awscore.exception.AwsServiceException
+import software.amazon.awssdk.services.ec2.model.Ec2Exception
 import software.amazon.awssdk.services.iam.model.EntityAlreadyExistsException
 import software.amazon.awssdk.services.iam.model.IamException
 import java.io.IOException
@@ -267,6 +268,88 @@ class RetryUtilTest {
             assertThat(delay1).isEqualTo(Constants.Retry.SSH_CONNECTION_RETRY_DELAY_MS)
             assertThat(delay2).isEqualTo(Constants.Retry.SSH_CONNECTION_RETRY_DELAY_MS)
             assertThat(delay3).isEqualTo(Constants.Retry.SSH_CONNECTION_RETRY_DELAY_MS)
+        }
+    }
+
+    @Nested
+    inner class VpcTeardownRetryConfigTests {
+        @Test
+        fun `createVpcTeardownRetryConfig should use correct max attempts from constants`() {
+            val config = RetryUtil.createVpcTeardownRetryConfig<Unit>()
+
+            assertThat(config.maxAttempts).isEqualTo(Constants.Retry.MAX_VPC_TEARDOWN_RETRIES)
+        }
+
+        @Test
+        fun `createVpcTeardownRetryConfig should retry on DependencyViolation Ec2Exception`() {
+            val config = RetryUtil.createVpcTeardownRetryConfig<Unit>()
+
+            val dependencyViolation =
+                Ec2Exception
+                    .builder()
+                    .message("resource has a dependent object")
+                    .statusCode(Constants.HttpStatus.BAD_REQUEST)
+                    .awsErrorDetails(
+                        software.amazon.awssdk.awscore.exception.AwsErrorDetails
+                            .builder()
+                            .errorCode("DependencyViolation")
+                            .errorMessage("resource has a dependent object")
+                            .serviceName("Ec2")
+                            .build(),
+                    ).build()
+
+            assertThat(config.exceptionPredicate.test(dependencyViolation)).isTrue()
+        }
+
+        @Test
+        fun `createVpcTeardownRetryConfig should retry on 5xx server errors`() {
+            val config = RetryUtil.createVpcTeardownRetryConfig<Unit>()
+
+            val serverError =
+                Ec2Exception
+                    .builder()
+                    .message("Service unavailable")
+                    .statusCode(503)
+                    .build()
+
+            assertThat(config.exceptionPredicate.test(serverError)).isTrue()
+        }
+
+        @Test
+        fun `createVpcTeardownRetryConfig should not retry on other 4xx errors`() {
+            val config = RetryUtil.createVpcTeardownRetryConfig<Unit>()
+
+            val clientError =
+                Ec2Exception
+                    .builder()
+                    .message("Bad request")
+                    .statusCode(Constants.HttpStatus.BAD_REQUEST)
+                    .build()
+
+            assertThat(config.exceptionPredicate.test(clientError)).isFalse()
+        }
+
+        @Test
+        fun `createVpcTeardownRetryConfig should not retry on non-Ec2 exceptions`() {
+            val config = RetryUtil.createVpcTeardownRetryConfig<Unit>()
+
+            val exception = RuntimeException("Some error")
+
+            assertThat(config.exceptionPredicate.test(exception)).isFalse()
+        }
+
+        @Test
+        fun `createVpcTeardownRetryConfig should use exponential backoff with 5s base`() {
+            val config = RetryUtil.createVpcTeardownRetryConfig<Unit>()
+
+            val intervalFunction = config.intervalFunction
+            val delay1 = intervalFunction.apply(1)
+            val delay2 = intervalFunction.apply(2)
+            val delay3 = intervalFunction.apply(3)
+
+            assertThat(delay1).isEqualTo(Constants.Retry.VPC_TEARDOWN_BACKOFF_BASE_MS) // 5s
+            assertThat(delay2).isEqualTo(Constants.Retry.VPC_TEARDOWN_BACKOFF_BASE_MS * 2) // 10s
+            assertThat(delay3).isEqualTo(Constants.Retry.VPC_TEARDOWN_BACKOFF_BASE_MS * 4) // 20s
         }
     }
 }

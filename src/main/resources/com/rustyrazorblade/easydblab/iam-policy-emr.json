@@ -2,56 +2,10 @@
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "EMRDescribePermissions",
+      "Sid": "EMRFullAccess",
       "Effect": "Allow",
-      "Action": [
-        "elasticmapreduce:DescribeCluster",
-        "elasticmapreduce:ListClusters",
-        "elasticmapreduce:ListInstanceFleets",
-        "elasticmapreduce:ListInstanceGroups",
-        "elasticmapreduce:ListInstances",
-        "elasticmapreduce:DescribeStep",
-        "elasticmapreduce:ListSteps",
-        "elasticmapreduce:ListBootstrapActions",
-        "elasticmapreduce:GetAutoTerminationPolicy",
-        "elasticmapreduce:DescribeSecurityConfiguration",
-        "elasticmapreduce:ListSecurityConfigurations"
-      ],
+      "Action": "elasticmapreduce:*",
       "Resource": "*"
-    },
-    {
-      "Sid": "EMRCreatePermissions",
-      "Effect": "Allow",
-      "Action": [
-        "elasticmapreduce:RunJobFlow",
-        "elasticmapreduce:TerminateJobFlows",
-        "elasticmapreduce:CreateSecurityConfiguration"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Sid": "EMRModifyTaggedResourcesPermissions",
-      "Effect": "Allow",
-      "Action": [
-        "elasticmapreduce:AddTags",
-        "elasticmapreduce:AddInstanceFleet",
-        "elasticmapreduce:AddInstanceGroups",
-        "elasticmapreduce:ModifyInstanceFleet",
-        "elasticmapreduce:ModifyInstanceGroups",
-        "elasticmapreduce:AddJobFlowSteps",
-        "elasticmapreduce:CancelSteps",
-        "elasticmapreduce:SetTerminationProtection",
-        "elasticmapreduce:SetVisibleToAllUsers",
-        "elasticmapreduce:PutAutoScalingPolicy",
-        "elasticmapreduce:RemoveAutoScalingPolicy",
-        "elasticmapreduce:DeleteSecurityConfiguration"
-      ],
-      "Resource": "*",
-      "Condition": {
-        "StringEquals": {
-          "aws:ResourceTag/easy_cass_lab": "1"
-        }
-      }
     },
     {
       "Sid": "EMRPassRolePermissions",

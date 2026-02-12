@@ -1,12 +1,11 @@
-package com.rustyrazorblade.easydblab.commands.clickhouse
+package com.rustyrazorblade.easydblab.commands.dashboards
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.services.K8sService
-import org.assertj.core.api.Assertions.assertThat
+import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -14,18 +13,14 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
-import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 
 /**
- * Test suite for ClickHouseGenerateDashboards command.
- *
- * These tests verify dashboard extraction from JAR resources and
- * application to K8s cluster via K8sService.
+ * Test suite for DashboardsUpload command.
  */
-class ClickHouseGenerateDashboardsTest : BaseKoinTest() {
-    private lateinit var mockK8sService: K8sService
+class DashboardsUploadTest : BaseKoinTest() {
+    private lateinit var mockDashboardService: GrafanaDashboardService
     private lateinit var mockClusterStateManager: ClusterStateManager
 
     private val testControlHost =
@@ -41,8 +36,8 @@ class ClickHouseGenerateDashboardsTest : BaseKoinTest() {
         listOf(
             module {
                 single {
-                    mock<K8sService>().also {
-                        mockK8sService = it
+                    mock<GrafanaDashboardService>().also {
+                        mockDashboardService = it
                     }
                 }
 
@@ -56,12 +51,12 @@ class ClickHouseGenerateDashboardsTest : BaseKoinTest() {
 
     @BeforeEach
     fun setupMocks() {
-        mockK8sService = getKoin().get()
+        mockDashboardService = getKoin().get()
         mockClusterStateManager = getKoin().get()
     }
 
     @Test
-    fun `execute should fail when no control nodes exist`() {
+    fun `execute fails when no control nodes exist`() {
         val emptyState =
             ClusterState(
                 name = "test-cluster",
@@ -71,7 +66,7 @@ class ClickHouseGenerateDashboardsTest : BaseKoinTest() {
 
         whenever(mockClusterStateManager.load()).thenReturn(emptyState)
 
-        val command = ClickHouseGenerateDashboards()
+        val command = DashboardsUpload()
 
         assertThatThrownBy { command.execute() }
             .isInstanceOf(IllegalStateException::class.java)
@@ -79,7 +74,7 @@ class ClickHouseGenerateDashboardsTest : BaseKoinTest() {
     }
 
     @Test
-    fun `execute should extract dashboard files and apply them`() {
+    fun `execute calls uploadDashboards on service`() {
         val stateWithControl =
             ClusterState(
                 name = "test-cluster",
@@ -91,36 +86,16 @@ class ClickHouseGenerateDashboardsTest : BaseKoinTest() {
             )
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
-        whenever(mockK8sService.applyManifests(any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockDashboardService.uploadDashboards(any(), any())).thenReturn(Result.success(Unit))
 
-        val command = ClickHouseGenerateDashboards()
+        val command = DashboardsUpload()
         command.execute()
 
-        // Verify applyManifests was called for each dashboard file (2 dashboards)
-        verify(mockK8sService, times(2)).applyManifests(any(), any())
+        verify(mockDashboardService).uploadDashboards(any(), any())
     }
 
     @Test
-    fun `extractDashboardResources should only extract dashboard files`() {
-        val command = ClickHouseGenerateDashboards()
-        val dashboardFiles = command.extractDashboardResources()
-
-        // Should find dashboard files
-        assertThat(dashboardFiles).isNotEmpty()
-
-        // All extracted files should contain 'grafana-dashboard' in the name
-        assertThat(dashboardFiles).allSatisfy { file ->
-            assertThat(file.name).contains("grafana-dashboard")
-        }
-
-        // Should not include non-dashboard clickhouse manifests
-        assertThat(dashboardFiles).noneSatisfy { file ->
-            assertThat(file.name).doesNotContain("grafana-dashboard")
-        }
-    }
-
-    @Test
-    fun `execute should fail when applyManifests fails`() {
+    fun `execute fails when uploadDashboards fails`() {
         val stateWithControl =
             ClusterState(
                 name = "test-cluster",
@@ -132,13 +107,13 @@ class ClickHouseGenerateDashboardsTest : BaseKoinTest() {
             )
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
-        whenever(mockK8sService.applyManifests(any(), any()))
-            .thenReturn(Result.failure(RuntimeException("Failed to apply manifest")))
+        whenever(mockDashboardService.uploadDashboards(any(), any()))
+            .thenReturn(Result.failure(RuntimeException("Upload failed")))
 
-        val command = ClickHouseGenerateDashboards()
+        val command = DashboardsUpload()
 
         assertThatThrownBy { command.execute() }
             .isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("Failed to apply")
+            .hasMessageContaining("Failed to upload dashboards")
     }
 }

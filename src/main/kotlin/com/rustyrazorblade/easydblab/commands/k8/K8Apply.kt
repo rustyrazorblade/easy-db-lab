@@ -6,8 +6,8 @@ import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
-import com.rustyrazorblade.easydblab.grafana.GrafanaDatasourceConfig
 import com.rustyrazorblade.easydblab.output.displayObservabilityAccess
+import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
 import com.rustyrazorblade.easydblab.services.K8sService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
@@ -36,6 +36,7 @@ import java.nio.file.Path
 class K8Apply : PicoBaseCommand() {
     private val log = KotlinLogging.logger {}
     private val k8sService: K8sService by inject()
+    private val dashboardService: GrafanaDashboardService by inject()
     private val user: User by inject()
 
     @Suppress("MagicNumber")
@@ -155,23 +156,13 @@ class K8Apply : PicoBaseCommand() {
     /**
      * Creates the Grafana datasources ConfigMap with runtime values.
      *
-     * This replaces the static 13-grafana-datasource-configmap.yaml because the
-     * CloudWatch datasource requires the AWS region which is only known at runtime.
+     * Delegates to GrafanaDashboardService which manages the datasource configuration.
+     * The CloudWatch datasource requires the AWS region which is only known at runtime.
      */
     private fun createDatasourcesConfigMap(controlNode: ClusterHost) {
         val region = clusterState.initConfig?.region ?: user.region
-        val config = GrafanaDatasourceConfig.create(region = region)
-        val yamlContent = config.toYaml()
-
-        k8sService
-            .createConfigMap(
-                controlHost = controlNode,
-                namespace = DEFAULT_NAMESPACE,
-                name = "grafana-datasources",
-                data = mapOf("datasources.yaml" to yamlContent),
-                labels = mapOf("app.kubernetes.io/name" to "grafana"),
-            ).getOrElse { exception ->
-                error("Failed to create Grafana datasources ConfigMap: ${exception.message}")
-            }
+        dashboardService.createDatasourcesConfigMap(controlNode, region).getOrElse { exception ->
+            error("Failed to create Grafana datasources ConfigMap: ${exception.message}")
+        }
     }
 }

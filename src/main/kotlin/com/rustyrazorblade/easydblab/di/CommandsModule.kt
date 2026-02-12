@@ -41,6 +41,8 @@ import com.rustyrazorblade.easydblab.commands.clickhouse.ClickHouseInit
 import com.rustyrazorblade.easydblab.commands.clickhouse.ClickHouseStart
 import com.rustyrazorblade.easydblab.commands.clickhouse.ClickHouseStatus
 import com.rustyrazorblade.easydblab.commands.clickhouse.ClickHouseStop
+import com.rustyrazorblade.easydblab.commands.dashboards.DashboardsGenerate
+import com.rustyrazorblade.easydblab.commands.dashboards.DashboardsUpload
 import com.rustyrazorblade.easydblab.commands.k8.K8Apply
 import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearchStart
 import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearchStatus
@@ -101,6 +103,10 @@ val commandsModule =
         factory { StressStart() }
         factory { StressStatus() }
         factory { StressStop() }
+
+        // Dashboards subcommands
+        factory { DashboardsGenerate() }
+        factory { DashboardsUpload() }
 
         // ClickHouse subcommands
         factory { ClickHouseInit() }

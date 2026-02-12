@@ -173,6 +173,18 @@ sealed class AWSPolicy {
                                     ),
                                 resource = IamPolicyResource.single("arn:aws:sqs:*:*:easy-db-lab-*"),
                             ),
+                            IamPolicyStatement(
+                                effect = "Allow",
+                                action =
+                                    IamPolicyAction.multiple(
+                                        listOf(
+                                            "cloudwatch:GetMetricData",
+                                            "cloudwatch:GetMetricStatistics",
+                                            "cloudwatch:ListMetrics",
+                                        ),
+                                    ),
+                                resource = IamPolicyResource.single("*"),
+                            ),
                         ),
                 ).toJson()
         }

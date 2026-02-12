@@ -19,6 +19,7 @@
 - [Victoria Metrics](user-guide/victoria-metrics.md)
 - [Spark](user-guide/spark.md)
 - [ClickHouse](user-guide/clickhouse.md)
+- [Monitoring](user-guide/monitoring.md)
 - [Shell Aliases](user-guide/shell-aliases.md)
 - [MCP Server](integrations/mcp-server.md)
 

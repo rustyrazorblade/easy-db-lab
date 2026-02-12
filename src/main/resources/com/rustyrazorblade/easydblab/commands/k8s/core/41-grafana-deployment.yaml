@@ -78,6 +78,9 @@ spec:
             - name: dashboard-clickhouse-logs
               mountPath: /var/lib/grafana/dashboards/clickhouse-logs
               readOnly: true
+            - name: dashboard-s3
+              mountPath: /var/lib/grafana/dashboards/s3
+              readOnly: true
             - name: data
               mountPath: /var/lib/grafana
           livenessProbe:
@@ -109,6 +112,10 @@ spec:
         - name: dashboard-clickhouse-logs
           configMap:
             name: grafana-dashboard-clickhouse-logs
+            optional: true
+        - name: dashboard-s3
+          configMap:
+            name: grafana-dashboard-s3
             optional: true
         - name: data
           emptyDir: {}

@@ -117,8 +117,9 @@ dependencies {
     implementation(platform(libs.koin.bom))
     implementation(libs.bundles.koin)
 
-    // Kotlinx Serialization for MCP
+    // Kotlinx Serialization
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.kaml)
     implementation(libs.kotlinx.coroutines.core)
 
     // MCP SDK and dependencies

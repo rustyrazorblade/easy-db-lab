@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.grafana.GrafanaDatasourceConfig
 import com.rustyrazorblade.easydblab.output.displayObservabilityAccess
 import com.rustyrazorblade.easydblab.services.K8sService
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -71,8 +72,9 @@ class K8Apply : PicoBaseCommand() {
         val controlNode = controlHosts.first()
         log.debug { "Using control node: ${controlNode.alias} (${controlNode.publicIp})" }
 
-        // Create cluster-config ConfigMap with runtime values for Vector
+        // Create runtime ConfigMaps that require dynamic values
         createClusterConfigMap(controlNode)
+        createDatasourcesConfigMap(controlNode)
 
         // Determine manifest path - use provided path or default to core manifests
         val pathToApply = manifestPath ?: Path.of(K8S_CORE_MANIFEST_DIR)
@@ -147,6 +149,29 @@ class K8Apply : PicoBaseCommand() {
             ).getOrElse { exception ->
                 log.warn { "Failed to create cluster-config ConfigMap: ${exception.message}" }
                 // Don't fail the command - the ConfigMap may already exist or Vector may not need it
+            }
+    }
+
+    /**
+     * Creates the Grafana datasources ConfigMap with runtime values.
+     *
+     * This replaces the static 13-grafana-datasource-configmap.yaml because the
+     * CloudWatch datasource requires the AWS region which is only known at runtime.
+     */
+    private fun createDatasourcesConfigMap(controlNode: ClusterHost) {
+        val region = clusterState.initConfig?.region ?: user.region
+        val config = GrafanaDatasourceConfig.create(region = region)
+        val yamlContent = config.toYaml()
+
+        k8sService
+            .createConfigMap(
+                controlHost = controlNode,
+                namespace = DEFAULT_NAMESPACE,
+                name = "grafana-datasources",
+                data = mapOf("datasources.yaml" to yamlContent),
+                labels = mapOf("app.kubernetes.io/name" to "grafana"),
+            ).getOrElse { exception ->
+                error("Failed to create Grafana datasources ConfigMap: ${exception.message}")
             }
     }
 }

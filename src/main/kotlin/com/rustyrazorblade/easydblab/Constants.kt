@@ -146,6 +146,9 @@ object Constants {
     object S3 {
         /** Prefix for all easy-db-lab S3 buckets */
         const val BUCKET_PREFIX = "easy-db-lab-"
+
+        /** ID for the S3 bucket metrics configuration used for CloudWatch request metrics */
+        const val METRICS_CONFIGURATION_ID = "easy-db-lab-request-metrics"
     }
 
     // Configuration file paths

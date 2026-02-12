@@ -95,8 +95,8 @@ class Down : PicoBaseCommand() {
         // Execute the teardown based on mode
         val result = executeTeardown(mode)
 
-        // Update cluster state if we're tearing down the current cluster
-        if (mode == TeardownMode.CurrentCluster || mode is TeardownMode.SpecificVpc) {
+        // Only clear cluster state on successful teardown to preserve VPC ID for retries
+        if (result.success && (mode == TeardownMode.CurrentCluster || mode is TeardownMode.SpecificVpc)) {
             updateClusterState()
         }
 

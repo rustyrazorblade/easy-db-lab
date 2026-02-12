@@ -150,10 +150,12 @@ class InfrastructureTeardownServiceTest {
             val result = service.teardownVpc(vpcId, dryRun = false)
 
             assertThat(result.success).isTrue()
-            // Verify instances terminated
+            // Verify instances terminated (Phase 1)
             verify(vpcService).terminateInstances(instanceIds)
             verify(vpcService).waitForInstancesTerminated(instanceIds)
-            // Verify security groups cleaned up
+            // Verify ENI wait (Phase 2)
+            verify(vpcService).waitForNetworkInterfacesCleared(vpcId)
+            // Verify security groups cleaned up (Phase 3)
             verify(vpcService).revokeSecurityGroupRules("sg-1")
             verify(vpcService).deleteSecurityGroup("sg-1")
             // Verify subnets deleted
@@ -166,12 +168,13 @@ class InfrastructureTeardownServiceTest {
         }
 
         @Test
-        fun `should stop on EMR termination failure`() {
+        fun `EMR failure should not prevent other Phase 1 tasks from running`() {
             val vpcId = "vpc-12345"
             val emrIds = listOf("j-123")
+            val instanceIds = listOf("i-1")
 
             whenever(vpcService.getVpcName(vpcId)).thenReturn("test-vpc")
-            whenever(vpcService.findInstancesInVpc(vpcId)).thenReturn(emptyList())
+            whenever(vpcService.findInstancesInVpc(vpcId)).thenReturn(instanceIds)
             whenever(vpcService.findSubnetsInVpc(vpcId)).thenReturn(listOf("subnet-1"))
             whenever(vpcService.findSecurityGroupsInVpc(vpcId)).thenReturn(emptyList())
             whenever(vpcService.findNatGatewaysInVpc(vpcId)).thenReturn(emptyList())
@@ -186,8 +189,9 @@ class InfrastructureTeardownServiceTest {
 
             assertThat(result.success).isFalse()
             assertThat(result.errors).anyMatch { it.contains("EMR") }
-            // Should not proceed to terminate instances or delete VPC
-            verify(vpcService, never()).terminateInstances(any())
+            // EC2 instances should still be terminated (parallel execution)
+            verify(vpcService).terminateInstances(instanceIds)
+            // Phase 3 should NOT run because Phase 1 had a fatal failure
             verify(vpcService, never()).deleteVpc(any())
         }
 
@@ -381,7 +385,7 @@ class InfrastructureTeardownServiceTest {
 
             val result = service.teardownVpc(vpcId, dryRun = false)
 
-            // Should still try to delete VPC
+            // Should still try to delete VPC (NAT failure is non-fatal)
             verify(vpcService).deleteVpc(vpcId)
             assertThat(result.errors).anyMatch { it.contains("NAT") }
         }
@@ -563,6 +567,61 @@ class InfrastructureTeardownServiceTest {
 
             assertThat(result.success).isFalse()
             assertThat(result.errors).anyMatch { it.contains("Unexpected error") }
+        }
+
+        @Test
+        fun `ENI wait timeout should be non-fatal`() {
+            val vpcId = "vpc-12345"
+
+            whenever(vpcService.getVpcName(vpcId)).thenReturn("test-vpc")
+            whenever(vpcService.findInstancesInVpc(vpcId)).thenReturn(emptyList())
+            whenever(vpcService.findSubnetsInVpc(vpcId)).thenReturn(emptyList())
+            whenever(vpcService.findSecurityGroupsInVpc(vpcId)).thenReturn(emptyList())
+            whenever(vpcService.findNatGatewaysInVpc(vpcId)).thenReturn(emptyList())
+            whenever(vpcService.findInternetGatewayByVpc(vpcId)).thenReturn(null)
+            whenever(vpcService.findRouteTablesInVpc(vpcId)).thenReturn(emptyList())
+            whenever(emrTeardownService.findClustersInVpc(any(), any())).thenReturn(emptyList())
+            whenever(openSearchService.findDomainsInVpc(any())).thenReturn(emptyList())
+            whenever(vpcService.waitForNetworkInterfacesCleared(vpcId))
+                .thenThrow(RuntimeException("ENI timeout"))
+
+            val result = service.teardownVpc(vpcId, dryRun = false)
+
+            // Should still try to delete VPC despite ENI timeout
+            verify(vpcService).deleteVpc(vpcId)
+            assertThat(result.errors).anyMatch { it.contains("network interfaces") }
+        }
+
+        @Test
+        fun `should collect errors from multiple parallel Phase 1 failures`() {
+            val vpcId = "vpc-12345"
+            val emrIds = listOf("j-123")
+            val instanceIds = listOf("i-1")
+            val domains = listOf("test-os")
+
+            whenever(vpcService.getVpcName(vpcId)).thenReturn("test-vpc")
+            whenever(vpcService.findInstancesInVpc(vpcId)).thenReturn(instanceIds)
+            whenever(vpcService.findSubnetsInVpc(vpcId)).thenReturn(listOf("subnet-1"))
+            whenever(vpcService.findSecurityGroupsInVpc(vpcId)).thenReturn(emptyList())
+            whenever(vpcService.findNatGatewaysInVpc(vpcId)).thenReturn(emptyList())
+            whenever(vpcService.findInternetGatewayByVpc(vpcId)).thenReturn(null)
+            whenever(vpcService.findRouteTablesInVpc(vpcId)).thenReturn(emptyList())
+            whenever(emrTeardownService.findClustersInVpc(any(), any())).thenReturn(emrIds)
+            whenever(openSearchService.findDomainsInVpc(any())).thenReturn(domains)
+            // All three critical Phase 1 tasks fail
+            whenever(emrTeardownService.terminateClusters(emrIds))
+                .thenThrow(RuntimeException("EMR failed"))
+            whenever(vpcService.terminateInstances(instanceIds))
+                .thenThrow(RuntimeException("EC2 failed"))
+            whenever(openSearchService.deleteDomain("test-os"))
+                .thenThrow(RuntimeException("OpenSearch failed"))
+
+            val result = service.teardownVpc(vpcId, dryRun = false)
+
+            assertThat(result.success).isFalse()
+            assertThat(result.errors).anyMatch { it.contains("EMR") }
+            assertThat(result.errors).anyMatch { it.contains("EC2") || it.contains("terminate") || it.contains("instances") }
+            assertThat(result.errors).anyMatch { it.contains("OpenSearch") }
         }
     }
 

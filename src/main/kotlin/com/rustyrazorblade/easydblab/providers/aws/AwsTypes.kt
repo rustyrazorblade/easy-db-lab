@@ -61,3 +61,8 @@ typealias ClusterId = String
  * AWS NAT Gateway identifier (e.g., "nat-123abc456def")
  */
 typealias NatGatewayId = String
+
+/**
+ * AWS Network Interface identifier (e.g., "eni-123abc456def")
+ */
+typealias NetworkInterfaceId = String

@@ -21,6 +21,7 @@ import software.amazon.awssdk.services.ec2.model.DeleteVpcRequest
 import software.amazon.awssdk.services.ec2.model.DescribeInstancesRequest
 import software.amazon.awssdk.services.ec2.model.DescribeInternetGatewaysRequest
 import software.amazon.awssdk.services.ec2.model.DescribeNatGatewaysRequest
+import software.amazon.awssdk.services.ec2.model.DescribeNetworkInterfacesRequest
 import software.amazon.awssdk.services.ec2.model.DescribeRouteTablesRequest
 import software.amazon.awssdk.services.ec2.model.DescribeSecurityGroupsRequest
 import software.amazon.awssdk.services.ec2.model.DescribeSubnetsRequest
@@ -716,6 +717,70 @@ class EC2VpcService(
         return routeTableIds
     }
 
+    // ==================== ENI Methods Implementation ====================
+
+    override fun findActiveNetworkInterfacesInVpc(vpcId: VpcId): List<NetworkInterfaceId> {
+        log.info { "Finding active network interfaces in VPC: $vpcId" }
+
+        val describeRequest =
+            DescribeNetworkInterfacesRequest
+                .builder()
+                .filters(
+                    Filter
+                        .builder()
+                        .name("vpc-id")
+                        .values(vpcId)
+                        .build(),
+                    Filter
+                        .builder()
+                        .name("status")
+                        .values("in-use", "attaching", "detaching")
+                        .build(),
+                ).build()
+
+        val networkInterfaces =
+            RetryUtil.withAwsRetry("find-active-enis") {
+                ec2Client.describeNetworkInterfaces(describeRequest).networkInterfaces()
+            }
+        val eniIds = networkInterfaces.map { it.networkInterfaceId() }
+
+        log.info { "Found ${eniIds.size} active network interfaces in VPC: $vpcId" }
+        return eniIds
+    }
+
+    override fun waitForNetworkInterfacesCleared(
+        vpcId: VpcId,
+        timeoutMs: Long,
+    ) {
+        val activeEnis = findActiveNetworkInterfacesInVpc(vpcId)
+        if (activeEnis.isEmpty()) {
+            log.info { "No active network interfaces in VPC: $vpcId" }
+            return
+        }
+
+        log.info { "Waiting for ${activeEnis.size} network interfaces to clear in VPC: $vpcId" }
+        outputHandler.handleMessage("Waiting for ${activeEnis.size} network interfaces to clear...")
+
+        val startTime = System.currentTimeMillis()
+
+        while (System.currentTimeMillis() - startTime < timeoutMs) {
+            val remaining = findActiveNetworkInterfacesInVpc(vpcId)
+
+            if (remaining.isEmpty()) {
+                log.info { "All network interfaces cleared in VPC: $vpcId" }
+                outputHandler.handleMessage("All network interfaces cleared")
+                return
+            }
+
+            log.debug { "Still waiting for ${remaining.size} network interfaces to clear..." }
+            Thread.sleep(VpcService.POLL_INTERVAL_MS)
+        }
+
+        throw AwsTimeoutException(
+            "Timeout waiting for network interfaces to clear in VPC $vpcId after ${timeoutMs}ms",
+        )
+    }
+
     // ==================== Deletion Methods Implementation ====================
 
     override fun terminateInstances(instanceIds: List<InstanceId>) {
@@ -846,7 +911,7 @@ class EC2VpcService(
                 .groupId(securityGroupId)
                 .build()
 
-        RetryUtil.withAwsRetry("delete-security-group") { ec2Client.deleteSecurityGroup(deleteRequest) }
+        RetryUtil.withVpcTeardownRetry("delete-security-group") { ec2Client.deleteSecurityGroup(deleteRequest) }
         log.info { "Deleted security group: $securityGroupId" }
     }
 
@@ -864,7 +929,7 @@ class EC2VpcService(
                 .vpcId(vpcId)
                 .build()
 
-        RetryUtil.withAwsRetry("detach-igw") { ec2Client.detachInternetGateway(detachRequest) }
+        RetryUtil.withVpcTeardownRetry("detach-igw") { ec2Client.detachInternetGateway(detachRequest) }
         log.info { "Detached internet gateway $igwId from VPC $vpcId" }
     }
 
@@ -878,7 +943,7 @@ class EC2VpcService(
                 .internetGatewayId(igwId)
                 .build()
 
-        RetryUtil.withAwsRetry("delete-igw") { ec2Client.deleteInternetGateway(deleteRequest) }
+        RetryUtil.withVpcTeardownRetry("delete-igw") { ec2Client.deleteInternetGateway(deleteRequest) }
         log.info { "Deleted internet gateway: $igwId" }
     }
 
@@ -892,7 +957,7 @@ class EC2VpcService(
                 .subnetId(subnetId)
                 .build()
 
-        RetryUtil.withAwsRetry("delete-subnet") { ec2Client.deleteSubnet(deleteRequest) }
+        RetryUtil.withVpcTeardownRetry("delete-subnet") { ec2Client.deleteSubnet(deleteRequest) }
         log.info { "Deleted subnet: $subnetId" }
     }
 
@@ -966,7 +1031,7 @@ class EC2VpcService(
                 .routeTableId(routeTableId)
                 .build()
 
-        RetryUtil.withAwsRetry("delete-route-table") { ec2Client.deleteRouteTable(deleteRequest) }
+        RetryUtil.withVpcTeardownRetry("delete-route-table") { ec2Client.deleteRouteTable(deleteRequest) }
         log.info { "Deleted route table: $routeTableId" }
     }
 
@@ -1013,7 +1078,7 @@ class EC2VpcService(
                 .vpcId(vpcId)
                 .build()
 
-        RetryUtil.withAwsRetry("delete-vpc") { ec2Client.deleteVpc(deleteRequest) }
+        RetryUtil.withVpcTeardownRetry("delete-vpc") { ec2Client.deleteVpc(deleteRequest) }
         log.info { "Deleted VPC: $vpcId" }
     }
 }

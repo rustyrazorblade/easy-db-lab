@@ -196,6 +196,34 @@ interface VpcService {
      */
     fun findRouteTablesInVpc(vpcId: VpcId): List<RouteTableId>
 
+    // ==================== ENI Methods ====================
+
+    /**
+     * Finds active network interfaces in a VPC.
+     *
+     * Returns ENIs in in-use, attaching, or detaching state. These must be
+     * cleared before subnets and security groups can be deleted.
+     *
+     * @param vpcId The VPC ID to search in
+     * @return List of active network interface IDs
+     */
+    fun findActiveNetworkInterfacesInVpc(vpcId: VpcId): List<NetworkInterfaceId>
+
+    /**
+     * Waits for all active network interfaces in a VPC to be cleared.
+     *
+     * Polls until no ENIs are in in-use, attaching, or detaching state.
+     * Returns immediately if no active ENIs are found.
+     *
+     * @param vpcId The VPC ID to monitor
+     * @param timeoutMs Maximum time to wait in milliseconds
+     * @throws AwsTimeoutException if ENIs are not cleared within the timeout
+     */
+    fun waitForNetworkInterfacesCleared(
+        vpcId: VpcId,
+        timeoutMs: Long = DEFAULT_ENI_TIMEOUT_MS,
+    )
+
     // ==================== Deletion Methods ====================
 
     /**
@@ -291,6 +319,9 @@ interface VpcService {
     companion object {
         /** Default timeout for waiting on resource termination/deletion (10 minutes) */
         const val DEFAULT_TERMINATION_TIMEOUT_MS = 10 * 60 * 1000L
+
+        /** Default timeout for waiting on ENIs to clear (5 minutes) */
+        const val DEFAULT_ENI_TIMEOUT_MS = 5 * 60 * 1000L
 
         /** Polling interval for checking resource state */
         const val POLL_INTERVAL_MS = 5000L

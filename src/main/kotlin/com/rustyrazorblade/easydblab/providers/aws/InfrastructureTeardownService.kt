@@ -3,23 +3,25 @@ package com.rustyrazorblade.easydblab.providers.aws
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import io.github.oshai.kotlinlogging.KotlinLogging
+import java.util.concurrent.CompletableFuture
 
 /**
  * Service for orchestrating AWS infrastructure teardown.
  *
  * This service coordinates the deletion of VPC infrastructure and associated resources
- * in the correct dependency order to ensure clean teardown without AWS dependency errors.
+ * in phases to ensure clean teardown without AWS dependency errors.
  *
- * ## Deletion Order
- * The following order is critical to avoid dependency conflicts:
- * 1. EMR Clusters - Must be terminated before VPC resources
- * 2. EC2 Instances - Must be terminated before security groups and subnets
- * 3. NAT Gateways - Must be deleted before subnets
- * 4. Security Groups - Must be deleted after instances
- * 5. Route Tables - Non-main route tables deleted before subnets
- * 6. Subnets - Must be deleted after all subnet resources
- * 7. Internet Gateway - Must be detached and deleted before VPC
- * 8. VPC - Deleted last after all dependencies removed
+ * ## Teardown Phases
+ *
+ * **Phase 1 (Parallel):** Long-running resource terminations run concurrently:
+ * - EMR Clusters, OpenSearch domains, EC2 instances, NAT gateways
+ *
+ * **Phase 2 (ENI Wait):** Wait for lingering network interfaces to clear.
+ * After Phase 1 resources are deleted, their ENIs may take time to detach.
+ *
+ * **Phase 3 (Sequential):** Fast VPC networking cleanup:
+ * - Security groups (revoke rules, then delete)
+ * - Route tables, subnets, internet gateway, VPC
  */
 @Suppress("TooManyFunctions")
 class InfrastructureTeardownService(
@@ -166,7 +168,11 @@ class InfrastructureTeardownService(
     }
 
     /**
-     * Executes the actual teardown of a VPC's resources in the correct order.
+     * Executes the actual teardown of a VPC's resources in phases.
+     *
+     * Phase 1 (Parallel): EMR, OpenSearch, EC2, NAT gateways
+     * Phase 2: Wait for ENIs to clear
+     * Phase 3 (Sequential): Security groups, route tables, subnets, IGW, VPC
      *
      * @param resources The discovered resources to delete
      * @return TeardownResult with information about the operation
@@ -181,11 +187,18 @@ class InfrastructureTeardownService(
                     (resources.vpcName?.let { " ($it)" } ?: ""),
             )
 
-            // Execute teardown steps in order
-            if (!terminateEmrClusters(resources, errors)) return TeardownResult.failure(errors, listOf(resources))
-            if (!deleteOpenSearchDomains(resources, errors)) return TeardownResult.failure(errors, listOf(resources))
-            if (!terminateEc2Instances(resources, errors)) return TeardownResult.failure(errors, listOf(resources))
-            deleteNatGateways(resources, errors)
+            // Phase 1: Parallel resource termination
+            val phase1Result = executePhase1Parallel(resources)
+            errors.addAll(phase1Result.errors)
+
+            if (phase1Result.hasFatalFailure) {
+                return TeardownResult.failure(errors, listOf(resources))
+            }
+
+            // Phase 2: Wait for lingering ENIs to clear
+            waitForEniCleanup(resources, errors)
+
+            // Phase 3: Sequential VPC networking cleanup
             revokeAllSecurityGroupRules(resources, errors)
             deleteSecurityGroups(resources, errors)
             deleteRouteTables(resources, errors)
@@ -203,31 +216,71 @@ class InfrastructureTeardownService(
         }
     }
 
+    // ==================== Phase 1: Parallel Resource Termination ====================
+
+    /**
+     * Executes Phase 1 tasks in parallel using CompletableFuture.
+     *
+     * Each task collects errors into its own local list to avoid thread-safety issues.
+     * After all tasks complete, errors are merged and fatal failures are checked.
+     */
+    private fun executePhase1Parallel(resources: DiscoveredResources): Phase1Result {
+        val emrFuture =
+            CompletableFuture.supplyAsync {
+                terminateEmrClusters(resources)
+            }
+        val openSearchFuture =
+            CompletableFuture.supplyAsync {
+                deleteOpenSearchDomains(resources)
+            }
+        val ec2Future =
+            CompletableFuture.supplyAsync {
+                terminateEc2Instances(resources)
+            }
+        val natFuture =
+            CompletableFuture.supplyAsync {
+                deleteNatGateways(resources)
+            }
+
+        // Wait for all tasks to complete
+        CompletableFuture.allOf(emrFuture, openSearchFuture, ec2Future, natFuture).join()
+
+        val emrResult = emrFuture.get()
+        val openSearchResult = openSearchFuture.get()
+        val ec2Result = ec2Future.get()
+        val natResult = natFuture.get()
+
+        val allErrors = mutableListOf<String>()
+        allErrors.addAll(emrResult.errors)
+        allErrors.addAll(openSearchResult.errors)
+        allErrors.addAll(ec2Result.errors)
+        allErrors.addAll(natResult.errors)
+
+        // Fatal if any critical task failed (EMR, OpenSearch, or EC2)
+        val hasFatalFailure = !emrResult.success || !openSearchResult.success || !ec2Result.success
+
+        return Phase1Result(errors = allErrors, hasFatalFailure = hasFatalFailure)
+    }
+
     @Suppress("TooGenericExceptionCaught")
-    private fun terminateEmrClusters(
-        resources: DiscoveredResources,
-        errors: MutableList<String>,
-    ): Boolean {
-        if (resources.emrClusterIds.isEmpty()) return true
+    private fun terminateEmrClusters(resources: DiscoveredResources): TeardownStepResult {
+        if (resources.emrClusterIds.isEmpty()) return TeardownStepResult.success()
         return try {
             emrTeardownService.terminateClusters(resources.emrClusterIds)
             emrTeardownService.waitForClustersTerminated(resources.emrClusterIds)
-            true
+            TeardownStepResult.success()
         } catch (e: Exception) {
-            errors.add(logError("Failed to terminate EMR clusters", e))
-            false // EMR failure is fatal - EMR instances may block subnet/SG deletion
+            TeardownStepResult.failure(logError("Failed to terminate EMR clusters", e))
         }
     }
 
     @Suppress("TooGenericExceptionCaught")
-    private fun deleteOpenSearchDomains(
-        resources: DiscoveredResources,
-        errors: MutableList<String>,
-    ): Boolean {
-        if (resources.openSearchDomainNames.isEmpty()) return true
+    private fun deleteOpenSearchDomains(resources: DiscoveredResources): TeardownStepResult {
+        if (resources.openSearchDomainNames.isEmpty()) return TeardownStepResult.success()
 
         outputHandler.handleMessage("Deleting ${resources.openSearchDomainNames.size} OpenSearch domains...")
 
+        val errors = mutableListOf<String>()
         val domainsToWait = mutableListOf<String>()
 
         resources.openSearchDomainNames.forEach { domainName ->
@@ -246,8 +299,6 @@ class InfrastructureTeardownService(
             try {
                 openSearchService.waitForDomainDeleted(domainName)
             } catch (e: Exception) {
-                // Log error but continue - the domain deletion was initiated and will complete async
-                // Subsequent VPC resource cleanup may fail with "dependent object" errors
                 errors.add(logError("Timeout waiting for OpenSearch domain $domainName to delete", e))
                 outputHandler.handleMessage(
                     "Warning: OpenSearch domain $domainName is still deleting. " +
@@ -257,38 +308,54 @@ class InfrastructureTeardownService(
             }
         }
 
-        return allDeleted
+        return TeardownStepResult(success = allDeleted, errors = errors)
     }
 
     @Suppress("TooGenericExceptionCaught")
-    private fun terminateEc2Instances(
-        resources: DiscoveredResources,
-        errors: MutableList<String>,
-    ): Boolean {
-        if (resources.instanceIds.isEmpty()) return true
+    private fun terminateEc2Instances(resources: DiscoveredResources): TeardownStepResult {
+        if (resources.instanceIds.isEmpty()) return TeardownStepResult.success()
         return try {
             vpcService.terminateInstances(resources.instanceIds)
             vpcService.waitForInstancesTerminated(resources.instanceIds)
-            true
+            TeardownStepResult.success()
         } catch (e: Exception) {
-            errors.add(logError("Failed to terminate instances", e))
-            false // Instance failure is fatal, cannot continue
+            TeardownStepResult.failure(logError("Failed to terminate instances", e))
         }
     }
 
     @Suppress("TooGenericExceptionCaught")
-    private fun deleteNatGateways(
+    private fun deleteNatGateways(resources: DiscoveredResources): TeardownStepResult {
+        if (resources.natGatewayIds.isEmpty()) return TeardownStepResult.success()
+        return try {
+            resources.natGatewayIds.forEach { vpcService.deleteNatGateway(it) }
+            vpcService.waitForNatGatewaysDeleted(resources.natGatewayIds)
+            TeardownStepResult.success()
+        } catch (e: Exception) {
+            // NAT gateway failure is non-fatal
+            TeardownStepResult(success = true, errors = listOf(logError("Failed to delete NAT gateways", e)))
+        }
+    }
+
+    // ==================== Phase 2: ENI Wait ====================
+
+    @Suppress("TooGenericExceptionCaught")
+    private fun waitForEniCleanup(
         resources: DiscoveredResources,
         errors: MutableList<String>,
     ) {
-        if (resources.natGatewayIds.isEmpty()) return
         try {
-            resources.natGatewayIds.forEach { vpcService.deleteNatGateway(it) }
-            vpcService.waitForNatGatewaysDeleted(resources.natGatewayIds)
+            vpcService.waitForNetworkInterfacesCleared(resources.vpcId)
         } catch (e: Exception) {
-            errors.add(logError("Failed to delete NAT gateways", e))
+            // ENI timeout is non-fatal — teardown continues, errors recorded
+            errors.add(logError("Timeout waiting for network interfaces to clear in VPC ${resources.vpcId}", e))
+            outputHandler.handleMessage(
+                "Warning: Some network interfaces are still active. " +
+                    "Subsequent deletions may fail with DependencyViolation errors.",
+            )
         }
     }
+
+    // ==================== Phase 3: Sequential VPC Cleanup ====================
 
     @Suppress("TooGenericExceptionCaught")
     private fun revokeAllSecurityGroupRules(
@@ -387,3 +454,26 @@ class InfrastructureTeardownService(
         return error
     }
 }
+
+/**
+ * Result of a single teardown step, used for thread-safe error collection
+ * in parallel Phase 1 tasks.
+ */
+data class TeardownStepResult(
+    val success: Boolean,
+    val errors: List<String> = emptyList(),
+) {
+    companion object {
+        fun success(): TeardownStepResult = TeardownStepResult(success = true)
+
+        fun failure(error: String): TeardownStepResult = TeardownStepResult(success = false, errors = listOf(error))
+    }
+}
+
+/**
+ * Aggregated result of all Phase 1 parallel tasks.
+ */
+data class Phase1Result(
+    val errors: List<String>,
+    val hasFatalFailure: Boolean,
+)

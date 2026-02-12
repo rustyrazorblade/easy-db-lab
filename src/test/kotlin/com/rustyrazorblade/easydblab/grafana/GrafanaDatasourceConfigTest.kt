@@ -32,7 +32,7 @@ class GrafanaDatasourceConfigTest {
 
         val cw = config.datasources.first { it.name == "CloudWatch" }
         assertThat(cw.jsonData).containsEntry("defaultRegion", "eu-west-1")
-        assertThat(cw.jsonData).containsEntry("authType", "ec2_iam_role")
+        assertThat(cw.jsonData).containsEntry("authType", "default")
     }
 
     @Test

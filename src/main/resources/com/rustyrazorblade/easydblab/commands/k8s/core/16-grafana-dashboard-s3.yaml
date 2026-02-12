@@ -123,7 +123,7 @@ data:
               "period": "300",
               "refId": "A",
               "region": "default",
-              "statistic": ["Sum"]
+              "statistic": "Sum"
             }
           ],
           "title": "Bytes Downloaded",
@@ -222,7 +222,7 @@ data:
               "period": "300",
               "refId": "A",
               "region": "default",
-              "statistic": ["Sum"]
+              "statistic": "Sum"
             }
           ],
           "title": "Bytes Uploaded",
@@ -333,7 +333,7 @@ data:
               "period": "300",
               "refId": "A",
               "region": "default",
-              "statistic": ["Sum"]
+              "statistic": "Sum"
             }
           ],
           "title": "All Requests",
@@ -432,7 +432,7 @@ data:
               "period": "300",
               "refId": "A",
               "region": "default",
-              "statistic": ["Sum"]
+              "statistic": "Sum"
             }
           ],
           "title": "GET Requests",
@@ -531,7 +531,7 @@ data:
               "period": "300",
               "refId": "A",
               "region": "default",
-              "statistic": ["Sum"]
+              "statistic": "Sum"
             }
           ],
           "title": "PUT Requests",
@@ -642,7 +642,7 @@ data:
               "period": "300",
               "refId": "A",
               "region": "default",
-              "statistic": ["Average"]
+              "statistic": "Average"
             }
           ],
           "title": "First Byte Latency (Avg)",
@@ -741,7 +741,7 @@ data:
               "period": "300",
               "refId": "A",
               "region": "default",
-              "statistic": ["p99"]
+              "statistic": "p99"
             }
           ],
           "title": "First Byte Latency (p99)",
@@ -840,7 +840,7 @@ data:
               "period": "300",
               "refId": "A",
               "region": "default",
-              "statistic": ["Average"]
+              "statistic": "Average"
             }
           ],
           "title": "Total Request Latency (Avg)",
@@ -939,7 +939,7 @@ data:
               "period": "300",
               "refId": "A",
               "region": "default",
-              "statistic": ["p99"]
+              "statistic": "p99"
             }
           ],
           "title": "Total Request Latency (p99)",

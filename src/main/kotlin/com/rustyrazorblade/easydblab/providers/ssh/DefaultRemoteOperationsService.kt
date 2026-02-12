@@ -192,7 +192,7 @@ class DefaultRemoteOperationsService(
         inputVersion: String,
     ): Version =
         if (inputVersion == "current") {
-            val path = executeRemotely(host, "readlink -f /usr/local/cassandra/current").text.trim()
+            val path = executeRemotely(host, "readlink -f /usr/local/cassandra/current", output = false).text.trim()
             Version(path)
         } else {
             Version.fromString(inputVersion)

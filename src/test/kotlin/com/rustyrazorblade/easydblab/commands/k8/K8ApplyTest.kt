@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
 import com.rustyrazorblade.easydblab.services.K8sService
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -29,6 +30,7 @@ import java.nio.file.Path
 class K8ApplyTest : BaseKoinTest() {
     private lateinit var mockK8sService: K8sService
     private lateinit var mockClusterStateManager: ClusterStateManager
+    private lateinit var mockDashboardService: GrafanaDashboardService
 
     @TempDir
     lateinit var testWorkDir: File
@@ -58,6 +60,13 @@ class K8ApplyTest : BaseKoinTest() {
                         mockClusterStateManager = it
                     }
                 }
+
+                // Mock GrafanaDashboardService
+                single {
+                    mock<GrafanaDashboardService>().also {
+                        mockDashboardService = it
+                    }
+                }
             },
         )
 
@@ -66,6 +75,11 @@ class K8ApplyTest : BaseKoinTest() {
         // Initialize mocks by getting them from Koin
         mockK8sService = getKoin().get()
         mockClusterStateManager = getKoin().get()
+        mockDashboardService = getKoin().get()
+
+        // Default: datasource ConfigMap creation succeeds
+        whenever(mockDashboardService.createDatasourcesConfigMap(any(), any()))
+            .thenReturn(Result.success(Unit))
     }
 
     @Test

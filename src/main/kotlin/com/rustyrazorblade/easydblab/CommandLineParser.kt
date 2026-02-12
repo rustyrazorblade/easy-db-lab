@@ -27,6 +27,7 @@ import com.rustyrazorblade.easydblab.commands.Version
 import com.rustyrazorblade.easydblab.commands.aws.Aws
 import com.rustyrazorblade.easydblab.commands.cassandra.Cassandra
 import com.rustyrazorblade.easydblab.commands.clickhouse.ClickHouse
+import com.rustyrazorblade.easydblab.commands.dashboards.Dashboards
 import com.rustyrazorblade.easydblab.commands.k8.K8
 import com.rustyrazorblade.easydblab.commands.logs.Logs
 import com.rustyrazorblade.easydblab.commands.metrics.Metrics
@@ -82,6 +83,7 @@ import kotlin.system.exitProcess
         // Parent command groups
         Spark::class,
         K8::class,
+        Dashboards::class,
         ClickHouse::class,
         Cassandra::class,
         OpenSearch::class,

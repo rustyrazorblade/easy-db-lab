@@ -20,7 +20,6 @@ import picocli.CommandLine.Spec
     description = ["ClickHouse cluster operations on K8s"],
     mixinStandardHelpOptions = true,
     subcommands = [
-        ClickHouseGenerateDashboards::class,
         ClickHouseInit::class,
         ClickHouseStart::class,
         ClickHouseStatus::class,

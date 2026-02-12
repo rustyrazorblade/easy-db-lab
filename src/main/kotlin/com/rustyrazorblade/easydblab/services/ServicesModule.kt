@@ -43,6 +43,7 @@ val servicesModule =
         factoryOf(::DefaultK3sService) bind K3sService::class
         factoryOf(::DefaultK3sAgentService) bind K3sAgentService::class
         factoryOf(::DefaultK8sService) bind K8sService::class
+        factoryOf(::DefaultGrafanaDashboardService) bind GrafanaDashboardService::class
         factoryOf(::DefaultVictoriaBackupService) bind VictoriaBackupService::class
         factoryOf(::DefaultSidecarService) bind SidecarService::class
         factoryOf(::DefaultStressJobService) bind StressJobService::class

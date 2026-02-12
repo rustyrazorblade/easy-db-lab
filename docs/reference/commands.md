@@ -387,6 +387,26 @@ easy-db-lab k8 apply
 
 ---
 
+## Dashboard Commands
+
+### dashboards generate
+
+Extract all Grafana dashboard manifests (core and ClickHouse) from JAR resources to the local `k8s/` directory. Useful for rapid dashboard iteration without re-running init.
+
+```bash
+easy-db-lab dashboards generate
+```
+
+### dashboards upload
+
+Apply all Grafana dashboard manifests and the datasource ConfigMap to the K8s cluster. Extracts dashboards, creates the `grafana-datasources` ConfigMap with runtime configuration, and applies everything.
+
+```bash
+easy-db-lab dashboards upload
+```
+
+---
+
 ## ClickHouse Commands
 
 ### clickhouse start

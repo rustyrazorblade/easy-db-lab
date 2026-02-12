@@ -153,7 +153,7 @@ data class InitConfig(
  */
 data class ClickHouseConfig(
     val s3CacheSize: String = Constants.ClickHouse.DEFAULT_S3_CACHE_SIZE,
-    val s3CacheOnWrite: Boolean = Constants.ClickHouse.DEFAULT_S3_CACHE_ON_WRITE,
+    val s3CacheOnWrite: String = Constants.ClickHouse.DEFAULT_S3_CACHE_ON_WRITE,
 )
 
 /**

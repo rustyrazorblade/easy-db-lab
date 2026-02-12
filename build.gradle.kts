@@ -265,6 +265,10 @@ tasks.distTar {
     archiveExtension.set("tar.gz")
 }
 
+tasks.named("installDist") {
+    dependsOn(tasks.named("shadowJar"))
+}
+
 tasks.assemble {
     mustRunAfter(tasks.clean)
 }

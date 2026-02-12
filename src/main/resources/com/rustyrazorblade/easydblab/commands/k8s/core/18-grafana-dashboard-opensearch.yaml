@@ -765,7 +765,8 @@ data:
               "namespace": "AWS/ES",
               "queryType": "dimensionValues",
               "refId": "CloudWatchVariableQueryEditor-VariableQuery",
-              "region": "default"
+              "region": "default",
+              "statistic": "Average"
             },
             "refresh": 1,
             "regex": "",

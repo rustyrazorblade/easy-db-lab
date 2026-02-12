@@ -684,7 +684,8 @@ data:
               "namespace": "AWS/ElasticMapReduce",
               "queryType": "dimensionValues",
               "refId": "CloudWatchVariableQueryEditor-VariableQuery",
-              "region": "default"
+              "region": "default",
+              "statistic": "Average"
             },
             "refresh": 1,
             "regex": "",

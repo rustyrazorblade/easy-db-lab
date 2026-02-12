@@ -52,6 +52,7 @@ okhttp = "5.3.2"
 # Apache
 sshd = "2.16.0"
 commons-io = "2.21.0"
+commons-text = "1.13.0"
 
 # Cassandra
 cassandra-driver = "4.19.2"
@@ -138,6 +139,7 @@ okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
 sshd-core = { module = "org.apache.sshd:sshd-core", version.ref = "sshd" }
 sshd-scp = { module = "org.apache.sshd:sshd-scp", version.ref = "sshd" }
 commons-io = { module = "commons-io:commons-io", version.ref = "commons-io" }
+commons-text = { module = "org.apache.commons:commons-text", version.ref = "commons-text" }
 
 # Other
 classgraph = { module = "io.github.classgraph:classgraph", version.ref = "classgraph" }

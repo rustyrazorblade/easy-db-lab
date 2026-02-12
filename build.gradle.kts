@@ -91,6 +91,7 @@ dependencies {
     // Utilities
     implementation(libs.classgraph)
     implementation(libs.commons.io)
+    implementation(libs.commons.text)
 
     // Docker
     implementation(libs.bundles.docker)

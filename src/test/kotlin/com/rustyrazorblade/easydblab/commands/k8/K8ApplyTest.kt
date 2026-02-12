@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
 import com.rustyrazorblade.easydblab.services.K8sService
+import com.rustyrazorblade.easydblab.services.ManifestTemplateService
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -31,6 +32,7 @@ class K8ApplyTest : BaseKoinTest() {
     private lateinit var mockK8sService: K8sService
     private lateinit var mockClusterStateManager: ClusterStateManager
     private lateinit var mockDashboardService: GrafanaDashboardService
+    private lateinit var mockManifestTemplateService: ManifestTemplateService
 
     @TempDir
     lateinit var testWorkDir: File
@@ -67,6 +69,13 @@ class K8ApplyTest : BaseKoinTest() {
                         mockDashboardService = it
                     }
                 }
+
+                // Mock ManifestTemplateService
+                single {
+                    mock<ManifestTemplateService>().also {
+                        mockManifestTemplateService = it
+                    }
+                }
             },
         )
 
@@ -76,6 +85,7 @@ class K8ApplyTest : BaseKoinTest() {
         mockK8sService = getKoin().get()
         mockClusterStateManager = getKoin().get()
         mockDashboardService = getKoin().get()
+        mockManifestTemplateService = getKoin().get()
 
         // Default: datasource ConfigMap creation succeeds
         whenever(mockDashboardService.createDatasourcesConfigMap(any(), any()))

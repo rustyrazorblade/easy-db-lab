@@ -21,6 +21,7 @@ import org.mockito.kotlin.whenever
  */
 class GrafanaDashboardServiceTest : BaseKoinTest() {
     private lateinit var mockK8sService: K8sService
+    private lateinit var mockManifestTemplateService: ManifestTemplateService
 
     private val testControlHost =
         ClusterHost(
@@ -39,17 +40,24 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
                         mockK8sService = it
                     }
                 }
+
+                single {
+                    mock<ManifestTemplateService>().also {
+                        mockManifestTemplateService = it
+                    }
+                }
             },
         )
 
     @BeforeEach
     fun setupMocks() {
         mockK8sService = getKoin().get()
+        mockManifestTemplateService = getKoin().get()
     }
 
     @Test
     fun `extractDashboardResources finds all 7 dashboard files from core and clickhouse`() {
-        val service = DefaultGrafanaDashboardService(mockK8sService, getKoin().get())
+        val service = DefaultGrafanaDashboardService(mockK8sService, getKoin().get(), mockManifestTemplateService)
         val files = service.extractDashboardResources()
 
         assertThat(files).hasSize(7)
@@ -67,7 +75,7 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
 
     @Test
     fun `extractDashboardResources excludes non-dashboard files`() {
-        val service = DefaultGrafanaDashboardService(mockK8sService, getKoin().get())
+        val service = DefaultGrafanaDashboardService(mockK8sService, getKoin().get(), mockManifestTemplateService)
         val files = service.extractDashboardResources()
 
         assertThat(files).allSatisfy { file ->
@@ -77,7 +85,7 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
 
     @Test
     fun `extractDashboardResources returns files sorted by name`() {
-        val service = DefaultGrafanaDashboardService(mockK8sService, getKoin().get())
+        val service = DefaultGrafanaDashboardService(mockK8sService, getKoin().get(), mockManifestTemplateService)
         val files = service.extractDashboardResources()
 
         val names = files.map { it.name }
@@ -89,7 +97,7 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
         whenever(mockK8sService.createConfigMap(any(), any(), any(), any(), any()))
             .thenReturn(Result.success(Unit))
 
-        val service = DefaultGrafanaDashboardService(mockK8sService, getKoin().get())
+        val service = DefaultGrafanaDashboardService(mockK8sService, getKoin().get(), mockManifestTemplateService)
         val result = service.createDatasourcesConfigMap(testControlHost, "us-east-1")
 
         assertThat(result.isSuccess).isTrue()
@@ -109,7 +117,7 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
         whenever(mockK8sService.applyManifests(any(), any()))
             .thenReturn(Result.success(Unit))
 
-        val service = DefaultGrafanaDashboardService(mockK8sService, getKoin().get())
+        val service = DefaultGrafanaDashboardService(mockK8sService, getKoin().get(), mockManifestTemplateService)
         val result = service.uploadDashboards(testControlHost, "us-west-2")
 
         assertThat(result.isSuccess).isTrue()
@@ -119,6 +127,9 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
 
         // Verify applyManifests was called for each of the 7 dashboard files
         verify(mockK8sService, org.mockito.kotlin.times(7)).applyManifests(any(), any())
+
+        // Verify template substitution was called
+        verify(mockManifestTemplateService).replaceAll(any())
     }
 
     @Test
@@ -126,7 +137,7 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
         whenever(mockK8sService.createConfigMap(any(), any(), any(), any(), any()))
             .thenReturn(Result.failure(RuntimeException("ConfigMap creation failed")))
 
-        val service = DefaultGrafanaDashboardService(mockK8sService, getKoin().get())
+        val service = DefaultGrafanaDashboardService(mockK8sService, getKoin().get(), mockManifestTemplateService)
         val result = service.uploadDashboards(testControlHost, "us-west-2")
 
         assertThat(result.isFailure).isTrue()
@@ -140,7 +151,7 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
         whenever(mockK8sService.applyManifests(any(), any()))
             .thenReturn(Result.failure(RuntimeException("Apply failed")))
 
-        val service = DefaultGrafanaDashboardService(mockK8sService, getKoin().get())
+        val service = DefaultGrafanaDashboardService(mockK8sService, getKoin().get(), mockManifestTemplateService)
         val result = service.uploadDashboards(testControlHost, "us-west-2")
 
         assertThat(result.isFailure).isTrue()

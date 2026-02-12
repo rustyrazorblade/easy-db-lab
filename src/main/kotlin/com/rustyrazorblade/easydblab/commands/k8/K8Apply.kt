@@ -9,10 +9,12 @@ import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.output.displayObservabilityAccess
 import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
 import com.rustyrazorblade.easydblab.services.K8sService
+import com.rustyrazorblade.easydblab.services.ManifestTemplateService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
+import java.io.File
 import java.nio.file.Path
 
 /**
@@ -38,6 +40,7 @@ class K8Apply : PicoBaseCommand() {
     private val k8sService: K8sService by inject()
     private val dashboardService: GrafanaDashboardService by inject()
     private val user: User by inject()
+    private val manifestTemplateService: ManifestTemplateService by inject()
 
     @Suppress("MagicNumber")
     @Option(
@@ -76,6 +79,9 @@ class K8Apply : PicoBaseCommand() {
         // Create runtime ConfigMaps that require dynamic values
         createClusterConfigMap(controlNode)
         createDatasourcesConfigMap(controlNode)
+
+        // Replace template placeholders in manifest files with runtime values
+        manifestTemplateService.replaceAll(File(K8S_CORE_MANIFEST_DIR))
 
         // Determine manifest path - use provided path or default to core manifests
         val pathToApply = manifestPath ?: Path.of(K8S_CORE_MANIFEST_DIR)

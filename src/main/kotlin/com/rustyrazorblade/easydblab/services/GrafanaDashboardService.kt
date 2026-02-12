@@ -55,10 +55,12 @@ interface GrafanaDashboardService {
  *
  * @property k8sService Service for K8s operations
  * @property outputHandler Handler for user-facing output
+ * @property manifestTemplateService Service for replacing template placeholders in manifests
  */
 class DefaultGrafanaDashboardService(
     private val k8sService: K8sService,
     private val outputHandler: OutputHandler,
+    private val manifestTemplateService: ManifestTemplateService,
 ) : GrafanaDashboardService {
     private val log = KotlinLogging.logger {}
 
@@ -128,6 +130,8 @@ class DefaultGrafanaDashboardService(
         }
 
         outputHandler.handleMessage("Found ${dashboardFiles.size} dashboard file(s)")
+
+        manifestTemplateService.replaceAll(File(Constants.K8s.MANIFEST_DIR))
 
         outputHandler.handleMessage("Creating Grafana datasources ConfigMap...")
         createDatasourcesConfigMap(controlHost, region).getOrElse { exception ->

@@ -256,7 +256,7 @@ The `logs query` command uses the internal SOCKS5 proxy to connect to Victoria L
 
 ## Backup
 
-Victoria Logs data can be backed up to S3 for disaster recovery.
+Victoria Logs data can be backed up to S3 for disaster recovery using consistent snapshots.
 
 ### Creating a Backup
 
@@ -273,6 +273,16 @@ By default, backups are stored at:
 
 Use `--dest` to override the destination bucket and path.
 
+### How It Works
+
+The backup uses VictoriaLogs' snapshot API to create consistent, point-in-time copies:
+
+1. **Create snapshots** — calls the VictoriaLogs snapshot API to create read-only snapshots of all active log partitions
+2. **Sync to S3** — uploads each snapshot directory to S3 using `aws s3 sync`
+3. **Cleanup** — deletes the snapshots from disk to free space (runs even if the sync step fails)
+
+Using snapshots ensures data consistency, since VictoriaLogs may be actively writing to its data directory during the backup.
+
 ### What Gets Backed Up
 
 - All log partitions (organized by date)
@@ -280,6 +290,6 @@ Use `--dest` to override the destination bucket and path.
 
 ### Notes
 
-- Backups are created by syncing the data directory to S3
 - The process is non-disruptive; log ingestion continues during backup
+- Snapshot cleanup always runs, even if the S3 upload fails, to avoid filling disk
 - Persistent storage at `/mnt/db1/victorialogs` ensures logs survive pod restarts

@@ -4,6 +4,15 @@
 
 Grafana is deployed automatically as part of the observability stack (`k8 apply`). It is accessible on port 3000 of the control node.
 
+### Cluster Identification
+
+When running multiple environments side by side, Grafana displays the cluster name in several places to help you identify which environment you're looking at:
+
+- **Browser tab** - Shows the cluster name instead of "Grafana"
+- **Dashboard titles** - Each dashboard title is prefixed with the cluster name
+- **Sidebar org name** - The organization name in the sidebar shows the cluster name
+- **Home dashboard** - The System Overview dashboard is set as the home page instead of the default Grafana welcome page
+
 ### System Dashboard
 
 Shows CPU, memory, disk I/O, network I/O, and load average for all cluster nodes via OpenTelemetry metrics.

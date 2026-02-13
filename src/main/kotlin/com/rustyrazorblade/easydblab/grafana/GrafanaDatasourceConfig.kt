@@ -43,6 +43,7 @@ data class GrafanaDatasourceConfig(
                         GrafanaDatasource(
                             name = "VictoriaMetrics",
                             type = "prometheus",
+                            uid = "VictoriaMetrics",
                             url = "http://localhost:8428",
                             isDefault = true,
                         ),

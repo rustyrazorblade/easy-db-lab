@@ -524,7 +524,7 @@ data:
       },
       "timepicker": {},
       "timezone": "browser",
-      "title": "System Overview",
+      "title": "__CLUSTER_NAME__ - System Overview",
       "uid": "system-overview",
       "version": 1,
       "weekStart": ""

@@ -782,7 +782,7 @@ data:
       },
       "timepicker": {},
       "timezone": "browser",
-      "title": "OpenSearch Overview",
+      "title": "__CLUSTER_NAME__ - OpenSearch Overview",
       "uid": "opensearch-overview",
       "version": 1,
       "weekStart": ""

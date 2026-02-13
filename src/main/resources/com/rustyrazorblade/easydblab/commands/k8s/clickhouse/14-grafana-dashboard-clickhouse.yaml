@@ -1141,7 +1141,7 @@ data:
               "exemplar": false,
               "expr": "  label_replace(\n    {__name__=~\"ClickHouseAsyncMetrics_DiskUsed_.*\", cluster=\"$Cluster\", instance=~\"$Instance:9363\"},\n    \"disk\", \"$1\", \"__name__\", \"ClickHouseAsyncMetrics_DiskUsed_(.*)\"\n  ) \n  - \n  label_replace(\n    {__name__=~\"ClickHouseAsyncMetrics_DiskUsed_.*\", cluster=\"$Cluster\", instance=~\"$Instance:9363\"} offset 10m,\n    \"disk\", \"$1\", \"__name__\", \"ClickHouseAsyncMetrics_DiskUsed_(.*)\"\n  )\n",
               "interval": "",
-              "legendFormat": "cli201-22a.cpp5.prod.clickhouse.com-{{disk}}",
+              "legendFormat": "{{instance}}-{{disk}}",
               "range": true,
               "refId": "A"
             }
@@ -1240,7 +1240,7 @@ data:
               "exemplar": false,
               "expr": "ClickHouseMetrics_MemoryTracking{cluster=\"$Cluster\", instance=~\"$Instance:9363\"}",
               "interval": "",
-              "legendFormat": "cli201-22a.cpp5.prod.clickhouse.com",
+              "legendFormat": "{{instance}}",
               "range": true,
               "refId": "A"
             }
@@ -2132,7 +2132,7 @@ data:
               "exemplar": false,
               "expr": "ClickHouseAsyncMetrics_OSUserTimeNormalized{cluster=\"$Cluster\",  instance=~\"$Instance:9363\"} * 100",
               "interval": "",
-              "legendFormat": "ch01.test",
+              "legendFormat": "{{instance}}",
               "range": true,
               "refId": "A"
             }
@@ -22329,7 +22329,7 @@ data:
         ]
       },
       "timezone": "",
-      "title": "ClickHouse and Keeper Comprehensive Dashboard",
+      "title": "__CLUSTER_NAME__ - ClickHouse and Keeper Comprehensive Dashboard",
       "uid": "clickhouse-overview",
       "version": 1,
       "weekStart": ""

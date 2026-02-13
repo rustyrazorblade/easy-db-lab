@@ -168,7 +168,7 @@ class VictoriaBackupServiceTest : BaseKoinTest() {
         // When
         victoriaBackupService.backupLogs(testControlHost, testClusterState)
 
-        // Then - Verify job uses aws-cli for S3 sync
+        // Then - Verify job uses aws-cli with snapshot-based backup
         verify(mockK8sService).createJob(
             eq(testControlHost),
             eq("default"),
@@ -176,7 +176,9 @@ class VictoriaBackupServiceTest : BaseKoinTest() {
                 yaml.contains("amazon/aws-cli:latest") &&
                     yaml.contains("aws s3 sync") &&
                     yaml.contains("/mnt/db1/victorialogs") &&
-                    yaml.contains("s3://easy-db-lab-test-bucket/victorialogs/")
+                    yaml.contains("s3://easy-db-lab-test-bucket/victorialogs/") &&
+                    yaml.contains("/internal/partition/snapshot/create") &&
+                    yaml.contains("/internal/partition/snapshot/delete")
             },
         )
     }
@@ -376,6 +378,66 @@ class VictoriaBackupServiceTest : BaseKoinTest() {
                 service.parseS3Uri(uri, timestamp)
             }
         assertThat(exception.message).contains("Destination must be an S3 URI")
+    }
+
+    // ========== SNAPSHOT LIFECYCLE TESTS ==========
+
+    @Test
+    fun `backupLogs job YAML includes snapshot lifecycle`() {
+        // Given - capture YAML
+        var capturedYaml: String? = null
+        whenever(mockK8sService.createJob(any(), any(), any()))
+            .thenAnswer { invocation ->
+                capturedYaml = invocation.getArgument(2)
+                Result.failure<String>(RuntimeException("Test: stop after createJob"))
+            }
+
+        // When
+        victoriaBackupService.backupLogs(testControlHost, testClusterState)
+
+        // Then - verify all three steps: create, sync, delete
+        assertThat(capturedYaml).contains("/internal/partition/snapshot/create")
+        assertThat(capturedYaml).contains("aws s3 sync")
+        assertThat(capturedYaml).contains("/internal/partition/snapshot/delete")
+    }
+
+    @Test
+    fun `backupLogs job YAML translates VL internal path to host mount`() {
+        // Given - capture YAML
+        var capturedYaml: String? = null
+        whenever(mockK8sService.createJob(any(), any(), any()))
+            .thenAnswer { invocation ->
+                capturedYaml = invocation.getArgument(2)
+                Result.failure<String>(RuntimeException("Test: stop after createJob"))
+            }
+
+        // When
+        victoriaBackupService.backupLogs(testControlHost, testClusterState)
+
+        // Then - verify sed substitution translates VL's internal path to the host mount path
+        assertThat(capturedYaml).contains("sed \"s|/victoria-logs-data|/mnt/db1/victorialogs|\"")
+    }
+
+    @Test
+    fun `backupLogs job YAML includes snapshot cleanup on failure`() {
+        // Given - capture YAML
+        var capturedYaml: String? = null
+        whenever(mockK8sService.createJob(any(), any(), any()))
+            .thenAnswer { invocation ->
+                capturedYaml = invocation.getArgument(2)
+                Result.failure<String>(RuntimeException("Test: stop after createJob"))
+            }
+
+        // When
+        victoriaBackupService.backupLogs(testControlHost, testClusterState)
+
+        // Then - verify SYNC_FAILED pattern ensures cleanup runs even on failure
+        assertThat(capturedYaml).contains("SYNC_FAILED=0")
+        assertThat(capturedYaml).contains("|| SYNC_FAILED=1")
+        // Verify snapshot delete loop comes after sync loop
+        val syncIndex = capturedYaml!!.indexOf("aws s3 sync")
+        val deleteIndex = capturedYaml!!.indexOf("/internal/partition/snapshot/delete")
+        assertThat(deleteIndex).isGreaterThan(syncIndex)
     }
 
     // ========== HELPER METHODS ==========

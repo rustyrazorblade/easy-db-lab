@@ -1,0 +1,46 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: __JOB_NAME__
+  namespace: default
+  labels:
+    app.kubernetes.io/name: victoriametrics-backup
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: Never
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      nodeSelector:
+        node-role.kubernetes.io/master: "true"
+      tolerations:
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: vmbackup
+          image: victoriametrics/vmbackup:latest
+          env:
+            - name: AWS_REGION
+              value: __AWS_REGION__
+          args:
+            - -storageDataPath=/mnt/db1/victoriametrics
+            - -snapshot.createURL=http://localhost:8428/snapshot/create
+            - -dst=s3://__S3_BUCKET__/__S3_KEY__
+            - -customS3Endpoint=https://s3.__AWS_REGION__.amazonaws.com
+          volumeMounts:
+            - name: data
+              mountPath: /mnt/db1/victoriametrics
+              readOnly: true
+          resources:
+            requests:
+              memory: 128Mi
+              cpu: 100m
+            limits:
+              memory: 512Mi
+      volumes:
+        - name: data
+          hostPath:
+            path: /mnt/db1/victoriametrics
+            type: Directory

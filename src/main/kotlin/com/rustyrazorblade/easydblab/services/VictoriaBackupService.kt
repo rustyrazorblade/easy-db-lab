@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import io.github.oshai.kotlinlogging.KotlinLogging
+import org.apache.commons.text.StringSubstitutor
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -79,9 +80,6 @@ class DefaultVictoriaBackupService(
 
     companion object {
         private const val NAMESPACE = "default"
-        private const val VM_DATA_PATH = "/mnt/db1/victoriametrics"
-        private const val VL_DATA_PATH = "/mnt/db1/victorialogs"
-        private const val VM_HTTP_PORT = 8428
         private const val JOB_TIMEOUT_SECONDS = 600 // 10 minutes
         private const val JOB_POLL_INTERVAL_MS = 5000L
         private val TIMESTAMP_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")
@@ -112,7 +110,7 @@ class DefaultVictoriaBackupService(
 
             // Create a Job that runs vmbackup
             val jobName = "vmbackup-${timestamp.lowercase()}"
-            val jobYaml = createVmBackupJobYaml(jobName, bucket, s3Path.getKey(), region)
+            val jobYaml = loadBackupJobYaml("vmbackup-job.yaml", jobName, bucket, s3Path.getKey(), region)
 
             // Apply the job
             k8sService.createJob(controlHost, NAMESPACE, jobYaml).getOrThrow()
@@ -156,11 +154,9 @@ class DefaultVictoriaBackupService(
 
             outputHandler.handleMessage("Creating VictoriaLogs backup to ${s3Path.toUri()}...")
 
-            // Create a Job that copies VictoriaLogs data to S3
-            // VictoriaLogs doesn't have a dedicated backup tool like vmbackup,
-            // so we use aws s3 sync to copy the data directory
+            // Create a Job that snapshots VictoriaLogs partitions and syncs to S3
             val jobName = "vlbackup-${timestamp.lowercase()}"
-            val jobYaml = createVlBackupJobYaml(jobName, bucket, s3Path.getKey(), region)
+            val jobYaml = loadBackupJobYaml("vlbackup-job.yaml", jobName, bucket, s3Path.getKey(), region)
 
             // Apply the job
             k8sService.createJob(controlHost, NAMESPACE, jobYaml).getOrThrow()
@@ -218,112 +214,29 @@ class DefaultVictoriaBackupService(
         return bucket to s3Path
     }
 
-    private fun createVmBackupJobYaml(
+    private fun loadBackupJobYaml(
+        resourceName: String,
         jobName: String,
         bucket: String,
         s3Key: String,
         region: String,
-    ): String =
-        """
-        |apiVersion: batch/v1
-        |kind: Job
-        |metadata:
-        |  name: $jobName
-        |  namespace: $NAMESPACE
-        |  labels:
-        |    app.kubernetes.io/name: victoriametrics-backup
-        |spec:
-        |  ttlSecondsAfterFinished: 300
-        |  template:
-        |    spec:
-        |      restartPolicy: Never
-        |      hostNetwork: true
-        |      dnsPolicy: ClusterFirstWithHostNet
-        |      nodeSelector:
-        |        node-role.kubernetes.io/master: "true"
-        |      tolerations:
-        |        - key: node-role.kubernetes.io/master
-        |          operator: Exists
-        |          effect: NoSchedule
-        |      containers:
-        |        - name: vmbackup
-        |          image: victoriametrics/vmbackup:latest
-        |          env:
-        |            - name: AWS_REGION
-        |              value: $region
-        |          args:
-        |            - -storageDataPath=$VM_DATA_PATH
-        |            - -snapshot.createURL=http://localhost:$VM_HTTP_PORT/snapshot/create
-        |            - -dst=s3://$bucket/$s3Key
-        |            - -customS3Endpoint=https://s3.$region.amazonaws.com
-        |          volumeMounts:
-        |            - name: data
-        |              mountPath: $VM_DATA_PATH
-        |              readOnly: true
-        |          resources:
-        |            requests:
-        |              memory: 128Mi
-        |              cpu: 100m
-        |            limits:
-        |              memory: 512Mi
-        |      volumes:
-        |        - name: data
-        |          hostPath:
-        |            path: $VM_DATA_PATH
-        |            type: Directory
-        """.trimMargin()
+    ): String {
+        val template =
+            this::class.java
+                .getResourceAsStream(resourceName)
+                ?.bufferedReader()
+                ?.readText()
+                ?: error("Resource not found: $resourceName")
 
-    private fun createVlBackupJobYaml(
-        jobName: String,
-        bucket: String,
-        s3Key: String,
-        region: String,
-    ): String =
-        """
-        |apiVersion: batch/v1
-        |kind: Job
-        |metadata:
-        |  name: $jobName
-        |  namespace: $NAMESPACE
-        |  labels:
-        |    app.kubernetes.io/name: victorialogs-backup
-        |spec:
-        |  ttlSecondsAfterFinished: 300
-        |  template:
-        |    spec:
-        |      restartPolicy: Never
-        |      hostNetwork: true
-        |      dnsPolicy: ClusterFirstWithHostNet
-        |      nodeSelector:
-        |        node-role.kubernetes.io/master: "true"
-        |      tolerations:
-        |        - key: node-role.kubernetes.io/master
-        |          operator: Exists
-        |          effect: NoSchedule
-        |      containers:
-        |        - name: aws-cli
-        |          image: amazon/aws-cli:latest
-        |          command:
-        |            - sh
-        |            - -c
-        |            - |
-        |              aws s3 sync $VL_DATA_PATH s3://$bucket/$s3Key --region $region
-        |          volumeMounts:
-        |            - name: data
-        |              mountPath: $VL_DATA_PATH
-        |              readOnly: true
-        |          resources:
-        |            requests:
-        |              memory: 128Mi
-        |              cpu: 100m
-        |            limits:
-        |              memory: 512Mi
-        |      volumes:
-        |        - name: data
-        |          hostPath:
-        |            path: $VL_DATA_PATH
-        |            type: Directory
-        """.trimMargin()
+        val variables =
+            mapOf(
+                "JOB_NAME" to jobName,
+                "S3_BUCKET" to bucket,
+                "S3_KEY" to s3Key,
+                "AWS_REGION" to region,
+            )
+        return StringSubstitutor(variables, "__", "__").replace(template)
+    }
 
     @Suppress("MagicNumber", "NestedBlockDepth")
     private fun waitForJobCompletion(

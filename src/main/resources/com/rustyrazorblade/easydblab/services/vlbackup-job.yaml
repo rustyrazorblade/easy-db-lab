@@ -1,0 +1,74 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: __JOB_NAME__
+  namespace: default
+  labels:
+    app.kubernetes.io/name: victorialogs-backup
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: Never
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      nodeSelector:
+        node-role.kubernetes.io/master: "true"
+      tolerations:
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: aws-cli
+          image: amazon/aws-cli:latest
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              VL_URL="http://localhost:9428"
+              SYNC_FAILED=0
+
+              echo "Creating VictoriaLogs snapshots..."
+              SNAPSHOT_JSON=$(curl -sf "$VL_URL/internal/partition/snapshot/create")
+              echo "Snapshots: $SNAPSHOT_JSON"
+
+              SNAPSHOT_PATHS=$(echo "$SNAPSHOT_JSON" | tr -d '[]"' | tr ',' '\n')
+
+              if [ -z "$SNAPSHOT_PATHS" ]; then
+                echo "No snapshots created. Nothing to back up."
+                exit 0
+              fi
+
+              for SNAP_PATH in $SNAPSHOT_PATHS; do
+                HOST_PATH=$(echo "$SNAP_PATH" | sed "s|/victoria-logs-data|/mnt/db1/victorialogs|")
+                REL_PATH=$(echo "$SNAP_PATH" | sed "s|/victoria-logs-data/||")
+                echo "Syncing $HOST_PATH to s3://__S3_BUCKET__/__S3_KEY__/$REL_PATH ..."
+                aws s3 sync "$HOST_PATH" "s3://__S3_BUCKET__/__S3_KEY__/$REL_PATH" --region __AWS_REGION__ || SYNC_FAILED=1
+              done
+
+              for SNAP_PATH in $SNAPSHOT_PATHS; do
+                echo "Deleting snapshot: $SNAP_PATH"
+                curl -sf "$VL_URL/internal/partition/snapshot/delete?path=$SNAP_PATH" || \
+                  echo "WARNING: Failed to delete snapshot $SNAP_PATH"
+              done
+
+              if [ "$SYNC_FAILED" -eq 1 ]; then
+                echo "ERROR: One or more S3 sync operations failed"
+                exit 1
+              fi
+          volumeMounts:
+            - name: data
+              mountPath: /mnt/db1/victorialogs
+              readOnly: true
+          resources:
+            requests:
+              memory: 128Mi
+              cpu: 100m
+            limits:
+              memory: 512Mi
+      volumes:
+        - name: data
+          hostPath:
+            path: /mnt/db1/victorialogs
+            type: Directory

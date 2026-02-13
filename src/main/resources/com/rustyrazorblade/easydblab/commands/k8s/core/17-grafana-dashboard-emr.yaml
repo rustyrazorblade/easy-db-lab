@@ -701,7 +701,7 @@ data:
       },
       "timepicker": {},
       "timezone": "browser",
-      "title": "EMR Overview",
+      "title": "__CLUSTER_NAME__ - EMR Overview",
       "uid": "emr-overview",
       "version": 1,
       "weekStart": ""

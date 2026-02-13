@@ -149,7 +149,7 @@ data:
       },
       "timepicker": {},
       "timezone": "browser",
-      "title": "ClickHouse Logs",
+      "title": "__CLUSTER_NAME__ - ClickHouse Logs",
       "uid": "clickhouse-logs",
       "version": 1,
       "weekStart": ""

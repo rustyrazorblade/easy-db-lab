@@ -1090,6 +1090,216 @@ data:
           ],
           "title": "Status Check Failures",
           "type": "timeseries"
+        },
+        {
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 53
+          },
+          "id": 32,
+          "title": "S3 Storage",
+          "type": "row"
+        },
+        {
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "${datasource}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "bytes"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 54
+          },
+          "id": 33,
+          "options": {
+            "legend": {
+              "calcs": ["lastNotNull"],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "cloudwatch",
+                "uid": "${datasource}"
+              },
+              "dimensions": {
+                "BucketName": ["__BUCKET_NAME__"],
+                "StorageType": ["StandardStorage"]
+              },
+              "expression": "",
+              "id": "",
+              "matchExact": true,
+              "metricEditorMode": 0,
+              "metricName": "BucketSizeBytes",
+              "metricQueryType": 0,
+              "namespace": "AWS/S3",
+              "period": "86400",
+              "refId": "A",
+              "region": "default",
+              "statistic": "Average"
+            }
+          ],
+          "title": "Bucket Size",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "${datasource}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 54
+          },
+          "id": 34,
+          "options": {
+            "legend": {
+              "calcs": ["lastNotNull"],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "cloudwatch",
+                "uid": "${datasource}"
+              },
+              "dimensions": {
+                "BucketName": ["__BUCKET_NAME__"],
+                "StorageType": ["AllStorageTypes"]
+              },
+              "expression": "",
+              "id": "",
+              "matchExact": true,
+              "metricEditorMode": 0,
+              "metricName": "NumberOfObjects",
+              "metricQueryType": 0,
+              "namespace": "AWS/S3",
+              "period": "86400",
+              "refId": "A",
+              "region": "default",
+              "statistic": "Average"
+            }
+          ],
+          "title": "Number of Objects",
+          "type": "timeseries"
         }
       ],
       "refresh": "5m",
@@ -1180,7 +1390,7 @@ data:
       },
       "timepicker": {},
       "timezone": "browser",
-      "title": "AWS CloudWatch Overview",
+      "title": "__CLUSTER_NAME__ - AWS CloudWatch Overview",
       "uid": "aws-cloudwatch-overview",
       "version": 1,
       "weekStart": ""

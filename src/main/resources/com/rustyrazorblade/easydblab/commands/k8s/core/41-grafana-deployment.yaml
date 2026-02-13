@@ -47,15 +47,19 @@ spec:
             - name: GF_AUTH_ANONYMOUS_ENABLED
               value: "true"
             - name: GF_USERS_DEFAULT_ORG_NAME
-              value: Main Org.
+              value: "__CLUSTER_NAME__"
             - name: GF_AUTH_ANONYMOUS_ORG_NAME
-              value: Main Org.
+              value: "__CLUSTER_NAME__"
             - name: GF_AUTH_ANONYMOUS_ORG_ROLE
               value: Admin
             - name: GF_AUTH_DISABLE_LOGIN_FORM
               value: "true"
             - name: GF_AUTH_BASIC_ENABLED
               value: "false"
+            - name: GF_BRANDING_APP_TITLE
+              value: "__CLUSTER_NAME__"
+            - name: GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH
+              value: "/var/lib/grafana/dashboards/system/system-overview.json"
           resources:
             limits:
               memory: 256Mi

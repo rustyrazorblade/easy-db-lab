@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
@@ -12,6 +13,7 @@ import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import java.io.File
 
 /**
  * Test suite for GrafanaDashboardService.
@@ -21,7 +23,7 @@ import org.mockito.kotlin.whenever
  */
 class GrafanaDashboardServiceTest : BaseKoinTest() {
     private lateinit var mockK8sService: K8sService
-    private lateinit var mockManifestTemplateService: ManifestTemplateService
+    private lateinit var mockTemplateService: TemplateService
 
     private val testControlHost =
         ClusterHost(
@@ -42,54 +44,56 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
                 }
 
                 single {
-                    mock<ManifestTemplateService>().also {
-                        mockManifestTemplateService = it
+                    mock<TemplateService>().also {
+                        mockTemplateService = it
                     }
                 }
             },
         )
 
+    @TempDir
+    lateinit var dashboardTempDir: File
+
     @BeforeEach
     fun setupMocks() {
         mockK8sService = getKoin().get()
-        mockManifestTemplateService = getKoin().get()
+        mockTemplateService = getKoin().get()
     }
 
-    @Test
-    fun `extractDashboardResources finds all 7 dashboard files from core and clickhouse`() {
-        val service = DefaultGrafanaDashboardService(mockK8sService, getKoin().get(), mockManifestTemplateService)
-        val files = service.extractDashboardResources()
-
-        assertThat(files).hasSize(7)
-
-        // Verify all expected dashboard files are present
-        val fileNames = files.map { it.name }
-        assertThat(fileNames).contains("14-grafana-dashboards-configmap.yaml")
-        assertThat(fileNames).contains("15-grafana-dashboard-system.yaml")
-        assertThat(fileNames).contains("16-grafana-dashboard-s3.yaml")
-        assertThat(fileNames).contains("17-grafana-dashboard-emr.yaml")
-        assertThat(fileNames).contains("18-grafana-dashboard-opensearch.yaml")
-        assertThat(fileNames).contains("14-grafana-dashboard-clickhouse.yaml")
-        assertThat(fileNames).contains("17-grafana-dashboard-clickhouse-logs.yaml")
-    }
-
-    @Test
-    fun `extractDashboardResources excludes non-dashboard files`() {
-        val service = DefaultGrafanaDashboardService(mockK8sService, getKoin().get(), mockManifestTemplateService)
-        val files = service.extractDashboardResources()
-
-        assertThat(files).allSatisfy { file ->
-            assertThat(file.name).contains("grafana-dashboard")
+    private fun createDashboardFiles(vararg names: String): List<File> =
+        names.map { name ->
+            File(dashboardTempDir, name).also { it.writeText("dashboard: $name") }
         }
+
+    @Test
+    fun `extractDashboardResources delegates to templateService and returns sorted files`() {
+        val dashboardFiles =
+            createDashboardFiles(
+                "16-grafana-dashboard-s3.yaml",
+                "14-grafana-dashboards-configmap.yaml",
+                "15-grafana-dashboard-system.yaml",
+            )
+        // Return in unsorted order to verify sorting
+        whenever(mockTemplateService.extractAndSubstituteResources(any(), any()))
+            .thenReturn(dashboardFiles)
+
+        val service = DefaultGrafanaDashboardService(mockK8sService, getKoin().get(), mockTemplateService)
+        val files = service.extractDashboardResources()
+
+        assertThat(files).hasSize(3)
+        assertThat(files.map { it.name }).isSorted()
+        verify(mockTemplateService).extractAndSubstituteResources(any(), any())
     }
 
     @Test
-    fun `extractDashboardResources returns files sorted by name`() {
-        val service = DefaultGrafanaDashboardService(mockK8sService, getKoin().get(), mockManifestTemplateService)
+    fun `extractDashboardResources returns empty list when no dashboards found`() {
+        whenever(mockTemplateService.extractAndSubstituteResources(any(), any()))
+            .thenReturn(emptyList())
+
+        val service = DefaultGrafanaDashboardService(mockK8sService, getKoin().get(), mockTemplateService)
         val files = service.extractDashboardResources()
 
-        val names = files.map { it.name }
-        assertThat(names).isSorted()
+        assertThat(files).isEmpty()
     }
 
     @Test
@@ -97,7 +101,7 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
         whenever(mockK8sService.createConfigMap(any(), any(), any(), any(), any()))
             .thenReturn(Result.success(Unit))
 
-        val service = DefaultGrafanaDashboardService(mockK8sService, getKoin().get(), mockManifestTemplateService)
+        val service = DefaultGrafanaDashboardService(mockK8sService, getKoin().get(), mockTemplateService)
         val result = service.createDatasourcesConfigMap(testControlHost, "us-east-1")
 
         assertThat(result.isSuccess).isTrue()
@@ -112,12 +116,20 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
 
     @Test
     fun `uploadDashboards extracts and applies all dashboards`() {
+        val dashboardFiles =
+            createDashboardFiles(
+                "14-grafana-dashboards-configmap.yaml",
+                "15-grafana-dashboard-system.yaml",
+                "16-grafana-dashboard-s3.yaml",
+            )
+        whenever(mockTemplateService.extractAndSubstituteResources(any(), any()))
+            .thenReturn(dashboardFiles)
         whenever(mockK8sService.createConfigMap(any(), any(), any(), any(), any()))
             .thenReturn(Result.success(Unit))
         whenever(mockK8sService.applyManifests(any(), any()))
             .thenReturn(Result.success(Unit))
 
-        val service = DefaultGrafanaDashboardService(mockK8sService, getKoin().get(), mockManifestTemplateService)
+        val service = DefaultGrafanaDashboardService(mockK8sService, getKoin().get(), mockTemplateService)
         val result = service.uploadDashboards(testControlHost, "us-west-2")
 
         assertThat(result.isSuccess).isTrue()
@@ -125,19 +137,22 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
         // Verify datasources ConfigMap was created
         verify(mockK8sService).createConfigMap(any(), any(), eq("grafana-datasources"), any(), any())
 
-        // Verify applyManifests was called for each of the 7 dashboard files
-        verify(mockK8sService, org.mockito.kotlin.times(7)).applyManifests(any(), any())
+        // Verify applyManifests was called for each dashboard file
+        verify(mockK8sService, org.mockito.kotlin.times(3)).applyManifests(any(), any())
 
-        // Verify template substitution was called
-        verify(mockManifestTemplateService).replaceAll(any())
+        // Verify extraction with substitution was called
+        verify(mockTemplateService).extractAndSubstituteResources(any(), any())
     }
 
     @Test
     fun `uploadDashboards fails when createDatasourcesConfigMap fails`() {
+        val dashboardFiles = createDashboardFiles("14-grafana-dashboards-configmap.yaml")
+        whenever(mockTemplateService.extractAndSubstituteResources(any(), any()))
+            .thenReturn(dashboardFiles)
         whenever(mockK8sService.createConfigMap(any(), any(), any(), any(), any()))
             .thenReturn(Result.failure(RuntimeException("ConfigMap creation failed")))
 
-        val service = DefaultGrafanaDashboardService(mockK8sService, getKoin().get(), mockManifestTemplateService)
+        val service = DefaultGrafanaDashboardService(mockK8sService, getKoin().get(), mockTemplateService)
         val result = service.uploadDashboards(testControlHost, "us-west-2")
 
         assertThat(result.isFailure).isTrue()
@@ -146,12 +161,15 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
 
     @Test
     fun `uploadDashboards fails when applyManifests fails`() {
+        val dashboardFiles = createDashboardFiles("14-grafana-dashboards-configmap.yaml")
+        whenever(mockTemplateService.extractAndSubstituteResources(any(), any()))
+            .thenReturn(dashboardFiles)
         whenever(mockK8sService.createConfigMap(any(), any(), any(), any(), any()))
             .thenReturn(Result.success(Unit))
         whenever(mockK8sService.applyManifests(any(), any()))
             .thenReturn(Result.failure(RuntimeException("Apply failed")))
 
-        val service = DefaultGrafanaDashboardService(mockK8sService, getKoin().get(), mockManifestTemplateService)
+        val service = DefaultGrafanaDashboardService(mockK8sService, getKoin().get(), mockTemplateService)
         val result = service.uploadDashboards(testControlHost, "us-west-2")
 
         assertThat(result.isFailure).isTrue()

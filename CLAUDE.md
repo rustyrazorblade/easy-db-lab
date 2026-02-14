@@ -346,6 +346,16 @@ The `docker-compose.yaml` file is:
 
 This ensures services on control nodes can connect to Cassandra nodes using their internal IPs.
 
+#### Template Substitution (`TemplateService`)
+
+`TemplateService` handles all `__KEY__` placeholder substitution (K8s manifests, backup job YAML, etc.). It is Koin-managed and builds context variables (`BUCKET_NAME`, `AWS_REGION`, `CLUSTER_NAME`, `CONTROL_NODE_IP`) from cluster state.
+
+- **`extractResources(destinationDir, filter)`** — scans K8s YAML resources from classpath, extracts to directory without substitution. Used by `Init` (cluster state not yet available)
+- **`extractAndSubstituteResources(destinationDir, filter)`** — scans K8s YAML resources from classpath, substitutes `__KEY__` placeholders, writes to directory. Used by `K8Apply` and `GrafanaDashboardService`
+- **`fromString()` / `fromFile()` / `fromResource()`** — create a `Template` instance with context variables pre-loaded
+- **`TemplateService.Template`** — simple value class that performs substitution. Use `substitute()` for context-only, or `substitute(extraVars)` to merge additional variables (extraVars take precedence). Can be used standalone without DI.
+
+Uses `__` delimiters (not `${}`) to avoid conflicts with Grafana's template syntax.
 
 ## Open Telemetry
 

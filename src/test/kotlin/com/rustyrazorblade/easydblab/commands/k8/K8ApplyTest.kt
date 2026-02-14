@@ -7,7 +7,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
 import com.rustyrazorblade.easydblab.services.K8sService
-import com.rustyrazorblade.easydblab.services.ManifestTemplateService
+import com.rustyrazorblade.easydblab.services.TemplateService
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -32,7 +32,7 @@ class K8ApplyTest : BaseKoinTest() {
     private lateinit var mockK8sService: K8sService
     private lateinit var mockClusterStateManager: ClusterStateManager
     private lateinit var mockDashboardService: GrafanaDashboardService
-    private lateinit var mockManifestTemplateService: ManifestTemplateService
+    private lateinit var mockTemplateService: TemplateService
 
     @TempDir
     lateinit var testWorkDir: File
@@ -70,10 +70,10 @@ class K8ApplyTest : BaseKoinTest() {
                     }
                 }
 
-                // Mock ManifestTemplateService
+                // Mock TemplateService
                 single {
-                    mock<ManifestTemplateService>().also {
-                        mockManifestTemplateService = it
+                    mock<TemplateService>().also {
+                        mockTemplateService = it
                     }
                 }
             },
@@ -85,7 +85,7 @@ class K8ApplyTest : BaseKoinTest() {
         mockK8sService = getKoin().get()
         mockClusterStateManager = getKoin().get()
         mockDashboardService = getKoin().get()
-        mockManifestTemplateService = getKoin().get()
+        mockTemplateService = getKoin().get()
 
         // Default: datasource ConfigMap creation succeeds
         whenever(mockDashboardService.createDatasourcesConfigMap(any(), any()))
@@ -143,6 +143,7 @@ class K8ApplyTest : BaseKoinTest() {
         command.execute()
 
         // Then
+        verify(mockTemplateService).extractAndSubstituteResources(any(), any())
         verify(mockK8sService).applyManifests(any(), any<Path>())
         verify(mockK8sService).waitForPodsReady(any(), any())
     }

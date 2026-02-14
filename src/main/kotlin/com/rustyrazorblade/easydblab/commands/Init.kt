@@ -5,7 +5,6 @@ import com.github.ajalt.mordant.TermColors
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
-import com.rustyrazorblade.easydblab.commands.Up
 import com.rustyrazorblade.easydblab.commands.converters.PicoAZConverter
 import com.rustyrazorblade.easydblab.commands.converters.PicoArchConverter
 import com.rustyrazorblade.easydblab.commands.mixins.OpenSearchInitMixin
@@ -16,7 +15,7 @@ import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.network.CidrBlock
 import com.rustyrazorblade.easydblab.services.CommandExecutor
-import io.github.classgraph.ClassGraph
+import com.rustyrazorblade.easydblab.services.TemplateService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -61,6 +60,7 @@ import kotlin.system.exitProcess
 class Init : PicoBaseCommand() {
     private val userConfig: User by inject()
     private val commandExecutor: CommandExecutor by inject()
+    private val templateService: TemplateService by inject()
 
     companion object {
         private const val DEFAULT_CASSANDRA_INSTANCE_COUNT = 3
@@ -306,39 +306,7 @@ class Init : PicoBaseCommand() {
     }
 
     private fun extractK8sManifests() {
-        val manifestDir = File(Constants.K8s.MANIFEST_DIR)
-        if (!manifestDir.exists()) {
-            manifestDir.mkdirs()
-        }
-
-        ClassGraph()
-            .acceptPackages(Constants.K8s.RESOURCE_PACKAGE)
-            .scan()
-            .use { scanResult ->
-                val yamlResources =
-                    scanResult.getResourcesWithExtension("yaml") +
-                        scanResult.getResourcesWithExtension("yml")
-
-                yamlResources.forEach { resource ->
-                    extractK8sResource(resource)
-                }
-            }
-    }
-
-    private fun extractK8sResource(resource: io.github.classgraph.Resource) {
-        val resourcePath = resource.path
-        val k8sIndex = resourcePath.indexOf(Constants.K8s.PATH_PREFIX)
-        if (k8sIndex == -1) return
-
-        val relativePath = resourcePath.substring(k8sIndex + Constants.K8s.PATH_PREFIX.length)
-        val targetFile = File(Constants.K8s.MANIFEST_DIR, relativePath)
-
-        targetFile.parentFile?.mkdirs()
-        resource.open().use { input ->
-            targetFile.outputStream().use { output ->
-                input.copyTo(output)
-            }
-        }
+        templateService.extractResources()
     }
 
     private fun extractResourceFile(

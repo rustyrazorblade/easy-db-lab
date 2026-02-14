@@ -19,11 +19,12 @@ class GrafanaDatasourceConfigTest {
     }
 
     @Test
-    fun `createDatasourceConfig should set VictoriaMetrics as default`() {
+    fun `createDatasourceConfig should set VictoriaMetrics as default with explicit uid`() {
         val config = GrafanaDatasourceConfig.create(region = "us-east-1")
 
         val vm = config.datasources.first { it.name == "VictoriaMetrics" }
         assertThat(vm.isDefault).isTrue()
+        assertThat(vm.uid).isEqualTo("VictoriaMetrics")
     }
 
     @Test

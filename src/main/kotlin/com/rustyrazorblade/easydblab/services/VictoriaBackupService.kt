@@ -5,7 +5,6 @@ import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import io.github.oshai.kotlinlogging.KotlinLogging
-import org.apache.commons.text.StringSubstitutor
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -69,7 +68,6 @@ interface VictoriaBackupService {
  * Uses Kubernetes Jobs to run backup operations on the control node.
  *
  * @property k8sService Service for Kubernetes operations
- * @property socksProxyService Service for SOCKS proxy connections
  * @property outputHandler Handler for user-facing output messages
  */
 class DefaultVictoriaBackupService(
@@ -228,14 +226,14 @@ class DefaultVictoriaBackupService(
                 ?.readText()
                 ?: error("Resource not found: $resourceName")
 
-        val variables =
+        return TemplateService.Template(template, emptyMap()).substitute(
             mapOf(
                 "JOB_NAME" to jobName,
                 "S3_BUCKET" to bucket,
                 "S3_KEY" to s3Key,
                 "AWS_REGION" to region,
-            )
-        return StringSubstitutor(variables, "__", "__").replace(template)
+            ),
+        )
     }
 
     @Suppress("MagicNumber", "NestedBlockDepth")

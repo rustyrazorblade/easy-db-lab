@@ -95,23 +95,6 @@ class VictoriaBackupServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `backupMetrics calls createJob with correct job spec`() {
-        // Given - mock createJob to fail early so we don't need full job completion mocking
-        whenever(mockK8sService.createJob(any(), any(), any()))
-            .thenReturn(Result.failure(RuntimeException("Test: stop after createJob")))
-
-        // When
-        victoriaBackupService.backupMetrics(testControlHost, testClusterState)
-
-        // Then - verify createJob was called (we already test YAML content in other tests)
-        verify(mockK8sService).createJob(
-            eq(testControlHost),
-            eq("default"),
-            argThat { yaml -> yaml.contains("victoriametrics/vmbackup:latest") },
-        )
-    }
-
-    @Test
     fun `backupMetrics handles createJob failure`() {
         // Given
         whenever(mockK8sService.createJob(any(), any(), any()))
@@ -200,23 +183,6 @@ class VictoriaBackupServiceTest : BaseKoinTest() {
         assertThat(capturedYaml).contains("s3://easy-db-lab-test-bucket/victorialogs/")
         // Verify timestamp format in job name (YYYYMMDD-HHMMSS)
         assertThat(capturedYaml).containsPattern("name: vlbackup-\\d{8}-\\d{6}")
-    }
-
-    @Test
-    fun `backupLogs calls createJob with aws-cli image`() {
-        // Given - mock createJob to fail early
-        whenever(mockK8sService.createJob(any(), any(), any()))
-            .thenReturn(Result.failure(RuntimeException("Test: stop after createJob")))
-
-        // When
-        victoriaBackupService.backupLogs(testControlHost, testClusterState)
-
-        // Then - verify createJob was called with correct image
-        verify(mockK8sService).createJob(
-            eq(testControlHost),
-            eq("default"),
-            argThat { yaml -> yaml.contains("amazon/aws-cli:latest") },
-        )
     }
 
     @Test

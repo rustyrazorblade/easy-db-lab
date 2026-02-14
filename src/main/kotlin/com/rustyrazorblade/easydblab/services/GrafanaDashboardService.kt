@@ -1,12 +1,8 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.grafana.GrafanaDatasourceConfig
 import com.rustyrazorblade.easydblab.output.OutputHandler
-import io.github.classgraph.ClassGraph
-import io.github.classgraph.Resource
-import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
 
 /**
@@ -55,52 +51,24 @@ interface GrafanaDashboardService {
  *
  * @property k8sService Service for K8s operations
  * @property outputHandler Handler for user-facing output
- * @property manifestTemplateService Service for replacing template placeholders in manifests
+ * @property templateService Service for replacing template placeholders in manifests
  */
 class DefaultGrafanaDashboardService(
     private val k8sService: K8sService,
     private val outputHandler: OutputHandler,
-    private val manifestTemplateService: ManifestTemplateService,
+    private val templateService: TemplateService,
 ) : GrafanaDashboardService {
-    private val log = KotlinLogging.logger {}
-
     companion object {
         private const val DASHBOARD_FILE_PATTERN = "grafana-dashboard"
         private const val DATASOURCES_CONFIGMAP_NAME = "grafana-datasources"
         private const val DEFAULT_NAMESPACE = "default"
     }
 
-    override fun extractDashboardResources(): List<File> {
-        val manifestDir = File(Constants.K8s.MANIFEST_DIR)
-        if (!manifestDir.exists()) {
-            manifestDir.mkdirs()
-        }
-
-        val extractedFiles = mutableListOf<File>()
-
-        ClassGraph()
-            .acceptPackages(Constants.K8s.RESOURCE_PACKAGE)
-            .scan()
-            .use { scanResult ->
-                val yamlResources =
-                    scanResult.getResourcesWithExtension("yaml") +
-                        scanResult.getResourcesWithExtension("yml")
-
-                val dashboardResources =
-                    yamlResources.filter { resource ->
-                        resource.path.contains(DASHBOARD_FILE_PATTERN)
-                    }
-
-                dashboardResources.forEach { resource ->
-                    val file = extractK8sResource(resource)
-                    if (file != null) {
-                        extractedFiles.add(file)
-                    }
-                }
-            }
-
-        return extractedFiles.sortedBy { it.name }
-    }
+    override fun extractDashboardResources(): List<File> =
+        templateService
+            .extractAndSubstituteResources(
+                filter = { it.contains(DASHBOARD_FILE_PATTERN) },
+            ).sortedBy { it.name }
 
     override fun createDatasourcesConfigMap(
         controlHost: ClusterHost,
@@ -131,8 +99,6 @@ class DefaultGrafanaDashboardService(
 
         outputHandler.handleMessage("Found ${dashboardFiles.size} dashboard file(s)")
 
-        manifestTemplateService.replaceAll(File(Constants.K8s.MANIFEST_DIR))
-
         outputHandler.handleMessage("Creating Grafana datasources ConfigMap...")
         createDatasourcesConfigMap(controlHost, region).getOrElse { exception ->
             return Result.failure(
@@ -153,24 +119,5 @@ class DefaultGrafanaDashboardService(
 
         outputHandler.handleMessage("All Grafana dashboards applied successfully!")
         return Result.success(Unit)
-    }
-
-    private fun extractK8sResource(resource: Resource): File? {
-        val resourcePath = resource.path
-        val k8sIndex = resourcePath.indexOf(Constants.K8s.PATH_PREFIX)
-        if (k8sIndex == -1) return null
-
-        val relativePath = resourcePath.substring(k8sIndex + Constants.K8s.PATH_PREFIX.length)
-        val targetFile = File(Constants.K8s.MANIFEST_DIR, relativePath)
-
-        targetFile.parentFile?.mkdirs()
-        resource.open().use { input ->
-            targetFile.outputStream().use { output ->
-                input.copyTo(output)
-            }
-        }
-
-        log.debug { "Extracted dashboard resource: $relativePath" }
-        return targetFile
     }
 }

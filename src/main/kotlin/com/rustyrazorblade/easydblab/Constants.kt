@@ -154,6 +154,9 @@ object Constants {
 
         /** ID for the S3 bucket metrics configuration used for CloudWatch request metrics */
         const val METRICS_CONFIGURATION_ID = "easy-db-lab-request-metrics"
+
+        /** Top-level prefix for all cluster data in the account bucket */
+        const val CLUSTERS_PREFIX = "clusters"
     }
 
     // Configuration file paths

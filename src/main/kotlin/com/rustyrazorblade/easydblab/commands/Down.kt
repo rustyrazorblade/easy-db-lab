@@ -424,7 +424,7 @@ class Down : PicoBaseCommand() {
         }
 
         try {
-            val configId = "edl-${clusterState.name}-${clusterState.clusterId}".take(32)
+            val configId = "edl-${clusterState.name}-${clusterState.clusterId}".take(Constants.S3.MAX_METRICS_CONFIG_ID_LENGTH)
             aws.disableBucketRequestMetrics(bucketName, configId)
             outputHandler.handleMessage("Disabled S3 request metrics for cluster: ${clusterState.name}")
         } catch (e: Exception) {

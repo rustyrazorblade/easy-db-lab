@@ -28,10 +28,14 @@ import software.amazon.awssdk.services.s3.model.CreateBucketRequest
 import software.amazon.awssdk.services.s3.model.CreateBucketResponse
 import software.amazon.awssdk.services.s3.model.DeleteBucketMetricsConfigurationRequest
 import software.amazon.awssdk.services.s3.model.DeleteBucketMetricsConfigurationResponse
+import software.amazon.awssdk.services.s3.model.GetBucketLifecycleConfigurationRequest
+import software.amazon.awssdk.services.s3.model.GetBucketLifecycleConfigurationResponse
 import software.amazon.awssdk.services.s3.model.GetBucketTaggingRequest
 import software.amazon.awssdk.services.s3.model.GetBucketTaggingResponse
 import software.amazon.awssdk.services.s3.model.ListBucketsResponse
 import software.amazon.awssdk.services.s3.model.NoSuchBucketException
+import software.amazon.awssdk.services.s3.model.PutBucketLifecycleConfigurationRequest
+import software.amazon.awssdk.services.s3.model.PutBucketLifecycleConfigurationResponse
 import software.amazon.awssdk.services.s3.model.PutBucketMetricsConfigurationRequest
 import software.amazon.awssdk.services.s3.model.PutBucketMetricsConfigurationResponse
 import software.amazon.awssdk.services.s3.model.PutBucketTaggingRequest
@@ -706,5 +710,29 @@ internal class AWSTest :
         val captor = argumentCaptor<DeleteBucketMetricsConfigurationRequest>()
         verify(mockS3Client).deleteBucketMetricsConfiguration(captor.capture())
         assertThat(captor.firstValue.id()).isEqualTo(configId)
+    }
+
+    @Test
+    fun `setLifecycleExpirationRule should configure lifecycle rule with prefix and expiration`() {
+        val bucketName = "my-account-bucket"
+        val prefix = "clusters/mycluster-abc123/"
+        val days = 1
+
+        whenever(mockS3Client.putBucketLifecycleConfiguration(any<PutBucketLifecycleConfigurationRequest>()))
+            .thenReturn(PutBucketLifecycleConfigurationResponse.builder().build())
+
+        whenever(mockS3Client.getBucketLifecycleConfiguration(any<GetBucketLifecycleConfigurationRequest>()))
+            .thenReturn(GetBucketLifecycleConfigurationResponse.builder().rules(emptyList()).build())
+
+        aws.setLifecycleExpirationRule(bucketName, prefix, days)
+
+        val captor = argumentCaptor<PutBucketLifecycleConfigurationRequest>()
+        verify(mockS3Client).putBucketLifecycleConfiguration(captor.capture())
+
+        val rules = captor.firstValue.lifecycleConfiguration().rules()
+        assertThat(rules).hasSize(1)
+        assertThat(rules[0].filter().prefix()).isEqualTo(prefix)
+        assertThat(rules[0].expiration().days()).isEqualTo(days)
+        assertThat(rules[0].statusAsString()).isEqualTo("Enabled")
     }
 }

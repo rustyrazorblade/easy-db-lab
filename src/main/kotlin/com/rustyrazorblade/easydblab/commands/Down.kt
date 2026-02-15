@@ -5,6 +5,7 @@ import com.fasterxml.jackson.module.kotlin.readValue
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredResources
 import com.rustyrazorblade.easydblab.providers.aws.InfrastructureTeardownService
@@ -68,6 +69,13 @@ class Down : PicoBaseCommand() {
         description = ["Auto approve changes without confirmation prompt"],
     )
     var autoApprove = false
+
+    @CommandLine.Option(
+        names = ["--retention-days"],
+        description = ["Days to retain S3 data after teardown (default: 1)"],
+        defaultValue = "1",
+    )
+    var retentionDays: Int = 1
 
     private val teardownService: InfrastructureTeardownService by inject()
     private val sqsService: SQSService by inject()
@@ -348,8 +356,11 @@ class Down : PicoBaseCommand() {
                 // Delete SQS queue if it exists
                 deleteSqsQueue(clusterState.sqsQueueUrl)
 
-                // Disable S3 request metrics to stop CloudWatch charges
-                disableS3RequestMetrics(clusterState.s3Bucket)
+                // Set lifecycle expiration rule on cluster prefix
+                setClusterLifecycleRule(clusterState)
+
+                // Disable S3 request metrics for this cluster
+                disableS3RequestMetrics(clusterState)
 
                 clusterState.markInfrastructureDown()
                 clusterState.updateHosts(emptyMap())
@@ -380,19 +391,42 @@ class Down : PicoBaseCommand() {
     }
 
     /**
+     * Sets an S3 lifecycle expiration rule on the cluster's prefix.
+     * This schedules all objects under the cluster prefix for deletion after retentionDays.
+     */
+    @Suppress("TooGenericExceptionCaught")
+    private fun setClusterLifecycleRule(clusterState: ClusterState) {
+        val bucketName = clusterState.s3Bucket
+        if (bucketName.isNullOrBlank()) {
+            log.debug { "No S3 bucket configured, skipping lifecycle rule" }
+            return
+        }
+
+        try {
+            val clusterPrefix = "${Constants.S3.CLUSTERS_PREFIX}/${clusterState.name}-${clusterState.clusterId}/"
+            aws.setLifecycleExpirationRule(bucketName, clusterPrefix, retentionDays)
+            outputHandler.handleMessage("S3 lifecycle rule set: data under $clusterPrefix will expire in $retentionDays day(s)")
+        } catch (e: Exception) {
+            log.warn(e) { "Failed to set S3 lifecycle rule" }
+        }
+    }
+
+    /**
      * Disables S3 request metrics to stop CloudWatch billing.
      * The bucket itself is preserved for data retention.
      */
     @Suppress("TooGenericExceptionCaught")
-    private fun disableS3RequestMetrics(bucketName: String?) {
+    private fun disableS3RequestMetrics(clusterState: ClusterState) {
+        val bucketName = clusterState.s3Bucket
         if (bucketName.isNullOrBlank()) {
             log.debug { "No S3 bucket to disable metrics for" }
             return
         }
 
         try {
-            aws.disableBucketRequestMetrics(bucketName)
-            outputHandler.handleMessage("Disabled S3 request metrics on bucket: $bucketName")
+            val configId = "edl-${clusterState.name}-${clusterState.clusterId}".take(32)
+            aws.disableBucketRequestMetrics(bucketName, configId)
+            outputHandler.handleMessage("Disabled S3 request metrics for cluster: ${clusterState.name}")
         } catch (e: Exception) {
             log.warn(e) { "Failed to disable S3 request metrics: $bucketName" }
         }

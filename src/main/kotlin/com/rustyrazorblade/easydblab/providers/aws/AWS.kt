@@ -21,6 +21,7 @@ import software.amazon.awssdk.services.s3.model.CreateBucketRequest
 import software.amazon.awssdk.services.s3.model.DeleteBucketMetricsConfigurationRequest
 import software.amazon.awssdk.services.s3.model.GetBucketTaggingRequest
 import software.amazon.awssdk.services.s3.model.MetricsConfiguration
+import software.amazon.awssdk.services.s3.model.MetricsFilter
 import software.amazon.awssdk.services.s3.model.PutBucketMetricsConfigurationRequest
 import software.amazon.awssdk.services.s3.model.PutBucketTaggingRequest
 import software.amazon.awssdk.services.s3.model.S3Exception
@@ -540,19 +541,30 @@ class AWS(
      * Idempotent — overwrites any existing configuration with the same ID.
      *
      * @param bucketName The S3 bucket to enable metrics on
+     * @param prefix Optional prefix to scope metrics to a specific folder/cluster
      */
-    fun enableBucketRequestMetrics(bucketName: String) {
-        val metricsConfig =
-            MetricsConfiguration
-                .builder()
-                .id(Constants.S3.METRICS_CONFIGURATION_ID)
-                .build()
+    fun enableBucketRequestMetrics(
+        bucketName: String,
+        prefix: String? = null,
+    ) {
+        val configId =
+            if (prefix != null) {
+                "edl-${prefix.substringAfterLast("/").take(32)}"
+            } else {
+                Constants.S3.METRICS_CONFIGURATION_ID
+            }
+
+        val metricsConfigBuilder = MetricsConfiguration.builder().id(configId)
+        if (prefix != null) {
+            metricsConfigBuilder.filter(MetricsFilter.builder().prefix(prefix).build())
+        }
+        val metricsConfig = metricsConfigBuilder.build()
 
         val request =
             PutBucketMetricsConfigurationRequest
                 .builder()
                 .bucket(bucketName)
-                .id(Constants.S3.METRICS_CONFIGURATION_ID)
+                .id(configId)
                 .metricsConfiguration(metricsConfig)
                 .build()
 
@@ -561,7 +573,7 @@ class AWS(
         Retry
             .decorateRunnable(retry) {
                 s3Client.putBucketMetricsConfiguration(request)
-                log.info { "Enabled S3 request metrics on bucket: $bucketName" }
+                log.info { "Enabled S3 request metrics on bucket: $bucketName (prefix: ${prefix ?: "whole-bucket"})" }
             }.run()
     }
 
@@ -570,13 +582,17 @@ class AWS(
      * Safe to call even if metrics were never enabled.
      *
      * @param bucketName The S3 bucket to disable metrics on
+     * @param configId The metrics configuration ID to delete (defaults to whole-bucket config)
      */
-    fun disableBucketRequestMetrics(bucketName: String) {
+    fun disableBucketRequestMetrics(
+        bucketName: String,
+        configId: String = Constants.S3.METRICS_CONFIGURATION_ID,
+    ) {
         val request =
             DeleteBucketMetricsConfigurationRequest
                 .builder()
                 .bucket(bucketName)
-                .id(Constants.S3.METRICS_CONFIGURATION_ID)
+                .id(configId)
                 .build()
 
         try {
@@ -586,10 +602,10 @@ class AWS(
                 .decorateRunnable(retry) {
                     s3Client.deleteBucketMetricsConfiguration(request)
                 }.run()
-            log.info { "Disabled S3 request metrics on bucket: $bucketName" }
+            log.info { "Disabled S3 request metrics on bucket: $bucketName (configId: $configId)" }
         } catch (e: S3Exception) {
             if (e.statusCode() == Constants.HttpStatus.NOT_FOUND) {
-                log.info { "No metrics configuration found on bucket: $bucketName (already disabled)" }
+                log.info { "No metrics configuration found on bucket: $bucketName for configId: $configId (already disabled)" }
             } else {
                 throw e
             }

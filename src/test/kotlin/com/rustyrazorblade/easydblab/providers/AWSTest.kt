@@ -665,4 +665,46 @@ internal class AWSTest :
         // Should not throw
         aws.disableBucketRequestMetrics(bucketName)
     }
+
+    @Test
+    fun `enableBucketRequestMetrics with prefix should include metrics filter`() {
+        val bucketName = "my-account-bucket"
+        val prefix = "clusters/mycluster-abc123"
+        whenever(mockS3Client.putBucketMetricsConfiguration(any<PutBucketMetricsConfigurationRequest>()))
+            .thenReturn(PutBucketMetricsConfigurationResponse.builder().build())
+
+        aws.enableBucketRequestMetrics(bucketName, prefix)
+
+        val captor = argumentCaptor<PutBucketMetricsConfigurationRequest>()
+        verify(mockS3Client).putBucketMetricsConfiguration(captor.capture())
+        assertThat(captor.firstValue.metricsConfiguration().filter().prefix()).isEqualTo(prefix)
+    }
+
+    @Test
+    fun `enableBucketRequestMetrics with prefix uses cluster-specific config ID`() {
+        val bucketName = "my-account-bucket"
+        val prefix = "clusters/mycluster-abc123"
+        whenever(mockS3Client.putBucketMetricsConfiguration(any<PutBucketMetricsConfigurationRequest>()))
+            .thenReturn(PutBucketMetricsConfigurationResponse.builder().build())
+
+        aws.enableBucketRequestMetrics(bucketName, prefix)
+
+        val captor = argumentCaptor<PutBucketMetricsConfigurationRequest>()
+        verify(mockS3Client).putBucketMetricsConfiguration(captor.capture())
+        assertThat(captor.firstValue.id()).startsWith("edl-")
+    }
+
+    @Test
+    fun `disableBucketRequestMetrics with configId deletes specific configuration`() {
+        val bucketName = "my-account-bucket"
+        val configId = "edl-abc123"
+        whenever(mockS3Client.deleteBucketMetricsConfiguration(any<DeleteBucketMetricsConfigurationRequest>()))
+            .thenReturn(DeleteBucketMetricsConfigurationResponse.builder().build())
+
+        aws.disableBucketRequestMetrics(bucketName, configId)
+
+        val captor = argumentCaptor<DeleteBucketMetricsConfigurationRequest>()
+        verify(mockS3Client).deleteBucketMetricsConfiguration(captor.capture())
+        assertThat(captor.firstValue.id()).isEqualTo(configId)
+    }
 }

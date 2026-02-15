@@ -91,7 +91,6 @@ class Up : PicoBaseCommand() {
     companion object {
         private val log = KotlinLogging.logger {}
         private val SSH_STARTUP_DELAY = Duration.ofSeconds(5)
-        private const val BUCKET_UUID_LENGTH = 8
 
         /**
          * Gets the external IP address of the machine running easy-db-lab.
@@ -115,7 +114,7 @@ class Up : PicoBaseCommand() {
             workingState.initConfig
                 ?: error("No init config found. Please run 'easy-db-lab init' first.")
 
-        createS3BucketIfNeeded(initConfig)
+        configureAccountS3Bucket()
         createSqsQueueIfNeeded()
         reapplyS3Policy()
         provisionInfrastructure(initConfig)
@@ -142,42 +141,36 @@ class Up : PicoBaseCommand() {
     }
 
     /**
-     * Creates the S3 bucket for this environment if it doesn't already exist.
-     * Each environment gets its own dedicated bucket for isolation.
-     * The bucket is tagged with the ClusterId to enable state reconstruction.
-     *
-     * If the EASY_DB_LAB_S3_BUCKET environment variable is set, that bucket
-     * will be used instead of creating a new one.
+     * Configures the account-level S3 bucket for this cluster.
+     * Uses the bucket name from the user profile (set during setup-profile).
+     * Applies bucket policy for IAM role access and enables CloudWatch metrics
+     * scoped to this cluster's prefix.
      */
-    private fun createS3BucketIfNeeded(initConfig: InitConfig) {
+    private fun configureAccountS3Bucket() {
         if (!workingState.s3Bucket.isNullOrBlank()) {
             log.debug { "S3 bucket already configured: ${workingState.s3Bucket}" }
             return
         }
 
-        // Check for environment variable override
-        val envBucket = System.getenv(Constants.Environment.S3_BUCKET)
-        val bucketName =
-            if (!envBucket.isNullOrBlank()) {
-                outputHandler.handleMessage("Using S3 bucket from environment: $envBucket")
-                envBucket
-            } else {
-                val shortUuid = workingState.clusterId.take(BUCKET_UUID_LENGTH)
-                val generatedName = "easy-db-lab-${initConfig.name}-$shortUuid"
-                outputHandler.handleMessage("Creating S3 bucket: $generatedName")
-                aws.createS3Bucket(generatedName)
-                generatedName
-            }
+        val accountBucket = userConfig.s3Bucket
+        require(accountBucket.isNotBlank()) {
+            "No S3 bucket configured in profile. Run 'easy-db-lab setup-profile' first."
+        }
 
-        aws.putS3BucketPolicy(bucketName)
-        aws.tagS3Bucket(bucketName, mapOf("ClusterId" to workingState.clusterId) + initConfig.tags)
-        aws.enableBucketRequestMetrics(bucketName)
-        outputHandler.handleMessage("S3 request metrics enabled for CloudWatch monitoring")
+        outputHandler.handleMessage("Using account S3 bucket: $accountBucket")
 
-        workingState.s3Bucket = bucketName
+        // Apply bucket policy for IAM role access (idempotent)
+        aws.putS3BucketPolicy(accountBucket)
+
+        // Enable CloudWatch metrics scoped to this cluster's prefix
+        val clusterPrefix = "${Constants.S3.CLUSTERS_PREFIX}/${workingState.name}-${workingState.clusterId}"
+        aws.enableBucketRequestMetrics(accountBucket, clusterPrefix)
+        outputHandler.handleMessage("S3 request metrics enabled for cluster prefix: $clusterPrefix")
+
+        workingState.s3Bucket = accountBucket
         clusterStateManager.save(workingState)
 
-        outputHandler.handleMessage("S3 bucket configured: $bucketName")
+        outputHandler.handleMessage("S3 bucket configured: $accountBucket (prefix: $clusterPrefix)")
     }
 
     /**
@@ -206,8 +199,9 @@ class Up : PicoBaseCommand() {
             objectStore as? S3ObjectStore
                 ?: error("ObjectStore is not S3ObjectStore. S3 is required for log ingestion.")
 
+        val clusterPrefix = "${Constants.S3.CLUSTERS_PREFIX}/${workingState.name}-${workingState.clusterId}/"
         s3ObjectStore
-            .configureEMRLogNotifications(s3Bucket, queueInfo.queueArn)
+            .configureEMRLogNotifications(s3Bucket, queueInfo.queueArn, prefix = clusterPrefix + Constants.EMR.S3_LOG_PREFIX)
             .getOrThrow()
 
         // Verify the notification was configured correctly

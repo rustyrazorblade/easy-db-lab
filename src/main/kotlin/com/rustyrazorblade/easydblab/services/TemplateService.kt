@@ -46,12 +46,12 @@ class TemplateService(
 
     private fun buildMetricsFilterId(state: ClusterState): String {
         val name = state.initConfig?.name ?: state.name
-        return "edl-${name}-${state.clusterId}".take(32)
+        return "edl-$name-${state.clusterId}".take(32)
     }
 
     private fun buildClusterPrefix(state: ClusterState): String {
         val name = state.initConfig?.name ?: state.name
-        return "${Constants.S3.CLUSTERS_PREFIX}/${name}-${state.clusterId}"
+        return "${Constants.S3.CLUSTERS_PREFIX}/$name-${state.clusterId}"
     }
 
     /**

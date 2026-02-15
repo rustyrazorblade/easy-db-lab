@@ -19,7 +19,7 @@ Shows CPU, memory, disk I/O, network I/O, and load average for all cluster nodes
 
 ### AWS CloudWatch Overview
 
-A combined dashboard showing S3, EBS, and EC2 metrics via CloudWatch. Available after the cluster creates its S3 bucket during `easy-db-lab up`.
+A combined dashboard showing S3, EBS, and EC2 metrics via CloudWatch. Available after running `easy-db-lab up`.
 
 **S3 metrics:**
 
@@ -42,7 +42,7 @@ Use the dropdowns at the top to select S3 bucket, EC2 instances, and EBS volumes
 
 **How it works:**
 
-- S3 request metrics are automatically enabled on the cluster's S3 bucket during `easy-db-lab up`
+- S3 request metrics are automatically enabled for the cluster's prefix in the account S3 bucket during `easy-db-lab up`
 - EBS and EC2 metrics are published automatically by AWS for all instances and volumes
 - Grafana queries CloudWatch using the EC2 instance's IAM role (no credentials needed)
 - During `easy-db-lab down`, the S3 metrics configuration is automatically removed to stop CloudWatch billing

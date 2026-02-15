@@ -79,6 +79,7 @@ class SparkSubmitTest : BaseKoinTest() {
                 name = "test-cluster",
                 versions = mutableMapOf(),
                 s3Bucket = testBucket,
+                clusterId = "test-id",
             )
         manager.save(state)
 
@@ -86,11 +87,11 @@ class SparkSubmitTest : BaseKoinTest() {
         val s3Path = state.s3Path()
         val jarPath = s3Path.spark().resolve("test-app.jar")
 
-        // Verify the full URI follows per-environment bucket format
-        assertThat(jarPath.toString()).isEqualTo("s3://$testBucket/spark/test-app.jar")
+        // Verify the full URI follows per-environment bucket format with cluster prefix
+        assertThat(jarPath.toString()).isEqualTo("s3://$testBucket/clusters/test-cluster-test-id/spark/test-app.jar")
 
         // Verify the key (for S3 SDK) follows the correct format
-        assertThat(jarPath.getKey()).isEqualTo("spark/test-app.jar")
+        assertThat(jarPath.getKey()).isEqualTo("clusters/test-cluster-test-id/spark/test-app.jar")
 
         // Verify bucket is correct
         assertThat(jarPath.bucket).isEqualTo(testBucket)

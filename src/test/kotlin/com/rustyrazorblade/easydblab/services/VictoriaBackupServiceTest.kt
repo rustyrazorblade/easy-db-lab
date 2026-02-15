@@ -44,6 +44,7 @@ class VictoriaBackupServiceTest : BaseKoinTest() {
             name = "test-cluster",
             versions = mutableMapOf(),
             s3Bucket = "easy-db-lab-test-bucket",
+            clusterId = "test-id",
             initConfig =
                 InitConfig(
                     region = "us-west-2",
@@ -87,7 +88,7 @@ class VictoriaBackupServiceTest : BaseKoinTest() {
                 yaml.contains("victoriametrics/vmbackup:latest") &&
                     yaml.contains("-storageDataPath=/mnt/db1/victoriametrics") &&
                     yaml.contains("-snapshot.createURL=http://localhost:8428/snapshot/create") &&
-                    yaml.contains("s3://easy-db-lab-test-bucket/victoriametrics/") &&
+                    yaml.contains("s3://easy-db-lab-test-bucket/clusters/test-cluster-test-id/victoriametrics/") &&
                     yaml.contains("AWS_REGION") &&
                     yaml.contains("us-west-2")
             },
@@ -122,7 +123,7 @@ class VictoriaBackupServiceTest : BaseKoinTest() {
         victoriaBackupService.backupMetrics(testControlHost, testClusterState)
 
         // Then - verify S3 path format in the job YAML
-        assertThat(capturedYaml).contains("s3://easy-db-lab-test-bucket/victoriametrics/")
+        assertThat(capturedYaml).contains("s3://easy-db-lab-test-bucket/clusters/test-cluster-test-id/victoriametrics/")
         // Verify timestamp format in job name (YYYYMMDD-HHMMSS)
         assertThat(capturedYaml).containsPattern("name: vmbackup-\\d{8}-\\d{6}")
     }
@@ -159,7 +160,7 @@ class VictoriaBackupServiceTest : BaseKoinTest() {
                 yaml.contains("amazon/aws-cli:latest") &&
                     yaml.contains("aws s3 sync") &&
                     yaml.contains("/mnt/db1/victorialogs") &&
-                    yaml.contains("s3://easy-db-lab-test-bucket/victorialogs/") &&
+                    yaml.contains("s3://easy-db-lab-test-bucket/clusters/test-cluster-test-id/victorialogs/") &&
                     yaml.contains("/internal/partition/snapshot/create") &&
                     yaml.contains("/internal/partition/snapshot/delete")
             },
@@ -180,7 +181,7 @@ class VictoriaBackupServiceTest : BaseKoinTest() {
         victoriaBackupService.backupLogs(testControlHost, testClusterState)
 
         // Then - verify S3 path format in the job YAML
-        assertThat(capturedYaml).contains("s3://easy-db-lab-test-bucket/victorialogs/")
+        assertThat(capturedYaml).contains("s3://easy-db-lab-test-bucket/clusters/test-cluster-test-id/victorialogs/")
         // Verify timestamp format in job name (YYYYMMDD-HHMMSS)
         assertThat(capturedYaml).containsPattern("name: vlbackup-\\d{8}-\\d{6}")
     }
@@ -246,7 +247,7 @@ class VictoriaBackupServiceTest : BaseKoinTest() {
         victoriaBackupService.backupMetrics(testControlHost, testClusterState, null)
 
         // Then - verify the YAML contains the cluster bucket
-        assertThat(capturedYaml).contains("s3://easy-db-lab-test-bucket/victoriametrics/")
+        assertThat(capturedYaml).contains("s3://easy-db-lab-test-bucket/clusters/test-cluster-test-id/victoriametrics/")
     }
 
     @Test
@@ -281,7 +282,7 @@ class VictoriaBackupServiceTest : BaseKoinTest() {
         victoriaBackupService.backupLogs(testControlHost, testClusterState, null)
 
         // Then - verify the YAML contains the cluster bucket
-        assertThat(capturedYaml).contains("s3://easy-db-lab-test-bucket/victorialogs/")
+        assertThat(capturedYaml).contains("s3://easy-db-lab-test-bucket/clusters/test-cluster-test-id/victorialogs/")
     }
 
     // ========== PARSE S3 URI TESTS ==========

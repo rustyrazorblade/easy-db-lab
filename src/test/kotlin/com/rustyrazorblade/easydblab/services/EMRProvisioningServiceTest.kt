@@ -83,6 +83,7 @@ internal class EMRProvisioningServiceTest {
                 name = "test-cluster",
                 versions = mutableMapOf(),
                 s3Bucket = "easy-db-lab-test-bucket",
+                clusterId = "test-id",
             )
 
         val createResult =
@@ -125,7 +126,7 @@ internal class EMRProvisioningServiceTest {
         assertThat(config.ec2KeyName).isEqualTo("my-key")
         assertThat(config.additionalSecurityGroups).containsExactly("sg-456")
         assertThat(config.tags).containsEntry("env", "test")
-        assertThat(config.logUri).isEqualTo("s3://easy-db-lab-test-bucket/spark/emr-logs")
+        assertThat(config.logUri).isEqualTo("s3://easy-db-lab-test-bucket/clusters/test-cluster-test-id/spark/emr-logs")
     }
 
     @Test

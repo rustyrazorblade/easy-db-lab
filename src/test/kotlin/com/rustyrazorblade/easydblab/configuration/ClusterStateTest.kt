@@ -645,12 +645,13 @@ class ClusterStateTest {
                 name = "test-cluster",
                 versions = mutableMapOf(),
                 s3Bucket = "easy-db-lab-test-abc12345",
+                clusterId = "test-id",
             )
 
         val s3Path = state.s3Path()
 
         assertThat(s3Path.bucket).isEqualTo("easy-db-lab-test-abc12345")
-        assertThat(s3Path.toString()).isEqualTo("s3://easy-db-lab-test-abc12345")
+        assertThat(s3Path.toString()).isEqualTo("s3://easy-db-lab-test-abc12345/clusters/test-cluster-test-id")
     }
 
     @Test

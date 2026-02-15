@@ -105,7 +105,7 @@ easy-db-lab up [options]
 |--------|-------------|
 | `--no-setup`, `-n` | Skip K3s setup and AxonOps configuration |
 
-Creates: S3 bucket, VPC, EC2 instances, K3s cluster.
+Creates: VPC, EC2 instances, K3s cluster. Configures the account S3 bucket for this cluster.
 
 ### down
 
@@ -123,6 +123,7 @@ easy-db-lab down [vpc-id] [options]
 |--------|-------------|
 | `--all` | Tear down all VPCs tagged with easy_cass_lab |
 | `--packer` | Tear down the packer infrastructure VPC |
+| `--retention-days N` | Days to retain S3 data after teardown (default: 1) |
 
 ### clean
 

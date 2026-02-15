@@ -73,14 +73,14 @@ easy-db-lab up
 
 This command creates:
 
-- **S3 Bucket**: Stores cluster state and backups
+- **S3 Storage**: Cluster data stored under a dedicated prefix in the account S3 bucket
 - **VPC**: With subnets and security groups
 - **EC2 Instances**: Cassandra nodes, stress nodes, and a control node
 - **K3s Cluster**: Lightweight Kubernetes across all nodes
 
 ### What Happens During `up`
 
-1. Creates S3 bucket for cluster state
+1. Configures account S3 bucket with cluster prefix
 2. Creates VPC with public subnets in your availability zones
 3. Provisions EC2 instances in parallel
 4. Waits for SSH availability
@@ -238,7 +238,7 @@ easy-db-lab down
 ```
 
 ```admonish warning
-This permanently destroys all EC2 instances, the VPC, and associated resources. S3 buckets are retained for state recovery.
+This permanently destroys all EC2 instances, the VPC, and associated resources. S3 data under the cluster prefix is scheduled for expiration (default: 1 day).
 ```
 
 ## Quick Reference

@@ -4,17 +4,17 @@ import com.rustyrazorblade.easydblab.Constants
 
 /**
  * Immutable S3 path abstraction following java.nio.file.Path patterns.
- * Provides type-safe S3 path construction for per-environment buckets.
+ * Provides type-safe S3 path construction for account-level buckets with cluster prefixes.
  *
- * Each environment has its own dedicated S3 bucket, so paths are organized
- * by technology subdirectories (cassandra/, clickhouse/, spark/) rather than
- * cluster IDs.
+ * All clusters within an account share a single S3 bucket, with each cluster's data
+ * isolated under a cluster-specific prefix (clusters/<name>-<id>/). Within each cluster
+ * prefix, paths are organized by technology subdirectories (cassandra/, clickhouse/, spark/).
  *
  * Example usage:
  * ```
  * val s3Path = ClusterS3Path.from(clusterState)
  * val jarPath = s3Path.spark().resolve("myapp.jar")
- * println(jarPath) // s3://easy-db-lab-mycluster-abc123/spark/myapp.jar
+ * println(jarPath) // s3://my-account-bucket/clusters/mycluster-abc123/spark/myapp.jar
  *
  * // For S3 SDK calls:
  * val putRequest = PutObjectRequest.builder()
@@ -52,10 +52,10 @@ data class ClusterS3Path(
 
         /**
          * Create a ClusterS3Path from ClusterState.
-         * Uses the per-environment bucket stored in ClusterState.
+         * Uses the account-level bucket and cluster prefix from ClusterState.
          *
          * @param clusterState The cluster state containing s3Bucket
-         * @return A new ClusterS3Path for this cluster's bucket
+         * @return A new ClusterS3Path for this cluster's prefix within the account bucket
          * @throws IllegalStateException if s3Bucket is not configured
          */
         fun from(clusterState: ClusterState): ClusterS3Path {

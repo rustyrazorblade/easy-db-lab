@@ -118,7 +118,7 @@ data:
               },
               "dimensions": {
                 "BucketName": ["__BUCKET_NAME__"],
-                "FilterId": ["easy-db-lab-request-metrics"]
+                "FilterId": ["__METRICS_FILTER_ID__"]
               },
               "expression": "",
               "id": "",
@@ -139,7 +139,7 @@ data:
               },
               "dimensions": {
                 "BucketName": ["__BUCKET_NAME__"],
-                "FilterId": ["easy-db-lab-request-metrics"]
+                "FilterId": ["__METRICS_FILTER_ID__"]
               },
               "expression": "",
               "id": "",
@@ -250,7 +250,7 @@ data:
               },
               "dimensions": {
                 "BucketName": ["__BUCKET_NAME__"],
-                "FilterId": ["easy-db-lab-request-metrics"]
+                "FilterId": ["__METRICS_FILTER_ID__"]
               },
               "expression": "",
               "id": "",
@@ -271,7 +271,7 @@ data:
               },
               "dimensions": {
                 "BucketName": ["__BUCKET_NAME__"],
-                "FilterId": ["easy-db-lab-request-metrics"]
+                "FilterId": ["__METRICS_FILTER_ID__"]
               },
               "expression": "",
               "id": "",
@@ -382,7 +382,7 @@ data:
               },
               "dimensions": {
                 "BucketName": ["__BUCKET_NAME__"],
-                "FilterId": ["easy-db-lab-request-metrics"]
+                "FilterId": ["__METRICS_FILTER_ID__"]
               },
               "expression": "",
               "id": "",
@@ -481,7 +481,7 @@ data:
               },
               "dimensions": {
                 "BucketName": ["__BUCKET_NAME__"],
-                "FilterId": ["easy-db-lab-request-metrics"]
+                "FilterId": ["__METRICS_FILTER_ID__"]
               },
               "expression": "",
               "id": "",

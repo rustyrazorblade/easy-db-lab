@@ -13,18 +13,12 @@ import java.io.File
 /**
  * Tests for S3 bucket configuration in the Up command.
  *
- * The Up command supports two ways to configure S3 buckets:
- * 1. Environment variable: Set EASY_DB_LAB_S3_BUCKET to use an existing bucket
- * 2. Auto-generation: A bucket name is generated based on cluster name and ID
+ * The Up command uses the account-level S3 bucket from the user profile.
+ * The bucket is configured during setup-profile and reused across all clusters.
  *
- * These tests verify the bucket naming logic, state persistence, and the
- * constants used for S3 bucket configuration.
+ * These tests verify state persistence and the constants used for S3 bucket configuration.
  */
 class UpS3BucketTest : BaseKoinTest() {
-    companion object {
-        private const val BUCKET_UUID_LENGTH = 8
-    }
-
     @Test
     fun `S3 bucket environment variable constant should be correctly defined`() {
         assertThat(Constants.Environment.S3_BUCKET).isEqualTo("EASY_DB_LAB_S3_BUCKET")
@@ -93,89 +87,6 @@ class UpS3BucketTest : BaseKoinTest() {
 
         // Then
         assertThat(loadedState.s3Bucket).isNull()
-    }
-
-    @Test
-    fun `generated bucket name should follow S3 naming conventions`(
-        @TempDir tempDir: File,
-    ) {
-        // Given
-        val stateFile = File(tempDir, "state.json")
-        val manager = ClusterStateManager(stateFile)
-
-        val state = ClusterState(name = "test-cluster", versions = mutableMapOf())
-        val initConfig =
-            InitConfig(
-                name = "my-project",
-                region = "us-west-2",
-            )
-        state.initConfig = initConfig
-        manager.save(state)
-
-        // When
-        val loadedState = manager.load()
-        val shortUuid = loadedState.clusterId.take(BUCKET_UUID_LENGTH)
-        val bucketName = "easy-db-lab-${initConfig.name}-$shortUuid"
-
-        // Then - verify S3 naming conventions
-        // S3 bucket names must be 3-63 characters
-        assertThat(bucketName.length).isBetween(3, 63)
-        // Must be lowercase
-        assertThat(bucketName).isEqualTo(bucketName.lowercase())
-        // Must start with letter or number
-        assertThat(bucketName.first()).matches { it.isLetterOrDigit() }
-        // Must only contain lowercase letters, numbers, and hyphens
-        assertThat(bucketName).matches("^[a-z0-9-]+$")
-    }
-
-    @Test
-    fun `bucket UUID should be first 8 characters of cluster ID`(
-        @TempDir tempDir: File,
-    ) {
-        // Given
-        val stateFile = File(tempDir, "state.json")
-        val manager = ClusterStateManager(stateFile)
-
-        val state = ClusterState(name = "test-cluster", versions = mutableMapOf())
-        manager.save(state)
-
-        // When
-        val loadedState = manager.load()
-        val shortUuid = loadedState.clusterId.take(BUCKET_UUID_LENGTH)
-
-        // Then
-        assertThat(shortUuid).hasSize(BUCKET_UUID_LENGTH)
-        // The short UUID should be the prefix of the full cluster ID
-        assertThat(loadedState.clusterId).startsWith(shortUuid)
-    }
-
-    @Test
-    fun `generated bucket name should include cluster name and UUID`(
-        @TempDir tempDir: File,
-    ) {
-        // Given
-        val stateFile = File(tempDir, "state.json")
-        val manager = ClusterStateManager(stateFile)
-
-        val clusterName = "myproject"
-        val state = ClusterState(name = "test-cluster", versions = mutableMapOf())
-        val initConfig =
-            InitConfig(
-                name = clusterName,
-                region = "us-west-2",
-            )
-        state.initConfig = initConfig
-        manager.save(state)
-
-        // When
-        val loadedState = manager.load()
-        val shortUuid = loadedState.clusterId.take(BUCKET_UUID_LENGTH)
-        val bucketName = "easy-db-lab-$clusterName-$shortUuid"
-
-        // Then
-        assertThat(bucketName).startsWith("easy-db-lab-")
-        assertThat(bucketName).contains(clusterName)
-        assertThat(bucketName).endsWith("-$shortUuid")
     }
 
     @Test
@@ -255,34 +166,6 @@ class UpS3BucketTest : BaseKoinTest() {
     }
 
     @Test
-    fun `bucket name generation handles hyphenated cluster names`(
-        @TempDir tempDir: File,
-    ) {
-        // Given
-        val stateFile = File(tempDir, "state.json")
-        val manager = ClusterStateManager(stateFile)
-
-        val clusterName = "my-test-project"
-        val state = ClusterState(name = "test-cluster", versions = mutableMapOf())
-        val initConfig =
-            InitConfig(
-                name = clusterName,
-                region = "us-west-2",
-            )
-        state.initConfig = initConfig
-        manager.save(state)
-
-        // When
-        val loadedState = manager.load()
-        val shortUuid = loadedState.clusterId.take(BUCKET_UUID_LENGTH)
-        val bucketName = "easy-db-lab-$clusterName-$shortUuid"
-
-        // Then - should still be valid S3 bucket name
-        assertThat(bucketName).matches("^[a-z0-9-]+$")
-        assertThat(bucketName.length).isBetween(3, 63)
-    }
-
-    @Test
     fun `environment variable bucket should be stored directly in state`(
         @TempDir tempDir: File,
     ) {
@@ -356,7 +239,21 @@ class UpS3BucketTest : BaseKoinTest() {
 
         // Then - same cluster ID used for bucket naming
         assertThat(loadedState1.clusterId).isEqualTo(loadedState2.clusterId)
-        assertThat(loadedState1.clusterId.take(BUCKET_UUID_LENGTH))
-            .isEqualTo(loadedState2.clusterId.take(BUCKET_UUID_LENGTH))
+    }
+
+    @Test
+    fun `cluster state should use account bucket from user config`(
+        @TempDir tempDir: File,
+    ) {
+        val stateFile = File(tempDir, "state.json")
+        val manager = ClusterStateManager(stateFile)
+        val accountBucket = "easy-db-lab-account-uuid"
+
+        val state = ClusterState(name = "test-cluster", versions = mutableMapOf())
+        state.s3Bucket = accountBucket
+        manager.save(state)
+
+        val loadedState = manager.load()
+        assertThat(loadedState.s3Bucket).isEqualTo(accountBucket)
     }
 }

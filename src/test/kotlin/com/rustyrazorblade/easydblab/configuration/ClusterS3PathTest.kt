@@ -6,19 +6,40 @@ import org.junit.jupiter.api.Test
 
 class ClusterS3PathTest {
     @Test
-    fun `from creates path for per-environment bucket`() {
+    fun `from creates path with cluster prefix under account bucket`() {
         val state =
             ClusterState(
                 name = "test-cluster",
                 versions = mutableMapOf(),
-                s3Bucket = "easy-db-lab-test-abc12345",
+                s3Bucket = "easy-db-lab-account-bucket",
+                clusterId = "abc12345-6789-0000-0000-000000000000",
             )
 
         val path = ClusterS3Path.from(state)
 
-        assertThat(path.toString()).isEqualTo("s3://easy-db-lab-test-abc12345")
-        assertThat(path.bucket).isEqualTo("easy-db-lab-test-abc12345")
-        assertThat(path.getKey()).isEmpty()
+        assertThat(path.toString()).isEqualTo("s3://easy-db-lab-account-bucket/clusters/test-cluster-abc12345-6789-0000-0000-000000000000")
+        assertThat(path.bucket).isEqualTo("easy-db-lab-account-bucket")
+        assertThat(path.getKey()).isEqualTo("clusters/test-cluster-abc12345-6789-0000-0000-000000000000")
+    }
+
+    @Test
+    fun `from with cluster prefix resolves technology paths correctly`() {
+        val state =
+            ClusterState(
+                name = "myproject",
+                versions = mutableMapOf(),
+                s3Bucket = "easy-db-lab-account-bucket",
+                clusterId = "def456",
+            )
+
+        val path = ClusterS3Path.from(state)
+
+        assertThat(path.spark().toString())
+            .isEqualTo("s3://easy-db-lab-account-bucket/clusters/myproject-def456/spark")
+        assertThat(path.cassandra().toString())
+            .isEqualTo("s3://easy-db-lab-account-bucket/clusters/myproject-def456/cassandra")
+        assertThat(path.config().toString())
+            .isEqualTo("s3://easy-db-lab-account-bucket/clusters/myproject-def456/config")
     }
 
     @Test

@@ -46,7 +46,9 @@
         "s3:GetBucketNotification",
         "s3:PutMetricsConfiguration",
         "s3:GetMetricsConfiguration",
-        "s3:DeleteMetricsConfiguration"
+        "s3:DeleteMetricsConfiguration",
+        "s3:PutBucketLifecycleConfiguration",
+        "s3:GetBucketLifecycleConfiguration"
       ],
       "Resource": [
         "arn:aws:s3:::easy-db-lab-*",

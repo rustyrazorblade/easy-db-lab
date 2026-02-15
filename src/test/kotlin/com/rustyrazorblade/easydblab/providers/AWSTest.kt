@@ -681,7 +681,12 @@ internal class AWSTest :
 
         val captor = argumentCaptor<PutBucketMetricsConfigurationRequest>()
         verify(mockS3Client).putBucketMetricsConfiguration(captor.capture())
-        assertThat(captor.firstValue.metricsConfiguration().filter().prefix()).isEqualTo(prefix)
+        assertThat(
+            captor.firstValue
+                .metricsConfiguration()
+                .filter()
+                .prefix(),
+        ).isEqualTo(prefix)
     }
 
     @Test

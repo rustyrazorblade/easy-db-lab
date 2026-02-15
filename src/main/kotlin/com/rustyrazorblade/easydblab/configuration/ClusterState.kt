@@ -186,7 +186,7 @@ data class ClusterState(
     var openSearchDomain: OpenSearchClusterState? = null,
     // Infrastructure resource IDs for cleanup
     var infrastructure: InfrastructureState? = null,
-    // S3 bucket for this environment (per-cluster bucket, created during 'up')
+    // S3 bucket for this environment (account-level bucket from User.s3Bucket)
     var s3Bucket: String? = null,
     // SQS queue URL for log ingestion (receives S3 notifications for EMR logs)
     var sqsQueueUrl: String? = null,

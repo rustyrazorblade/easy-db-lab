@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
 import io.github.classgraph.ClassGraph
@@ -38,7 +39,19 @@ class TemplateService(
             "AWS_REGION" to region,
             "CLUSTER_NAME" to (state.initConfig?.name ?: "cluster"),
             "CONTROL_NODE_IP" to (controlHost?.privateIp ?: ""),
+            "METRICS_FILTER_ID" to buildMetricsFilterId(state),
+            "CLUSTER_S3_PREFIX" to buildClusterPrefix(state),
         )
+    }
+
+    private fun buildMetricsFilterId(state: ClusterState): String {
+        val name = state.initConfig?.name ?: state.name
+        return "edl-${name}-${state.clusterId}".take(32)
+    }
+
+    private fun buildClusterPrefix(state: ClusterState): String {
+        val name = state.initConfig?.name ?: state.name
+        return "${Constants.S3.CLUSTERS_PREFIX}/${name}-${state.clusterId}"
     }
 
     /**

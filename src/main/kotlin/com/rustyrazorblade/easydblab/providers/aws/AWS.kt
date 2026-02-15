@@ -556,7 +556,7 @@ class AWS(
     ) {
         val configId =
             if (prefix != null) {
-                "edl-${prefix.substringAfterLast("/").take(32)}"
+                "edl-${prefix.substringAfterLast("/").take(Constants.S3.MAX_METRICS_CONFIG_ID_LENGTH)}"
             } else {
                 Constants.S3.METRICS_CONFIGURATION_ID
             }

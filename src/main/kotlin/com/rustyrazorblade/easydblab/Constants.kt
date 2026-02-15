@@ -157,6 +157,9 @@ object Constants {
 
         /** Top-level prefix for all cluster data in the account bucket */
         const val CLUSTERS_PREFIX = "clusters"
+
+        /** Maximum length for S3 metrics configuration IDs */
+        const val MAX_METRICS_CONFIG_ID_LENGTH = 32
     }
 
     // Configuration file paths

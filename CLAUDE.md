@@ -223,6 +223,7 @@ For more details, see [packer/README.md](packer/README.md) and [packer/TESTING.m
 - When planning, iterate with me.  Ask questions.  Don't automatically add features I didn't ask for.  Ask if I want them first.
 - Include updates to the documentation as part of planning.
 - CRITICAL: Tests must pass, in CI, on my local, and in the devcontainer.  It is UNACCEPTABLE to say that tests are only failing in devcontainers and to ignore them.
+- When making changes, keep CLAUDE.md and subdirectory CLAUDE.md files up to date if the change affects architecture, file locations, or patterns described in them.
 
 ## Testing Guidelines
 
@@ -234,11 +235,43 @@ See [`src/test/.../CLAUDE.md`](src/test/kotlin/com/rustyrazorblade/easydblab/CLA
 
 See [`configuration/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/configuration/CLAUDE.md) for ClusterState, ServerType, ClusterStateManager, TemplateService, and S3 path patterns.
 
-## Open Telemetry
+## Observability
 
-Cassandra and control nodes are set up with OpenTelemetry.
+The cluster runs a full observability stack on the control node. When modifying any part of this stack, keep the related K8s manifests, Kotlin services, and user docs in sync.
 
-Local OTel nodes are forwarding metrics to the control node.
+### Data Flow
+
+- **OpenTelemetry Collector** (`k8s/core/10-otel-configmap.yaml`, `30-otel-daemonset.yaml`) runs on all nodes. Collects host metrics, scrapes Prometheus endpoints (ClickHouse, Vector), reads file-based logs, and receives OTLP. Exports metrics to VictoriaMetrics, logs to VictoriaLogs, traces to Tempo.
+- **Vector** (`k8s/core/51-*` through `54-*`) runs as a DaemonSet for system/Cassandra/ClickHouse log collection, plus a separate deployment for S3 log ingestion (EMR/Spark via SQS). Both sink to VictoriaLogs.
+- **Stress job sidecars** (`11-otel-stress-sidecar-configmap.yaml`) — long-running stress jobs get an OTel sidecar that scrapes `cassandra-easy-stress:9500` and forwards to the node's DaemonSet collector.
+
+### Storage Backends (control node)
+
+- **VictoriaMetrics** (port 8428, 7-day retention) — Prometheus-compatible metrics store. K8s: `k8s/core/44-victoriametrics-deployment.yaml`. Services: `VictoriaStreamService`, `VictoriaBackupService`.
+- **VictoriaLogs** (port 9428, 7-day retention) — log store with Elasticsearch-compatible sink. K8s: `k8s/core/45-victorialogs-deployment.yaml`. Services: `VictoriaLogsService`, `VictoriaStreamService`, `VictoriaBackupService`.
+- **Tempo** (port 3200) — trace store. K8s: `k8s/core/46-tempo-deployment.yaml`.
+
+### Grafana Dashboards
+
+Grafana runs on port 3000. Dashboard JSON is embedded in K8s ConfigMap YAMLs (`k8s/core/15-*` through `18-*`) with template variable substitution (`__CLUSTER_NAME__`, `__BUCKET_NAME__`, `__METRICS_FILTER_ID__`). The `dashboards generate` and `dashboards upload` commands extract and deploy them.
+
+Kotlin code: `commands/dashboards/`, `services/GrafanaDashboardService.kt`, `grafana/GrafanaDatasourceConfig.kt`.
+
+Datasources: VictoriaMetrics (Prometheus), VictoriaLogs, ClickHouse, Tempo, CloudWatch.
+
+Current dashboards: System Overview, AWS CloudWatch (S3/EBS/EC2), EMR, OpenSearch, ClickHouse metrics, ClickHouse logs.
+
+### CLI Commands
+
+- `dashboards generate` / `dashboards upload` — extract and deploy Grafana dashboards
+- `logs query` / `logs backup` / `logs import` / `logs ls` — query, backup, import, list log snapshots
+- `metrics backup` / `metrics import` / `metrics ls` — backup, import, list metric snapshots
+
+### OTel Instrumentation in Kotlin
+
+The `observability/` package provides `TelemetryProvider` with `withSpan()`, `recordDuration()`, `incrementCounter()`. `TelemetryFactory` creates `OtelTelemetryProvider` (when `OTEL_EXPORTER_OTLP_ENDPOINT` is set) or `NoOpTelemetryProvider` (zero overhead). Span/metric names are in `TelemetryNames`. See `docs/reference/opentelemetry.md`.
+
+All K8s manifest paths above are relative to `src/main/resources/com/rustyrazorblade/easydblab/commands/`.
 
 ## Documentation
 

@@ -544,23 +544,17 @@ class AWS(
 
     /**
      * Enables S3 request metrics on a bucket for CloudWatch monitoring.
-     * Configures whole-bucket metrics (no prefix/tag filter).
      * Idempotent — overwrites any existing configuration with the same ID.
      *
      * @param bucketName The S3 bucket to enable metrics on
      * @param prefix Optional prefix to scope metrics to a specific folder/cluster
+     * @param configId The metrics configuration ID (use ClusterState.metricsConfigId() for cluster-scoped metrics)
      */
     fun enableBucketRequestMetrics(
         bucketName: String,
         prefix: String? = null,
+        configId: String = Constants.S3.METRICS_CONFIGURATION_ID,
     ) {
-        val configId =
-            if (prefix != null) {
-                "edl-${prefix.substringAfterLast("/").take(Constants.S3.MAX_METRICS_CONFIG_ID_LENGTH)}"
-            } else {
-                Constants.S3.METRICS_CONFIGURATION_ID
-            }
-
         val metricsConfigBuilder = MetricsConfiguration.builder().id(configId)
         if (prefix != null) {
             metricsConfigBuilder.filter(MetricsFilter.builder().prefix(prefix).build())

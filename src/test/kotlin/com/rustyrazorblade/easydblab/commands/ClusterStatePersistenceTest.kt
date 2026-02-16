@@ -11,14 +11,10 @@ import org.junit.jupiter.api.io.TempDir
 import java.io.File
 
 /**
- * Tests for S3 bucket configuration in the Up command.
- *
- * The Up command uses the account-level S3 bucket from the user profile.
- * The bucket is configured during setup-profile and reused across all clusters.
- *
- * These tests verify state persistence and the constants used for S3 bucket configuration.
+ * Tests for ClusterState persistence — verifies that fields like s3Bucket,
+ * clusterId, and infrastructure status survive save/load cycles via ClusterStateManager.
  */
-class UpS3BucketTest : BaseKoinTest() {
+class ClusterStatePersistenceTest : BaseKoinTest() {
     @Test
     fun `S3 bucket environment variable constant should be correctly defined`() {
         assertThat(Constants.Environment.S3_BUCKET).isEqualTo("EASY_DB_LAB_S3_BUCKET")
@@ -107,7 +103,7 @@ class UpS3BucketTest : BaseKoinTest() {
             )
         manager.save(state)
 
-        // When - simulating createS3BucketIfNeeded logic
+        // When - simulating bucket selection logic
         val loadedState = manager.load()
         val shouldSkipCreation = !loadedState.s3Bucket.isNullOrBlank()
 
@@ -132,7 +128,7 @@ class UpS3BucketTest : BaseKoinTest() {
             )
         manager.save(state)
 
-        // When - simulating createS3BucketIfNeeded logic
+        // When - simulating bucket selection logic
         val loadedState = manager.load()
         val shouldCreateBucket = loadedState.s3Bucket.isNullOrBlank()
 
@@ -157,7 +153,7 @@ class UpS3BucketTest : BaseKoinTest() {
             )
         manager.save(state)
 
-        // When - simulating createS3BucketIfNeeded logic
+        // When - simulating bucket selection logic
         val loadedState = manager.load()
         val shouldCreateBucket = loadedState.s3Bucket.isNullOrBlank()
 

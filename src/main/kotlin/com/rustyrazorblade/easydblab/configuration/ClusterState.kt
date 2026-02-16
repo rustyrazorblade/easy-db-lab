@@ -283,6 +283,19 @@ data class ClusterState(
     fun getControlHost(): ClusterHost? = hosts[ServerType.Control]?.firstOrNull()
 
     /**
+     * Returns the cluster prefix path for S3 storage: "clusters/{name}-{clusterId}"
+     * This is the canonical location for all cluster data in the account bucket.
+     * Does NOT include a trailing slash — callers needing one should append it.
+     */
+    fun clusterPrefix(): String = "${Constants.S3.CLUSTERS_PREFIX}/$name-$clusterId"
+
+    /**
+     * Returns the S3 metrics configuration ID for this cluster: "edl-{name}-{clusterId}"
+     * Truncated to MAX_METRICS_CONFIG_ID_LENGTH to satisfy S3 API limits.
+     */
+    fun metricsConfigId(): String = "edl-$name-$clusterId".take(Constants.S3.MAX_METRICS_CONFIG_ID_LENGTH)
+
+    /**
      * Validate if the current hosts match the stored hosts
      */
     fun validateHostsMatch(currentHosts: Map<ServerType, List<ClusterHost>>): Boolean {

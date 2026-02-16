@@ -674,10 +674,11 @@ internal class AWSTest :
     fun `enableBucketRequestMetrics with prefix should include metrics filter`() {
         val bucketName = "my-account-bucket"
         val prefix = "clusters/mycluster-abc123"
+        val configId = "edl-mycluster-abc123"
         whenever(mockS3Client.putBucketMetricsConfiguration(any<PutBucketMetricsConfigurationRequest>()))
             .thenReturn(PutBucketMetricsConfigurationResponse.builder().build())
 
-        aws.enableBucketRequestMetrics(bucketName, prefix)
+        aws.enableBucketRequestMetrics(bucketName, prefix, configId)
 
         val captor = argumentCaptor<PutBucketMetricsConfigurationRequest>()
         verify(mockS3Client).putBucketMetricsConfiguration(captor.capture())
@@ -690,17 +691,18 @@ internal class AWSTest :
     }
 
     @Test
-    fun `enableBucketRequestMetrics with prefix uses cluster-specific config ID`() {
+    fun `enableBucketRequestMetrics with prefix uses provided config ID`() {
         val bucketName = "my-account-bucket"
         val prefix = "clusters/mycluster-abc123"
+        val configId = "edl-mycluster-abc123"
         whenever(mockS3Client.putBucketMetricsConfiguration(any<PutBucketMetricsConfigurationRequest>()))
             .thenReturn(PutBucketMetricsConfigurationResponse.builder().build())
 
-        aws.enableBucketRequestMetrics(bucketName, prefix)
+        aws.enableBucketRequestMetrics(bucketName, prefix, configId)
 
         val captor = argumentCaptor<PutBucketMetricsConfigurationRequest>()
         verify(mockS3Client).putBucketMetricsConfiguration(captor.capture())
-        assertThat(captor.firstValue.id()).startsWith("edl-")
+        assertThat(captor.firstValue.id()).isEqualTo(configId)
     }
 
     @Test

@@ -1,7 +1,5 @@
 package com.rustyrazorblade.easydblab.configuration
 
-import com.rustyrazorblade.easydblab.Constants
-
 /**
  * Immutable S3 path abstraction following java.nio.file.Path patterns.
  * Provides type-safe S3 path construction for account-level buckets with cluster prefixes.
@@ -62,8 +60,7 @@ data class ClusterS3Path(
             val bucket =
                 clusterState.s3Bucket
                     ?: error("S3 bucket not configured for cluster '${clusterState.name}'. Run 'easy-db-lab up' first.")
-            val clusterPrefix = "${Constants.S3.CLUSTERS_PREFIX}/${clusterState.name}-${clusterState.clusterId}"
-            return ClusterS3Path(bucket, clusterPrefix.split("/"))
+            return ClusterS3Path(bucket, clusterState.clusterPrefix().split("/"))
         }
 
         /**

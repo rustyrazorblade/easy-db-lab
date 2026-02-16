@@ -128,6 +128,7 @@ Commands should delegate to these services:
 | `SidecarService` | Cassandra sidecar management |
 | `K3sService` | K3s cluster management |
 | `HostOperationsService` | Parallel operations across hosts |
+| `VictoriaStreamService` | Stream metrics/logs from cluster to external Victoria instances |
 | `RemoteOperationsService` | SSH execution (use sparingly, prefer domain services) |
 
 ## Output

@@ -22,6 +22,8 @@ import picocli.CommandLine.Spec
     mixinStandardHelpOptions = true,
     subcommands = [
         MetricsBackup::class,
+        MetricsImport::class,
+        MetricsLs::class,
     ],
 )
 class Metrics : Runnable {

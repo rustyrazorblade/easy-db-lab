@@ -11,10 +11,6 @@ import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
 import picocli.CommandLine.Parameters
-import java.nio.file.Path
-import kotlin.io.path.exists
-import kotlin.io.path.name
-import kotlin.io.path.readText
 
 /**
  * Start a cassandra-easy-stress job on Kubernetes.
@@ -42,12 +38,6 @@ class StressStart : PicoBaseCommand() {
         description = ["Job name (auto-generated timestamp if not provided)"],
     )
     var jobName: String? = null
-
-    @Option(
-        names = ["--profile", "-p"],
-        description = ["Path to stress profile YAML file"],
-    )
-    var profilePath: Path? = null
 
     @Option(
         names = ["--image"],
@@ -90,20 +80,8 @@ class StressStart : PicoBaseCommand() {
             }
         log.info { "Job name: $fullJobName" }
 
-        // Handle profile file if provided
-        var profileConfig: Pair<String, String>? = null
-        var profileFileName: String? = null
-        if (profilePath != null) {
-            val path = profilePath!!
-            if (!path.exists()) {
-                error("Profile file not found: $path")
-            }
-            profileFileName = path.name
-            profileConfig = Pair(profileFileName, path.readText())
-        }
-
         // Build command arguments
-        val args = buildStressArgs(contactPoints, profileFileName)
+        val args = buildStressArgs(contactPoints)
         log.info { "Stress args: $args" }
 
         // Start the job via service
@@ -114,7 +92,6 @@ class StressStart : PicoBaseCommand() {
                 image = image,
                 args = args,
                 contactPoints = contactPoints,
-                profileConfig = profileConfig,
             ).getOrElse { e ->
                 error("Failed to create job: ${e.message}")
             }
@@ -139,12 +116,9 @@ class StressStart : PicoBaseCommand() {
 
     /**
      * Builds the command arguments for cassandra-easy-stress.
-     * Uses passthrough args from user, adding defaults for host, dc, and profile if needed.
+     * Uses passthrough args from user, adding defaults for host if needed.
      */
-    private fun buildStressArgs(
-        contactPoints: String,
-        profileFileName: String?,
-    ): List<String> {
+    private fun buildStressArgs(contactPoints: String): List<String> {
         val args = mutableListOf<String>()
 
         // If user provided args, use them directly
@@ -156,15 +130,8 @@ class StressStart : PicoBaseCommand() {
                 args.add("run")
             }
             args.addAll(stressArgs)
-        } else if (profileFileName != null) {
-            // No args but profile provided - use profile
-            args.add("run")
-            args.add("--yaml")
-            args.add("${Constants.Stress.PROFILE_MOUNT_PATH}/$profileFileName")
         } else {
-            // Default: run KeyValue workload
-            args.add("run")
-            args.add("KeyValue")
+            error("Stress arguments are required (e.g., KeyValue -d 1h --threads 100)")
         }
 
         // Add host if not already specified and this is a run command

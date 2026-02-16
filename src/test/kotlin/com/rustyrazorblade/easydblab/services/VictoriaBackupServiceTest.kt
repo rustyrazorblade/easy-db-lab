@@ -74,7 +74,7 @@ class VictoriaBackupServiceTest : BaseKoinTest() {
     @Test
     fun `backupMetrics creates K8s Job with correct spec`() {
         // Given - mock createJob to fail early so we don't need job completion mocking
-        whenever(mockK8sService.createJob(any(), any(), any()))
+        whenever(mockK8sService.createJob(any(), any(), any<String>()))
             .thenReturn(Result.failure(RuntimeException("Test: stop after createJob")))
 
         // When
@@ -84,7 +84,7 @@ class VictoriaBackupServiceTest : BaseKoinTest() {
         verify(mockK8sService).createJob(
             eq(testControlHost),
             eq("default"),
-            argThat { yaml ->
+            argThat<String> { yaml ->
                 yaml.contains("victoriametrics/vmbackup:latest") &&
                     yaml.contains("-storageDataPath=/mnt/db1/victoriametrics") &&
                     yaml.contains("-snapshot.createURL=http://localhost:8428/snapshot/create") &&
@@ -98,7 +98,7 @@ class VictoriaBackupServiceTest : BaseKoinTest() {
     @Test
     fun `backupMetrics handles createJob failure`() {
         // Given
-        whenever(mockK8sService.createJob(any(), any(), any()))
+        whenever(mockK8sService.createJob(any(), any(), any<String>()))
             .thenReturn(Result.failure(RuntimeException("K8s API error")))
 
         // When
@@ -113,7 +113,7 @@ class VictoriaBackupServiceTest : BaseKoinTest() {
     fun `backupMetrics generates correct S3 path format`() {
         // Given - capture the YAML to verify the S3 path format
         var capturedYaml: String? = null
-        whenever(mockK8sService.createJob(any(), any(), any()))
+        whenever(mockK8sService.createJob(any(), any(), any<String>()))
             .thenAnswer { invocation ->
                 capturedYaml = invocation.getArgument(2)
                 Result.failure<String>(RuntimeException("Test: stop after createJob"))
@@ -146,7 +146,7 @@ class VictoriaBackupServiceTest : BaseKoinTest() {
     @Test
     fun `backupLogs creates K8s Job with aws-cli for S3 sync`() {
         // Given - mock createJob to fail early so we don't need job completion mocking
-        whenever(mockK8sService.createJob(any(), any(), any()))
+        whenever(mockK8sService.createJob(any(), any(), any<String>()))
             .thenReturn(Result.failure(RuntimeException("Test: stop after createJob")))
 
         // When
@@ -156,7 +156,7 @@ class VictoriaBackupServiceTest : BaseKoinTest() {
         verify(mockK8sService).createJob(
             eq(testControlHost),
             eq("default"),
-            argThat { yaml ->
+            argThat<String> { yaml ->
                 yaml.contains("amazon/aws-cli:latest") &&
                     yaml.contains("aws s3 sync") &&
                     yaml.contains("/mnt/db1/victorialogs") &&
@@ -171,7 +171,7 @@ class VictoriaBackupServiceTest : BaseKoinTest() {
     fun `backupLogs generates correct S3 path format`() {
         // Given - capture the YAML to verify the S3 path format
         var capturedYaml: String? = null
-        whenever(mockK8sService.createJob(any(), any(), any()))
+        whenever(mockK8sService.createJob(any(), any(), any<String>()))
             .thenAnswer { invocation ->
                 capturedYaml = invocation.getArgument(2)
                 Result.failure<String>(RuntimeException("Test: stop after createJob"))
@@ -189,7 +189,7 @@ class VictoriaBackupServiceTest : BaseKoinTest() {
     @Test
     fun `backupLogs handles API errors gracefully`() {
         // Given
-        whenever(mockK8sService.createJob(any(), any(), any()))
+        whenever(mockK8sService.createJob(any(), any(), any<String>()))
             .thenReturn(Result.failure(RuntimeException("K8s API error")))
 
         // When
@@ -219,7 +219,7 @@ class VictoriaBackupServiceTest : BaseKoinTest() {
     fun `backupMetrics uses custom destination when provided`() {
         // Given - just mock createJob to capture the YAML
         var capturedYaml: String? = null
-        whenever(mockK8sService.createJob(any(), any(), any()))
+        whenever(mockK8sService.createJob(any(), any(), any<String>()))
             .thenAnswer { invocation ->
                 capturedYaml = invocation.getArgument(2)
                 Result.failure<String>(RuntimeException("Test: stop after createJob"))
@@ -237,7 +237,7 @@ class VictoriaBackupServiceTest : BaseKoinTest() {
     fun `backupMetrics uses cluster bucket when dest is null`() {
         // Given - just mock createJob to capture the YAML
         var capturedYaml: String? = null
-        whenever(mockK8sService.createJob(any(), any(), any()))
+        whenever(mockK8sService.createJob(any(), any(), any<String>()))
             .thenAnswer { invocation ->
                 capturedYaml = invocation.getArgument(2)
                 Result.failure<String>(RuntimeException("Test: stop after createJob"))
@@ -254,7 +254,7 @@ class VictoriaBackupServiceTest : BaseKoinTest() {
     fun `backupLogs uses custom destination when provided`() {
         // Given - just mock createJob to capture the YAML
         var capturedYaml: String? = null
-        whenever(mockK8sService.createJob(any(), any(), any()))
+        whenever(mockK8sService.createJob(any(), any(), any<String>()))
             .thenAnswer { invocation ->
                 capturedYaml = invocation.getArgument(2)
                 Result.failure<String>(RuntimeException("Test: stop after createJob"))
@@ -272,7 +272,7 @@ class VictoriaBackupServiceTest : BaseKoinTest() {
     fun `backupLogs uses cluster bucket when dest is null`() {
         // Given - just mock createJob to capture the YAML
         var capturedYaml: String? = null
-        whenever(mockK8sService.createJob(any(), any(), any()))
+        whenever(mockK8sService.createJob(any(), any(), any<String>()))
             .thenAnswer { invocation ->
                 capturedYaml = invocation.getArgument(2)
                 Result.failure<String>(RuntimeException("Test: stop after createJob"))
@@ -353,7 +353,7 @@ class VictoriaBackupServiceTest : BaseKoinTest() {
     fun `backupLogs job YAML includes snapshot lifecycle`() {
         // Given - capture YAML
         var capturedYaml: String? = null
-        whenever(mockK8sService.createJob(any(), any(), any()))
+        whenever(mockK8sService.createJob(any(), any(), any<String>()))
             .thenAnswer { invocation ->
                 capturedYaml = invocation.getArgument(2)
                 Result.failure<String>(RuntimeException("Test: stop after createJob"))
@@ -372,7 +372,7 @@ class VictoriaBackupServiceTest : BaseKoinTest() {
     fun `backupLogs job YAML translates VL internal path to host mount`() {
         // Given - capture YAML
         var capturedYaml: String? = null
-        whenever(mockK8sService.createJob(any(), any(), any()))
+        whenever(mockK8sService.createJob(any(), any(), any<String>()))
             .thenAnswer { invocation ->
                 capturedYaml = invocation.getArgument(2)
                 Result.failure<String>(RuntimeException("Test: stop after createJob"))
@@ -389,7 +389,7 @@ class VictoriaBackupServiceTest : BaseKoinTest() {
     fun `backupLogs job YAML includes snapshot cleanup on failure`() {
         // Given - capture YAML
         var capturedYaml: String? = null
-        whenever(mockK8sService.createJob(any(), any(), any()))
+        whenever(mockK8sService.createJob(any(), any(), any<String>()))
             .thenAnswer { invocation ->
                 capturedYaml = invocation.getArgument(2)
                 Result.failure<String>(RuntimeException("Test: stop after createJob"))

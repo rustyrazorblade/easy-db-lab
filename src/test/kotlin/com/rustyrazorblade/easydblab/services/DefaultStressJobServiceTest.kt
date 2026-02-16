@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import org.assertj.core.api.Assertions.assertThat
@@ -11,10 +12,10 @@ import org.koin.dsl.module
 import org.mockito.kotlin.mock
 
 /**
- * Tests for DefaultStressJobService YAML generation.
+ * Tests for DefaultStressJobService Job building.
  *
- * Verifies that buildJobYaml includes the OTel sidecar container for metrics collection,
- * and that buildCommandJobYaml (short-lived commands) does not include it.
+ * Verifies that buildJob includes the OTel sidecar container for metrics collection,
+ * and that buildCommandJob (short-lived commands) does not include it.
  */
 class DefaultStressJobServiceTest : BaseKoinTest() {
     private lateinit var service: DefaultStressJobService
@@ -35,137 +36,168 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `buildJobYaml should include otel-sidecar container`() {
-        val yaml =
-            service.buildJobYaml(
+    fun `buildJob should include stress and otel-sidecar containers`() {
+        val job =
+            service.buildJob(
                 jobName = "stress-test-123",
                 image = "ghcr.io/apache/cassandra-easy-stress:latest",
                 contactPoints = "10.0.1.6",
                 args = listOf("run", "KeyValue"),
-                profileConfigMapName = null,
             )
 
-        assertThat(yaml).contains("name: otel-sidecar")
-        assertThat(yaml).contains("image: otel/opentelemetry-collector-contrib:latest")
-        assertThat(yaml).contains("--config=/etc/otel/otel-stress-sidecar-config.yaml")
+        val containers = job.spec.template.spec.containers
+        assertThat(containers).hasSize(2)
+        assertThat(containers.map { it.name }).containsExactly("stress", "otel-sidecar")
     }
 
     @Test
-    fun `buildJobYaml should include otel-sidecar env vars`() {
-        val yaml =
-            service.buildJobYaml(
+    fun `buildJob should configure stress container correctly`() {
+        val job =
+            service.buildJob(
+                jobName = "stress-test-123",
+                image = "ghcr.io/apache/cassandra-easy-stress:latest",
+                contactPoints = "10.0.1.6,10.0.1.7",
+                args = listOf("run", "KeyValue", "-d", "1h"),
+            )
+
+        val stress =
+            job.spec.template.spec.containers
+                .first { it.name == "stress" }
+        assertThat(stress.image).isEqualTo("ghcr.io/apache/cassandra-easy-stress:latest")
+        assertThat(stress.command).containsExactly("cassandra-easy-stress")
+        assertThat(stress.args).containsExactly("run", "KeyValue", "-d", "1h")
+
+        val envMap = stress.env.associate { it.name to it.value }
+        assertThat(envMap["CASSANDRA_CONTACT_POINTS"]).isEqualTo("10.0.1.6,10.0.1.7")
+        assertThat(envMap["CASSANDRA_PORT"]).isEqualTo(Constants.Stress.DEFAULT_CASSANDRA_PORT.toString())
+    }
+
+    @Test
+    fun `buildJob should configure otel-sidecar container with env vars and resources`() {
+        val job =
+            service.buildJob(
                 jobName = "stress-test-123",
                 image = "ghcr.io/apache/cassandra-easy-stress:latest",
                 contactPoints = "10.0.1.6",
                 args = listOf("run", "KeyValue"),
-                profileConfigMapName = null,
             )
 
-        assertThat(yaml).contains("name: K8S_NODE_NAME")
-        assertThat(yaml).contains("fieldPath: spec.nodeName")
-        assertThat(yaml).contains("name: HOST_IP")
-        assertThat(yaml).contains("fieldPath: status.hostIP")
-        assertThat(yaml).contains("name: CLUSTER_NAME")
-        assertThat(yaml).contains("key: cluster_name")
-        assertThat(yaml).contains("name: GOMEMLIMIT")
-        assertThat(yaml).contains("value: \"64MiB\"")
+        val sidecar =
+            job.spec.template.spec.containers
+                .first { it.name == "otel-sidecar" }
+        assertThat(sidecar.image).isEqualTo("otel/opentelemetry-collector-contrib:latest")
+        assertThat(sidecar.args).containsExactly("--config=/etc/otel/otel-stress-sidecar-config.yaml")
+
+        // Check env vars
+        val envNames = sidecar.env.map { it.name }
+        assertThat(envNames).containsExactly("K8S_NODE_NAME", "HOST_IP", "CLUSTER_NAME", "GOMEMLIMIT")
+
+        val nodeNameEnv = sidecar.env.first { it.name == "K8S_NODE_NAME" }
+        assertThat(nodeNameEnv.valueFrom.fieldRef.fieldPath).isEqualTo("spec.nodeName")
+
+        val hostIpEnv = sidecar.env.first { it.name == "HOST_IP" }
+        assertThat(hostIpEnv.valueFrom.fieldRef.fieldPath).isEqualTo("status.hostIP")
+
+        val clusterNameEnv = sidecar.env.first { it.name == "CLUSTER_NAME" }
+        assertThat(clusterNameEnv.valueFrom.configMapKeyRef.name).isEqualTo("cluster-config")
+        assertThat(clusterNameEnv.valueFrom.configMapKeyRef.key).isEqualTo("cluster_name")
+
+        val goMemLimitEnv = sidecar.env.first { it.name == "GOMEMLIMIT" }
+        assertThat(goMemLimitEnv.value).isEqualTo("64MiB")
+
+        // Check resources
+        assertThat(sidecar.resources.requests["memory"].toString()).isEqualTo("32Mi")
+        assertThat(sidecar.resources.requests["cpu"].toString()).isEqualTo("25m")
+        assertThat(sidecar.resources.limits["memory"].toString()).isEqualTo("64Mi")
     }
 
     @Test
-    fun `buildJobYaml should include otel-sidecar config volume`() {
-        val yaml =
-            service.buildJobYaml(
+    fun `buildJob should include otel-sidecar config volume and mount`() {
+        val job =
+            service.buildJob(
                 jobName = "stress-test-123",
                 image = "ghcr.io/apache/cassandra-easy-stress:latest",
                 contactPoints = "10.0.1.6",
                 args = listOf("run", "KeyValue"),
-                profileConfigMapName = null,
             )
 
-        assertThat(yaml).contains("name: otel-sidecar-config")
-        assertThat(yaml).contains("mountPath: /etc/otel")
-        assertThat(yaml).contains("name: otel-stress-sidecar-config")
+        val volumes = job.spec.template.spec.volumes
+        assertThat(volumes).hasSize(1)
+        assertThat(volumes[0].name).isEqualTo("otel-sidecar-config")
+        assertThat(volumes[0].configMap.name).isEqualTo("otel-stress-sidecar-config")
+
+        val sidecar =
+            job.spec.template.spec.containers
+                .first { it.name == "otel-sidecar" }
+        assertThat(sidecar.volumeMounts).hasSize(1)
+        assertThat(sidecar.volumeMounts[0].name).isEqualTo("otel-sidecar-config")
+        assertThat(sidecar.volumeMounts[0].mountPath).isEqualTo("/etc/otel")
+        assertThat(sidecar.volumeMounts[0].readOnly).isTrue()
     }
 
     @Test
-    fun `buildJobYaml should include otel-sidecar resource limits`() {
-        val yaml =
-            service.buildJobYaml(
+    fun `buildJob should use correct nodeSelector matching ServerType`() {
+        val job =
+            service.buildJob(
                 jobName = "stress-test-123",
                 image = "ghcr.io/apache/cassandra-easy-stress:latest",
                 contactPoints = "10.0.1.6",
                 args = listOf("run", "KeyValue"),
-                profileConfigMapName = null,
             )
 
-        assertThat(yaml).contains("memory: \"32Mi\"")
-        assertThat(yaml).contains("cpu: \"25m\"")
-        assertThat(yaml).contains("memory: \"64Mi\"")
+        val nodeSelector = job.spec.template.spec.nodeSelector
+        assertThat(nodeSelector["type"]).isEqualTo(ServerType.Stress.serverType)
     }
 
     @Test
-    fun `buildJobYaml with profile should include both profile and otel volumes`() {
-        val yaml =
-            service.buildJobYaml(
+    fun `buildJob should set correct job metadata and spec`() {
+        val job =
+            service.buildJob(
                 jobName = "stress-test-123",
                 image = "ghcr.io/apache/cassandra-easy-stress:latest",
                 contactPoints = "10.0.1.6",
                 args = listOf("run", "KeyValue"),
-                profileConfigMapName = "stress-test-123-profile",
             )
 
-        // Should have otel sidecar
-        assertThat(yaml).contains("name: otel-sidecar")
-        // Should have profile volume mount on stress container
-        assertThat(yaml).contains("name: profiles")
-        assertThat(yaml).contains("mountPath: /profiles")
-        // Should have both volumes
-        assertThat(yaml).contains("name: otel-sidecar-config")
-        assertThat(yaml).contains("name: stress-test-123-profile")
+        assertThat(job.metadata.name).isEqualTo("stress-test-123")
+        assertThat(job.metadata.namespace).isEqualTo(Constants.Stress.NAMESPACE)
+        assertThat(job.metadata.labels[Constants.Stress.LABEL_KEY]).isEqualTo(Constants.Stress.LABEL_VALUE)
+        assertThat(job.metadata.labels["job-name"]).isEqualTo("stress-test-123")
+        assertThat(job.spec.backoffLimit).isEqualTo(0)
+        assertThat(job.spec.ttlSecondsAfterFinished).isEqualTo(86400)
+        assertThat(job.spec.template.spec.restartPolicy).isEqualTo("Never")
     }
 
     @Test
-    fun `buildJobYaml should use correct nodeSelector matching ServerType`() {
-        val yaml =
-            service.buildJobYaml(
-                jobName = "stress-test-123",
-                image = "ghcr.io/apache/cassandra-easy-stress:latest",
-                contactPoints = "10.0.1.6",
-                args = listOf("run", "KeyValue"),
-                profileConfigMapName = null,
-            )
-
-        assertThat(yaml).contains("type: ${ServerType.Stress.serverType}")
-        assertThat(yaml).doesNotContain("type: stress")
-    }
-
-    @Test
-    fun `buildCommandJobYaml should use correct nodeSelector matching ServerType`() {
-        val yaml =
-            service.buildCommandJobYaml(
+    fun `buildCommandJob should have single container and no volumes`() {
+        val job =
+            service.buildCommandJob(
                 jobName = "cmd-test-123",
                 image = "ghcr.io/apache/cassandra-easy-stress:latest",
                 args = listOf("list"),
             )
 
-        assertThat(yaml).contains("type: ${ServerType.Stress.serverType}")
-        assertThat(yaml).doesNotContain("type: stress")
+        val containers = job.spec.template.spec.containers
+        assertThat(containers).hasSize(1)
+        assertThat(containers[0].name).isEqualTo("stress")
+        assertThat(containers[0].image).isEqualTo("ghcr.io/apache/cassandra-easy-stress:latest")
+        assertThat(containers[0].command).containsExactly("cassandra-easy-stress")
+        assertThat(containers[0].args).containsExactly("list")
+
+        assertThat(job.spec.template.spec.volumes).isNullOrEmpty()
     }
 
     @Test
-    fun `buildJobYaml should still contain stress container`() {
-        val yaml =
-            service.buildJobYaml(
-                jobName = "stress-test-123",
+    fun `buildCommandJob should use correct nodeSelector and shorter TTL`() {
+        val job =
+            service.buildCommandJob(
+                jobName = "cmd-test-123",
                 image = "ghcr.io/apache/cassandra-easy-stress:latest",
-                contactPoints = "10.0.1.6,10.0.1.7",
-                args = listOf("run", "KeyValue", "-d", "1h"),
-                profileConfigMapName = null,
+                args = listOf("list"),
             )
 
-        assertThat(yaml).contains("name: stress")
-        assertThat(yaml).contains("image: ghcr.io/apache/cassandra-easy-stress:latest")
-        assertThat(yaml).contains("CASSANDRA_CONTACT_POINTS")
-        assertThat(yaml).contains("10.0.1.6,10.0.1.7")
+        assertThat(job.spec.template.spec.nodeSelector["type"]).isEqualTo(ServerType.Stress.serverType)
+        assertThat(job.spec.ttlSecondsAfterFinished).isEqualTo(300)
+        assertThat(job.spec.backoffLimit).isEqualTo(0)
     }
 }

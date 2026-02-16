@@ -80,6 +80,7 @@ val servicesModule =
                 get<K3sService>(),
                 get<K3sAgentService>(),
                 get<OutputHandler>(),
+                get<ClusterBackupService>(),
             )
         }
 

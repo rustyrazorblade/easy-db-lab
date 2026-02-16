@@ -12,14 +12,11 @@ import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
-import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.argThat
 import org.mockito.kotlin.eq
-import org.mockito.kotlin.isNull
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
-import java.io.File
 
 /**
  * Test suite for StressStart command.
@@ -124,7 +121,7 @@ class StressStartTest : BaseKoinTest() {
     }
 
     @Test
-    fun `execute should start job with default KeyValue workload when no args specified`() {
+    fun `execute should fail when no stress args specified`() {
         // Given - cluster state with control node and Cassandra nodes
         val stateWithNodes =
             ClusterState(
@@ -138,26 +135,13 @@ class StressStartTest : BaseKoinTest() {
             )
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithNodes)
-        whenever(mockStressJobService.startJob(any(), any(), any(), any(), any(), anyOrNull()))
-            .thenReturn(Result.success("job-created"))
 
         val command = StressStart()
 
-        // When
-        command.execute()
-
-        // Then - verify startJob was called with KeyValue workload and contact points
-        verify(mockStressJobService).startJob(
-            controlHost = eq(testControlHost),
-            jobName = argThat { startsWith("stress-") },
-            image = any(),
-            args =
-                argThat { args ->
-                    args.contains("run") && args.contains("KeyValue") && args.contains("10.0.1.6,10.0.1.7")
-                },
-            contactPoints = eq("10.0.1.6,10.0.1.7"),
-            profileConfig = isNull(),
-        )
+        // When/Then
+        assertThatThrownBy { command.execute() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("Stress arguments are required")
     }
 
     @Test
@@ -175,7 +159,7 @@ class StressStartTest : BaseKoinTest() {
             )
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithNodes)
-        whenever(mockStressJobService.startJob(any(), any(), any(), any(), any(), anyOrNull()))
+        whenever(mockStressJobService.startJob(any(), any(), any(), any(), any()))
             .thenReturn(Result.success("job-created"))
 
         val command = StressStart()
@@ -199,48 +183,6 @@ class StressStartTest : BaseKoinTest() {
                         args.contains("100")
                 },
             contactPoints = any(),
-            profileConfig = isNull(),
-        )
-    }
-
-    @Test
-    fun `execute should start job with profile when provided`() {
-        // Given - cluster state with nodes and a profile file
-        val stateWithNodes =
-            ClusterState(
-                name = "test-cluster",
-                versions = mutableMapOf(),
-                hosts =
-                    mutableMapOf(
-                        ServerType.Control to listOf(testControlHost),
-                        ServerType.Cassandra to listOf(testCassandraHost),
-                    ),
-            )
-
-        val profileFile = File(tempDir, "my-workload.yaml")
-        profileFile.writeText("keyspace: test\ntable: data")
-
-        whenever(mockClusterStateManager.load()).thenReturn(stateWithNodes)
-        whenever(mockStressJobService.startJob(any(), any(), any(), any(), any(), anyOrNull()))
-            .thenReturn(Result.success("job-created"))
-
-        val command = StressStart()
-        command.profilePath = profileFile.toPath()
-
-        // When
-        command.execute()
-
-        // Then - verify startJob was called with profile config
-        verify(mockStressJobService).startJob(
-            controlHost = eq(testControlHost),
-            jobName = any(),
-            image = any(),
-            args = any(),
-            contactPoints = any(),
-            profileConfig =
-                argThat { config ->
-                    config != null && config.first == "my-workload.yaml" && config.second.contains("keyspace: test")
-                },
         )
     }
 
@@ -259,40 +201,16 @@ class StressStartTest : BaseKoinTest() {
             )
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithNodes)
-        whenever(mockStressJobService.startJob(any(), any(), any(), any(), any(), anyOrNull()))
+        whenever(mockStressJobService.startJob(any(), any(), any(), any(), any()))
             .thenReturn(Result.failure(RuntimeException("Job creation failed")))
 
         val command = StressStart()
+        command.stressArgs = listOf("KeyValue")
 
         // When/Then
         assertThatThrownBy { command.execute() }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("Job creation failed")
-    }
-
-    @Test
-    fun `execute should fail when profile file does not exist`() {
-        // Given - cluster state with nodes
-        val stateWithNodes =
-            ClusterState(
-                name = "test-cluster",
-                versions = mutableMapOf(),
-                hosts =
-                    mutableMapOf(
-                        ServerType.Control to listOf(testControlHost),
-                        ServerType.Cassandra to listOf(testCassandraHost),
-                    ),
-            )
-
-        whenever(mockClusterStateManager.load()).thenReturn(stateWithNodes)
-
-        val command = StressStart()
-        command.profilePath = File(tempDir, "nonexistent.yaml").toPath()
-
-        // When/Then
-        assertThatThrownBy { command.execute() }
-            .isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("not found")
     }
 
     @Test
@@ -310,11 +228,12 @@ class StressStartTest : BaseKoinTest() {
             )
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithNodes)
-        whenever(mockStressJobService.startJob(any(), any(), any(), any(), any(), anyOrNull()))
+        whenever(mockStressJobService.startJob(any(), any(), any(), any(), any()))
             .thenReturn(Result.success("job-created"))
 
         val command = StressStart()
         command.jobName = "my-test"
+        command.stressArgs = listOf("KeyValue")
 
         // When
         command.execute()
@@ -326,7 +245,6 @@ class StressStartTest : BaseKoinTest() {
             image = any(),
             args = any(),
             contactPoints = any(),
-            profileConfig = isNull(),
         )
     }
 }

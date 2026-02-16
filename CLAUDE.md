@@ -224,6 +224,8 @@ For more details, see [packer/README.md](packer/README.md) and [packer/TESTING.m
 - Include updates to the documentation as part of planning.
 - CRITICAL: Tests must pass, in CI, on my local, and in the devcontainer.  It is UNACCEPTABLE to say that tests are only failing in devcontainers and to ignore them.
 - When making changes, keep CLAUDE.md and subdirectory CLAUDE.md files up to date if the change affects architecture, file locations, or patterns described in them.
+- NEVER build YAML with strings in Kotlin.  If you are building a config in memory to execute with K8, use fabric8.  If it's something that needs to be written to disk, use kotlinx.serialization with data classes.  ALWAYS prefer typed objects over big strings.
+- When outputting multiple lines to the console, use a multiline block instead of multiple calls to `outputHandler.handleMessage`
 
 ## Testing Guidelines
 

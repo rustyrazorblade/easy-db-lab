@@ -19,6 +19,7 @@ import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupRuleInfo
 import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupService
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
+import com.rustyrazorblade.easydblab.services.StressJobService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
@@ -40,6 +41,7 @@ class StatusTest : BaseKoinTest() {
     private val mockSocksProxyService: SocksProxyService = mock()
     private val mockRemoteOperationsService: RemoteOperationsService = mock()
     private val mockEmrService: EMRService = mock()
+    private val mockStressJobService: StressJobService = mock()
 
     private val testHosts =
         mapOf(
@@ -101,6 +103,7 @@ class StatusTest : BaseKoinTest() {
                 single<SocksProxyService> { mockSocksProxyService }
                 single<RemoteOperationsService> { mockRemoteOperationsService }
                 single<EMRService> { mockEmrService }
+                single<StressJobService> { mockStressJobService }
             },
         )
 

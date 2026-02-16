@@ -17,6 +17,7 @@ import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupService
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.services.K3sService
 import com.rustyrazorblade.easydblab.services.K8sService
+import com.rustyrazorblade.easydblab.services.StressJobService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.serialization.json.Json
 import org.koin.core.component.KoinComponent
@@ -59,6 +60,7 @@ class StatusCache(
                 "opensearch",
                 "s3",
                 "kubernetes",
+                "stressJobs",
                 "cassandraVersion",
                 "accessInfo",
             )
@@ -73,6 +75,7 @@ class StatusCache(
     private val remoteOperationsService: RemoteOperationsService by inject()
     private val emrService: EMRService by inject()
     private val openSearchService: OpenSearchService by inject()
+    private val stressJobService: StressJobService by inject()
 
     private val lock = ReentrantLock()
     private val timer = Timer("status-cache-refresh", true)
@@ -160,6 +163,10 @@ class StatusCache(
                 response.kubernetes?.let {
                     json.encodeToString(KubernetesInfo.serializer(), it)
                 } ?: "null"
+            "stressJobs" ->
+                response.stressJobs?.let {
+                    json.encodeToString(StressInfo.serializer(), it)
+                } ?: "null"
             "cassandraVersion" ->
                 response.cassandraVersion?.let {
                     json.encodeToString(CassandraVersionInfo.serializer(), it)
@@ -220,6 +227,7 @@ class StatusCache(
             opensearch = buildOpenSearchInfo(state),
             s3 = buildS3Info(state),
             kubernetes = buildKubernetesInfo(state),
+            stressJobs = buildStressInfo(state),
             cassandraVersion = buildCassandraVersionInfo(state, instanceStates),
             accessInfo = buildAccessInfo(state, instanceStates),
         )
@@ -393,6 +401,26 @@ class StatusCache(
                 null
             },
         )
+    }
+
+    private fun buildStressInfo(state: ClusterState): StressInfo? {
+        val controlHost = state.getControlHost() ?: return null
+        return runCatching {
+            stressJobService
+                .listJobs(controlHost)
+                .getOrThrow()
+                .map { job ->
+                    StressJobInfo(
+                        name = job.name,
+                        status = job.status,
+                        completions = job.completions,
+                        age = formatAge(job.age),
+                    )
+                }.let { StressInfo(jobs = it) }
+        }.getOrElse { e ->
+            log.debug(e) { "Failed to get stress jobs" }
+            null
+        }
     }
 
     private fun buildCassandraVersionInfo(

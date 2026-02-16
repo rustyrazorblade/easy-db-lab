@@ -45,6 +45,12 @@ class StressStart : PicoBaseCommand() {
     )
     var image: String = Constants.Stress.IMAGE
 
+    @Option(
+        names = ["--tags"],
+        description = ["Custom tags added to metrics (format: key=value,key=value)"],
+    )
+    var tags: String? = null
+
     @Parameters(
         description = ["Arguments passed directly to cassandra-easy-stress (e.g., KeyValue -d 1h --threads 100)"],
         arity = "0..*",
@@ -84,6 +90,9 @@ class StressStart : PicoBaseCommand() {
         val args = buildStressArgs(contactPoints)
         log.info { "Stress args: $args" }
 
+        // Parse tags
+        val parsedTags = parseTags(tags)
+
         // Start the job via service
         stressJobService
             .startJob(
@@ -92,6 +101,7 @@ class StressStart : PicoBaseCommand() {
                 image = image,
                 args = args,
                 contactPoints = contactPoints,
+                tags = parsedTags,
             ).getOrElse { e ->
                 error("Failed to create job: ${e.message}")
             }
@@ -111,6 +121,20 @@ class StressStart : PicoBaseCommand() {
             |Stop job: easy-db-lab cassandra stress stop $fullJobName
             """.trimMargin(),
         )
+    }
+
+    /**
+     * Parses a comma-separated key=value string into a Map.
+     */
+    internal fun parseTags(tagsString: String?): Map<String, String> {
+        if (tagsString.isNullOrBlank()) return emptyMap()
+        return tagsString
+            .split(",")
+            .filter { it.contains("=") }
+            .associate { entry ->
+                val (key, value) = entry.split("=", limit = 2)
+                key.trim() to value.trim()
+            }
     }
 
     /**

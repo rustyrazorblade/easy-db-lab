@@ -48,7 +48,7 @@ val servicesModule =
         factoryOf(::DefaultVictoriaBackupService) bind VictoriaBackupService::class
         factoryOf(::DefaultVictoriaStreamService) bind VictoriaStreamService::class
         factoryOf(::DefaultSidecarService) bind SidecarService::class
-        factoryOf(::DefaultStressJobService) bind StressJobService::class
+        singleOf(::DefaultStressJobService) bind StressJobService::class
         singleOf(::HostOperationsService)
 
         // Cluster configuration service for writing config files

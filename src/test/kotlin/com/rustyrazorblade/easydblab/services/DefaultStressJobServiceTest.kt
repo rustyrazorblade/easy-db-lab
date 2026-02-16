@@ -94,7 +94,13 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
 
         // Check env vars
         val envNames = sidecar.env.map { it.name }
-        assertThat(envNames).containsExactly("K8S_NODE_NAME", "HOST_IP", "CLUSTER_NAME", "GOMEMLIMIT")
+        assertThat(envNames).containsExactly(
+            "K8S_NODE_NAME",
+            "HOST_IP",
+            "CLUSTER_NAME",
+            "GOMEMLIMIT",
+            "OTEL_RESOURCE_ATTRIBUTES",
+        )
 
         val nodeNameEnv = sidecar.env.first { it.name == "K8S_NODE_NAME" }
         assertThat(nodeNameEnv.valueFrom.fieldRef.fieldPath).isEqualTo("spec.nodeName")
@@ -108,6 +114,9 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
 
         val goMemLimitEnv = sidecar.env.first { it.name == "GOMEMLIMIT" }
         assertThat(goMemLimitEnv.value).isEqualTo("64MiB")
+
+        val resourceAttrsEnv = sidecar.env.first { it.name == "OTEL_RESOURCE_ATTRIBUTES" }
+        assertThat(resourceAttrsEnv.value).isEqualTo("job_name=stress-test-123")
 
         // Check resources (requests only, no limits)
         assertThat(sidecar.resources.requests["memory"].toString()).isEqualTo("32Mi")
@@ -188,6 +197,47 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
         assertThat(containers[0].args).containsExactly("list")
 
         assertThat(job.spec.template.spec.volumes).isNullOrEmpty()
+    }
+
+    @Test
+    fun `buildJob should include custom tags in OTEL_RESOURCE_ATTRIBUTES`() {
+        val job =
+            service.buildJob(
+                jobName = "stress-test-123",
+                image = "ghcr.io/apache/cassandra-easy-stress:latest",
+                contactPoints = "10.0.1.6",
+                args = listOf("run", "KeyValue"),
+                tags = mapOf("env" to "production", "team" to "platform"),
+            )
+
+        val sidecar =
+            job.spec.template.spec.initContainers
+                .first { it.name == "otel-sidecar" }
+
+        val resourceAttrsEnv = sidecar.env.first { it.name == "OTEL_RESOURCE_ATTRIBUTES" }
+        assertThat(resourceAttrsEnv.value).contains("job_name=stress-test-123")
+        assertThat(resourceAttrsEnv.value).contains("env=production")
+        assertThat(resourceAttrsEnv.value).contains("team=platform")
+    }
+
+    @Test
+    fun `buildResourceAttributes should always include job_name`() {
+        val result = service.buildResourceAttributes("my-job", emptyMap())
+        assertThat(result).isEqualTo("job_name=my-job")
+    }
+
+    @Test
+    fun `buildResourceAttributes should merge user tags with job_name`() {
+        val result = service.buildResourceAttributes("my-job", mapOf("env" to "test"))
+        assertThat(result).contains("job_name=my-job")
+        assertThat(result).contains("env=test")
+    }
+
+    @Test
+    fun `SIDECAR_OTEL_CONFIG should include resourcedetection processor`() {
+        assertThat(DefaultStressJobService.SIDECAR_OTEL_CONFIG).contains("resourcedetection")
+        assertThat(DefaultStressJobService.SIDECAR_OTEL_CONFIG).contains("detectors: [env]")
+        assertThat(DefaultStressJobService.SIDECAR_OTEL_CONFIG).contains("processors: [resourcedetection, batch]")
     }
 
     @Test

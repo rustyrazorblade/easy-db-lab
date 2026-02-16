@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.services.StressJobService
+import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -159,7 +160,7 @@ class StressStartTest : BaseKoinTest() {
             )
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithNodes)
-        whenever(mockStressJobService.startJob(any(), any(), any(), any(), any()))
+        whenever(mockStressJobService.startJob(any(), any(), any(), any(), any(), any()))
             .thenReturn(Result.success("job-created"))
 
         val command = StressStart()
@@ -183,6 +184,7 @@ class StressStartTest : BaseKoinTest() {
                         args.contains("100")
                 },
             contactPoints = any(),
+            tags = any(),
         )
     }
 
@@ -201,7 +203,7 @@ class StressStartTest : BaseKoinTest() {
             )
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithNodes)
-        whenever(mockStressJobService.startJob(any(), any(), any(), any(), any()))
+        whenever(mockStressJobService.startJob(any(), any(), any(), any(), any(), any()))
             .thenReturn(Result.failure(RuntimeException("Job creation failed")))
 
         val command = StressStart()
@@ -228,7 +230,7 @@ class StressStartTest : BaseKoinTest() {
             )
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithNodes)
-        whenever(mockStressJobService.startJob(any(), any(), any(), any(), any()))
+        whenever(mockStressJobService.startJob(any(), any(), any(), any(), any(), any()))
             .thenReturn(Result.success("job-created"))
 
         val command = StressStart()
@@ -245,6 +247,62 @@ class StressStartTest : BaseKoinTest() {
             image = any(),
             args = any(),
             contactPoints = any(),
+            tags = any(),
+        )
+    }
+
+    @Test
+    fun `parseTags should parse comma-separated key=value pairs`() {
+        val command = StressStart()
+        val result = command.parseTags("env=production,team=platform")
+        assertThat(result).containsEntry("env", "production")
+        assertThat(result).containsEntry("team", "platform")
+    }
+
+    @Test
+    fun `parseTags should return empty map for null input`() {
+        val command = StressStart()
+        val result = command.parseTags(null)
+        assertThat(result).isEmpty()
+    }
+
+    @Test
+    fun `parseTags should return empty map for blank input`() {
+        val command = StressStart()
+        val result = command.parseTags("")
+        assertThat(result).isEmpty()
+    }
+
+    @Test
+    fun `execute should pass tags to startJob`() {
+        val stateWithNodes =
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+                hosts =
+                    mutableMapOf(
+                        ServerType.Control to listOf(testControlHost),
+                        ServerType.Cassandra to listOf(testCassandraHost),
+                    ),
+            )
+
+        whenever(mockClusterStateManager.load()).thenReturn(stateWithNodes)
+        whenever(mockStressJobService.startJob(any(), any(), any(), any(), any(), any()))
+            .thenReturn(Result.success("job-created"))
+
+        val command = StressStart()
+        command.stressArgs = listOf("KeyValue")
+        command.tags = "env=test,team=qa"
+
+        command.execute()
+
+        verify(mockStressJobService).startJob(
+            controlHost = eq(testControlHost),
+            jobName = any(),
+            image = any(),
+            args = any(),
+            contactPoints = any(),
+            tags = argThat { tags -> tags["env"] == "test" && tags["team"] == "qa" },
         )
     }
 }

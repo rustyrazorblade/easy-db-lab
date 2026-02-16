@@ -50,7 +50,7 @@ Victoria Logs runs on the control node as a Kubernetes deployment:
 - **Port**: 9428 (HTTP API)
 - **Storage**: Local ephemeral storage
 - **Retention**: 7 days (configurable)
-- **Location**: Control node only (`node-role.kubernetes.io/master`)
+- **Location**: Control node only (`node-role.kubernetes.io/control-plane`)
 
 ### Vector Log Collector
 

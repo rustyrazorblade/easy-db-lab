@@ -19,7 +19,7 @@ fi
 
 echo "ARCH is set to: $ARCH"
 
-K9S_VERSION="v0.32.7"
+K9S_VERSION="v0.50.18"
 RELEASE="k9s_Linux_${ARCH}.tar.gz"
 
 echo "Downloading k9s ${K9S_VERSION} for ${ARCH}..."

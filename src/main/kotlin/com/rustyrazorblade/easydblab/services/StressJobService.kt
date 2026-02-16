@@ -15,6 +15,8 @@ import io.fabric8.kubernetes.api.model.VolumeMountBuilder
 import io.fabric8.kubernetes.api.model.batch.v1.Job
 import io.fabric8.kubernetes.api.model.batch.v1.JobBuilder
 import io.github.oshai.kotlinlogging.KotlinLogging
+import io.github.resilience4j.retry.Retry
+import io.github.resilience4j.retry.RetryConfig
 
 /**
  * Service for managing cassandra-easy-stress K8s Jobs.
@@ -120,6 +122,8 @@ class DefaultStressJobService(
         private const val JOB_POLL_INTERVAL_MS = 1000L
         private const val TTL_STRESS_JOB_SECONDS = 86400
         private const val TTL_COMMAND_JOB_SECONDS = 300
+        private const val POD_READY_MAX_ATTEMPTS = 10
+        private const val POD_READY_POLL_INTERVAL_MS = 3000L
     }
 
     override fun startJob(
@@ -144,7 +148,44 @@ class DefaultStressJobService(
             k8sService
                 .createJob(controlHost, Constants.Stress.NAMESPACE, job)
                 .getOrThrow()
+
+            waitForPodRunning(controlHost, jobName)
         }
+
+    /**
+     * Polls until at least one pod for the job is Running or Succeeded.
+     * Throws if no pod reaches a running state within 30 seconds.
+     */
+    private fun waitForPodRunning(
+        controlHost: ClusterHost,
+        jobName: String,
+    ): String {
+        val retryConfig =
+            RetryConfig
+                .custom<String>()
+                .maxAttempts(POD_READY_MAX_ATTEMPTS)
+                .intervalFunction { _ -> POD_READY_POLL_INTERVAL_MS }
+                .retryOnException { true }
+                .build()
+        val retry = Retry.of("wait-for-stress-pod-$jobName", retryConfig)
+
+        return Retry
+            .decorateSupplier(retry) {
+                val pods = getPodsForJob(controlHost, jobName).getOrThrow()
+                if (pods.isEmpty()) {
+                    error("No pods created yet for job $jobName")
+                }
+                val pod = pods.first()
+                when (pod.status) {
+                    "Running", "Succeeded" -> {
+                        outputHandler.handleMessage("Pod ${pod.name} is ${pod.status}")
+                        jobName
+                    }
+                    "Failed" -> throw IllegalStateException("Pod ${pod.name} failed")
+                    else -> error("Pod ${pod.name} is ${pod.status}, waiting for Running")
+                }
+            }.get()
+    }
 
     override fun stopJob(
         controlHost: ClusterHost,
@@ -321,9 +362,9 @@ class DefaultStressJobService(
                     ResourceRequirementsBuilder()
                         .addToRequests("memory", Quantity("32Mi"))
                         .addToRequests("cpu", Quantity("25m"))
-                        .addToLimits("memory", Quantity("64Mi"))
                         .build(),
-                ).withVolumeMounts(
+                ).withRestartPolicy("Always")
+                .withVolumeMounts(
                     VolumeMountBuilder()
                         .withName("otel-sidecar-config")
                         .withMountPath("/etc/otel")
@@ -347,7 +388,8 @@ class DefaultStressJobService(
             .withNewSpec()
             .withRestartPolicy("Never")
             .withNodeSelector<String, String>(mapOf("type" to ServerType.Stress.serverType))
-            .withContainers(stressContainer, otelSidecar)
+            .withInitContainers(otelSidecar)
+            .withContainers(stressContainer)
             .withVolumes(
                 VolumeBuilder()
                     .withName("otel-sidecar-config")

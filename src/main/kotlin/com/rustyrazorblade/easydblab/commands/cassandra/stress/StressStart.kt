@@ -67,8 +67,8 @@ class StressStart : PicoBaseCommand() {
         }
 
         // Build contact points string from Cassandra private IPs
-        val contactPoints = cassandraHosts.joinToString(",") { it.privateIp }
-        log.info { "Cassandra contact points: $contactPoints" }
+        val contactPoints = cassandraHosts.first().privateIp
+        log.info { "Cassandra contact point: $contactPoints" }
 
         // Generate job name
         val timestamp = System.currentTimeMillis() / Constants.Time.MILLIS_PER_SECOND
@@ -96,17 +96,21 @@ class StressStart : PicoBaseCommand() {
                 error("Failed to create job: ${e.message}")
             }
 
-        outputHandler.handleMessage("")
-        outputHandler.handleMessage("Stress job started successfully!")
-        outputHandler.handleMessage("")
-        outputHandler.handleMessage("Job name: $fullJobName")
-        outputHandler.handleMessage("Image: $image")
-        outputHandler.handleMessage("Contact points: $contactPoints")
-        outputHandler.handleMessage("Stress args: ${args.joinToString(" ")}")
-        outputHandler.handleMessage("")
-        outputHandler.handleMessage("Check status: easy-db-lab cassandra stress status")
-        outputHandler.handleMessage("View logs: easy-db-lab cassandra stress logs $fullJobName")
-        outputHandler.handleMessage("Stop job: easy-db-lab cassandra stress stop $fullJobName")
+        outputHandler.handleMessage(
+            """
+            |
+            |Stress job started successfully!
+            |
+            |Job name: $fullJobName
+            |Image: $image
+            |Contact point: $contactPoints
+            |Stress args: ${args.joinToString(" ")}
+            |
+            |Check status: easy-db-lab cassandra stress status
+            |View logs: easy-db-lab cassandra stress logs $fullJobName
+            |Stop job: easy-db-lab cassandra stress stop $fullJobName
+            """.trimMargin(),
+        )
     }
 
     /**

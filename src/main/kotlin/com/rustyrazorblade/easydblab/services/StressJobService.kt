@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import com.rustyrazorblade.easydblab.output.OutputHandler
@@ -330,7 +331,7 @@ spec:
     spec:
       restartPolicy: Never
       nodeSelector:
-        type: stress
+        type: ${ServerType.Stress.serverType}
       containers:
         - name: stress
           image: $image
@@ -388,7 +389,7 @@ $argsYaml
     /**
      * Builds a simple job YAML for short-lived commands.
      */
-    private fun buildCommandJobYaml(
+    internal fun buildCommandJobYaml(
         jobName: String,
         image: String,
         args: List<String>,
@@ -415,7 +416,7 @@ spec:
     spec:
       restartPolicy: Never
       nodeSelector:
-        type: stress
+        type: ${ServerType.Stress.serverType}
       containers:
         - name: stress
           image: $image

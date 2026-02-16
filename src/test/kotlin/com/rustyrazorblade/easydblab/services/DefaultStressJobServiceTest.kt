@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -121,6 +122,34 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
         // Should have both volumes
         assertThat(yaml).contains("name: otel-sidecar-config")
         assertThat(yaml).contains("name: stress-test-123-profile")
+    }
+
+    @Test
+    fun `buildJobYaml should use correct nodeSelector matching ServerType`() {
+        val yaml =
+            service.buildJobYaml(
+                jobName = "stress-test-123",
+                image = "ghcr.io/apache/cassandra-easy-stress:latest",
+                contactPoints = "10.0.1.6",
+                args = listOf("run", "KeyValue"),
+                profileConfigMapName = null,
+            )
+
+        assertThat(yaml).contains("type: ${ServerType.Stress.serverType}")
+        assertThat(yaml).doesNotContain("type: stress")
+    }
+
+    @Test
+    fun `buildCommandJobYaml should use correct nodeSelector matching ServerType`() {
+        val yaml =
+            service.buildCommandJobYaml(
+                jobName = "cmd-test-123",
+                image = "ghcr.io/apache/cassandra-easy-stress:latest",
+                args = listOf("list"),
+            )
+
+        assertThat(yaml).contains("type: ${ServerType.Stress.serverType}")
+        assertThat(yaml).doesNotContain("type: stress")
     }
 
     @Test

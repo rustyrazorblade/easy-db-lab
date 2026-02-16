@@ -9,7 +9,7 @@ echo "=== Running: install_k3s.sh ==="
 # This allows node type (server vs agent) to be determined when the node starts
 
 # Determine k3s version and architecture
-K3S_VERSION="v1.28.5+k3s1"
+K3S_VERSION="v1.35.1+k3s1"
 ARCH="amd64"
 
 echo "Downloading k3s ${K3S_VERSION} for airgap installation..."

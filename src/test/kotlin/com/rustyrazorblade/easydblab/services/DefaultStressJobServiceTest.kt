@@ -46,8 +46,13 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
             )
 
         val containers = job.spec.template.spec.containers
-        assertThat(containers).hasSize(2)
-        assertThat(containers.map { it.name }).containsExactly("stress", "otel-sidecar")
+        assertThat(containers).hasSize(1)
+        assertThat(containers[0].name).isEqualTo("stress")
+
+        val initContainers = job.spec.template.spec.initContainers
+        assertThat(initContainers).hasSize(1)
+        assertThat(initContainers[0].name).isEqualTo("otel-sidecar")
+        assertThat(initContainers[0].restartPolicy).isEqualTo("Always")
     }
 
     @Test
@@ -82,7 +87,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
             )
 
         val sidecar =
-            job.spec.template.spec.containers
+            job.spec.template.spec.initContainers
                 .first { it.name == "otel-sidecar" }
         assertThat(sidecar.image).isEqualTo("otel/opentelemetry-collector-contrib:latest")
         assertThat(sidecar.args).containsExactly("--config=/etc/otel/otel-stress-sidecar-config.yaml")
@@ -104,10 +109,10 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
         val goMemLimitEnv = sidecar.env.first { it.name == "GOMEMLIMIT" }
         assertThat(goMemLimitEnv.value).isEqualTo("64MiB")
 
-        // Check resources
+        // Check resources (requests only, no limits)
         assertThat(sidecar.resources.requests["memory"].toString()).isEqualTo("32Mi")
         assertThat(sidecar.resources.requests["cpu"].toString()).isEqualTo("25m")
-        assertThat(sidecar.resources.limits["memory"].toString()).isEqualTo("64Mi")
+        assertThat(sidecar.resources.limits).isNullOrEmpty()
     }
 
     @Test
@@ -126,7 +131,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
         assertThat(volumes[0].configMap.name).isEqualTo("otel-stress-sidecar-config")
 
         val sidecar =
-            job.spec.template.spec.containers
+            job.spec.template.spec.initContainers
                 .first { it.name == "otel-sidecar" }
         assertThat(sidecar.volumeMounts).hasSize(1)
         assertThat(sidecar.volumeMounts[0].name).isEqualTo("otel-sidecar-config")

@@ -64,7 +64,6 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
             job.spec.template.spec.containers
                 .first { it.name == "stress" }
         assertThat(stress.image).isEqualTo("ghcr.io/apache/cassandra-easy-stress:latest")
-        assertThat(stress.command).containsExactly("cassandra-easy-stress")
         assertThat(stress.args).containsExactly("run", "KeyValue", "-d", "1h")
 
         val envMap = stress.env.associate { it.name to it.value }
@@ -181,7 +180,6 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
         assertThat(containers).hasSize(1)
         assertThat(containers[0].name).isEqualTo("stress")
         assertThat(containers[0].image).isEqualTo("ghcr.io/apache/cassandra-easy-stress:latest")
-        assertThat(containers[0].command).containsExactly("cassandra-easy-stress")
         assertThat(containers[0].args).containsExactly("list")
 
         assertThat(job.spec.template.spec.volumes).isNullOrEmpty()

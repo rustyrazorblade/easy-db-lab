@@ -270,7 +270,6 @@ class DefaultStressJobService(
             ContainerBuilder()
                 .withName("stress")
                 .withImage(image)
-                .withCommand("cassandra-easy-stress")
                 .withArgs(args)
                 .withEnv(
                     EnvVarBuilder()
@@ -380,7 +379,6 @@ class DefaultStressJobService(
             ContainerBuilder()
                 .withName("stress")
                 .withImage(image)
-                .withCommand("cassandra-easy-stress")
                 .withArgs(args)
                 .build()
 

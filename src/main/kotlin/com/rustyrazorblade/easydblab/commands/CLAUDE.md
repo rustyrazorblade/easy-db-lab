@@ -56,13 +56,19 @@ commands/
 │   │   ├── StressStatus.kt
 │   │   └── StressLogs.kt
 │   └── ...
+├── aws/                   # AWS-specific commands (e.g., PruneAMIs)
 ├── clickhouse/            # ClickHouse commands
-├── spark/                 # Spark commands
+├── dashboards/            # Grafana dashboard commands
 ├── k8/                    # Kubernetes commands
+├── logs/                  # Log import/listing commands
+├── metrics/               # Metrics import/listing commands
+├── opensearch/            # OpenSearch commands
+├── spark/                 # Spark commands
+├── tailscale/             # Tailscale VPN commands
 ├── mixins/                # Reusable PicoCLI mixins
 ├── converters/            # Type converters for PicoCLI
 ├── formatters/            # Output formatters
-└── *.kt                   # Top-level commands (Up, Down, Start, Stop, etc.)
+└── *.kt                   # Top-level commands (Up, Down, Init, Start, Stop, Server, Repl, etc.)
 ```
 
 ## Creating New Commands
@@ -116,6 +122,21 @@ parentCommand.addSubcommand("child", ChildCommand(context))
 commandLine.addSubcommand("parent", parentCommand)
 ```
 
+## Annotations
+
+- `@McpCommand` — expose command to MCP server for AI agents (must also add to `McpToolRegistry`)
+- `@RequireProfileSetup` — require AWS profile configuration before execution
+- `@RequireSSHKey` — require SSH key to be available
+- `@TriggerBackup` — trigger a cluster state backup after execution
+- `@PreExecute` / `@PostExecute` — lifecycle hooks around command execution
+
+## Special Long-Running Commands
+
+- **`Server`** — starts MCP server (Ktor + SSE). Does not exit until stopped.
+- **`Repl`** — starts interactive REPL. Does not exit until user quits.
+
+Both set `context.isInteractive = true` to keep resources (like CQL sessions) alive across invocations.
+
 ## Available Services
 
 Commands should delegate to these services:
@@ -123,12 +144,24 @@ Commands should delegate to these services:
 | Service | Purpose |
 |---------|---------|
 | `CassandraService` | Cassandra lifecycle (start, stop, restart) |
-| `K8sService` | Kubernetes operations |
-| `StressJobService` | Stress testing jobs on K8s |
 | `SidecarService` | Cassandra sidecar management |
+| `K8sService` | Kubernetes operations |
 | `K3sService` | K3s cluster management |
+| `StressJobService` | Stress testing jobs on K8s |
 | `HostOperationsService` | Parallel operations across hosts |
-| `VictoriaStreamService` | Stream metrics/logs from cluster to external Victoria instances |
+| `ClusterProvisioningService` | EC2 instance provisioning |
+| `ClusterConfigurationService` | Cluster configuration management |
+| `AWSResourceSetupService` | IAM roles, security groups, VPC setup |
+| `GrafanaDashboardService` | Grafana dashboard deployment |
+| `VictoriaStreamService` | Stream metrics/logs to external Victoria instances |
+| `VictoriaBackupService` | Backup/restore VictoriaMetrics and VictoriaLogs |
+| `VictoriaLogsService` | VictoriaLogs query and ingestion |
+| `TailscaleService` | Tailscale VPN setup on cluster nodes |
+| `RegistryService` | Container registry management |
+| `ClickHouseConfigService` | ClickHouse configuration |
+| `SparkService` | Spark job submission (EMR) |
+| `TemplateService` | K8s manifest template substitution |
+| `ObjectStore` | S3 file operations |
 | `RemoteOperationsService` | SSH execution (use sparingly, prefer domain services) |
 
 ## Output

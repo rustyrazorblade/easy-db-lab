@@ -163,8 +163,8 @@ class Up : PicoBaseCommand() {
         aws.putS3BucketPolicy(accountBucket)
 
         // Enable CloudWatch metrics scoped to this cluster's prefix
-        val clusterPrefix = "${Constants.S3.CLUSTERS_PREFIX}/${workingState.name}-${workingState.clusterId}"
-        aws.enableBucketRequestMetrics(accountBucket, clusterPrefix)
+        val clusterPrefix = workingState.clusterPrefix()
+        aws.enableBucketRequestMetrics(accountBucket, clusterPrefix, workingState.metricsConfigId())
         outputHandler.handleMessage("S3 request metrics enabled for cluster prefix: $clusterPrefix")
 
         workingState.s3Bucket = accountBucket
@@ -199,7 +199,7 @@ class Up : PicoBaseCommand() {
             objectStore as? S3ObjectStore
                 ?: error("ObjectStore is not S3ObjectStore. S3 is required for log ingestion.")
 
-        val clusterPrefix = "${Constants.S3.CLUSTERS_PREFIX}/${workingState.name}-${workingState.clusterId}/"
+        val clusterPrefix = workingState.clusterPrefix() + "/"
         s3ObjectStore
             .configureEMRLogNotifications(s3Bucket, queueInfo.queueArn, prefix = clusterPrefix + Constants.EMR.S3_LOG_PREFIX)
             .getOrThrow()

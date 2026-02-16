@@ -44,15 +44,9 @@ class TemplateService(
         )
     }
 
-    private fun buildMetricsFilterId(state: ClusterState): String {
-        val name = state.initConfig?.name ?: state.name
-        return "edl-$name-${state.clusterId}".take(Constants.S3.MAX_METRICS_CONFIG_ID_LENGTH)
-    }
+    private fun buildMetricsFilterId(state: ClusterState): String = state.metricsConfigId()
 
-    private fun buildClusterPrefix(state: ClusterState): String {
-        val name = state.initConfig?.name ?: state.name
-        return "${Constants.S3.CLUSTERS_PREFIX}/$name-${state.clusterId}"
-    }
+    private fun buildClusterPrefix(state: ClusterState): String = state.clusterPrefix()
 
     /**
      * Creates a [Template] from a string.

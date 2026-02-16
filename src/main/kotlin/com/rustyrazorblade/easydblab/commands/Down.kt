@@ -403,7 +403,7 @@ class Down : PicoBaseCommand() {
         }
 
         try {
-            val clusterPrefix = "${Constants.S3.CLUSTERS_PREFIX}/${clusterState.name}-${clusterState.clusterId}/"
+            val clusterPrefix = clusterState.clusterPrefix() + "/"
             aws.setLifecycleExpirationRule(bucketName, clusterPrefix, retentionDays)
             outputHandler.handleMessage("S3 lifecycle rule set: data under $clusterPrefix will expire in $retentionDays day(s)")
         } catch (e: Exception) {
@@ -424,7 +424,7 @@ class Down : PicoBaseCommand() {
         }
 
         try {
-            val configId = "edl-${clusterState.name}-${clusterState.clusterId}".take(Constants.S3.MAX_METRICS_CONFIG_ID_LENGTH)
+            val configId = clusterState.metricsConfigId()
             aws.disableBucketRequestMetrics(bucketName, configId)
             outputHandler.handleMessage("Disabled S3 request metrics for cluster: ${clusterState.name}")
         } catch (e: Exception) {

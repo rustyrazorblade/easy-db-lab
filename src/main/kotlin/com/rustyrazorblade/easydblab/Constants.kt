@@ -225,7 +225,6 @@ object Constants {
         const val JOB_PREFIX = "stress"
         const val LABEL_KEY = "app.kubernetes.io/name"
         const val LABEL_VALUE = "cassandra-stress"
-        const val PROFILE_MOUNT_PATH = "/profiles"
         const val DEFAULT_CASSANDRA_PORT = 9042
         const val PROMETHEUS_PORT = 9500
     }

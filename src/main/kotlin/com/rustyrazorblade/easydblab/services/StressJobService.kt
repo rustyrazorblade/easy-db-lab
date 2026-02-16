@@ -6,6 +6,14 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import com.rustyrazorblade.easydblab.output.OutputHandler
+import io.fabric8.kubernetes.api.model.ContainerBuilder
+import io.fabric8.kubernetes.api.model.EnvVarBuilder
+import io.fabric8.kubernetes.api.model.Quantity
+import io.fabric8.kubernetes.api.model.ResourceRequirementsBuilder
+import io.fabric8.kubernetes.api.model.VolumeBuilder
+import io.fabric8.kubernetes.api.model.VolumeMountBuilder
+import io.fabric8.kubernetes.api.model.batch.v1.Job
+import io.fabric8.kubernetes.api.model.batch.v1.JobBuilder
 import io.github.oshai.kotlinlogging.KotlinLogging
 
 /**
@@ -24,7 +32,6 @@ interface StressJobService {
      * @param image Container image for cassandra-easy-stress
      * @param args Arguments to pass to cassandra-easy-stress
      * @param contactPoints Cassandra contact points
-     * @param profileConfig Optional profile file content (key=filename, value=content)
      * @return Result containing the created job name or failure
      */
     fun startJob(
@@ -33,7 +40,6 @@ interface StressJobService {
         image: String,
         args: List<String>,
         contactPoints: String,
-        profileConfig: Pair<String, String>? = null,
     ): Result<String>
 
     /**
@@ -112,6 +118,8 @@ class DefaultStressJobService(
     companion object {
         private const val JOB_COMPLETION_TIMEOUT_SECONDS = 30
         private const val JOB_POLL_INTERVAL_MS = 1000L
+        private const val TTL_STRESS_JOB_SECONDS = 86400
+        private const val TTL_COMMAND_JOB_SECONDS = 300
     }
 
     override fun startJob(
@@ -120,48 +128,21 @@ class DefaultStressJobService(
         image: String,
         args: List<String>,
         contactPoints: String,
-        profileConfig: Pair<String, String>?,
     ): Result<String> =
         runCatching {
             log.info { "Starting stress job: $jobName" }
 
-            // Create ConfigMap for profile if provided
-            var profileConfigMapName: String? = null
-            var profileFileName: String? = null
-            if (profileConfig != null) {
-                profileFileName = profileConfig.first
-                profileConfigMapName = "$jobName-profile"
-
-                outputHandler.handleMessage("Creating ConfigMap for profile: $profileFileName")
-
-                k8sService
-                    .createConfigMap(
-                        controlHost,
-                        Constants.Stress.NAMESPACE,
-                        profileConfigMapName,
-                        mapOf(profileFileName to profileConfig.second),
-                        mapOf(
-                            Constants.Stress.LABEL_KEY to Constants.Stress.LABEL_VALUE,
-                            "job-name" to jobName,
-                        ),
-                    ).getOrThrow()
-            }
-
-            // Build job YAML
-            val jobYaml =
-                buildJobYaml(
+            val job =
+                buildJob(
                     jobName = jobName,
                     image = image,
                     contactPoints = contactPoints,
                     args = args,
-                    profileConfigMapName = profileConfigMapName,
                 )
-            log.debug { "Job YAML:\n$jobYaml" }
 
-            // Create the job
             outputHandler.handleMessage("Starting stress job: $jobName")
             k8sService
-                .createJob(controlHost, Constants.Stress.NAMESPACE, jobYaml)
+                .createJob(controlHost, Constants.Stress.NAMESPACE, job)
                 .getOrThrow()
         }
 
@@ -176,12 +157,6 @@ class DefaultStressJobService(
             k8sService
                 .deleteJob(controlHost, Constants.Stress.NAMESPACE, jobName)
                 .getOrThrow()
-
-            // Try to delete associated ConfigMap (may not exist)
-            val configMapName = "$jobName-profile"
-            k8sService
-                .deleteConfigMap(controlHost, Constants.Stress.NAMESPACE, configMapName)
-                .onFailure { log.debug { "No ConfigMap to delete: $configMapName" } }
 
             log.info { "Stopped stress job: $jobName" }
         }
@@ -216,12 +191,10 @@ class DefaultStressJobService(
 
             log.info { "Running stress command: ${args.joinToString(" ")}" }
 
-            // Build a simple job without profile mounting
-            val jobYaml = buildCommandJobYaml(jobName, image, args)
+            val job = buildCommandJob(jobName, image, args)
 
-            // Create and run the job
             k8sService
-                .createJob(controlHost, Constants.Stress.NAMESPACE, jobYaml)
+                .createJob(controlHost, Constants.Stress.NAMESPACE, job)
                 .getOrThrow()
 
             // Wait for job completion
@@ -279,156 +252,158 @@ class DefaultStressJobService(
     }
 
     /**
-     * Builds the Kubernetes Job YAML for a stress job.
+     * Builds a Kubernetes Job for a stress job with OTel sidecar.
      */
-    internal fun buildJobYaml(
+    internal fun buildJob(
         jobName: String,
         image: String,
         contactPoints: String,
         args: List<String>,
-        profileConfigMapName: String?,
-    ): String {
-        val argsYaml = args.joinToString("\n") { "            - \"$it\"" }
+    ): Job {
+        val labels =
+            mapOf(
+                Constants.Stress.LABEL_KEY to Constants.Stress.LABEL_VALUE,
+                "job-name" to jobName,
+            )
 
-        val volumeMountsYaml =
-            if (profileConfigMapName != null) {
-                """
-          volumeMounts:
-            - name: profiles
-              mountPath: ${Constants.Stress.PROFILE_MOUNT_PATH}
-              readOnly: true"""
-            } else {
-                ""
-            }
+        val stressContainer =
+            ContainerBuilder()
+                .withName("stress")
+                .withImage(image)
+                .withCommand("cassandra-easy-stress")
+                .withArgs(args)
+                .withEnv(
+                    EnvVarBuilder()
+                        .withName("CASSANDRA_CONTACT_POINTS")
+                        .withValue(contactPoints)
+                        .build(),
+                    EnvVarBuilder()
+                        .withName("CASSANDRA_PORT")
+                        .withValue(Constants.Stress.DEFAULT_CASSANDRA_PORT.toString())
+                        .build(),
+                ).build()
 
-        val profileVolumeYaml =
-            if (profileConfigMapName != null) {
-                """
-        - name: profiles
-          configMap:
-            name: $profileConfigMapName"""
-            } else {
-                ""
-            }
+        val otelSidecar =
+            ContainerBuilder()
+                .withName("otel-sidecar")
+                .withImage("otel/opentelemetry-collector-contrib:latest")
+                .withArgs("--config=/etc/otel/otel-stress-sidecar-config.yaml")
+                .withEnv(
+                    EnvVarBuilder()
+                        .withName("K8S_NODE_NAME")
+                        .withNewValueFrom()
+                        .withNewFieldRef()
+                        .withFieldPath("spec.nodeName")
+                        .endFieldRef()
+                        .endValueFrom()
+                        .build(),
+                    EnvVarBuilder()
+                        .withName("HOST_IP")
+                        .withNewValueFrom()
+                        .withNewFieldRef()
+                        .withFieldPath("status.hostIP")
+                        .endFieldRef()
+                        .endValueFrom()
+                        .build(),
+                    EnvVarBuilder()
+                        .withName("CLUSTER_NAME")
+                        .withNewValueFrom()
+                        .withNewConfigMapKeyRef()
+                        .withName("cluster-config")
+                        .withKey("cluster_name")
+                        .endConfigMapKeyRef()
+                        .endValueFrom()
+                        .build(),
+                    EnvVarBuilder()
+                        .withName("GOMEMLIMIT")
+                        .withValue("64MiB")
+                        .build(),
+                ).withResources(
+                    ResourceRequirementsBuilder()
+                        .addToRequests("memory", Quantity("32Mi"))
+                        .addToRequests("cpu", Quantity("25m"))
+                        .addToLimits("memory", Quantity("64Mi"))
+                        .build(),
+                ).withVolumeMounts(
+                    VolumeMountBuilder()
+                        .withName("otel-sidecar-config")
+                        .withMountPath("/etc/otel")
+                        .withReadOnly(true)
+                        .build(),
+                ).build()
 
-        return """
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: $jobName
-  namespace: ${Constants.Stress.NAMESPACE}
-  labels:
-    ${Constants.Stress.LABEL_KEY}: ${Constants.Stress.LABEL_VALUE}
-    job-name: $jobName
-spec:
-  backoffLimit: 0
-  ttlSecondsAfterFinished: 86400
-  template:
-    metadata:
-      labels:
-        ${Constants.Stress.LABEL_KEY}: ${Constants.Stress.LABEL_VALUE}
-        job-name: $jobName
-    spec:
-      restartPolicy: Never
-      nodeSelector:
-        type: ${ServerType.Stress.serverType}
-      containers:
-        - name: stress
-          image: $image
-          env:
-            - name: CASSANDRA_CONTACT_POINTS
-              value: "$contactPoints"
-            - name: CASSANDRA_PORT
-              value: "${Constants.Stress.DEFAULT_CASSANDRA_PORT}"
-          command: ["cassandra-easy-stress"]
-          args:
-$argsYaml
-          resources:
-            requests:
-              memory: "1Gi"
-              cpu: "500m"
-            limits:
-              memory: "4Gi"$volumeMountsYaml
-        - name: otel-sidecar
-          image: otel/opentelemetry-collector-contrib:latest
-          args:
-            - --config=/etc/otel/otel-stress-sidecar-config.yaml
-          env:
-            - name: K8S_NODE_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: spec.nodeName
-            - name: HOST_IP
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.hostIP
-            - name: CLUSTER_NAME
-              valueFrom:
-                configMapKeyRef:
-                  name: cluster-config
-                  key: cluster_name
-            - name: GOMEMLIMIT
-              value: "64MiB"
-          resources:
-            requests:
-              memory: "32Mi"
-              cpu: "25m"
-            limits:
-              memory: "64Mi"
-          volumeMounts:
-            - name: otel-sidecar-config
-              mountPath: /etc/otel
-              readOnly: true
-      volumes:
-        - name: otel-sidecar-config
-          configMap:
-            name: otel-stress-sidecar-config$profileVolumeYaml
-""".trimStart()
+        return JobBuilder()
+            .withNewMetadata()
+            .withName(jobName)
+            .withNamespace(Constants.Stress.NAMESPACE)
+            .withLabels<String, String>(labels)
+            .endMetadata()
+            .withNewSpec()
+            .withBackoffLimit(0)
+            .withTtlSecondsAfterFinished(TTL_STRESS_JOB_SECONDS)
+            .withNewTemplate()
+            .withNewMetadata()
+            .withLabels<String, String>(labels)
+            .endMetadata()
+            .withNewSpec()
+            .withRestartPolicy("Never")
+            .withNodeSelector<String, String>(mapOf("type" to ServerType.Stress.serverType))
+            .withContainers(stressContainer, otelSidecar)
+            .withVolumes(
+                VolumeBuilder()
+                    .withName("otel-sidecar-config")
+                    .withNewConfigMap()
+                    .withName("otel-stress-sidecar-config")
+                    .endConfigMap()
+                    .build(),
+            ).endSpec()
+            .endTemplate()
+            .endSpec()
+            .build()
     }
 
     /**
-     * Builds a simple job YAML for short-lived commands.
+     * Builds a simple Kubernetes Job for short-lived commands.
      */
-    internal fun buildCommandJobYaml(
+    internal fun buildCommandJob(
         jobName: String,
         image: String,
         args: List<String>,
-    ): String {
-        val argsYaml = args.joinToString("\n") { "            - \"$it\"" }
+    ): Job {
+        val labels =
+            mapOf(
+                Constants.Stress.LABEL_KEY to Constants.Stress.LABEL_VALUE,
+                "job-name" to jobName,
+            )
 
-        return """
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: $jobName
-  namespace: ${Constants.Stress.NAMESPACE}
-  labels:
-    ${Constants.Stress.LABEL_KEY}: ${Constants.Stress.LABEL_VALUE}
-    job-name: $jobName
-spec:
-  backoffLimit: 0
-  ttlSecondsAfterFinished: 300
-  template:
-    metadata:
-      labels:
-        ${Constants.Stress.LABEL_KEY}: ${Constants.Stress.LABEL_VALUE}
-        job-name: $jobName
-    spec:
-      restartPolicy: Never
-      nodeSelector:
-        type: ${ServerType.Stress.serverType}
-      containers:
-        - name: stress
-          image: $image
-          command: ["cassandra-easy-stress"]
-          args:
-$argsYaml
-          resources:
-            requests:
-              memory: "256Mi"
-              cpu: "100m"
-            limits:
-              memory: "512Mi"
-""".trimStart()
+        val stressContainer =
+            ContainerBuilder()
+                .withName("stress")
+                .withImage(image)
+                .withCommand("cassandra-easy-stress")
+                .withArgs(args)
+                .build()
+
+        return JobBuilder()
+            .withNewMetadata()
+            .withName(jobName)
+            .withNamespace(Constants.Stress.NAMESPACE)
+            .withLabels<String, String>(labels)
+            .endMetadata()
+            .withNewSpec()
+            .withBackoffLimit(0)
+            .withTtlSecondsAfterFinished(TTL_COMMAND_JOB_SECONDS)
+            .withNewTemplate()
+            .withNewMetadata()
+            .withLabels<String, String>(labels)
+            .endMetadata()
+            .withNewSpec()
+            .withRestartPolicy("Never")
+            .withNodeSelector<String, String>(mapOf("type" to ServerType.Stress.serverType))
+            .withContainers(stressContainer)
+            .endSpec()
+            .endTemplate()
+            .endSpec()
+            .build()
     }
 }

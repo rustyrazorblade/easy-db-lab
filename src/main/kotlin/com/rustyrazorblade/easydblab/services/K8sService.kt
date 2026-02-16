@@ -189,6 +189,20 @@ interface K8sService {
     ): Result<String>
 
     /**
+     * Creates a Kubernetes Job from a fabric8 Job object.
+     *
+     * @param controlHost The control node running the K3s server
+     * @param namespace The namespace to create the job in
+     * @param job The fabric8 Job object to create
+     * @return Result containing the job name or failure
+     */
+    fun createJob(
+        controlHost: ClusterHost,
+        namespace: String,
+        job: io.fabric8.kubernetes.api.model.batch.v1.Job,
+    ): Result<String>
+
+    /**
      * Deletes a Kubernetes Job.
      *
      * @param controlHost The control node running the K3s server
@@ -900,6 +914,32 @@ class DefaultK8sService(
                 val jobName =
                     nameLine?.substringAfter("name:")?.trim()?.trim('"', '\'')
                         ?: error("Could not extract job name from YAML")
+
+                log.info { "Created job: $jobName" }
+                jobName
+            }
+        }
+
+    override fun createJob(
+        controlHost: ClusterHost,
+        namespace: String,
+        job: io.fabric8.kubernetes.api.model.batch.v1.Job,
+    ): Result<String> =
+        runCatching {
+            log.info { "Creating K8s job '${job.metadata?.name}' in namespace $namespace" }
+
+            createClient(controlHost).use { client ->
+                client
+                    .batch()
+                    .v1()
+                    .jobs()
+                    .inNamespace(namespace)
+                    .resource(job)
+                    .create()
+
+                val jobName =
+                    job.metadata?.name
+                        ?: error("Job metadata name is required")
 
                 log.info { "Created job: $jobName" }
                 jobName

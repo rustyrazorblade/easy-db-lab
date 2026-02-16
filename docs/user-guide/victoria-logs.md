@@ -254,6 +254,37 @@ The `logs query` command uses the internal SOCKS5 proxy to connect to Victoria L
 2. The proxy is started automatically when needed
 3. Check that control node is accessible: `ssh control0 hostname`
 
+## Listing Backups
+
+List available VictoriaLogs backups in S3:
+
+```bash
+easy-db-lab logs ls
+```
+
+This displays a summary table of all backups grouped by timestamp, showing the number of files and total size for each.
+
+## Importing Logs to an External Instance
+
+Stream logs from the running cluster's VictoriaLogs to an external VictoriaLogs instance via the jsonline API:
+
+```bash
+# Import all logs
+easy-db-lab logs import --target http://victorialogs:9428
+
+# Import only specific logs
+easy-db-lab logs import --target http://victorialogs:9428 --query 'source:cassandra'
+```
+
+This is useful for exporting logs at the end of test runs when running easy-db-lab from a Docker container. Unlike binary backups, this approach streams data via HTTP and can target any reachable VictoriaLogs instance.
+
+### Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--target` | Target VictoriaLogs URL (required) | - |
+| `--query` | LogsQL query for filtering | All logs (`*`) |
+
 ## Backup
 
 Victoria Logs data can be backed up to S3 for disaster recovery using consistent snapshots.

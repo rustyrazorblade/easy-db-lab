@@ -25,6 +25,8 @@ import picocli.CommandLine.Spec
     mixinStandardHelpOptions = true,
     subcommands = [
         LogsBackup::class,
+        LogsImport::class,
+        LogsLs::class,
         LogsQuery::class,
     ],
 )

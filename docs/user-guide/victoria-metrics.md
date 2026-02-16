@@ -109,6 +109,37 @@ Use `--dest` to override the destination bucket and path
 - Direct S3 upload (no intermediate storage needed)
 - Incremental backup support for faster subsequent backups
 
+## Listing Backups
+
+List available VictoriaMetrics backups in S3:
+
+```bash
+easy-db-lab metrics ls
+```
+
+This displays a summary table of all backups grouped by timestamp, showing the number of files and total size for each.
+
+## Importing Metrics to an External Instance
+
+Stream metrics from the running cluster's VictoriaMetrics to an external VictoriaMetrics instance via the native export/import API:
+
+```bash
+# Import all metrics
+easy-db-lab metrics import --target http://victoria:8428
+
+# Import only specific metrics
+easy-db-lab metrics import --target http://victoria:8428 --match '{job="cassandra"}'
+```
+
+This is useful for exporting metrics at the end of test runs when running easy-db-lab from a Docker container. Unlike binary backups, this approach streams data via HTTP and can target any reachable VictoriaMetrics instance.
+
+### Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--target` | Target VictoriaMetrics URL (required) | - |
+| `--match` | Metric selector for filtering | All metrics |
+
 ## Troubleshooting
 
 ### No metrics appearing

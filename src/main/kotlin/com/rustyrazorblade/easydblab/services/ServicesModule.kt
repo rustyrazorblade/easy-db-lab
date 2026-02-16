@@ -46,6 +46,7 @@ val servicesModule =
         factoryOf(::DefaultGrafanaDashboardService) bind GrafanaDashboardService::class
         factoryOf(::TemplateService)
         factoryOf(::DefaultVictoriaBackupService) bind VictoriaBackupService::class
+        factoryOf(::DefaultVictoriaStreamService) bind VictoriaStreamService::class
         factoryOf(::DefaultSidecarService) bind SidecarService::class
         factoryOf(::DefaultStressJobService) bind StressJobService::class
         singleOf(::HostOperationsService)

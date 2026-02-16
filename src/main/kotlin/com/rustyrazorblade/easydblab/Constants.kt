@@ -230,6 +230,16 @@ object Constants {
         const val PROMETHEUS_PORT = 9500
     }
 
+    // Victoria (VictoriaMetrics + VictoriaLogs) streaming configuration
+    object Victoria {
+        const val METRICS_EXPORT_PATH = "/api/v1/export/native"
+        const val METRICS_IMPORT_PATH = "/api/v1/import/native"
+        const val LOGS_EXPORT_PATH = "/select/logsql/query"
+        const val LOGS_IMPORT_PATH = "/insert/jsonline"
+        const val DEFAULT_METRICS_MATCH = """{__name__!=""}"""
+        const val DEFAULT_LOGS_QUERY = "*"
+    }
+
     // Proxy configuration
     object Proxy {
         const val DEFAULT_SOCKS5_PORT = 1080

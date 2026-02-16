@@ -42,6 +42,7 @@ interface StressJobService {
         image: String,
         args: List<String>,
         contactPoints: String,
+        tags: Map<String, String> = emptyMap(),
     ): Result<String>
 
     /**
@@ -124,6 +125,46 @@ class DefaultStressJobService(
         private const val TTL_COMMAND_JOB_SECONDS = 300
         private const val POD_READY_MAX_ATTEMPTS = 10
         private const val POD_READY_POLL_INTERVAL_MS = 3000L
+        private const val SIDECAR_CONFIG_MAP_NAME = "otel-stress-sidecar-config"
+        private const val SIDECAR_CONFIG_FILE_NAME = "otel-stress-sidecar-config.yaml"
+
+        internal val SIDECAR_OTEL_CONFIG =
+            """
+            |receivers:
+            |  prometheus:
+            |    config:
+            |      scrape_configs:
+            |        - job_name: 'cassandra-stress'
+            |          scrape_interval: 5s
+            |          static_configs:
+            |            - targets: ['localhost:9500']
+            |          relabel_configs:
+            |            - target_label: instance
+            |              replacement: '${'$'}{env:K8S_NODE_NAME}:9500'
+            |            - target_label: cluster
+            |              replacement: '${'$'}{env:CLUSTER_NAME}'
+            |
+            |processors:
+            |  batch:
+            |    timeout: 10s
+            |  resourcedetection:
+            |    detectors: [env]
+            |    timeout: 2s
+            |    override: false
+            |
+            |exporters:
+            |  otlp:
+            |    endpoint: ${'$'}{env:HOST_IP}:4317
+            |    tls:
+            |      insecure: true
+            |
+            |service:
+            |  pipelines:
+            |    metrics:
+            |      receivers: [prometheus]
+            |      processors: [resourcedetection, batch]
+            |      exporters: [otlp]
+            """.trimMargin()
     }
 
     override fun startJob(
@@ -132,9 +173,12 @@ class DefaultStressJobService(
         image: String,
         args: List<String>,
         contactPoints: String,
+        tags: Map<String, String>,
     ): Result<String> =
         runCatching {
             log.info { "Starting stress job: $jobName" }
+
+            ensureSidecarConfigMap(controlHost)
 
             val job =
                 buildJob(
@@ -142,6 +186,7 @@ class DefaultStressJobService(
                     image = image,
                     contactPoints = contactPoints,
                     args = args,
+                    tags = tags,
                 )
 
             outputHandler.handleMessage("Starting stress job: $jobName")
@@ -185,6 +230,33 @@ class DefaultStressJobService(
                     else -> error("Pod ${pod.name} is ${pod.status}, waiting for Running")
                 }
             }.get()
+    }
+
+    /**
+     * Ensures the OTel sidecar ConfigMap exists in the stress namespace.
+     */
+    private fun ensureSidecarConfigMap(controlHost: ClusterHost) {
+        k8sService
+            .createConfigMap(
+                controlHost = controlHost,
+                namespace = Constants.Stress.NAMESPACE,
+                name = SIDECAR_CONFIG_MAP_NAME,
+                data = mapOf(SIDECAR_CONFIG_FILE_NAME to SIDECAR_OTEL_CONFIG),
+                labels = mapOf("app.kubernetes.io/name" to "otel-stress-sidecar"),
+            ).getOrThrow()
+    }
+
+    /**
+     * Builds the OTEL_RESOURCE_ATTRIBUTES value from job name and user tags.
+     * Always includes job_name automatically.
+     */
+    internal fun buildResourceAttributes(
+        jobName: String,
+        tags: Map<String, String>,
+    ): String {
+        val allAttributes = mutableMapOf("job_name" to jobName)
+        allAttributes.putAll(tags)
+        return allAttributes.entries.joinToString(",") { "${it.key}=${it.value}" }
     }
 
     override fun stopJob(
@@ -300,6 +372,7 @@ class DefaultStressJobService(
         image: String,
         contactPoints: String,
         args: List<String>,
+        tags: Map<String, String> = emptyMap(),
     ): Job {
         val labels =
             mapOf(
@@ -323,11 +396,13 @@ class DefaultStressJobService(
                         .build(),
                 ).build()
 
+        val resourceAttributes = buildResourceAttributes(jobName, tags)
+
         val otelSidecar =
             ContainerBuilder()
                 .withName("otel-sidecar")
                 .withImage("otel/opentelemetry-collector-contrib:latest")
-                .withArgs("--config=/etc/otel/otel-stress-sidecar-config.yaml")
+                .withArgs("--config=/etc/otel/$SIDECAR_CONFIG_FILE_NAME")
                 .withEnv(
                     EnvVarBuilder()
                         .withName("K8S_NODE_NAME")
@@ -357,6 +432,10 @@ class DefaultStressJobService(
                     EnvVarBuilder()
                         .withName("GOMEMLIMIT")
                         .withValue("64MiB")
+                        .build(),
+                    EnvVarBuilder()
+                        .withName("OTEL_RESOURCE_ATTRIBUTES")
+                        .withValue(resourceAttributes)
                         .build(),
                 ).withResources(
                     ResourceRequirementsBuilder()

@@ -16,6 +16,7 @@ data class StatusResponse(
     val opensearch: OpenSearchInfo? = null,
     val s3: S3Info? = null,
     val kubernetes: KubernetesInfo? = null,
+    val stressJobs: StressInfo? = null,
     val cassandraVersion: CassandraVersionInfo? = null,
     val accessInfo: AccessInfo? = null,
 )
@@ -115,6 +116,19 @@ data class PodInfo(
 @Serializable
 data class KubernetesInfo(
     val pods: List<PodInfo>,
+)
+
+@Serializable
+data class StressJobInfo(
+    val name: String,
+    val status: String,
+    val completions: String,
+    val age: String,
+)
+
+@Serializable
+data class StressInfo(
+    val jobs: List<StressJobInfo>,
 )
 
 @Serializable

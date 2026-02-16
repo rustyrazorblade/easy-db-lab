@@ -157,7 +157,7 @@ private fun Pod.toKubernetesPod(): KubernetesPod {
 private fun Node.toKubernetesNode(): KubernetesNode {
     val labels = metadata?.labels ?: emptyMap()
 
-    // Extract roles from labels (e.g., "node-role.kubernetes.io/master" -> "master")
+    // Extract roles from labels (e.g., "node-role.kubernetes.io/control-plane" -> "control-plane")
     val roles =
         labels.keys
             .filter { it.startsWith("node-role.kubernetes.io/") }

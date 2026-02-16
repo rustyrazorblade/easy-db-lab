@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.s3Path
+import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
 import com.rustyrazorblade.easydblab.kubernetes.getLocalKubeconfigPath
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.output.displayClickHouseAccess
@@ -23,6 +24,7 @@ import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupService
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.services.K3sService
 import com.rustyrazorblade.easydblab.services.K8sService
+import com.rustyrazorblade.easydblab.services.StressJobService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
@@ -68,6 +70,7 @@ class Status :
     private val remoteOperationsService: RemoteOperationsService by inject()
     private val emrService: EMRService by inject()
     private val openSearchService: OpenSearchService by inject()
+    private val stressJobService: StressJobService by inject()
 
     private val clusterState by lazy { clusterStateManager.load() }
 
@@ -87,6 +90,7 @@ class Status :
         displayOpenSearchSection()
         displayS3BucketSection()
         displayKubernetesSection()
+        displayStressJobsSection()
         displayObservabilitySection()
         displayClickHouseSection()
         displayS3ManagerSection()
@@ -376,6 +380,58 @@ class Status :
                 outputHandler.handleMessage("(unable to connect to K3s: ${e.message})")
             },
         )
+    }
+
+    /**
+     * Display stress jobs section
+     */
+    private fun displayStressJobsSection() {
+        outputHandler.handleMessage("")
+        outputHandler.handleMessage("=== STRESS JOBS ===")
+
+        val controlHost = clusterState.getControlHost()
+        if (controlHost == null) {
+            outputHandler.handleMessage("(no control node configured)")
+            return
+        }
+
+        val jobs: List<KubernetesJob> =
+            try {
+                stressJobService.listJobs(controlHost).getOrThrow()
+            } catch (
+                @Suppress("TooGenericExceptionCaught")
+                e: Exception,
+            ) {
+                log.debug(e) { "Failed to get stress jobs" }
+                outputHandler.handleMessage("(unable to list stress jobs: ${e.message})")
+                return
+            } ?: run {
+                outputHandler.handleMessage("(unable to list stress jobs)")
+                return
+            }
+
+        if (jobs.isEmpty()) {
+            outputHandler.handleMessage("(no stress jobs running)")
+        } else {
+            outputHandler.handleMessage(
+                "%-40s %-12s %-12s %s".format(
+                    "NAME",
+                    "STATUS",
+                    "COMPLETIONS",
+                    "AGE",
+                ),
+            )
+            jobs.forEach { job ->
+                outputHandler.handleMessage(
+                    "%-40s %-12s %-12s %s".format(
+                        job.name.take(POD_NAME_MAX_LENGTH),
+                        job.status,
+                        job.completions,
+                        formatAge(job.age),
+                    ),
+                )
+            }
+        }
     }
 
     /**

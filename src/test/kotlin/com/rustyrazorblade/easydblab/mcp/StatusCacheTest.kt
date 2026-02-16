@@ -17,6 +17,7 @@ import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupRuleInfo
 import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupService
 import com.rustyrazorblade.easydblab.services.K3sService
 import com.rustyrazorblade.easydblab.services.K8sService
+import com.rustyrazorblade.easydblab.services.StressJobService
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
@@ -40,6 +41,7 @@ class StatusCacheTest : BaseKoinTest() {
     private lateinit var mockK8sService: K8sService
     private lateinit var mockEmrService: EMRService
     private lateinit var mockOpenSearchService: OpenSearchService
+    private lateinit var mockStressJobService: StressJobService
     private lateinit var statusCache: StatusCache
 
     private val testClusterState =
@@ -94,6 +96,7 @@ class StatusCacheTest : BaseKoinTest() {
                 factory<K8sService> { mockK8sService }
                 single { mockEmrService }
                 single { mockOpenSearchService }
+                single<StressJobService> { mockStressJobService }
             },
         )
 
@@ -106,6 +109,7 @@ class StatusCacheTest : BaseKoinTest() {
         mockK8sService = mock()
         mockEmrService = mock()
         mockOpenSearchService = mock()
+        mockStressJobService = mock()
 
         whenever(mockClusterStateManager.exists()).thenReturn(true)
         whenever(mockClusterStateManager.load()).thenReturn(testClusterState)

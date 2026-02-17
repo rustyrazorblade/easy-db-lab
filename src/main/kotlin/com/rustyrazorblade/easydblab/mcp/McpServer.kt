@@ -362,6 +362,46 @@ class McpServer(
 
                         transport.handlePostMessage(call)
                     }
+                    get("/stress/status") {
+                        val live = call.request.queryParameters["live"]?.toBoolean() ?: false
+
+                        if (live) {
+                            statusCache.forceRefresh()
+                        }
+
+                        try {
+                            val json = statusCache.getStatus("stressJobs")
+                            if (json == null) {
+                                call.respond(
+                                    HttpStatusCode.ServiceUnavailable,
+                                    "Status not yet available",
+                                )
+                            } else {
+                                call.respondText(json, ContentType.Application.Json)
+                            }
+                        } catch (e: IllegalArgumentException) {
+                            call.respond(HttpStatusCode.BadRequest, e.message ?: "Invalid request")
+                        }
+                    }.describe {
+                        summary = "Get stress job status"
+                        description = "Returns the current status of Cassandra stress jobs " +
+                            "running on the cluster."
+                        parameters {
+                            query("live") {
+                                description = "Force a live refresh of status data before responding"
+                                required = false
+                            }
+                        }
+                        responses {
+                            HttpStatusCode.OK {
+                                description = "JSON stress job status response"
+                                ContentType.Application.Json()
+                            }
+                            HttpStatusCode.ServiceUnavailable {
+                                description = "Status not yet available (cache warming up)"
+                            }
+                        }
+                    }
                     get("/status") {
                         val live = call.request.queryParameters["live"]?.toBoolean() ?: false
                         val section = call.request.queryParameters["section"]

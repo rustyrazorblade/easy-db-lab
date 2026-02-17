@@ -149,6 +149,17 @@ interface VpcService {
     fun getVpcTags(vpcId: VpcId): Map<String, String>
 
     /**
+     * Adds or updates tags on a VPC.
+     *
+     * @param vpcId The VPC ID to tag
+     * @param tags Map of tag key-value pairs to apply
+     */
+    fun addTagsToVpc(
+        vpcId: VpcId,
+        tags: Map<String, String>,
+    )
+
+    /**
      * Finds all EC2 instances in a VPC.
      *
      * @param vpcId The VPC ID to search in

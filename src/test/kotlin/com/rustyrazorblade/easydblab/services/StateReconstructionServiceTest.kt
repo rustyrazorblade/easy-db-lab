@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredInstance
 import com.rustyrazorblade.easydblab.providers.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
@@ -20,21 +19,22 @@ import org.mockito.kotlin.whenever
 internal class StateReconstructionServiceTest {
     private val mockVpcService: VpcService = mock()
     private val mockEc2InstanceService: EC2InstanceService = mock()
-    private val mockAws: AWS = mock()
 
-    private val service = DefaultStateReconstructionService(mockVpcService, mockEc2InstanceService, mockAws)
+    private val service = DefaultStateReconstructionService(mockVpcService, mockEc2InstanceService)
 
     @Test
     fun `reconstructFromVpc should return ClusterState with discovered instances`() {
         val vpcId = "vpc-12345"
         val clusterId = "abc123-full-uuid"
         val clusterName = "my-cluster"
+        val bucketName = "easy-db-lab-my-cluster-abc12345"
 
-        // Setup VPC tags
+        // Setup VPC tags including bucket
         val vpcTags =
             mapOf(
                 "Name" to clusterName,
                 "ClusterId" to clusterId,
+                "bucket" to bucketName,
             )
         whenever(mockVpcService.getVpcTags(vpcId)).thenReturn(vpcTags)
 
@@ -72,9 +72,6 @@ internal class StateReconstructionServiceTest {
         whenever(mockVpcService.findSecurityGroupsInVpc(vpcId)).thenReturn(listOf("sg-12345"))
         whenever(mockVpcService.findInternetGatewayByVpc(vpcId)).thenReturn("igw-12345")
 
-        // Setup S3 bucket discovery
-        whenever(mockAws.findS3BucketByTag("ClusterId", clusterId)).thenReturn("easy-db-lab-my-cluster-abc12345")
-
         // Execute
         val result = service.reconstructFromVpc(vpcId)
 
@@ -82,7 +79,7 @@ internal class StateReconstructionServiceTest {
         assertThat(result.name).isEqualTo(clusterName)
         assertThat(result.clusterId).isEqualTo(clusterId)
         assertThat(result.vpcId).isEqualTo(vpcId)
-        assertThat(result.s3Bucket).isEqualTo("easy-db-lab-my-cluster-abc12345")
+        assertThat(result.s3Bucket).isEqualTo(bucketName)
 
         // Verify hosts
         assertThat(result.hosts).containsKey(ServerType.Cassandra)
@@ -139,9 +136,6 @@ internal class StateReconstructionServiceTest {
         whenever(mockVpcService.findSecurityGroupsInVpc(vpcId)).thenReturn(emptyList())
         whenever(mockVpcService.findInternetGatewayByVpc(vpcId)).thenReturn(null)
 
-        // Setup S3 bucket discovery - not found
-        whenever(mockAws.findS3BucketByTag("ClusterId", clusterId)).thenReturn(null)
-
         // Execute
         val result = service.reconstructFromVpc(vpcId)
 
@@ -150,11 +144,11 @@ internal class StateReconstructionServiceTest {
     }
 
     @Test
-    fun `reconstructFromVpc should handle missing S3 bucket gracefully`() {
+    fun `reconstructFromVpc should handle missing bucket tag gracefully`() {
         val vpcId = "vpc-12345"
         val clusterId = "abc123-full-uuid"
 
-        // Setup VPC tags
+        // Setup VPC tags without bucket
         val vpcTags =
             mapOf(
                 "Name" to "my-cluster",
@@ -170,9 +164,6 @@ internal class StateReconstructionServiceTest {
         whenever(mockVpcService.findSubnetsInVpc(vpcId)).thenReturn(emptyList())
         whenever(mockVpcService.findSecurityGroupsInVpc(vpcId)).thenReturn(emptyList())
         whenever(mockVpcService.findInternetGatewayByVpc(vpcId)).thenReturn(null)
-
-        // Setup S3 bucket discovery - not found
-        whenever(mockAws.findS3BucketByTag("ClusterId", clusterId)).thenReturn(null)
 
         // Execute
         val result = service.reconstructFromVpc(vpcId)

@@ -281,6 +281,9 @@ object Constants {
         /** VPC name for packer infrastructure */
         const val PACKER_VPC_NAME = "easy-db-lab-packer"
 
+        /** VPC tag key for the S3 bucket name */
+        const val BUCKET_TAG_KEY = "bucket"
+
         /** SOCKS5 proxy state file name */
         const val SOCKS5_PROXY_STATE_FILE = ".socks5-proxy-state"
 

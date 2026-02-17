@@ -134,7 +134,7 @@ class DefaultStressJobService(
             |  prometheus:
             |    config:
             |      scrape_configs:
-            |        - job_name: 'cassandra-stress'
+            |        - job_name: 'cassandra-easy-stress'
             |          scrape_interval: 5s
             |          static_configs:
             |            - targets: ['localhost:9500']
@@ -467,8 +467,7 @@ class DefaultStressJobService(
             .withNewSpec()
             .withRestartPolicy("Never")
             .withNodeSelector<String, String>(mapOf("type" to ServerType.Stress.serverType))
-            .withInitContainers(otelSidecar)
-            .withContainers(stressContainer)
+            .withContainers(stressContainer, otelSidecar)
             .withVolumes(
                 VolumeBuilder()
                     .withName("otel-sidecar-config")

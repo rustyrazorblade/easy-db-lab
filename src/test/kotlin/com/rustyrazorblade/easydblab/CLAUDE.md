@@ -156,5 +156,6 @@ src/test/kotlin/com/rustyrazorblade/easydblab/
 - **Always** use AssertJ assertions (`assertThat`), not JUnit assertions
 - **Always** extend `BaseKoinTest` for tests needing DI
 - **Always** use `@TempDir` for temporary directories
+- **Never mock `TemplateService`** — always use the real instance (`single { TemplateService(get(), get()) }`). It only reads classpath resources and does string substitution with no external side effects.
 - Use `mockito-kotlin` for mocking (`mock<T>()`, `whenever()`, `verify()`)
 - See [docs/development/testing.md](../../../../docs/development/testing.md) for the full testing guide

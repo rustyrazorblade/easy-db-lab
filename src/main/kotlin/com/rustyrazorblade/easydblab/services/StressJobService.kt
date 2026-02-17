@@ -17,6 +17,8 @@ import io.fabric8.kubernetes.api.model.batch.v1.JobBuilder
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
 import io.github.resilience4j.retry.RetryConfig
+import org.koin.core.component.KoinComponent
+import org.koin.core.component.inject
 
 /**
  * Service for managing cassandra-easy-stress K8s Jobs.
@@ -115,8 +117,10 @@ interface StressJobService {
 class DefaultStressJobService(
     private val k8sService: K8sService,
     private val outputHandler: OutputHandler,
-) : StressJobService {
+) : StressJobService,
+    KoinComponent {
     private val log = KotlinLogging.logger {}
+    private val templateService: TemplateService by inject()
 
     companion object {
         private const val JOB_COMPLETION_TIMEOUT_SECONDS = 30
@@ -127,44 +131,6 @@ class DefaultStressJobService(
         private const val POD_READY_POLL_INTERVAL_MS = 3000L
         private const val SIDECAR_CONFIG_MAP_NAME = "otel-stress-sidecar-config"
         private const val SIDECAR_CONFIG_FILE_NAME = "otel-stress-sidecar-config.yaml"
-
-        internal val SIDECAR_OTEL_CONFIG =
-            """
-            |receivers:
-            |  prometheus:
-            |    config:
-            |      scrape_configs:
-            |        - job_name: 'cassandra-easy-stress'
-            |          scrape_interval: 5s
-            |          static_configs:
-            |            - targets: ['localhost:9500']
-            |          relabel_configs:
-            |            - target_label: instance
-            |              replacement: '${'$'}{env:K8S_NODE_NAME}:9500'
-            |            - target_label: cluster
-            |              replacement: '${'$'}{env:CLUSTER_NAME}'
-            |
-            |processors:
-            |  batch:
-            |    timeout: 10s
-            |  resourcedetection:
-            |    detectors: [env]
-            |    timeout: 2s
-            |    override: false
-            |
-            |exporters:
-            |  otlp:
-            |    endpoint: ${'$'}{env:HOST_IP}:4317
-            |    tls:
-            |      insecure: true
-            |
-            |service:
-            |  pipelines:
-            |    metrics:
-            |      receivers: [prometheus]
-            |      processors: [resourcedetection, batch]
-            |      exporters: [otlp]
-            """.trimMargin()
     }
 
     override fun startJob(
@@ -233,6 +199,11 @@ class DefaultStressJobService(
     }
 
     /**
+     * Loads the OTel sidecar config from the classpath resource.
+     */
+    private fun loadSidecarConfig(): String = templateService.fromResource(this::class.java, SIDECAR_CONFIG_FILE_NAME).substitute()
+
+    /**
      * Ensures the OTel sidecar ConfigMap exists in the stress namespace.
      */
     private fun ensureSidecarConfigMap(controlHost: ClusterHost) {
@@ -241,7 +212,7 @@ class DefaultStressJobService(
                 controlHost = controlHost,
                 namespace = Constants.Stress.NAMESPACE,
                 name = SIDECAR_CONFIG_MAP_NAME,
-                data = mapOf(SIDECAR_CONFIG_FILE_NAME to SIDECAR_OTEL_CONFIG),
+                data = mapOf(SIDECAR_CONFIG_FILE_NAME to loadSidecarConfig()),
                 labels = mapOf("app.kubernetes.io/name" to "otel-stress-sidecar"),
             ).getOrThrow()
     }

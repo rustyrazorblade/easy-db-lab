@@ -2,6 +2,8 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import org.assertj.core.api.Assertions.assertThat
@@ -10,6 +12,7 @@ import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.whenever
 
 /**
  * Tests for DefaultStressJobService Job building.
@@ -25,6 +28,12 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
         listOf(
             module {
                 single { mock<K8sService>().also { mockK8sService = it } }
+                single {
+                    mock<ClusterStateManager>().also {
+                        whenever(it.load()).thenReturn(ClusterState(name = "test-cluster", versions = mutableMapOf()))
+                    }
+                }
+                single { TemplateService(get(), get()) }
             },
         )
 
@@ -234,10 +243,12 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `SIDECAR_OTEL_CONFIG should include resourcedetection processor`() {
-        assertThat(DefaultStressJobService.SIDECAR_OTEL_CONFIG).contains("resourcedetection")
-        assertThat(DefaultStressJobService.SIDECAR_OTEL_CONFIG).contains("detectors: [env]")
-        assertThat(DefaultStressJobService.SIDECAR_OTEL_CONFIG).contains("processors: [resourcedetection, batch]")
+    fun `sidecar otel config resource should include resourcedetection processor`() {
+        val templateService: TemplateService = getKoin().get()
+        val config = templateService.fromResource(DefaultStressJobService::class.java, "otel-stress-sidecar-config.yaml").substitute()
+        assertThat(config).contains("resourcedetection")
+        assertThat(config).contains("detectors: [env]")
+        assertThat(config).contains("processors: [resourcedetection, batch]")
     }
 
     @Test

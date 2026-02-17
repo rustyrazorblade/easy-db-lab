@@ -62,6 +62,7 @@ data class OpenSearchClusterState(
  */
 data class InfrastructureState(
     val vpcId: String,
+    val region: String,
     val subnetIds: List<String> = emptyList(),
     val securityGroupId: String? = null,
     val internetGatewayId: String? = null,

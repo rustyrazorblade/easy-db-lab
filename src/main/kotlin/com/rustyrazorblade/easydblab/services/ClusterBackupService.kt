@@ -209,6 +209,7 @@ enum class BackupTarget(
     val s3PathProvider: (ClusterS3Path) -> ClusterS3Path,
     val displayName: String,
 ) {
+    STATE_JSON("state.json", false, { it.stateJson() }, "Cluster state"),
     KUBECONFIG("kubeconfig", false, { it.kubeconfig() }, "Kubeconfig"),
     K8S_MANIFESTS("k8s", true, { it.k8s() }, "K8s manifests"),
     CASSANDRA_PATCH("cassandra.patch.yaml", false, { it.cassandraPatch() }, "Cassandra patch"),

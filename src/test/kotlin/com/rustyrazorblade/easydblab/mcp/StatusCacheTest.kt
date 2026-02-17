@@ -79,6 +79,7 @@ class StatusCacheTest : BaseKoinTest() {
             infrastructure =
                 InfrastructureState(
                     vpcId = "vpc-abc123",
+                    region = "us-west-2",
                     subnetIds = listOf("subnet-111", "subnet-222"),
                     securityGroupId = "sg-abc123",
                     internetGatewayId = "igw-def456",

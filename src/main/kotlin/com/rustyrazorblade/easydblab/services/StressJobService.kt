@@ -2,14 +2,13 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import io.fabric8.kubernetes.api.model.ContainerBuilder
 import io.fabric8.kubernetes.api.model.EnvVarBuilder
-import io.fabric8.kubernetes.api.model.Quantity
-import io.fabric8.kubernetes.api.model.ResourceRequirementsBuilder
 import io.fabric8.kubernetes.api.model.VolumeBuilder
 import io.fabric8.kubernetes.api.model.VolumeMountBuilder
 import io.fabric8.kubernetes.api.model.batch.v1.Job
@@ -117,6 +116,7 @@ interface StressJobService {
 class DefaultStressJobService(
     private val k8sService: K8sService,
     private val outputHandler: OutputHandler,
+    private val clusterStateManager: ClusterStateManager,
 ) : StressJobService,
     KoinComponent {
     private val log = KotlinLogging.logger {}
@@ -345,6 +345,11 @@ class DefaultStressJobService(
         args: List<String>,
         tags: Map<String, String> = emptyMap(),
     ): Job {
+        val clusterState = clusterStateManager.load()
+        val region =
+            clusterState.infrastructure?.region
+                ?: error("Infrastructure state missing region. Re-provision the cluster to fix this.")
+
         val labels =
             mapOf(
                 Constants.Stress.LABEL_KEY to Constants.Stress.LABEL_VALUE,
@@ -364,6 +369,10 @@ class DefaultStressJobService(
                     EnvVarBuilder()
                         .withName("CASSANDRA_PORT")
                         .withValue(Constants.Stress.DEFAULT_CASSANDRA_PORT.toString())
+                        .build(),
+                    EnvVarBuilder()
+                        .withName("CASSANDRA_EASY_STRESS_DEFAULT_DC")
+                        .withValue(region)
                         .build(),
                 ).build()
 
@@ -407,11 +416,6 @@ class DefaultStressJobService(
                     EnvVarBuilder()
                         .withName("OTEL_RESOURCE_ATTRIBUTES")
                         .withValue(resourceAttributes)
-                        .build(),
-                ).withResources(
-                    ResourceRequirementsBuilder()
-                        .addToRequests("memory", Quantity("32Mi"))
-                        .addToRequests("cpu", Quantity("25m"))
                         .build(),
                 ).withRestartPolicy("Always")
                 .withVolumeMounts(

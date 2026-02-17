@@ -76,6 +76,7 @@ class SparkInitTest : BaseKoinTest() {
                 infrastructure =
                     InfrastructureState(
                         vpcId = "vpc-123",
+                        region = "us-west-2",
                         subnetIds = listOf("subnet-123"),
                         securityGroupId = "sg-456",
                     ),
@@ -101,6 +102,7 @@ class SparkInitTest : BaseKoinTest() {
                 infrastructure =
                     InfrastructureState(
                         vpcId = "vpc-123",
+                        region = "us-west-2",
                         subnetIds = listOf("subnet-123"),
                         securityGroupId = "sg-456",
                     ),
@@ -133,6 +135,7 @@ class SparkInitTest : BaseKoinTest() {
                 infrastructure =
                     InfrastructureState(
                         vpcId = "vpc-123",
+                        region = "us-west-2",
                         subnetIds = listOf("subnet-123"),
                         securityGroupId = "sg-456",
                     ),
@@ -193,6 +196,7 @@ class SparkInitTest : BaseKoinTest() {
                 infrastructure =
                     InfrastructureState(
                         vpcId = "vpc-123",
+                        region = "us-west-2",
                         subnetIds = listOf("subnet-abc"),
                         securityGroupId = "sg-xyz",
                     ),

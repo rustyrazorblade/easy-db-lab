@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.InfrastructureState
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import org.assertj.core.api.Assertions.assertThat
@@ -30,7 +31,17 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
                 single { mock<K8sService>().also { mockK8sService = it } }
                 single {
                     mock<ClusterStateManager>().also {
-                        whenever(it.load()).thenReturn(ClusterState(name = "test-cluster", versions = mutableMapOf()))
+                        whenever(it.load()).thenReturn(
+                            ClusterState(
+                                name = "test-cluster",
+                                versions = mutableMapOf(),
+                                infrastructure =
+                                    InfrastructureState(
+                                        vpcId = "vpc-test",
+                                        region = "us-west-2",
+                                    ),
+                            ),
+                        )
                     }
                 }
                 single { TemplateService(get(), get()) }
@@ -41,7 +52,8 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
     fun setup() {
         mockK8sService = getKoin().get()
         val outputHandler: OutputHandler = getKoin().get()
-        service = DefaultStressJobService(mockK8sService, outputHandler)
+        val clusterStateManager: ClusterStateManager = getKoin().get()
+        service = DefaultStressJobService(mockK8sService, outputHandler, clusterStateManager)
     }
 
     @Test
@@ -127,10 +139,8 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
         val resourceAttrsEnv = sidecar.env.first { it.name == "OTEL_RESOURCE_ATTRIBUTES" }
         assertThat(resourceAttrsEnv.value).isEqualTo("job_name=stress-test-123")
 
-        // Check resources (requests only, no limits)
-        assertThat(sidecar.resources.requests["memory"].toString()).isEqualTo("32Mi")
-        assertThat(sidecar.resources.requests["cpu"].toString()).isEqualTo("25m")
-        assertThat(sidecar.resources.limits).isNullOrEmpty()
+        // No resource requests or limits on sidecar
+        assertThat(sidecar.resources).isNull()
     }
 
     @Test

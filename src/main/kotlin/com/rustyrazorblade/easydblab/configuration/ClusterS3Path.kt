@@ -36,6 +36,7 @@ data class ClusterS3Path(
         private const val BACKUPS_DIR = "backups"
         private const val LOGS_DIR = "logs"
         private const val DATA_DIR = "data"
+        private const val STATE_JSON_FILE = "state.json"
         private const val KUBECONFIG_FILE = "kubeconfig"
         private const val K8S_DIR = "k8s"
         private const val CONFIG_DIR = "config"
@@ -288,6 +289,13 @@ data class ClusterS3Path(
      * @return Path: s3://bucket/config/setup_instance.sh
      */
     fun setupInstanceScript(): ClusterS3Path = resolve(CONFIG_DIR).resolve(SETUP_INSTANCE_FILE)
+
+    /**
+     * Path for state.json file.
+     *
+     * @return Path: s3://bucket/config/state.json
+     */
+    fun stateJson(): ClusterS3Path = resolve(CONFIG_DIR).resolve(STATE_JSON_FILE)
 
     /**
      * Path for VictoriaMetrics backups.

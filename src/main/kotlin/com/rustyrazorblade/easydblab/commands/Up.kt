@@ -429,6 +429,7 @@ class Up : PicoBaseCommand() {
             workingState.updateInfrastructure(
                 InfrastructureState(
                     vpcId = vpcId,
+                    region = userConfig.region,
                     subnetIds = subnetIds,
                     securityGroupId = securityGroupId,
                     internetGatewayId = igwId,

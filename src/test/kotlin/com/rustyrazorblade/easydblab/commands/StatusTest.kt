@@ -87,6 +87,7 @@ class StatusTest : BaseKoinTest() {
     private val testInfrastructure =
         InfrastructureState(
             vpcId = "vpc-12345",
+            region = "us-west-2",
             internetGatewayId = "igw-12345",
             subnetIds = listOf("subnet-a", "subnet-b", "subnet-c"),
             routeTableId = "rtb-12345",

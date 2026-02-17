@@ -84,14 +84,6 @@ val servicesModule =
             )
         }
 
-        // State reconstruction service for recovering state from AWS resources
-        single<StateReconstructionService> {
-            DefaultStateReconstructionService(
-                get<VpcService>(),
-                get<EC2InstanceService>(),
-            )
-        }
-
         // Cluster backup service for S3 backup/restore of cluster configuration files
         single<ClusterBackupService> {
             DefaultClusterBackupService(
@@ -100,10 +92,10 @@ val servicesModule =
             )
         }
 
-        // Unified backup/restore service coordinating state reconstruction and file operations
+        // Unified backup/restore service coordinating VPC lookup and S3 file operations
         single<BackupRestoreService> {
             DefaultBackupRestoreService(
-                get<StateReconstructionService>(),
+                get<VpcService>(),
                 get<ClusterBackupService>(),
                 get<ClusterStateManager>(),
                 get<OutputHandler>(),

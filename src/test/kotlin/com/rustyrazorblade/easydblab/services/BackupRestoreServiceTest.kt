@@ -1,10 +1,12 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
@@ -21,11 +23,11 @@ import java.io.File
 /**
  * Tests for BackupRestoreService.
  *
- * This service coordinates StateReconstructionService and ClusterBackupService
+ * This service coordinates VpcService and ClusterBackupService
  * to provide unified backup/restore operations.
  */
 internal class BackupRestoreServiceTest {
-    private val mockStateReconstructionService: StateReconstructionService = mock()
+    private val mockVpcService: VpcService = mock()
     private val mockClusterBackupService: ClusterBackupService = mock()
     private val mockClusterStateManager: ClusterStateManager = mock()
     private val mockOutputHandler: OutputHandler = mock()
@@ -39,7 +41,7 @@ internal class BackupRestoreServiceTest {
     fun setUp() {
         service =
             DefaultBackupRestoreService(
-                mockStateReconstructionService,
+                mockVpcService,
                 mockClusterBackupService,
                 mockClusterStateManager,
                 mockOutputHandler,
@@ -49,20 +51,27 @@ internal class BackupRestoreServiceTest {
     @Nested
     inner class RestoreFromVpc {
         @Test
-        fun `should reconstruct state and restore files from S3`() {
+        fun `should restore state and files from S3 via VPC tags`() {
             // Given
             val vpcId = "vpc-12345"
-            val reconstructedState = createClusterState(s3Bucket = "test-bucket")
+            val vpcTags =
+                mapOf(
+                    "ClusterId" to "test-cluster-id",
+                    "Name" to "test-cluster",
+                    Constants.Vpc.BUCKET_TAG_KEY to "test-bucket",
+                )
             val restoreResult =
                 RestoreResult(
-                    successfulTargets = setOf(BackupTarget.KUBECONFIG, BackupTarget.K8S_MANIFESTS),
+                    successfulTargets = setOf(BackupTarget.STATE_JSON, BackupTarget.KUBECONFIG),
                     filesRestored = 2,
                 )
+            val restoredState = createClusterState(s3Bucket = "test-bucket")
 
-            whenever(mockClusterStateManager.exists()).thenReturn(false)
-            whenever(mockStateReconstructionService.reconstructFromVpc(vpcId)).thenReturn(reconstructedState)
-            whenever(mockClusterBackupService.restoreAll(any(), eq(reconstructedState)))
+            whenever(mockClusterStateManager.exists()).thenReturn(false, true)
+            whenever(mockVpcService.getVpcTags(vpcId)).thenReturn(vpcTags)
+            whenever(mockClusterBackupService.restoreAll(any(), any()))
                 .thenReturn(Result.success(restoreResult))
+            whenever(mockClusterStateManager.load()).thenReturn(restoredState)
 
             // When
             val result = service.restoreFromVpc(vpcId, tempDir.absolutePath)
@@ -70,34 +79,32 @@ internal class BackupRestoreServiceTest {
             // Then
             assertThat(result.isSuccess).isTrue()
             val vpcRestoreResult = result.getOrThrow()
-            assertThat(vpcRestoreResult.clusterState).isEqualTo(reconstructedState)
+            assertThat(vpcRestoreResult.clusterState).isEqualTo(restoredState)
             assertThat(vpcRestoreResult.restoreResult).isEqualTo(restoreResult)
 
-            verify(mockStateReconstructionService).reconstructFromVpc(vpcId)
-            verify(mockClusterStateManager).save(reconstructedState)
-            verify(mockClusterBackupService).restoreAll(tempDir.absolutePath, reconstructedState)
+            verify(mockVpcService).getVpcTags(vpcId)
+            verify(mockClusterBackupService).restoreAll(eq(tempDir.absolutePath), any())
         }
 
         @Test
-        fun `should skip file restore when no S3 bucket configured`() {
+        fun `should fail when VPC has no bucket tag`() {
             // Given
             val vpcId = "vpc-12345"
-            val reconstructedState = createClusterState(s3Bucket = null)
+            val vpcTags =
+                mapOf(
+                    "ClusterId" to "test-cluster-id",
+                    "Name" to "test-cluster",
+                )
 
             whenever(mockClusterStateManager.exists()).thenReturn(false)
-            whenever(mockStateReconstructionService.reconstructFromVpc(vpcId)).thenReturn(reconstructedState)
+            whenever(mockVpcService.getVpcTags(vpcId)).thenReturn(vpcTags)
 
             // When
             val result = service.restoreFromVpc(vpcId, tempDir.absolutePath)
 
             // Then
-            assertThat(result.isSuccess).isTrue()
-            val vpcRestoreResult = result.getOrThrow()
-            assertThat(vpcRestoreResult.clusterState).isEqualTo(reconstructedState)
-            assertThat(vpcRestoreResult.restoreResult).isNull()
-
-            verify(mockStateReconstructionService).reconstructFromVpc(vpcId)
-            verify(mockClusterStateManager).save(reconstructedState)
+            assertThat(result.isFailure).isTrue()
+            assertThat(result.exceptionOrNull()?.message).contains("cannot restore without S3 bucket")
             verify(mockClusterBackupService, never()).restoreAll(any(), any())
         }
 
@@ -113,8 +120,7 @@ internal class BackupRestoreServiceTest {
             // Then
             assertThat(result.isFailure).isTrue()
             assertThat(result.exceptionOrNull()?.message).contains("state.json already exists")
-
-            verify(mockStateReconstructionService, never()).reconstructFromVpc(any())
+            verify(mockVpcService, never()).getVpcTags(any())
             verify(mockClusterStateManager, never()).save(any())
         }
 
@@ -122,36 +128,82 @@ internal class BackupRestoreServiceTest {
         fun `should overwrite state when force is true`() {
             // Given
             val vpcId = "vpc-12345"
-            val reconstructedState = createClusterState(s3Bucket = null)
+            val vpcTags =
+                mapOf(
+                    "ClusterId" to "test-cluster-id",
+                    "Name" to "test-cluster",
+                    Constants.Vpc.BUCKET_TAG_KEY to "test-bucket",
+                )
+            val restoreResult =
+                RestoreResult(
+                    successfulTargets = setOf(BackupTarget.STATE_JSON),
+                    filesRestored = 1,
+                )
+            val restoredState = createClusterState(s3Bucket = "test-bucket")
 
-            whenever(mockClusterStateManager.exists()).thenReturn(true)
-            whenever(mockStateReconstructionService.reconstructFromVpc(vpcId)).thenReturn(reconstructedState)
+            whenever(mockClusterStateManager.exists()).thenReturn(true, true)
+            whenever(mockVpcService.getVpcTags(vpcId)).thenReturn(vpcTags)
+            whenever(mockClusterBackupService.restoreAll(any(), any()))
+                .thenReturn(Result.success(restoreResult))
+            whenever(mockClusterStateManager.load()).thenReturn(restoredState)
 
             // When
             val result = service.restoreFromVpc(vpcId, tempDir.absolutePath, force = true)
 
             // Then
             assertThat(result.isSuccess).isTrue()
-            verify(mockStateReconstructionService).reconstructFromVpc(vpcId)
-            verify(mockClusterStateManager).save(reconstructedState)
+            verify(mockVpcService).getVpcTags(vpcId)
         }
 
         @Test
-        fun `should propagate state reconstruction failure`() {
+        fun `should use bootstrap state when state json not in S3`() {
             // Given
             val vpcId = "vpc-12345"
-            val reconstructionError = RuntimeException("VPC not found")
+            val vpcTags =
+                mapOf(
+                    "ClusterId" to "test-cluster-id",
+                    "Name" to "test-cluster",
+                    Constants.Vpc.BUCKET_TAG_KEY to "test-bucket",
+                )
+            val restoreResult =
+                RestoreResult(
+                    successfulTargets = setOf(BackupTarget.KUBECONFIG),
+                    filesRestored = 1,
+                )
+
+            whenever(mockClusterStateManager.exists()).thenReturn(false, false)
+            whenever(mockVpcService.getVpcTags(vpcId)).thenReturn(vpcTags)
+            whenever(mockClusterBackupService.restoreAll(any(), any()))
+                .thenReturn(Result.success(restoreResult))
+
+            // When
+            val result = service.restoreFromVpc(vpcId, tempDir.absolutePath)
+
+            // Then
+            assertThat(result.isSuccess).isTrue()
+            val vpcRestoreResult = result.getOrThrow()
+            assertThat(vpcRestoreResult.clusterState.name).isEqualTo("test-cluster")
+            assertThat(vpcRestoreResult.clusterState.clusterId).isEqualTo("test-cluster-id")
+
+            // Bootstrap state saved as fallback
+            verify(mockClusterStateManager).save(any())
+        }
+
+        @Test
+        fun `should fail when VPC has no ClusterId tag`() {
+            // Given
+            val vpcId = "vpc-12345"
+            val vpcTags = mapOf("Name" to "test-cluster")
 
             whenever(mockClusterStateManager.exists()).thenReturn(false)
-            whenever(mockStateReconstructionService.reconstructFromVpc(vpcId)).thenThrow(reconstructionError)
+            whenever(mockVpcService.getVpcTags(vpcId)).thenReturn(vpcTags)
 
             // When
             val result = service.restoreFromVpc(vpcId, tempDir.absolutePath)
 
             // Then
             assertThat(result.isFailure).isTrue()
-            assertThat(result.exceptionOrNull()).isEqualTo(reconstructionError)
-            verify(mockClusterStateManager, never()).save(any())
+            assertThat(result.exceptionOrNull()?.message).contains("missing the ClusterId tag")
         }
     }
 

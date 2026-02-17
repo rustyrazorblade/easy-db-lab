@@ -95,6 +95,7 @@ class OpenSearchStartTest : BaseKoinTest() {
                 infrastructure =
                     InfrastructureState(
                         vpcId = "vpc-123",
+                        region = "us-west-2",
                         subnetIds = emptyList(),
                         securityGroupId = "sg-123",
                     ),
@@ -196,6 +197,7 @@ class OpenSearchStartTest : BaseKoinTest() {
             infrastructure =
                 InfrastructureState(
                     vpcId = "vpc-123",
+                    region = "us-west-2",
                     subnetIds = listOf("subnet-123"),
                     securityGroupId = "sg-123",
                 ),

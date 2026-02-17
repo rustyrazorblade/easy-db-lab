@@ -148,7 +148,7 @@ class Up : PicoBaseCommand() {
      */
     private fun configureAccountS3Bucket() {
         if (!workingState.s3Bucket.isNullOrBlank()) {
-            log.debug { "S3 bucket already configured: ${workingState.s3Bucket}" }
+            log.info { "S3 bucket already configured: ${workingState.s3Bucket}" }
             return
         }
 
@@ -260,6 +260,16 @@ class Up : PicoBaseCommand() {
                         "Please run 'easy-db-lab clean' and 'easy-db-lab init' to recreate.",
                 )
             }
+            // Backfill bucket tag on VPCs created before this tag was added
+            val bucket = workingState.s3Bucket
+            if (bucket != null) {
+                val vpcTags = vpcService.getVpcTags(existingVpcId)
+                if (vpcTags[Constants.Vpc.BUCKET_TAG_KEY] == null) {
+                    log.info { "Backfilling '${Constants.Vpc.BUCKET_TAG_KEY}' tag on VPC $existingVpcId" }
+                    vpcService.addTagsToVpc(existingVpcId, mapOf(Constants.Vpc.BUCKET_TAG_KEY to bucket))
+                }
+            }
+
             log.info { "Using existing VPC: $existingVpcId ($vpcName)" }
             return existingVpcId
         }
@@ -270,7 +280,10 @@ class Up : PicoBaseCommand() {
             buildMap {
                 put(Constants.Vpc.TAG_KEY, Constants.Vpc.TAG_VALUE)
                 put("ClusterId", workingState.clusterId)
-                workingState.s3Bucket?.let { put("bucket", it) }
+                put(
+                    Constants.Vpc.BUCKET_TAG_KEY,
+                    requireNotNull(workingState.s3Bucket) { "S3 bucket must be configured before VPC creation" },
+                )
                 putAll(initConfig.tags)
             }
 
@@ -298,9 +311,7 @@ class Up : PicoBaseCommand() {
 
         // Set up VPC networking (subnets, security groups, internet gateway)
         val availabilityZones =
-            if (initConfig.azs.isNotEmpty()) {
-                initConfig.azs
-            } else {
+            initConfig.azs.ifEmpty {
                 listOf("a", "b", "c")
             }
         val vpcNetworkingConfig =

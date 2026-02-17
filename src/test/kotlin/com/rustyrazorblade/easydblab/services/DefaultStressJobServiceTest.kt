@@ -46,8 +46,13 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
             )
 
         val containers = job.spec.template.spec.containers
-        assertThat(containers).hasSize(2)
-        assertThat(containers.map { it.name }).containsExactly("stress", "otel-sidecar")
+        assertThat(containers).hasSize(1)
+        assertThat(containers[0].name).isEqualTo("stress")
+
+        val initContainers = job.spec.template.spec.initContainers
+        assertThat(initContainers).hasSize(1)
+        assertThat(initContainers[0].name).isEqualTo("otel-sidecar")
+        assertThat(initContainers[0].restartPolicy).isEqualTo("Always")
     }
 
     @Test
@@ -82,7 +87,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
             )
 
         val sidecar =
-            job.spec.template.spec.containers
+            job.spec.template.spec.initContainers
                 .first { it.name == "otel-sidecar" }
         assertThat(sidecar.image).isEqualTo("otel/opentelemetry-collector-contrib:latest")
         assertThat(sidecar.args).containsExactly("--config=/etc/otel/otel-stress-sidecar-config.yaml")
@@ -135,7 +140,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
         assertThat(volumes[0].configMap.name).isEqualTo("otel-stress-sidecar-config")
 
         val sidecar =
-            job.spec.template.spec.containers
+            job.spec.template.spec.initContainers
                 .first { it.name == "otel-sidecar" }
         assertThat(sidecar.volumeMounts).hasSize(1)
         assertThat(sidecar.volumeMounts[0].name).isEqualTo("otel-sidecar-config")
@@ -206,7 +211,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
             )
 
         val sidecar =
-            job.spec.template.spec.containers
+            job.spec.template.spec.initContainers
                 .first { it.name == "otel-sidecar" }
 
         val resourceAttrsEnv = sidecar.env.first { it.name == "OTEL_RESOURCE_ATTRIBUTES" }

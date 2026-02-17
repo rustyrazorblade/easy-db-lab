@@ -467,7 +467,8 @@ class DefaultStressJobService(
             .withNewSpec()
             .withRestartPolicy("Never")
             .withNodeSelector<String, String>(mapOf("type" to ServerType.Stress.serverType))
-            .withContainers(stressContainer, otelSidecar)
+            .withInitContainers(otelSidecar)
+            .withContainers(stressContainer)
             .withVolumes(
                 VolumeBuilder()
                     .withName("otel-sidecar-config")

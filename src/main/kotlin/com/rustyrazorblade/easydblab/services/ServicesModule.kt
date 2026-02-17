@@ -89,7 +89,6 @@ val servicesModule =
             DefaultStateReconstructionService(
                 get<VpcService>(),
                 get<EC2InstanceService>(),
-                get<AWS>(),
             )
         }
 

@@ -1,9 +1,9 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.InfrastructureState
 import com.rustyrazorblade.easydblab.configuration.InfrastructureStatus
-import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.providers.aws.VpcId
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
@@ -35,14 +35,13 @@ interface StateReconstructionService {
  * Reconstruction process:
  * 1. Get VPC tags to extract ClusterId and Name
  * 2. Use ClusterId to discover EC2 instances via existing findInstancesByClusterId
- * 3. Use ClusterId to find the S3 bucket by tag
+ * 3. Read the S3 bucket name from the VPC's 'bucket' tag
  * 4. Discover infrastructure resources (subnets, security groups, internet gateway)
  * 5. Build and return ClusterState
  */
 class DefaultStateReconstructionService(
     private val vpcService: VpcService,
     private val ec2InstanceService: EC2InstanceService,
-    private val aws: AWS,
 ) : StateReconstructionService {
     companion object {
         private val log = KotlinLogging.logger {}
@@ -84,12 +83,12 @@ class DefaultStateReconstructionService(
             )
         log.info { "Discovered infrastructure: ${subnetIds.size} subnets, ${securityGroupIds.size} security groups" }
 
-        // 4. Discover S3 bucket by ClusterId tag
-        val s3Bucket = aws.findS3BucketByTag(CLUSTER_ID_TAG_KEY, clusterId)
+        // 4. Get S3 bucket from VPC tag
+        val s3Bucket = vpcTags[Constants.Vpc.BUCKET_TAG_KEY]
         if (s3Bucket != null) {
-            log.info { "Found S3 bucket: $s3Bucket" }
+            log.info { "Found S3 bucket from VPC tag: $s3Bucket" }
         } else {
-            log.warn { "No S3 bucket found with ClusterId=$clusterId tag" }
+            log.warn { "VPC $vpcId has no '${Constants.Vpc.BUCKET_TAG_KEY}' tag — S3 backup/restore will be unavailable" }
         }
 
         // 5. Build ClusterState

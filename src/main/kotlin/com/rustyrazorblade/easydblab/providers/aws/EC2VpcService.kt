@@ -560,6 +560,14 @@ class EC2VpcService(
         return vpc.tags().associate { it.key() to it.value() }
     }
 
+    override fun addTagsToVpc(
+        vpcId: VpcId,
+        tags: Map<String, String>,
+    ) {
+        log.info { "Adding tags to VPC $vpcId: ${tags.keys}" }
+        createTags(vpcId, tags)
+    }
+
     override fun findInstancesInVpc(vpcId: VpcId): List<InstanceId> {
         log.info { "Finding EC2 instances in VPC: $vpcId" }
 

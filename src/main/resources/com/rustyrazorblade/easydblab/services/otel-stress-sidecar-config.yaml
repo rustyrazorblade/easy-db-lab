@@ -1,0 +1,40 @@
+receivers:
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: 'cassandra-easy-stress'
+          scrape_interval: 5s
+          static_configs:
+            - targets: ['localhost:9500']
+          relabel_configs:
+            - target_label: instance
+              replacement: '${env:K8S_NODE_NAME}:9500'
+            - target_label: cluster
+              replacement: '${env:CLUSTER_NAME}'
+
+processors:
+  batch:
+    timeout: 1s
+    send_batch_size: 1024
+  resourcedetection:
+    detectors: [env]
+    timeout: 2s
+    override: false
+
+exporters:
+  otlp:
+    endpoint: ${env:HOST_IP}:4317
+    tls:
+      insecure: true
+    sending_queue:
+      enabled: false
+
+service:
+  telemetry:
+    metrics:
+      level: none
+  pipelines:
+    metrics:
+      receivers: [prometheus]
+      processors: [resourcedetection, batch]
+      exporters: [otlp]

@@ -70,6 +70,8 @@ Practice **reasonable TDD**:
 
 See [`src/test/.../CLAUDE.md`](src/test/kotlin/com/rustyrazorblade/easydblab/CLAUDE.md) for test patterns, BaseKoinTest usage, and custom assertions.
 
+**Never mock `TemplateService`** — always use the real instance in tests. It only reads classpath resources and does string substitution with no external side effects.
+
 **Quality tools workflow**:
 ```bash
 # Find test coverage gaps

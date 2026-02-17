@@ -76,7 +76,7 @@ The following metrics are exported:
 
 When running cassandra-easy-stress as K8s Jobs, metrics are automatically collected via an OTel collector sidecar container. The sidecar scrapes the stress process's Prometheus endpoint (`localhost:9500`) and forwards metrics via OTLP to the node's OTel DaemonSet, which then exports them to VictoriaMetrics.
 
-The Prometheus scrape job is named `cassandra-stress`. The following labels are available in Grafana:
+The Prometheus scrape job is named `cassandra-easy-stress`. The following labels are available in Grafana:
 
 | Label | Source | Description |
 |-------|--------|-------------|

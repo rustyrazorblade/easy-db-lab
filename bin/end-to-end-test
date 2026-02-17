@@ -630,7 +630,7 @@ step_stress_k8s() {
     local timeout=120
     local elapsed=0
     while [ $elapsed -lt $timeout ]; do
-        local status=$(kubectl get jobs -l app.kubernetes.io/name=cassandra-stress -o jsonpath='{.items[0].status.succeeded}' 2>/dev/null || echo "")
+        local status=$(kubectl get jobs -l app.kubernetes.io/name=cassandra-easy-stress -o jsonpath='{.items[0].status.succeeded}' 2>/dev/null || echo "")
         if [ "$status" = "1" ]; then
             echo "Stress job completed successfully"
             break
@@ -642,7 +642,7 @@ step_stress_k8s() {
 
     echo "=== Viewing stress job logs ==="
     # Get the job name that we just created (most recent)
-    local job_name=$(kubectl get jobs -l app.kubernetes.io/name=cassandra-stress --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}')
+    local job_name=$(kubectl get jobs -l app.kubernetes.io/name=cassandra-easy-stress --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}')
     if [ -n "$job_name" ]; then
         easy-db-lab cassandra stress logs "$job_name" --tail 50
     fi

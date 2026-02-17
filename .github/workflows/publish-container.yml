@@ -49,8 +49,8 @@ jobs:
         run: |
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
             VERSION=${GITHUB_REF#refs/tags/v}
-            echo "tags=latest,$VERSION,v$VERSION" >> $GITHUB_OUTPUT
-            echo "first_tag=latest" >> $GITHUB_OUTPUT
+            echo "tags=$VERSION,v$VERSION" >> $GITHUB_OUTPUT
+            echo "first_tag=$VERSION" >> $GITHUB_OUTPUT
           elif [[ "${{ github.event.workflow_run.head_branch }}" == "main" ]]; then
             echo "tags=latest" >> $GITHUB_OUTPUT
             echo "first_tag=latest" >> $GITHUB_OUTPUT

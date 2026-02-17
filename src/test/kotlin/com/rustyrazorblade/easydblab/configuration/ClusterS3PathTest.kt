@@ -298,6 +298,15 @@ class ClusterS3PathTest {
     }
 
     @Test
+    fun `envScript returns correct path`() {
+        val path = ClusterS3Path.root("my-bucket")
+        val envScriptPath = path.envScript()
+
+        assertThat(envScriptPath.toString())
+            .isEqualTo("s3://my-bucket/config/env.sh")
+    }
+
+    @Test
     fun `environmentScript returns correct path`() {
         val path = ClusterS3Path.root("my-bucket")
         val environmentScriptPath = path.environmentScript()

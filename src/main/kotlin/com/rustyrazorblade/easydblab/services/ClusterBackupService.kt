@@ -15,12 +15,13 @@ import java.security.MessageDigest
  * to S3, allowing users to restore their cluster when using the --vpc-id flag
  * to reconnect to an existing cluster.
  *
- * Backed up files (7 total):
+ * Backed up files (8 total):
  * - kubeconfig: s3://{bucket}/k3s/kubeconfig
  * - k8s manifests: s3://{bucket}/k8s/
  * - cassandra.patch.yaml: s3://{bucket}/config/cassandra.patch.yaml
  * - cassandra/ directory: s3://{bucket}/config/cassandra-config/
  * - cassandra_versions.yaml: s3://{bucket}/config/cassandra_versions.yaml
+ * - env.sh: s3://{bucket}/config/env.sh
  * - environment.sh: s3://{bucket}/config/environment.sh
  * - setup_instance.sh: s3://{bucket}/config/setup_instance.sh
  */
@@ -213,6 +214,7 @@ enum class BackupTarget(
     CASSANDRA_PATCH("cassandra.patch.yaml", false, { it.cassandraPatch() }, "Cassandra patch"),
     CASSANDRA_CONFIG("cassandra", true, { it.cassandraConfig() }, "Cassandra config"),
     CASSANDRA_VERSIONS("cassandra_versions.yaml", false, { it.cassandraVersions() }, "Cassandra versions"),
+    ENV_SCRIPT("env.sh", false, { it.envScript() }, "Env script"),
     ENVIRONMENT_SCRIPT("environment.sh", false, { it.environmentScript() }, "Environment script"),
     SETUP_INSTANCE_SCRIPT("setup_instance.sh", false, { it.setupInstanceScript() }, "Setup instance script"),
 }

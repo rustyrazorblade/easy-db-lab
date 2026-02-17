@@ -42,6 +42,7 @@ data class ClusterS3Path(
         private const val CASSANDRA_PATCH_FILE = "cassandra.patch.yaml"
         private const val CASSANDRA_CONFIG_DIR = "cassandra-config"
         private const val CASSANDRA_VERSIONS_FILE = "cassandra_versions.yaml"
+        private const val ENV_SCRIPT_FILE = "env.sh"
         private const val ENVIRONMENT_FILE = "environment.sh"
         private const val SETUP_INSTANCE_FILE = "setup_instance.sh"
         private const val TEMPO_DIR = "tempo"
@@ -268,7 +269,14 @@ data class ClusterS3Path(
     fun cassandraVersions(): ClusterS3Path = resolve(CONFIG_DIR).resolve(CASSANDRA_VERSIONS_FILE)
 
     /**
-     * Path for environment.sh file.
+     * Path for env.sh file (main environment script with SSH aliases, kubectl, etc.).
+     *
+     * @return Path: s3://bucket/config/env.sh
+     */
+    fun envScript(): ClusterS3Path = resolve(CONFIG_DIR).resolve(ENV_SCRIPT_FILE)
+
+    /**
+     * Path for environment.sh file (stress environment variables).
      *
      * @return Path: s3://bucket/config/environment.sh
      */

@@ -169,6 +169,8 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
 
         val nodeSelector = job.spec.template.spec.nodeSelector
         assertThat(nodeSelector["type"]).isEqualTo(ServerType.Stress.serverType)
+        assertThat(job.spec.template.spec.hostNetwork).isTrue()
+        assertThat(job.spec.template.spec.dnsPolicy).isEqualTo("ClusterFirstWithHostNet")
     }
 
     @Test
@@ -261,6 +263,8 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
             )
 
         assertThat(job.spec.template.spec.nodeSelector["type"]).isEqualTo(ServerType.Stress.serverType)
+        assertThat(job.spec.template.spec.hostNetwork).isTrue()
+        assertThat(job.spec.template.spec.dnsPolicy).isEqualTo("ClusterFirstWithHostNet")
         assertThat(job.spec.ttlSecondsAfterFinished).isEqualTo(300)
         assertThat(job.spec.backoffLimit).isEqualTo(0)
     }

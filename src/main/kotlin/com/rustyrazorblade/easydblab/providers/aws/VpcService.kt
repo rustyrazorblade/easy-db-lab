@@ -333,9 +333,10 @@ interface VpcService {
      * Get detailed information about a security group.
      *
      * @param securityGroupId The security group ID
-     * @return SecurityGroupDetails or null if not found
+     * @return SecurityGroupDetails
+     * @throws IllegalStateException if the security group is not found
      */
-    fun describeSecurityGroup(securityGroupId: String): SecurityGroupDetails?
+    fun describeSecurityGroup(securityGroupId: String): SecurityGroupDetails
 
     companion object {
         /** Default timeout for waiting on resource termination/deletion (10 minutes) */

@@ -10,14 +10,18 @@ providers/
 │   ├── AWSModule.kt        # Koin DI registration for all AWS services
 │   ├── AWS.kt              # Low-level IAM, S3, STS operations
 │   ├── RetryUtil.kt        # Centralized retry configuration
-│   ├── EC2Service.kt       # AMI operations
+│   ├── AMIService.kt       # AMI lifecycle: CRUD, pruning, validation (implements AMIValidator)
+│   ├── AMIResolver.kt      # AMI resolution by architecture pattern
 │   ├── EC2InstanceService.kt  # Instance lifecycle
-│   ├── EC2VpcService.kt    # VPC management (implements VpcService)
+│   ├── EC2VpcService.kt    # VPC management + security group describe (implements VpcService)
+│   ├── AwsInfrastructureService.kt  # VPC infrastructure creation and teardown orchestration
 │   ├── S3ObjectStore.kt    # S3 operations (implements ObjectStore)
-│   ├── EMRService.kt       # EMR cluster management
+│   ├── EMRService.kt       # EMR cluster management + teardown (find, terminate, wait)
 │   ├── EMRSparkService.kt  # Spark job execution (implements SparkService)
 │   ├── OpenSearchService.kt # OpenSearch domains
 │   ├── SQSService.kt       # SQS queue management
+│   ├── TeardownTypes.kt    # Data classes: DiscoveredResources, TeardownResult, TeardownMode
+│   ├── SecurityGroupService.kt  # Data classes: SecurityGroupDetails, WellKnownPorts
 │   └── model/              # Data models (AMI, etc.)
 ├── docker/                 # Docker client providers
 │   ├── DockerModule.kt
@@ -53,6 +57,17 @@ Key conventions:
 - Fail fast — let exceptions propagate
 - Use `Result<T>` for expected failures (SQS, ObjectStore)
 - Idempotent where possible (find-or-create pattern)
+
+## Service Consolidation Design
+
+Services are organized by resource, not by operation type:
+
+- **AMIService** — all AMI operations (list, deregister, prune, validate) in one class
+- **EMRService** — all EMR operations (create, terminate, find, wait) in one class
+- **AwsInfrastructureService** — all VPC infrastructure (create and teardown) in one class
+- **EC2VpcService** — all VPC resource operations including security group describe
+
+This avoids the anti-pattern of splitting CRUD operations across multiple thin classes.
 
 ## RetryUtil Factory Methods
 
@@ -111,9 +126,11 @@ val awsModule = module {
 
     // Services (singletons)
     single { AWS(get<IamClient>(), get<S3Client>(), get<StsClient>()) }
-    single { EC2Service(get<Ec2Client>()) }
+    single { AMIService(get<Ec2Client>(), get<OutputHandler>(), get<AWS>()) }
+    single<AMIValidator> { get<AMIService>() }  // Binds to same instance
     single { EC2InstanceService(get<Ec2Client>(), get<OutputHandler>()) }
     single<VpcService> { EC2VpcService(get<Ec2Client>(), get<OutputHandler>()) }
+    single { AwsInfrastructureService(get<VpcService>(), get<EMRService>(), get<OpenSearchService>(), get<OutputHandler>()) }
     single<ObjectStore> { S3ObjectStore(get<S3Client>(), get<OutputHandler>()) }
     // ...
 }

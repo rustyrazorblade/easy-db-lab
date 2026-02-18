@@ -1092,7 +1092,7 @@ class EC2VpcService(
 
     // ==================== Security Group Details ====================
 
-    override fun describeSecurityGroup(securityGroupId: String): SecurityGroupDetails? {
+    override fun describeSecurityGroup(securityGroupId: String): SecurityGroupDetails {
         log.debug { "Describing security group: $securityGroupId" }
 
         val request =
@@ -1106,7 +1106,9 @@ class EC2VpcService(
                 ec2Client.describeSecurityGroups(request)
             }
 
-        val sg = response.securityGroups().firstOrNull() ?: return null
+        val sg =
+            response.securityGroups().firstOrNull()
+                ?: error("Security group $securityGroupId not found")
 
         val inboundRules =
             sg.ipPermissions().map { permission ->

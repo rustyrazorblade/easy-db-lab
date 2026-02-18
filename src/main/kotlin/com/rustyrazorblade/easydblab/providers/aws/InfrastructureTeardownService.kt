@@ -26,7 +26,7 @@ import java.util.concurrent.CompletableFuture
 @Suppress("TooManyFunctions")
 class InfrastructureTeardownService(
     private val vpcService: VpcService,
-    private val emrTeardownService: EMRTeardownService,
+    private val emrService: EMRService,
     private val openSearchService: OpenSearchService,
     private val outputHandler: OutputHandler,
 ) {
@@ -51,7 +51,7 @@ class InfrastructureTeardownService(
         val natGatewayIds = vpcService.findNatGatewaysInVpc(vpcId)
         val internetGatewayId = vpcService.findInternetGatewayByVpc(vpcId)
         val routeTableIds = vpcService.findRouteTablesInVpc(vpcId)
-        val emrClusterIds = emrTeardownService.findClustersInVpc(vpcId, subnetIds)
+        val emrClusterIds = emrService.findClustersInVpc(vpcId, subnetIds)
         val openSearchDomainNames = openSearchService.findDomainsInVpc(subnetIds)
 
         return DiscoveredResources(
@@ -266,8 +266,8 @@ class InfrastructureTeardownService(
     private fun terminateEmrClusters(resources: DiscoveredResources): TeardownStepResult {
         if (resources.emrClusterIds.isEmpty()) return TeardownStepResult.success()
         return try {
-            emrTeardownService.terminateClusters(resources.emrClusterIds)
-            emrTeardownService.waitForClustersTerminated(resources.emrClusterIds)
+            emrService.terminateClusters(resources.emrClusterIds)
+            emrService.waitForClustersTerminated(resources.emrClusterIds)
             TeardownStepResult.success()
         } catch (e: Exception) {
             TeardownStepResult.failure(logError("Failed to terminate EMR clusters", e))

@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.providers.aws
 
-import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.model.AMI
@@ -9,18 +8,22 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
+import org.mockito.kotlin.doReturn
+import org.mockito.kotlin.doThrow
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.spy
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import software.amazon.awssdk.services.ec2.Ec2Client
 import software.amazon.awssdk.services.ec2.model.Ec2Exception
 import java.time.Instant
 
-class AMIValidationServiceTest : BaseKoinTest() {
-    private lateinit var mockEC2Service: EC2Service
+class AMIValidationServiceTest {
+    private lateinit var mockEc2Client: Ec2Client
     private lateinit var mockOutputHandler: OutputHandler
     private lateinit var mockAWS: AWS
-    private lateinit var validationService: AMIValidationService
+    private lateinit var amiService: AMIService
 
     companion object {
         private const val TEST_ACCOUNT_ID = "123456789012"
@@ -28,37 +31,38 @@ class AMIValidationServiceTest : BaseKoinTest() {
 
     @BeforeEach
     fun setup() {
-        mockEC2Service = mock()
+        mockEc2Client = mock()
         mockOutputHandler = mock()
         mockAWS = mock()
 
-        // Mock the account ID retrieval
         whenever(mockAWS.getAccountId()).thenReturn(TEST_ACCOUNT_ID)
 
-        validationService = AMIValidationService(mockEC2Service, mockOutputHandler, mockAWS)
+        amiService =
+            spy(
+                AMIService(
+                    ec2Client = mockEc2Client,
+                    outputHandler = mockOutputHandler,
+                    aws = mockAWS,
+                ),
+            )
     }
 
     // Happy Path Tests
 
     @Test
     fun `should validate explicit AMI with matching architecture`() {
-        val testAMI =
-            createTestAMI(
-                id = "ami-123",
-                architecture = "amd64",
-            )
+        val testAMI = createTestAMI(id = "ami-123", architecture = "amd64")
 
-        whenever(mockEC2Service.listPrivateAMIs("ami-123", TEST_ACCOUNT_ID))
-            .thenReturn(listOf(testAMI))
+        doReturn(listOf(testAMI)).whenever(amiService).listPrivateAMIs("ami-123", TEST_ACCOUNT_ID)
 
         val result =
-            validationService.validateAMI(
+            amiService.validateAMI(
                 overrideAMI = "ami-123",
                 requiredArchitecture = Arch.AMD64,
             )
 
         assertThat(result).isEqualTo(testAMI)
-        verify(mockEC2Service).listPrivateAMIs("ami-123", TEST_ACCOUNT_ID)
+        verify(amiService).listPrivateAMIs("ami-123", TEST_ACCOUNT_ID)
     }
 
     @Test
@@ -70,11 +74,10 @@ class AMIValidationServiceTest : BaseKoinTest() {
                 name = "rustyrazorblade/images/easy-db-lab-cassandra-amd64-20240101",
             )
 
-        whenever(mockEC2Service.listPrivateAMIs(any(), any()))
-            .thenReturn(listOf(testAMI))
+        doReturn(listOf(testAMI)).whenever(amiService).listPrivateAMIs(any(), any())
 
         val result =
-            validationService.validateAMI(
+            amiService.validateAMI(
                 overrideAMI = "",
                 requiredArchitecture = Arch.AMD64,
             )
@@ -84,22 +87,13 @@ class AMIValidationServiceTest : BaseKoinTest() {
 
     @Test
     fun `should select newest AMI when multiple match`() {
-        val older =
-            createTestAMI(
-                id = "ami-old",
-                creationDate = Instant.parse("2024-01-01T00:00:00Z"),
-            )
-        val newer =
-            createTestAMI(
-                id = "ami-new",
-                creationDate = Instant.parse("2024-12-01T00:00:00Z"),
-            )
+        val older = createTestAMI(id = "ami-old", creationDate = Instant.parse("2024-01-01T00:00:00Z"))
+        val newer = createTestAMI(id = "ami-new", creationDate = Instant.parse("2024-12-01T00:00:00Z"))
 
-        whenever(mockEC2Service.listPrivateAMIs(any(), any()))
-            .thenReturn(listOf(older, newer))
+        doReturn(listOf(older, newer)).whenever(amiService).listPrivateAMIs(any(), any())
 
         val result =
-            validationService.validateAMI(
+            amiService.validateAMI(
                 overrideAMI = "",
                 requiredArchitecture = Arch.AMD64,
             )
@@ -112,17 +106,12 @@ class AMIValidationServiceTest : BaseKoinTest() {
 
     @Test
     fun `should throw when explicit AMI architecture mismatches`() {
-        val testAMI =
-            createTestAMI(
-                id = "ami-123",
-                architecture = "arm64",
-            )
+        val testAMI = createTestAMI(id = "ami-123", architecture = "arm64")
 
-        whenever(mockEC2Service.listPrivateAMIs("ami-123", TEST_ACCOUNT_ID))
-            .thenReturn(listOf(testAMI))
+        doReturn(listOf(testAMI)).whenever(amiService).listPrivateAMIs("ami-123", TEST_ACCOUNT_ID)
 
         assertThatThrownBy {
-            validationService.validateAMI(
+            amiService.validateAMI(
                 overrideAMI = "ami-123",
                 requiredArchitecture = Arch.AMD64,
             )
@@ -133,11 +122,10 @@ class AMIValidationServiceTest : BaseKoinTest() {
 
     @Test
     fun `should throw when no AMI found by pattern`() {
-        whenever(mockEC2Service.listPrivateAMIs(any(), any()))
-            .thenReturn(emptyList())
+        doReturn(emptyList<AMI>()).whenever(amiService).listPrivateAMIs(any(), any())
 
         assertThatThrownBy {
-            validationService.validateAMI(
+            amiService.validateAMI(
                 overrideAMI = "",
                 requiredArchitecture = Arch.AMD64,
             )
@@ -150,11 +138,10 @@ class AMIValidationServiceTest : BaseKoinTest() {
     fun `should throw when no AMI matches required architecture`() {
         val wrongArchAMI = createTestAMI(architecture = "arm64")
 
-        whenever(mockEC2Service.listPrivateAMIs(any(), any()))
-            .thenReturn(listOf(wrongArchAMI))
+        doReturn(listOf(wrongArchAMI)).whenever(amiService).listPrivateAMIs(any(), any())
 
         assertThatThrownBy {
-            validationService.validateAMI(
+            amiService.validateAMI(
                 overrideAMI = "",
                 requiredArchitecture = Arch.AMD64,
             )
@@ -163,11 +150,10 @@ class AMIValidationServiceTest : BaseKoinTest() {
 
     @Test
     fun `should throw when explicit AMI not found`() {
-        whenever(mockEC2Service.listPrivateAMIs("ami-nonexistent", TEST_ACCOUNT_ID))
-            .thenReturn(emptyList())
+        doReturn(emptyList<AMI>()).whenever(amiService).listPrivateAMIs("ami-nonexistent", TEST_ACCOUNT_ID)
 
         assertThatThrownBy {
-            validationService.validateAMI(
+            amiService.validateAMI(
                 overrideAMI = "ami-nonexistent",
                 requiredArchitecture = Arch.AMD64,
             )
@@ -187,19 +173,20 @@ class AMIValidationServiceTest : BaseKoinTest() {
                 .message("Service unavailable")
                 .build()
 
-        whenever(mockEC2Service.listPrivateAMIs(any(), any()))
-            .thenThrow(ec2Exception)
-            .thenThrow(ec2Exception)
-            .thenReturn(listOf(testAMI))
+        doThrow(ec2Exception)
+            .doThrow(ec2Exception)
+            .doReturn(listOf(testAMI))
+            .whenever(amiService)
+            .listPrivateAMIs(any(), any())
 
         val result =
-            validationService.validateAMI(
+            amiService.validateAMI(
                 overrideAMI = "",
                 requiredArchitecture = Arch.AMD64,
             )
 
         assertThat(result).isEqualTo(testAMI)
-        verify(mockEC2Service, times(3)).listPrivateAMIs(any(), any())
+        verify(amiService, times(3)).listPrivateAMIs(any(), any())
     }
 
     @Test
@@ -211,18 +198,16 @@ class AMIValidationServiceTest : BaseKoinTest() {
                 .message("Access denied")
                 .build()
 
-        whenever(mockEC2Service.listPrivateAMIs(any(), any()))
-            .thenThrow(ec2Exception)
+        doThrow(ec2Exception).whenever(amiService).listPrivateAMIs(any(), any())
 
         assertThatThrownBy {
-            validationService.validateAMI(
+            amiService.validateAMI(
                 overrideAMI = "",
                 requiredArchitecture = Arch.AMD64,
             )
         }.isInstanceOf(AMIValidationException.AWSServiceError::class.java)
 
-        // Should only attempt once (no retries)
-        verify(mockEC2Service, times(1)).listPrivateAMIs(any(), any())
+        verify(amiService, times(1)).listPrivateAMIs(any(), any())
     }
 
     @Test
@@ -235,18 +220,19 @@ class AMIValidationServiceTest : BaseKoinTest() {
                 .message("Too many requests")
                 .build()
 
-        whenever(mockEC2Service.listPrivateAMIs(any(), any()))
-            .thenThrow(ec2Exception)
-            .thenReturn(listOf(testAMI))
+        doThrow(ec2Exception)
+            .doReturn(listOf(testAMI))
+            .whenever(amiService)
+            .listPrivateAMIs(any(), any())
 
         val result =
-            validationService.validateAMI(
+            amiService.validateAMI(
                 overrideAMI = "",
                 requiredArchitecture = Arch.AMD64,
             )
 
         assertThat(result).isEqualTo(testAMI)
-        verify(mockEC2Service, times(2)).listPrivateAMIs(any(), any())
+        verify(amiService, times(2)).listPrivateAMIs(any(), any())
     }
 
     // Pattern Configuration Tests
@@ -256,35 +242,32 @@ class AMIValidationServiceTest : BaseKoinTest() {
         val testAMI = createTestAMI()
         val customPattern = "custom-ami-pattern-*"
 
-        whenever(mockEC2Service.listPrivateAMIs(customPattern, TEST_ACCOUNT_ID))
-            .thenReturn(listOf(testAMI))
+        doReturn(listOf(testAMI)).whenever(amiService).listPrivateAMIs(customPattern, TEST_ACCOUNT_ID)
 
-        validationService.validateAMI(
+        amiService.validateAMI(
             overrideAMI = "",
             requiredArchitecture = Arch.AMD64,
             amiPattern = customPattern,
         )
 
-        verify(mockEC2Service).listPrivateAMIs(customPattern, TEST_ACCOUNT_ID)
+        verify(amiService).listPrivateAMIs(customPattern, TEST_ACCOUNT_ID)
     }
 
     @Test
     fun `should inject architecture into default pattern for AMD64`() {
         val testAMI = createTestAMI(architecture = "amd64")
 
-        whenever(
-            mockEC2Service.listPrivateAMIs(
-                "rustyrazorblade/images/easy-db-lab-cassandra-amd64-*",
-                TEST_ACCOUNT_ID,
-            ),
-        ).thenReturn(listOf(testAMI))
+        doReturn(listOf(testAMI)).whenever(amiService).listPrivateAMIs(
+            "rustyrazorblade/images/easy-db-lab-cassandra-amd64-*",
+            TEST_ACCOUNT_ID,
+        )
 
-        validationService.validateAMI(
+        amiService.validateAMI(
             overrideAMI = "",
             requiredArchitecture = Arch.AMD64,
         )
 
-        verify(mockEC2Service).listPrivateAMIs(
+        verify(amiService).listPrivateAMIs(
             "rustyrazorblade/images/easy-db-lab-cassandra-amd64-*",
             TEST_ACCOUNT_ID,
         )
@@ -294,19 +277,17 @@ class AMIValidationServiceTest : BaseKoinTest() {
     fun `should inject architecture into default pattern for ARM64`() {
         val testAMI = createTestAMI(architecture = "arm64")
 
-        whenever(
-            mockEC2Service.listPrivateAMIs(
-                "rustyrazorblade/images/easy-db-lab-cassandra-arm64-*",
-                TEST_ACCOUNT_ID,
-            ),
-        ).thenReturn(listOf(testAMI))
+        doReturn(listOf(testAMI)).whenever(amiService).listPrivateAMIs(
+            "rustyrazorblade/images/easy-db-lab-cassandra-arm64-*",
+            TEST_ACCOUNT_ID,
+        )
 
-        validationService.validateAMI(
+        amiService.validateAMI(
             overrideAMI = "",
             requiredArchitecture = Arch.ARM64,
         )
 
-        verify(mockEC2Service).listPrivateAMIs(
+        verify(amiService).listPrivateAMIs(
             "rustyrazorblade/images/easy-db-lab-cassandra-arm64-*",
             TEST_ACCOUNT_ID,
         )

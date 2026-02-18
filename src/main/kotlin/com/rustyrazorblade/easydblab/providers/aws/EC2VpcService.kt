@@ -1089,4 +1089,89 @@ class EC2VpcService(
         RetryUtil.withVpcTeardownRetry("delete-vpc") { ec2Client.deleteVpc(deleteRequest) }
         log.info { "Deleted VPC: $vpcId" }
     }
+
+    // ==================== Security Group Details ====================
+
+    override fun describeSecurityGroup(securityGroupId: String): SecurityGroupDetails? {
+        log.debug { "Describing security group: $securityGroupId" }
+
+        val request =
+            DescribeSecurityGroupsRequest
+                .builder()
+                .groupIds(securityGroupId)
+                .build()
+
+        val response =
+            RetryUtil.withAwsRetry("describe-security-group") {
+                ec2Client.describeSecurityGroups(request)
+            }
+
+        val sg = response.securityGroups().firstOrNull() ?: return null
+
+        val inboundRules =
+            sg.ipPermissions().map { permission ->
+                SecurityGroupRuleInfo(
+                    protocol = formatProtocol(permission.ipProtocol()),
+                    fromPort = permission.fromPort(),
+                    toPort = permission.toPort(),
+                    cidrBlocks = permission.ipRanges().mapNotNull { it.cidrIp() },
+                    description =
+                        permission.ipRanges().firstOrNull()?.description()
+                            ?: getPortDescription(permission.fromPort(), permission.toPort()),
+                )
+            }
+
+        val outboundRules =
+            sg.ipPermissionsEgress().map { permission ->
+                SecurityGroupRuleInfo(
+                    protocol = formatProtocol(permission.ipProtocol()),
+                    fromPort = permission.fromPort(),
+                    toPort = permission.toPort(),
+                    cidrBlocks = permission.ipRanges().mapNotNull { it.cidrIp() },
+                    description =
+                        permission.ipRanges().firstOrNull()?.description()
+                            ?: getPortDescription(permission.fromPort(), permission.toPort()),
+                )
+            }
+
+        return SecurityGroupDetails(
+            securityGroupId = sg.groupId(),
+            name = sg.groupName(),
+            description = sg.description(),
+            vpcId = sg.vpcId(),
+            inboundRules = inboundRules,
+            outboundRules = outboundRules,
+        )
+    }
+
+    private fun formatProtocol(protocol: String): String =
+        when (protocol) {
+            "-1" -> "All"
+            else -> protocol.uppercase()
+        }
+
+    @Suppress("MagicNumber", "CyclomaticComplexity")
+    private fun getPortDescription(
+        fromPort: Int?,
+        toPort: Int?,
+    ): String? {
+        if (fromPort == null || toPort == null) return "All traffic"
+        if (fromPort != toPort) return null
+
+        return when (fromPort) {
+            WellKnownPorts.SSH -> "SSH"
+            WellKnownPorts.HTTP -> "HTTP"
+            WellKnownPorts.HTTPS -> "HTTPS"
+            WellKnownPorts.MYSQL -> "MySQL"
+            WellKnownPorts.POSTGRESQL -> "PostgreSQL"
+            WellKnownPorts.REDIS -> "Redis"
+            WellKnownPorts.CASSANDRA_INTERNODE -> "Cassandra Inter-node"
+            WellKnownPorts.CASSANDRA_INTERNODE_SSL -> "Cassandra Inter-node SSL"
+            WellKnownPorts.CASSANDRA_CQL -> "Cassandra CQL"
+            WellKnownPorts.CASSANDRA_CQL_SSL -> "Cassandra CQL SSL"
+            WellKnownPorts.CASSANDRA_THRIFT -> "Cassandra Thrift"
+            WellKnownPorts.CASSANDRA_JMX -> "Cassandra JMX"
+            else -> null
+        }
+    }
 }

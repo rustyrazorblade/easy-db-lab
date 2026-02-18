@@ -3,7 +3,6 @@ package com.rustyrazorblade.easydblab.commands
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.providers.aws.AMIService
-import com.rustyrazorblade.easydblab.providers.aws.EC2Service
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
@@ -19,7 +18,6 @@ import picocli.CommandLine.Option
 )
 class PruneAMIs : PicoBaseCommand() {
     private val service: AMIService by inject()
-    private val ec2Service: EC2Service by inject()
 
     @Option(
         names = ["--pattern"],
@@ -118,9 +116,9 @@ class PruneAMIs : PicoBaseCommand() {
 
             if (shouldDelete) {
                 try {
-                    ec2Service.deregisterAMI(ami.id)
+                    service.deregisterAMI(ami.id)
                     for (snapshotId in ami.snapshotIds) {
-                        ec2Service.deleteSnapshot(snapshotId)
+                        service.deleteSnapshot(snapshotId)
                     }
                     outputHandler.handleMessage("  ✓ Deleted")
                     actuallyDeleted.add(ami.id)

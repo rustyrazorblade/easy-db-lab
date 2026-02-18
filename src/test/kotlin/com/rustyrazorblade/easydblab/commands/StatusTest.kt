@@ -16,7 +16,7 @@ import com.rustyrazorblade.easydblab.providers.aws.EMRService
 import com.rustyrazorblade.easydblab.providers.aws.InstanceDetails
 import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupDetails
 import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupRuleInfo
-import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupService
+import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.services.StressJobService
@@ -37,7 +37,7 @@ class StatusTest : BaseKoinTest() {
     private val mockOutputHandler: OutputHandler = mock()
     private val mockClusterStateManager: ClusterStateManager = mock()
     private val mockEc2InstanceService: EC2InstanceService = mock()
-    private val mockSecurityGroupService: SecurityGroupService = mock()
+    private val mockVpcService: VpcService = mock()
     private val mockSocksProxyService: SocksProxyService = mock()
     private val mockRemoteOperationsService: RemoteOperationsService = mock()
     private val mockEmrService: EMRService = mock()
@@ -100,7 +100,7 @@ class StatusTest : BaseKoinTest() {
                 single<OutputHandler> { mockOutputHandler }
                 single<ClusterStateManager> { mockClusterStateManager }
                 single<EC2InstanceService> { mockEc2InstanceService }
-                single<SecurityGroupService> { mockSecurityGroupService }
+                single<VpcService> { mockVpcService }
                 single<SocksProxyService> { mockSocksProxyService }
                 single<RemoteOperationsService> { mockRemoteOperationsService }
                 single<EMRService> { mockEmrService }
@@ -525,6 +525,6 @@ class StatusTest : BaseKoinTest() {
                     ),
             )
 
-        whenever(mockSecurityGroupService.describeSecurityGroup("sg-12345")).thenReturn(sgDetails)
+        whenever(mockVpcService.describeSecurityGroup("sg-12345")).thenReturn(sgDetails)
     }
 }

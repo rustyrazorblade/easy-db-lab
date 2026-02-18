@@ -21,7 +21,7 @@ import org.mockito.kotlin.whenever
  */
 class InfrastructureTeardownServiceTest {
     private lateinit var vpcService: VpcService
-    private lateinit var emrTeardownService: EMRTeardownService
+    private lateinit var emrService: EMRService
     private lateinit var openSearchService: OpenSearchService
     private lateinit var outputHandler: OutputHandler
     private lateinit var service: InfrastructureTeardownService
@@ -29,13 +29,13 @@ class InfrastructureTeardownServiceTest {
     @BeforeEach
     fun setup() {
         vpcService = mock()
-        emrTeardownService = mock()
+        emrService = mock()
         openSearchService = mock()
         outputHandler = mock()
         service =
             InfrastructureTeardownService(
                 vpcService = vpcService,
-                emrTeardownService = emrTeardownService,
+                emrService = emrService,
                 openSearchService = openSearchService,
                 outputHandler = outputHandler,
             )
@@ -62,7 +62,7 @@ class InfrastructureTeardownServiceTest {
             whenever(vpcService.findNatGatewaysInVpc(vpcId)).thenReturn(natGatewayIds)
             whenever(vpcService.findInternetGatewayByVpc(vpcId)).thenReturn(internetGatewayId)
             whenever(vpcService.findRouteTablesInVpc(vpcId)).thenReturn(routeTableIds)
-            whenever(emrTeardownService.findClustersInVpc(vpcId, subnetIds)).thenReturn(emrClusterIds)
+            whenever(emrService.findClustersInVpc(vpcId, subnetIds)).thenReturn(emrClusterIds)
             whenever(openSearchService.findDomainsInVpc(subnetIds)).thenReturn(openSearchDomains)
 
             val resources = service.discoverResources(vpcId)
@@ -90,7 +90,7 @@ class InfrastructureTeardownServiceTest {
             whenever(vpcService.findNatGatewaysInVpc(vpcId)).thenReturn(emptyList())
             whenever(vpcService.findInternetGatewayByVpc(vpcId)).thenReturn(null)
             whenever(vpcService.findRouteTablesInVpc(vpcId)).thenReturn(emptyList())
-            whenever(emrTeardownService.findClustersInVpc(any(), any())).thenReturn(emptyList())
+            whenever(emrService.findClustersInVpc(any(), any())).thenReturn(emptyList())
             whenever(openSearchService.findDomainsInVpc(any())).thenReturn(emptyList())
 
             val resources = service.discoverResources(vpcId)
@@ -144,7 +144,7 @@ class InfrastructureTeardownServiceTest {
             whenever(vpcService.findNatGatewaysInVpc(vpcId)).thenReturn(emptyList())
             whenever(vpcService.findInternetGatewayByVpc(vpcId)).thenReturn(igwId)
             whenever(vpcService.findRouteTablesInVpc(vpcId)).thenReturn(emptyList())
-            whenever(emrTeardownService.findClustersInVpc(any(), any())).thenReturn(emptyList())
+            whenever(emrService.findClustersInVpc(any(), any())).thenReturn(emptyList())
             whenever(openSearchService.findDomainsInVpc(any())).thenReturn(emptyList())
 
             val result = service.teardownVpc(vpcId, dryRun = false)
@@ -180,9 +180,9 @@ class InfrastructureTeardownServiceTest {
             whenever(vpcService.findNatGatewaysInVpc(vpcId)).thenReturn(emptyList())
             whenever(vpcService.findInternetGatewayByVpc(vpcId)).thenReturn(null)
             whenever(vpcService.findRouteTablesInVpc(vpcId)).thenReturn(emptyList())
-            whenever(emrTeardownService.findClustersInVpc(any(), any())).thenReturn(emrIds)
+            whenever(emrService.findClustersInVpc(any(), any())).thenReturn(emrIds)
             whenever(openSearchService.findDomainsInVpc(any())).thenReturn(emptyList())
-            whenever(emrTeardownService.terminateClusters(emrIds))
+            whenever(emrService.terminateClusters(emrIds))
                 .thenThrow(RuntimeException("EMR termination failed"))
 
             val result = service.teardownVpc(vpcId, dryRun = false)
@@ -207,7 +207,7 @@ class InfrastructureTeardownServiceTest {
             whenever(vpcService.findNatGatewaysInVpc(vpcId)).thenReturn(emptyList())
             whenever(vpcService.findInternetGatewayByVpc(vpcId)).thenReturn(null)
             whenever(vpcService.findRouteTablesInVpc(vpcId)).thenReturn(emptyList())
-            whenever(emrTeardownService.findClustersInVpc(any(), any())).thenReturn(emptyList())
+            whenever(emrService.findClustersInVpc(any(), any())).thenReturn(emptyList())
             whenever(openSearchService.findDomainsInVpc(any())).thenReturn(emptyList())
             whenever(vpcService.terminateInstances(instanceIds))
                 .thenThrow(RuntimeException("Instance termination failed"))
@@ -231,7 +231,7 @@ class InfrastructureTeardownServiceTest {
             whenever(vpcService.findNatGatewaysInVpc(vpcId)).thenReturn(emptyList())
             whenever(vpcService.findInternetGatewayByVpc(vpcId)).thenReturn(null)
             whenever(vpcService.findRouteTablesInVpc(vpcId)).thenReturn(emptyList())
-            whenever(emrTeardownService.findClustersInVpc(any(), any())).thenReturn(emptyList())
+            whenever(emrService.findClustersInVpc(any(), any())).thenReturn(emptyList())
             whenever(openSearchService.findDomainsInVpc(any())).thenReturn(emptyList())
             // Security group deletion fails - non-critical
             whenever(vpcService.deleteSecurityGroup("sg-1"))
@@ -257,14 +257,14 @@ class InfrastructureTeardownServiceTest {
             whenever(vpcService.findNatGatewaysInVpc(vpcId)).thenReturn(emptyList())
             whenever(vpcService.findInternetGatewayByVpc(vpcId)).thenReturn(null)
             whenever(vpcService.findRouteTablesInVpc(vpcId)).thenReturn(emptyList())
-            whenever(emrTeardownService.findClustersInVpc(any(), any())).thenReturn(emrIds)
+            whenever(emrService.findClustersInVpc(any(), any())).thenReturn(emrIds)
             whenever(openSearchService.findDomainsInVpc(any())).thenReturn(emptyList())
 
             val result = service.teardownVpc(vpcId, dryRun = false)
 
             assertThat(result.success).isTrue()
-            verify(emrTeardownService).terminateClusters(emrIds)
-            verify(emrTeardownService).waitForClustersTerminated(emrIds)
+            verify(emrService).terminateClusters(emrIds)
+            verify(emrService).waitForClustersTerminated(emrIds)
             verify(vpcService).deleteVpc(vpcId)
         }
 
@@ -280,7 +280,7 @@ class InfrastructureTeardownServiceTest {
             whenever(vpcService.findNatGatewaysInVpc(vpcId)).thenReturn(emptyList())
             whenever(vpcService.findInternetGatewayByVpc(vpcId)).thenReturn(null)
             whenever(vpcService.findRouteTablesInVpc(vpcId)).thenReturn(emptyList())
-            whenever(emrTeardownService.findClustersInVpc(any(), any())).thenReturn(emptyList())
+            whenever(emrService.findClustersInVpc(any(), any())).thenReturn(emptyList())
             whenever(openSearchService.findDomainsInVpc(any())).thenReturn(domains)
 
             val result = service.teardownVpc(vpcId, dryRun = false)
@@ -305,7 +305,7 @@ class InfrastructureTeardownServiceTest {
             whenever(vpcService.findNatGatewaysInVpc(vpcId)).thenReturn(emptyList())
             whenever(vpcService.findInternetGatewayByVpc(vpcId)).thenReturn(null)
             whenever(vpcService.findRouteTablesInVpc(vpcId)).thenReturn(emptyList())
-            whenever(emrTeardownService.findClustersInVpc(any(), any())).thenReturn(emptyList())
+            whenever(emrService.findClustersInVpc(any(), any())).thenReturn(emptyList())
             whenever(openSearchService.findDomainsInVpc(any())).thenReturn(domains)
             whenever(openSearchService.waitForDomainDeleted("test-os"))
                 .thenThrow(RuntimeException("Timeout waiting for domain deletion"))
@@ -328,7 +328,7 @@ class InfrastructureTeardownServiceTest {
             whenever(vpcService.findNatGatewaysInVpc(vpcId)).thenReturn(emptyList())
             whenever(vpcService.findInternetGatewayByVpc(vpcId)).thenReturn(null)
             whenever(vpcService.findRouteTablesInVpc(vpcId)).thenReturn(emptyList())
-            whenever(emrTeardownService.findClustersInVpc(any(), any())).thenReturn(emptyList())
+            whenever(emrService.findClustersInVpc(any(), any())).thenReturn(emptyList())
             whenever(openSearchService.findDomainsInVpc(any())).thenReturn(domains)
             // First domain delete fails
             whenever(openSearchService.deleteDomain("test-os-1"))
@@ -355,7 +355,7 @@ class InfrastructureTeardownServiceTest {
             whenever(vpcService.findNatGatewaysInVpc(vpcId)).thenReturn(natIds)
             whenever(vpcService.findInternetGatewayByVpc(vpcId)).thenReturn(null)
             whenever(vpcService.findRouteTablesInVpc(vpcId)).thenReturn(emptyList())
-            whenever(emrTeardownService.findClustersInVpc(any(), any())).thenReturn(emptyList())
+            whenever(emrService.findClustersInVpc(any(), any())).thenReturn(emptyList())
             whenever(openSearchService.findDomainsInVpc(any())).thenReturn(emptyList())
 
             val result = service.teardownVpc(vpcId, dryRun = false)
@@ -378,7 +378,7 @@ class InfrastructureTeardownServiceTest {
             whenever(vpcService.findNatGatewaysInVpc(vpcId)).thenReturn(natIds)
             whenever(vpcService.findInternetGatewayByVpc(vpcId)).thenReturn(null)
             whenever(vpcService.findRouteTablesInVpc(vpcId)).thenReturn(emptyList())
-            whenever(emrTeardownService.findClustersInVpc(any(), any())).thenReturn(emptyList())
+            whenever(emrService.findClustersInVpc(any(), any())).thenReturn(emptyList())
             whenever(openSearchService.findDomainsInVpc(any())).thenReturn(emptyList())
             whenever(vpcService.deleteNatGateway("nat-1"))
                 .thenThrow(RuntimeException("NAT deletion failed"))
@@ -402,7 +402,7 @@ class InfrastructureTeardownServiceTest {
             whenever(vpcService.findNatGatewaysInVpc(vpcId)).thenReturn(emptyList())
             whenever(vpcService.findInternetGatewayByVpc(vpcId)).thenReturn(null)
             whenever(vpcService.findRouteTablesInVpc(vpcId)).thenReturn(rtbIds)
-            whenever(emrTeardownService.findClustersInVpc(any(), any())).thenReturn(emptyList())
+            whenever(emrService.findClustersInVpc(any(), any())).thenReturn(emptyList())
             whenever(openSearchService.findDomainsInVpc(any())).thenReturn(emptyList())
 
             val result = service.teardownVpc(vpcId, dryRun = false)
@@ -424,7 +424,7 @@ class InfrastructureTeardownServiceTest {
             whenever(vpcService.findNatGatewaysInVpc(vpcId)).thenReturn(emptyList())
             whenever(vpcService.findInternetGatewayByVpc(vpcId)).thenReturn(null)
             whenever(vpcService.findRouteTablesInVpc(vpcId)).thenReturn(rtbIds)
-            whenever(emrTeardownService.findClustersInVpc(any(), any())).thenReturn(emptyList())
+            whenever(emrService.findClustersInVpc(any(), any())).thenReturn(emptyList())
             whenever(openSearchService.findDomainsInVpc(any())).thenReturn(emptyList())
             whenever(vpcService.deleteRouteTable("rtb-1"))
                 .thenThrow(RuntimeException("Route table deletion failed"))
@@ -446,7 +446,7 @@ class InfrastructureTeardownServiceTest {
             whenever(vpcService.findNatGatewaysInVpc(vpcId)).thenReturn(emptyList())
             whenever(vpcService.findInternetGatewayByVpc(vpcId)).thenReturn(null)
             whenever(vpcService.findRouteTablesInVpc(vpcId)).thenReturn(emptyList())
-            whenever(emrTeardownService.findClustersInVpc(any(), any())).thenReturn(emptyList())
+            whenever(emrService.findClustersInVpc(any(), any())).thenReturn(emptyList())
             whenever(openSearchService.findDomainsInVpc(any())).thenReturn(emptyList())
             whenever(vpcService.deleteSubnet("subnet-1"))
                 .thenThrow(RuntimeException("Subnet deletion failed"))
@@ -469,7 +469,7 @@ class InfrastructureTeardownServiceTest {
             whenever(vpcService.findNatGatewaysInVpc(vpcId)).thenReturn(emptyList())
             whenever(vpcService.findInternetGatewayByVpc(vpcId)).thenReturn(igwId)
             whenever(vpcService.findRouteTablesInVpc(vpcId)).thenReturn(emptyList())
-            whenever(emrTeardownService.findClustersInVpc(any(), any())).thenReturn(emptyList())
+            whenever(emrService.findClustersInVpc(any(), any())).thenReturn(emptyList())
             whenever(openSearchService.findDomainsInVpc(any())).thenReturn(emptyList())
             whenever(vpcService.detachInternetGateway(igwId, vpcId))
                 .thenThrow(RuntimeException("IGW detach failed"))
@@ -491,7 +491,7 @@ class InfrastructureTeardownServiceTest {
             whenever(vpcService.findNatGatewaysInVpc(vpcId)).thenReturn(emptyList())
             whenever(vpcService.findInternetGatewayByVpc(vpcId)).thenReturn(null)
             whenever(vpcService.findRouteTablesInVpc(vpcId)).thenReturn(emptyList())
-            whenever(emrTeardownService.findClustersInVpc(any(), any())).thenReturn(emptyList())
+            whenever(emrService.findClustersInVpc(any(), any())).thenReturn(emptyList())
             whenever(openSearchService.findDomainsInVpc(any())).thenReturn(emptyList())
             whenever(vpcService.deleteVpc(vpcId))
                 .thenThrow(RuntimeException("VPC deletion failed"))
@@ -513,7 +513,7 @@ class InfrastructureTeardownServiceTest {
             whenever(vpcService.findNatGatewaysInVpc(vpcId)).thenReturn(emptyList())
             whenever(vpcService.findInternetGatewayByVpc(vpcId)).thenReturn(null)
             whenever(vpcService.findRouteTablesInVpc(vpcId)).thenReturn(emptyList())
-            whenever(emrTeardownService.findClustersInVpc(any(), any())).thenReturn(emptyList())
+            whenever(emrService.findClustersInVpc(any(), any())).thenReturn(emptyList())
             whenever(openSearchService.findDomainsInVpc(any())).thenReturn(emptyList())
             whenever(vpcService.revokeSecurityGroupRules("sg-1"))
                 .thenThrow(RuntimeException("Revoke failed"))
@@ -536,7 +536,7 @@ class InfrastructureTeardownServiceTest {
             whenever(vpcService.findNatGatewaysInVpc(vpcId)).thenReturn(emptyList())
             whenever(vpcService.findInternetGatewayByVpc(vpcId)).thenReturn(null)
             whenever(vpcService.findRouteTablesInVpc(vpcId)).thenReturn(emptyList())
-            whenever(emrTeardownService.findClustersInVpc(any(), any())).thenReturn(emptyList())
+            whenever(emrService.findClustersInVpc(any(), any())).thenReturn(emptyList())
             whenever(openSearchService.findDomainsInVpc(any())).thenReturn(emptyList())
 
             val result = service.teardownVpc(vpcId, dryRun = false)
@@ -556,7 +556,7 @@ class InfrastructureTeardownServiceTest {
             whenever(vpcService.findNatGatewaysInVpc(vpcId)).thenReturn(emptyList())
             whenever(vpcService.findInternetGatewayByVpc(vpcId)).thenReturn(null)
             whenever(vpcService.findRouteTablesInVpc(vpcId)).thenReturn(emptyList())
-            whenever(emrTeardownService.findClustersInVpc(any(), any())).thenReturn(emptyList())
+            whenever(emrService.findClustersInVpc(any(), any())).thenReturn(emptyList())
             whenever(openSearchService.findDomainsInVpc(any())).thenReturn(emptyList())
             // Throw an exception on the "Tearing down" message to trigger the outer catch block
             // Use argThat to match only the teardown message, not the discovery message
@@ -580,7 +580,7 @@ class InfrastructureTeardownServiceTest {
             whenever(vpcService.findNatGatewaysInVpc(vpcId)).thenReturn(emptyList())
             whenever(vpcService.findInternetGatewayByVpc(vpcId)).thenReturn(null)
             whenever(vpcService.findRouteTablesInVpc(vpcId)).thenReturn(emptyList())
-            whenever(emrTeardownService.findClustersInVpc(any(), any())).thenReturn(emptyList())
+            whenever(emrService.findClustersInVpc(any(), any())).thenReturn(emptyList())
             whenever(openSearchService.findDomainsInVpc(any())).thenReturn(emptyList())
             whenever(vpcService.waitForNetworkInterfacesCleared(vpcId))
                 .thenThrow(RuntimeException("ENI timeout"))
@@ -606,10 +606,10 @@ class InfrastructureTeardownServiceTest {
             whenever(vpcService.findNatGatewaysInVpc(vpcId)).thenReturn(emptyList())
             whenever(vpcService.findInternetGatewayByVpc(vpcId)).thenReturn(null)
             whenever(vpcService.findRouteTablesInVpc(vpcId)).thenReturn(emptyList())
-            whenever(emrTeardownService.findClustersInVpc(any(), any())).thenReturn(emrIds)
+            whenever(emrService.findClustersInVpc(any(), any())).thenReturn(emrIds)
             whenever(openSearchService.findDomainsInVpc(any())).thenReturn(domains)
             // All three critical Phase 1 tasks fail
-            whenever(emrTeardownService.terminateClusters(emrIds))
+            whenever(emrService.terminateClusters(emrIds))
                 .thenThrow(RuntimeException("EMR failed"))
             whenever(vpcService.terminateInstances(instanceIds))
                 .thenThrow(RuntimeException("EC2 failed"))
@@ -835,7 +835,7 @@ class InfrastructureTeardownServiceTest {
         whenever(vpcService.findNatGatewaysInVpc(vpcId)).thenReturn(emptyList())
         whenever(vpcService.findInternetGatewayByVpc(vpcId)).thenReturn(null)
         whenever(vpcService.findRouteTablesInVpc(vpcId)).thenReturn(emptyList())
-        whenever(emrTeardownService.findClustersInVpc(eq(vpcId), any())).thenReturn(emptyList())
+        whenever(emrService.findClustersInVpc(eq(vpcId), any())).thenReturn(emptyList())
         whenever(openSearchService.findDomainsInVpc(any())).thenReturn(emptyList())
     }
 }

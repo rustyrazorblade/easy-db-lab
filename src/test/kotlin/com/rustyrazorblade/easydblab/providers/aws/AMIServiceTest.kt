@@ -1,17 +1,18 @@
 package com.rustyrazorblade.easydblab.providers.aws
 
-import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.model.AMI
 import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import org.koin.core.module.Module
-import org.koin.dsl.module
-import org.koin.test.inject
 import org.mockito.kotlin.any
+import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
+import org.mockito.kotlin.spy
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import software.amazon.awssdk.services.ec2.Ec2Client
 import java.time.Instant
 import com.rustyrazorblade.easydblab.assertions.assertThat as assertThatPruneResult
 
@@ -26,17 +27,23 @@ import com.rustyrazorblade.easydblab.assertions.assertThat as assertThatPruneRes
  * - Edge cases (empty lists, malformed data)
  * - Sorting behavior of results
  */
-internal class AMIServiceTest : BaseKoinTest() {
-    private val mockEc2Service: EC2Service by inject()
-    private val amiService: AMIService by inject()
+internal class AMIServiceTest {
+    private val mockEc2Client: Ec2Client = mock()
+    private val mockOutputHandler: OutputHandler = mock()
+    private val mockAws: AWS = mock()
+    private lateinit var amiService: AMIService
 
-    override fun additionalTestModules(): List<Module> =
-        listOf(
-            module {
-                single<EC2Service> { mock() }
-                single { AMIService(get()) }
-            },
-        )
+    @BeforeEach
+    fun setup() {
+        amiService =
+            spy(
+                AMIService(
+                    ec2Client = mockEc2Client,
+                    outputHandler = mockOutputHandler,
+                    aws = mockAws,
+                ),
+            )
+    }
 
     @Test
     fun `pruneAMIs should keep newest N AMIs per architecture and type`() {
@@ -49,18 +56,17 @@ internal class AMIServiceTest : BaseKoinTest() {
                 cassandraAMI("ami-5", "arm64", "20240102"),
             )
 
-        whenever(mockEc2Service.listPrivateAMIs(any(), any())).thenReturn(amis)
+        doReturn(amis).whenever(amiService).listPrivateAMIs(any(), any())
 
         val result = amiService.pruneAMIs(namePattern = NAME_PATTERN, keepCount = 2, dryRun = false)
 
-        // Should delete oldest from amd64 (ami-3), keep all arm64 (only 2 exist)
         assertThatPruneResult(result)
             .hasDeletedCount(1)
             .hasKeptCount(4)
             .deletedAMIsWithIds("ami-3")
             .keptAMIsWithIds("ami-1", "ami-2", "ami-4", "ami-5")
 
-        verify(mockEc2Service).deregisterAMI("ami-3")
+        verify(amiService).deregisterAMI("ami-3")
     }
 
     @Test
@@ -73,19 +79,18 @@ internal class AMIServiceTest : BaseKoinTest() {
                 baseAMI("ami-4", "amd64", "20240102"),
             )
 
-        whenever(mockEc2Service.listPrivateAMIs(any(), any())).thenReturn(amis)
+        doReturn(amis).whenever(amiService).listPrivateAMIs(any(), any())
 
         val result = amiService.pruneAMIs(namePattern = NAME_PATTERN, keepCount = 1, dryRun = false)
 
-        // Should delete oldest from each type-arch group (ami-2 from cassandra-amd64, ami-4 from base-amd64)
         assertThatPruneResult(result)
             .hasDeletedCount(2)
             .hasKeptCount(2)
             .deletedAMIsWithIds("ami-2", "ami-4")
             .keptAMIsWithIds("ami-1", "ami-3")
 
-        verify(mockEc2Service).deregisterAMI("ami-2")
-        verify(mockEc2Service).deregisterAMI("ami-4")
+        verify(amiService).deregisterAMI("ami-2")
+        verify(amiService).deregisterAMI("ami-4")
     }
 
     @Test
@@ -97,18 +102,17 @@ internal class AMIServiceTest : BaseKoinTest() {
                 cassandraAMI("ami-3", "amd64", "20240101"),
             )
 
-        whenever(mockEc2Service.listPrivateAMIs(any(), any())).thenReturn(amis)
+        doReturn(amis).whenever(amiService).listPrivateAMIs(any(), any())
 
         val result = amiService.pruneAMIs(namePattern = NAME_PATTERN, keepCount = 2, dryRun = true)
 
-        // Should identify AMIs to delete but not actually delete them
         assertThatPruneResult(result)
             .hasDeletedCount(1)
             .hasKeptCount(2)
             .deletedAMIsWithIds("ami-3")
 
-        verify(mockEc2Service, never()).deregisterAMI(any())
-        verify(mockEc2Service, never()).deleteSnapshot(any())
+        verify(amiService, never()).deregisterAMI(any())
+        verify(amiService, never()).deleteSnapshot(any())
     }
 
     @Test
@@ -119,19 +123,18 @@ internal class AMIServiceTest : BaseKoinTest() {
                 cassandraAMI("ami-2", "amd64", "20240102", listOf("snap-2", "snap-3")),
             )
 
-        whenever(mockEc2Service.listPrivateAMIs(any(), any())).thenReturn(amis)
+        doReturn(amis).whenever(amiService).listPrivateAMIs(any(), any())
 
         val result = amiService.pruneAMIs(namePattern = NAME_PATTERN, keepCount = 1, dryRun = false)
 
-        // Should delete ami-2 and both its snapshots
         assertThatPruneResult(result)
             .hasDeletedCount(1)
             .deletedAMIsWithIds("ami-2")
 
-        verify(mockEc2Service).deregisterAMI("ami-2")
-        verify(mockEc2Service).deleteSnapshot("snap-2")
-        verify(mockEc2Service).deleteSnapshot("snap-3")
-        verify(mockEc2Service, never()).deleteSnapshot("snap-1")
+        verify(amiService).deregisterAMI("ami-2")
+        verify(amiService).deleteSnapshot("snap-2")
+        verify(amiService).deleteSnapshot("snap-3")
+        verify(amiService, never()).deleteSnapshot("snap-1")
     }
 
     @Test
@@ -144,7 +147,7 @@ internal class AMIServiceTest : BaseKoinTest() {
                 baseAMI("ami-4", "amd64", "20240102"),
             )
 
-        whenever(mockEc2Service.listPrivateAMIs(any(), any())).thenReturn(amis)
+        doReturn(amis).whenever(amiService).listPrivateAMIs(any(), any())
 
         val result =
             amiService.pruneAMIs(
@@ -154,16 +157,15 @@ internal class AMIServiceTest : BaseKoinTest() {
                 typeFilter = "cassandra",
             )
 
-        // Should only prune cassandra AMIs, not base AMIs
         assertThatPruneResult(result)
             .hasDeletedCount(1)
             .hasKeptCount(1)
             .deletedAMIsWithIds("ami-2")
             .keptAMIsWithIds("ami-1")
 
-        verify(mockEc2Service).deregisterAMI("ami-2")
-        verify(mockEc2Service, never()).deregisterAMI("ami-3")
-        verify(mockEc2Service, never()).deregisterAMI("ami-4")
+        verify(amiService).deregisterAMI("ami-2")
+        verify(amiService, never()).deregisterAMI("ami-3")
+        verify(amiService, never()).deregisterAMI("ami-4")
     }
 
     @Test
@@ -174,22 +176,21 @@ internal class AMIServiceTest : BaseKoinTest() {
                 cassandraAMI("ami-2", "amd64", "20240102"),
             )
 
-        whenever(mockEc2Service.listPrivateAMIs(any(), any())).thenReturn(amis)
+        doReturn(amis).whenever(amiService).listPrivateAMIs(any(), any())
 
         val result = amiService.pruneAMIs(namePattern = NAME_PATTERN, keepCount = 5, dryRun = false)
 
-        // Should keep all AMIs since keepCount >= available
         assertThatPruneResult(result)
             .hasNoDeleted()
             .hasKeptCount(2)
             .keptAMIsWithIds("ami-1", "ami-2")
 
-        verify(mockEc2Service, never()).deregisterAMI(any())
+        verify(amiService, never()).deregisterAMI(any())
     }
 
     @Test
     fun `pruneAMIs should handle empty AMI list`() {
-        whenever(mockEc2Service.listPrivateAMIs(any(), any())).thenReturn(emptyList())
+        doReturn(emptyList<AMI>()).whenever(amiService).listPrivateAMIs(any(), any())
 
         val result = amiService.pruneAMIs(namePattern = NAME_PATTERN, keepCount = 2, dryRun = false)
 
@@ -197,7 +198,7 @@ internal class AMIServiceTest : BaseKoinTest() {
             .hasNoDeleted()
             .hasNoKept()
 
-        verify(mockEc2Service, never()).deregisterAMI(any())
+        verify(amiService, never()).deregisterAMI(any())
     }
 
     @Test
@@ -208,17 +209,16 @@ internal class AMIServiceTest : BaseKoinTest() {
                 cassandraAMI("ami-2", "amd64", "20240102"),
             )
 
-        whenever(mockEc2Service.listPrivateAMIs(any(), any())).thenReturn(amis)
+        doReturn(amis).whenever(amiService).listPrivateAMIs(any(), any())
 
         val result = amiService.pruneAMIs(namePattern = NAME_PATTERN, keepCount = 1, dryRun = false)
 
-        // Should delete AMI but not try to delete any snapshots
         assertThatPruneResult(result)
             .hasDeletedCount(1)
             .deletedAMIsWithIds("ami-2")
 
-        verify(mockEc2Service).deregisterAMI("ami-2")
-        verify(mockEc2Service, never()).deleteSnapshot(any())
+        verify(amiService).deregisterAMI("ami-2")
+        verify(amiService, never()).deleteSnapshot(any())
     }
 
     @Test
@@ -230,7 +230,7 @@ internal class AMIServiceTest : BaseKoinTest() {
                 baseAMI("ami-3", "amd64", "20240103"),
             )
 
-        whenever(mockEc2Service.listPrivateAMIs(any(), any())).thenReturn(amis)
+        doReturn(amis).whenever(amiService).listPrivateAMIs(any(), any())
 
         val result =
             amiService.pruneAMIs(
@@ -240,31 +240,28 @@ internal class AMIServiceTest : BaseKoinTest() {
                 typeFilter = "CASSANDRA",
             )
 
-        // Should match "cassandra" case-insensitively
         assertThatPruneResult(result)
             .hasDeletedCount(1)
             .deletedAMIsWithIds("ami-2")
 
-        verify(mockEc2Service).deregisterAMI("ami-2")
-        verify(mockEc2Service, never()).deregisterAMI("ami-3")
+        verify(amiService).deregisterAMI("ami-2")
+        verify(amiService, never()).deregisterAMI("ami-3")
     }
 
     @Test
     fun `pruneAMIs should return kept AMIs sorted by groupKey`() {
         val amis =
             listOf(
-                // Create AMIs in random order to verify sorting
                 cassandraAMI("ami-4", "arm64", "20240103"),
                 cassandraAMI("ami-1", "amd64", "20240103"),
                 baseAMI("ami-3", "arm64", "20240103"),
                 baseAMI("ami-2", "amd64", "20240103"),
             )
 
-        whenever(mockEc2Service.listPrivateAMIs(any(), any())).thenReturn(amis)
+        doReturn(amis).whenever(amiService).listPrivateAMIs(any(), any())
 
         val result = amiService.pruneAMIs(namePattern = NAME_PATTERN, keepCount = 1, dryRun = true)
 
-        // Verify kept AMIs are sorted by groupKey (base-amd64, base-arm64, cassandra-amd64, cassandra-arm64)
         assertThatPruneResult(result)
             .hasKeptCount(4)
             .keptAMIsInOrder("ami-2", "ami-3", "ami-1", "ami-4")
@@ -274,25 +271,21 @@ internal class AMIServiceTest : BaseKoinTest() {
     fun `pruneAMIs should return deleted AMIs sorted by creation date ascending`() {
         val amis =
             listOf(
-                // Create AMIs in random order to verify sorting
                 cassandraAMI("ami-2", "amd64", "20240102"),
                 cassandraAMI("ami-4", "amd64", "20240104"),
                 cassandraAMI("ami-1", "amd64", "20240101"),
                 cassandraAMI("ami-3", "amd64", "20240103"),
             )
 
-        whenever(mockEc2Service.listPrivateAMIs(any(), any())).thenReturn(amis)
+        doReturn(amis).whenever(amiService).listPrivateAMIs(any(), any())
 
         val result = amiService.pruneAMIs(namePattern = NAME_PATTERN, keepCount = 1, dryRun = true)
 
-        // Verify deleted AMIs are sorted by creation date ascending (oldest first for deletion)
-        // Should keep ami-4 (newest), delete ami-1, ami-2, ami-3 in that order (ascending/oldest first)
         assertThatPruneResult(result)
             .hasDeletedCount(3)
             .deletedAMIsInOrder("ami-1", "ami-2", "ami-3")
             .deletedAMIsAreSortedByCreationDateAscending()
 
-        // Verify the dates are in ascending order (oldest first)
         assertThat(result.deleted[0].creationDate).isBefore(result.deleted[1].creationDate)
         assertThat(result.deleted[1].creationDate).isBefore(result.deleted[2].creationDate)
     }
@@ -301,20 +294,15 @@ internal class AMIServiceTest : BaseKoinTest() {
     fun `pruneAMIs should handle AMIs with malformed names gracefully`() {
         val amis =
             listOf(
-                // Valid AMI
                 cassandraAMI("ami-1", "amd64", "20240103"),
-                // AMI with malformed name (missing type/arch parts)
                 createAMI("ami-2", "malformed-name", "amd64", "2024-01-02T00:00:00Z"),
-                // Another valid AMI
                 cassandraAMI("ami-3", "amd64", "20240101"),
             )
 
-        whenever(mockEc2Service.listPrivateAMIs(any(), any())).thenReturn(amis)
+        doReturn(amis).whenever(amiService).listPrivateAMIs(any(), any())
 
-        // Should handle malformed names gracefully (they get type "unknown")
         val result = amiService.pruneAMIs(namePattern = NAME_PATTERN, keepCount = 1, dryRun = true)
 
-        // ami-1 kept (cassandra-amd64 newest), ami-2 kept (unknown-amd64 only one), ami-3 deleted
         assertThatPruneResult(result)
             .hasDeletedCount(1)
             .hasKeptCount(2)
@@ -329,17 +317,16 @@ internal class AMIServiceTest : BaseKoinTest() {
                 baseAMI("ami-3", "amd64", "20240103"),
             )
 
-        whenever(mockEc2Service.listPrivateAMIs(any(), any())).thenReturn(amis)
+        doReturn(amis).whenever(amiService).listPrivateAMIs(any(), any())
 
         val result = amiService.pruneAMIs(namePattern = NAME_PATTERN, keepCount = 1, dryRun = false)
 
-        // Each group has exactly one AMI, so nothing should be deleted
         assertThatPruneResult(result)
             .hasNoDeleted()
             .hasKeptCount(3)
             .keptAMIsWithIds("ami-1", "ami-2", "ami-3")
 
-        verify(mockEc2Service, never()).deregisterAMI(any())
+        verify(amiService, never()).deregisterAMI(any())
     }
 
     // ===== Test Data Builders =====
@@ -349,9 +336,6 @@ internal class AMIServiceTest : BaseKoinTest() {
         private const val NAME_PREFIX = "rustyrazorblade/images/easy-db-lab"
         private const val NAME_PATTERN = "$NAME_PREFIX-*"
 
-        /**
-         * Creates a Cassandra AMI with standard naming convention.
-         */
         fun cassandraAMI(
             id: String,
             arch: String,
@@ -366,9 +350,6 @@ internal class AMIServiceTest : BaseKoinTest() {
                 snapshotIds = snapshots,
             )
 
-        /**
-         * Creates a base AMI with standard naming convention.
-         */
         fun baseAMI(
             id: String,
             arch: String,
@@ -383,9 +364,6 @@ internal class AMIServiceTest : BaseKoinTest() {
                 snapshotIds = snapshots,
             )
 
-        /**
-         * Creates an AMI with full customization.
-         */
         fun createAMI(
             id: String,
             name: String,

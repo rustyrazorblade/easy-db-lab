@@ -17,13 +17,13 @@ import java.time.Instant
  * Tests for AMIResolver.
  */
 class AMIResolverTest {
-    private lateinit var ec2Service: EC2Service
+    private lateinit var amiService: AMIService
     private lateinit var resolver: AMIResolver
 
     @BeforeEach
     fun setup() {
-        ec2Service = mock()
-        resolver = DefaultAMIResolver(ec2Service)
+        amiService = mock()
+        resolver = DefaultAMIResolver(amiService)
     }
 
     @Nested
@@ -36,13 +36,13 @@ class AMIResolverTest {
 
             assertThat(result.isSuccess).isTrue()
             assertThat(result.getOrNull()).isEqualTo(explicitAmiId)
-            verify(ec2Service, never()).listPrivateAMIs(any(), any())
+            verify(amiService, never()).listPrivateAMIs(any(), any())
         }
 
         @Test
         fun `should auto-resolve AMI when explicit ID is blank`() {
             val expectedAmi = createAmi("ami-auto123", "2024-01-15T10:00:00Z")
-            whenever(ec2Service.listPrivateAMIs(any(), any())).thenReturn(listOf(expectedAmi))
+            whenever(amiService.listPrivateAMIs(any(), any())).thenReturn(listOf(expectedAmi))
 
             val result = resolver.resolveAmiId("", "amd64")
 
@@ -55,7 +55,7 @@ class AMIResolverTest {
             val olderAmi = createAmi("ami-older", "2024-01-01T10:00:00Z")
             val newerAmi = createAmi("ami-newer", "2024-01-15T10:00:00Z")
             val oldestAmi = createAmi("ami-oldest", "2023-12-01T10:00:00Z")
-            whenever(ec2Service.listPrivateAMIs(any(), any()))
+            whenever(amiService.listPrivateAMIs(any(), any()))
                 .thenReturn(listOf(olderAmi, newerAmi, oldestAmi))
 
             val result = resolver.resolveAmiId("", "amd64")
@@ -66,7 +66,7 @@ class AMIResolverTest {
 
         @Test
         fun `should return failure when no AMIs found`() {
-            whenever(ec2Service.listPrivateAMIs(any(), any())).thenReturn(emptyList())
+            whenever(amiService.listPrivateAMIs(any(), any())).thenReturn(emptyList())
 
             val result = resolver.resolveAmiId("", "arm64")
 
@@ -80,12 +80,12 @@ class AMIResolverTest {
         @Test
         fun `should lowercase architecture when auto-resolving`() {
             val ami = createAmi("ami-123", "2024-01-15T10:00:00Z")
-            whenever(ec2Service.listPrivateAMIs(any(), any())).thenReturn(listOf(ami))
+            whenever(amiService.listPrivateAMIs(any(), any())).thenReturn(listOf(ami))
 
             resolver.resolveAmiId("", "AMD64")
 
             val expectedPattern = Constants.AWS.AMI_PATTERN_TEMPLATE.format("amd64")
-            verify(ec2Service).listPrivateAMIs(expectedPattern, "self")
+            verify(amiService).listPrivateAMIs(expectedPattern, "self")
         }
     }
 
@@ -116,20 +116,20 @@ class AMIResolverTest {
     @Nested
     inner class FindAmisForArchitecture {
         @Test
-        fun `should call EC2Service with correct pattern`() {
-            whenever(ec2Service.listPrivateAMIs(any(), any())).thenReturn(emptyList())
+        fun `should call AMIService with correct pattern`() {
+            whenever(amiService.listPrivateAMIs(any(), any())).thenReturn(emptyList())
 
             resolver.findAmisForArchitecture("amd64")
 
             val expectedPattern = "rustyrazorblade/images/easy-db-lab-cassandra-amd64-*"
-            verify(ec2Service).listPrivateAMIs(expectedPattern, "self")
+            verify(amiService).listPrivateAMIs(expectedPattern, "self")
         }
 
         @Test
-        fun `should return AMIs from EC2Service`() {
+        fun `should return AMIs from AMIService`() {
             val ami1 = createAmi("ami-1", "2024-01-01T10:00:00Z")
             val ami2 = createAmi("ami-2", "2024-01-02T10:00:00Z")
-            whenever(ec2Service.listPrivateAMIs(any(), any())).thenReturn(listOf(ami1, ami2))
+            whenever(amiService.listPrivateAMIs(any(), any())).thenReturn(listOf(ami1, ami2))
 
             val result = resolver.findAmisForArchitecture("amd64")
 

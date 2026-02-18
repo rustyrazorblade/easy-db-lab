@@ -14,7 +14,7 @@ import com.rustyrazorblade.easydblab.providers.aws.InstanceDetails
 import com.rustyrazorblade.easydblab.providers.aws.OpenSearchService
 import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupDetails
 import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupRuleInfo
-import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupService
+import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.services.K3sService
 import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.StressJobService
@@ -36,7 +36,7 @@ import java.time.Instant
 class StatusCacheTest : BaseKoinTest() {
     private lateinit var mockClusterStateManager: ClusterStateManager
     private lateinit var mockEc2InstanceService: EC2InstanceService
-    private lateinit var mockSecurityGroupService: SecurityGroupService
+    private lateinit var mockVpcService: VpcService
     private lateinit var mockK3sService: K3sService
     private lateinit var mockK8sService: K8sService
     private lateinit var mockEmrService: EMRService
@@ -92,7 +92,7 @@ class StatusCacheTest : BaseKoinTest() {
             module {
                 single { mockClusterStateManager }
                 single { mockEc2InstanceService }
-                single<SecurityGroupService> { mockSecurityGroupService }
+                single<VpcService> { mockVpcService }
                 factory<K3sService> { mockK3sService }
                 factory<K8sService> { mockK8sService }
                 single { mockEmrService }
@@ -105,7 +105,7 @@ class StatusCacheTest : BaseKoinTest() {
     fun setupMocks() {
         mockClusterStateManager = mock()
         mockEc2InstanceService = mock()
-        mockSecurityGroupService = mock()
+        mockVpcService = mock()
         mockK3sService = mock()
         mockK8sService = mock()
         mockEmrService = mock()
@@ -134,7 +134,7 @@ class StatusCacheTest : BaseKoinTest() {
                 ),
             ),
         )
-        whenever(mockSecurityGroupService.describeSecurityGroup(any())).thenReturn(
+        whenever(mockVpcService.describeSecurityGroup(any())).thenReturn(
             SecurityGroupDetails(
                 securityGroupId = "sg-abc123",
                 name = "test-sg",

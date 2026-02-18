@@ -56,6 +56,24 @@ data:
                   replacement: '${env:HOSTNAME}:9599'
                 - target_label: cluster
                   replacement: '${env:CLUSTER_NAME}'
+            - job_name: 'beyla'
+              scrape_interval: 15s
+              static_configs:
+                - targets: ['localhost:9400']
+              relabel_configs:
+                - target_label: instance
+                  replacement: '${env:HOSTNAME}:9400'
+                - target_label: cluster
+                  replacement: '${env:CLUSTER_NAME}'
+            - job_name: 'ebpf-exporter'
+              scrape_interval: 15s
+              static_configs:
+                - targets: ['localhost:9435']
+              relabel_configs:
+                - target_label: instance
+                  replacement: '${env:HOSTNAME}:9435'
+                - target_label: cluster
+                  replacement: '${env:CLUSTER_NAME}'
       filelog/clickhouse-server:
         include:
           - /mnt/db1/clickhouse/logs/*.log

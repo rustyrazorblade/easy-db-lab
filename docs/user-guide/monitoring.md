@@ -77,3 +77,28 @@ Shows OpenSearch domain metrics via CloudWatch. Available when an OpenSearch dom
 - **Storage:** ClusterUsedSpace
 
 Use the `Domain` dropdown to select which OpenSearch domain to view.
+
+## eBPF Observability
+
+The cluster deploys eBPF-based agents on all nodes for deep system observability:
+
+### Beyla (L7 Network Metrics)
+
+Grafana Beyla uses eBPF to automatically instrument network traffic and provide RED metrics (Rate, Errors, Duration) for:
+
+- **Cassandra** CQL protocol (port 9042) and inter-node communication (port 7000)
+- **ClickHouse** HTTP (port 8123) and native (port 9000) protocols
+
+Metrics are scraped by the OTel collector and stored in VictoriaMetrics.
+
+### ebpf_exporter (Low-Level Metrics)
+
+Cloudflare's ebpf_exporter provides kernel-level metrics via eBPF:
+
+- **TCP retransmits** — count of retransmitted TCP segments
+- **Block I/O latency** — histogram of block device I/O operation latency
+- **VFS latency** — histogram of filesystem read/write operation latency
+
+These metrics are scraped by the OTel collector and stored in VictoriaMetrics.
+
+See [Profiling](profiling.md) for continuous profiling with Pyroscope.

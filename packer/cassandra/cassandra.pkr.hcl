@@ -168,6 +168,11 @@ build {
     script = "install/install_cassandra.sh"
   }
 
+  # install Pyroscope Java agent for continuous profiling
+  provisioner "shell" {
+    script = "install/install_pyroscope_agent.sh"
+  }
+
   # instal axonops
   provisioner "shell" {
     script = "install/install_axon.sh"

@@ -20,6 +20,7 @@
 - [Spark](user-guide/spark.md)
 - [ClickHouse](user-guide/clickhouse.md)
 - [Monitoring](user-guide/monitoring.md)
+- [Profiling](user-guide/profiling.md)
 - [Shell Aliases](user-guide/shell-aliases.md)
 - [MCP Server](integrations/mcp-server.md)
 

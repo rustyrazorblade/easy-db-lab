@@ -89,3 +89,18 @@ fi
 
 # Reduce ring delay since we control the startup sequence
 export JVM_OPTS="$JVM_OPTS -Dcassandra.ring_delay_ms=1"
+
+# Pyroscope continuous profiling agent
+# Sends CPU, alloc, lock, and wall-clock profiles to the Pyroscope server on the control node.
+# PYROSCOPE_SERVER_ADDRESS is set by easy-db-lab at cluster startup time via /etc/default/cassandra.
+PYROSCOPE_JAR="/usr/local/pyroscope/pyroscope.jar"
+if [ -f "$PYROSCOPE_JAR" ] && [ -n "$PYROSCOPE_SERVER_ADDRESS" ]; then
+    export JVM_OPTS="$JVM_OPTS -javaagent:${PYROSCOPE_JAR}"
+    export JVM_OPTS="$JVM_OPTS -Dpyroscope.application.name=cassandra"
+    export JVM_OPTS="$JVM_OPTS -Dpyroscope.server.address=${PYROSCOPE_SERVER_ADDRESS}"
+    export JVM_OPTS="$JVM_OPTS -Dpyroscope.format=jfr"
+    export JVM_OPTS="$JVM_OPTS -Dpyroscope.profiler.event=cpu,alloc,lock,wall"
+    export JVM_OPTS="$JVM_OPTS -Dpyroscope.labels=hostname:$(hostname),cluster:${CLUSTER_NAME:-unknown}"
+elif [ ! -f "$PYROSCOPE_JAR" ]; then
+    echo "INFO: Pyroscope Java agent not found at $PYROSCOPE_JAR, skipping profiling" >&2
+fi

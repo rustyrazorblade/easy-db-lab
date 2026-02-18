@@ -19,6 +19,14 @@ import java.util.concurrent.TimeUnit
 private val log = KotlinLogging.logger {}
 
 /**
+ * Result of generating a Tailscale auth key, containing both the key value and its ID.
+ */
+data class TailscaleAuthKey(
+    val key: String,
+    val id: String,
+)
+
+/**
  * Exception thrown when Tailscale API operations fail.
  */
 class TailscaleApiException(
@@ -46,14 +54,28 @@ interface TailscaleService : AutoCloseable {
      * @param clientId Tailscale OAuth client ID
      * @param clientSecret Tailscale OAuth client secret
      * @param tag Device tag to apply (e.g., "tag:easy-db-lab"). Required for OAuth-based auth keys.
-     * @return Ephemeral auth key for use with `tailscale up --authkey`
+     * @return TailscaleAuthKey containing both the key value and its ID
      * @throws TailscaleApiException if the API request fails
      */
     fun generateAuthKey(
         clientId: String,
         clientSecret: String,
         tag: String,
-    ): String
+    ): TailscaleAuthKey
+
+    /**
+     * Deletes a Tailscale auth key by ID.
+     *
+     * @param clientId Tailscale OAuth client ID
+     * @param clientSecret Tailscale OAuth client secret
+     * @param keyId The auth key ID to delete
+     * @throws TailscaleApiException if the API request fails
+     */
+    fun deleteAuthKey(
+        clientId: String,
+        clientSecret: String,
+        keyId: String,
+    )
 
     /**
      * Starts Tailscale on the specified host and authenticates with the provided auth key.
@@ -123,7 +145,7 @@ class DefaultTailscaleService(
         clientId: String,
         clientSecret: String,
         tag: String,
-    ): String {
+    ): TailscaleAuthKey {
         log.info { "Generating Tailscale auth key with tag: $tag" }
 
         // Step 1: Exchange client credentials for access token
@@ -131,6 +153,33 @@ class DefaultTailscaleService(
 
         // Step 2: Generate ephemeral auth key
         return createAuthKey(accessToken, tag)
+    }
+
+    override fun deleteAuthKey(
+        clientId: String,
+        clientSecret: String,
+        keyId: String,
+    ) {
+        log.info { "Deleting Tailscale auth key: $keyId" }
+
+        val accessToken = getAccessToken(clientId, clientSecret)
+
+        val request =
+            Request
+                .Builder()
+                .url("${Constants.Tailscale.AUTH_KEYS_ENDPOINT}/$keyId")
+                .header("Authorization", "Bearer $accessToken")
+                .delete()
+                .build()
+
+        httpClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                val errorBody = response.body.string()
+                throw TailscaleApiException("Failed to delete auth key $keyId: ${response.code} - $errorBody")
+            }
+        }
+
+        log.info { "Tailscale auth key $keyId deleted successfully" }
     }
 
     /**
@@ -169,7 +218,7 @@ class DefaultTailscaleService(
     private fun createAuthKey(
         accessToken: String,
         tag: String,
-    ): String {
+    ): TailscaleAuthKey {
         val keyRequest =
             mapOf(
                 "capabilities" to
@@ -204,8 +253,13 @@ class DefaultTailscaleService(
         return httpClient.newCall(request).execute().use { response ->
             val body = parseSuccessfulResponse(response, "create auth key")
             val keyResponse: Map<String, Any> = objectMapper.readValue(body)
-            keyResponse["key"] as? String
-                ?: throw TailscaleApiException("No key in response")
+            val key =
+                keyResponse["key"] as? String
+                    ?: throw TailscaleApiException("No key in response")
+            val id =
+                keyResponse["id"] as? String
+                    ?: throw TailscaleApiException("No id in response")
+            TailscaleAuthKey(key = key, id = id)
         }
     }
 

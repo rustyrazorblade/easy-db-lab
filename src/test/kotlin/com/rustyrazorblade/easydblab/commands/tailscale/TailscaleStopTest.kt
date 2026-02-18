@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.services.TailscaleService
@@ -15,7 +16,9 @@ import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 
@@ -100,6 +103,56 @@ class TailscaleStopTest : BaseKoinTest() {
         verify(mockTailscaleService).stopTailscale(any())
         val output = outputHandler.messages.joinToString("\n")
         assertThat(output).contains("stopped successfully")
+    }
+
+    @Test
+    fun `execute deletes auth key on successful stop`() {
+        val stateWithKey =
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+                initConfig = InitConfig(region = "us-west-2"),
+                hosts =
+                    mapOf(
+                        ServerType.Control to listOf(testControlHost),
+                    ),
+                tailscaleAuthKeyId = "key-to-delete",
+            )
+        whenever(mockClusterStateManager.load()).thenReturn(stateWithKey)
+
+        val userWithTailscale =
+            User(
+                email = "test@example.com",
+                region = "us-west-2",
+                keyName = "test-key",
+                awsProfile = "",
+                awsAccessKey = "test-access-key",
+                awsSecret = "test-secret",
+                tailscaleClientId = "ts-client-id",
+                tailscaleClientSecret = "ts-client-secret",
+            )
+        getKoin().declare(userWithTailscale)
+
+        whenever(mockTailscaleService.isConnected(any())).thenReturn(Result.success(true))
+        whenever(mockTailscaleService.stopTailscale(any())).thenReturn(Result.success(Unit))
+
+        val command = TailscaleStop()
+        command.execute()
+
+        verify(mockTailscaleService).deleteAuthKey(eq("ts-client-id"), eq("ts-client-secret"), eq("key-to-delete"))
+        verify(mockClusterStateManager).save(stateWithKey)
+        assertThat(stateWithKey.tailscaleAuthKeyId).isNull()
+    }
+
+    @Test
+    fun `execute skips key deletion when no key stored`() {
+        whenever(mockTailscaleService.isConnected(any())).thenReturn(Result.success(true))
+        whenever(mockTailscaleService.stopTailscale(any())).thenReturn(Result.success(Unit))
+
+        val command = TailscaleStop()
+        command.execute()
+
+        verify(mockTailscaleService, never()).deleteAuthKey(any(), any(), any())
     }
 
     @Test

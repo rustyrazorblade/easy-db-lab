@@ -639,6 +639,32 @@ class ClusterStateTest {
     }
 
     @Test
+    fun `ClusterState should save and load tailscaleAuthKeyId`(
+        @TempDir tempDir: File,
+    ) {
+        val stateFile = File(tempDir, "state.json")
+        val manager = ClusterStateManager(stateFile)
+
+        val state =
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+            )
+        state.updateTailscaleAuthKeyId("tskey-auth-abc123")
+        manager.save(state)
+
+        val loadedState = manager.load()
+        assertThat(loadedState.tailscaleAuthKeyId).isEqualTo("tskey-auth-abc123")
+
+        // Clear and verify null roundtrip
+        loadedState.updateTailscaleAuthKeyId(null)
+        manager.save(loadedState)
+
+        val clearedState = manager.load()
+        assertThat(clearedState.tailscaleAuthKeyId).isNull()
+    }
+
+    @Test
     fun `s3Path extension function should create ClusterS3Path`() {
         val state =
             ClusterState(

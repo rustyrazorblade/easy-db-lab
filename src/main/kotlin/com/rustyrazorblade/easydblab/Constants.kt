@@ -250,7 +250,7 @@ object Constants {
         const val AUTH_KEYS_ENDPOINT = "https://api.tailscale.com/api/v2/tailnet/-/keys"
         const val CONNECTION_TIMEOUT_SECONDS = 30L
         const val READ_TIMEOUT_SECONDS = 30L
-        const val AUTH_KEY_EXPIRY_SECONDS = 300
+        const val AUTH_KEY_EXPIRY_SECONDS = 604800
         const val DAEMON_STARTUP_DELAY_MS = 2000L
         const val DEFAULT_DEVICE_TAG = "tag:easy-db-lab"
     }

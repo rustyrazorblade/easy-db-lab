@@ -5,6 +5,7 @@ Description=Apache Cassandra
 ExecStart=/usr/local/cassandra/current/bin/cassandra -f
 ExecStop=/usr/local/cassandra/current/bin/nodetool drain
 User=cassandra
+EnvironmentFile=-/etc/default/cassandra
 Environment=CASSANDRA_LOG_DIR=/mnt/db1/cassandra/logs
 Environment=CASSANDRA_HEAPDUMP_DIR=/mnt/db1/cassandra/artifacts
 

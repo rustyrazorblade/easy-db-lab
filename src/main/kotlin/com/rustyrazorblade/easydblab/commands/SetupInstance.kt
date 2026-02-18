@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.commands
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.Host
@@ -59,6 +60,26 @@ class SetupInstance : PicoBaseCommand() {
             }
         }
 
+        fun setupCassandraSystemdEnv(
+            host: Host,
+            controlNodeIp: String,
+            clusterName: String,
+        ) {
+            val envFile = java.io.File.createTempFile("cassandra", ".env")
+            try {
+                envFile.bufferedWriter().use { writer ->
+                    writer.write("PYROSCOPE_SERVER_ADDRESS=http://$controlNodeIp:${Constants.K8s.PYROSCOPE_PORT}")
+                    writer.newLine()
+                    writer.write("CLUSTER_NAME=$clusterName")
+                    writer.newLine()
+                }
+                remoteOps.upload(host, envFile.toPath(), "cassandra.env")
+                remoteOps.executeRemotely(host, "sudo mv cassandra.env /etc/default/cassandra").text
+            } finally {
+                envFile.delete()
+            }
+        }
+
         // Get datacenter once from the first stress instance (all instances are in the same DC)
         val stressHosts = clusterState.getHosts(ServerType.Stress)
         val datacenter =
@@ -74,6 +95,8 @@ class SetupInstance : PicoBaseCommand() {
             }
 
         val cassandraHost = clusterState.getHosts(ServerType.Cassandra).first().private
+        val controlNodeIp = clusterState.getHosts(ServerType.Control).first().private
+        val clusterName = clusterState.name
 
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Stress, hosts.hostList, parallel = true) { host ->
             val h = host.toHost()
@@ -86,6 +109,7 @@ class SetupInstance : PicoBaseCommand() {
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, "") { host ->
             val h = host.toHost()
             setup(h)
+            setupCassandraSystemdEnv(h, controlNodeIp, clusterName)
             remoteOps.executeRemotely(h, "sudo hostnamectl set-hostname ${h.alias}").text
             remoteOps.upload(h, Path.of("setup_instance.sh"), "setup_instance.sh")
             remoteOps.executeRemotely(h, "sudo bash setup_instance.sh").text

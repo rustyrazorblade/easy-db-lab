@@ -51,11 +51,10 @@ private fun createClientOverrideConfig(telemetryProvider: TelemetryProvider): Cl
  * - S3Client: AWS S3 client for object storage operations
  * - StsClient: AWS STS client for credential validation
  * - AWS: AWS service wrapper for lab environment operations
- * - EC2Service: Low-level EC2 AMI operations
- * - AMIService: High-level AMI lifecycle management
- * - AMIValidator: AMI validation service with retry logic and architecture verification
+ * - AMIService: AMI lifecycle management (CRUD, pruning, validation)
+ * - AMIValidator: AMI validation interface (implemented by AMIService)
  * - VpcService: Generic VPC infrastructure management
- * - AwsInfrastructureService: VPC infrastructure orchestration for packer and clusters
+ * - AwsInfrastructureService: VPC infrastructure creation and teardown orchestration
  * - SparkService: Spark job lifecycle management for EMR clusters
  * - ObjectStore: Cloud-agnostic object storage interface (S3 implementation)
  * - SqsClient: AWS SQS client for message queue operations
@@ -185,10 +184,12 @@ val awsModule =
             )
         }
 
-        // Provide AwsInfrastructureService as singleton
+        // Provide AwsInfrastructureService as singleton (handles both creation and teardown)
         single {
             AwsInfrastructureService(
                 get<VpcService>(),
+                get<EMRService>(),
+                get<OpenSearchService>(),
                 get<OutputHandler>(),
             )
         }
@@ -235,16 +236,6 @@ val awsModule =
         single {
             OpenSearchService(
                 get<OpenSearchClient>(),
-                get<OutputHandler>(),
-            )
-        }
-
-        // Provide InfrastructureTeardownService as singleton
-        single {
-            InfrastructureTeardownService(
-                get<VpcService>(),
-                get<EMRService>(),
-                get<OpenSearchService>(),
                 get<OutputHandler>(),
             )
         }

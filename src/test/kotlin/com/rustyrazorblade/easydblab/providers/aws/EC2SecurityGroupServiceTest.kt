@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.providers.aws
 
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
@@ -19,7 +20,7 @@ internal class EC2SecurityGroupServiceTest {
     private val vpcService = EC2VpcService(mockEc2Client, mockOutputHandler)
 
     @Test
-    fun `describeSecurityGroup returns null when security group not found`() {
+    fun `describeSecurityGroup throws when security group not found`() {
         val response =
             DescribeSecurityGroupsResponse
                 .builder()
@@ -28,9 +29,10 @@ internal class EC2SecurityGroupServiceTest {
 
         whenever(mockEc2Client.describeSecurityGroups(any<DescribeSecurityGroupsRequest>())).thenReturn(response)
 
-        val result = vpcService.describeSecurityGroup("sg-nonexistent")
-
-        assertThat(result).isNull()
+        assertThatThrownBy {
+            vpcService.describeSecurityGroup("sg-nonexistent")
+        }.isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("sg-nonexistent")
     }
 
     @Test

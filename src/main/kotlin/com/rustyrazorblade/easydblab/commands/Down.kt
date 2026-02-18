@@ -7,8 +7,8 @@ import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.providers.aws.AWS
+import com.rustyrazorblade.easydblab.providers.aws.AwsInfrastructureService
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredResources
-import com.rustyrazorblade.easydblab.providers.aws.InfrastructureTeardownService
 import com.rustyrazorblade.easydblab.providers.aws.SQSService
 import com.rustyrazorblade.easydblab.providers.aws.TeardownMode
 import com.rustyrazorblade.easydblab.providers.aws.TeardownResult
@@ -77,7 +77,7 @@ class Down : PicoBaseCommand() {
     )
     var retentionDays: Int = 1
 
-    private val teardownService: InfrastructureTeardownService by inject()
+    private val teardownService: AwsInfrastructureService by inject()
     private val sqsService: SQSService by inject()
     private val aws: AWS by inject()
     private val log = KotlinLogging.logger {}

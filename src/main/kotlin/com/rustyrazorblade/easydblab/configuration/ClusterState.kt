@@ -198,6 +198,8 @@ data class ClusterState(
     var backupHashes: Map<String, String> = emptyMap(),
     // ClickHouse-specific configuration
     var clickHouseConfig: ClickHouseConfig? = null,
+    // Tailscale auth key ID for cleanup on teardown
+    var tailscaleAuthKeyId: String? = null,
 ) {
     /**
      * Update hosts
@@ -241,6 +243,14 @@ data class ClusterState(
     ) {
         this.sqsQueueUrl = queueUrl
         this.sqsQueueArn = queueArn
+        this.lastAccessedAt = Instant.now()
+    }
+
+    /**
+     * Update Tailscale auth key ID for cleanup on teardown
+     */
+    fun updateTailscaleAuthKeyId(keyId: String?) {
+        this.tailscaleAuthKeyId = keyId
         this.lastAccessedAt = Instant.now()
     }
 

@@ -136,6 +136,36 @@ class DownTest : BaseKoinTest() {
     }
 
     @Test
+    fun `Down command should clear tailscaleAuthKeyId when marking DOWN`(
+        @TempDir tempDir: File,
+    ) {
+        val stateFile = File(tempDir, "state.json")
+        val manager = ClusterStateManager(stateFile)
+
+        val state =
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+            )
+        state.updateTailscaleAuthKeyId("key-id-123")
+        manager.save(state)
+
+        // Verify the key ID is set
+        val loadedState = manager.load()
+        assertThat(loadedState.tailscaleAuthKeyId).isEqualTo("key-id-123")
+
+        // Simulate Down command clearing the key
+        loadedState.updateTailscaleAuthKeyId(null)
+        loadedState.markInfrastructureDown()
+        manager.save(loadedState)
+
+        // Verify the key ID is cleared
+        val afterState = manager.load()
+        assertThat(afterState.tailscaleAuthKeyId).isNull()
+        assertThat(afterState.infrastructureStatus).isEqualTo(InfrastructureStatus.DOWN)
+    }
+
+    @Test
     fun `Down command should preserve cluster state fields when marking DOWN`(
         @TempDir tempDir: File,
     ) {

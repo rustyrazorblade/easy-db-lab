@@ -139,14 +139,17 @@ class TailscaleStart : PicoBaseCommand() {
 
         try {
             outputHandler.handleMessage("Generating Tailscale auth key...")
-            val authKey =
+            val authKeyResult =
                 tailscaleService.generateAuthKey(
                     credentials.clientId,
                     credentials.clientSecret,
                     credentials.tag,
                 )
 
-            tailscaleService.startTailscale(host, authKey, controlHost.alias, cidr).getOrThrow()
+            clusterState.updateTailscaleAuthKeyId(authKeyResult.id)
+            clusterStateManager.save(clusterState)
+
+            tailscaleService.startTailscale(host, authKeyResult.key, controlHost.alias, cidr).getOrThrow()
             showSuccessMessage(controlHost.alias, cidr)
             showCurrentStatus(host)
         } catch (e: TailscaleApiException) {

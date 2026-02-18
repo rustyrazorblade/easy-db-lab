@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.services.TailscaleApiException
+import com.rustyrazorblade.easydblab.services.TailscaleAuthKey
 import com.rustyrazorblade.easydblab.services.TailscaleService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -124,7 +125,7 @@ class TailscaleStartTest : BaseKoinTest() {
         @Test
         fun `execute starts tailscale with CLI credentials`() {
             whenever(mockTailscaleService.generateAuthKey(any(), any(), any()))
-                .thenReturn("auth-key-123")
+                .thenReturn(TailscaleAuthKey(key = "auth-key-123", id = "key-id-123"))
             whenever(mockTailscaleService.startTailscale(any(), any(), any(), any()))
                 .thenReturn(Result.success(Unit))
             whenever(mockTailscaleService.getStatus(any()))
@@ -149,7 +150,7 @@ class TailscaleStartTest : BaseKoinTest() {
         @Test
         fun `execute advertises VPC CIDR as subnet route`() {
             whenever(mockTailscaleService.generateAuthKey(any(), any(), any()))
-                .thenReturn("auth-key-123")
+                .thenReturn(TailscaleAuthKey(key = "auth-key-123", id = "key-id-123"))
             whenever(mockTailscaleService.startTailscale(any(), any(), any(), eq("10.0.0.0/16")))
                 .thenReturn(Result.success(Unit))
             whenever(mockTailscaleService.getStatus(any()))
@@ -161,6 +162,27 @@ class TailscaleStartTest : BaseKoinTest() {
             command.execute()
 
             verify(mockTailscaleService).startTailscale(any(), any(), any(), eq("10.0.0.0/16"))
+        }
+    }
+
+    @Nested
+    inner class KeyIdPersistence {
+        @Test
+        fun `execute persists auth key ID to cluster state`() {
+            whenever(mockTailscaleService.generateAuthKey(any(), any(), any()))
+                .thenReturn(TailscaleAuthKey(key = "auth-key-123", id = "key-id-456"))
+            whenever(mockTailscaleService.startTailscale(any(), any(), any(), any()))
+                .thenReturn(Result.success(Unit))
+            whenever(mockTailscaleService.getStatus(any()))
+                .thenReturn(Result.success("Connected"))
+
+            val command = TailscaleStart()
+            command.clientId = "client-id"
+            command.clientSecret = "client-secret"
+            command.execute()
+
+            assertThat(testClusterState.tailscaleAuthKeyId).isEqualTo("key-id-456")
+            verify(mockClusterStateManager).save(testClusterState)
         }
     }
 
@@ -216,7 +238,7 @@ class TailscaleStartTest : BaseKoinTest() {
             getKoin().declare(userWithTailscale)
 
             whenever(mockTailscaleService.generateAuthKey(any(), any(), any()))
-                .thenReturn("auth-key")
+                .thenReturn(TailscaleAuthKey(key = "auth-key", id = "key-id"))
             whenever(mockTailscaleService.startTailscale(any(), any(), any(), any()))
                 .thenReturn(Result.success(Unit))
             whenever(mockTailscaleService.getStatus(any()))

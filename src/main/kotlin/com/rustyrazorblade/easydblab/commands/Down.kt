@@ -6,9 +6,11 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredResources
 import com.rustyrazorblade.easydblab.providers.aws.TeardownMode
 import com.rustyrazorblade.easydblab.providers.aws.TeardownResult
+import com.rustyrazorblade.easydblab.services.TailscaleService
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import com.rustyrazorblade.easydblab.services.aws.SQSService
@@ -80,6 +82,8 @@ class Down : PicoBaseCommand() {
     private val teardownService: AwsInfrastructureService by inject()
     private val sqsService: SQSService by inject()
     private val s3BucketService: AwsS3BucketService by inject()
+    private val tailscaleService: TailscaleService by inject()
+    private val user: User by inject()
     private val log = KotlinLogging.logger {}
 
     data class Socks5ProxyState(
@@ -353,6 +357,9 @@ class Down : PicoBaseCommand() {
             if (clusterStateManager.exists()) {
                 val clusterState = clusterStateManager.load()
 
+                // Delete Tailscale auth key if it exists
+                deleteTailscaleAuthKey(clusterState)
+
                 // Delete SQS queue if it exists
                 deleteSqsQueue(clusterState.sqsQueueUrl)
 
@@ -368,11 +375,39 @@ class Down : PicoBaseCommand() {
                 clusterState.updateOpenSearchDomain(null)
                 clusterState.updateInfrastructure(null)
                 clusterState.updateSqsQueue(null, null)
+                clusterState.updateTailscaleAuthKeyId(null)
                 clusterStateManager.save(clusterState)
                 outputHandler.handleMessage("Cluster state updated: infrastructure marked as DOWN")
             }
         } catch (e: Exception) {
             log.warn(e) { "Failed to update cluster state, continuing anyway" }
+        }
+    }
+
+    /**
+     * Deletes the Tailscale auth key if one is stored in cluster state.
+     * Non-fatal — failure to delete the key should not block teardown.
+     */
+    @Suppress("TooGenericExceptionCaught")
+    private fun deleteTailscaleAuthKey(clusterState: ClusterState) {
+        val keyId = clusterState.tailscaleAuthKeyId
+        if (keyId.isNullOrBlank()) {
+            log.debug { "No Tailscale auth key to delete" }
+            return
+        }
+
+        val clientId = user.tailscaleClientId
+        val clientSecret = user.tailscaleClientSecret
+        if (clientId.isBlank() || clientSecret.isBlank()) {
+            log.warn { "Tailscale OAuth credentials not configured, cannot delete auth key $keyId" }
+            return
+        }
+
+        try {
+            tailscaleService.deleteAuthKey(clientId, clientSecret, keyId)
+            outputHandler.handleMessage("Deleted Tailscale auth key: $keyId")
+        } catch (e: Exception) {
+            log.warn(e) { "Failed to delete Tailscale auth key: $keyId" }
         }
     }
 

@@ -371,6 +371,7 @@ class StatusTest : BaseKoinTest() {
         val allMessages = captor.allValues.joinToString("\n")
         assertThat(allMessages).contains("=== S3 BUCKET ===")
         assertThat(allMessages).contains("test-bucket-123")
+        assertThat(allMessages).contains("Fullpath:     test-bucket-123/clusters/test-cluster-test-123")
         assertThat(allMessages).contains("spark")
         assertThat(allMessages).contains("cassandra")
     }

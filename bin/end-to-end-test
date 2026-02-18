@@ -285,6 +285,16 @@ step_test_mcp_server() {
         return 1
     fi
 
+    # Verify S3 section contains fullpath field
+    if echo "$body" | jq -e '.s3.fullpath' > /dev/null 2>&1; then
+        local fullpath=$(echo "$body" | jq -r '.s3.fullpath')
+        echo "Response contains s3.fullpath: OK ($fullpath)"
+    else
+        echo "ERROR: Response does not contain expected s3.fullpath field"
+        kill "$server_pid" 2>/dev/null || true
+        return 1
+    fi
+
     # Clean up
     echo "=== Stopping MCP server ==="
     kill "$server_pid" 2>/dev/null || true

@@ -76,6 +76,7 @@ class StatusCacheTest : BaseKoinTest() {
                             ),
                         ),
                 ),
+            s3Bucket = "test-bucket-abc",
             infrastructure =
                 InfrastructureState(
                     vpcId = "vpc-abc123",
@@ -389,6 +390,20 @@ class StatusCacheTest : BaseKoinTest() {
         // Required sections always present
         assertThat(json.containsKey("cluster")).isTrue()
         assertThat(json.containsKey("nodes")).isTrue()
+    }
+
+    @Test
+    fun `s3 section contains fullpath with bucket and cluster prefix`() {
+        statusCache = StatusCache(refreshIntervalSeconds = 3600)
+        statusCache.forceRefresh()
+
+        val result = statusCache.getStatus("s3")
+        assertThat(result).isNotNull()
+
+        val s3 = Json.parseToJsonElement(result!!).jsonObject
+        assertThat(s3["bucket"]?.jsonPrimitive?.content).isEqualTo("test-bucket-abc")
+        assertThat(s3["fullpath"]?.jsonPrimitive?.content)
+            .isEqualTo("test-bucket-abc/clusters/test-cluster-test-cluster-id")
     }
 
     @Test

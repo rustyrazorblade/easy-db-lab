@@ -364,6 +364,7 @@ class StatusCache(
         val s3Path = state.s3Path()
         return S3Info(
             bucket = state.s3Bucket!!,
+            fullpath = "${state.s3Bucket}/${state.clusterPrefix()}",
             paths =
                 S3Paths(
                     cassandra = s3Path.cassandra().toString(),

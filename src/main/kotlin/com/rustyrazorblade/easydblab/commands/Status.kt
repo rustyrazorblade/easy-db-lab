@@ -20,7 +20,7 @@ import com.rustyrazorblade.easydblab.providers.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.providers.aws.EMRService
 import com.rustyrazorblade.easydblab.providers.aws.OpenSearchService
 import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupRuleInfo
-import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupService
+import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.services.K3sService
 import com.rustyrazorblade.easydblab.services.K8sService
@@ -64,7 +64,7 @@ class Status :
     private val outputHandler: OutputHandler by inject()
     private val clusterStateManager: ClusterStateManager by inject()
     private val ec2InstanceService: EC2InstanceService by inject()
-    private val securityGroupService: SecurityGroupService by inject()
+    private val vpcService: VpcService by inject()
     private val k3sService: K3sService by inject()
     private val k8sService: K8sService by inject()
     private val remoteOperationsService: RemoteOperationsService by inject()
@@ -199,7 +199,7 @@ class Status :
 
         val sgDetails =
             runCatching {
-                securityGroupService.describeSecurityGroup(sgId)
+                vpcService.describeSecurityGroup(sgId)
             }.getOrNull()
 
         if (sgDetails == null) {

@@ -54,12 +54,12 @@ interface AMIResolver {
 }
 
 /**
- * Default implementation of AMIResolver using EC2Service.
+ * Default implementation of AMIResolver using AMIService.
  *
- * @property ec2Service Service for interacting with EC2 API
+ * @property amiService Service for interacting with EC2 API
  */
 class DefaultAMIResolver(
-    private val ec2Service: EC2Service,
+    private val amiService: AMIService,
 ) : AMIResolver {
     override fun resolveAmiId(
         explicitAmiId: String,
@@ -96,7 +96,7 @@ class DefaultAMIResolver(
 
     override fun findAmisForArchitecture(architecture: String): List<AMI> {
         val pattern = generateAmiPattern(architecture)
-        return ec2Service.listPrivateAMIs(pattern)
+        return amiService.listPrivateAMIs(pattern)
     }
 
     override fun selectMostRecentAmi(amis: List<AMI>): AMI? = amis.maxByOrNull { it.creationDate }

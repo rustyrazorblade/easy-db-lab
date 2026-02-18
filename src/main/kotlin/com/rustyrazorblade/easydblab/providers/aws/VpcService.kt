@@ -327,6 +327,16 @@ interface VpcService {
      */
     fun deleteVpc(vpcId: VpcId)
 
+    // ==================== Security Group Details ====================
+
+    /**
+     * Get detailed information about a security group.
+     *
+     * @param securityGroupId The security group ID
+     * @return SecurityGroupDetails or null if not found
+     */
+    fun describeSecurityGroup(securityGroupId: String): SecurityGroupDetails?
+
     companion object {
         /** Default timeout for waiting on resource termination/deletion (10 minutes) */
         const val DEFAULT_TERMINATION_TIMEOUT_MS = 10 * 60 * 1000L

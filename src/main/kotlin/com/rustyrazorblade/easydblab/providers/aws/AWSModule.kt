@@ -157,9 +157,6 @@ val awsModule =
         // Provide AWS service as singleton
         single { AWS(get<IamClient>(), get<S3Client>(), get<StsClient>()) }
 
-        // Provide EC2Service as singleton
-        single { EC2Service(get<Ec2Client>()) }
-
         // Provide EC2InstanceService as singleton
         single {
             EC2InstanceService(
@@ -168,17 +165,17 @@ val awsModule =
             )
         }
 
-        // Provide AMIService as singleton
-        single { AMIService(get<EC2Service>()) }
-
-        // Provide AMIValidator as singleton
-        single<AMIValidator> {
-            AMIValidationService(
-                get<EC2Service>(),
+        // Provide AMIService as singleton (also serves as AMIValidator)
+        single {
+            AMIService(
+                get<Ec2Client>(),
                 get<OutputHandler>(),
                 get<AWS>(),
             )
         }
+
+        // Bind AMIValidator to the same AMIService instance
+        single<AMIValidator> { get<AMIService>() }
 
         // Provide VpcService as singleton
         single<VpcService> {
@@ -234,14 +231,6 @@ val awsModule =
             )
         }
 
-        // Provide EMRTeardownService as singleton
-        single {
-            EMRTeardownService(
-                get<EmrClient>(),
-                get<OutputHandler>(),
-            )
-        }
-
         // Provide OpenSearchService as singleton
         single {
             OpenSearchService(
@@ -254,20 +243,15 @@ val awsModule =
         single {
             InfrastructureTeardownService(
                 get<VpcService>(),
-                get<EMRTeardownService>(),
+                get<EMRService>(),
                 get<OpenSearchService>(),
                 get<OutputHandler>(),
             )
         }
 
-        // Provide SecurityGroupService as singleton
-        single<SecurityGroupService> {
-            EC2SecurityGroupService(get<Ec2Client>())
-        }
-
         // Provide AMIResolver as singleton
         single<AMIResolver> {
-            DefaultAMIResolver(get<EC2Service>())
+            DefaultAMIResolver(get<AMIService>())
         }
 
         // Provide InstanceSpecFactory as singleton

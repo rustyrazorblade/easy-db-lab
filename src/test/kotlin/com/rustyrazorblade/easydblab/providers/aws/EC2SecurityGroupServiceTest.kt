@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.providers.aws
 
+import com.rustyrazorblade.easydblab.output.OutputHandler
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
@@ -14,7 +15,8 @@ import software.amazon.awssdk.services.ec2.model.SecurityGroup
 
 internal class EC2SecurityGroupServiceTest {
     private val mockEc2Client: Ec2Client = mock()
-    private val securityGroupService = EC2SecurityGroupService(mockEc2Client)
+    private val mockOutputHandler: OutputHandler = mock()
+    private val vpcService = EC2VpcService(mockEc2Client, mockOutputHandler)
 
     @Test
     fun `describeSecurityGroup returns null when security group not found`() {
@@ -26,7 +28,7 @@ internal class EC2SecurityGroupServiceTest {
 
         whenever(mockEc2Client.describeSecurityGroups(any<DescribeSecurityGroupsRequest>())).thenReturn(response)
 
-        val result = securityGroupService.describeSecurityGroup("sg-nonexistent")
+        val result = vpcService.describeSecurityGroup("sg-nonexistent")
 
         assertThat(result).isNull()
     }
@@ -77,7 +79,7 @@ internal class EC2SecurityGroupServiceTest {
 
         whenever(mockEc2Client.describeSecurityGroups(any<DescribeSecurityGroupsRequest>())).thenReturn(response)
 
-        val result = securityGroupService.describeSecurityGroup("sg-12345")
+        val result = vpcService.describeSecurityGroup("sg-12345")
 
         assertThat(result).isNotNull
         assertThat(result!!.securityGroupId).isEqualTo("sg-12345")
@@ -134,7 +136,7 @@ internal class EC2SecurityGroupServiceTest {
 
         whenever(mockEc2Client.describeSecurityGroups(any<DescribeSecurityGroupsRequest>())).thenReturn(response)
 
-        val result = securityGroupService.describeSecurityGroup("sg-multi")
+        val result = vpcService.describeSecurityGroup("sg-multi")
 
         assertThat(result).isNotNull
         assertThat(result!!.inboundRules).hasSize(1)
@@ -181,7 +183,7 @@ internal class EC2SecurityGroupServiceTest {
 
         whenever(mockEc2Client.describeSecurityGroups(any<DescribeSecurityGroupsRequest>())).thenReturn(response)
 
-        val result = securityGroupService.describeSecurityGroup("sg-known-ports")
+        val result = vpcService.describeSecurityGroup("sg-known-ports")
 
         assertThat(result).isNotNull
         assertThat(result!!.inboundRules).hasSize(2)
@@ -225,7 +227,7 @@ internal class EC2SecurityGroupServiceTest {
 
         whenever(mockEc2Client.describeSecurityGroups(any<DescribeSecurityGroupsRequest>())).thenReturn(response)
 
-        val result = securityGroupService.describeSecurityGroup("sg-range")
+        val result = vpcService.describeSecurityGroup("sg-range")
 
         assertThat(result).isNotNull
         assertThat(result!!.inboundRules).hasSize(1)
@@ -263,7 +265,7 @@ internal class EC2SecurityGroupServiceTest {
 
         whenever(mockEc2Client.describeSecurityGroups(any<DescribeSecurityGroupsRequest>())).thenReturn(response)
 
-        val result = securityGroupService.describeSecurityGroup("sg-all")
+        val result = vpcService.describeSecurityGroup("sg-all")
 
         assertThat(result).isNotNull
         assertThat(result!!.inboundRules).hasSize(1)
@@ -294,7 +296,7 @@ internal class EC2SecurityGroupServiceTest {
 
         whenever(mockEc2Client.describeSecurityGroups(any<DescribeSecurityGroupsRequest>())).thenReturn(response)
 
-        val result = securityGroupService.describeSecurityGroup("sg-empty")
+        val result = vpcService.describeSecurityGroup("sg-empty")
 
         assertThat(result).isNotNull
         assertThat(result!!.inboundRules).isEmpty()

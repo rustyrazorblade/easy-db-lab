@@ -92,6 +92,7 @@ data class OpenSearchInfo(
 @Serializable
 data class S3Info(
     val bucket: String,
+    val fullpath: String,
     val paths: S3Paths,
 )
 

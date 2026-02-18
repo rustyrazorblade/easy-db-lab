@@ -317,6 +317,7 @@ class Status :
 
         val s3Path = clusterState.s3Path()
         outputHandler.handleMessage("Bucket:       ${clusterState.s3Bucket}")
+        outputHandler.handleMessage("Fullpath:     ${clusterState.s3Bucket}/${clusterState.clusterPrefix()}")
         outputHandler.handleMessage("Cassandra:    ${s3Path.cassandra()}")
         outputHandler.handleMessage("ClickHouse:   ${s3Path.clickhouse()}")
         outputHandler.handleMessage("Spark:        ${s3Path.spark()}")

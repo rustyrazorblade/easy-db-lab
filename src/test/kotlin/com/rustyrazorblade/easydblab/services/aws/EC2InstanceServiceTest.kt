@@ -1,7 +1,9 @@
-package com.rustyrazorblade.easydblab.providers.aws
+package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.providers.aws.DiscoveredInstance
+import com.rustyrazorblade.easydblab.providers.aws.InstanceCreationConfig
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any

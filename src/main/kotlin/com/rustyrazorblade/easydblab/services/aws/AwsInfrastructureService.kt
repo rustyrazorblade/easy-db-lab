@@ -1,8 +1,15 @@
-package com.rustyrazorblade.easydblab.providers.aws
+package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.network.CidrBlock
 import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.providers.aws.DiscoveredResources
+import com.rustyrazorblade.easydblab.providers.aws.InfrastructureConfig
+import com.rustyrazorblade.easydblab.providers.aws.TeardownResult
+import com.rustyrazorblade.easydblab.providers.aws.VpcId
+import com.rustyrazorblade.easydblab.providers.aws.VpcInfrastructure
+import com.rustyrazorblade.easydblab.providers.aws.VpcNetworkingConfig
+import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.util.concurrent.CompletableFuture
 

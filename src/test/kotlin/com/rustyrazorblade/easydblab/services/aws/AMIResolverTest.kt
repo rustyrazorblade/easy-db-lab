@@ -1,7 +1,11 @@
-package com.rustyrazorblade.easydblab.providers.aws
+package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.providers.aws.model.AMI
+import com.rustyrazorblade.easydblab.services.aws.AMIResolver
+import com.rustyrazorblade.easydblab.services.aws.AMIService
+import com.rustyrazorblade.easydblab.services.aws.DefaultAMIResolver
+import com.rustyrazorblade.easydblab.services.aws.NoAmiFoundException
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested

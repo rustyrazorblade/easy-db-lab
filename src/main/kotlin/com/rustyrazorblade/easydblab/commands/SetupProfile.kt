@@ -7,13 +7,13 @@ import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.Policy
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
-import com.rustyrazorblade.easydblab.providers.aws.AMIValidationException
-import com.rustyrazorblade.easydblab.providers.aws.AMIValidator
 import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.AWSClientFactory
-import com.rustyrazorblade.easydblab.providers.aws.AwsInfrastructureService
-import com.rustyrazorblade.easydblab.services.AWSResourceSetupService
 import com.rustyrazorblade.easydblab.services.CommandExecutor
+import com.rustyrazorblade.easydblab.services.aws.AMIValidationException
+import com.rustyrazorblade.easydblab.services.aws.AMIValidator
+import com.rustyrazorblade.easydblab.services.aws.AWSResourceSetupService
+import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import software.amazon.awssdk.regions.Region

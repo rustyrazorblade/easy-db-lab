@@ -1,6 +1,7 @@
-package com.rustyrazorblade.easydblab.providers.aws
+package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.services.aws.EC2VpcService
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.mockito.kotlin.any

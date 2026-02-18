@@ -6,12 +6,12 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.configuration.ClusterState
-import com.rustyrazorblade.easydblab.providers.aws.AWS
-import com.rustyrazorblade.easydblab.providers.aws.AwsInfrastructureService
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredResources
-import com.rustyrazorblade.easydblab.providers.aws.SQSService
 import com.rustyrazorblade.easydblab.providers.aws.TeardownMode
 import com.rustyrazorblade.easydblab.providers.aws.TeardownResult
+import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
+import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
+import com.rustyrazorblade.easydblab.services.aws.SQSService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
 import picocli.CommandLine
@@ -79,7 +79,7 @@ class Down : PicoBaseCommand() {
 
     private val teardownService: AwsInfrastructureService by inject()
     private val sqsService: SQSService by inject()
-    private val aws: AWS by inject()
+    private val s3BucketService: AwsS3BucketService by inject()
     private val log = KotlinLogging.logger {}
 
     data class Socks5ProxyState(
@@ -404,7 +404,7 @@ class Down : PicoBaseCommand() {
 
         try {
             val clusterPrefix = clusterState.clusterPrefix() + "/"
-            aws.setLifecycleExpirationRule(bucketName, clusterPrefix, retentionDays)
+            s3BucketService.setLifecycleExpirationRule(bucketName, clusterPrefix, retentionDays)
             outputHandler.handleMessage("S3 lifecycle rule set: data under $clusterPrefix will expire in $retentionDays day(s)")
         } catch (e: Exception) {
             log.warn(e) { "Failed to set S3 lifecycle rule" }
@@ -425,7 +425,7 @@ class Down : PicoBaseCommand() {
 
         try {
             val configId = clusterState.metricsConfigId()
-            aws.disableBucketRequestMetrics(bucketName, configId)
+            s3BucketService.disableBucketRequestMetrics(bucketName, configId)
             outputHandler.handleMessage("Disabled S3 request metrics for cluster: ${clusterState.name}")
         } catch (e: Exception) {
             log.warn(e) { "Failed to disable S3 request metrics: $bucketName" }

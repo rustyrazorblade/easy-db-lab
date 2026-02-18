@@ -1,6 +1,7 @@
-package com.rustyrazorblade.easydblab.providers.aws
+package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
 import software.amazon.awssdk.services.sqs.SqsClient

@@ -10,12 +10,12 @@ import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.CreatedInstance
-import com.rustyrazorblade.easydblab.providers.aws.DomainState
-import com.rustyrazorblade.easydblab.providers.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.providers.aws.InstanceCreationConfig
-import com.rustyrazorblade.easydblab.providers.aws.InstanceSpec
-import com.rustyrazorblade.easydblab.providers.aws.OpenSearchDomainResult
-import com.rustyrazorblade.easydblab.providers.aws.OpenSearchService
+import com.rustyrazorblade.easydblab.services.aws.DomainState
+import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
+import com.rustyrazorblade.easydblab.services.aws.InstanceSpec
+import com.rustyrazorblade.easydblab.services.aws.OpenSearchDomainResult
+import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested

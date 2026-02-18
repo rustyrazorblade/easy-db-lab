@@ -5,7 +5,7 @@ import com.rustyrazorblade.easydblab.configuration.EMRClusterState
 import com.rustyrazorblade.easydblab.configuration.s3Path
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.EMRClusterConfig
-import com.rustyrazorblade.easydblab.providers.aws.EMRService
+import com.rustyrazorblade.easydblab.services.aws.EMRService
 
 /**
  * Service for provisioning EMR clusters for Spark workloads.

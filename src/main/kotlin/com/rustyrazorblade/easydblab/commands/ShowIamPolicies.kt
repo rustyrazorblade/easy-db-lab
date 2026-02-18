@@ -2,7 +2,7 @@ package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.configuration.User
-import com.rustyrazorblade.easydblab.providers.aws.AWS
+import com.rustyrazorblade.easydblab.services.aws.AWSResourceSetupService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Parameters
@@ -17,7 +17,7 @@ import picocli.CommandLine.Parameters
     description = ["Display IAM policies with account ID populated"],
 )
 class ShowIamPolicies : PicoBaseCommand() {
-    private val aws: AWS by inject()
+    private val awsResourceSetup: AWSResourceSetupService by inject()
 
     @Parameters(
         description = ["Policy name filter (optional): ec2, iam, emr"],
@@ -31,7 +31,7 @@ class ShowIamPolicies : PicoBaseCommand() {
         // Get account ID - REQUIRED, will fail if not configured
         val accountId =
             try {
-                aws.getAccountId()
+                awsResourceSetup.getAccountId()
             } catch (e: Exception) {
                 outputHandler.handleError("Failed to get AWS account ID. Please run 'easy-db-lab init' to set up credentials.")
                 throw e

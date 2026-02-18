@@ -1,6 +1,7 @@
-package com.rustyrazorblade.easydblab.providers.aws
+package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.providers.aws.AWS
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -32,14 +33,16 @@ import software.amazon.awssdk.services.opensearch.model.VolumeType
  */
 internal class OpenSearchServiceTest {
     private lateinit var mockOpenSearchClient: OpenSearchClient
+    private lateinit var mockAws: AWS
     private lateinit var mockOutputHandler: OutputHandler
     private lateinit var openSearchService: OpenSearchService
 
     @BeforeEach
     fun setUp() {
         mockOpenSearchClient = mock()
+        mockAws = mock()
         mockOutputHandler = mock()
-        openSearchService = OpenSearchService(mockOpenSearchClient, mockOutputHandler)
+        openSearchService = OpenSearchService(mockOpenSearchClient, mockAws, mockOutputHandler)
     }
 
     @Test

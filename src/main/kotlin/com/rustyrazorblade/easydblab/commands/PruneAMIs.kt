@@ -2,7 +2,7 @@ package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
-import com.rustyrazorblade.easydblab.providers.aws.AMIService
+import com.rustyrazorblade.easydblab.services.aws.AMIService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option

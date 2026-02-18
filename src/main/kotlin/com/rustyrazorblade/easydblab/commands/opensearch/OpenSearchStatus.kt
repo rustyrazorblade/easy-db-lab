@@ -3,8 +3,8 @@ package com.rustyrazorblade.easydblab.commands.opensearch
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
-import com.rustyrazorblade.easydblab.providers.aws.DomainState
-import com.rustyrazorblade.easydblab.providers.aws.OpenSearchService
+import com.rustyrazorblade.easydblab.services.aws.DomainState
+import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
 import picocli.CommandLine.Command

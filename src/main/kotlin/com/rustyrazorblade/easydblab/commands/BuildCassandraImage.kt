@@ -6,8 +6,8 @@ import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.mixins.BuildArgsMixin
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.containers.Packer
-import com.rustyrazorblade.easydblab.providers.aws.AwsInfrastructureService
-import com.rustyrazorblade.easydblab.services.AWSResourceSetupService
+import com.rustyrazorblade.easydblab.services.aws.AWSResourceSetupService
+import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Mixin

@@ -7,9 +7,9 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InfrastructureState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.providers.aws.DomainState
-import com.rustyrazorblade.easydblab.providers.aws.OpenSearchDomainResult
-import com.rustyrazorblade.easydblab.providers.aws.OpenSearchService
+import com.rustyrazorblade.easydblab.services.aws.DomainState
+import com.rustyrazorblade.easydblab.services.aws.OpenSearchDomainResult
+import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -61,6 +61,7 @@ class OpenSearchStartTest : BaseKoinTest() {
     fun setupMocks() {
         mockOpenSearchService = getKoin().get()
         mockClusterStateManager = getKoin().get()
+        whenever(mockOpenSearchService.getAccountId()).thenReturn("123456789012")
     }
 
     @Test

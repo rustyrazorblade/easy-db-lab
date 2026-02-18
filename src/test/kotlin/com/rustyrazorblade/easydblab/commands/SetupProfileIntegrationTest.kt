@@ -6,11 +6,11 @@ import com.rustyrazorblade.easydblab.TestPrompter
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
-import com.rustyrazorblade.easydblab.providers.aws.AMIValidator
 import com.rustyrazorblade.easydblab.providers.aws.AWS
-import com.rustyrazorblade.easydblab.providers.aws.AwsInfrastructureService
-import com.rustyrazorblade.easydblab.services.AWSResourceSetupService
 import com.rustyrazorblade.easydblab.services.CommandExecutor
+import com.rustyrazorblade.easydblab.services.aws.AMIValidator
+import com.rustyrazorblade.easydblab.services.aws.AWSResourceSetupService
+import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach

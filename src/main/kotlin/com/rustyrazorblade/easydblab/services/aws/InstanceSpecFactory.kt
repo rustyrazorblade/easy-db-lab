@@ -1,7 +1,9 @@
-package com.rustyrazorblade.easydblab.providers.aws
+package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.providers.aws.DiscoveredInstance
+import com.rustyrazorblade.easydblab.providers.aws.EBSConfig
 
 /**
  * Specification for creating instances of a particular server type.

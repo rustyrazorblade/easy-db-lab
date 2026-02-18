@@ -1,0 +1,41 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pyroscope-ebpf-config
+  namespace: default
+  labels:
+    app.kubernetes.io/name: pyroscope-ebpf
+data:
+  config.yaml: |
+    # Grafana Pyroscope eBPF agent configuration
+    # Profiles Cassandra, ClickHouse, and stress job processes
+
+    target:
+      # Service discovery via process name matching
+      service_discovery:
+        type: process
+        process:
+          # Profile Cassandra (Java), ClickHouse, and stress job processes
+          # Excludes observability tools (otelcol, vector, grafana, victoria, tempo, pyroscope)
+          container_cache_size: 1024
+
+    pyroscope:
+      url: http://pyroscope.default.svc.cluster.local:4040
+      tenant_id: ""
+      # Labels applied to all profiles from this agent
+      labels:
+        hostname: "${HOSTNAME}"
+        cluster: "${CLUSTER_NAME}"
+
+    ebpf:
+      # Collect CPU profiles
+      collect_interval: 15s
+      sample_rate: 97
+      # Demangle C++ symbols (for ClickHouse)
+      demangle: "full"
+      # Python support disabled to reduce overhead
+      python_enabled: false
+
+    # Logging
+    log:
+      level: warn

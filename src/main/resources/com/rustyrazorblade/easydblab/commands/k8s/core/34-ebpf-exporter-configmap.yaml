@@ -1,0 +1,90 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ebpf-exporter-config
+  namespace: default
+  labels:
+    app.kubernetes.io/name: ebpf-exporter
+data:
+  config.yaml: |
+    # Cloudflare ebpf_exporter configuration
+    # Provides low-level TCP and filesystem eBPF metrics
+
+    programs:
+      # TCP retransmits counter
+      - name: tcp_retransmits
+        metrics:
+          counters:
+            - name: tcp_retransmits_total
+              help: Total number of TCP retransmissions
+              labels:
+                - name: type
+                  size: 4
+                  decoders:
+                    - name: uint
+        kprobes:
+          tcp_retransmit_skb:
+            attach_to: tcp_retransmit_skb
+
+      # TCP SYN backlog (connection queue overflow)
+      - name: tcp_syn_backlog
+        metrics:
+          counters:
+            - name: tcp_syn_backlog_drops_total
+              help: Total number of TCP SYN backlog drops
+        kprobes:
+          tcp_req_err:
+            attach_to: tcp_v4_syn_recv_sock
+
+      # Block I/O latency histogram
+      - name: bio_latency
+        metrics:
+          histograms:
+            - name: bio_latency_seconds
+              help: Block I/O latency in seconds
+              bucket_type: exp2
+              bucket_min: 0
+              bucket_max: 27
+              bucket_multiplier: 0.000001
+              labels:
+                - name: op
+                  size: 4
+                  decoders:
+                    - name: uint
+                - name: device
+                  size: 32
+                  decoders:
+                    - name: string
+        kprobes:
+          blk_account_io_start:
+            attach_to: blk_account_io_start
+          blk_account_io_done:
+            attach_to: blk_account_io_done
+
+      # Filesystem read/write latency
+      - name: vfs_latency
+        metrics:
+          histograms:
+            - name: vfs_read_latency_seconds
+              help: VFS read latency in seconds
+              bucket_type: exp2
+              bucket_min: 0
+              bucket_max: 27
+              bucket_multiplier: 0.000001
+              labels:
+                - name: op
+                  size: 4
+                  decoders:
+                    - name: static_map
+                      static_map:
+                        0: read
+                        1: write
+        kprobes:
+          vfs_read_enter:
+            attach_to: vfs_read
+          vfs_read_return:
+            attach_to: vfs_read
+          vfs_write_enter:
+            attach_to: vfs_write
+          vfs_write_return:
+            attach_to: vfs_write

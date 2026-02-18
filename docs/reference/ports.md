@@ -11,14 +11,25 @@ This page documents the ports used by easy-db-lab and the services it provisions
 | 7001 | Inter-node communication (SSL) |
 | 7199 | JMX monitoring |
 
-## Monitoring Ports
-
-The following ports are mapped when monitoring is enabled:
+## Observability Ports (Control Node)
 
 | Port | Service |
 |------|---------|
-| 9090 | Prometheus |
 | 3000 | Grafana |
+| 4040 | Pyroscope (continuous profiling) |
+| 8428 | VictoriaMetrics (metrics storage) |
+| 9428 | VictoriaLogs (log storage) |
+| 3200 | Tempo (trace storage) |
+
+## Observability Ports (All Nodes — DaemonSets)
+
+| Port | Service |
+|------|---------|
+| 4317 | OTel Collector gRPC |
+| 4318 | OTel Collector HTTP |
+| 9400 | Beyla eBPF metrics (Prometheus) |
+| 9435 | ebpf_exporter metrics (Prometheus) |
+| 9598 | Vector node metrics (Prometheus) |
 
 ## MCP Server
 

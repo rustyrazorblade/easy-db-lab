@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: beyla-config
+  namespace: default
+  labels:
+    app.kubernetes.io/name: beyla
+data:
+  beyla-config.yaml: |
+    # Grafana Beyla eBPF auto-instrumentation configuration
+    # Provides L7 network RED metrics (Rate, Errors, Duration)
+
+    # Instrument processes listening on these ports
+    open_port: 9042,8123,9000,7000
+
+    # Service discovery configuration
+    discovery:
+      services:
+        # Cassandra native protocol
+        - name: cassandra
+          open_ports: 9042,7000
+        # ClickHouse HTTP and native
+        - name: clickhouse
+          open_ports: 8123,9000
+
+    # Internal metrics exposed for OTel collector scraping
+    prometheus_export:
+      port: 9400
+      path: /metrics
+
+    # eBPF configuration
+    ebpf:
+      # Enable HTTP, gRPC, DNS, and SQL protocol detection
+      track_request_headers: false
+      http_request_timeout: 30s
+
+    # Network metrics configuration
+    network:
+      enable: true
+      # Collect TCP-level metrics
+      cidrs:
+        - "10.0.0.0/8"
+        - "172.16.0.0/12"
+
+    # Attributes to add to all metrics
+    attributes:
+      kubernetes:
+        enable: false
+      instance_id:
+        override_hostname: "${HOSTNAME}"
+
+    # Logging
+    log_level: WARN

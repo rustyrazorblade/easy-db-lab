@@ -193,6 +193,9 @@ object Constants {
         const val S3MANAGER_PORT = 8080
         const val REGISTRY_PORT = 5000
         const val TEMPO_PORT = 3200
+        const val PYROSCOPE_PORT = 4040
+        const val BEYLA_METRICS_PORT = 9400
+        const val EBPF_EXPORTER_METRICS_PORT = 9435
     }
 
     // OpenSearch configuration

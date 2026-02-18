@@ -37,7 +37,7 @@ spec:
               protocol: TCP
           env:
             - name: GF_INSTALL_PLUGINS
-              value: grafana-clickhouse-datasource,victoriametrics-logs-datasource
+              value: grafana-clickhouse-datasource,victoriametrics-logs-datasource,grafana-pyroscope-datasource
             - name: GF_SECURITY_ADMIN_USER
               value: admin
             - name: GF_SECURITY_ADMIN_PASSWORD

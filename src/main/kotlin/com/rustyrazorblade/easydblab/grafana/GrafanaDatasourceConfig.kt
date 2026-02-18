@@ -80,6 +80,12 @@ data class GrafanaDatasourceConfig(
                                     "authType" to "default",
                                 ),
                         ),
+                        GrafanaDatasource(
+                            name = "Pyroscope",
+                            type = "grafana-pyroscope-datasource",
+                            uid = "pyroscope",
+                            url = "http://localhost:4040",
+                        ),
                     ),
             )
     }

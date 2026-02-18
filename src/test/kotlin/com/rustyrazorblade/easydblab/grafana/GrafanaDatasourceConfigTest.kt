@@ -5,16 +5,17 @@ import org.junit.jupiter.api.Test
 
 class GrafanaDatasourceConfigTest {
     @Test
-    fun `createDatasourceConfig should include all five datasources`() {
+    fun `createDatasourceConfig should include all six datasources`() {
         val config = GrafanaDatasourceConfig.create(region = "us-east-1")
 
-        assertThat(config.datasources).hasSize(5)
+        assertThat(config.datasources).hasSize(6)
         assertThat(config.datasources.map { it.name }).containsExactly(
             "VictoriaMetrics",
             "VictoriaLogs",
             "ClickHouse",
             "Tempo",
             "CloudWatch",
+            "Pyroscope",
         )
     }
 
@@ -44,6 +45,16 @@ class GrafanaDatasourceConfigTest {
         assertThat(yaml).contains("apiVersion: 1")
         assertThat(yaml).contains("defaultRegion")
         assertThat(yaml).contains("us-west-2")
+    }
+
+    @Test
+    fun `createDatasourceConfig should set Pyroscope datasource correctly`() {
+        val config = GrafanaDatasourceConfig.create(region = "us-east-1")
+
+        val pyroscope = config.datasources.first { it.name == "Pyroscope" }
+        assertThat(pyroscope.type).isEqualTo("grafana-pyroscope-datasource")
+        assertThat(pyroscope.uid).isEqualTo("pyroscope")
+        assertThat(pyroscope.url).isEqualTo("http://localhost:4040")
     }
 
     @Test

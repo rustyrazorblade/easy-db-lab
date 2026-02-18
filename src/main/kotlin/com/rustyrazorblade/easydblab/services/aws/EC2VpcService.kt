@@ -1,7 +1,23 @@
-package com.rustyrazorblade.easydblab.providers.aws
+package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.exceptions.AwsTimeoutException
 import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.providers.aws.Cidr
+import com.rustyrazorblade.easydblab.providers.aws.InstanceId
+import com.rustyrazorblade.easydblab.providers.aws.InternetGatewayId
+import com.rustyrazorblade.easydblab.providers.aws.NatGatewayId
+import com.rustyrazorblade.easydblab.providers.aws.NetworkInterfaceId
+import com.rustyrazorblade.easydblab.providers.aws.ResourceDescription
+import com.rustyrazorblade.easydblab.providers.aws.ResourceName
+import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
+import com.rustyrazorblade.easydblab.providers.aws.RouteTableId
+import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupDetails
+import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupId
+import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupRuleInfo
+import com.rustyrazorblade.easydblab.providers.aws.SubnetId
+import com.rustyrazorblade.easydblab.providers.aws.VpcId
+import com.rustyrazorblade.easydblab.providers.aws.VpcService
+import com.rustyrazorblade.easydblab.providers.aws.WellKnownPorts
 import io.github.oshai.kotlinlogging.KotlinLogging
 import software.amazon.awssdk.services.ec2.Ec2Client
 import software.amazon.awssdk.services.ec2.model.AttachInternetGatewayRequest

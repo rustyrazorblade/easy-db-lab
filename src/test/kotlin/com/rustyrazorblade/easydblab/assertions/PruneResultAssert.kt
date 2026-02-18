@@ -1,6 +1,6 @@
 package com.rustyrazorblade.easydblab.assertions
 
-import com.rustyrazorblade.easydblab.providers.aws.AMIService.PruneResult
+import com.rustyrazorblade.easydblab.services.aws.AMIService.PruneResult
 import org.assertj.core.api.AbstractObjectAssert
 import org.assertj.core.api.Assertions.assertThat
 

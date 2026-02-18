@@ -1,27 +1,29 @@
 # Providers Package
 
-This package contains infrastructure providers for AWS, SSH, and Docker.
+This package contains low-level infrastructure providers for AWS, SSH, and Docker. AWS service classes have been moved to `services/aws/` — this package retains only SDK wrappers, data types, retry utilities, and credentials.
 
 ## Directory Structure
 
 ```
 providers/
-├── aws/                    # AWS service providers
+├── aws/                    # AWS SDK wrappers and data types
 │   ├── AWSModule.kt        # Koin DI registration for all AWS services
 │   ├── AWS.kt              # Low-level IAM, S3, STS operations
+│   ├── EC2.kt              # Low-level EC2 operations
 │   ├── RetryUtil.kt        # Centralized retry configuration
-│   ├── AMIService.kt       # AMI lifecycle: CRUD, pruning, validation (implements AMIValidator)
-│   ├── AMIResolver.kt      # AMI resolution by architecture pattern
-│   ├── EC2InstanceService.kt  # Instance lifecycle
-│   ├── EC2VpcService.kt    # VPC management + security group describe (implements VpcService)
-│   ├── AwsInfrastructureService.kt  # VPC infrastructure creation and teardown orchestration
-│   ├── S3ObjectStore.kt    # S3 operations (implements ObjectStore)
-│   ├── EMRService.kt       # EMR cluster management + teardown (find, terminate, wait)
-│   ├── EMRSparkService.kt  # Spark job execution (implements SparkService)
-│   ├── OpenSearchService.kt # OpenSearch domains
-│   ├── SQSService.kt       # SQS queue management
+│   ├── AWSPolicy.kt        # Policy definitions and templates
+│   ├── IamPolicy.kt        # IAM policy data model
+│   ├── IamPolicySerializers.kt # IAM policy serialization
+│   ├── AWSClientFactory.kt # Factory interface for AWS clients
+│   ├── AWSCredentialsManager.kt # Credentials management
+│   ├── VpcService.kt       # VPC service interface (contract)
+│   ├── VpcInfrastructure.kt # VPC infrastructure data types
+│   ├── InfrastructureConfig.kt # Infrastructure configuration
 │   ├── TeardownTypes.kt    # Data classes: DiscoveredResources, TeardownResult, TeardownMode
 │   ├── SecurityGroupService.kt  # Data classes: SecurityGroupDetails, WellKnownPorts
+│   ├── AwsTypes.kt         # EC2 type aliases and data classes
+│   ├── EMRTypes.kt         # EMR type aliases and data classes
+│   ├── InstanceTypes.kt    # Instance type data classes
 │   └── model/              # Data models (AMI, etc.)
 ├── docker/                 # Docker client providers
 │   ├── DockerModule.kt
@@ -35,39 +37,11 @@ providers/
     └── DefaultRemoteOperationsService.kt
 ```
 
-## AWS Service Pattern
+## What Belongs Here vs `services/aws/`
 
-All AWS services follow this constructor pattern:
+**Here (providers/aws/):** Low-level SDK wrappers, interfaces, data types, retry utilities, credentials, policy definitions. Things that directly wrap AWS SDK calls without business logic.
 
-```kotlin
-class ServiceName(
-    private val awsSdkClient: AwsSdkClient,  // AWS SDK client (from Koin)
-    private val outputHandler: OutputHandler, // User-facing output (from Koin)
-) {
-    companion object {
-        private val log = KotlinLogging.logger {}
-    }
-}
-```
-
-Key conventions:
-- User feedback via `outputHandler.handleMessage()`
-- Internal logging via `KotlinLogging`
-- Retry logic via `RetryUtil` (never custom loops)
-- Fail fast — let exceptions propagate
-- Use `Result<T>` for expected failures (SQS, ObjectStore)
-- Idempotent where possible (find-or-create pattern)
-
-## Service Consolidation Design
-
-Services are organized by resource, not by operation type:
-
-- **AMIService** — all AMI operations (list, deregister, prune, validate) in one class
-- **EMRService** — all EMR operations (create, terminate, find, wait) in one class
-- **AwsInfrastructureService** — all VPC infrastructure (create and teardown) in one class
-- **EC2VpcService** — all VPC resource operations including security group describe
-
-This avoids the anti-pattern of splitting CRUD operations across multiple thin classes.
+**In services/aws/:** Business-logic services that orchestrate AWS operations, implement service interfaces, and are injected into commands. See [`services/aws/CLAUDE.md`](../../services/aws/CLAUDE.md).
 
 ## RetryUtil Factory Methods
 
@@ -95,46 +69,9 @@ val result = RetryUtil.withEc2InstanceRetry("describe") { ec2Client.describeInst
 RetryUtil.withVpcTeardownRetry("delete-sg") { ec2Client.deleteSecurityGroup(request) }
 ```
 
-### Full Pattern
-
-```kotlin
-// Supplier (returns value)
-val retryConfig = RetryUtil.createAwsRetryConfig<List<AMI>>()
-val retry = Retry.of("ec2-list-amis", retryConfig)
-val result = Retry.decorateSupplier(retry) {
-    ec2Client.describeImages(request).images()
-}.get()
-
-// Runnable (void)
-val retryConfig = RetryUtil.createAwsRetryConfig<Unit>()
-val retry = Retry.of("s3-upload", retryConfig)
-Retry.decorateRunnable(retry) {
-    s3Client.putObject(request, localFile.toPath())
-}.run()
-```
-
 ## AWSModule.kt Registration
 
-Services are registered as Koin singletons with telemetry-enabled client override configs:
-
-```kotlin
-val awsModule = module {
-    // AWS SDK clients (singletons)
-    single { IamClient.builder().region(get()).credentialsProvider(get()).build() }
-    single { Ec2Client.builder().region(get()).credentialsProvider(get()).build() }
-    // ... S3Client, StsClient, EmrClient, OpenSearchClient, SqsClient
-
-    // Services (singletons)
-    single { AWS(get<IamClient>(), get<S3Client>(), get<StsClient>()) }
-    single { AMIService(get<Ec2Client>(), get<OutputHandler>(), get<AWS>()) }
-    single<AMIValidator> { get<AMIService>() }  // Binds to same instance
-    single { EC2InstanceService(get<Ec2Client>(), get<OutputHandler>()) }
-    single<VpcService> { EC2VpcService(get<Ec2Client>(), get<OutputHandler>()) }
-    single { AwsInfrastructureService(get<VpcService>(), get<EMRService>(), get<OpenSearchService>(), get<OutputHandler>()) }
-    single<ObjectStore> { S3ObjectStore(get<S3Client>(), get<OutputHandler>()) }
-    // ...
-}
-```
+`AWSModule.kt` remains here because it registers both low-level SDK clients and service-layer singletons via Koin. Services from `services/aws/` are imported and registered here alongside their SDK client dependencies.
 
 ## SSH Provider
 

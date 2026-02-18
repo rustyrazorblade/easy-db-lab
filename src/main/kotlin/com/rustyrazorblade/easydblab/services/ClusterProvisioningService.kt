@@ -9,12 +9,12 @@ import com.rustyrazorblade.easydblab.configuration.OpenSearchClusterState
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.output.OutputHandler
-import com.rustyrazorblade.easydblab.providers.aws.DomainState
-import com.rustyrazorblade.easydblab.providers.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.providers.aws.InstanceCreationConfig
-import com.rustyrazorblade.easydblab.providers.aws.InstanceSpec
-import com.rustyrazorblade.easydblab.providers.aws.OpenSearchDomainConfig
-import com.rustyrazorblade.easydblab.providers.aws.OpenSearchService
+import com.rustyrazorblade.easydblab.services.aws.DomainState
+import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
+import com.rustyrazorblade.easydblab.services.aws.InstanceSpec
+import com.rustyrazorblade.easydblab.services.aws.OpenSearchDomainConfig
+import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.concurrent.thread

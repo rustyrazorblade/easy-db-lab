@@ -6,9 +6,8 @@ import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.OpenSearchClusterState
 import com.rustyrazorblade.easydblab.configuration.User
-import com.rustyrazorblade.easydblab.providers.aws.AWS
-import com.rustyrazorblade.easydblab.providers.aws.OpenSearchDomainConfig
-import com.rustyrazorblade.easydblab.providers.aws.OpenSearchService
+import com.rustyrazorblade.easydblab.services.aws.OpenSearchDomainConfig
+import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -32,7 +31,6 @@ import picocli.CommandLine.Option
 class OpenSearchStart : PicoBaseCommand() {
     private val log = KotlinLogging.logger {}
     private val openSearchService: OpenSearchService by inject()
-    private val aws: AWS by inject()
     private val user: User by inject()
 
     @Option(
@@ -86,7 +84,7 @@ class OpenSearchStart : PicoBaseCommand() {
 
         // Ensure the OpenSearch service-linked role exists (required for VPC access)
         outputHandler.handleMessage("Ensuring OpenSearch service-linked role exists...")
-        aws.ensureOpenSearchServiceLinkedRole()
+        openSearchService.ensureServiceLinkedRole()
 
         val config =
             OpenSearchDomainConfig(
@@ -97,7 +95,7 @@ class OpenSearchStart : PicoBaseCommand() {
                 engineVersion = "OpenSearch_$version",
                 subnetId = subnetId,
                 securityGroupIds = listOf(securityGroupId),
-                accountId = aws.getAccountId(),
+                accountId = openSearchService.getAccountId(),
                 region = user.region,
                 tags =
                     mapOf(

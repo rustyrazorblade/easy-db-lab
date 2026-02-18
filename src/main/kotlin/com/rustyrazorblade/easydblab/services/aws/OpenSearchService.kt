@@ -1,8 +1,15 @@
-package com.rustyrazorblade.easydblab.providers.aws
+package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.providers.aws.AWS
+import com.rustyrazorblade.easydblab.providers.aws.IamPolicyAction
+import com.rustyrazorblade.easydblab.providers.aws.IamPolicyDocument
 import com.rustyrazorblade.easydblab.providers.aws.IamPolicyDocument.Companion.toJson
+import com.rustyrazorblade.easydblab.providers.aws.IamPolicyPrincipal
+import com.rustyrazorblade.easydblab.providers.aws.IamPolicyResource
+import com.rustyrazorblade.easydblab.providers.aws.IamPolicyStatement
+import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import io.github.oshai.kotlinlogging.KotlinLogging
 import software.amazon.awssdk.services.opensearch.OpenSearchClient
 import software.amazon.awssdk.services.opensearch.model.ClusterConfig
@@ -97,11 +104,27 @@ data class OpenSearchDomainResult(
  */
 class OpenSearchService(
     private val openSearchClient: OpenSearchClient,
+    private val aws: AWS,
     private val outputHandler: OutputHandler,
 ) {
     companion object {
         private val log = KotlinLogging.logger {}
     }
+
+    /**
+     * Ensures the OpenSearch service-linked role exists.
+     *
+     * OpenSearch requires a service-linked role to access VPC resources.
+     * Delegates to [AWS.ensureOpenSearchServiceLinkedRole].
+     */
+    fun ensureServiceLinkedRole() = aws.ensureOpenSearchServiceLinkedRole()
+
+    /**
+     * Retrieves the AWS account ID for the authenticated credentials.
+     *
+     * @return The AWS account ID
+     */
+    fun getAccountId(): String = aws.getAccountId()
 
     /**
      * Creates a new OpenSearch domain with the specified configuration.

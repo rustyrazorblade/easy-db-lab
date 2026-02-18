@@ -5,10 +5,26 @@ import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.observability.OtelTelemetryProvider
 import com.rustyrazorblade.easydblab.observability.TelemetryProvider
 import com.rustyrazorblade.easydblab.output.OutputHandler
-import com.rustyrazorblade.easydblab.services.AWSResourceSetupService
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.SparkService
 import com.rustyrazorblade.easydblab.services.VictoriaLogsService
+import com.rustyrazorblade.easydblab.services.aws.AMIResolver
+import com.rustyrazorblade.easydblab.services.aws.AMIService
+import com.rustyrazorblade.easydblab.services.aws.AMIValidator
+import com.rustyrazorblade.easydblab.services.aws.AWSResourceSetupService
+import com.rustyrazorblade.easydblab.services.aws.AWSSQSService
+import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
+import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
+import com.rustyrazorblade.easydblab.services.aws.DefaultAMIResolver
+import com.rustyrazorblade.easydblab.services.aws.DefaultInstanceSpecFactory
+import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
+import com.rustyrazorblade.easydblab.services.aws.EC2VpcService
+import com.rustyrazorblade.easydblab.services.aws.EMRService
+import com.rustyrazorblade.easydblab.services.aws.EMRSparkService
+import com.rustyrazorblade.easydblab.services.aws.InstanceSpecFactory
+import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
+import com.rustyrazorblade.easydblab.services.aws.S3ObjectStore
+import com.rustyrazorblade.easydblab.services.aws.SQSService
 import io.opentelemetry.instrumentation.awssdk.v2_2.AwsSdkTelemetry
 import org.koin.dsl.module
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
@@ -236,9 +252,13 @@ val awsModule =
         single {
             OpenSearchService(
                 get<OpenSearchClient>(),
+                get<AWS>(),
                 get<OutputHandler>(),
             )
         }
+
+        // Provide AwsS3BucketService as singleton
+        single { AwsS3BucketService(get<AWS>()) }
 
         // Provide AMIResolver as singleton
         single<AMIResolver> {

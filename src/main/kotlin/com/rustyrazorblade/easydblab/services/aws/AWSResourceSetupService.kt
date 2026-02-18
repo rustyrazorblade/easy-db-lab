@@ -1,4 +1,4 @@
-package com.rustyrazorblade.easydblab.services
+package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.User
@@ -57,6 +57,13 @@ class AWSResourceSetupService(
 
             """.trimIndent()
     }
+
+    /**
+     * Retrieves the AWS account ID for the authenticated credentials.
+     *
+     * @return The AWS account ID
+     */
+    fun getAccountId(): String = aws.getAccountId()
 
     /**
      * Ensures all AWS IAM resources are set up before any command runs.

@@ -151,7 +151,9 @@ Commands should delegate to these services:
 | `HostOperationsService` | Parallel operations across hosts |
 | `ClusterProvisioningService` | EC2 instance provisioning |
 | `ClusterConfigurationService` | Cluster configuration management |
-| `AWSResourceSetupService` | IAM roles, security groups, VPC setup |
+| `AWSResourceSetupService` | IAM roles, security groups, VPC setup (`services.aws`) |
+| `AwsS3BucketService` | S3 bucket admin: lifecycle, metrics, policies (`services.aws`) |
+| `OpenSearchService` | OpenSearch domain management (`services.aws`) |
 | `GrafanaDashboardService` | Grafana dashboard deployment |
 | `VictoriaStreamService` | Stream metrics/logs to external Victoria instances |
 | `VictoriaBackupService` | Backup/restore VictoriaMetrics and VictoriaLogs |

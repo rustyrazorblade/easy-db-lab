@@ -8,7 +8,6 @@ import com.rustyrazorblade.easydblab.di.commandsModule
 import com.rustyrazorblade.easydblab.di.prompterModule
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
-import com.rustyrazorblade.easydblab.providers.aws.AMIValidator
 import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.AWSClientFactory
 import com.rustyrazorblade.easydblab.providers.ssh.DefaultSSHConfiguration
@@ -16,6 +15,8 @@ import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.providers.ssh.SSHConfiguration
 import com.rustyrazorblade.easydblab.providers.ssh.SSHConnectionProvider
 import com.rustyrazorblade.easydblab.services.CommandExecutor
+import com.rustyrazorblade.easydblab.services.aws.AMIValidator
+import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import com.rustyrazorblade.easydblab.ssh.ISSHClient
 import com.rustyrazorblade.easydblab.ssh.MockSSHClient
 import com.rustyrazorblade.easydblab.ssh.Response
@@ -170,6 +171,9 @@ object TestModules {
 
             // Mock AMIValidator to prevent AMI validation during tests
             single { mock<AMIValidator>() }
+
+            // AwsS3BucketService using mocked AWS
+            single { AwsS3BucketService(get<AWS>()) }
         }
 
     /**

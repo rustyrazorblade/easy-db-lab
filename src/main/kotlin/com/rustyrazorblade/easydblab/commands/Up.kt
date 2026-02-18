@@ -16,15 +16,8 @@ import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.toHost
-import com.rustyrazorblade.easydblab.providers.aws.AMIResolver
-import com.rustyrazorblade.easydblab.providers.aws.AWS
-import com.rustyrazorblade.easydblab.providers.aws.AwsInfrastructureService
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredInstance
-import com.rustyrazorblade.easydblab.providers.aws.EC2InstanceService
-import com.rustyrazorblade.easydblab.providers.aws.InstanceSpecFactory
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
-import com.rustyrazorblade.easydblab.providers.aws.S3ObjectStore
-import com.rustyrazorblade.easydblab.providers.aws.SQSService
 import com.rustyrazorblade.easydblab.providers.aws.VpcNetworkingConfig
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.services.ClusterConfigurationService
@@ -38,6 +31,14 @@ import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.OptionalServicesConfig
 import com.rustyrazorblade.easydblab.services.RegistryService
+import com.rustyrazorblade.easydblab.services.aws.AMIResolver
+import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
+import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
+import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
+import com.rustyrazorblade.easydblab.services.aws.InstanceSpecFactory
+import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
+import com.rustyrazorblade.easydblab.services.aws.S3ObjectStore
+import com.rustyrazorblade.easydblab.services.aws.SQSService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
 import org.koin.core.component.inject
@@ -69,7 +70,8 @@ import java.time.Duration
 )
 class Up : PicoBaseCommand() {
     private val userConfig: User by inject()
-    private val aws: AWS by inject()
+    private val s3BucketService: AwsS3BucketService by inject()
+    private val openSearchService: OpenSearchService by inject()
     private val vpcService: VpcService by inject()
     private val awsInfrastructureService: AwsInfrastructureService by inject()
     private val ec2InstanceService: EC2InstanceService by inject()
@@ -132,7 +134,7 @@ class Up : PicoBaseCommand() {
     private fun reapplyS3Policy() {
         outputHandler.handleMessage("Ensuring IAM policies are up to date...")
         runCatching {
-            aws.attachS3Policy(Constants.AWS.Roles.EC2_INSTANCE_ROLE)
+            s3BucketService.attachS3Policy(Constants.AWS.Roles.EC2_INSTANCE_ROLE)
         }.onFailure { e ->
             log.warn(e) { "Failed to re-apply S3 policy (cluster may still work if policy exists)" }
         }.onSuccess {
@@ -160,11 +162,11 @@ class Up : PicoBaseCommand() {
         outputHandler.handleMessage("Using account S3 bucket: $accountBucket")
 
         // Apply bucket policy for IAM role access (idempotent)
-        aws.putS3BucketPolicy(accountBucket)
+        s3BucketService.putBucketPolicy(accountBucket)
 
         // Enable CloudWatch metrics scoped to this cluster's prefix
         val clusterPrefix = workingState.clusterPrefix()
-        aws.enableBucketRequestMetrics(accountBucket, clusterPrefix, workingState.metricsConfigId())
+        s3BucketService.enableBucketRequestMetrics(accountBucket, clusterPrefix, workingState.metricsConfigId())
         outputHandler.handleMessage("S3 request metrics enabled for cluster prefix: $clusterPrefix")
 
         workingState.s3Bucket = accountBucket
@@ -378,7 +380,7 @@ class Up : PicoBaseCommand() {
 
         // Ensure OpenSearch service-linked role exists if needed
         if (initConfig.opensearchEnabled) {
-            aws.ensureOpenSearchServiceLinkedRole()
+            openSearchService.ensureServiceLinkedRole()
         }
 
         // Provision all infrastructure in parallel

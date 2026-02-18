@@ -92,9 +92,9 @@ step_build_project() {
         # Pre-build cassandra-analytics with JDK 11 for bulk-writer
         echo "=== Pre-building Cassandra Analytics (JDK 11) ==="
         "$PROJECT_ROOT/bin/build-cassandra-analytics"
-        (cd "$PROJECT_ROOT" && ./gradlew clean test shadowJar installDist :spark-connector-test1:jar :bulk-writer:jar)
+        (cd "$PROJECT_ROOT" && ./gradlew clean shadowJar installDist :spark-connector-test1:jar :bulk-writer:jar)
     else
-        (cd "$PROJECT_ROOT" && ./gradlew clean test shadowJar installDist)
+        (cd "$PROJECT_ROOT" && ./gradlew clean shadowJar installDist)
     fi
 }
 

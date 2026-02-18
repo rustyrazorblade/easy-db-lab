@@ -38,10 +38,10 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Check if already built by looking for Maven artifacts (not just build output)
-MAVEN_ARTIFACT="$HOME/.m2/repository/org/apache/cassandra/cassandra-analytics-core_spark3_2.12/0.3-SNAPSHOT"
-if [ -d "$MAVEN_ARTIFACT" ] && [ "$(ls -A $MAVEN_ARTIFACT/*.jar 2>/dev/null)" ] && [ "$FORCE_REBUILD" = false ]; then
-    echo "Cassandra Analytics already built"
+# Check if already built by looking for Maven artifacts (any version)
+MAVEN_ARTIFACT_BASE="$HOME/.m2/repository/org/apache/cassandra/cassandra-analytics-core_spark3_2.12"
+if [ -d "$MAVEN_ARTIFACT_BASE" ] && [ "$(find "$MAVEN_ARTIFACT_BASE" -name '*.jar' 2>/dev/null | head -1)" ] && [ "$FORCE_REBUILD" = false ]; then
+    echo "Cassandra Analytics already built (found artifacts in $MAVEN_ARTIFACT_BASE)"
     echo "Use --force to rebuild"
     exit 0
 fi

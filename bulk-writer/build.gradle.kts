@@ -6,10 +6,21 @@ plugins {
 
 val sparkVersion = "3.5.7"
 val scalaVersion = "2.12"
-val cassandraAnalyticsVersion = "0.3-SNAPSHOT"
-
 // Path to cassandra-analytics build output for modules not published to Maven
 val analyticsDir = rootProject.projectDir.resolve(".cassandra-analytics")
+val analyticsPropsFile = analyticsDir.resolve("gradle.properties")
+
+val cassandraAnalyticsVersion: String = if (analyticsPropsFile.exists()) {
+    analyticsPropsFile.readLines()
+        .map { it.trim() }
+        .filter { it.startsWith("version=") }
+        .map { it.substringAfter("version=").trim() }
+        .firstOrNull()
+        ?: error("No 'version' property in $analyticsPropsFile")
+} else {
+    logger.warn("cassandra-analytics not cloned; using placeholder version. Run bin/build-cassandra-analytics to build.")
+    "0.0.0-NOT-BUILT"
+}
 
 java {
     sourceCompatibility = JavaVersion.VERSION_11

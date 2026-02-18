@@ -115,15 +115,20 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `uploadDashboards extracts and applies all dashboards`() {
+    fun `uploadDashboards extracts and applies all dashboards and deployment`() {
         val dashboardFiles =
             createDashboardFiles(
                 "14-grafana-dashboards-configmap.yaml",
                 "15-grafana-dashboard-system.yaml",
                 "16-grafana-dashboard-s3.yaml",
             )
+        val deploymentFile =
+            File(dashboardTempDir, "41-grafana-deployment.yaml").also {
+                it.writeText("deployment: grafana")
+            }
         whenever(mockTemplateService.extractAndSubstituteResources(any(), any()))
             .thenReturn(dashboardFiles)
+            .thenReturn(listOf(deploymentFile))
         whenever(mockK8sService.createConfigMap(any(), any(), any(), any(), any()))
             .thenReturn(Result.success(Unit))
         whenever(mockK8sService.applyManifests(any(), any()))
@@ -137,11 +142,11 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
         // Verify datasources ConfigMap was created
         verify(mockK8sService).createConfigMap(any(), any(), eq("grafana-datasources"), any(), any())
 
-        // Verify applyManifests was called for each dashboard file
-        verify(mockK8sService, org.mockito.kotlin.times(3)).applyManifests(any(), any())
+        // Verify applyManifests was called for each dashboard file + deployment
+        verify(mockK8sService, org.mockito.kotlin.times(4)).applyManifests(any(), any())
 
-        // Verify extraction with substitution was called
-        verify(mockTemplateService).extractAndSubstituteResources(any(), any())
+        // Verify extraction was called twice: once for dashboards, once for deployment
+        verify(mockTemplateService, org.mockito.kotlin.times(2)).extractAndSubstituteResources(any(), any())
     }
 
     @Test

@@ -60,6 +60,7 @@ class DefaultGrafanaDashboardService(
 ) : GrafanaDashboardService {
     companion object {
         private const val DASHBOARD_FILE_PATTERN = "grafana-dashboard"
+        private const val GRAFANA_DEPLOYMENT_PATTERN = "grafana-deployment"
         private const val DATASOURCES_CONFIGMAP_NAME = "grafana-datasources"
         private const val DEFAULT_NAMESPACE = "default"
     }
@@ -69,6 +70,12 @@ class DefaultGrafanaDashboardService(
             .extractAndSubstituteResources(
                 filter = { it.contains(DASHBOARD_FILE_PATTERN) },
             ).sortedBy { it.name }
+
+    private fun extractGrafanaDeployment(): File? =
+        templateService
+            .extractAndSubstituteResources(
+                filter = { it.contains(GRAFANA_DEPLOYMENT_PATTERN) },
+            ).firstOrNull()
 
     override fun createDatasourcesConfigMap(
         controlHost: ClusterHost,
@@ -113,6 +120,19 @@ class DefaultGrafanaDashboardService(
                 .getOrElse { exception ->
                     return Result.failure(
                         IllegalStateException("Failed to apply ${file.name}: ${exception.message}", exception),
+                    )
+                }
+        }
+
+        // Reapply the Grafana deployment to pick up any new volume mounts for dashboards
+        val deploymentFile = extractGrafanaDeployment()
+        if (deploymentFile != null) {
+            outputHandler.handleMessage("Applying ${deploymentFile.name}...")
+            k8sService
+                .applyManifests(controlHost, deploymentFile.toPath())
+                .getOrElse { exception ->
+                    return Result.failure(
+                        IllegalStateException("Failed to apply ${deploymentFile.name}: ${exception.message}", exception),
                     )
                 }
         }

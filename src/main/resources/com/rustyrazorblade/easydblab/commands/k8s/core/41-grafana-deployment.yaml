@@ -91,6 +91,9 @@ spec:
             - name: dashboard-opensearch
               mountPath: /var/lib/grafana/dashboards/opensearch
               readOnly: true
+            - name: dashboard-stress
+              mountPath: /var/lib/grafana/dashboards/stress
+              readOnly: true
             - name: data
               mountPath: /var/lib/grafana
           livenessProbe:
@@ -134,6 +137,10 @@ spec:
         - name: dashboard-opensearch
           configMap:
             name: grafana-dashboard-opensearch
+            optional: true
+        - name: dashboard-stress
+          configMap:
+            name: grafana-dashboard-stress
             optional: true
         - name: data
           emptyDir: {}

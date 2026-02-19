@@ -121,6 +121,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
             "CLUSTER_NAME",
             "GOMEMLIMIT",
             "OTEL_RESOURCE_ATTRIBUTES",
+            "STRESS_PROM_PORT",
         )
 
         val nodeNameEnv = sidecar.env.first { it.name == "K8S_NODE_NAME" }
@@ -261,6 +262,38 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
         assertThat(config).contains("resourcedetection")
         assertThat(config).contains("detectors: [env]")
         assertThat(config).contains("processors: [resourcedetection, batch]")
+    }
+
+    @Test
+    fun `buildJob should set CASSANDRA_EASY_STRESS_PROM_PORT on stress container`() {
+        val job =
+            service.buildJob(
+                jobName = "stress-keyvalue_1",
+                image = "ghcr.io/apache/cassandra-easy-stress:latest",
+                contactPoints = "10.0.1.6",
+                args = listOf("run", "KeyValue"),
+                promPort = 9501,
+            )
+
+        val stress = job.spec.template.spec.containers.first { it.name == "stress" }
+        val envMap = stress.env.associate { it.name to it.value }
+        assertThat(envMap["CASSANDRA_EASY_STRESS_PROM_PORT"]).isEqualTo("9501")
+    }
+
+    @Test
+    fun `buildJob should set STRESS_PROM_PORT on otel-sidecar container`() {
+        val job =
+            service.buildJob(
+                jobName = "stress-keyvalue_1",
+                image = "ghcr.io/apache/cassandra-easy-stress:latest",
+                contactPoints = "10.0.1.6",
+                args = listOf("run", "KeyValue"),
+                promPort = 9502,
+            )
+
+        val sidecar = job.spec.template.spec.initContainers.first { it.name == "otel-sidecar" }
+        val envMap = sidecar.env.associate { it.name to (it.value ?: "") }
+        assertThat(envMap["STRESS_PROM_PORT"]).isEqualTo("9502")
     }
 
     @Test

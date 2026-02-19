@@ -44,6 +44,7 @@ interface StressJobService {
         args: List<String>,
         contactPoints: String,
         tags: Map<String, String> = emptyMap(),
+        promPort: Int = Constants.Stress.PROMETHEUS_PORT,
     ): Result<String>
 
     /**
@@ -140,6 +141,7 @@ class DefaultStressJobService(
         args: List<String>,
         contactPoints: String,
         tags: Map<String, String>,
+        promPort: Int,
     ): Result<String> =
         runCatching {
             log.info { "Starting stress job: $jobName" }
@@ -153,6 +155,7 @@ class DefaultStressJobService(
                     contactPoints = contactPoints,
                     args = args,
                     tags = tags,
+                    promPort = promPort,
                 )
 
             outputHandler.handleMessage("Starting stress job: $jobName")
@@ -344,6 +347,7 @@ class DefaultStressJobService(
         contactPoints: String,
         args: List<String>,
         tags: Map<String, String> = emptyMap(),
+        promPort: Int = Constants.Stress.PROMETHEUS_PORT,
     ): Job {
         val clusterState = clusterStateManager.load()
         val region =
@@ -373,6 +377,10 @@ class DefaultStressJobService(
                     EnvVarBuilder()
                         .withName("CASSANDRA_EASY_STRESS_DEFAULT_DC")
                         .withValue(region)
+                        .build(),
+                    EnvVarBuilder()
+                        .withName("CASSANDRA_EASY_STRESS_PROM_PORT")
+                        .withValue(promPort.toString())
                         .build(),
                 ).build()
 
@@ -416,6 +424,10 @@ class DefaultStressJobService(
                     EnvVarBuilder()
                         .withName("OTEL_RESOURCE_ATTRIBUTES")
                         .withValue(resourceAttributes)
+                        .build(),
+                    EnvVarBuilder()
+                        .withName("STRESS_PROM_PORT")
+                        .withValue(promPort.toString())
                         .build(),
                 ).withRestartPolicy("Always")
                 .withVolumeMounts(

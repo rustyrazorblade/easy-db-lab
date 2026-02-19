@@ -1,10 +1,16 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.charleskorn.kaml.Yaml
+import com.charleskorn.kaml.YamlConfiguration
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import io.github.oshai.kotlinlogging.KLogger
 import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 import java.io.File
 
 /**
@@ -68,9 +74,11 @@ class DefaultK3sAgentService(
         const val CONFIG_TEMP_PATH = "/tmp/k3s-config.yaml"
         const val CONFIG_DIR_PATH = "/etc/rancher/k3s"
         const val AGENT_SCRIPT_PATH = "/usr/local/bin/start-k3s-agent.sh"
-        const val YAML_KEY_SERVER = "server:"
-        const val YAML_KEY_TOKEN = "token:"
-        const val YAML_KEY_NODE_LABEL = "node-label:"
+
+        val yaml =
+            Yaml(
+                configuration = YamlConfiguration(encodeDefaults = false),
+            )
     }
 
     /**
@@ -116,35 +124,24 @@ class DefaultK3sAgentService(
      * @param configText The YAML configuration file content
      * @param hostAlias The host alias for error messages
      * @return Pair of (serverUrl, token)
-     * @throws IllegalStateException if required fields are missing
+     * @throws IllegalStateException if parsing fails or required fields are missing
      */
     private fun parseAgentConfig(
         configText: String,
         hostAlias: String,
     ): Pair<String, String> {
-        val serverUrl =
-            configText
-                .lines()
-                .find { it.trim().startsWith(YAML_KEY_SERVER) }
-                ?.substringAfter(YAML_KEY_SERVER)
-                ?.trim()
-                ?: throw IllegalStateException(
-                    "Server URL not found in k3s config on $hostAlias. " +
+        val config =
+            try {
+                yaml.decodeFromString<K3sAgentConfig>(configText)
+            } catch (e: Exception) {
+                throw IllegalStateException(
+                    "Failed to parse k3s config on $hostAlias. " +
                         "Ensure configure() was called before start().",
+                    e,
                 )
+            }
 
-        val token =
-            configText
-                .lines()
-                .find { it.trim().startsWith(YAML_KEY_TOKEN) }
-                ?.substringAfter(YAML_KEY_TOKEN)
-                ?.trim()
-                ?: throw IllegalStateException(
-                    "Token not found in k3s config on $hostAlias. " +
-                        "Ensure configure() was called before start().",
-                )
-
-        return serverUrl to token
+        return config.server to config.token
     }
 
     override fun configure(
@@ -209,20 +206,25 @@ class DefaultK3sAgentService(
         token: String,
         labels: Map<String, String>,
     ): String {
-        val labelLines =
+        val nodeLabels =
             if (labels.isNotEmpty()) {
-                labels.map { (key, value) -> "  - \"$key=$value\"" }.joinToString("\n")
+                labels.map { (key, value) -> "$key=$value" }
             } else {
-                ""
+                null
             }
 
-        return buildString {
-            appendLine("server: $serverUrl")
-            appendLine("token: $token")
-            if (labelLines.isNotEmpty()) {
-                appendLine(YAML_KEY_NODE_LABEL)
-                append(labelLines)
-            }
-        }.trimEnd()
+        val config = K3sAgentConfig(server = serverUrl, token = token, nodeLabel = nodeLabels)
+        return yaml.encodeToString(config)
     }
 }
+
+/**
+ * K3s agent configuration data class, serialized to YAML for /etc/rancher/k3s/config.yaml.
+ */
+@Serializable
+data class K3sAgentConfig(
+    val server: String,
+    val token: String,
+    @SerialName("node-label")
+    val nodeLabel: List<String>? = null,
+)

@@ -53,37 +53,33 @@ class GrafanaManifestBuilder(
 
         private const val GRAFANA_PLUGINS =
             "grafana-clickhouse-datasource,victoriametrics-logs-datasource,grafana-pyroscope-datasource"
+
+        private const val DASHBOARDS_YAML_RESOURCE = "dashboards.yaml"
     }
 
     /**
      * Builds the dashboard provisioning ConfigMap that tells Grafana where to find dashboards.
      *
+     * Loads dashboards.yaml from a classpath resource file.
      * Replaces `core/14-grafana-dashboards-configmap.yaml`.
      */
-    fun buildDashboardProvisioningConfigMap(): ConfigMap =
-        ConfigMapBuilder()
+    fun buildDashboardProvisioningConfigMap(): ConfigMap {
+        val dashboardsYaml =
+            templateService
+                .fromResource(
+                    GrafanaManifestBuilder::class.java,
+                    DASHBOARDS_YAML_RESOURCE,
+                ).substitute()
+
+        return ConfigMapBuilder()
             .withNewMetadata()
             .withName(PROVISIONING_CONFIGMAP_NAME)
             .withNamespace(NAMESPACE)
             .addToLabels("app.kubernetes.io/name", APP_LABEL)
             .endMetadata()
-            .addToData(
-                "dashboards.yaml",
-                buildString {
-                    appendLine("apiVersion: 1")
-                    appendLine("providers:")
-                    appendLine("  - name: 'default'")
-                    appendLine("    orgId: 1")
-                    appendLine("    folder: ''")
-                    appendLine("    folderUid: ''")
-                    appendLine("    type: file")
-                    appendLine("    disableDeletion: false")
-                    appendLine("    updateIntervalSeconds: 10")
-                    appendLine("    allowUiUpdates: true")
-                    appendLine("    options:")
-                    append("      path: /var/lib/grafana/dashboards")
-                },
-            ).build()
+            .addToData("dashboards.yaml", dashboardsYaml)
+            .build()
+    }
 
     /**
      * Builds a ConfigMap for a single dashboard.

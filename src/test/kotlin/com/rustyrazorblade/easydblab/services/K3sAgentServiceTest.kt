@@ -209,7 +209,7 @@ class K3sAgentServiceTest : BaseKoinTest() {
         assertThat(result.isFailure).isTrue()
         assertThat(result.exceptionOrNull())
             .isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("Server URL not found in k3s config")
+            .hasMessageContaining("Failed to parse k3s config")
     }
 
     @Test
@@ -230,7 +230,7 @@ class K3sAgentServiceTest : BaseKoinTest() {
         assertThat(result.isFailure).isTrue()
         assertThat(result.exceptionOrNull())
             .isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("Token not found in k3s config")
+            .hasMessageContaining("Failed to parse k3s config")
     }
 
     @Test

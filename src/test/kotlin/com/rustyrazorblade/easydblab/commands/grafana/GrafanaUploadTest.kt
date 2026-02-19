@@ -5,7 +5,9 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
 import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
+import com.rustyrazorblade.easydblab.services.K8sService
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -22,6 +24,8 @@ import org.mockito.kotlin.whenever
 class GrafanaUploadTest : BaseKoinTest() {
     private lateinit var mockDashboardService: GrafanaDashboardService
     private lateinit var mockClusterStateManager: ClusterStateManager
+    private lateinit var mockPyroscopeBuilder: PyroscopeManifestBuilder
+    private lateinit var mockK8sService: K8sService
 
     private val testControlHost =
         ClusterHost(
@@ -46,6 +50,18 @@ class GrafanaUploadTest : BaseKoinTest() {
                         mockClusterStateManager = it
                     }
                 }
+
+                single {
+                    mock<PyroscopeManifestBuilder>().also {
+                        mockPyroscopeBuilder = it
+                    }
+                }
+
+                single {
+                    mock<K8sService>().also {
+                        mockK8sService = it
+                    }
+                }
             },
         )
 
@@ -53,6 +69,11 @@ class GrafanaUploadTest : BaseKoinTest() {
     fun setupMocks() {
         mockDashboardService = getKoin().get()
         mockClusterStateManager = getKoin().get()
+        mockPyroscopeBuilder = getKoin().get()
+        mockK8sService = getKoin().get()
+
+        // Default: pyroscope manifest builder returns empty list
+        whenever(mockPyroscopeBuilder.buildAllResources()).thenReturn(emptyList())
     }
 
     @Test

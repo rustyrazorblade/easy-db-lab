@@ -5,8 +5,15 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.vector.VectorManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.victoria.VictoriaManifestBuilder
 import com.rustyrazorblade.easydblab.driver.CqlSessionFactory
 import com.rustyrazorblade.easydblab.driver.DefaultCqlSessionFactory
 import com.rustyrazorblade.easydblab.observability.TelemetryProvider
@@ -47,8 +54,15 @@ val servicesModule =
         factoryOf(::DefaultK3sAgentService) bind K3sAgentService::class
         factoryOf(::DefaultK8sService) bind K8sService::class
         factoryOf(::BeylaManifestBuilder)
+        factoryOf(::EbpfExporterManifestBuilder)
         factoryOf(::GrafanaManifestBuilder)
+        factoryOf(::OtelManifestBuilder)
         factoryOf(::PyroscopeManifestBuilder)
+        factoryOf(::RegistryManifestBuilder)
+        factoryOf(::S3ManagerManifestBuilder)
+        factoryOf(::TempoManifestBuilder)
+        factoryOf(::VectorManifestBuilder)
+        factoryOf(::VictoriaManifestBuilder)
         factoryOf(::DefaultGrafanaDashboardService) bind GrafanaDashboardService::class
         factoryOf(::TemplateService)
         factoryOf(::DefaultVictoriaBackupService) bind VictoriaBackupService::class

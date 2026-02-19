@@ -1,7 +1,17 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboard
-import com.rustyrazorblade.easydblab.kubernetes.ManifestApplier
+import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.vector.VectorManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.victoria.VictoriaManifestBuilder
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.client.Config
@@ -9,23 +19,22 @@ import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientBuilder
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeAll
-import org.junit.jupiter.api.DynamicTest
 import org.junit.jupiter.api.MethodOrderer
 import org.junit.jupiter.api.Order
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.TestFactory
 import org.junit.jupiter.api.TestInstance
 import org.junit.jupiter.api.TestMethodOrder
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.whenever
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.k3s.K3sContainer
 import org.testcontainers.utility.DockerImageName
-import java.io.File
 
 /**
  * Integration tests for K8s manifest application using TestContainers with K3s.
  *
- * These tests verify that all actual project manifests can be applied successfully
+ * These tests verify that all Fabric8-built resources can be applied successfully
  * to a real K3s cluster, catching errors before production deployment.
  *
  * Note: All resources are deployed to the 'default' namespace.
@@ -36,7 +45,6 @@ import java.io.File
 class K8sServiceIntegrationTest {
     companion object {
         private const val DEFAULT_NAMESPACE = "default"
-        private const val K8S_MANIFEST_DIR = "src/main/resources/com/rustyrazorblade/easydblab/commands/k8s/core"
 
         @Container
         @JvmStatic
@@ -44,51 +52,299 @@ class K8sServiceIntegrationTest {
     }
 
     private lateinit var client: KubernetesClient
+    private lateinit var templateService: TemplateService
 
-    /**
-     * Resource types for K8s manifests
-     */
-    enum class ResourceType {
-        SERVICE,
-        CONFIGMAP,
-        DAEMONSET,
-        DEPLOYMENT,
-        STATEFULSET,
+    @BeforeAll
+    fun setup() {
+        val kubeconfig = k3s.kubeConfigYaml
+        val config = Config.fromKubeconfig(kubeconfig)
+        client =
+            KubernetesClientBuilder()
+                .withConfig(config)
+                .build()
+
+        // Create a real TemplateService with a mock ClusterStateManager.
+        // Config files use runtime env expansion (${env:HOSTNAME}), not __KEY__ templates,
+        // so the context variables don't matter for correctness.
+        val mockClusterStateManager = mock<ClusterStateManager>()
+        whenever(mockClusterStateManager.load()).thenReturn(
+            ClusterState(name = "test", versions = mutableMapOf()),
+        )
+        val testUser =
+            User(
+                region = "us-west-2",
+                email = "test@example.com",
+                keyName = "",
+                awsProfile = "",
+                awsAccessKey = "",
+                awsSecret = "",
+            )
+        templateService = TemplateService(mockClusterStateManager, testUser)
     }
 
-    /**
-     * Test case definition for manifest testing
-     */
-    data class ManifestTestCase(
-        val filename: String,
-        val resourceType: ResourceType,
-        val resourceName: String,
-        val dataKey: String? = null,
-    )
+    @Test
+    @Order(1)
+    fun `default namespace should exist`() {
+        val namespace = client.namespaces().withName(DEFAULT_NAMESPACE).get()
+        assertThat(namespace)
+            .withFailMessage("Namespace '$DEFAULT_NAMESPACE' does not exist")
+            .isNotNull
+    }
+
+    @Test
+    @Order(2)
+    fun `should apply OTel Collector resources`() {
+        val resources = OtelManifestBuilder(templateService).buildAllResources()
+        applyAndVerify(resources)
+
+        val configMap =
+            client
+                .configMaps()
+                .inNamespace(DEFAULT_NAMESPACE)
+                .withName("otel-collector-config")
+                .get()
+        assertThat(configMap).isNotNull
+        assertThat(configMap.data).containsKey("otel-collector-config.yaml")
+
+        val daemonSet =
+            client
+                .apps()
+                .daemonSets()
+                .inNamespace(DEFAULT_NAMESPACE)
+                .withName("otel-collector")
+                .get()
+        assertThat(daemonSet).isNotNull
+    }
+
+    @Test
+    @Order(3)
+    fun `should apply ebpf_exporter resources`() {
+        val resources = EbpfExporterManifestBuilder(templateService).buildAllResources()
+        applyAndVerify(resources)
+
+        val configMap =
+            client
+                .configMaps()
+                .inNamespace(DEFAULT_NAMESPACE)
+                .withName("ebpf-exporter-config")
+                .get()
+        assertThat(configMap).isNotNull
+        assertThat(configMap.data).containsKey("config.yaml")
+
+        val daemonSet =
+            client
+                .apps()
+                .daemonSets()
+                .inNamespace(DEFAULT_NAMESPACE)
+                .withName("ebpf-exporter")
+                .get()
+        assertThat(daemonSet).isNotNull
+    }
+
+    @Test
+    @Order(4)
+    fun `should apply VictoriaMetrics and VictoriaLogs resources`() {
+        val resources = VictoriaManifestBuilder().buildAllResources()
+        applyAndVerify(resources)
+
+        val vmService =
+            client
+                .services()
+                .inNamespace(DEFAULT_NAMESPACE)
+                .withName("victoriametrics")
+                .get()
+        assertThat(vmService).isNotNull
+
+        val vmDeployment =
+            client
+                .apps()
+                .deployments()
+                .inNamespace(DEFAULT_NAMESPACE)
+                .withName("victoriametrics")
+                .get()
+        assertThat(vmDeployment).isNotNull
+
+        val vlService =
+            client
+                .services()
+                .inNamespace(DEFAULT_NAMESPACE)
+                .withName("victorialogs")
+                .get()
+        assertThat(vlService).isNotNull
+
+        val vlDeployment =
+            client
+                .apps()
+                .deployments()
+                .inNamespace(DEFAULT_NAMESPACE)
+                .withName("victorialogs")
+                .get()
+        assertThat(vlDeployment).isNotNull
+    }
+
+    @Test
+    @Order(5)
+    fun `should apply Tempo resources`() {
+        val resources = TempoManifestBuilder(templateService).buildAllResources()
+        applyAndVerify(resources)
+
+        val configMap =
+            client
+                .configMaps()
+                .inNamespace(DEFAULT_NAMESPACE)
+                .withName("tempo-config")
+                .get()
+        assertThat(configMap).isNotNull
+        assertThat(configMap.data).containsKey("tempo.yaml")
+
+        val service =
+            client
+                .services()
+                .inNamespace(DEFAULT_NAMESPACE)
+                .withName("tempo")
+                .get()
+        assertThat(service).isNotNull
+
+        val deployment =
+            client
+                .apps()
+                .deployments()
+                .inNamespace(DEFAULT_NAMESPACE)
+                .withName("tempo")
+                .get()
+        assertThat(deployment).isNotNull
+    }
+
+    @Test
+    @Order(6)
+    fun `should apply Vector resources`() {
+        val resources = VectorManifestBuilder(templateService).buildAllResources()
+        applyAndVerify(resources)
+
+        val nodeConfigMap =
+            client
+                .configMaps()
+                .inNamespace(DEFAULT_NAMESPACE)
+                .withName("vector-node-config")
+                .get()
+        assertThat(nodeConfigMap).isNotNull
+        assertThat(nodeConfigMap.data).containsKey("vector.yaml")
+
+        val nodeDaemonSet =
+            client
+                .apps()
+                .daemonSets()
+                .inNamespace(DEFAULT_NAMESPACE)
+                .withName("vector")
+                .get()
+        assertThat(nodeDaemonSet).isNotNull
+
+        val s3ConfigMap =
+            client
+                .configMaps()
+                .inNamespace(DEFAULT_NAMESPACE)
+                .withName("vector-s3-config")
+                .get()
+        assertThat(s3ConfigMap).isNotNull
+        assertThat(s3ConfigMap.data).containsKey("vector.yaml")
+
+        val s3Deployment =
+            client
+                .apps()
+                .deployments()
+                .inNamespace(DEFAULT_NAMESPACE)
+                .withName("vector-s3")
+                .get()
+        assertThat(s3Deployment).isNotNull
+    }
+
+    @Test
+    @Order(7)
+    fun `should apply Registry resources`() {
+        val resources = RegistryManifestBuilder().buildAllResources()
+        applyAndVerify(resources)
+
+        val deployment =
+            client
+                .apps()
+                .deployments()
+                .inNamespace(DEFAULT_NAMESPACE)
+                .withName("registry")
+                .get()
+        assertThat(deployment).isNotNull
+    }
+
+    @Test
+    @Order(8)
+    fun `should apply S3 Manager resources`() {
+        val resources = S3ManagerManifestBuilder().buildAllResources()
+        applyAndVerify(resources)
+
+        val deployment =
+            client
+                .apps()
+                .deployments()
+                .inNamespace(DEFAULT_NAMESPACE)
+                .withName("s3manager")
+                .get()
+        assertThat(deployment).isNotNull
+    }
+
+    @Test
+    @Order(9)
+    fun `should apply Beyla resources`() {
+        val resources = BeylaManifestBuilder(templateService).buildAllResources()
+        applyAndVerify(resources)
+
+        val configMap =
+            client
+                .configMaps()
+                .inNamespace(DEFAULT_NAMESPACE)
+                .withName("beyla-config")
+                .get()
+        assertThat(configMap).isNotNull
+        assertThat(configMap.data).containsKey("beyla-config.yaml")
+
+        val daemonSet =
+            client
+                .apps()
+                .daemonSets()
+                .inNamespace(DEFAULT_NAMESPACE)
+                .withName("beyla")
+                .get()
+        assertThat(daemonSet).isNotNull
+    }
+
+    @Test
+    @Order(10)
+    fun `should apply Grafana resources built with Fabric8`() {
+        val resources = buildGrafanaResources()
+        applyAndVerify(resources)
+
+        val provisioningCm =
+            client
+                .configMaps()
+                .inNamespace(DEFAULT_NAMESPACE)
+                .withName("grafana-dashboards-config")
+                .get()
+        assertThat(provisioningCm).isNotNull
+        assertThat(provisioningCm.data).containsKey("dashboards.yaml")
+
+        val dashboardCm =
+            client
+                .configMaps()
+                .inNamespace(DEFAULT_NAMESPACE)
+                .withName(GrafanaDashboard.SYSTEM.configMapName)
+                .get()
+        assertThat(dashboardCm).isNotNull
+        assertThat(dashboardCm.data).containsKey(GrafanaDashboard.SYSTEM.jsonFileName)
+    }
+
+    // Individual tests above verify each resource was created.
+    // No need for a summary count test with hardcoded numbers.
 
     /**
-     * Ordered list of YAML manifests to test (after namespace).
-     * Grafana resources are now built via Fabric8 and tested separately.
-     */
-    private val manifestTestCases =
-        listOf(
-            ManifestTestCase(
-                "10-otel-configmap.yaml",
-                ResourceType.CONFIGMAP,
-                "otel-collector-config",
-                "otel-collector-config.yaml",
-            ),
-            ManifestTestCase("21-victoriametrics-service.yaml", ResourceType.SERVICE, "victoriametrics"),
-            ManifestTestCase("22-victorialogs-service.yaml", ResourceType.SERVICE, "victorialogs"),
-            ManifestTestCase("30-otel-daemonset.yaml", ResourceType.DAEMONSET, "otel-collector"),
-            ManifestTestCase("44-victoriametrics-deployment.yaml", ResourceType.DEPLOYMENT, "victoriametrics"),
-            ManifestTestCase("45-victorialogs-deployment.yaml", ResourceType.DEPLOYMENT, "victorialogs"),
-            ManifestTestCase("42-registry-deployment.yaml", ResourceType.DEPLOYMENT, "registry"),
-        )
-
-    /**
-     * Builds Grafana resources using Fabric8 (replacing YAML files).
-     * Uses a simple ConfigMap for the provisioning config and a test dashboard.
+     * Builds Grafana resources using Fabric8 (simplified for integration test).
      */
     private fun buildGrafanaResources(): List<HasMetadata> {
         val provisioningConfigMap =
@@ -115,202 +371,19 @@ class K8sServiceIntegrationTest {
         return listOf(provisioningConfigMap, dashboardConfigMap)
     }
 
-    @BeforeAll
-    fun setup() {
-        val kubeconfig = k3s.kubeConfigYaml
-        val config = Config.fromKubeconfig(kubeconfig)
-        client =
-            KubernetesClientBuilder()
-                .withConfig(config)
-                .build()
-    }
-
-    @Test
-    @Order(1)
-    fun `default namespace should exist`() {
-        // The default namespace is pre-existing in K3s, so we just verify it exists
-        val namespace = client.namespaces().withName(DEFAULT_NAMESPACE).get()
-        assertThat(namespace)
-            .withFailMessage("Namespace '$DEFAULT_NAMESPACE' does not exist")
-            .isNotNull
-    }
-
-    @TestFactory
-    @Order(2)
-    fun `should apply all manifests`(): List<DynamicTest> =
-        manifestTestCases.map { testCase ->
-            DynamicTest.dynamicTest("apply ${testCase.filename}") {
-                applyAndVerifyManifest(testCase)
-            }
-        }
-
-    @Test
-    @Order(3)
-    fun `should apply Grafana resources built with Fabric8`() {
-        val resources = buildGrafanaResources()
+    /**
+     * Applies Fabric8 resources to the K3s cluster using server-side apply.
+     */
+    private fun applyAndVerify(resources: List<HasMetadata>) {
         for (resource in resources) {
-            client.resource(resource).forceConflicts().serverSideApply()
-        }
-
-        val provisioningCm =
-            client
-                .configMaps()
-                .inNamespace(DEFAULT_NAMESPACE)
-                .withName("grafana-dashboards-config")
-                .get()
-        assertThat(provisioningCm).isNotNull
-        assertThat(provisioningCm.data).containsKey("dashboards.yaml")
-
-        val dashboardCm =
-            client
-                .configMaps()
-                .inNamespace(DEFAULT_NAMESPACE)
-                .withName(GrafanaDashboard.SYSTEM.configMapName)
-                .get()
-        assertThat(dashboardCm).isNotNull
-        assertThat(dashboardCm.data).containsKey(GrafanaDashboard.SYSTEM.jsonFileName)
-    }
-
-    @Test
-    @Order(4)
-    fun `should have created all expected resources`() {
-        // Final verification - check counts of all resource types
-        val namespaces = client.namespaces().withName(DEFAULT_NAMESPACE).get()
-        assertThat(namespaces).isNotNull
-
-        val configMaps =
-            client
-                .configMaps()
-                .inNamespace(DEFAULT_NAMESPACE)
-                .list()
-        assertThat(configMaps.items)
-            .withFailMessage("Expected at least 4 ConfigMaps, found ${configMaps.items.size}")
-            .hasSizeGreaterThanOrEqualTo(3)
-
-        val deployments =
-            client
-                .apps()
-                .deployments()
-                .inNamespace(DEFAULT_NAMESPACE)
-                .list()
-        assertThat(deployments.items)
-            .withFailMessage("Expected at least 3 Deployments (victoriametrics, victorialogs, registry)")
-            .hasSizeGreaterThanOrEqualTo(3)
-
-        val daemonSets =
-            client
-                .apps()
-                .daemonSets()
-                .inNamespace(DEFAULT_NAMESPACE)
-                .list()
-        assertThat(daemonSets.items)
-            .withFailMessage("Expected at least 1 DaemonSet (otel-collector)")
-            .hasSizeGreaterThanOrEqualTo(1)
-
-        val services =
-            client
-                .services()
-                .inNamespace(DEFAULT_NAMESPACE)
-                .list()
-        // VictoriaMetrics, VictoriaLogs services + kubernetes service
-        assertThat(services.items)
-            .withFailMessage("Expected at least 3 Services (kubernetes, victoriametrics, victorialogs)")
-            .hasSizeGreaterThanOrEqualTo(3)
-    }
-
-    /**
-     * Apply a manifest and verify the expected resource was created.
-     */
-    private fun applyAndVerifyManifest(testCase: ManifestTestCase) {
-        val manifestFile = File(K8S_MANIFEST_DIR, testCase.filename)
-        assertThat(manifestFile.exists())
-            .withFailMessage("Manifest file not found: ${manifestFile.absolutePath}")
-            .isTrue()
-
-        try {
-            applyManifest(manifestFile)
-        } catch (e: Exception) {
-            throw AssertionError("Failed to apply manifest '${testCase.filename}': ${e.message}", e)
-        }
-
-        verifyResource(testCase)
-    }
-
-    /**
-     * Verify a resource was created based on its type.
-     */
-    private fun verifyResource(testCase: ManifestTestCase) {
-        when (testCase.resourceType) {
-            ResourceType.SERVICE -> {
-                val service =
-                    client
-                        .services()
-                        .inNamespace(DEFAULT_NAMESPACE)
-                        .withName(testCase.resourceName)
-                        .get()
-                assertThat(service)
-                    .withFailMessage("Service '${testCase.resourceName}' was not created")
-                    .isNotNull
-            }
-            ResourceType.CONFIGMAP -> {
-                val configMap =
-                    client
-                        .configMaps()
-                        .inNamespace(DEFAULT_NAMESPACE)
-                        .withName(testCase.resourceName)
-                        .get()
-                assertThat(configMap)
-                    .withFailMessage("ConfigMap '${testCase.resourceName}' was not created")
-                    .isNotNull
-                testCase.dataKey?.let { key ->
-                    assertThat(configMap.data)
-                        .withFailMessage("ConfigMap '${testCase.resourceName}' missing data key '$key'")
-                        .containsKey(key)
-                }
-            }
-            ResourceType.DAEMONSET -> {
-                val daemonSet =
-                    client
-                        .apps()
-                        .daemonSets()
-                        .inNamespace(DEFAULT_NAMESPACE)
-                        .withName(testCase.resourceName)
-                        .get()
-                assertThat(daemonSet)
-                    .withFailMessage("DaemonSet '${testCase.resourceName}' was not created")
-                    .isNotNull
-            }
-            ResourceType.DEPLOYMENT -> {
-                val deployment =
-                    client
-                        .apps()
-                        .deployments()
-                        .inNamespace(DEFAULT_NAMESPACE)
-                        .withName(testCase.resourceName)
-                        .get()
-                assertThat(deployment)
-                    .withFailMessage("Deployment '${testCase.resourceName}' was not created")
-                    .isNotNull
-            }
-            ResourceType.STATEFULSET -> {
-                val statefulSet =
-                    client
-                        .apps()
-                        .statefulSets()
-                        .inNamespace(DEFAULT_NAMESPACE)
-                        .withName(testCase.resourceName)
-                        .get()
-                assertThat(statefulSet)
-                    .withFailMessage("StatefulSet '${testCase.resourceName}' was not created")
-                    .isNotNull
+            try {
+                client.resource(resource).forceConflicts().serverSideApply()
+            } catch (e: Exception) {
+                throw AssertionError(
+                    "Failed to apply ${resource.kind}/${resource.metadata?.name}: ${e.message}",
+                    e,
+                )
             }
         }
-    }
-
-    /**
-     * Applies a manifest file using the shared ManifestApplier utility.
-     */
-    private fun applyManifest(file: File) {
-        ManifestApplier.applyManifest(client, file)
     }
 }

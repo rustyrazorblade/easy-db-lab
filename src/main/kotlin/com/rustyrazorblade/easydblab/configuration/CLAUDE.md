@@ -151,3 +151,40 @@ All Pyroscope K8s resources are built programmatically using Fabric8:
 
 - **`PyroscopeManifestBuilder`** — builds all Pyroscope K8s resources (server ConfigMap, Service, Deployment, eBPF ConfigMap, eBPF DaemonSet) as typed Fabric8 objects. The server runs on the control plane with a hostPath volume at `/mnt/db1/pyroscope`. Directory permissions are set via SSH in `K8Apply` before deploying (no init container).
 - **Config resources** — `config.yaml` (Pyroscope server config) and `config.alloy` (Grafana Alloy eBPF config) stored in `resources/.../configuration/pyroscope/`.
+
+## Beyla Subpackage (`beyla/`)
+
+- **`BeylaManifestBuilder`** — builds Beyla eBPF auto-instrumentation ConfigMap + DaemonSet. Runs on all nodes with hostNetwork/hostPID/privileged for eBPF access.
+- **Config resource** — `beyla-config.yaml` stored in `resources/.../configuration/beyla/`.
+
+## OTel Subpackage (`otel/`)
+
+- **`OtelManifestBuilder`** — builds OTel Collector ConfigMap + DaemonSet. Runs on all nodes, collects host metrics, Prometheus scrapes, file-based logs, and OTLP. Config uses OTel runtime env expansion (`${env:HOSTNAME}`), not `__KEY__` templates.
+- **Config resource** — `otel-collector-config.yaml` stored in `resources/.../configuration/otel/`.
+
+## ebpf_exporter Subpackage (`ebpfexporter/`)
+
+- **`EbpfExporterManifestBuilder`** — builds ebpf_exporter ConfigMap + DaemonSet. Runs on all nodes with hostNetwork/hostPID/privileged. Provides TCP retransmit, block I/O, and VFS latency eBPF metrics.
+- **Config resource** — `config.yaml` stored in `resources/.../configuration/ebpfexporter/`.
+
+## Victoria Subpackage (`victoria/`)
+
+- **`VictoriaManifestBuilder`** — builds VictoriaMetrics and VictoriaLogs Services + Deployments. Both run on control plane with hostPath data volumes. No ConfigMap/TemplateService needed.
+
+## Tempo Subpackage (`tempo/`)
+
+- **`TempoManifestBuilder`** — builds Tempo ConfigMap + Service + Deployment. Runs on control plane with S3 backend for trace storage. Config uses Tempo runtime env expansion (`${S3_BUCKET}`, `${AWS_REGION}`).
+- **Config resource** — `tempo.yaml` stored in `resources/.../configuration/tempo/`.
+
+## Vector Subpackage (`vector/`)
+
+- **`VectorManifestBuilder`** — builds two Vector deployments: node DaemonSet (all nodes, system/db log collection) and S3 Deployment (control plane, EMR log ingestion via SQS). Config uses Vector runtime env expansion.
+- **Config resources** — `vector-node.yaml` and `vector-s3.yaml` stored in `resources/.../configuration/vector/`.
+
+## Registry Subpackage (`registry/`)
+
+- **`RegistryManifestBuilder`** — builds Docker Registry Deployment. Runs on control plane with TLS cert hostPath mount and HTTPS probes. No TemplateService needed.
+
+## S3 Manager Subpackage (`s3manager/`)
+
+- **`S3ManagerManifestBuilder`** — builds S3 Manager Deployment. Runs on control plane with IAM-based auth. No TemplateService needed.

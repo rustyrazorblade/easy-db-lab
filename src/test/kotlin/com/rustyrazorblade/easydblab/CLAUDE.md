@@ -162,3 +162,4 @@ src/test/kotlin/com/rustyrazorblade/easydblab/
 - See [docs/development/testing.md](../../../../docs/development/testing.md) for the full testing guide
 - Aim to mock as minimally as possible.  I want to hit real code in tests as much as possible.
 - Prefer using LocalStack over mocking AWS services.  The more code that hits all the code paths the better.
+- Test the K8 configurations with TestContainers, not mocking.

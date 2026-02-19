@@ -242,7 +242,7 @@ For more details, see [packer/README.md](packer/README.md) and [packer/TESTING.m
 
 ## Specifications
 
-- Keep track of user experience product decisions and requirements specifications in `specs` under the project root.
+- Keep track of user experience and product information in `docs` under the project root.
 - Use these as a reference when making changes to determine if there are conflicts.
 - Plan changes to the spec before moving on to implementation.
 - The intent is to have a maintainable source of truth for product decisions.

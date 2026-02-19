@@ -6,14 +6,17 @@ import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboard
+import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.vector.VectorManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.victoria.VictoriaManifestBuilder
-import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
+import io.fabric8.kubernetes.api.model.apps.DaemonSet
+import io.fabric8.kubernetes.api.model.apps.Deployment
 import io.fabric8.kubernetes.client.Config
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientBuilder
@@ -317,58 +320,145 @@ class K8sServiceIntegrationTest {
 
     @Test
     @Order(10)
-    fun `should apply Grafana resources built with Fabric8`() {
-        val resources = buildGrafanaResources()
-        applyAndVerify(resources)
+    fun `should apply Grafana resources built with GrafanaManifestBuilder`() {
+        val builder = GrafanaManifestBuilder(templateService)
 
-        val provisioningCm =
+        val provisioningCm = builder.buildDashboardProvisioningConfigMap()
+        applyAndVerify(listOf(provisioningCm))
+
+        val appliedCm =
             client
                 .configMaps()
                 .inNamespace(DEFAULT_NAMESPACE)
                 .withName("grafana-dashboards-config")
                 .get()
-        assertThat(provisioningCm).isNotNull
-        assertThat(provisioningCm.data).containsKey("dashboards.yaml")
+        assertThat(appliedCm).isNotNull
+        assertThat(appliedCm.data).containsKey("dashboards.yaml")
 
-        val dashboardCm =
+        val dashboardCm = builder.buildDashboardConfigMap(GrafanaDashboard.SYSTEM)
+        applyAndVerify(listOf(dashboardCm))
+
+        val appliedDashboard =
             client
                 .configMaps()
                 .inNamespace(DEFAULT_NAMESPACE)
                 .withName(GrafanaDashboard.SYSTEM.configMapName)
                 .get()
-        assertThat(dashboardCm).isNotNull
-        assertThat(dashboardCm.data).containsKey(GrafanaDashboard.SYSTEM.jsonFileName)
+        assertThat(appliedDashboard).isNotNull
+        assertThat(appliedDashboard.data).containsKey(GrafanaDashboard.SYSTEM.jsonFileName)
     }
 
-    // Individual tests above verify each resource was created.
-    // No need for a summary count test with hardcoded numbers.
+    @Test
+    @Order(11)
+    fun `should apply Pyroscope resources`() {
+        val resources = PyroscopeManifestBuilder(templateService).buildAllResources()
+        applyAndVerify(resources)
 
-    /**
-     * Builds Grafana resources using Fabric8 (simplified for integration test).
-     */
-    private fun buildGrafanaResources(): List<HasMetadata> {
-        val provisioningConfigMap =
-            ConfigMapBuilder()
-                .withNewMetadata()
-                .withName("grafana-dashboards-config")
-                .withNamespace(DEFAULT_NAMESPACE)
-                .addToLabels("app.kubernetes.io/name", "grafana")
-                .endMetadata()
-                .addToData("dashboards.yaml", "apiVersion: 1\nproviders: []")
-                .build()
+        val configMap =
+            client
+                .configMaps()
+                .inNamespace(DEFAULT_NAMESPACE)
+                .withName("pyroscope-config")
+                .get()
+        assertThat(configMap).isNotNull
+        assertThat(configMap.data).containsKey("config.yaml")
 
-        val dashboardConfigMap =
-            ConfigMapBuilder()
-                .withNewMetadata()
-                .withName(GrafanaDashboard.SYSTEM.configMapName)
-                .withNamespace(DEFAULT_NAMESPACE)
-                .addToLabels("app.kubernetes.io/name", "grafana")
-                .addToLabels("grafana_dashboard", "1")
-                .endMetadata()
-                .addToData(GrafanaDashboard.SYSTEM.jsonFileName, "{}")
-                .build()
+        val service =
+            client
+                .services()
+                .inNamespace(DEFAULT_NAMESPACE)
+                .withName("pyroscope")
+                .get()
+        assertThat(service).isNotNull
 
-        return listOf(provisioningConfigMap, dashboardConfigMap)
+        val deployment =
+            client
+                .apps()
+                .deployments()
+                .inNamespace(DEFAULT_NAMESPACE)
+                .withName("pyroscope")
+                .get()
+        assertThat(deployment).isNotNull
+
+        val ebpfConfigMap =
+            client
+                .configMaps()
+                .inNamespace(DEFAULT_NAMESPACE)
+                .withName("pyroscope-ebpf-config")
+                .get()
+        assertThat(ebpfConfigMap).isNotNull
+        assertThat(ebpfConfigMap.data).containsKey("config.alloy")
+
+        val ebpfDaemonSet =
+            client
+                .apps()
+                .daemonSets()
+                .inNamespace(DEFAULT_NAMESPACE)
+                .withName("pyroscope-ebpf")
+                .get()
+        assertThat(ebpfDaemonSet).isNotNull
+    }
+
+    @Test
+    @Order(12)
+    fun `should apply Grafana Deployment built with GrafanaManifestBuilder`() {
+        val builder = GrafanaManifestBuilder(templateService)
+        val resources = builder.buildAllResources()
+        applyAndVerify(resources)
+
+        val deployment =
+            client
+                .apps()
+                .deployments()
+                .inNamespace(DEFAULT_NAMESPACE)
+                .withName("grafana")
+                .get()
+        assertThat(deployment).isNotNull
+    }
+
+    @Test
+    @Order(20)
+    fun `all container images should be pullable in K3s`() {
+        val images = collectAllContainerImages()
+        assertThat(images)
+            .withFailMessage("No container images found across all builders")
+            .isNotEmpty
+
+        val failures = mutableListOf<String>()
+        for (image in images) {
+            val result = k3s.execInContainer("crictl", "pull", image)
+            if (result.exitCode != 0) {
+                failures.add("$image: ${result.stderr.trim()}")
+            }
+        }
+
+        assertThat(failures)
+            .withFailMessage("Failed to pull container images:\n${failures.joinToString("\n")}")
+            .isEmpty()
+    }
+
+    @Test
+    @Order(21)
+    fun `no builder should set resource limits or requests`() {
+        val allResources = collectAllResources()
+        val violations = mutableListOf<String>()
+
+        for (resource in allResources) {
+            val containers = extractContainers(resource)
+            for (container in containers) {
+                val res = container.resources
+                if (res != null && (res.limits?.isNotEmpty() == true || res.requests?.isNotEmpty() == true)) {
+                    violations.add(
+                        "${resource.kind}/${resource.metadata?.name} container '${container.name}' has resource limits/requests",
+                    )
+                }
+            }
+        }
+
+        assertThat(violations)
+            .withFailMessage(
+                "Resource limits/requests must never be set on K8s manifests:\n${violations.joinToString("\n")}",
+            ).isEmpty()
     }
 
     /**
@@ -386,4 +476,50 @@ class K8sServiceIntegrationTest {
             }
         }
     }
+
+    /**
+     * Collects all unique container images from every manifest builder.
+     */
+    private fun collectAllContainerImages(): Set<String> {
+        val allResources = collectAllResources()
+        return allResources
+            .flatMap { resource ->
+                extractContainers(resource).map { it.image }
+            }.toSet()
+    }
+
+    /**
+     * Collects all resources from every manifest builder.
+     */
+    private fun collectAllResources(): List<HasMetadata> =
+        OtelManifestBuilder(templateService).buildAllResources() +
+            EbpfExporterManifestBuilder(templateService).buildAllResources() +
+            VictoriaManifestBuilder().buildAllResources() +
+            TempoManifestBuilder(templateService).buildAllResources() +
+            VectorManifestBuilder(templateService).buildAllResources() +
+            RegistryManifestBuilder().buildAllResources() +
+            S3ManagerManifestBuilder().buildAllResources() +
+            BeylaManifestBuilder(templateService).buildAllResources() +
+            PyroscopeManifestBuilder(templateService).buildAllResources() +
+            GrafanaManifestBuilder(templateService).buildAllResources()
+
+    /**
+     * Extracts containers from a K8s resource (Deployment, DaemonSet, etc.).
+     */
+    private fun extractContainers(resource: HasMetadata): List<io.fabric8.kubernetes.api.model.Container> =
+        when (resource) {
+            is Deployment ->
+                resource.spec
+                    ?.template
+                    ?.spec
+                    ?.containers
+                    .orEmpty()
+            is DaemonSet ->
+                resource.spec
+                    ?.template
+                    ?.spec
+                    ?.containers
+                    .orEmpty()
+            else -> emptyList()
+        }
 }

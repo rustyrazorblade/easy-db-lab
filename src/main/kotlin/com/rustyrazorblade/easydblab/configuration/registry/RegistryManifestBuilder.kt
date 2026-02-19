@@ -4,8 +4,6 @@ import com.rustyrazorblade.easydblab.Constants
 import io.fabric8.kubernetes.api.model.EmptyDirVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.HostPathVolumeSourceBuilder
-import io.fabric8.kubernetes.api.model.Quantity
-import io.fabric8.kubernetes.api.model.ResourceRequirementsBuilder
 import io.fabric8.kubernetes.api.model.VolumeMountBuilder
 import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
 
@@ -20,9 +18,6 @@ class RegistryManifestBuilder {
         private const val NAMESPACE = "default"
         private const val APP_LABEL = "registry"
         private const val IMAGE = "registry:2"
-        private const val MEMORY_LIMIT = "256Mi"
-        private const val MEMORY_REQUEST = "128Mi"
-        private const val CPU_REQUEST = "50m"
 
         private const val LIVENESS_INITIAL_DELAY = 10
         private const val LIVENESS_PERIOD = 15
@@ -88,13 +83,7 @@ class RegistryManifestBuilder {
             .withName("REGISTRY_HTTP_TLS_KEY")
             .withValue("/certs/registry.key")
             .endEnv()
-            .withResources(
-                ResourceRequirementsBuilder()
-                    .addToLimits("memory", Quantity(MEMORY_LIMIT))
-                    .addToRequests("memory", Quantity(MEMORY_REQUEST))
-                    .addToRequests("cpu", Quantity(CPU_REQUEST))
-                    .build(),
-            ).addToVolumeMounts(
+            .addToVolumeMounts(
                 VolumeMountBuilder()
                     .withName("data")
                     .withMountPath("/var/lib/registry")

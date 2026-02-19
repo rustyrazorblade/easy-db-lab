@@ -3,8 +3,6 @@ package com.rustyrazorblade.easydblab.configuration.victoria
 import com.rustyrazorblade.easydblab.Constants
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.HostPathVolumeSourceBuilder
-import io.fabric8.kubernetes.api.model.Quantity
-import io.fabric8.kubernetes.api.model.ResourceRequirementsBuilder
 import io.fabric8.kubernetes.api.model.ServiceBuilder
 import io.fabric8.kubernetes.api.model.VolumeMountBuilder
 import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
@@ -28,9 +26,6 @@ class VictoriaManifestBuilder {
         private const val VL_DATA_PATH = "/mnt/db1/victorialogs"
 
         private const val RETENTION_PERIOD = "7d"
-        private const val MEMORY_LIMIT = "512Mi"
-        private const val MEMORY_REQUEST = "256Mi"
-        private const val CPU_REQUEST = "100m"
 
         private const val LIVENESS_INITIAL_DELAY = 30
         private const val LIVENESS_PERIOD = 15
@@ -179,13 +174,7 @@ class VictoriaManifestBuilder {
         .withHostPort(port)
         .withProtocol("TCP")
         .endPort()
-        .withResources(
-            ResourceRequirementsBuilder()
-                .addToLimits("memory", Quantity(MEMORY_LIMIT))
-                .addToRequests("memory", Quantity(MEMORY_REQUEST))
-                .addToRequests("cpu", Quantity(CPU_REQUEST))
-                .build(),
-        ).addToVolumeMounts(
+        .addToVolumeMounts(
             VolumeMountBuilder()
                 .withName("data")
                 .withMountPath(containerDataPath)

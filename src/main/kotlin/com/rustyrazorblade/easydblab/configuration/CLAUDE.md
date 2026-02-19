@@ -2,6 +2,30 @@
 
 This package manages cluster state, user configuration, S3 paths, and template substitution.
 
+## CRITICAL: Testing Requirements for K8s Manifest Builders
+
+**All manifest builders under `configuration/` MUST be tested with K3s TestContainers.** This is not optional.
+
+### Required Tests (in `K8sServiceIntegrationTest`)
+
+Every manifest builder must have:
+
+1. **Apply test** — `buildAllResources()` applied via `serverSideApply()` to a real K3s cluster. Verify each resource (ConfigMap, Deployment, DaemonSet, Service) exists after apply.
+2. **Image pull test** — All container images across all builders are verified pullable via `crictl pull` inside the K3s container. This catches wrong image names, wrong registries, and removed tags.
+3. **No resource limits test** — All containers across all builders are verified to have NO `resources.limits` or `resources.requests` set. Resource limits cause OOMKill and CrashLoopBackOff on the control node.
+
+### Rules for Manifest Builders
+
+- **NEVER set resource limits or requests** — no `ResourceRequirementsBuilder`, no `MEMORY_LIMIT`, no `CPU_REQUEST` constants. The control node never needs these.
+- **NEVER mock `TemplateService`** — always use the real instance. It only reads classpath resources.
+- **NEVER mock manifest builder classes** — always use real instances in tests.
+- **Always use the correct container registry** — e.g., `ghcr.io/cloudflare/ebpf_exporter` not `cloudflare/ebpf_exporter`. The image pull test catches this.
+- When adding a new builder, you MUST add it to `K8sServiceIntegrationTest.collectAllResources()` and add a dedicated apply test.
+
+### Test Location
+
+`src/test/kotlin/.../services/K8sServiceIntegrationTest.kt` — single K3s container shared across all tests (`@TestInstance(PER_CLASS)`).
+
 ## Core State Management
 
 ### ClusterState (`ClusterState.kt`)
@@ -151,6 +175,21 @@ All Pyroscope K8s resources are built programmatically using Fabric8:
 
 - **`PyroscopeManifestBuilder`** — builds all Pyroscope K8s resources (server ConfigMap, Service, Deployment, eBPF ConfigMap, eBPF DaemonSet) as typed Fabric8 objects. The server runs on the control plane with a hostPath volume at `/mnt/db1/pyroscope`. Directory permissions are set via SSH in `K8Apply` before deploying (no init container).
 - **Config resources** — `config.yaml` (Pyroscope server config) and `config.alloy` (Grafana Alloy eBPF config) stored in `resources/.../configuration/pyroscope/`.
+
+### Profiling Architecture
+
+Two independent profiling mechanisms run simultaneously:
+
+1. **Grafana Alloy eBPF DaemonSet** (all nodes) — `pyroscope.ebpf` component collects `process_cpu` profiles only (eBPF limitation). Image: `grafana/alloy:v1.13.1`. Labels: `hostname`, `cluster` from env vars.
+2. **Pyroscope Java Agent** (in Cassandra JVM) — `/usr/local/pyroscope/pyroscope.jar` (v2.3.0, installed by packer). Collects `cpu`, `alloc`, `lock`, `wall` profiles via JFR/async-profiler. Activated only when `PYROSCOPE_SERVER_ADDRESS` env var is set AND agent JAR exists.
+
+### Activation Flow
+
+1. `SetupInstance` writes `/etc/default/cassandra` with `PYROSCOPE_SERVER_ADDRESS=http://<control_ip>:4040` and `CLUSTER_NAME`.
+2. `K8Apply` deploys Pyroscope server to K8s (control plane, port 4040, hostNetwork).
+3. When Cassandra starts, `cassandra.in.sh` checks for the env var and JAR, then adds `-javaagent` JVM opts.
+
+See `spec/PYROSCOPE.md` for full architecture details and debugging steps.
 
 ## Beyla Subpackage (`beyla/`)
 

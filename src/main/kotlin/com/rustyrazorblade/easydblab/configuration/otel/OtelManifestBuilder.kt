@@ -6,8 +6,6 @@ import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.HostPathVolumeSourceBuilder
-import io.fabric8.kubernetes.api.model.Quantity
-import io.fabric8.kubernetes.api.model.ResourceRequirementsBuilder
 import io.fabric8.kubernetes.api.model.SecurityContextBuilder
 import io.fabric8.kubernetes.api.model.VolumeMountBuilder
 import io.fabric8.kubernetes.api.model.apps.DaemonSetBuilder
@@ -33,10 +31,6 @@ class OtelManifestBuilder(
         private const val CONFIGMAP_NAME = "otel-collector-config"
         private const val CONFIG_DATA_KEY = "otel-collector-config.yaml"
         private const val IMAGE = "otel/opentelemetry-collector-contrib:latest"
-        private const val MEMORY_LIMIT = "256Mi"
-        private const val MEMORY_REQUEST = "128Mi"
-        private const val CPU_REQUEST = "50m"
-        private const val GOMEMLIMIT = "256MiB"
         private const val LIVENESS_INITIAL_DELAY = 10
         private const val LIVENESS_PERIOD = 30
         private const val READINESS_INITIAL_DELAY = 5
@@ -146,17 +140,7 @@ class OtelManifestBuilder(
             .endConfigMapKeyRef()
             .endValueFrom()
             .endEnv()
-            .addNewEnv()
-            .withName("GOMEMLIMIT")
-            .withValue(GOMEMLIMIT)
-            .endEnv()
-            .withResources(
-                ResourceRequirementsBuilder()
-                    .addToLimits("memory", Quantity(MEMORY_LIMIT))
-                    .addToRequests("memory", Quantity(MEMORY_REQUEST))
-                    .addToRequests("cpu", Quantity(CPU_REQUEST))
-                    .build(),
-            ).addToVolumeMounts(
+            .addToVolumeMounts(
                 VolumeMountBuilder()
                     .withName("config")
                     .withMountPath("/etc/otel-collector-config.yaml")

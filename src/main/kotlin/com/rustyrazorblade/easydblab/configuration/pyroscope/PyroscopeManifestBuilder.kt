@@ -7,8 +7,6 @@ import io.fabric8.kubernetes.api.model.Container
 import io.fabric8.kubernetes.api.model.ContainerBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.HostPathVolumeSourceBuilder
-import io.fabric8.kubernetes.api.model.Quantity
-import io.fabric8.kubernetes.api.model.ResourceRequirementsBuilder
 import io.fabric8.kubernetes.api.model.SecurityContextBuilder
 import io.fabric8.kubernetes.api.model.ServiceBuilder
 import io.fabric8.kubernetes.api.model.VolumeMountBuilder
@@ -38,9 +36,6 @@ class PyroscopeManifestBuilder(
         @Suppress("MagicNumber")
         const val PYROSCOPE_UID = 10001L
         private const val DATA_PATH = "/mnt/db1/pyroscope"
-        private const val SERVER_MEMORY_LIMIT = "512Mi"
-        private const val SERVER_MEMORY_REQUEST = "256Mi"
-        private const val SERVER_CPU_REQUEST = "100m"
         private const val SERVER_LIVENESS_INITIAL_DELAY = 30
         private const val SERVER_LIVENESS_PERIOD = 15
         private const val SERVER_READINESS_INITIAL_DELAY = 5
@@ -51,9 +46,6 @@ class PyroscopeManifestBuilder(
         private const val EBPF_CONFIGMAP_NAME = "pyroscope-ebpf-config"
         private const val ALLOY_IMAGE = "grafana/alloy:v1.13.1"
         private const val ALLOY_PORT = 12345
-        private const val EBPF_MEMORY_LIMIT = "256Mi"
-        private const val EBPF_MEMORY_REQUEST = "128Mi"
-        private const val EBPF_CPU_REQUEST = "50m"
     }
 
     /**
@@ -175,13 +167,7 @@ class PyroscopeManifestBuilder(
             .withHostPort(SERVER_PORT)
             .withProtocol("TCP")
             .endPort()
-            .withResources(
-                ResourceRequirementsBuilder()
-                    .addToLimits("memory", Quantity(SERVER_MEMORY_LIMIT))
-                    .addToRequests("memory", Quantity(SERVER_MEMORY_REQUEST))
-                    .addToRequests("cpu", Quantity(SERVER_CPU_REQUEST))
-                    .build(),
-            ).addNewVolumeMount()
+            .addNewVolumeMount()
             .withName("config")
             .withMountPath("/etc/pyroscope")
             .endVolumeMount()
@@ -288,12 +274,6 @@ class PyroscopeManifestBuilder(
                     .withPrivileged(true)
                     .withRunAsUser(0L)
                     .withRunAsGroup(0L)
-                    .build(),
-            ).withResources(
-                ResourceRequirementsBuilder()
-                    .addToLimits("memory", Quantity(EBPF_MEMORY_LIMIT))
-                    .addToRequests("memory", Quantity(EBPF_MEMORY_REQUEST))
-                    .addToRequests("cpu", Quantity(EBPF_CPU_REQUEST))
                     .build(),
             ).addToVolumeMounts(
                 VolumeMountBuilder()

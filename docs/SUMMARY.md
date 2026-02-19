@@ -12,16 +12,35 @@
 
 - [Cluster Setup](user-guide/cluster-setup.md)
 - [Tutorial](user-guide/tutorial.md)
-- [Cassandra](user-guide/installing-cassandra.md)
 - [Kubernetes](user-guide/kubernetes.md)
 - [Network Connectivity](user-guide/network-connectivity.md)
-- [Victoria Logs](user-guide/victoria-logs.md)
-- [Victoria Metrics](user-guide/victoria-metrics.md)
-- [Spark](user-guide/spark.md)
+- [Shell Aliases](user-guide/shell-aliases.md)
+
+## Cassandra
+
+- [Cassandra](user-guide/installing-cassandra.md)
+
+## ClickHouse
+
 - [ClickHouse](user-guide/clickhouse.md)
+
+## OpenSearch
+
+- [OpenSearch](user-guide/opensearch.md)
+
+## Spark
+
+- [Spark](user-guide/spark.md)
+
+## Observability
+
 - [Monitoring](user-guide/monitoring.md)
 - [Profiling](user-guide/profiling.md)
-- [Shell Aliases](user-guide/shell-aliases.md)
+- [Victoria Metrics](user-guide/victoria-metrics.md)
+- [Victoria Logs](user-guide/victoria-logs.md)
+
+# Integrations
+
 - [MCP Server](integrations/mcp-server.md)
 
 # Reference

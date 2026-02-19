@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.commands.grafana.GrafanaUpload
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.output.displayObservabilityAccess
 import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.TemplateService
@@ -39,6 +40,7 @@ class K8Apply : PicoBaseCommand() {
     private val k8sService: K8sService by inject()
     private val user: User by inject()
     private val templateService: TemplateService by inject()
+    private val beylaManifestBuilder: BeylaManifestBuilder by inject()
     private val grafanaUpload: GrafanaUpload by inject()
 
     @Suppress("MagicNumber")
@@ -79,9 +81,9 @@ class K8Apply : PicoBaseCommand() {
         createClusterConfigMap(controlNode)
 
         // Extract core manifests from classpath with template substitution
-        // (Grafana and Pyroscope YAML files are no longer in core/ - they are built in Kotlin)
+        // (Grafana, Pyroscope, and Beyla YAML files are no longer in core/ - they are built in Kotlin)
         templateService.extractAndSubstituteResources(
-            filter = { it.startsWith("core/") },
+            filter = { it.startsWith("core/") && !it.contains("beyla") },
         )
 
         // Determine manifest path - use provided path or default to core manifests
@@ -95,7 +97,8 @@ class K8Apply : PicoBaseCommand() {
                 error("Failed to apply K8s manifests: ${exception.message}")
             }
 
-        // Apply Pyroscope and Grafana resources (built in Kotlin via Fabric8)
+        // Apply Beyla, Pyroscope, and Grafana resources (built in Kotlin via Fabric8)
+        applyBeylaResources(controlNode)
         grafanaUpload.execute()
 
         // Wait for pods to be ready
@@ -112,6 +115,17 @@ class K8Apply : PicoBaseCommand() {
         outputHandler.handleMessage("")
         outputHandler.handleMessage("Observability stack deployed successfully!")
         outputHandler.displayObservabilityAccess(controlNode.privateIp)
+    }
+
+    private fun applyBeylaResources(controlNode: ClusterHost) {
+        outputHandler.handleMessage("Applying Beyla resources...")
+        val resources = beylaManifestBuilder.buildAllResources()
+        for (resource in resources) {
+            k8sService.applyResource(controlNode, resource).getOrElse { exception ->
+                error("Failed to apply Beyla ${resource.kind}/${resource.metadata?.name}: ${exception.message}")
+            }
+        }
+        outputHandler.handleMessage("Beyla resources applied successfully")
     }
 
     /**

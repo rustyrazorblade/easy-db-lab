@@ -17,7 +17,7 @@ fi
 
 echo "ARCH is set to: $ARCH"
 
-PYROSCOPE_VERSION="0.14.0"
+PYROSCOPE_VERSION="2.3.0"
 PYROSCOPE_JAR="pyroscope.jar"
 
 sudo mkdir -p /usr/local/pyroscope

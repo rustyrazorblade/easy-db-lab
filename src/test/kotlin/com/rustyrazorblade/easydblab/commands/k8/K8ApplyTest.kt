@@ -6,8 +6,10 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.TemplateService
+import io.fabric8.kubernetes.api.model.HasMetadata
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -31,7 +33,6 @@ import java.nio.file.Path
 class K8ApplyTest : BaseKoinTest() {
     private lateinit var mockK8sService: K8sService
     private lateinit var mockClusterStateManager: ClusterStateManager
-    private lateinit var mockTemplateService: TemplateService
     private lateinit var mockGrafanaUpload: GrafanaUpload
 
     @TempDir
@@ -63,12 +64,11 @@ class K8ApplyTest : BaseKoinTest() {
                     }
                 }
 
-                // Mock TemplateService
-                single {
-                    mock<TemplateService>().also {
-                        mockTemplateService = it
-                    }
-                }
+                // Real TemplateService — never mock configuration classes
+                single { TemplateService(get(), get()) }
+
+                // Real BeylaManifestBuilder with real TemplateService
+                single { BeylaManifestBuilder(get()) }
 
                 // Mock GrafanaUpload (handles Grafana + Pyroscope resources)
                 single {
@@ -84,7 +84,6 @@ class K8ApplyTest : BaseKoinTest() {
         // Initialize mocks by getting them from Koin
         mockK8sService = getKoin().get()
         mockClusterStateManager = getKoin().get()
-        mockTemplateService = getKoin().get()
         mockGrafanaUpload = getKoin().get()
     }
 
@@ -131,6 +130,7 @@ class K8ApplyTest : BaseKoinTest() {
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
         whenever(mockK8sService.applyManifests(any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.applyResource(any(), any<HasMetadata>())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.waitForPodsReady(any(), any())).thenReturn(Result.success(Unit))
 
         val command = K8Apply()
@@ -139,7 +139,6 @@ class K8ApplyTest : BaseKoinTest() {
         command.execute()
 
         // Then
-        verify(mockTemplateService).extractAndSubstituteResources(any(), any())
         verify(mockK8sService).applyManifests(any(), any<Path>())
         verify(mockGrafanaUpload).execute()
         verify(mockK8sService).waitForPodsReady(any(), any())
@@ -160,6 +159,7 @@ class K8ApplyTest : BaseKoinTest() {
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
         whenever(mockK8sService.applyManifests(any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.applyResource(any(), any<HasMetadata>())).thenReturn(Result.success(Unit))
 
         val command = K8Apply()
         command.skipWait = true

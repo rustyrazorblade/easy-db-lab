@@ -157,5 +157,8 @@ src/test/kotlin/com/rustyrazorblade/easydblab/
 - **Always** extend `BaseKoinTest` for tests needing DI
 - **Always** use `@TempDir` for temporary directories
 - **Never mock `TemplateService`** — always use the real instance (`single { TemplateService(get(), get()) }`). It only reads classpath resources and does string substitution with no external side effects.
+- **Never mock** any of the classes under `src/main/kotlin/com/rustyrazorblade/easydblab/configuration`
 - Use `mockito-kotlin` for mocking (`mock<T>()`, `whenever()`, `verify()`)
 - See [docs/development/testing.md](../../../../docs/development/testing.md) for the full testing guide
+- Aim to mock as minimally as possible.  I want to hit real code in tests as much as possible.
+- Prefer using LocalStack over mocking AWS services.  The more code that hits all the code paths the better.

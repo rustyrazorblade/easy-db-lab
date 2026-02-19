@@ -32,7 +32,7 @@ class PyroscopeManifestBuilder(
         // Pyroscope server constants
         private const val SERVER_APP_LABEL = "pyroscope"
         private const val SERVER_CONFIGMAP_NAME = "pyroscope-config"
-        private const val SERVER_IMAGE = "grafana/pyroscope:1.13.3"
+        private const val SERVER_IMAGE = "grafana/pyroscope:1.18.0"
         const val SERVER_PORT = 4040
 
         @Suppress("MagicNumber")
@@ -49,7 +49,7 @@ class PyroscopeManifestBuilder(
         // eBPF agent constants
         private const val EBPF_APP_LABEL = "pyroscope-ebpf"
         private const val EBPF_CONFIGMAP_NAME = "pyroscope-ebpf-config"
-        private const val ALLOY_IMAGE = "grafana/alloy:v1.8.1"
+        private const val ALLOY_IMAGE = "grafana/alloy:v1.13.1"
         private const val ALLOY_PORT = 12345
         private const val EBPF_MEMORY_LIMIT = "256Mi"
         private const val EBPF_MEMORY_REQUEST = "128Mi"

@@ -239,6 +239,7 @@ For more details, see [packer/README.md](packer/README.md) and [packer/TESTING.m
 - Write new K8 configuration using fabric8.  If there are configuration files, store them as a resource and load them with the TemplateService.
 - If you need to modify a K8 configuration, ask if you should migrate it to the new fabric8 based configs in `src/main/kotlin/com/rustyrazorblade/easydblab/configuration/`
 
+-
 ## Specifications
 
 - Keep track of user experience product decisions and requirements specifications in `specs` under the project root.

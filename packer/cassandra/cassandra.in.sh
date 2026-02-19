@@ -100,7 +100,7 @@ if [ -f "$PYROSCOPE_JAR" ] && [ -n "$PYROSCOPE_SERVER_ADDRESS" ]; then
     export JVM_OPTS="$JVM_OPTS -Dpyroscope.server.address=${PYROSCOPE_SERVER_ADDRESS}"
     export JVM_OPTS="$JVM_OPTS -Dpyroscope.format=jfr"
     export JVM_OPTS="$JVM_OPTS -Dpyroscope.profiler.event=cpu,alloc,lock,wall"
-    export JVM_OPTS="$JVM_OPTS -Dpyroscope.labels=hostname:$(hostname),cluster:${CLUSTER_NAME:-unknown}"
+    export JVM_OPTS="$JVM_OPTS -Dpyroscope.labels=hostname=$(hostname),cluster=${CLUSTER_NAME:-unknown}"
 elif [ ! -f "$PYROSCOPE_JAR" ]; then
     echo "INFO: Pyroscope Java agent not found at $PYROSCOPE_JAR, skipping profiling" >&2
 fi

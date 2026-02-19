@@ -25,7 +25,7 @@ spec:
           effect: NoSchedule
       containers:
         - name: tempo
-          image: grafana/tempo:2.6.1
+          image: grafana/tempo:2.10.0
           args:
             - -config.file=/etc/tempo/tempo.yaml
             - -config.expand-env=true

@@ -6,8 +6,6 @@ import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.HostPathVolumeSourceBuilder
-import io.fabric8.kubernetes.api.model.Quantity
-import io.fabric8.kubernetes.api.model.ResourceRequirementsBuilder
 import io.fabric8.kubernetes.api.model.SecurityContextBuilder
 import io.fabric8.kubernetes.api.model.VolumeMountBuilder
 import io.fabric8.kubernetes.api.model.apps.DaemonSetBuilder
@@ -29,9 +27,6 @@ class BeylaManifestBuilder(
         private const val APP_LABEL = "beyla"
         private const val CONFIGMAP_NAME = "beyla-config"
         private const val IMAGE = "grafana/beyla:2.8.1"
-        private const val MEMORY_LIMIT = "256Mi"
-        private const val MEMORY_REQUEST = "128Mi"
-        private const val CPU_REQUEST = "50m"
     }
 
     /**
@@ -128,13 +123,7 @@ class BeylaManifestBuilder(
             .withProtocol("TCP")
             .withName("metrics")
             .endPort()
-            .withResources(
-                ResourceRequirementsBuilder()
-                    .addToLimits("memory", Quantity(MEMORY_LIMIT))
-                    .addToRequests("memory", Quantity(MEMORY_REQUEST))
-                    .addToRequests("cpu", Quantity(CPU_REQUEST))
-                    .build(),
-            ).addToVolumeMounts(
+            .addToVolumeMounts(
                 VolumeMountBuilder()
                     .withName("config")
                     .withMountPath("/etc/beyla")

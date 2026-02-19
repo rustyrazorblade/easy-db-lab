@@ -10,8 +10,6 @@ import io.fabric8.kubernetes.api.model.EnvVar
 import io.fabric8.kubernetes.api.model.EnvVarBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.PodSecurityContextBuilder
-import io.fabric8.kubernetes.api.model.Quantity
-import io.fabric8.kubernetes.api.model.ResourceRequirementsBuilder
 import io.fabric8.kubernetes.api.model.Volume
 import io.fabric8.kubernetes.api.model.VolumeBuilder
 import io.fabric8.kubernetes.api.model.VolumeMount
@@ -48,9 +46,6 @@ class GrafanaManifestBuilder(
         @Suppress("MagicNumber")
         private const val RUN_AS_USER = 472L
 
-        private const val MEMORY_LIMIT = "256Mi"
-        private const val MEMORY_REQUEST = "128Mi"
-        private const val CPU_REQUEST = "50m"
         private const val LIVENESS_INITIAL_DELAY = 30
         private const val LIVENESS_PERIOD = 15
         private const val READINESS_INITIAL_DELAY = 5
@@ -192,13 +187,7 @@ class GrafanaManifestBuilder(
             .withProtocol("TCP")
             .endPort()
             .withEnv(buildEnvVars(clusterName))
-            .withResources(
-                ResourceRequirementsBuilder()
-                    .addToLimits("memory", Quantity(MEMORY_LIMIT))
-                    .addToRequests("memory", Quantity(MEMORY_REQUEST))
-                    .addToRequests("cpu", Quantity(CPU_REQUEST))
-                    .build(),
-            ).withVolumeMounts(buildVolumeMounts())
+            .withVolumeMounts(buildVolumeMounts())
             .withNewLivenessProbe()
             .withNewHttpGet()
             .withPath("/api/health")

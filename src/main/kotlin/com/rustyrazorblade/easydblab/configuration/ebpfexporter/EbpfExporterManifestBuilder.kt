@@ -6,8 +6,6 @@ import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.HostPathVolumeSourceBuilder
-import io.fabric8.kubernetes.api.model.Quantity
-import io.fabric8.kubernetes.api.model.ResourceRequirementsBuilder
 import io.fabric8.kubernetes.api.model.SecurityContextBuilder
 import io.fabric8.kubernetes.api.model.VolumeMountBuilder
 import io.fabric8.kubernetes.api.model.apps.DaemonSetBuilder
@@ -28,10 +26,7 @@ class EbpfExporterManifestBuilder(
         private const val NAMESPACE = "default"
         private const val APP_LABEL = "ebpf-exporter"
         private const val CONFIGMAP_NAME = "ebpf-exporter-config"
-        private const val IMAGE = "cloudflare/ebpf_exporter:v2.4.2"
-        private const val MEMORY_LIMIT = "128Mi"
-        private const val MEMORY_REQUEST = "64Mi"
-        private const val CPU_REQUEST = "25m"
+        private const val IMAGE = "ghcr.io/cloudflare/ebpf_exporter:v2.4.2"
     }
 
     /**
@@ -111,13 +106,7 @@ class EbpfExporterManifestBuilder(
             .withProtocol("TCP")
             .withName("metrics")
             .endPort()
-            .withResources(
-                ResourceRequirementsBuilder()
-                    .addToLimits("memory", Quantity(MEMORY_LIMIT))
-                    .addToRequests("memory", Quantity(MEMORY_REQUEST))
-                    .addToRequests("cpu", Quantity(CPU_REQUEST))
-                    .build(),
-            ).addToVolumeMounts(
+            .addToVolumeMounts(
                 VolumeMountBuilder()
                     .withName("config")
                     .withMountPath("/etc/ebpf_exporter")

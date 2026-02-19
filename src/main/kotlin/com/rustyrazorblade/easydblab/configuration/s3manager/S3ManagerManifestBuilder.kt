@@ -2,8 +2,6 @@ package com.rustyrazorblade.easydblab.configuration.s3manager
 
 import com.rustyrazorblade.easydblab.Constants
 import io.fabric8.kubernetes.api.model.HasMetadata
-import io.fabric8.kubernetes.api.model.Quantity
-import io.fabric8.kubernetes.api.model.ResourceRequirementsBuilder
 import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
 
 /**
@@ -17,9 +15,6 @@ class S3ManagerManifestBuilder {
         private const val NAMESPACE = "default"
         private const val APP_LABEL = "s3manager"
         private const val IMAGE = "cloudlena/s3manager:latest"
-        private const val MEMORY_LIMIT = "256Mi"
-        private const val MEMORY_REQUEST = "64Mi"
-        private const val CPU_REQUEST = "50m"
 
         private const val LIVENESS_INITIAL_DELAY = 10
         private const val LIVENESS_PERIOD = 15
@@ -84,13 +79,7 @@ class S3ManagerManifestBuilder {
             .withName("PORT")
             .withValue(Constants.K8s.S3MANAGER_PORT.toString())
             .endEnv()
-            .withResources(
-                ResourceRequirementsBuilder()
-                    .addToLimits("memory", Quantity(MEMORY_LIMIT))
-                    .addToRequests("memory", Quantity(MEMORY_REQUEST))
-                    .addToRequests("cpu", Quantity(CPU_REQUEST))
-                    .build(),
-            ).withNewLivenessProbe()
+            .withNewLivenessProbe()
             .withNewHttpGet()
             .withPath("/")
             .withNewPort(Constants.K8s.S3MANAGER_PORT)

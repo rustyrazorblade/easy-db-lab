@@ -163,3 +163,4 @@ src/test/kotlin/com/rustyrazorblade/easydblab/
 - Aim to mock as minimally as possible.  I want to hit real code in tests as much as possible.
 - Prefer using LocalStack over mocking AWS services.  The more code that hits all the code paths the better.
 - Test the K8 configurations with TestContainers, not mocking.
+- **All K8s manifest builders MUST be tested in `K8sServiceIntegrationTest`** with K3s TestContainers. See `configuration/CLAUDE.md` for the full testing requirements (apply test, image pull test, no-resource-limits test).

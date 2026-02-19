@@ -80,10 +80,10 @@ class StressStart : PicoBaseCommand() {
         // Generate job name
         val fullJobName =
             if (jobName != null) {
-                "${Constants.Stress.JOB_PREFIX}-$jobName"
+                jobName!!
             } else {
                 val workloadName = extractWorkloadName(stressArgs)
-                "${Constants.Stress.JOB_PREFIX}-${workloadName}_$counter"
+                "$workloadName-$counter"
             }
         log.info { "Job name: $fullJobName" }
 

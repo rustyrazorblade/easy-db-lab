@@ -274,7 +274,7 @@ class DefaultStressJobService(
     ): Result<String> =
         runCatching {
             val timestamp = System.currentTimeMillis() / Constants.Time.MILLIS_PER_SECOND
-            val jobName = "${Constants.Stress.JOB_PREFIX}-cmd-$timestamp"
+            val jobName = "cmd-$timestamp"
 
             log.info { "Running stress command: ${args.joinToString(" ")}" }
 

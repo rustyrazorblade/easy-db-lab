@@ -225,7 +225,6 @@ object Constants {
     object Stress {
         const val NAMESPACE = "default"
         const val IMAGE = "ghcr.io/apache/cassandra-easy-stress:latest"
-        const val JOB_PREFIX = "stress"
         const val LABEL_KEY = "app.kubernetes.io/name"
         const val LABEL_VALUE = "cassandra-easy-stress"
         const val DEFAULT_CASSANDRA_PORT = 9042

@@ -140,6 +140,7 @@ class GrafanaManifestBuilder(
             .endSelector()
             .withNewStrategy()
             .withType("Recreate")
+            .withRollingUpdate(null)
             .endStrategy()
             .withNewTemplate()
             .withNewMetadata()

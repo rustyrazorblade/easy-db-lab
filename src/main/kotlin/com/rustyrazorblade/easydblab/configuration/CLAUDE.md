@@ -203,8 +203,7 @@ See `spec/PYROSCOPE.md` for full architecture details and debugging steps.
 
 ## ebpf_exporter Subpackage (`ebpfexporter/`)
 
-- **`EbpfExporterManifestBuilder`** — builds ebpf_exporter ConfigMap + DaemonSet. Runs on all nodes with hostNetwork/hostPID/privileged. Provides TCP retransmit, block I/O, and VFS latency eBPF metrics.
-- **Config resource** — `config.yaml` stored in `resources/.../configuration/ebpfexporter/`.
+- **`EbpfExporterManifestBuilder`** — builds ebpf_exporter DaemonSet (no ConfigMap). Runs on all nodes with hostNetwork/hostPID/privileged. Uses built-in example programs (`biolatency`, `xfsdist`, `cachestat`) from the container image. No TemplateService needed. Available examples: https://github.com/cloudflare/ebpf_exporter/tree/master/examples
 
 ## Victoria Subpackage (`victoria/`)
 

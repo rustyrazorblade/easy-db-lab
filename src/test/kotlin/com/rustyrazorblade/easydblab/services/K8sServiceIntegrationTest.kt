@@ -14,7 +14,9 @@ import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBu
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.vector.VectorManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.victoria.VictoriaManifestBuilder
+import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
+import io.fabric8.kubernetes.api.model.Pod
 import io.fabric8.kubernetes.api.model.apps.DaemonSet
 import io.fabric8.kubernetes.api.model.apps.Deployment
 import io.fabric8.kubernetes.client.Config
@@ -38,7 +40,7 @@ import org.testcontainers.utility.DockerImageName
  * Integration tests for K8s manifest application using TestContainers with K3s.
  *
  * These tests verify that all Fabric8-built resources can be applied successfully
- * to a real K3s cluster, catching errors before production deployment.
+ * to a real K3s cluster and that pods actually get scheduled and start running.
  *
  * Note: All resources are deployed to the 'default' namespace.
  */
@@ -48,6 +50,43 @@ import org.testcontainers.utility.DockerImageName
 class K8sServiceIntegrationTest {
     companion object {
         private const val DEFAULT_NAMESPACE = "default"
+        private const val POD_WAIT_TIMEOUT_SECONDS = 120L
+
+        /**
+         * eBPF-based DaemonSets that require kernel eBPF support unavailable in
+         * Docker-in-Docker K3s. These pods will be scheduled and pull their images,
+         * but will CrashLoopBackOff when trying to load eBPF programs.
+         * We verify they are NOT stuck in Pending or ImagePullBackOff.
+         */
+        private val EBPF_DAEMONSETS = setOf("beyla", "ebpf-exporter", "pyroscope-ebpf")
+
+        /**
+         * Pods that depend on external services (AWS S3, SQS, IAM) that don't exist
+         * in the test environment. They will start but crash on connection errors.
+         * We verify they are NOT stuck in Pending or ImagePullBackOff.
+         */
+        private val EXTERNAL_DEPENDENCY_WORKLOADS = setOf("tempo", "vector-s3", "s3manager", "registry")
+
+        /**
+         * Deployments that should reach Running status with ready replicas in K3s.
+         * These have no external dependencies beyond what we set up in the test.
+         */
+        private val EXPECTED_RUNNING_DEPLOYMENTS =
+            setOf(
+                "victoriametrics",
+                "victorialogs",
+                "grafana",
+                "pyroscope",
+            )
+
+        /**
+         * DaemonSets that should have at least one pod scheduled and running in K3s.
+         */
+        private val EXPECTED_RUNNING_DAEMONSETS =
+            setOf(
+                "otel-collector",
+                "vector",
+            )
 
         @Container
         @JvmStatic
@@ -66,9 +105,6 @@ class K8sServiceIntegrationTest {
                 .withConfig(config)
                 .build()
 
-        // Create a real TemplateService with a mock ClusterStateManager.
-        // Config files use runtime env expansion (${env:HOSTNAME}), not __KEY__ templates,
-        // so the context variables don't matter for correctness.
         val mockClusterStateManager = mock<ClusterStateManager>()
         whenever(mockClusterStateManager.load()).thenReturn(
             ClusterState(name = "test", versions = mutableMapOf()),
@@ -85,259 +121,196 @@ class K8sServiceIntegrationTest {
         templateService = TemplateService(mockClusterStateManager, testUser)
     }
 
+    // -----------------------------------------------------------------------
+    // Phase 1: Set up prerequisites that pods need to start
+    // -----------------------------------------------------------------------
+
     @Test
     @Order(1)
-    fun `default namespace should exist`() {
-        val namespace = client.namespaces().withName(DEFAULT_NAMESPACE).get()
-        assertThat(namespace)
-            .withFailMessage("Namespace '$DEFAULT_NAMESPACE' does not exist")
-            .isNotNull
+    fun `create cluster-config ConfigMap needed by multiple pods`() {
+        val clusterConfig =
+            ConfigMapBuilder()
+                .withNewMetadata()
+                .withName("cluster-config")
+                .withNamespace(DEFAULT_NAMESPACE)
+                .endMetadata()
+                .addToData("control_node_ip", "10.0.0.1")
+                .addToData("aws_region", "us-west-2")
+                .addToData("sqs_queue_url", "")
+                .addToData("s3_bucket", "test-bucket")
+                .addToData("cluster_name", "test")
+                .build()
+        client.resource(clusterConfig).forceConflicts().serverSideApply()
+
+        val applied =
+            client
+                .configMaps()
+                .inNamespace(DEFAULT_NAMESPACE)
+                .withName("cluster-config")
+                .get()
+        assertThat(applied).isNotNull
+        assertThat(applied.data).containsKeys("control_node_ip", "aws_region", "cluster_name")
     }
 
     @Test
     @Order(2)
-    fun `should apply OTel Collector resources`() {
-        val resources = OtelManifestBuilder(templateService).buildAllResources()
-        applyAndVerify(resources)
-
-        val configMap =
-            client
-                .configMaps()
-                .inNamespace(DEFAULT_NAMESPACE)
-                .withName("otel-collector-config")
-                .get()
-        assertThat(configMap).isNotNull
-        assertThat(configMap.data).containsKey("otel-collector-config.yaml")
-
-        val daemonSet =
-            client
-                .apps()
-                .daemonSets()
-                .inNamespace(DEFAULT_NAMESPACE)
-                .withName("otel-collector")
-                .get()
-        assertThat(daemonSet).isNotNull
+    fun `create grafana-datasources ConfigMap needed by Grafana`() {
+        val datasources =
+            ConfigMapBuilder()
+                .withNewMetadata()
+                .withName("grafana-datasources")
+                .withNamespace(DEFAULT_NAMESPACE)
+                .addToLabels("app.kubernetes.io/name", "grafana")
+                .endMetadata()
+                .addToData(
+                    "datasources.yaml",
+                    """
+                    apiVersion: 1
+                    datasources:
+                      - name: VictoriaMetrics
+                        type: prometheus
+                        url: http://localhost:8428
+                        access: proxy
+                        isDefault: true
+                    """.trimIndent(),
+                ).build()
+        client.resource(datasources).forceConflicts().serverSideApply()
     }
 
     @Test
     @Order(3)
-    fun `should apply ebpf_exporter resources`() {
-        val resources = EbpfExporterManifestBuilder(templateService).buildAllResources()
+    fun `create host directories needed by pods`() {
+        // Registry needs /opt/registry/certs with TLS cert and key (hostPath type: Directory)
+        k3s.execInContainer("mkdir", "-p", "/opt/registry/certs")
+        k3s.execInContainer(
+            "sh",
+            "-c",
+            "openssl req -x509 -newkey rsa:2048 -keyout /opt/registry/certs/registry.key " +
+                "-out /opt/registry/certs/registry.crt -days 1 -nodes -subj '/CN=registry'",
+        )
+
+        // Pyroscope data dir needs correct ownership (UID 10001)
+        k3s.execInContainer("mkdir", "-p", "/mnt/db1/pyroscope")
+        k3s.execInContainer("chown", "-R", "10001:10001", "/mnt/db1/pyroscope")
+
+        // Vector state directories
+        k3s.execInContainer("mkdir", "-p", "/var/lib/vector")
+        k3s.execInContainer("mkdir", "-p", "/var/lib/vector-s3")
+
+        // Database log directory for OTel
+        k3s.execInContainer("mkdir", "-p", "/mnt/db1")
+    }
+
+    // -----------------------------------------------------------------------
+    // Phase 2: Apply all resources (same as before, but prerequisites are met)
+    // -----------------------------------------------------------------------
+
+    @Test
+    @Order(10)
+    fun `should apply OTel Collector resources`() {
+        val resources = OtelManifestBuilder(templateService).buildAllResources()
         applyAndVerify(resources)
 
-        val configMap =
-            client
-                .configMaps()
-                .inNamespace(DEFAULT_NAMESPACE)
-                .withName("ebpf-exporter-config")
-                .get()
-        assertThat(configMap).isNotNull
-        assertThat(configMap.data).containsKey("config.yaml")
-
-        val daemonSet =
-            client
-                .apps()
-                .daemonSets()
-                .inNamespace(DEFAULT_NAMESPACE)
-                .withName("ebpf-exporter")
-                .get()
-        assertThat(daemonSet).isNotNull
+        assertConfigMapExists("otel-collector-config", "otel-collector-config.yaml")
+        assertDaemonSetExists("otel-collector")
     }
 
     @Test
-    @Order(4)
+    @Order(11)
+    fun `should apply ebpf_exporter resources`() {
+        val resources = EbpfExporterManifestBuilder().buildAllResources()
+        applyAndVerify(resources)
+
+        assertDaemonSetExists("ebpf-exporter")
+    }
+
+    @Test
+    @Order(12)
     fun `should apply VictoriaMetrics and VictoriaLogs resources`() {
         val resources = VictoriaManifestBuilder().buildAllResources()
         applyAndVerify(resources)
 
-        val vmService =
-            client
-                .services()
-                .inNamespace(DEFAULT_NAMESPACE)
-                .withName("victoriametrics")
-                .get()
-        assertThat(vmService).isNotNull
-
-        val vmDeployment =
-            client
-                .apps()
-                .deployments()
-                .inNamespace(DEFAULT_NAMESPACE)
-                .withName("victoriametrics")
-                .get()
-        assertThat(vmDeployment).isNotNull
-
-        val vlService =
-            client
-                .services()
-                .inNamespace(DEFAULT_NAMESPACE)
-                .withName("victorialogs")
-                .get()
-        assertThat(vlService).isNotNull
-
-        val vlDeployment =
-            client
-                .apps()
-                .deployments()
-                .inNamespace(DEFAULT_NAMESPACE)
-                .withName("victorialogs")
-                .get()
-        assertThat(vlDeployment).isNotNull
+        assertServiceExists("victoriametrics")
+        assertDeploymentExists("victoriametrics")
+        assertServiceExists("victorialogs")
+        assertDeploymentExists("victorialogs")
     }
 
     @Test
-    @Order(5)
+    @Order(13)
     fun `should apply Tempo resources`() {
         val resources = TempoManifestBuilder(templateService).buildAllResources()
         applyAndVerify(resources)
 
-        val configMap =
-            client
-                .configMaps()
-                .inNamespace(DEFAULT_NAMESPACE)
-                .withName("tempo-config")
-                .get()
-        assertThat(configMap).isNotNull
-        assertThat(configMap.data).containsKey("tempo.yaml")
-
-        val service =
-            client
-                .services()
-                .inNamespace(DEFAULT_NAMESPACE)
-                .withName("tempo")
-                .get()
-        assertThat(service).isNotNull
-
-        val deployment =
-            client
-                .apps()
-                .deployments()
-                .inNamespace(DEFAULT_NAMESPACE)
-                .withName("tempo")
-                .get()
-        assertThat(deployment).isNotNull
+        assertConfigMapExists("tempo-config", "tempo.yaml")
+        assertServiceExists("tempo")
+        assertDeploymentExists("tempo")
     }
 
     @Test
-    @Order(6)
+    @Order(14)
     fun `should apply Vector resources`() {
         val resources = VectorManifestBuilder(templateService).buildAllResources()
         applyAndVerify(resources)
 
-        val nodeConfigMap =
-            client
-                .configMaps()
-                .inNamespace(DEFAULT_NAMESPACE)
-                .withName("vector-node-config")
-                .get()
-        assertThat(nodeConfigMap).isNotNull
-        assertThat(nodeConfigMap.data).containsKey("vector.yaml")
-
-        val nodeDaemonSet =
-            client
-                .apps()
-                .daemonSets()
-                .inNamespace(DEFAULT_NAMESPACE)
-                .withName("vector")
-                .get()
-        assertThat(nodeDaemonSet).isNotNull
-
-        val s3ConfigMap =
-            client
-                .configMaps()
-                .inNamespace(DEFAULT_NAMESPACE)
-                .withName("vector-s3-config")
-                .get()
-        assertThat(s3ConfigMap).isNotNull
-        assertThat(s3ConfigMap.data).containsKey("vector.yaml")
-
-        val s3Deployment =
-            client
-                .apps()
-                .deployments()
-                .inNamespace(DEFAULT_NAMESPACE)
-                .withName("vector-s3")
-                .get()
-        assertThat(s3Deployment).isNotNull
+        assertConfigMapExists("vector-node-config", "vector.yaml")
+        assertDaemonSetExists("vector")
+        assertConfigMapExists("vector-s3-config", "vector.yaml")
+        assertDeploymentExists("vector-s3")
     }
 
     @Test
-    @Order(7)
+    @Order(15)
     fun `should apply Registry resources`() {
         val resources = RegistryManifestBuilder().buildAllResources()
         applyAndVerify(resources)
 
-        val deployment =
-            client
-                .apps()
-                .deployments()
-                .inNamespace(DEFAULT_NAMESPACE)
-                .withName("registry")
-                .get()
-        assertThat(deployment).isNotNull
+        assertDeploymentExists("registry")
     }
 
     @Test
-    @Order(8)
+    @Order(16)
     fun `should apply S3 Manager resources`() {
         val resources = S3ManagerManifestBuilder().buildAllResources()
         applyAndVerify(resources)
 
-        val deployment =
-            client
-                .apps()
-                .deployments()
-                .inNamespace(DEFAULT_NAMESPACE)
-                .withName("s3manager")
-                .get()
-        assertThat(deployment).isNotNull
+        assertDeploymentExists("s3manager")
     }
 
     @Test
-    @Order(9)
+    @Order(17)
     fun `should apply Beyla resources`() {
         val resources = BeylaManifestBuilder(templateService).buildAllResources()
         applyAndVerify(resources)
 
-        val configMap =
-            client
-                .configMaps()
-                .inNamespace(DEFAULT_NAMESPACE)
-                .withName("beyla-config")
-                .get()
-        assertThat(configMap).isNotNull
-        assertThat(configMap.data).containsKey("beyla-config.yaml")
-
-        val daemonSet =
-            client
-                .apps()
-                .daemonSets()
-                .inNamespace(DEFAULT_NAMESPACE)
-                .withName("beyla")
-                .get()
-        assertThat(daemonSet).isNotNull
+        assertConfigMapExists("beyla-config", "beyla-config.yaml")
+        assertDaemonSetExists("beyla")
     }
 
     @Test
-    @Order(10)
-    fun `should apply Grafana resources built with GrafanaManifestBuilder`() {
+    @Order(18)
+    fun `should apply Pyroscope resources`() {
+        val resources = PyroscopeManifestBuilder(templateService).buildAllResources()
+        applyAndVerify(resources)
+
+        assertConfigMapExists("pyroscope-config", "config.yaml")
+        assertServiceExists("pyroscope")
+        assertDeploymentExists("pyroscope")
+        assertConfigMapExists("pyroscope-ebpf-config", "config.alloy")
+        assertDaemonSetExists("pyroscope-ebpf")
+    }
+
+    @Test
+    @Order(19)
+    fun `should apply Grafana resources`() {
         val builder = GrafanaManifestBuilder(templateService)
 
-        val provisioningCm = builder.buildDashboardProvisioningConfigMap()
-        applyAndVerify(listOf(provisioningCm))
+        // Apply provisioning ConfigMap
+        applyAndVerify(listOf(builder.buildDashboardProvisioningConfigMap()))
+        assertConfigMapExists("grafana-dashboards-config", "dashboards.yaml")
 
-        val appliedCm =
-            client
-                .configMaps()
-                .inNamespace(DEFAULT_NAMESPACE)
-                .withName("grafana-dashboards-config")
-                .get()
-        assertThat(appliedCm).isNotNull
-        assertThat(appliedCm.data).containsKey("dashboards.yaml")
-
-        val dashboardCm = builder.buildDashboardConfigMap(GrafanaDashboard.SYSTEM)
-        applyAndVerify(listOf(dashboardCm))
-
+        // Apply a dashboard ConfigMap
+        applyAndVerify(listOf(builder.buildDashboardConfigMap(GrafanaDashboard.SYSTEM)))
         val appliedDashboard =
             client
                 .configMaps()
@@ -346,78 +319,77 @@ class K8sServiceIntegrationTest {
                 .get()
         assertThat(appliedDashboard).isNotNull
         assertThat(appliedDashboard.data).containsKey(GrafanaDashboard.SYSTEM.jsonFileName)
+
+        // Apply all resources including Deployment
+        applyAndVerify(builder.buildAllResources())
+        assertDeploymentExists("grafana")
+    }
+
+    // -----------------------------------------------------------------------
+    // Phase 3: Verify pods actually start running
+    // -----------------------------------------------------------------------
+
+    @Test
+    @Order(30)
+    fun `deployments that need no external services should reach Running`() {
+        for (name in EXPECTED_RUNNING_DEPLOYMENTS) {
+            waitForDeploymentReady(name)
+        }
     }
 
     @Test
-    @Order(11)
-    fun `should apply Pyroscope resources`() {
-        val resources = PyroscopeManifestBuilder(templateService).buildAllResources()
-        applyAndVerify(resources)
-
-        val configMap =
-            client
-                .configMaps()
-                .inNamespace(DEFAULT_NAMESPACE)
-                .withName("pyroscope-config")
-                .get()
-        assertThat(configMap).isNotNull
-        assertThat(configMap.data).containsKey("config.yaml")
-
-        val service =
-            client
-                .services()
-                .inNamespace(DEFAULT_NAMESPACE)
-                .withName("pyroscope")
-                .get()
-        assertThat(service).isNotNull
-
-        val deployment =
-            client
-                .apps()
-                .deployments()
-                .inNamespace(DEFAULT_NAMESPACE)
-                .withName("pyroscope")
-                .get()
-        assertThat(deployment).isNotNull
-
-        val ebpfConfigMap =
-            client
-                .configMaps()
-                .inNamespace(DEFAULT_NAMESPACE)
-                .withName("pyroscope-ebpf-config")
-                .get()
-        assertThat(ebpfConfigMap).isNotNull
-        assertThat(ebpfConfigMap.data).containsKey("config.alloy")
-
-        val ebpfDaemonSet =
-            client
-                .apps()
-                .daemonSets()
-                .inNamespace(DEFAULT_NAMESPACE)
-                .withName("pyroscope-ebpf")
-                .get()
-        assertThat(ebpfDaemonSet).isNotNull
+    @Order(31)
+    fun `daemonsets that need no external services should have running pods`() {
+        for (name in EXPECTED_RUNNING_DAEMONSETS) {
+            waitForDaemonSetReady(name)
+        }
     }
 
     @Test
-    @Order(12)
-    fun `should apply Grafana Deployment built with GrafanaManifestBuilder`() {
-        val builder = GrafanaManifestBuilder(templateService)
-        val resources = builder.buildAllResources()
-        applyAndVerify(resources)
+    @Order(32)
+    fun `no pods should be stuck in Pending or ImagePullBackOff`() {
+        // Give pods time to be scheduled and attempt image pull
+        Thread.sleep(SECONDS_FOR_SCHEDULING)
 
-        val deployment =
+        val allPods =
             client
-                .apps()
-                .deployments()
+                .pods()
                 .inNamespace(DEFAULT_NAMESPACE)
-                .withName("grafana")
-                .get()
-        assertThat(deployment).isNotNull
+                .list()
+                .items
+        val problems = mutableListOf<String>()
+
+        for (pod in allPods) {
+            val podName = pod.metadata?.name ?: "unknown"
+            val phase = pod.status?.phase
+
+            // Pending means scheduling failed (missing volumes, affinity, etc.)
+            if (phase == "Pending") {
+                val conditions = pod.status?.conditions?.joinToString { "${it.type}=${it.status}: ${it.message}" }
+                problems.add("$podName is Pending: $conditions")
+            }
+
+            // Check container statuses for ImagePullBackOff
+            val containerStatuses = pod.status?.containerStatuses.orEmpty()
+            for (cs in containerStatuses) {
+                val waiting = cs.state?.waiting
+                if (waiting?.reason in IMAGE_PULL_FAILURES) {
+                    problems.add("$podName container '${cs.name}' has ${waiting?.reason}: ${waiting?.message}")
+                }
+            }
+        }
+
+        assertThat(problems)
+            .withFailMessage("Pods have scheduling or image pull failures:\n${problems.joinToString("\n")}")
+            .isEmpty()
     }
 
+    // -----------------------------------------------------------------------
+    // Phase 4: Image pull, resource limits, and structural checks
+    // -----------------------------------------------------------------------
+
     @Test
-    @Order(20)
+    @Order(40)
     fun `all container images should be pullable in K3s`() {
         val images = collectAllContainerImages()
         assertThat(images)
@@ -438,7 +410,7 @@ class K8sServiceIntegrationTest {
     }
 
     @Test
-    @Order(21)
+    @Order(41)
     fun `no builder should set resource limits or requests`() {
         val allResources = collectAllResources()
         val violations = mutableListOf<String>()
@@ -449,7 +421,8 @@ class K8sServiceIntegrationTest {
                 val res = container.resources
                 if (res != null && (res.limits?.isNotEmpty() == true || res.requests?.isNotEmpty() == true)) {
                     violations.add(
-                        "${resource.kind}/${resource.metadata?.name} container '${container.name}' has resource limits/requests",
+                        "${resource.kind}/${resource.metadata?.name} container '${container.name}' " +
+                            "has resource limits/requests",
                     )
                 }
             }
@@ -461,9 +434,35 @@ class K8sServiceIntegrationTest {
             ).isEmpty()
     }
 
-    /**
-     * Applies Fabric8 resources to the K3s cluster using server-side apply.
-     */
+    @Test
+    @Order(42)
+    fun `all deployments should use Recreate strategy for hostNetwork compatibility`() {
+        val allResources = collectAllResources()
+        val violations = mutableListOf<String>()
+
+        for (resource in allResources) {
+            if (resource is Deployment) {
+                val strategy = resource.spec?.strategy?.type
+                if (strategy != "Recreate") {
+                    violations.add(
+                        "Deployment/${resource.metadata?.name} has strategy '$strategy' " +
+                            "(must be 'Recreate' for hostNetwork port binding)",
+                    )
+                }
+            }
+        }
+
+        assertThat(violations)
+            .withFailMessage(
+                "All Deployments must use Recreate strategy to avoid port conflicts:\n" +
+                    violations.joinToString("\n"),
+            ).isEmpty()
+    }
+
+    // -----------------------------------------------------------------------
+    // Helper methods
+    // -----------------------------------------------------------------------
+
     private fun applyAndVerify(resources: List<HasMetadata>) {
         for (resource in resources) {
             try {
@@ -477,23 +476,137 @@ class K8sServiceIntegrationTest {
         }
     }
 
-    /**
-     * Collects all unique container images from every manifest builder.
-     */
-    private fun collectAllContainerImages(): Set<String> {
-        val allResources = collectAllResources()
-        return allResources
-            .flatMap { resource ->
-                extractContainers(resource).map { it.image }
-            }.toSet()
+    private fun assertConfigMapExists(
+        name: String,
+        expectedKey: String,
+    ) {
+        val cm =
+            client
+                .configMaps()
+                .inNamespace(DEFAULT_NAMESPACE)
+                .withName(name)
+                .get()
+        assertThat(cm).withFailMessage("ConfigMap '$name' not found").isNotNull
+        assertThat(cm.data).containsKey(expectedKey)
+    }
+
+    private fun assertServiceExists(name: String) {
+        val svc =
+            client
+                .services()
+                .inNamespace(DEFAULT_NAMESPACE)
+                .withName(name)
+                .get()
+        assertThat(svc).withFailMessage("Service '$name' not found").isNotNull
+    }
+
+    private fun assertDeploymentExists(name: String) {
+        val dep =
+            client
+                .apps()
+                .deployments()
+                .inNamespace(DEFAULT_NAMESPACE)
+                .withName(name)
+                .get()
+        assertThat(dep).withFailMessage("Deployment '$name' not found").isNotNull
+    }
+
+    private fun assertDaemonSetExists(name: String) {
+        val ds =
+            client
+                .apps()
+                .daemonSets()
+                .inNamespace(DEFAULT_NAMESPACE)
+                .withName(name)
+                .get()
+        assertThat(ds).withFailMessage("DaemonSet '$name' not found").isNotNull
     }
 
     /**
-     * Collects all resources from every manifest builder.
+     * Waits for a Deployment to have at least 1 ready replica.
+     * Fails with detailed pod status if the timeout is exceeded.
      */
+    private fun waitForDeploymentReady(name: String) {
+        val deadline = System.currentTimeMillis() + POD_WAIT_TIMEOUT_SECONDS * MILLIS_PER_SECOND
+        while (System.currentTimeMillis() < deadline) {
+            val dep =
+                client
+                    .apps()
+                    .deployments()
+                    .inNamespace(DEFAULT_NAMESPACE)
+                    .withName(name)
+                    .get()
+            val readyReplicas = dep?.status?.readyReplicas ?: 0
+            if (readyReplicas > 0) return
+            Thread.sleep(POLL_INTERVAL_MS)
+        }
+        val podStatus = describePods("app.kubernetes.io/name=$name")
+        throw AssertionError("Deployment '$name' did not become ready within ${POD_WAIT_TIMEOUT_SECONDS}s\n$podStatus")
+    }
+
+    /**
+     * Waits for a DaemonSet to have at least 1 pod in ready state.
+     * Fails with detailed pod status if the timeout is exceeded.
+     */
+    private fun waitForDaemonSetReady(name: String) {
+        val deadline = System.currentTimeMillis() + POD_WAIT_TIMEOUT_SECONDS * MILLIS_PER_SECOND
+        while (System.currentTimeMillis() < deadline) {
+            val ds =
+                client
+                    .apps()
+                    .daemonSets()
+                    .inNamespace(DEFAULT_NAMESPACE)
+                    .withName(name)
+                    .get()
+            val ready = ds?.status?.numberReady ?: 0
+            if (ready > 0) return
+            Thread.sleep(POLL_INTERVAL_MS)
+        }
+        val podStatus = describePods("app.kubernetes.io/name=$name")
+        throw AssertionError("DaemonSet '$name' did not become ready within ${POD_WAIT_TIMEOUT_SECONDS}s\n$podStatus")
+    }
+
+    /**
+     * Gets detailed status of pods matching a label selector for diagnostic output.
+     */
+    private fun describePods(labelSelector: String): String {
+        val pods =
+            client
+                .pods()
+                .inNamespace(DEFAULT_NAMESPACE)
+                .withLabelSelector(labelSelector)
+                .list()
+                .items
+        if (pods.isEmpty()) return "No pods found with label: $labelSelector"
+        return pods.joinToString("\n") { pod -> formatPodStatus(pod) }
+    }
+
+    private fun formatPodStatus(pod: Pod): String {
+        val name = pod.metadata?.name ?: "unknown"
+        val phase = pod.status?.phase ?: "Unknown"
+        val conditions = pod.status?.conditions?.joinToString { "${it.type}=${it.status}" } ?: "none"
+        val containers =
+            pod.status?.containerStatuses?.joinToString { cs ->
+                val state =
+                    when {
+                        cs.state?.running != null -> "Running"
+                        cs.state?.waiting != null -> "Waiting(${cs.state.waiting.reason}: ${cs.state.waiting.message})"
+                        cs.state?.terminated != null -> "Terminated(${cs.state.terminated.reason})"
+                        else -> "Unknown"
+                    }
+                "${cs.name}=$state"
+            } ?: "no container status"
+        return "  Pod $name: phase=$phase conditions=[$conditions] containers=[$containers]"
+    }
+
+    private fun collectAllContainerImages(): Set<String> =
+        collectAllResources()
+            .flatMap { resource -> extractContainers(resource).map { it.image } }
+            .toSet()
+
     private fun collectAllResources(): List<HasMetadata> =
         OtelManifestBuilder(templateService).buildAllResources() +
-            EbpfExporterManifestBuilder(templateService).buildAllResources() +
+            EbpfExporterManifestBuilder().buildAllResources() +
             VictoriaManifestBuilder().buildAllResources() +
             TempoManifestBuilder(templateService).buildAllResources() +
             VectorManifestBuilder(templateService).buildAllResources() +
@@ -503,9 +616,6 @@ class K8sServiceIntegrationTest {
             PyroscopeManifestBuilder(templateService).buildAllResources() +
             GrafanaManifestBuilder(templateService).buildAllResources()
 
-    /**
-     * Extracts containers from a K8s resource (Deployment, DaemonSet, etc.).
-     */
     private fun extractContainers(resource: HasMetadata): List<io.fabric8.kubernetes.api.model.Container> =
         when (resource) {
             is Deployment ->
@@ -523,3 +633,8 @@ class K8sServiceIntegrationTest {
             else -> emptyList()
         }
 }
+
+private const val MILLIS_PER_SECOND = 1000L
+private const val POLL_INTERVAL_MS = 2000L
+private const val SECONDS_FOR_SCHEDULING = 10_000L
+private val IMAGE_PULL_FAILURES = setOf("ImagePullBackOff", "ErrImagePull", "ErrImageNeverPull")

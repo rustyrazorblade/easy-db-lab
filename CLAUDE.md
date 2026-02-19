@@ -229,6 +229,13 @@ For more details, see [packer/README.md](packer/README.md) and [packer/TESTING.m
 - NEVER build YAML with strings in Kotlin.  If you are building a config in memory to execute with K8, use fabric8.  If it's something that needs to be written to disk, use kotlinx.serialization with data classes.  ALWAYS prefer typed objects over big strings.
 - When outputting multiple lines to the console, use a multiline block instead of multiple calls to `outputHandler.handleMessage`
 
+## Specifications
+
+- Keep track of user experience product decisions and requirements specifications in `specs` under the project root.
+- Use these as a reference when making changes to determine if there are conflicts.
+- Plan changes to the spec before moving on to implementation.
+- The intent is to have a maintainable source of truth for product decisions.
+
 ## Testing Guidelines
 
 For comprehensive testing guidelines, including custom assertions and Domain-Driven Design patterns, see [docs/development/testing.md](docs/development/testing.md).

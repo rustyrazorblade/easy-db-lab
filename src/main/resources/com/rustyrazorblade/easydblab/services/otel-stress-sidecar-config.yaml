@@ -5,10 +5,10 @@ receivers:
         - job_name: 'cassandra-easy-stress'
           scrape_interval: 5s
           static_configs:
-            - targets: ['localhost:9500']
+            - targets: ['localhost:${env:STRESS_PROM_PORT}']
           relabel_configs:
             - target_label: instance
-              replacement: '${env:K8S_NODE_NAME}:9500'
+              replacement: '${env:K8S_NODE_NAME}:${env:STRESS_PROM_PORT}'
             - target_label: cluster
               replacement: '${env:CLUSTER_NAME}'
 

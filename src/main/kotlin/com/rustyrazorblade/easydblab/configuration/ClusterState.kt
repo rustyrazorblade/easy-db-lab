@@ -200,6 +200,8 @@ data class ClusterState(
     var clickHouseConfig: ClickHouseConfig? = null,
     // Tailscale auth key ID for cleanup on teardown
     var tailscaleAuthKeyId: String? = null,
+    // Counter for stress job naming and port assignment
+    var stressJobCounter: Int = 0,
 ) {
     /**
      * Update hosts

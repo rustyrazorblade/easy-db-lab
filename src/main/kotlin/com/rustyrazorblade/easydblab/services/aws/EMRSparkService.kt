@@ -144,92 +144,7 @@ class EMRSparkService(
                     outputHandler.handleMessage("Job completed successfully")
                     currentStatus
                 }
-                StepState.FAILED -> {
-                    val s3Bucket = clusterStateManager.load().s3Bucket ?: "UNKNOWN_BUCKET"
-                    val emrLogsPath = "${Constants.EMR.S3_LOG_PREFIX}$clusterId/steps/$stepId/"
-
-                    // Get detailed step information for debugging
-                    val stepDetails = getStepDetails(clusterId, stepId).getOrNull()
-                    if (stepDetails != null) {
-                        outputHandler.handleMessage(stepDetails.toDisplayString())
-                    } else {
-                        outputHandler.handleMessage(
-                            """
-                            |=== Job Failed ===
-                            |Step ID: $stepId
-                            |Failure: ${currentStatus.failureDetails ?: "Unknown reason"}
-                            """.trimMargin(),
-                        )
-                    }
-
-                    // Query and display logs from Victoria Logs
-                    outputHandler.handleMessage("\n=== Step Logs ===")
-                    try {
-                        // Wait briefly for logs to be ingested
-                        Thread.sleep(Constants.EMR.LOG_INGESTION_WAIT_MS)
-
-                        val logsResult =
-                            victoriaLogsService.query(
-                                query = "step_id:$stepId",
-                                timeRange = "1h",
-                                limit = Constants.EMR.MAX_LOG_LINES,
-                            )
-
-                        logsResult
-                            .onSuccess { logs ->
-                                if (logs.isEmpty()) {
-                                    outputHandler.handleMessage("No logs found yet. Try: easy-db-lab spark logs --step-id $stepId")
-                                } else {
-                                    logs.forEach { outputHandler.handleMessage(it) }
-                                    outputHandler.handleMessage("\nFound ${logs.size} log entries.")
-                                }
-                            }.onFailure { e ->
-                                outputHandler.handleMessage("Could not query logs: ${e.message}")
-                                outputHandler.handleMessage("Try: easy-db-lab spark logs --step-id $stepId")
-                            }
-                    } catch (e: Exception) {
-                        log.warn { "Failed to query Victoria Logs: ${e.message}" }
-                        outputHandler.handleMessage("Could not query logs automatically.")
-                        outputHandler.handleMessage("Try: easy-db-lab spark logs --step-id $stepId")
-                    }
-
-                    // Automatically download and display logs
-                    outputHandler.handleMessage("\n=== Downloading Step Logs ===")
-                    try {
-                        downloadStepLogs(clusterId, stepId)
-                            .onFailure { e ->
-                                outputHandler.handleMessage("Could not download logs: ${e.message}")
-                                outputHandler.handleMessage(
-                                    """
-                                    |
-                                    |=== Manual Debug Commands ===
-                                    |  # Check step details
-                                    |  aws emr describe-step --cluster-id $clusterId --step-id $stepId
-                                    |
-                                    |  # View stderr directly from S3
-                                    |  aws s3 cp s3://$s3Bucket/${emrLogsPath}stderr.gz - | gunzip
-                                    """.trimMargin(),
-                                )
-                            }
-                    } catch (e: Exception) {
-                        log.warn { "Failed to download step logs: ${e.message}" }
-                        outputHandler.handleMessage(
-                            """
-                            |
-                            |=== Manual Debug Commands ===
-                            |  # Check step details
-                            |  aws emr describe-step --cluster-id $clusterId --step-id $stepId
-                            |
-                            |  # View stderr directly from S3
-                            |  aws s3 cp s3://$s3Bucket/${emrLogsPath}stderr.gz - | gunzip
-                            """.trimMargin(),
-                        )
-                    }
-
-                    val errorMessage = "Job failed: ${currentStatus.failureDetails ?: "Unknown reason"}"
-                    log.error { errorMessage }
-                    error(errorMessage)
-                }
+                StepState.FAILED -> handleFailedJob(clusterId, stepId, currentStatus)
                 StepState.CANCELLED -> {
                     val errorMessage = "Job was cancelled"
                     log.warn { errorMessage }
@@ -242,6 +157,100 @@ class EMRSparkService(
                 }
             }
         }
+
+    @Suppress("TooGenericExceptionCaught")
+    private fun handleFailedJob(
+        clusterId: String,
+        stepId: String,
+        currentStatus: SparkService.JobStatus,
+    ): Nothing {
+        val s3Bucket = clusterStateManager.load().s3Bucket ?: "UNKNOWN_BUCKET"
+        val emrLogsPath = "${Constants.EMR.S3_LOG_PREFIX}$clusterId/steps/$stepId/"
+
+        displayFailureDetails(clusterId, stepId, currentStatus)
+        queryVictoriaLogs(stepId)
+        downloadAndDisplayLogs(clusterId, stepId, s3Bucket, emrLogsPath)
+
+        val errorMessage = "Job failed: ${currentStatus.failureDetails ?: "Unknown reason"}"
+        log.error { errorMessage }
+        error(errorMessage)
+    }
+
+    private fun displayFailureDetails(
+        clusterId: String,
+        stepId: String,
+        currentStatus: SparkService.JobStatus,
+    ) {
+        val stepDetails = getStepDetails(clusterId, stepId).getOrNull()
+        if (stepDetails != null) {
+            outputHandler.handleMessage(stepDetails.toDisplayString())
+        } else {
+            outputHandler.handleMessage(
+                """
+                |=== Job Failed ===
+                |Step ID: $stepId
+                |Failure: ${currentStatus.failureDetails ?: "Unknown reason"}
+                """.trimMargin(),
+            )
+        }
+    }
+
+    @Suppress("TooGenericExceptionCaught")
+    private fun queryVictoriaLogs(stepId: String) {
+        outputHandler.handleMessage("\n=== Step Logs ===")
+        try {
+            Thread.sleep(Constants.EMR.LOG_INGESTION_WAIT_MS)
+
+            victoriaLogsService
+                .query(query = "step_id:$stepId", timeRange = "1h", limit = Constants.EMR.MAX_LOG_LINES)
+                .onSuccess { logs ->
+                    if (logs.isEmpty()) {
+                        outputHandler.handleMessage("No logs found yet. Try: easy-db-lab spark logs --step-id $stepId")
+                    } else {
+                        logs.forEach { outputHandler.handleMessage(it) }
+                        outputHandler.handleMessage("\nFound ${logs.size} log entries.")
+                    }
+                }.onFailure { e ->
+                    outputHandler.handleMessage("Could not query logs: ${e.message}")
+                    outputHandler.handleMessage("Try: easy-db-lab spark logs --step-id $stepId")
+                }
+        } catch (e: Exception) {
+            log.warn { "Failed to query Victoria Logs: ${e.message}" }
+            outputHandler.handleMessage("Could not query logs automatically.")
+            outputHandler.handleMessage("Try: easy-db-lab spark logs --step-id $stepId")
+        }
+    }
+
+    @Suppress("TooGenericExceptionCaught")
+    private fun downloadAndDisplayLogs(
+        clusterId: String,
+        stepId: String,
+        s3Bucket: String,
+        emrLogsPath: String,
+    ) {
+        val manualDebugCommands =
+            """
+            |
+            |=== Manual Debug Commands ===
+            |  # Check step details
+            |  aws emr describe-step --cluster-id $clusterId --step-id $stepId
+            |
+            |  # View stderr directly from S3
+            |  aws s3 cp s3://$s3Bucket/${emrLogsPath}stderr.gz - | gunzip
+            """.trimMargin()
+
+        outputHandler.handleMessage("\n=== Downloading Step Logs ===")
+        try {
+            downloadStepLogs(clusterId, stepId)
+                .onFailure { e ->
+                    outputHandler.handleMessage("Could not download logs: ${e.message}")
+                    outputHandler.handleMessage(manualDebugCommands)
+                }
+        } catch (e: Exception) {
+            log.warn { "Failed to download step logs: ${e.message}" }
+            outputHandler.handleMessage(manualDebugCommands)
+        }
+    }
 
     override fun getJobStatus(
         clusterId: String,

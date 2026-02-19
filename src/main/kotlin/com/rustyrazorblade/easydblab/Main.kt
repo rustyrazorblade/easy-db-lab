@@ -22,110 +22,140 @@ fun main(arguments: Array<String>) {
         modules(KoinModules.getAllModules())
     }
 
-    // Register shutdown hook for telemetry flush
-    Runtime.getRuntime().addShutdownHook(
-        Thread {
-            try {
-                val telemetry = getKoin().get<TelemetryProvider>()
-                telemetry.shutdown()
-            } catch (e: Exception) {
-                // Ignore errors during shutdown
-            }
-        },
-    )
+    registerShutdownHook()
 
     val parser = CommandLineParser()
     try {
         parser.eval(arguments)
     } catch (e: DockerException) {
-        log.error(e) { "Docker connection error" }
-        with(TermColors()) {
-            println(red("There was an error connecting to docker.  Please check if it is running."))
-        }
-        exitProcess(Constants.ExitCodes.ERROR)
+        handleDockerError(e)
     } catch (e: java.rmi.RemoteException) {
-        log.error(e) { "Remote execution error" }
-        with(TermColors()) {
-            println(red("There was an error executing the remote command.  Try rerunning it."))
-        }
-        exitProcess(Constants.ExitCodes.ERROR)
+        handleRemoteError(e)
     } catch (e: IllegalArgumentException) {
-        log.error(e) { "Invalid argument provided" }
-        with(TermColors()) { println(red("Invalid argument: ${e.message}")) }
-        exitProcess(Constants.ExitCodes.ERROR)
+        handleIllegalArgumentError(e)
     } catch (e: IllegalStateException) {
-        log.error(e) { "Invalid state encountered" }
-        with(TermColors()) { println(red("Invalid state: ${e.message}")) }
-        exitProcess(Constants.ExitCodes.ERROR)
+        handleIllegalStateError(e)
     } catch (e: StsException) {
-        // Handle AWS STS credential validation errors
-        if (e.statusCode() == Constants.HttpStatus.FORBIDDEN) {
-            // Permission denied - credentials are valid but lack permissions
-            log.error(e) { "AWS permission denied" }
-            // The error message with policy has already been displayed by AWS.checkPermissions()
-            with(TermColors()) {
-                println(red("\nApplication cannot continue without required AWS permissions."))
-                println(yellow("For detailed error information, check the logs (logs/info.log by default)"))
-            }
-        } else {
-            // Authentication error - invalid or missing credentials
-            log.error(e) { "AWS credential authentication failed" }
-            // The error message has already been displayed by AWS.checkPermissions()
-            with(TermColors()) {
-                println(red("\nApplication cannot continue without valid AWS credentials."))
-                println(yellow("For detailed error information, check the logs (logs/info.log by default)"))
-            }
-        }
-        exitProcess(Constants.ExitCodes.ERROR)
+        handleStsError(e)
     } catch (e: S3Exception) {
-        // Handle S3-specific permission errors
-        if (e.statusCode() == Constants.HttpStatus.FORBIDDEN) {
-            log.error(e) { "S3 permission error" }
-            with(TermColors()) {
-                println(red("\n\nS3 Permission Error: ${e.awsErrorDetails().errorMessage()}"))
-                println(red("\nYou need to add the EasyDBLabEC2 IAM policy which includes S3 permissions."))
-                println(yellow("\nFor detailed error information, check the logs (logs/info.log by default)"))
-            }
-            exitProcess(Constants.ExitCodes.ERROR)
-        }
-        throw e
+        handleS3Error(e)
     } catch (e: Ec2Exception) {
-        // Handle EC2-specific permission errors
-        if (e.statusCode() == Constants.HttpStatus.FORBIDDEN) {
-            log.error(e) { "EC2 permission error" }
-            with(TermColors()) {
-                println(red("\n\nEC2 Permission Error: ${e.awsErrorDetails().errorMessage()}"))
-                println(red("\nYou need to add the EasyDBLabEC2 IAM policy which includes EC2 permissions."))
-                println(yellow("\nFor detailed error information, check the logs (logs/info.log by default)"))
-            }
-            exitProcess(Constants.ExitCodes.ERROR)
-        }
-        throw e
+        handleEc2Error(e)
     } catch (e: SdkServiceException) {
-        // Catch other AWS service errors (403 Forbidden status code)
-        if (e.statusCode() == Constants.HttpStatus.FORBIDDEN) {
-            log.error(e) { "AWS permission error" }
-            // The error message with policy has already been displayed by the service layer
-            with(TermColors()) {
-                println(red("\nApplication cannot continue without required AWS permissions."))
-                println(yellow("For detailed error information, check the logs (logs/info.log by default)"))
-            }
-            exitProcess(Constants.ExitCodes.ERROR)
-        }
-        throw e
+        handleSdkServiceError(e)
     } catch (e: RuntimeException) {
-        log.error(e) { "A runtime exception has occurred" }
+        handleRuntimeError(e)
+    }
+}
+
+private fun registerShutdownHook() {
+    Runtime.getRuntime().addShutdownHook(
+        Thread {
+            try {
+                val telemetry = getKoin().get<TelemetryProvider>()
+                telemetry.shutdown()
+            } catch (_: Exception) {
+                // Ignore errors during shutdown
+            }
+        },
+    )
+}
+
+private fun handleDockerError(e: DockerException) {
+    log.error(e) { "Docker connection error" }
+    with(TermColors()) {
+        println(red("There was an error connecting to docker.  Please check if it is running."))
+    }
+    exitProcess(Constants.ExitCodes.ERROR)
+}
+
+private fun handleRemoteError(e: java.rmi.RemoteException) {
+    log.error(e) { "Remote execution error" }
+    with(TermColors()) {
+        println(red("There was an error executing the remote command.  Try rerunning it."))
+    }
+    exitProcess(Constants.ExitCodes.ERROR)
+}
+
+private fun handleIllegalArgumentError(e: IllegalArgumentException) {
+    log.error(e) { "Invalid argument provided" }
+    with(TermColors()) { println(red("Invalid argument: ${e.message}")) }
+    exitProcess(Constants.ExitCodes.ERROR)
+}
+
+private fun handleIllegalStateError(e: IllegalStateException) {
+    log.error(e) { "Invalid state encountered" }
+    with(TermColors()) { println(red("Invalid state: ${e.message}")) }
+    exitProcess(Constants.ExitCodes.ERROR)
+}
+
+private fun handleStsError(e: StsException) {
+    if (e.statusCode() == Constants.HttpStatus.FORBIDDEN) {
+        log.error(e) { "AWS permission denied" }
         with(TermColors()) {
-            println(red("An unexpected error has occurred."))
-            println(
-                red(
-                    "Does this look like an error with easy-db-lab?  If so, please file a bug report at " +
-                        "https://github.com/rustyrazorblade/easy-db-lab/ with the following information:",
-                ),
-            )
-            println(e.message)
-            println(yellow("For detailed error information including stack trace, check the logs (logs/info.log by default)"))
+            println(red("\nApplication cannot continue without required AWS permissions."))
+            println(yellow("For detailed error information, check the logs (logs/info.log by default)"))
+        }
+    } else {
+        log.error(e) { "AWS credential authentication failed" }
+        with(TermColors()) {
+            println(red("\nApplication cannot continue without valid AWS credentials."))
+            println(yellow("For detailed error information, check the logs (logs/info.log by default)"))
+        }
+    }
+    exitProcess(Constants.ExitCodes.ERROR)
+}
+
+private fun handleS3Error(e: S3Exception) {
+    if (e.statusCode() == Constants.HttpStatus.FORBIDDEN) {
+        log.error(e) { "S3 permission error" }
+        with(TermColors()) {
+            println(red("\n\nS3 Permission Error: ${e.awsErrorDetails().errorMessage()}"))
+            println(red("\nYou need to add the EasyDBLabEC2 IAM policy which includes S3 permissions."))
+            println(yellow("\nFor detailed error information, check the logs (logs/info.log by default)"))
         }
         exitProcess(Constants.ExitCodes.ERROR)
     }
+    throw e
+}
+
+private fun handleEc2Error(e: Ec2Exception) {
+    if (e.statusCode() == Constants.HttpStatus.FORBIDDEN) {
+        log.error(e) { "EC2 permission error" }
+        with(TermColors()) {
+            println(red("\n\nEC2 Permission Error: ${e.awsErrorDetails().errorMessage()}"))
+            println(red("\nYou need to add the EasyDBLabEC2 IAM policy which includes EC2 permissions."))
+            println(yellow("\nFor detailed error information, check the logs (logs/info.log by default)"))
+        }
+        exitProcess(Constants.ExitCodes.ERROR)
+    }
+    throw e
+}
+
+private fun handleSdkServiceError(e: SdkServiceException) {
+    if (e.statusCode() == Constants.HttpStatus.FORBIDDEN) {
+        log.error(e) { "AWS permission error" }
+        with(TermColors()) {
+            println(red("\nApplication cannot continue without required AWS permissions."))
+            println(yellow("For detailed error information, check the logs (logs/info.log by default)"))
+        }
+        exitProcess(Constants.ExitCodes.ERROR)
+    }
+    throw e
+}
+
+private fun handleRuntimeError(e: RuntimeException) {
+    log.error(e) { "A runtime exception has occurred" }
+    with(TermColors()) {
+        println(red("An unexpected error has occurred."))
+        println(
+            red(
+                "Does this look like an error with easy-db-lab?  If so, please file a bug report at " +
+                    "https://github.com/rustyrazorblade/easy-db-lab/ with the following information:",
+            ),
+        )
+        println(e.message)
+        println(yellow("For detailed error information including stack trace, check the logs (logs/info.log by default)"))
+    }
+    exitProcess(Constants.ExitCodes.ERROR)
 }

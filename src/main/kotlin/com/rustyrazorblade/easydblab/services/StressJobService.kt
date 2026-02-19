@@ -198,7 +198,7 @@ class DefaultStressJobService(
                         outputHandler.handleMessage("Pod ${pod.name} is ${pod.status}")
                         jobName
                     }
-                    "Failed" -> throw IllegalStateException("Pod ${pod.name} failed")
+                    "Failed" -> error("Pod ${pod.name} failed")
                     else -> error("Pod ${pod.name} is ${pod.status}, waiting for Running")
                 }
             }.get()

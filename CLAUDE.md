@@ -287,7 +287,7 @@ Kotlin code: `configuration/grafana/GrafanaDashboard.kt` (registry), `configurat
 
 Datasources: VictoriaMetrics (Prometheus), VictoriaLogs, ClickHouse, Tempo, CloudWatch, Pyroscope.
 
-Current dashboards: System Overview, AWS CloudWatch (S3/EBS/EC2), EMR, OpenSearch, Stress, ClickHouse metrics, ClickHouse logs.
+Current dashboards: System Overview, AWS CloudWatch (S3/EBS/EC2), EMR, OpenSearch, Stress, ClickHouse metrics, ClickHouse logs, Profiling.
 
 ### CLI Commands
 

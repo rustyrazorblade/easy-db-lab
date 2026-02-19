@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InfrastructureState
@@ -39,6 +40,19 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
                                     InfrastructureState(
                                         vpcId = "vpc-test",
                                         region = "us-west-2",
+                                    ),
+                                hosts =
+                                    mapOf(
+                                        ServerType.Control to
+                                            listOf(
+                                                ClusterHost(
+                                                    publicIp = "54.123.45.67",
+                                                    privateIp = "10.0.1.5",
+                                                    alias = "control0",
+                                                    availabilityZone = "us-west-2a",
+                                                    instanceId = "i-control123",
+                                                ),
+                                            ),
                                     ),
                             ),
                         )
@@ -155,9 +169,8 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
             )
 
         val volumes = job.spec.template.spec.volumes
-        assertThat(volumes).hasSize(1)
-        assertThat(volumes[0].name).isEqualTo("otel-sidecar-config")
-        assertThat(volumes[0].configMap.name).isEqualTo("otel-stress-sidecar-config")
+        val otelVolume = volumes.first { it.name == "otel-sidecar-config" }
+        assertThat(otelVolume.configMap.name).isEqualTo("otel-stress-sidecar-config")
 
         val sidecar =
             job.spec.template.spec.initContainers
@@ -314,5 +327,64 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
         assertThat(job.spec.template.spec.dnsPolicy).isEqualTo("ClusterFirstWithHostNet")
         assertThat(job.spec.ttlSecondsAfterFinished).isEqualTo(300)
         assertThat(job.spec.backoffLimit).isEqualTo(0)
+    }
+
+    @Test
+    fun `buildJob should include pyroscope hostPath volume`() {
+        val job =
+            service.buildJob(
+                jobName = "stress-test-123",
+                image = "ghcr.io/apache/cassandra-easy-stress:latest",
+                contactPoints = "10.0.1.6",
+                args = listOf("run", "KeyValue"),
+            )
+
+        val volumes = job.spec.template.spec.volumes
+        val pyroscopeVolume = volumes.first { it.name == "pyroscope-agent" }
+        assertThat(pyroscopeVolume.hostPath.path).isEqualTo("/usr/local/pyroscope")
+        assertThat(pyroscopeVolume.hostPath.type).isEqualTo("Directory")
+    }
+
+    @Test
+    fun `buildJob should mount pyroscope volume in stress container as read-only`() {
+        val job =
+            service.buildJob(
+                jobName = "stress-test-123",
+                image = "ghcr.io/apache/cassandra-easy-stress:latest",
+                contactPoints = "10.0.1.6",
+                args = listOf("run", "KeyValue"),
+            )
+
+        val stress =
+            job.spec.template.spec.containers
+                .first { it.name == "stress" }
+        val pyroscopeMount = stress.volumeMounts.first { it.name == "pyroscope-agent" }
+        assertThat(pyroscopeMount.mountPath).isEqualTo("/usr/local/pyroscope")
+        assertThat(pyroscopeMount.readOnly).isTrue()
+    }
+
+    @Test
+    fun `buildJob should set JAVA_TOOL_OPTIONS with pyroscope agent config`() {
+        val job =
+            service.buildJob(
+                jobName = "stress-test-123",
+                image = "ghcr.io/apache/cassandra-easy-stress:latest",
+                contactPoints = "10.0.1.6",
+                args = listOf("run", "KeyValue"),
+            )
+
+        val stress =
+            job.spec.template.spec.containers
+                .first { it.name == "stress" }
+        val javaToolOptions = stress.env.first { it.name == "JAVA_TOOL_OPTIONS" }.value
+
+        assertThat(javaToolOptions).contains("-javaagent:/usr/local/pyroscope/pyroscope.jar")
+        assertThat(javaToolOptions).contains("-Dpyroscope.application.name=cassandra-easy-stress")
+        assertThat(javaToolOptions).contains("-Dpyroscope.server.address=http://10.0.1.5:${Constants.K8s.PYROSCOPE_PORT}")
+        assertThat(javaToolOptions).contains("-Dpyroscope.format=jfr")
+        assertThat(javaToolOptions).contains("-Dpyroscope.profiler.event=cpu")
+        assertThat(javaToolOptions).contains("-Dpyroscope.profiler.alloc=512k")
+        assertThat(javaToolOptions).contains("-Dpyroscope.profiler.lock=10ms")
+        assertThat(javaToolOptions).contains("-Dpyroscope.labels=cluster=test-cluster,job_name=stress-test-123")
     }
 }

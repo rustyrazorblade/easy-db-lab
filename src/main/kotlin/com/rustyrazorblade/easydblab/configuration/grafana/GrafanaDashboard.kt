@@ -77,4 +77,12 @@ enum class GrafanaDashboard(
         resourcePath = "dashboards/clickhouse-logs.json",
         optional = true,
     ),
+    PROFILING(
+        configMapName = "grafana-dashboard-profiling",
+        volumeName = "dashboard-profiling",
+        mountPath = "/var/lib/grafana/dashboards/profiling",
+        jsonFileName = "profiling.json",
+        resourcePath = "dashboards/profiling.json",
+        optional = true,
+    ),
 }

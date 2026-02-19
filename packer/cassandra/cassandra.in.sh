@@ -97,11 +97,14 @@ export JVM_OPTS="$JVM_OPTS -Dcassandra.ring_delay_ms=1"
 # PYROSCOPE_SERVER_ADDRESS is set by easy-db-lab at cluster startup time via /etc/default/cassandra.
 PYROSCOPE_JAR="/usr/local/pyroscope/pyroscope.jar"
 if [ -f "$PYROSCOPE_JAR" ] && [ -n "$PYROSCOPE_SERVER_ADDRESS" ]; then
+    # PYROSCOPE_PROFILER_EVENT can be set in /etc/default/cassandra to override the default.
+    # Valid values: cpu (default), wall. Note: wall and cpu are mutually exclusive.
+    PYROSCOPE_EVENT="${PYROSCOPE_PROFILER_EVENT:-cpu}"
     export JVM_OPTS="$JVM_OPTS -javaagent:${PYROSCOPE_JAR}"
     export JVM_OPTS="$JVM_OPTS -Dpyroscope.application.name=cassandra"
     export JVM_OPTS="$JVM_OPTS -Dpyroscope.server.address=${PYROSCOPE_SERVER_ADDRESS}"
     export JVM_OPTS="$JVM_OPTS -Dpyroscope.format=jfr"
-    export JVM_OPTS="$JVM_OPTS -Dpyroscope.profiler.event=cpu"
+    export JVM_OPTS="$JVM_OPTS -Dpyroscope.profiler.event=$PYROSCOPE_EVENT"
     export JVM_OPTS="$JVM_OPTS -Dpyroscope.profiler.alloc=512k"
     export JVM_OPTS="$JVM_OPTS -Dpyroscope.profiler.lock=10ms"
     export JVM_OPTS="$JVM_OPTS -Dpyroscope.labels=hostname=$(hostname),cluster=${CLUSTER_NAME:-unknown}"

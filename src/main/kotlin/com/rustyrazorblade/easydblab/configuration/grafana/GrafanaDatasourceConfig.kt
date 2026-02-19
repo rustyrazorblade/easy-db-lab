@@ -1,4 +1,4 @@
-package com.rustyrazorblade.easydblab.grafana
+package com.rustyrazorblade.easydblab.configuration.grafana
 
 import com.charleskorn.kaml.Yaml
 import com.charleskorn.kaml.YamlConfiguration

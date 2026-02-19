@@ -1,4 +1,4 @@
-package com.rustyrazorblade.easydblab.grafana
+package com.rustyrazorblade.easydblab.configuration.grafana
 
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test

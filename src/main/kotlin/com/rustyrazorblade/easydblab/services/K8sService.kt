@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.observability.TelemetryNames
 import com.rustyrazorblade.easydblab.observability.TelemetryProvider
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
+import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.nio.file.Path
@@ -318,6 +319,20 @@ interface K8sService {
         controlHost: ClusterHost,
         nodeName: String,
         labels: Map<String, String>,
+    ): Result<Unit>
+
+    /**
+     * Applies a typed Fabric8 resource to the cluster using server-side apply.
+     *
+     * This bypasses YAML parsing and applies the resource directly via the Fabric8 client.
+     *
+     * @param controlHost The control node running the K3s server
+     * @param resource The typed Fabric8 resource to apply
+     * @return Result indicating success or failure
+     */
+    fun applyResource(
+        controlHost: ClusterHost,
+        resource: HasMetadata,
     ): Result<Unit>
 
     /**
@@ -1216,6 +1231,24 @@ class DefaultK8sService(
                 }
 
                 log.info { "Labeled node $nodeName" }
+            }
+        }
+
+    override fun applyResource(
+        controlHost: ClusterHost,
+        resource: HasMetadata,
+    ): Result<Unit> =
+        runCatching {
+            val kind = resource.kind ?: "Unknown"
+            val name = resource.metadata?.name ?: "unknown"
+            log.info { "Applying $kind/$name via server-side apply" }
+
+            createClient(controlHost).use { client ->
+                client
+                    .resource(resource)
+                    .forceConflicts()
+                    .serverSideApply()
+                log.info { "Applied $kind/$name successfully" }
             }
         }
 

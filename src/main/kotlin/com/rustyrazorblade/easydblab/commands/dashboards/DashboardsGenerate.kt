@@ -3,36 +3,49 @@ package com.rustyrazorblade.easydblab.commands.dashboards
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
-import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
+import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
+import io.fabric8.kubernetes.client.utils.Serialization
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
+import picocli.CommandLine.Option
+import java.io.File
 
 /**
- * Extract all Grafana dashboard manifests from JAR resources to local k8s/ directory.
+ * Generate Grafana K8s manifests as YAML files for inspection or debugging.
  *
- * This command re-extracts dashboard YAML files (both core and ClickHouse) from JAR
- * resources, enabling rapid dashboard iteration without re-running init.
+ * Builds all Grafana resources (ConfigMaps and Deployment) from the dashboard JSON
+ * resource files and writes them as YAML to the specified output directory.
  */
 @McpCommand
 @RequireProfileSetup
 @Command(
     name = "generate",
-    description = ["Extract all Grafana dashboard manifests from JAR resources"],
+    description = ["Generate Grafana K8s manifests as YAML files for inspection"],
 )
 class DashboardsGenerate : PicoBaseCommand() {
-    private val dashboardService: GrafanaDashboardService by inject()
+    private val manifestBuilder: GrafanaManifestBuilder by inject()
+
+    @Option(
+        names = ["-o", "--output"],
+        description = ["Output directory (default: k8s/grafana)"],
+    )
+    var outputDir: String = "k8s/grafana"
 
     override fun execute() {
-        outputHandler.handleMessage("Extracting Grafana dashboard manifests...")
-        val dashboardFiles = dashboardService.extractDashboardResources()
+        val dir = File(outputDir)
+        dir.mkdirs()
 
-        if (dashboardFiles.isEmpty()) {
-            error("No dashboard resources found")
+        val resources = manifestBuilder.buildAllResources()
+        outputHandler.handleMessage("Generating ${resources.size} Grafana manifest(s) to $outputDir...")
+
+        resources.forEach { resource ->
+            val kind = resource.kind.lowercase()
+            val name = resource.metadata?.name ?: "unknown"
+            val filename = "$kind-$name.yaml"
+            val yaml = Serialization.asYaml(resource)
+            File(dir, filename).writeText(yaml)
         }
 
-        outputHandler.handleMessage("Extracted ${dashboardFiles.size} dashboard file(s):")
-        dashboardFiles.forEach { file ->
-            outputHandler.handleMessage("  ${file.path}")
-        }
+        outputHandler.handleMessage("Generated ${resources.size} manifest(s) to $outputDir")
     }
 }

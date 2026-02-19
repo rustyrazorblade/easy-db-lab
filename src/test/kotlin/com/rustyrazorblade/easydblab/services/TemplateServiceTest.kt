@@ -196,15 +196,15 @@ class TemplateServiceTest : BaseKoinTest() {
         setupClusterState()
 
         val service = createService()
-        val dashboardOnly =
+        val otelOnly =
             service.extractResources(
                 destinationDir = manifestDir,
-                filter = { it.contains("grafana-dashboard") },
+                filter = { it.contains("otel") },
             )
 
-        assertThat(dashboardOnly).isNotEmpty()
-        dashboardOnly.forEach { file ->
-            assertThat(file.name).contains("grafana-dashboard")
+        assertThat(otelOnly).isNotEmpty()
+        otelOnly.forEach { file ->
+            assertThat(file.name).contains("otel")
         }
     }
 

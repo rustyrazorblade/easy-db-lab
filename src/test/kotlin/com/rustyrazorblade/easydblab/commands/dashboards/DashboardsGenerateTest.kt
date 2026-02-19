@@ -1,14 +1,18 @@
 package com.rustyrazorblade.easydblab.commands.dashboards
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
-import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
-import org.assertj.core.api.Assertions.assertThatThrownBy
+import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboard
+import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
+import io.fabric8.kubernetes.api.model.ConfigMapBuilder
+import io.fabric8.kubernetes.api.model.HasMetadata
+import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
+import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.mock
-import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.io.File
 
@@ -16,14 +20,17 @@ import java.io.File
  * Test suite for DashboardsGenerate command.
  */
 class DashboardsGenerateTest : BaseKoinTest() {
-    private lateinit var mockDashboardService: GrafanaDashboardService
+    private lateinit var mockManifestBuilder: GrafanaManifestBuilder
+
+    @TempDir
+    lateinit var outputTempDir: File
 
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
                 single {
-                    mock<GrafanaDashboardService>().also {
-                        mockDashboardService = it
+                    mock<GrafanaManifestBuilder>().also {
+                        mockManifestBuilder = it
                     }
                 }
             },
@@ -31,32 +38,41 @@ class DashboardsGenerateTest : BaseKoinTest() {
 
     @BeforeEach
     fun setupMocks() {
-        mockDashboardService = getKoin().get()
+        mockManifestBuilder = getKoin().get()
     }
 
     @Test
-    fun `execute extracts dashboard files via service`() {
-        val testFiles =
+    fun `execute generates YAML files from built resources`() {
+        val resources: List<HasMetadata> =
             listOf(
-                File("k8s/core/15-grafana-dashboard-system.yaml"),
-                File("k8s/core/16-grafana-dashboard-s3.yaml"),
+                ConfigMapBuilder()
+                    .withNewMetadata()
+                    .withName("grafana-dashboards-config")
+                    .endMetadata()
+                    .build(),
+                ConfigMapBuilder()
+                    .withNewMetadata()
+                    .withName(GrafanaDashboard.SYSTEM.configMapName)
+                    .endMetadata()
+                    .build(),
+                DeploymentBuilder()
+                    .withNewMetadata()
+                    .withName("grafana")
+                    .endMetadata()
+                    .build(),
             )
-        whenever(mockDashboardService.extractDashboardResources()).thenReturn(testFiles)
+        whenever(mockManifestBuilder.buildAllResources()).thenReturn(resources)
 
         val command = DashboardsGenerate()
+        command.outputDir = outputTempDir.absolutePath
         command.execute()
 
-        verify(mockDashboardService).extractDashboardResources()
-    }
-
-    @Test
-    fun `execute fails when no dashboard resources found`() {
-        whenever(mockDashboardService.extractDashboardResources()).thenReturn(emptyList())
-
-        val command = DashboardsGenerate()
-
-        assertThatThrownBy { command.execute() }
-            .isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("No dashboard resources found")
+        val generatedFiles = outputTempDir.listFiles()?.toList() ?: emptyList()
+        assertThat(generatedFiles).hasSize(3)
+        assertThat(generatedFiles.map { it.name }).containsExactlyInAnyOrder(
+            "configmap-grafana-dashboards-config.yaml",
+            "configmap-${GrafanaDashboard.SYSTEM.configMapName}.yaml",
+            "deployment-grafana.yaml",
+        )
     }
 }

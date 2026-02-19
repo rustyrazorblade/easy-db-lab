@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.output.displayObservabilityAccess
 import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
 import com.rustyrazorblade.easydblab.services.K8sService
@@ -40,6 +41,7 @@ class K8Apply : PicoBaseCommand() {
     private val dashboardService: GrafanaDashboardService by inject()
     private val user: User by inject()
     private val templateService: TemplateService by inject()
+    private val manifestBuilder: GrafanaManifestBuilder by inject()
 
     @Suppress("MagicNumber")
     @Option(
@@ -80,6 +82,7 @@ class K8Apply : PicoBaseCommand() {
         createDatasourcesConfigMap(controlNode)
 
         // Extract core manifests from classpath with template substitution
+        // (Grafana YAML files are no longer in core/ - they are built in Kotlin)
         templateService.extractAndSubstituteResources(
             filter = { it.startsWith("core/") },
         )
@@ -95,6 +98,9 @@ class K8Apply : PicoBaseCommand() {
                 error("Failed to apply K8s manifests: ${exception.message}")
             }
 
+        // Apply Grafana resources (ConfigMaps and Deployment built in Kotlin)
+        applyGrafanaResources(controlNode)
+
         // Wait for pods to be ready
         if (!skipWait) {
             k8sService
@@ -109,6 +115,23 @@ class K8Apply : PicoBaseCommand() {
         outputHandler.handleMessage("")
         outputHandler.handleMessage("Observability stack deployed successfully!")
         outputHandler.displayObservabilityAccess(controlNode.privateIp)
+    }
+
+    /**
+     * Applies Grafana K8s resources built from Kotlin using Fabric8.
+     *
+     * Builds and applies provisioning ConfigMap, dashboard ConfigMaps, and Deployment
+     * directly via the K8s API without YAML intermediaries.
+     */
+    private fun applyGrafanaResources(controlNode: ClusterHost) {
+        outputHandler.handleMessage("Applying Grafana resources...")
+        val resources = manifestBuilder.buildAllResources()
+        for (resource in resources) {
+            k8sService.applyResource(controlNode, resource).getOrElse { exception ->
+                error("Failed to apply Grafana ${resource.kind}/${resource.metadata?.name}: ${exception.message}")
+            }
+        }
+        outputHandler.handleMessage("Grafana resources applied successfully")
     }
 
     /**

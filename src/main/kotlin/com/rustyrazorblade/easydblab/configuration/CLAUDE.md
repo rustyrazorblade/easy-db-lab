@@ -135,3 +135,12 @@ val result = template.substitute(mapOf("EXTRA" to "value"))  // extra vars overr
 - **`Host`** — legacy host data class (use `ClusterHost` for new code)
 - **`Arch`** — CPU architecture enum (`AMD64`, `ARM64`)
 - **`ClusterConfigWriter`** — generates SSH config and environment.sh files
+
+## Grafana Subpackage (`grafana/`)
+
+All Grafana K8s resources are built programmatically using Fabric8:
+
+- **`GrafanaDashboard`** — enum registry of all dashboards. Single source of truth for dashboard metadata (configMapName, volumeName, mountPath, resourcePath, optional flag). Adding a new dashboard = add an enum entry + drop a JSON file.
+- **`GrafanaManifestBuilder`** — builds all Grafana K8s resources (provisioning ConfigMap, dashboard ConfigMaps, Deployment) as typed Fabric8 objects. Uses `TemplateService` for `__KEY__` variable substitution in dashboard JSON.
+- **`GrafanaDatasourceConfig`** — datasource provisioning YAML generation.
+- **Dashboard JSON files** — stored in `resources/.../configuration/grafana/dashboards/*.json`. Raw JSON with `__KEY__` template placeholders.

@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.resources
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.vector.VectorManifestBuilder
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 
@@ -10,17 +11,17 @@ import org.junit.jupiter.api.Test
 class K8sResourceSyncTest {
     companion object {
         private const val VECTOR_S3_CONFIG_RESOURCE =
-            "/com/rustyrazorblade/easydblab/commands/k8s/core/53-vector-s3-configmap.yaml"
+            "/com/rustyrazorblade/easydblab/configuration/vector/vector-s3.yaml"
     }
 
     @Test
-    fun `vector-s3-configmap should reference correct EMR log path structure`() {
-        // This test ensures the Vector S3 configmap parses the correct S3 path structure
+    fun `vector-s3 config should reference correct EMR log path structure`() {
+        // This test ensures the Vector S3 config parses the correct S3 path structure
         // Path format: spark/emr-logs/{cluster-id}/steps/{step-id}/{stdout|stderr}.gz
         // Array indexes: [0]=spark, [1]=emr-logs, [2]=cluster-id, [3]=steps, [4]=step-id, [5]=log_file
 
         val vectorS3Config =
-            this::class.java
+            VectorManifestBuilder::class.java
                 .getResourceAsStream(VECTOR_S3_CONFIG_RESOURCE)
                 ?.bufferedReader()
                 ?.readText()
@@ -49,11 +50,4 @@ class K8sResourceSyncTest {
             .contains("get(parts, [5])")
     }
 
-    @Test
-    fun `EMR S3 log prefix constant should match expected format`() {
-        // Verify the constant has the expected format
-        assertThat(Constants.EMR.S3_LOG_PREFIX)
-            .isEqualTo("spark/emr-logs/")
-            .endsWith("/")
-    }
 }

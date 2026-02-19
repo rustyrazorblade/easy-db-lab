@@ -8,7 +8,6 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import com.rustyrazorblade.easydblab.services.StressJobService
-import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -61,14 +60,6 @@ class StressLogsTest : BaseKoinTest() {
     fun setupMocks() {
         mockStressJobService = getKoin().get()
         mockClusterStateManager = getKoin().get()
-    }
-
-    @Test
-    fun `command has correct default options`() {
-        val command = StressLogs()
-
-        assertThat(command.tailLines).isNull()
-        // jobName is a lateinit required parameter, so we only test tailLines default
     }
 
     @Test

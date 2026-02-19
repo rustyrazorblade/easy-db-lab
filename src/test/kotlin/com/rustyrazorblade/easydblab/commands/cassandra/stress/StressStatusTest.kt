@@ -149,50 +149,6 @@ class StressStatusTest : BaseKoinTest() {
     }
 
     @Test
-    fun `execute should filter jobs by name when specified`() {
-        // Given - cluster state with control node
-        val stateWithControl =
-            ClusterState(
-                name = "test-cluster",
-                versions = mutableMapOf(),
-                hosts =
-                    mutableMapOf(
-                        ServerType.Control to listOf(testControlHost),
-                    ),
-            )
-
-        val testJobs =
-            listOf(
-                KubernetesJob(
-                    namespace = Constants.Stress.NAMESPACE,
-                    name = "stress-test-1234567890",
-                    status = "Complete",
-                    completions = "1/1",
-                    age = Duration.ofMinutes(5),
-                ),
-                KubernetesJob(
-                    namespace = Constants.Stress.NAMESPACE,
-                    name = "stress-another-1234567891",
-                    status = "Running",
-                    completions = "0/1",
-                    age = Duration.ofMinutes(2),
-                ),
-            )
-
-        whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
-        whenever(mockStressJobService.listJobs(any())).thenReturn(Result.success(testJobs))
-
-        val command = StressStatus()
-        command.jobName = "test"
-
-        // When
-        command.execute()
-
-        // Then - filtering is done client-side, verify the call was made
-        verify(mockStressJobService).listJobs(testControlHost)
-    }
-
-    @Test
     fun `execute should handle empty job list gracefully`() {
         // Given - cluster state with control node
         val stateWithControl =

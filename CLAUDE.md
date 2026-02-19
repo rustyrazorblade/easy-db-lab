@@ -68,6 +68,14 @@ Practice **reasonable TDD**:
 - Review tests after writing to evaluate test quality
 - Focus on testing behavior, not implementation details
 
+**No mock-echo tests.** Every test must verify real logic. These patterns are banned:
+- Tests that only verify a mock was called with the same values that were set up — this proves nothing
+- Tests that assert default field values (e.g., `assertThat(command.field).isNull()`) — the compiler already guarantees defaults
+- Tests that verify a method was called but don't assert anything about the outcome or transformation
+- Tests where removing the code under test wouldn't cause the test to fail because the mock does all the work
+
+A good test exercises a code path where the system under test makes a decision, transforms data, or could fail in a meaningful way.
+
 See [`src/test/.../CLAUDE.md`](src/test/kotlin/com/rustyrazorblade/easydblab/CLAUDE.md) for test patterns, BaseKoinTest usage, and custom assertions.
 
 **Never mock `TemplateService`** — always use the real instance in tests. It only reads classpath resources and does string substitution with no external side effects.
@@ -228,6 +236,8 @@ For more details, see [packer/README.md](packer/README.md) and [packer/TESTING.m
 - When making changes, keep CLAUDE.md and subdirectory CLAUDE.md files up to date if the change affects architecture, file locations, or patterns described in them.
 - NEVER build YAML with strings in Kotlin.  If you are building a config in memory to execute with K8, use fabric8.  If it's something that needs to be written to disk, use kotlinx.serialization with data classes.  ALWAYS prefer typed objects over big strings.
 - When outputting multiple lines to the console, use a multiline block instead of multiple calls to `outputHandler.handleMessage`
+- Write new K8 configuration using fabric8.  If there are configuration files, store them as a resource and load them with the TemplateService.
+- If you need to modify a K8 configuration, ask if you should migrate it to the new fabric8 based configs in `src/main/kotlin/com/rustyrazorblade/easydblab/configuration/`
 
 ## Specifications
 

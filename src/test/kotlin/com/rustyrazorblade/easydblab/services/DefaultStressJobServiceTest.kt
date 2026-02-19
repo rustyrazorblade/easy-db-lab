@@ -268,7 +268,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
     fun `buildJob should set CASSANDRA_EASY_STRESS_PROM_PORT on stress container`() {
         val job =
             service.buildJob(
-                jobName = "stress-keyvalue_1",
+                jobName = "keyvalue-1",
                 image = "ghcr.io/apache/cassandra-easy-stress:latest",
                 contactPoints = "10.0.1.6",
                 args = listOf("run", "KeyValue"),
@@ -286,7 +286,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
     fun `buildJob should set STRESS_PROM_PORT on otel-sidecar container`() {
         val job =
             service.buildJob(
-                jobName = "stress-keyvalue_1",
+                jobName = "keyvalue-1",
                 image = "ghcr.io/apache/cassandra-easy-stress:latest",
                 contactPoints = "10.0.1.6",
                 args = listOf("run", "KeyValue"),

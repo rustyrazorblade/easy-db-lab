@@ -220,44 +220,6 @@ class StressStartTest : BaseKoinTest() {
     }
 
     @Test
-    fun `execute should use custom job name when provided`() {
-        // Given - cluster state with nodes
-        val stateWithNodes =
-            ClusterState(
-                name = "test-cluster",
-                versions = mutableMapOf(),
-                hosts =
-                    mutableMapOf(
-                        ServerType.Control to listOf(testControlHost),
-                        ServerType.Cassandra to listOf(testCassandraHost),
-                    ),
-            )
-
-        whenever(mockClusterStateManager.load()).thenReturn(stateWithNodes)
-        whenever(mockClusterStateManager.incrementStressJobCounter()).thenReturn(1)
-        whenever(mockStressJobService.startJob(any(), any(), any(), any(), any(), any(), any()))
-            .thenReturn(Result.success("job-created"))
-
-        val command = StressStart()
-        command.jobName = "my-test"
-        command.stressArgs = listOf("KeyValue")
-
-        // When
-        command.execute()
-
-        // Then - verify job name is stress-my-test (no timestamp, no counter)
-        verify(mockStressJobService).startJob(
-            controlHost = eq(testControlHost),
-            jobName = eq("stress-my-test"),
-            image = any(),
-            args = any(),
-            contactPoints = any(),
-            tags = any(),
-            promPort = any(),
-        )
-    }
-
-    @Test
     fun `parseTags should parse comma-separated key=value pairs`() {
         val command = StressStart()
         val result = command.parseTags("env=production,team=platform")
@@ -339,7 +301,7 @@ class StressStartTest : BaseKoinTest() {
 
         verify(mockStressJobService).startJob(
             controlHost = eq(testControlHost),
-            jobName = eq("stress-keyvalue_1"),
+            jobName = eq("keyvalue-1"),
             image = any(),
             args = any(),
             contactPoints = any(),
@@ -374,7 +336,7 @@ class StressStartTest : BaseKoinTest() {
 
         verify(mockStressJobService).startJob(
             controlHost = eq(testControlHost),
-            jobName = eq("stress-my-test"),
+            jobName = eq("my-test"),
             image = any(),
             args = any(),
             contactPoints = any(),

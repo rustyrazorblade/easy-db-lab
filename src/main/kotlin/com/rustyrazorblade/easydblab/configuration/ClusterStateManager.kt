@@ -46,7 +46,6 @@ class ClusterStateManager(
      */
     fun exists(): Boolean = stateFile.exists()
 
-
     /**
      * Atomically increment the stress job counter and return the new value.
      * Used for unique job naming and port assignment.

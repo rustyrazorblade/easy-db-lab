@@ -1,4 +1,4 @@
-package com.rustyrazorblade.easydblab.commands.dashboards
+package com.rustyrazorblade.easydblab.commands.grafana
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
@@ -17,9 +17,9 @@ import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 
 /**
- * Test suite for DashboardsUpload command.
+ * Test suite for GrafanaUpload command.
  */
-class DashboardsUploadTest : BaseKoinTest() {
+class GrafanaUploadTest : BaseKoinTest() {
     private lateinit var mockDashboardService: GrafanaDashboardService
     private lateinit var mockClusterStateManager: ClusterStateManager
 
@@ -66,7 +66,7 @@ class DashboardsUploadTest : BaseKoinTest() {
 
         whenever(mockClusterStateManager.load()).thenReturn(emptyState)
 
-        val command = DashboardsUpload()
+        val command = GrafanaUpload()
 
         assertThatThrownBy { command.execute() }
             .isInstanceOf(IllegalStateException::class.java)
@@ -88,7 +88,7 @@ class DashboardsUploadTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
         whenever(mockDashboardService.uploadDashboards(any(), any())).thenReturn(Result.success(Unit))
 
-        val command = DashboardsUpload()
+        val command = GrafanaUpload()
         command.execute()
 
         verify(mockDashboardService).uploadDashboards(any(), any())
@@ -110,7 +110,7 @@ class DashboardsUploadTest : BaseKoinTest() {
         whenever(mockDashboardService.uploadDashboards(any(), any()))
             .thenReturn(Result.failure(RuntimeException("Upload failed")))
 
-        val command = DashboardsUpload()
+        val command = GrafanaUpload()
 
         assertThatThrownBy { command.execute() }
             .isInstanceOf(IllegalStateException::class.java)

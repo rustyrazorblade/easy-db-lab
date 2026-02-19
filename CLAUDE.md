@@ -263,7 +263,7 @@ The cluster runs a full observability stack on the control node. When modifying 
 
 Grafana runs on port 3000. All Grafana K8s resources (ConfigMaps, Deployment) are built programmatically using Fabric8 in `GrafanaManifestBuilder`. Dashboard JSON lives in standalone resource files under `configuration/grafana/dashboards/` with `__KEY__` template variable substitution (`__CLUSTER_NAME__`, `__BUCKET_NAME__`, `__METRICS_FILTER_ID__`). The `GrafanaDashboard` enum is the single source of truth for dashboard metadata — adding a new dashboard requires only a new enum entry and a JSON file.
 
-Kotlin code: `configuration/grafana/GrafanaDashboard.kt` (registry), `configuration/grafana/GrafanaManifestBuilder.kt` (Fabric8 builder), `configuration/grafana/GrafanaDatasourceConfig.kt`, `commands/dashboards/`, `services/GrafanaDashboardService.kt`.
+Kotlin code: `configuration/grafana/GrafanaDashboard.kt` (registry), `configuration/grafana/GrafanaManifestBuilder.kt` (Fabric8 builder), `configuration/grafana/GrafanaDatasourceConfig.kt`, `commands/grafana/`, `services/GrafanaDashboardService.kt`.
 
 Datasources: VictoriaMetrics (Prometheus), VictoriaLogs, ClickHouse, Tempo, CloudWatch, Pyroscope.
 
@@ -271,7 +271,7 @@ Current dashboards: System Overview, AWS CloudWatch (S3/EBS/EC2), EMR, OpenSearc
 
 ### CLI Commands
 
-- `dashboards generate` / `dashboards upload` — extract and deploy Grafana dashboards
+- `grafana upload` — build and deploy Grafana dashboards and resources
 - `logs query` / `logs backup` / `logs import` / `logs ls` — query, backup, import, list log snapshots
 - `metrics backup` / `metrics import` / `metrics ls` — backup, import, list metric snapshots
 

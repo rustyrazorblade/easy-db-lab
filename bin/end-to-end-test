@@ -223,10 +223,19 @@ step_test_mcp_server() {
     # Remove stale .mcp.json if present
     rm -f .mcp.json
 
-    # Start the MCP server in the background on a random port
+    # Kill any stale server on this port
     local server_port=9852
+    local stale_pid=$(lsof -ti :$server_port 2>/dev/null || true)
+    if [ -n "$stale_pid" ]; then
+        echo "Killing stale process on port $server_port (PID: $stale_pid)"
+        kill "$stale_pid" 2>/dev/null || true
+        sleep 2
+    fi
+
+    # Start the MCP server in the background on a fixed port
     easy-db-lab server --port $server_port &
     local server_pid=$!
+    echo "$server_pid" > .mcp-server.pid
     local server_url="http://127.0.0.1:${server_port}"
 
     # Wait for the server to accept connections
@@ -299,7 +308,7 @@ step_test_mcp_server() {
     echo "=== Stopping MCP server ==="
     kill "$server_pid" 2>/dev/null || true
     wait "$server_pid" 2>/dev/null || true
-    rm -f .mcp.json
+    rm -f .mcp.json .mcp-server.pid
 
     echo "=== MCP server /status test passed ==="
 }
@@ -987,6 +996,13 @@ step_test_logs_backup() {
 }
 
 step_teardown() {
+    # Kill stale MCP server if still running
+    if [ -f .mcp-server.pid ]; then
+        local pid=$(cat .mcp-server.pid)
+        kill "$pid" 2>/dev/null || true
+        rm -f .mcp-server.pid
+    fi
+
     echo "=== Tearing down cluster ==="
     easy-db-lab down --yes
 

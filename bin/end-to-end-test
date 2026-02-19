@@ -294,9 +294,10 @@ step_test_mcp_server() {
         return 1
     fi
 
-    # Verify S3 section contains fullpath field
+    # Verify S3 section contains fullpath field and save for later steps
     if echo "$body" | jq -e '.s3.fullpath' > /dev/null 2>&1; then
         local fullpath=$(echo "$body" | jq -r '.s3.fullpath')
+        echo "$fullpath" > .s3-fullpath
         echo "Response contains s3.fullpath: OK ($fullpath)"
     else
         echo "ERROR: Response does not contain expected s3.fullpath field"
@@ -316,20 +317,16 @@ step_test_mcp_server() {
 step_verify_s3_backup() {
     echo "=== Verifying S3 config backup ==="
 
-    # Extract S3 bucket from state.json
+    local s3_fullpath=$(cat .s3-fullpath)
     local s3_bucket=$(jq -r '.s3Bucket' state.json)
-    if [ -z "$s3_bucket" ] || [ "$s3_bucket" = "null" ]; then
-        echo "ERROR: S3 bucket not found in state.json"
-        return 1
-    fi
 
-    echo "S3 Bucket: $s3_bucket"
+    echo "S3 Fullpath: $s3_fullpath"
 
     # Verify key backup files exist
     local failed=0
 
     echo "=== Checking kubeconfig backup ==="
-    if aws s3 ls "s3://${s3_bucket}/config/kubeconfig" > /dev/null 2>&1; then
+    if aws s3 ls "s3://${s3_fullpath}/config/kubeconfig" > /dev/null 2>&1; then
         echo "  config/kubeconfig: OK"
     else
         echo "  config/kubeconfig: MISSING"
@@ -337,7 +334,7 @@ step_verify_s3_backup() {
     fi
 
     echo "=== Checking k8s manifests backup ==="
-    local k8s_count=$(aws s3 ls "s3://${s3_bucket}/config/k8s/" --recursive 2>/dev/null | wc -l)
+    local k8s_count=$(aws s3 ls "s3://${s3_fullpath}/config/k8s/" --recursive 2>/dev/null | wc -l)
     if [ "$k8s_count" -gt 0 ]; then
         echo "  config/k8s manifests: OK ($k8s_count files)"
     else
@@ -347,7 +344,7 @@ step_verify_s3_backup() {
 
     echo "=== Checking config backups ==="
     for config_file in "config/cassandra_versions.yaml" "config/environment.sh" "config/setup_instance.sh"; do
-        if aws s3 ls "s3://${s3_bucket}/${config_file}" > /dev/null 2>&1; then
+        if aws s3 ls "s3://${s3_fullpath}/${config_file}" > /dev/null 2>&1; then
             echo "  ${config_file}: OK"
         else
             echo "  ${config_file}: MISSING"
@@ -386,17 +383,12 @@ step_verify_cassandra_backup() {
 
     echo "=== Verifying Cassandra config backup to S3 ==="
 
-    # Extract S3 bucket from state.json
-    local s3_bucket=$(jq -r '.s3Bucket' state.json)
-    if [ -z "$s3_bucket" ] || [ "$s3_bucket" = "null" ]; then
-        echo "ERROR: S3 bucket not found in state.json"
-        return 1
-    fi
+    local s3_fullpath=$(cat .s3-fullpath)
 
     local failed=0
 
     echo "=== Checking cassandra.patch.yaml backup ==="
-    if aws s3 ls "s3://${s3_bucket}/config/cassandra.patch.yaml" > /dev/null 2>&1; then
+    if aws s3 ls "s3://${s3_fullpath}/config/cassandra.patch.yaml" > /dev/null 2>&1; then
         echo "  config/cassandra.patch.yaml: OK"
     else
         echo "  config/cassandra.patch.yaml: MISSING"
@@ -404,7 +396,7 @@ step_verify_cassandra_backup() {
     fi
 
     echo "=== Checking cassandra config directory backup ==="
-    local cassandra_config_count=$(aws s3 ls "s3://${s3_bucket}/config/cassandra-config/" --recursive 2>/dev/null | wc -l)
+    local cassandra_config_count=$(aws s3 ls "s3://${s3_fullpath}/config/cassandra-config/" --recursive 2>/dev/null | wc -l)
     if [ "$cassandra_config_count" -gt 0 ]; then
         echo "  config/cassandra-config: OK ($cassandra_config_count files)"
     else
@@ -947,19 +939,14 @@ step_test_metrics_backup() {
     # Run metrics backup command
     easy-db-lab metrics backup
 
-    # Extract S3 bucket from state.json
-    local s3_bucket=$(jq -r '.s3Bucket' state.json)
-    if [ -z "$s3_bucket" ] || [ "$s3_bucket" = "null" ]; then
-        echo "ERROR: S3 bucket not found in state.json"
-        return 1
-    fi
+    local s3_fullpath=$(cat .s3-fullpath)
 
     # Verify backup was created in S3
     echo "=== Checking VictoriaMetrics backup in S3 ==="
-    local backup_count=$(aws s3 ls "s3://${s3_bucket}/victoriametrics/" 2>/dev/null | wc -l)
+    local backup_count=$(aws s3 ls "s3://${s3_fullpath}/victoriametrics/" 2>/dev/null | wc -l)
     if [ "$backup_count" -gt 0 ]; then
         echo "  victoriametrics backup: OK ($backup_count entries)"
-        aws s3 ls "s3://${s3_bucket}/victoriametrics/" | head -5
+        aws s3 ls "s3://${s3_fullpath}/victoriametrics/" | head -5
     else
         echo "ERROR: VictoriaMetrics backup not found in S3"
         return 1
@@ -974,19 +961,14 @@ step_test_logs_backup() {
     # Run logs backup command
     easy-db-lab logs backup
 
-    # Extract S3 bucket from state.json
-    local s3_bucket=$(jq -r '.s3Bucket' state.json)
-    if [ -z "$s3_bucket" ] || [ "$s3_bucket" = "null" ]; then
-        echo "ERROR: S3 bucket not found in state.json"
-        return 1
-    fi
+    local s3_fullpath=$(cat .s3-fullpath)
 
     # Verify backup was created in S3
     echo "=== Checking VictoriaLogs backup in S3 ==="
-    local backup_count=$(aws s3 ls "s3://${s3_bucket}/victorialogs/" 2>/dev/null | wc -l)
+    local backup_count=$(aws s3 ls "s3://${s3_fullpath}/victorialogs/" 2>/dev/null | wc -l)
     if [ "$backup_count" -gt 0 ]; then
         echo "  victorialogs backup: OK ($backup_count entries)"
-        aws s3 ls "s3://${s3_bucket}/victorialogs/" | head -5
+        aws s3 ls "s3://${s3_fullpath}/victorialogs/" | head -5
     else
         echo "ERROR: VictoriaLogs backup not found in S3"
         return 1
@@ -1002,6 +984,7 @@ step_teardown() {
         kill "$pid" 2>/dev/null || true
         rm -f .mcp-server.pid
     fi
+    rm -f .s3-fullpath
 
     echo "=== Tearing down cluster ==="
     easy-db-lab down --yes

@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.providers.aws.model.AMI
 import com.rustyrazorblade.easydblab.services.aws.AMIService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -43,7 +44,6 @@ class PruneAMIs : PicoBaseCommand() {
     )
     var type: String? = null
 
-    @Suppress("NestedBlockDepth", "TooGenericExceptionCaught")
     override fun execute() {
         outputHandler.handleMessage("Pruning AMIs matching pattern: $pattern")
         if (type != null) {
@@ -52,16 +52,24 @@ class PruneAMIs : PicoBaseCommand() {
         outputHandler.handleMessage("Keeping newest $keep AMIs per architecture/type combination")
         outputHandler.handleMessage("")
 
-        // First, identify which AMIs would be deleted (dry-run)
-        val preview =
-            service.pruneAMIs(
-                namePattern = pattern,
-                keepCount = keep,
-                dryRun = true,
-                typeFilter = type,
-            )
+        val preview = service.pruneAMIs(namePattern = pattern, keepCount = keep, dryRun = true, typeFilter = type)
 
-        // Show what will be kept
+        displayKeptAMIs(preview)
+
+        if (preview.deleted.isEmpty()) {
+            outputHandler.handleMessage("No AMIs to delete")
+            return
+        }
+
+        if (dryRun) {
+            displayDryRunPreview(preview)
+            return
+        }
+
+        deleteWithConfirmation(preview)
+    }
+
+    private fun displayKeptAMIs(preview: AMIService.PruneResult) {
         if (preview.kept.isNotEmpty()) {
             outputHandler.handleMessage("Will keep ${preview.kept.size} AMIs:")
             for (ami in preview.kept) {
@@ -69,46 +77,29 @@ class PruneAMIs : PicoBaseCommand() {
             }
             outputHandler.handleMessage("")
         }
+    }
 
-        // Check if there's anything to delete
-        if (preview.deleted.isEmpty()) {
-            outputHandler.handleMessage("No AMIs to delete")
-            return
-        }
-
-        // If dry-run mode, just show what would be deleted and exit
-        if (dryRun) {
-            outputHandler.handleMessage("DRY RUN - Would delete ${preview.deleted.size} AMIs:")
-            for (ami in preview.deleted) {
-                val visibility = if (ami.isPublic) "public" else "private"
-                outputHandler.handleMessage("  × ${ami.id}: ${ami.name} (${ami.architecture}, ${ami.creationDate})")
-                outputHandler.handleMessage("    Owner: ${ami.ownerId}, Visibility: $visibility")
-                if (ami.snapshotIds.isNotEmpty()) {
-                    outputHandler.handleMessage("    Snapshots: ${ami.snapshotIds.joinToString(", ")}")
-                }
+    private fun displayDryRunPreview(preview: AMIService.PruneResult) {
+        outputHandler.handleMessage("DRY RUN - Would delete ${preview.deleted.size} AMIs:")
+        for (ami in preview.deleted) {
+            val visibility = if (ami.isPublic) "public" else "private"
+            outputHandler.handleMessage("  × ${ami.id}: ${ami.name} (${ami.architecture}, ${ami.creationDate})")
+            outputHandler.handleMessage("    Owner: ${ami.ownerId}, Visibility: $visibility")
+            if (ami.snapshotIds.isNotEmpty()) {
+                outputHandler.handleMessage("    Snapshots: ${ami.snapshotIds.joinToString(", ")}")
             }
-            return
         }
+    }
 
-        // Delete AMIs with confirmation (already sorted oldest first by AMIService)
+    @Suppress("TooGenericExceptionCaught")
+    private fun deleteWithConfirmation(preview: AMIService.PruneResult) {
         outputHandler.handleMessage("Found ${preview.deleted.size} AMIs to delete")
-        val amisToDelete = preview.deleted
 
         val actuallyDeleted = mutableListOf<String>()
         val skipped = mutableListOf<String>()
 
-        for (ami in amisToDelete) {
-            val visibility = if (ami.isPublic) "public" else "private"
-            outputHandler.handleMessage("")
-            outputHandler.handleMessage("AMI: ${ami.id}")
-            outputHandler.handleMessage("  Name: ${ami.name}")
-            outputHandler.handleMessage("  Architecture: ${ami.architecture}")
-            outputHandler.handleMessage("  Created: ${ami.creationDate}")
-            outputHandler.handleMessage("  Owner: ${ami.ownerId}")
-            outputHandler.handleMessage("  Visibility: $visibility")
-            if (ami.snapshotIds.isNotEmpty()) {
-                outputHandler.handleMessage("  Snapshots: ${ami.snapshotIds.joinToString(", ")}")
-            }
+        for (ami in preview.deleted) {
+            displayAMIDetails(ami)
 
             print("Delete this AMI? [y/N]: ")
             val response = readlnOrNull()?.trim()?.lowercase() ?: "n"
@@ -131,11 +122,32 @@ class PruneAMIs : PicoBaseCommand() {
             }
         }
 
-        // Summary
-        outputHandler.handleMessage("")
-        outputHandler.handleMessage("Summary:")
-        outputHandler.handleMessage("  Deleted: ${actuallyDeleted.size} AMIs")
-        outputHandler.handleMessage("  Skipped: ${skipped.size} AMIs")
-        outputHandler.handleMessage("  Kept: ${preview.kept.size} AMIs")
+        outputHandler.handleMessage(
+            """
+            |
+            |Summary:
+            |  Deleted: ${actuallyDeleted.size} AMIs
+            |  Skipped: ${skipped.size} AMIs
+            |  Kept: ${preview.kept.size} AMIs
+            """.trimMargin(),
+        )
+    }
+
+    private fun displayAMIDetails(ami: AMI) {
+        val visibility = if (ami.isPublic) "public" else "private"
+        outputHandler.handleMessage(
+            """
+            |
+            |AMI: ${ami.id}
+            |  Name: ${ami.name}
+            |  Architecture: ${ami.architecture}
+            |  Created: ${ami.creationDate}
+            |  Owner: ${ami.ownerId}
+            |  Visibility: $visibility
+            """.trimMargin(),
+        )
+        if (ami.snapshotIds.isNotEmpty()) {
+            outputHandler.handleMessage("  Snapshots: ${ami.snapshotIds.joinToString(", ")}")
+        }
     }
 }

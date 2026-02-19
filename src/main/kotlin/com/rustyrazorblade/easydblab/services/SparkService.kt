@@ -220,6 +220,7 @@ interface SparkService {
         /**
          * Format the step details for display.
          */
+        @Suppress("CyclomaticComplexMethod")
         fun toDisplayString(): String =
             buildString {
                 appendLine("=== Step Details ===")

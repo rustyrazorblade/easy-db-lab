@@ -11,7 +11,9 @@ import picocli.CommandLine.Command
 
 @Command(name = "test-root", description = ["Test root command"])
 class TestRootCommand : Runnable {
-    override fun run() {}
+    override fun run() {
+        // no-op for test
+    }
 }
 
 class CommandsTest : BaseKoinTest() {
@@ -48,7 +50,9 @@ class CommandsTest : BaseKoinTest() {
             @CommandLine.Option(names = ["--verbose"], description = ["Enable verbose output"])
             var verbose: Boolean = false
 
-            override fun run() {}
+            override fun run() {
+                // no-op for test
+            }
         }
 
         parentCmd.addSubcommand("sub", CommandLine(SubCommand()))

@@ -53,21 +53,6 @@ class K8sServiceIntegrationTest {
         private const val POD_WAIT_TIMEOUT_SECONDS = 120L
 
         /**
-         * eBPF-based DaemonSets that require kernel eBPF support unavailable in
-         * Docker-in-Docker K3s. These pods will be scheduled and pull their images,
-         * but will CrashLoopBackOff when trying to load eBPF programs.
-         * We verify they are NOT stuck in Pending or ImagePullBackOff.
-         */
-        private val EBPF_DAEMONSETS = setOf("beyla", "ebpf-exporter", "pyroscope-ebpf")
-
-        /**
-         * Pods that depend on external services (AWS S3, SQS, IAM) that don't exist
-         * in the test environment. They will start but crash on connection errors.
-         * We verify they are NOT stuck in Pending or ImagePullBackOff.
-         */
-        private val EXTERNAL_DEPENDENCY_WORKLOADS = setOf("tempo", "vector-s3", "s3manager", "registry")
-
-        /**
          * Deployments that should reach Running status with ready replicas in K3s.
          * These have no external dependencies beyond what we set up in the test.
          */

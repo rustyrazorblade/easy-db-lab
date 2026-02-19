@@ -46,50 +46,6 @@ class ClusterStateManager(
      */
     fun exists(): Boolean = stateFile.exists()
 
-    /**
-     * Load, update hosts, and save in a single operation.
-     */
-    fun updateHosts(hosts: Map<ServerType, List<ClusterHost>>) {
-        val state = load()
-        state.updateHosts(hosts)
-        save(state)
-    }
-
-    /**
-     * Load, update EMR cluster, and save in a single operation.
-     */
-    fun updateEmrCluster(emrCluster: EMRClusterState?) {
-        val state = load()
-        state.updateEmrCluster(emrCluster)
-        save(state)
-    }
-
-    /**
-     * Load, update infrastructure, and save in a single operation.
-     */
-    fun updateInfrastructure(infrastructure: InfrastructureState?) {
-        val state = load()
-        state.updateInfrastructure(infrastructure)
-        save(state)
-    }
-
-    /**
-     * Load, mark infrastructure as UP, and save.
-     */
-    fun markInfrastructureUp() {
-        val state = load()
-        state.markInfrastructureUp()
-        save(state)
-    }
-
-    /**
-     * Load, mark infrastructure as DOWN, and save.
-     */
-    fun markInfrastructureDown() {
-        val state = load()
-        state.markInfrastructureDown()
-        save(state)
-    }
 
     /**
      * Atomically increment the stress job counter and return the new value.

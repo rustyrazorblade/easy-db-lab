@@ -49,5 +49,4 @@ class K8sResourceSyncTest {
             .withFailMessage("log_file should use parts[5] for $expectedPrefix prefix")
             .contains("get(parts, [5])")
     }
-
 }

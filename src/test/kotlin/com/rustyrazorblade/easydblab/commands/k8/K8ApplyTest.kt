@@ -27,6 +27,7 @@ import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+
 /**
  * Test suite for K8Apply command.
  *

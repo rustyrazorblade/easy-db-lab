@@ -7,7 +7,7 @@ Continuous profiling is provided by [Grafana Pyroscope](https://grafana.com/oss/
 Profiling data is collected from two sources and sent to the Pyroscope server on the control node (port 4040):
 
 - **Pyroscope Java agent** — Runs as a `-javaagent` inside the Cassandra JVM. Uses async-profiler to collect CPU, allocation, lock contention, and wall-clock profiles with full method-level resolution.
-- **Pyroscope eBPF agent** — Runs as a DaemonSet on all nodes. Profiles all processes (Cassandra, ClickHouse, stress jobs) at the system level using eBPF. Provides CPU flame graphs including kernel stack frames.
+- **Grafana Alloy eBPF profiler** — Runs as a DaemonSet on all nodes via [Grafana Alloy](https://grafana.com/docs/alloy/latest/). Profiles all processes (Cassandra, ClickHouse, stress jobs) at the system level using eBPF. Provides CPU flame graphs including kernel stack frames.
 
 ## Accessing Profiles
 
@@ -46,7 +46,7 @@ The agent JAR is installed at `/usr/local/pyroscope/pyroscope.jar`.
 
 ### eBPF Agent
 
-The eBPF agent runs as a privileged DaemonSet (`pyroscope-ebpf`) and profiles all processes on each node. Configuration is in the `pyroscope-ebpf-config` ConfigMap.
+The eBPF profiler runs as a privileged Grafana Alloy DaemonSet (`pyroscope-ebpf`) and profiles all processes on each node. Configuration is in the `pyroscope-ebpf-config` ConfigMap (Alloy River format). It uses `discovery.process` to discover host processes and `pyroscope.ebpf` to collect CPU profiles.
 
 ### Pyroscope Server
 

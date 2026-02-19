@@ -20,10 +20,12 @@ spec:
       tolerations:
         - operator: Exists
       containers:
-        - name: pyroscope-ebpf
-          image: grafana/pyroscope-ebpf:0.4.0
+        - name: alloy
+          image: grafana/alloy:v1.8.1
           args:
-            - --config.file=/etc/pyroscope-ebpf/config.yaml
+            - run
+            - --server.http.listen-addr=0.0.0.0:12345
+            - /etc/alloy/config.alloy
           env:
             - name: HOSTNAME
               valueFrom:
@@ -34,6 +36,8 @@ spec:
                 configMapKeyRef:
                   name: cluster-config
                   key: cluster_name
+            - name: PYROSCOPE_URL
+              value: http://pyroscope.default.svc.cluster.local:4040
           securityContext:
             privileged: true
             runAsUser: 0
@@ -46,26 +50,13 @@ spec:
               cpu: 50m
           volumeMounts:
             - name: config
-              mountPath: /etc/pyroscope-ebpf
+              mountPath: /etc/alloy
               readOnly: true
-            - name: sys-kernel
-              mountPath: /sys/kernel
-              readOnly: true
-            - name: sys-fs-bpf
-              mountPath: /sys/fs/bpf
-            - name: proc
-              mountPath: /proc
-              readOnly: true
+            - name: sym-cache
+              mountPath: /tmp/symb-cache
       volumes:
         - name: config
           configMap:
             name: pyroscope-ebpf-config
-        - name: sys-kernel
-          hostPath:
-            path: /sys/kernel
-        - name: sys-fs-bpf
-          hostPath:
-            path: /sys/fs/bpf
-        - name: proc
-          hostPath:
-            path: /proc
+        - name: sym-cache
+          emptyDir: {}

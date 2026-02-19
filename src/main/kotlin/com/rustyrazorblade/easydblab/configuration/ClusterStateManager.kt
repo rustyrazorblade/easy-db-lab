@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.SerializationFeature
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import java.io.File
+import java.time.Instant
 
 /**
  * Manages persistence of ClusterState to/from disk.
@@ -88,5 +89,17 @@ class ClusterStateManager(
         val state = load()
         state.markInfrastructureDown()
         save(state)
+    }
+
+    /**
+     * Atomically increment the stress job counter and return the new value.
+     * Used for unique job naming and port assignment.
+     */
+    fun incrementStressJobCounter(): Int {
+        val state = load()
+        state.stressJobCounter++
+        state.lastAccessedAt = Instant.now()
+        save(state)
+        return state.stressJobCounter
     }
 }

@@ -264,7 +264,7 @@ The cluster runs a full observability stack on the control node. When modifying 
 
 - **OpenTelemetry Collector** (`k8s/core/10-otel-configmap.yaml`, `30-otel-daemonset.yaml`) runs on all nodes. Collects host metrics, scrapes Prometheus endpoints (ClickHouse, Vector, Beyla, ebpf_exporter), reads file-based logs, and receives OTLP. Exports metrics to VictoriaMetrics, logs to VictoriaLogs, traces to Tempo.
 - **Vector** (`k8s/core/51-*` through `54-*`) runs as a DaemonSet for system/Cassandra/ClickHouse log collection, plus a separate deployment for S3 log ingestion (EMR/Spark via SQS). Both sink to VictoriaLogs.
-- **Grafana Alloy eBPF profiler** (`k8s/core/13-pyroscope-ebpf-configmap.yaml`, `31-pyroscope-ebpf-daemonset.yaml`) runs on all nodes via Grafana Alloy with `pyroscope.ebpf` component. Collects CPU profiles via eBPF for Cassandra, ClickHouse, and stress jobs. Sends profiles to Pyroscope server.
+- **Grafana Alloy eBPF profiler** (`configuration/pyroscope/PyroscopeManifestBuilder.kt`) runs on all nodes via Grafana Alloy with `pyroscope.ebpf` component. Collects CPU profiles via eBPF for Cassandra, ClickHouse, and stress jobs. Sends profiles to Pyroscope server.
 - **Beyla** (`k8s/core/32-beyla-configmap.yaml`, `33-beyla-daemonset.yaml`) runs on all nodes. Provides L7 network RED metrics (Rate/Errors/Duration) for Cassandra and ClickHouse protocols via eBPF. Exposes Prometheus metrics scraped by OTel collector.
 - **ebpf_exporter** (`k8s/core/34-ebpf-exporter-configmap.yaml`, `35-ebpf-exporter-daemonset.yaml`) runs on all nodes. Provides low-level TCP retransmit, block I/O latency, and VFS latency metrics via eBPF. Exposes Prometheus metrics scraped by OTel collector.
 - **Stress job sidecars** (`11-otel-stress-sidecar-configmap.yaml`) — long-running stress jobs get an OTel sidecar that scrapes `cassandra-easy-stress:9500` and forwards to the node's DaemonSet collector.
@@ -274,7 +274,7 @@ The cluster runs a full observability stack on the control node. When modifying 
 - **VictoriaMetrics** (port 8428, 7-day retention) — Prometheus-compatible metrics store. K8s: `k8s/core/44-victoriametrics-deployment.yaml`. Services: `VictoriaStreamService`, `VictoriaBackupService`.
 - **VictoriaLogs** (port 9428, 7-day retention) — log store with Elasticsearch-compatible sink. K8s: `k8s/core/45-victorialogs-deployment.yaml`. Services: `VictoriaLogsService`, `VictoriaStreamService`, `VictoriaBackupService`.
 - **Tempo** (port 3200) — trace store. K8s: `k8s/core/46-tempo-deployment.yaml`.
-- **Pyroscope** (port 4040) — continuous profiling store. K8s: `k8s/core/12-pyroscope-configmap.yaml`, `47-pyroscope-deployment.yaml`. Receives profiles from Java agent (Cassandra) and eBPF agent (all nodes).
+- **Pyroscope** (port 4040) — continuous profiling store. K8s: `configuration/pyroscope/PyroscopeManifestBuilder.kt` (Fabric8-based). Receives profiles from Java agent (Cassandra) and eBPF agent (all nodes). Data directory permissions set via SSH in `K8Apply`.
 
 ### Grafana Dashboards
 

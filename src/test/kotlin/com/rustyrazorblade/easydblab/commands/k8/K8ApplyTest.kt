@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
 import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
 import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.TemplateService
@@ -35,6 +36,7 @@ class K8ApplyTest : BaseKoinTest() {
     private lateinit var mockDashboardService: GrafanaDashboardService
     private lateinit var mockTemplateService: TemplateService
     private lateinit var mockManifestBuilder: GrafanaManifestBuilder
+    private lateinit var mockPyroscopeBuilder: PyroscopeManifestBuilder
 
     @TempDir
     lateinit var testWorkDir: File
@@ -85,6 +87,13 @@ class K8ApplyTest : BaseKoinTest() {
                         mockManifestBuilder = it
                     }
                 }
+
+                // Mock PyroscopeManifestBuilder
+                single {
+                    mock<PyroscopeManifestBuilder>().also {
+                        mockPyroscopeBuilder = it
+                    }
+                }
             },
         )
 
@@ -96,6 +105,7 @@ class K8ApplyTest : BaseKoinTest() {
         mockDashboardService = getKoin().get()
         mockTemplateService = getKoin().get()
         mockManifestBuilder = getKoin().get()
+        mockPyroscopeBuilder = getKoin().get()
 
         // Default: datasource ConfigMap creation succeeds
         whenever(mockDashboardService.createDatasourcesConfigMap(any(), any()))
@@ -103,6 +113,9 @@ class K8ApplyTest : BaseKoinTest() {
 
         // Default: manifest builder returns empty list
         whenever(mockManifestBuilder.buildAllResources()).thenReturn(emptyList())
+
+        // Default: pyroscope manifest builder returns empty list
+        whenever(mockPyroscopeBuilder.buildAllResources()).thenReturn(emptyList())
     }
 
     @Test

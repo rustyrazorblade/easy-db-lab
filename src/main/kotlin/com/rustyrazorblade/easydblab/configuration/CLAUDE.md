@@ -144,3 +144,10 @@ All Grafana K8s resources are built programmatically using Fabric8:
 - **`GrafanaManifestBuilder`** — builds all Grafana K8s resources (provisioning ConfigMap, dashboard ConfigMaps, Deployment) as typed Fabric8 objects. Uses `TemplateService` for `__KEY__` variable substitution in dashboard JSON.
 - **`GrafanaDatasourceConfig`** — datasource provisioning YAML generation.
 - **Dashboard JSON files** — stored in `resources/.../configuration/grafana/dashboards/*.json`. Raw JSON with `__KEY__` template placeholders.
+
+## Pyroscope Subpackage (`pyroscope/`)
+
+All Pyroscope K8s resources are built programmatically using Fabric8:
+
+- **`PyroscopeManifestBuilder`** — builds all Pyroscope K8s resources (server ConfigMap, Service, Deployment, eBPF ConfigMap, eBPF DaemonSet) as typed Fabric8 objects. The server runs on the control plane with a hostPath volume at `/mnt/db1/pyroscope`. Directory permissions are set via SSH in `K8Apply` before deploying (no init container).
+- **Config resources** — `config.yaml` (Pyroscope server config) and `config.alloy` (Grafana Alloy eBPF config) stored in `resources/.../configuration/pyroscope/`.

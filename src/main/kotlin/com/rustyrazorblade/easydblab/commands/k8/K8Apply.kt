@@ -7,6 +7,8 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.toHost
 import com.rustyrazorblade.easydblab.output.displayObservabilityAccess
 import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
 import com.rustyrazorblade.easydblab.services.K8sService
@@ -42,6 +44,7 @@ class K8Apply : PicoBaseCommand() {
     private val user: User by inject()
     private val templateService: TemplateService by inject()
     private val manifestBuilder: GrafanaManifestBuilder by inject()
+    private val pyroscopeManifestBuilder: PyroscopeManifestBuilder by inject()
 
     @Suppress("MagicNumber")
     @Option(
@@ -98,6 +101,9 @@ class K8Apply : PicoBaseCommand() {
                 error("Failed to apply K8s manifests: ${exception.message}")
             }
 
+        // Apply Pyroscope resources (ConfigMaps, Service, Deployment, DaemonSet built in Kotlin)
+        applyPyroscopeResources(controlNode)
+
         // Apply Grafana resources (ConfigMaps and Deployment built in Kotlin)
         applyGrafanaResources(controlNode)
 
@@ -132,6 +138,29 @@ class K8Apply : PicoBaseCommand() {
             }
         }
         outputHandler.handleMessage("Grafana resources applied successfully")
+    }
+
+    /**
+     * Applies Pyroscope K8s resources built from Kotlin using Fabric8.
+     *
+     * Sets up the data directory permissions via SSH before applying manifests,
+     * then builds and applies ConfigMaps, Service, Deployment, and DaemonSet.
+     */
+    private fun applyPyroscopeResources(controlNode: ClusterHost) {
+        outputHandler.handleMessage("Preparing Pyroscope data directory...")
+        remoteOps.executeRemotely(
+            controlNode.toHost(),
+            "sudo mkdir -p /mnt/db1/pyroscope && sudo chown -R ${PyroscopeManifestBuilder.PYROSCOPE_UID}:${PyroscopeManifestBuilder.PYROSCOPE_UID} /mnt/db1/pyroscope",
+        )
+
+        outputHandler.handleMessage("Applying Pyroscope resources...")
+        val resources = pyroscopeManifestBuilder.buildAllResources()
+        for (resource in resources) {
+            k8sService.applyResource(controlNode, resource).getOrElse { exception ->
+                error("Failed to apply Pyroscope ${resource.kind}/${resource.metadata?.name}: ${exception.message}")
+            }
+        }
+        outputHandler.handleMessage("Pyroscope resources applied successfully")
     }
 
     /**

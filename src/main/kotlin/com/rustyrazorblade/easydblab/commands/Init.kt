@@ -302,10 +302,6 @@ class Init : PicoBaseCommand() {
         extractResourceFile("cassandra-sidecar.yaml", "cassandra/cassandra-sidecar.yaml")
 
         outputHandler.handleMessage("Creating k8s directory and writing Kubernetes manifests")
-        extractK8sManifests()
-    }
-
-    private fun extractK8sManifests() {
         templateService.extractResources()
     }
 

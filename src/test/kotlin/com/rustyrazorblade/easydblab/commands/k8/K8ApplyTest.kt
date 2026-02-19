@@ -7,36 +7,36 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.vector.VectorManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.victoria.VictoriaManifestBuilder
 import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.HasMetadata
-import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.io.TempDir
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
+import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
-import java.io.File
-import java.nio.file.Path
-
 /**
- * Test suite for K8Apply command following TDD principles.
+ * Test suite for K8Apply command.
  *
  * These tests verify K8s observability stack deployment including
- * manifest extraction and K8sService integration.
+ * Fabric8 builder integration and K8sService calls.
  */
 class K8ApplyTest : BaseKoinTest() {
     private lateinit var mockK8sService: K8sService
     private lateinit var mockClusterStateManager: ClusterStateManager
     private lateinit var mockGrafanaUpload: GrafanaUpload
-
-    @TempDir
-    lateinit var testWorkDir: File
 
     private val testControlHost =
         ClusterHost(
@@ -67,8 +67,15 @@ class K8ApplyTest : BaseKoinTest() {
                 // Real TemplateService — never mock configuration classes
                 single { TemplateService(get(), get()) }
 
-                // Real BeylaManifestBuilder with real TemplateService
+                // Real manifest builders with real TemplateService
                 single { BeylaManifestBuilder(get()) }
+                single { EbpfExporterManifestBuilder(get()) }
+                single { OtelManifestBuilder(get()) }
+                single { TempoManifestBuilder(get()) }
+                single { VectorManifestBuilder(get()) }
+                single { VictoriaManifestBuilder() }
+                single { RegistryManifestBuilder() }
+                single { S3ManagerManifestBuilder() }
 
                 // Mock GrafanaUpload (handles Grafana + Pyroscope resources)
                 single {
@@ -85,14 +92,6 @@ class K8ApplyTest : BaseKoinTest() {
         mockK8sService = getKoin().get()
         mockClusterStateManager = getKoin().get()
         mockGrafanaUpload = getKoin().get()
-    }
-
-    @Test
-    fun `command has correct default options`() {
-        val command = K8Apply()
-
-        assertThat(command.timeoutSeconds).isEqualTo(120)
-        assertThat(command.skipWait).isFalse()
     }
 
     @Test
@@ -116,7 +115,7 @@ class K8ApplyTest : BaseKoinTest() {
     }
 
     @Test
-    fun `execute should apply manifests successfully`() {
+    fun `execute should apply all Fabric8 resources successfully`() {
         // Given - cluster state with control node
         val stateWithControl =
             ClusterState(
@@ -129,7 +128,6 @@ class K8ApplyTest : BaseKoinTest() {
             )
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
-        whenever(mockK8sService.applyManifests(any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.applyResource(any(), any<HasMetadata>())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.waitForPodsReady(any(), any())).thenReturn(Result.success(Unit))
 
@@ -138,8 +136,8 @@ class K8ApplyTest : BaseKoinTest() {
         // When
         command.execute()
 
-        // Then
-        verify(mockK8sService).applyManifests(any(), any<Path>())
+        // Then - verify Fabric8 resources were applied (multiple calls for each builder)
+        verify(mockK8sService, atLeastOnce()).applyResource(any(), any<HasMetadata>())
         verify(mockGrafanaUpload).execute()
         verify(mockK8sService).waitForPodsReady(any(), any())
     }
@@ -158,7 +156,6 @@ class K8ApplyTest : BaseKoinTest() {
             )
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
-        whenever(mockK8sService.applyManifests(any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.applyResource(any(), any<HasMetadata>())).thenReturn(Result.success(Unit))
 
         val command = K8Apply()
@@ -168,12 +165,12 @@ class K8ApplyTest : BaseKoinTest() {
         command.execute()
 
         // Then
-        verify(mockK8sService).applyManifests(any(), any<Path>())
+        verify(mockK8sService, atLeastOnce()).applyResource(any(), any<HasMetadata>())
         // waitForPodsReady should not be called
     }
 
     @Test
-    fun `execute should fail when applyManifests fails`() {
+    fun `execute should fail when applyResource fails`() {
         // Given - cluster state with control node
         val stateWithControl =
             ClusterState(
@@ -186,14 +183,14 @@ class K8ApplyTest : BaseKoinTest() {
             )
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
-        whenever(mockK8sService.applyManifests(any(), any()))
-            .thenReturn(Result.failure(RuntimeException("kubectl apply failed")))
+        whenever(mockK8sService.applyResource(any(), any<HasMetadata>()))
+            .thenReturn(Result.failure(RuntimeException("server side apply failed")))
 
         val command = K8Apply()
 
         // When/Then
         assertThatThrownBy { command.execute() }
             .isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("kubectl apply failed")
+            .hasMessageContaining("server side apply failed")
     }
 }

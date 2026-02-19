@@ -1,9 +1,6 @@
 package com.rustyrazorblade.easydblab.configuration.ebpfexporter
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.services.TemplateService
-import io.fabric8.kubernetes.api.model.ConfigMapBuilder
-import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.HostPathVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.SecurityContextBuilder
@@ -11,53 +8,30 @@ import io.fabric8.kubernetes.api.model.VolumeMountBuilder
 import io.fabric8.kubernetes.api.model.apps.DaemonSetBuilder
 
 /**
- * Builds all ebpf_exporter K8s resources as typed Fabric8 objects.
+ * Builds ebpf_exporter K8s resources as typed Fabric8 objects.
  *
  * Creates a DaemonSet that runs on all nodes with hostNetwork, hostPID,
- * and privileged mode for eBPF access. Provides low-level TCP retransmit,
- * block I/O latency, and VFS latency metrics.
+ * and privileged mode for eBPF access. Uses built-in example programs
+ * from the ebpf_exporter container image.
  *
- * @property templateService Used for loading config files from classpath resources
+ * Available built-in programs: https://github.com/cloudflare/ebpf_exporter/tree/master/examples
  */
-class EbpfExporterManifestBuilder(
-    private val templateService: TemplateService,
-) {
+class EbpfExporterManifestBuilder {
     companion object {
         private const val NAMESPACE = "default"
         private const val APP_LABEL = "ebpf-exporter"
-        private const val CONFIGMAP_NAME = "ebpf-exporter-config"
-        private const val IMAGE = "ghcr.io/cloudflare/ebpf_exporter:v2.4.2"
+        private const val IMAGE = "ghcr.io/cloudflare/ebpf_exporter:v2.5.1"
     }
 
     /**
      * Builds all ebpf_exporter K8s resources in apply order.
      *
-     * @return List of: ConfigMap, DaemonSet
+     * @return List of: DaemonSet
      */
     fun buildAllResources(): List<HasMetadata> =
         listOf(
-            buildConfigMap(),
             buildDaemonSet(),
         )
-
-    /**
-     * Builds the ebpf_exporter ConfigMap containing the eBPF programs config.
-     */
-    fun buildConfigMap() =
-        ConfigMapBuilder()
-            .withNewMetadata()
-            .withName(CONFIGMAP_NAME)
-            .withNamespace(NAMESPACE)
-            .addToLabels("app.kubernetes.io/name", APP_LABEL)
-            .endMetadata()
-            .addToData(
-                "config.yaml",
-                templateService
-                    .fromResource(
-                        EbpfExporterManifestBuilder::class.java,
-                        "config.yaml",
-                    ).substitute(),
-            ).build()
 
     /**
      * Builds the ebpf_exporter DaemonSet.
@@ -92,7 +66,8 @@ class EbpfExporterManifestBuilder(
             .withName(APP_LABEL)
             .withImage(IMAGE)
             .withArgs(
-                "--config.dir=/etc/ebpf_exporter",
+                "--config.dir=/examples",
+                "--config.names=biolatency,xfsdist,cachestat",
                 "--web.listen-address=0.0.0.0:${Constants.K8s.EBPF_EXPORTER_METRICS_PORT}",
             ).withSecurityContext(
                 SecurityContextBuilder()
@@ -107,11 +82,6 @@ class EbpfExporterManifestBuilder(
             .withName("metrics")
             .endPort()
             .addToVolumeMounts(
-                VolumeMountBuilder()
-                    .withName("config")
-                    .withMountPath("/etc/ebpf_exporter")
-                    .withReadOnly(true)
-                    .build(),
                 VolumeMountBuilder()
                     .withName("sys-kernel")
                     .withMountPath("/sys/kernel")
@@ -137,13 +107,6 @@ class EbpfExporterManifestBuilder(
                     .withReadOnly(true)
                     .build(),
             ).endContainer()
-            .addNewVolume()
-            .withName("config")
-            .withConfigMap(
-                ConfigMapVolumeSourceBuilder()
-                    .withName(CONFIGMAP_NAME)
-                    .build(),
-            ).endVolume()
             .addNewVolume()
             .withName("sys-kernel")
             .withHostPath(

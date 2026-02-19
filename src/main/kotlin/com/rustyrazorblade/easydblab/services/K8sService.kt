@@ -1244,10 +1244,25 @@ class DefaultK8sService(
             log.info { "Applying $kind/$name via server-side apply" }
 
             createClient(controlHost).use { client ->
-                client
-                    .resource(resource)
-                    .forceConflicts()
-                    .serverSideApply()
+                try {
+                    client
+                        .resource(resource)
+                        .forceConflicts()
+                        .serverSideApply()
+                } catch (e: Exception) {
+                    if (e.message?.contains("rollingUpdate") == true &&
+                        e.message?.contains("Recreate") == true
+                    ) {
+                        log.info { "$kind/$name has strategy conflict, deleting and re-creating" }
+                        client.resource(resource).delete()
+                        client
+                            .resource(resource)
+                            .forceConflicts()
+                            .serverSideApply()
+                    } else {
+                        throw e
+                    }
+                }
                 log.info { "Applied $kind/$name successfully" }
             }
         }

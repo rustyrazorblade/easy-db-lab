@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
 import com.rustyrazorblade.easydblab.driver.CqlSessionFactory
 import com.rustyrazorblade.easydblab.driver.DefaultCqlSessionFactory
 import com.rustyrazorblade.easydblab.observability.TelemetryProvider
@@ -45,6 +46,7 @@ val servicesModule =
         factoryOf(::DefaultK3sAgentService) bind K3sAgentService::class
         factoryOf(::DefaultK8sService) bind K8sService::class
         factoryOf(::GrafanaManifestBuilder)
+        factoryOf(::PyroscopeManifestBuilder)
         factoryOf(::DefaultGrafanaDashboardService) bind GrafanaDashboardService::class
         factoryOf(::TemplateService)
         factoryOf(::DefaultVictoriaBackupService) bind VictoriaBackupService::class

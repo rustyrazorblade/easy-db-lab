@@ -3,14 +3,11 @@ package com.rustyrazorblade.easydblab.commands.k8
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
+import com.rustyrazorblade.easydblab.commands.grafana.GrafanaUpload
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
-import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.toHost
 import com.rustyrazorblade.easydblab.output.displayObservabilityAccess
-import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
 import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -40,11 +37,9 @@ import java.nio.file.Path
 class K8Apply : PicoBaseCommand() {
     private val log = KotlinLogging.logger {}
     private val k8sService: K8sService by inject()
-    private val dashboardService: GrafanaDashboardService by inject()
     private val user: User by inject()
     private val templateService: TemplateService by inject()
-    private val manifestBuilder: GrafanaManifestBuilder by inject()
-    private val pyroscopeManifestBuilder: PyroscopeManifestBuilder by inject()
+    private val grafanaUpload: GrafanaUpload by inject()
 
     @Suppress("MagicNumber")
     @Option(
@@ -80,12 +75,11 @@ class K8Apply : PicoBaseCommand() {
         val controlNode = controlHosts.first()
         log.debug { "Using control node: ${controlNode.alias} (${controlNode.publicIp})" }
 
-        // Create runtime ConfigMaps that require dynamic values
+        // Create runtime ConfigMap with dynamic values
         createClusterConfigMap(controlNode)
-        createDatasourcesConfigMap(controlNode)
 
         // Extract core manifests from classpath with template substitution
-        // (Grafana YAML files are no longer in core/ - they are built in Kotlin)
+        // (Grafana and Pyroscope YAML files are no longer in core/ - they are built in Kotlin)
         templateService.extractAndSubstituteResources(
             filter = { it.startsWith("core/") },
         )
@@ -101,11 +95,8 @@ class K8Apply : PicoBaseCommand() {
                 error("Failed to apply K8s manifests: ${exception.message}")
             }
 
-        // Apply Pyroscope resources (ConfigMaps, Service, Deployment, DaemonSet built in Kotlin)
-        applyPyroscopeResources(controlNode)
-
-        // Apply Grafana resources (ConfigMaps and Deployment built in Kotlin)
-        applyGrafanaResources(controlNode)
+        // Apply Pyroscope and Grafana resources (built in Kotlin via Fabric8)
+        grafanaUpload.execute()
 
         // Wait for pods to be ready
         if (!skipWait) {
@@ -121,46 +112,6 @@ class K8Apply : PicoBaseCommand() {
         outputHandler.handleMessage("")
         outputHandler.handleMessage("Observability stack deployed successfully!")
         outputHandler.displayObservabilityAccess(controlNode.privateIp)
-    }
-
-    /**
-     * Applies Grafana K8s resources built from Kotlin using Fabric8.
-     *
-     * Builds and applies provisioning ConfigMap, dashboard ConfigMaps, and Deployment
-     * directly via the K8s API without YAML intermediaries.
-     */
-    private fun applyGrafanaResources(controlNode: ClusterHost) {
-        outputHandler.handleMessage("Applying Grafana resources...")
-        val resources = manifestBuilder.buildAllResources()
-        for (resource in resources) {
-            k8sService.applyResource(controlNode, resource).getOrElse { exception ->
-                error("Failed to apply Grafana ${resource.kind}/${resource.metadata?.name}: ${exception.message}")
-            }
-        }
-        outputHandler.handleMessage("Grafana resources applied successfully")
-    }
-
-    /**
-     * Applies Pyroscope K8s resources built from Kotlin using Fabric8.
-     *
-     * Sets up the data directory permissions via SSH before applying manifests,
-     * then builds and applies ConfigMaps, Service, Deployment, and DaemonSet.
-     */
-    private fun applyPyroscopeResources(controlNode: ClusterHost) {
-        outputHandler.handleMessage("Preparing Pyroscope data directory...")
-        remoteOps.executeRemotely(
-            controlNode.toHost(),
-            "sudo mkdir -p /mnt/db1/pyroscope && sudo chown -R ${PyroscopeManifestBuilder.PYROSCOPE_UID}:${PyroscopeManifestBuilder.PYROSCOPE_UID} /mnt/db1/pyroscope",
-        )
-
-        outputHandler.handleMessage("Applying Pyroscope resources...")
-        val resources = pyroscopeManifestBuilder.buildAllResources()
-        for (resource in resources) {
-            k8sService.applyResource(controlNode, resource).getOrElse { exception ->
-                error("Failed to apply Pyroscope ${resource.kind}/${resource.metadata?.name}: ${exception.message}")
-            }
-        }
-        outputHandler.handleMessage("Pyroscope resources applied successfully")
     }
 
     /**
@@ -210,18 +161,5 @@ class K8Apply : PicoBaseCommand() {
                 log.warn { "Failed to create cluster-config ConfigMap: ${exception.message}" }
                 // Don't fail the command - the ConfigMap may already exist or Vector may not need it
             }
-    }
-
-    /**
-     * Creates the Grafana datasources ConfigMap with runtime values.
-     *
-     * Delegates to GrafanaDashboardService which manages the datasource configuration.
-     * The CloudWatch datasource requires the AWS region which is only known at runtime.
-     */
-    private fun createDatasourcesConfigMap(controlNode: ClusterHost) {
-        val region = clusterState.initConfig?.region ?: user.region
-        dashboardService.createDatasourcesConfigMap(controlNode, region).getOrElse { exception ->
-            error("Failed to create Grafana datasources ConfigMap: ${exception.message}")
-        }
     }
 }

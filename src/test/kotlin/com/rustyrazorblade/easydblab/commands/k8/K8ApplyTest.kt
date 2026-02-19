@@ -1,13 +1,11 @@
 package com.rustyrazorblade.easydblab.commands.k8
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.commands.grafana.GrafanaUpload
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
-import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
 import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.TemplateService
 import org.assertj.core.api.Assertions.assertThat
@@ -33,10 +31,8 @@ import java.nio.file.Path
 class K8ApplyTest : BaseKoinTest() {
     private lateinit var mockK8sService: K8sService
     private lateinit var mockClusterStateManager: ClusterStateManager
-    private lateinit var mockDashboardService: GrafanaDashboardService
     private lateinit var mockTemplateService: TemplateService
-    private lateinit var mockManifestBuilder: GrafanaManifestBuilder
-    private lateinit var mockPyroscopeBuilder: PyroscopeManifestBuilder
+    private lateinit var mockGrafanaUpload: GrafanaUpload
 
     @TempDir
     lateinit var testWorkDir: File
@@ -67,13 +63,6 @@ class K8ApplyTest : BaseKoinTest() {
                     }
                 }
 
-                // Mock GrafanaDashboardService
-                single {
-                    mock<GrafanaDashboardService>().also {
-                        mockDashboardService = it
-                    }
-                }
-
                 // Mock TemplateService
                 single {
                     mock<TemplateService>().also {
@@ -81,17 +70,10 @@ class K8ApplyTest : BaseKoinTest() {
                     }
                 }
 
-                // Mock GrafanaManifestBuilder
+                // Mock GrafanaUpload (handles Grafana + Pyroscope resources)
                 single {
-                    mock<GrafanaManifestBuilder>().also {
-                        mockManifestBuilder = it
-                    }
-                }
-
-                // Mock PyroscopeManifestBuilder
-                single {
-                    mock<PyroscopeManifestBuilder>().also {
-                        mockPyroscopeBuilder = it
+                    mock<GrafanaUpload>().also {
+                        mockGrafanaUpload = it
                     }
                 }
             },
@@ -102,20 +84,8 @@ class K8ApplyTest : BaseKoinTest() {
         // Initialize mocks by getting them from Koin
         mockK8sService = getKoin().get()
         mockClusterStateManager = getKoin().get()
-        mockDashboardService = getKoin().get()
         mockTemplateService = getKoin().get()
-        mockManifestBuilder = getKoin().get()
-        mockPyroscopeBuilder = getKoin().get()
-
-        // Default: datasource ConfigMap creation succeeds
-        whenever(mockDashboardService.createDatasourcesConfigMap(any(), any()))
-            .thenReturn(Result.success(Unit))
-
-        // Default: manifest builder returns empty list
-        whenever(mockManifestBuilder.buildAllResources()).thenReturn(emptyList())
-
-        // Default: pyroscope manifest builder returns empty list
-        whenever(mockPyroscopeBuilder.buildAllResources()).thenReturn(emptyList())
+        mockGrafanaUpload = getKoin().get()
     }
 
     @Test
@@ -171,6 +141,7 @@ class K8ApplyTest : BaseKoinTest() {
         // Then
         verify(mockTemplateService).extractAndSubstituteResources(any(), any())
         verify(mockK8sService).applyManifests(any(), any<Path>())
+        verify(mockGrafanaUpload).execute()
         verify(mockK8sService).waitForPodsReady(any(), any())
     }
 

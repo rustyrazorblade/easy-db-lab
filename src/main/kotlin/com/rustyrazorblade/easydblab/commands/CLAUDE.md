@@ -58,7 +58,7 @@ commands/
 │   └── ...
 ├── aws/                   # AWS-specific commands (e.g., PruneAMIs)
 ├── clickhouse/            # ClickHouse commands
-├── dashboards/            # Grafana dashboard commands
+├── grafana/               # Grafana commands
 ├── k8/                    # Kubernetes commands
 ├── logs/                  # Log import/listing commands
 ├── metrics/               # Metrics import/listing commands

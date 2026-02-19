@@ -132,6 +132,9 @@ class DefaultStressJobService(
         private const val POD_READY_POLL_INTERVAL_MS = 3000L
         private const val SIDECAR_CONFIG_MAP_NAME = "otel-stress-sidecar-config"
         private const val SIDECAR_CONFIG_FILE_NAME = "otel-stress-sidecar-config.yaml"
+        private const val PYROSCOPE_VOLUME_NAME = "pyroscope-agent"
+        private const val PYROSCOPE_HOST_PATH = "/usr/local/pyroscope"
+        private const val PYROSCOPE_MOUNT_PATH = "/usr/local/pyroscope"
     }
 
     override fun startJob(
@@ -360,6 +363,25 @@ class DefaultStressJobService(
                 "job-name" to jobName,
             )
 
+        val controlNodeIp =
+            clusterState.getControlHost()?.privateIp
+                ?: error("No control node found. Re-provision the cluster to fix this.")
+        val pyroscopeServerAddress = "http://$controlNodeIp:${Constants.K8s.PYROSCOPE_PORT}"
+
+        val pyroscopeLabels = "cluster=${clusterState.name},job_name=$jobName"
+
+        val javaToolOptions =
+            listOf(
+                "-javaagent:$PYROSCOPE_MOUNT_PATH/pyroscope.jar",
+                "-Dpyroscope.application.name=cassandra-easy-stress",
+                "-Dpyroscope.server.address=$pyroscopeServerAddress",
+                "-Dpyroscope.format=jfr",
+                "-Dpyroscope.profiler.event=cpu",
+                "-Dpyroscope.profiler.alloc=512k",
+                "-Dpyroscope.profiler.lock=10ms",
+                "-Dpyroscope.labels=$pyroscopeLabels",
+            ).joinToString(" ")
+
         val stressContainer =
             ContainerBuilder()
                 .withName("stress")
@@ -381,6 +403,16 @@ class DefaultStressJobService(
                     EnvVarBuilder()
                         .withName("CASSANDRA_EASY_STRESS_PROM_PORT")
                         .withValue(promPort.toString())
+                        .build(),
+                    EnvVarBuilder()
+                        .withName("JAVA_TOOL_OPTIONS")
+                        .withValue(javaToolOptions)
+                        .build(),
+                ).withVolumeMounts(
+                    VolumeMountBuilder()
+                        .withName(PYROSCOPE_VOLUME_NAME)
+                        .withMountPath(PYROSCOPE_MOUNT_PATH)
+                        .withReadOnly(true)
                         .build(),
                 ).build()
 
@@ -464,6 +496,13 @@ class DefaultStressJobService(
                     .withNewConfigMap()
                     .withName("otel-stress-sidecar-config")
                     .endConfigMap()
+                    .build(),
+                VolumeBuilder()
+                    .withName(PYROSCOPE_VOLUME_NAME)
+                    .withNewHostPath()
+                    .withPath(PYROSCOPE_HOST_PATH)
+                    .withType("Directory")
+                    .endHostPath()
                     .build(),
             ).endSpec()
             .endTemplate()

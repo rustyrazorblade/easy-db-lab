@@ -178,16 +178,18 @@ All Pyroscope K8s resources are built programmatically using Fabric8:
 
 ### Profiling Architecture
 
-Two independent profiling mechanisms run simultaneously:
+Three independent profiling mechanisms run simultaneously:
 
-1. **Grafana Alloy eBPF DaemonSet** (all nodes) — `pyroscope.ebpf` component collects `process_cpu` profiles only (eBPF limitation). Image: `grafana/alloy:v1.13.1`. Labels: `hostname`, `cluster` from env vars.
-2. **Pyroscope Java Agent** (in Cassandra JVM) — `/usr/local/pyroscope/pyroscope.jar` (v2.3.0, installed by packer). Collects `cpu`, `alloc`, `lock`, `wall` profiles via JFR/async-profiler. Activated only when `PYROSCOPE_SERVER_ADDRESS` env var is set AND agent JAR exists.
+1. **Grafana Alloy eBPF DaemonSet** (all nodes) — `pyroscope.ebpf` component collects `process_cpu` profiles only (eBPF limitation). Image: `grafana/alloy:v1.13.1`. Labels: `hostname`, `cluster` from env vars. Also profiles ClickHouse (CPU only, since it's C++).
+2. **Pyroscope Java Agent (Cassandra)** — `/usr/local/pyroscope/pyroscope.jar` (v2.3.0, installed by packer). Collects `cpu`, `alloc`, `lock`, `wall` profiles via JFR/async-profiler. Activated only when `PYROSCOPE_SERVER_ADDRESS` env var is set AND agent JAR exists. The profiler event is configurable via `PYROSCOPE_PROFILER_EVENT` env var (default: `cpu`, alternative: `wall`).
+3. **Pyroscope Java Agent (Stress Jobs)** — Same agent JAR mounted into stress K8s Jobs via hostPath volume from `/usr/local/pyroscope`. Configured via `JAVA_TOOL_OPTIONS` env var in `StressJobService.buildJob()`. Collects `cpu`, `alloc`, `lock` profiles.
 
 ### Activation Flow
 
 1. `SetupInstance` writes `/etc/default/cassandra` with `PYROSCOPE_SERVER_ADDRESS=http://<control_ip>:4040` and `CLUSTER_NAME`.
 2. `K8Apply` deploys Pyroscope server to K8s (control plane, port 4040, hostNetwork).
-3. When Cassandra starts, `cassandra.in.sh` checks for the env var and JAR, then adds `-javaagent` JVM opts.
+3. When Cassandra starts, `cassandra.in.sh` checks for the env var and JAR, then adds `-javaagent` JVM opts. `PYROSCOPE_PROFILER_EVENT` can override the profiler event (default: `cpu`).
+4. When a stress job starts, `StressJobService` mounts the agent JAR and sets `JAVA_TOOL_OPTIONS` with all Pyroscope properties.
 
 See `spec/PYROSCOPE.md` for full architecture details and debugging steps.
 

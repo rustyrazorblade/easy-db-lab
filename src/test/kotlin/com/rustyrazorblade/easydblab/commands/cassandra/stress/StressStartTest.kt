@@ -136,6 +136,7 @@ class StressStartTest : BaseKoinTest() {
             )
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithNodes)
+        whenever(mockClusterStateManager.incrementStressJobCounter()).thenReturn(1)
 
         val command = StressStart()
 
@@ -160,7 +161,8 @@ class StressStartTest : BaseKoinTest() {
             )
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithNodes)
-        whenever(mockStressJobService.startJob(any(), any(), any(), any(), any(), any()))
+        whenever(mockClusterStateManager.incrementStressJobCounter()).thenReturn(1)
+        whenever(mockStressJobService.startJob(any(), any(), any(), any(), any(), any(), any()))
             .thenReturn(Result.success("job-created"))
 
         val command = StressStart()
@@ -185,6 +187,7 @@ class StressStartTest : BaseKoinTest() {
                 },
             contactPoints = any(),
             tags = any(),
+            promPort = any(),
         )
     }
 
@@ -203,7 +206,8 @@ class StressStartTest : BaseKoinTest() {
             )
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithNodes)
-        whenever(mockStressJobService.startJob(any(), any(), any(), any(), any(), any()))
+        whenever(mockClusterStateManager.incrementStressJobCounter()).thenReturn(1)
+        whenever(mockStressJobService.startJob(any(), any(), any(), any(), any(), any(), any()))
             .thenReturn(Result.failure(RuntimeException("Job creation failed")))
 
         val command = StressStart()
@@ -230,7 +234,8 @@ class StressStartTest : BaseKoinTest() {
             )
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithNodes)
-        whenever(mockStressJobService.startJob(any(), any(), any(), any(), any(), any()))
+        whenever(mockClusterStateManager.incrementStressJobCounter()).thenReturn(1)
+        whenever(mockStressJobService.startJob(any(), any(), any(), any(), any(), any(), any()))
             .thenReturn(Result.success("job-created"))
 
         val command = StressStart()
@@ -240,14 +245,15 @@ class StressStartTest : BaseKoinTest() {
         // When
         command.execute()
 
-        // Then - verify job name contains the custom name
+        // Then - verify job name is stress-my-test (no timestamp, no counter)
         verify(mockStressJobService).startJob(
             controlHost = eq(testControlHost),
-            jobName = argThat { name -> name.contains("stress-my-test-") },
+            jobName = eq("stress-my-test"),
             image = any(),
             args = any(),
             contactPoints = any(),
             tags = any(),
+            promPort = any(),
         )
     }
 
@@ -287,7 +293,8 @@ class StressStartTest : BaseKoinTest() {
             )
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithNodes)
-        whenever(mockStressJobService.startJob(any(), any(), any(), any(), any(), any()))
+        whenever(mockClusterStateManager.incrementStressJobCounter()).thenReturn(1)
+        whenever(mockStressJobService.startJob(any(), any(), any(), any(), any(), any(), any()))
             .thenReturn(Result.success("job-created"))
 
         val command = StressStart()
@@ -303,6 +310,94 @@ class StressStartTest : BaseKoinTest() {
             args = any(),
             contactPoints = any(),
             tags = argThat { tags -> tags["env"] == "test" && tags["team"] == "qa" },
+            promPort = any(),
         )
+    }
+
+    @Test
+    fun `execute should auto-name from workload when no name provided`() {
+        val stateWithNodes =
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+                hosts =
+                    mutableMapOf(
+                        ServerType.Control to listOf(testControlHost),
+                        ServerType.Cassandra to listOf(testCassandraHost),
+                    ),
+            )
+
+        whenever(mockClusterStateManager.load()).thenReturn(stateWithNodes)
+        whenever(mockClusterStateManager.incrementStressJobCounter()).thenReturn(1)
+        whenever(mockStressJobService.startJob(any(), any(), any(), any(), any(), any(), any()))
+            .thenReturn(Result.success("job-created"))
+
+        val command = StressStart()
+        command.stressArgs = listOf("KeyValue", "-d", "1h")
+
+        command.execute()
+
+        verify(mockStressJobService).startJob(
+            controlHost = eq(testControlHost),
+            jobName = eq("stress-keyvalue_1"),
+            image = any(),
+            args = any(),
+            contactPoints = any(),
+            tags = any(),
+            promPort = eq(9501),
+        )
+    }
+
+    @Test
+    fun `execute should use user-supplied name without counter`() {
+        val stateWithNodes =
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+                hosts =
+                    mutableMapOf(
+                        ServerType.Control to listOf(testControlHost),
+                        ServerType.Cassandra to listOf(testCassandraHost),
+                    ),
+            )
+
+        whenever(mockClusterStateManager.load()).thenReturn(stateWithNodes)
+        whenever(mockClusterStateManager.incrementStressJobCounter()).thenReturn(3)
+        whenever(mockStressJobService.startJob(any(), any(), any(), any(), any(), any(), any()))
+            .thenReturn(Result.success("job-created"))
+
+        val command = StressStart()
+        command.jobName = "my-test"
+        command.stressArgs = listOf("KeyValue")
+
+        command.execute()
+
+        verify(mockStressJobService).startJob(
+            controlHost = eq(testControlHost),
+            jobName = eq("stress-my-test"),
+            image = any(),
+            args = any(),
+            contactPoints = any(),
+            tags = any(),
+            promPort = eq(9503),
+        )
+    }
+
+    @Test
+    fun `extractWorkloadName should return lowercased workload from implicit run`() {
+        val command = StressStart()
+        assertThat(command.extractWorkloadName(listOf("KeyValue", "-d", "1h"))).isEqualTo("keyvalue")
+    }
+
+    @Test
+    fun `extractWorkloadName should return lowercased workload from explicit run`() {
+        val command = StressStart()
+        assertThat(command.extractWorkloadName(listOf("run", "BasicTimeSeries"))).isEqualTo("basictimeseries")
+    }
+
+    @Test
+    fun `extractWorkloadName should return stress for empty args`() {
+        val command = StressStart()
+        assertThat(command.extractWorkloadName(emptyList())).isEqualTo("stress")
     }
 }

@@ -35,7 +35,7 @@ class StressStart : PicoBaseCommand() {
 
     @Option(
         names = ["--name", "-n"],
-        description = ["Job name (auto-generated timestamp if not provided)"],
+        description = ["Job name (auto-generated from workload name if not provided)"],
     )
     var jobName: String? = null
 
@@ -58,7 +58,6 @@ class StressStart : PicoBaseCommand() {
     var stressArgs: List<String> = emptyList()
 
     override fun execute() {
-        // Get control node from cluster state
         val controlHosts = clusterState.hosts[ServerType.Control]
         if (controlHosts.isNullOrEmpty()) {
             error("No control nodes found. Please ensure the environment is running.")
@@ -66,34 +65,33 @@ class StressStart : PicoBaseCommand() {
         val controlNode = controlHosts.first()
         log.debug { "Using control node: ${controlNode.alias} (${controlNode.publicIp})" }
 
-        // Get Cassandra nodes for contact points
         val cassandraHosts = clusterState.hosts[ServerType.Cassandra]
         if (cassandraHosts.isNullOrEmpty()) {
             error("No Cassandra nodes found. Please ensure the environment is running.")
         }
 
-        // Build contact points string from Cassandra private IPs
         val contactPoints = cassandraHosts.first().privateIp
         log.info { "Cassandra contact point: $contactPoints" }
 
+        // Increment counter for port and auto-naming
+        val counter = clusterStateManager.incrementStressJobCounter()
+        val promPort = Constants.Stress.PROMETHEUS_PORT + counter
+
         // Generate job name
-        val timestamp = System.currentTimeMillis() / Constants.Time.MILLIS_PER_SECOND
         val fullJobName =
             if (jobName != null) {
-                "${Constants.Stress.JOB_PREFIX}-$jobName-$timestamp"
+                "${Constants.Stress.JOB_PREFIX}-$jobName"
             } else {
-                "${Constants.Stress.JOB_PREFIX}-$timestamp"
+                val workloadName = extractWorkloadName(stressArgs)
+                "${Constants.Stress.JOB_PREFIX}-${workloadName}_$counter"
             }
         log.info { "Job name: $fullJobName" }
 
-        // Build command arguments
         val args = buildStressArgs(contactPoints)
         log.info { "Stress args: $args" }
 
-        // Parse tags
         val parsedTags = parseTags(tags)
 
-        // Start the job via service
         stressJobService
             .startJob(
                 controlHost = controlNode,
@@ -102,6 +100,7 @@ class StressStart : PicoBaseCommand() {
                 args = args,
                 contactPoints = contactPoints,
                 tags = parsedTags,
+                promPort = promPort,
             ).getOrElse { e ->
                 error("Failed to create job: ${e.message}")
             }
@@ -114,6 +113,7 @@ class StressStart : PicoBaseCommand() {
             |Job name: $fullJobName
             |Image: $image
             |Contact point: $contactPoints
+            |Prometheus port: $promPort
             |Stress args: ${args.joinToString(" ")}
             |
             |Check status: easy-db-lab cassandra stress status
@@ -135,6 +135,21 @@ class StressStart : PicoBaseCommand() {
                 val (key, value) = entry.split("=", limit = 2)
                 key.trim() to value.trim()
             }
+    }
+
+    /**
+     * Extracts the workload name from stress args.
+     * The workload name is the first arg after "run" (or the first arg if "run" is implicit).
+     * Returns lowercased name suitable for K8s resource naming.
+     */
+    internal fun extractWorkloadName(args: List<String>): String {
+        if (args.isEmpty()) return "stress"
+        val firstArg = args.first()
+        return if (isStressSubcommand(firstArg)) {
+            args.getOrNull(1)?.lowercase() ?: "stress"
+        } else {
+            firstArg.lowercase()
+        }
     }
 
     /**

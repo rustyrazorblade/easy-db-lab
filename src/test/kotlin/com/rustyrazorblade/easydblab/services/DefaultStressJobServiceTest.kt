@@ -275,7 +275,9 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
                 promPort = 9501,
             )
 
-        val stress = job.spec.template.spec.containers.first { it.name == "stress" }
+        val stress =
+            job.spec.template.spec.containers
+                .first { it.name == "stress" }
         val envMap = stress.env.associate { it.name to it.value }
         assertThat(envMap["CASSANDRA_EASY_STRESS_PROM_PORT"]).isEqualTo("9501")
     }
@@ -291,7 +293,9 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
                 promPort = 9502,
             )
 
-        val sidecar = job.spec.template.spec.initContainers.first { it.name == "otel-sidecar" }
+        val sidecar =
+            job.spec.template.spec.initContainers
+                .first { it.name == "otel-sidecar" }
         val envMap = sidecar.env.associate { it.name to (it.value ?: "") }
         assertThat(envMap["STRESS_PROM_PORT"]).isEqualTo("9502")
     }

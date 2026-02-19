@@ -1,6 +1,9 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboard
 import com.rustyrazorblade.easydblab.kubernetes.ManifestApplier
+import io.fabric8.kubernetes.api.model.ConfigMapBuilder
+import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.client.Config
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientBuilder
@@ -64,7 +67,8 @@ class K8sServiceIntegrationTest {
     )
 
     /**
-     * Ordered list of manifests to test (after namespace)
+     * Ordered list of YAML manifests to test (after namespace).
+     * Grafana resources are now built via Fabric8 and tested separately.
      */
     private val manifestTestCases =
         listOf(
@@ -79,16 +83,37 @@ class K8sServiceIntegrationTest {
             ManifestTestCase("30-otel-daemonset.yaml", ResourceType.DAEMONSET, "otel-collector"),
             ManifestTestCase("44-victoriametrics-deployment.yaml", ResourceType.DEPLOYMENT, "victoriametrics"),
             ManifestTestCase("45-victorialogs-deployment.yaml", ResourceType.DEPLOYMENT, "victorialogs"),
-            ManifestTestCase(
-                "14-grafana-dashboards-configmap.yaml",
-                ResourceType.CONFIGMAP,
-                "grafana-dashboards-config",
-                "dashboards.yaml",
-            ),
-            ManifestTestCase("15-grafana-dashboard-system.yaml", ResourceType.CONFIGMAP, "grafana-dashboard-system"),
-            ManifestTestCase("41-grafana-deployment.yaml", ResourceType.DEPLOYMENT, "grafana"),
             ManifestTestCase("42-registry-deployment.yaml", ResourceType.DEPLOYMENT, "registry"),
         )
+
+    /**
+     * Builds Grafana resources using Fabric8 (replacing YAML files).
+     * Uses a simple ConfigMap for the provisioning config and a test dashboard.
+     */
+    private fun buildGrafanaResources(): List<HasMetadata> {
+        val provisioningConfigMap =
+            ConfigMapBuilder()
+                .withNewMetadata()
+                .withName("grafana-dashboards-config")
+                .withNamespace(DEFAULT_NAMESPACE)
+                .addToLabels("app.kubernetes.io/name", "grafana")
+                .endMetadata()
+                .addToData("dashboards.yaml", "apiVersion: 1\nproviders: []")
+                .build()
+
+        val dashboardConfigMap =
+            ConfigMapBuilder()
+                .withNewMetadata()
+                .withName(GrafanaDashboard.SYSTEM.configMapName)
+                .withNamespace(DEFAULT_NAMESPACE)
+                .addToLabels("app.kubernetes.io/name", "grafana")
+                .addToLabels("grafana_dashboard", "1")
+                .endMetadata()
+                .addToData(GrafanaDashboard.SYSTEM.jsonFileName, "{}")
+                .build()
+
+        return listOf(provisioningConfigMap, dashboardConfigMap)
+    }
 
     @BeforeAll
     fun setup() {
@@ -121,6 +146,33 @@ class K8sServiceIntegrationTest {
 
     @Test
     @Order(3)
+    fun `should apply Grafana resources built with Fabric8`() {
+        val resources = buildGrafanaResources()
+        for (resource in resources) {
+            client.resource(resource).forceConflicts().serverSideApply()
+        }
+
+        val provisioningCm =
+            client
+                .configMaps()
+                .inNamespace(DEFAULT_NAMESPACE)
+                .withName("grafana-dashboards-config")
+                .get()
+        assertThat(provisioningCm).isNotNull
+        assertThat(provisioningCm.data).containsKey("dashboards.yaml")
+
+        val dashboardCm =
+            client
+                .configMaps()
+                .inNamespace(DEFAULT_NAMESPACE)
+                .withName(GrafanaDashboard.SYSTEM.configMapName)
+                .get()
+        assertThat(dashboardCm).isNotNull
+        assertThat(dashboardCm.data).containsKey(GrafanaDashboard.SYSTEM.jsonFileName)
+    }
+
+    @Test
+    @Order(4)
     fun `should have created all expected resources`() {
         // Final verification - check counts of all resource types
         val namespaces = client.namespaces().withName(DEFAULT_NAMESPACE).get()
@@ -133,7 +185,7 @@ class K8sServiceIntegrationTest {
                 .list()
         assertThat(configMaps.items)
             .withFailMessage("Expected at least 4 ConfigMaps, found ${configMaps.items.size}")
-            .hasSizeGreaterThanOrEqualTo(4)
+            .hasSizeGreaterThanOrEqualTo(3)
 
         val deployments =
             client
@@ -142,8 +194,8 @@ class K8sServiceIntegrationTest {
                 .inNamespace(DEFAULT_NAMESPACE)
                 .list()
         assertThat(deployments.items)
-            .withFailMessage("Expected at least 4 Deployments (victoriametrics, victorialogs, grafana, registry)")
-            .hasSizeGreaterThanOrEqualTo(4)
+            .withFailMessage("Expected at least 3 Deployments (victoriametrics, victorialogs, registry)")
+            .hasSizeGreaterThanOrEqualTo(3)
 
         val daemonSets =
             client

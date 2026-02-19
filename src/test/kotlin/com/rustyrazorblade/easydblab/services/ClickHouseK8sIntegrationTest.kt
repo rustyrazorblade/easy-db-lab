@@ -88,16 +88,7 @@ class ClickHouseK8sIntegrationTest {
                 "clickhouse-cluster-config",
                 "replicas-per-shard",
             ),
-            ManifestTestCase(
-                "14-grafana-dashboard-clickhouse.yaml",
-                ResourceType.CONFIGMAP,
-                "grafana-dashboard-clickhouse",
-            ),
-            ManifestTestCase(
-                "17-grafana-dashboard-clickhouse-logs.yaml",
-                ResourceType.CONFIGMAP,
-                "grafana-dashboard-clickhouse-logs",
-            ),
+            // Grafana dashboard ConfigMaps (14, 17) are now built in Kotlin via GrafanaManifestBuilder
             // Services (20, 21)
             ManifestTestCase(
                 "20-clickhouse-keeper-service.yaml",
@@ -153,15 +144,15 @@ class ClickHouseK8sIntegrationTest {
     @Test
     @Order(3)
     fun `should have created all expected ClickHouse resources`() {
-        // Verify ConfigMaps (5 from manifests + kubernetes default)
+        // Verify ConfigMaps (3 from manifests + kubernetes default)
         val configMaps =
             client
                 .configMaps()
                 .inNamespace(DEFAULT_NAMESPACE)
                 .list()
         assertThat(configMaps.items)
-            .withFailMessage("Expected at least 5 ConfigMaps, found ${configMaps.items.size}")
-            .hasSizeGreaterThanOrEqualTo(5)
+            .withFailMessage("Expected at least 3 ConfigMaps, found ${configMaps.items.size}")
+            .hasSizeGreaterThanOrEqualTo(3)
 
         // Verify Services (2 ClickHouse services + kubernetes service)
         // Note: 21-clickhouse-server-service.yaml contains 2 services (clickhouse and clickhouse-client)

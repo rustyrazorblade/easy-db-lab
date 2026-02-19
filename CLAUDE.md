@@ -247,7 +247,7 @@ The cluster runs a full observability stack on the control node. When modifying 
 
 - **OpenTelemetry Collector** (`k8s/core/10-otel-configmap.yaml`, `30-otel-daemonset.yaml`) runs on all nodes. Collects host metrics, scrapes Prometheus endpoints (ClickHouse, Vector, Beyla, ebpf_exporter), reads file-based logs, and receives OTLP. Exports metrics to VictoriaMetrics, logs to VictoriaLogs, traces to Tempo.
 - **Vector** (`k8s/core/51-*` through `54-*`) runs as a DaemonSet for system/Cassandra/ClickHouse log collection, plus a separate deployment for S3 log ingestion (EMR/Spark via SQS). Both sink to VictoriaLogs.
-- **Pyroscope eBPF agent** (`k8s/core/13-pyroscope-ebpf-configmap.yaml`, `31-pyroscope-ebpf-daemonset.yaml`) runs on all nodes. Collects CPU profiles via eBPF for Cassandra, ClickHouse, and stress jobs. Sends profiles to Pyroscope server.
+- **Grafana Alloy eBPF profiler** (`k8s/core/13-pyroscope-ebpf-configmap.yaml`, `31-pyroscope-ebpf-daemonset.yaml`) runs on all nodes via Grafana Alloy with `pyroscope.ebpf` component. Collects CPU profiles via eBPF for Cassandra, ClickHouse, and stress jobs. Sends profiles to Pyroscope server.
 - **Beyla** (`k8s/core/32-beyla-configmap.yaml`, `33-beyla-daemonset.yaml`) runs on all nodes. Provides L7 network RED metrics (Rate/Errors/Duration) for Cassandra and ClickHouse protocols via eBPF. Exposes Prometheus metrics scraped by OTel collector.
 - **ebpf_exporter** (`k8s/core/34-ebpf-exporter-configmap.yaml`, `35-ebpf-exporter-daemonset.yaml`) runs on all nodes. Provides low-level TCP retransmit, block I/O latency, and VFS latency metrics via eBPF. Exposes Prometheus metrics scraped by OTel collector.
 - **Stress job sidecars** (`11-otel-stress-sidecar-configmap.yaml`) — long-running stress jobs get an OTel sidecar that scrapes `cassandra-easy-stress:9500` and forwards to the node's DaemonSet collector.
@@ -261,13 +261,13 @@ The cluster runs a full observability stack on the control node. When modifying 
 
 ### Grafana Dashboards
 
-Grafana runs on port 3000. Dashboard JSON is embedded in K8s ConfigMap YAMLs (`k8s/core/15-*` through `18-*`) with template variable substitution (`__CLUSTER_NAME__`, `__BUCKET_NAME__`, `__METRICS_FILTER_ID__`). The `dashboards generate` and `dashboards upload` commands extract and deploy them.
+Grafana runs on port 3000. All Grafana K8s resources (ConfigMaps, Deployment) are built programmatically using Fabric8 in `GrafanaManifestBuilder`. Dashboard JSON lives in standalone resource files under `configuration/grafana/dashboards/` with `__KEY__` template variable substitution (`__CLUSTER_NAME__`, `__BUCKET_NAME__`, `__METRICS_FILTER_ID__`). The `GrafanaDashboard` enum is the single source of truth for dashboard metadata — adding a new dashboard requires only a new enum entry and a JSON file.
 
-Kotlin code: `commands/dashboards/`, `services/GrafanaDashboardService.kt`, `grafana/GrafanaDatasourceConfig.kt`.
+Kotlin code: `configuration/grafana/GrafanaDashboard.kt` (registry), `configuration/grafana/GrafanaManifestBuilder.kt` (Fabric8 builder), `configuration/grafana/GrafanaDatasourceConfig.kt`, `commands/dashboards/`, `services/GrafanaDashboardService.kt`.
 
 Datasources: VictoriaMetrics (Prometheus), VictoriaLogs, ClickHouse, Tempo, CloudWatch, Pyroscope.
 
-Current dashboards: System Overview, AWS CloudWatch (S3/EBS/EC2), EMR, OpenSearch, ClickHouse metrics, ClickHouse logs.
+Current dashboards: System Overview, AWS CloudWatch (S3/EBS/EC2), EMR, OpenSearch, Stress, ClickHouse metrics, ClickHouse logs.
 
 ### CLI Commands
 

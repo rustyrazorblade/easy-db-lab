@@ -1,26 +1,17 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
-import com.rustyrazorblade.easydblab.grafana.GrafanaDatasourceConfig
+import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDatasourceConfig
+import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.output.OutputHandler
-import java.io.File
 
 /**
  * Service for managing Grafana dashboard manifests.
  *
- * Handles extraction of dashboard YAML files from JAR resources (both core and ClickHouse),
- * creation of the Grafana datasources ConfigMap, and uploading dashboards to K8s.
+ * Builds Grafana K8s resources (ConfigMaps and Deployment) programmatically using
+ * Fabric8 typed objects and applies them directly via the K8s API.
  */
 interface GrafanaDashboardService {
-    /**
-     * Extracts all Grafana dashboard resources from the JAR to the local k8s/ directory.
-     *
-     * Scans both core/ and clickhouse/ resource directories for files matching "grafana-dashboard".
-     *
-     * @return Sorted list of extracted dashboard files
-     */
-    fun extractDashboardResources(): List<File>
-
     /**
      * Creates the grafana-datasources ConfigMap with runtime region.
      *
@@ -34,7 +25,7 @@ interface GrafanaDashboardService {
     ): Result<Unit>
 
     /**
-     * Extracts dashboards, creates datasources ConfigMap, and applies all to K8s.
+     * Builds and applies all Grafana resources (dashboards, provisioning, deployment) to K8s.
      *
      * @param controlHost The control node running K3s
      * @param region AWS region for CloudWatch datasource
@@ -49,33 +40,22 @@ interface GrafanaDashboardService {
 /**
  * Default implementation of GrafanaDashboardService.
  *
+ * Uses [GrafanaManifestBuilder] to build typed Fabric8 K8s resources from dashboard JSON
+ * resource files and applies them directly via [K8sService.applyResource].
+ *
  * @property k8sService Service for K8s operations
  * @property outputHandler Handler for user-facing output
- * @property templateService Service for replacing template placeholders in manifests
+ * @property manifestBuilder Builder for Grafana K8s resources
  */
 class DefaultGrafanaDashboardService(
     private val k8sService: K8sService,
     private val outputHandler: OutputHandler,
-    private val templateService: TemplateService,
+    private val manifestBuilder: GrafanaManifestBuilder,
 ) : GrafanaDashboardService {
     companion object {
-        private const val DASHBOARD_FILE_PATTERN = "grafana-dashboard"
-        private const val GRAFANA_DEPLOYMENT_PATTERN = "grafana-deployment"
         private const val DATASOURCES_CONFIGMAP_NAME = "grafana-datasources"
         private const val DEFAULT_NAMESPACE = "default"
     }
-
-    override fun extractDashboardResources(): List<File> =
-        templateService
-            .extractAndSubstituteResources(
-                filter = { it.contains(DASHBOARD_FILE_PATTERN) },
-            ).sortedBy { it.name }
-
-    private fun extractGrafanaDeployment(): File? =
-        templateService
-            .extractAndSubstituteResources(
-                filter = { it.contains(GRAFANA_DEPLOYMENT_PATTERN) },
-            ).firstOrNull()
 
     override fun createDatasourcesConfigMap(
         controlHost: ClusterHost,
@@ -97,15 +77,6 @@ class DefaultGrafanaDashboardService(
         controlHost: ClusterHost,
         region: String,
     ): Result<Unit> {
-        outputHandler.handleMessage("Extracting Grafana dashboard manifests...")
-        val dashboardFiles = extractDashboardResources()
-
-        if (dashboardFiles.isEmpty()) {
-            return Result.failure(IllegalStateException("No dashboard resources found matching '$DASHBOARD_FILE_PATTERN'"))
-        }
-
-        outputHandler.handleMessage("Found ${dashboardFiles.size} dashboard file(s)")
-
         outputHandler.handleMessage("Creating Grafana datasources ConfigMap...")
         createDatasourcesConfigMap(controlHost, region).getOrElse { exception ->
             return Result.failure(
@@ -113,31 +84,20 @@ class DefaultGrafanaDashboardService(
             )
         }
 
-        dashboardFiles.forEach { file ->
-            outputHandler.handleMessage("Applying ${file.name}...")
-            k8sService
-                .applyManifests(controlHost, file.toPath())
-                .getOrElse { exception ->
-                    return Result.failure(
-                        IllegalStateException("Failed to apply ${file.name}: ${exception.message}", exception),
-                    )
-                }
+        val resources = manifestBuilder.buildAllResources()
+        outputHandler.handleMessage("Applying ${resources.size} Grafana resources...")
+        for (resource in resources) {
+            val kind = resource.kind
+            val name = resource.metadata?.name ?: "unknown"
+            outputHandler.handleMessage("Applying $kind/$name...")
+            k8sService.applyResource(controlHost, resource).getOrElse { exception ->
+                return Result.failure(
+                    IllegalStateException("Failed to apply $kind/$name: ${exception.message}", exception),
+                )
+            }
         }
 
-        // Reapply the Grafana deployment to pick up any new volume mounts for dashboards
-        val deploymentFile = extractGrafanaDeployment()
-        if (deploymentFile != null) {
-            outputHandler.handleMessage("Applying ${deploymentFile.name}...")
-            k8sService
-                .applyManifests(controlHost, deploymentFile.toPath())
-                .getOrElse { exception ->
-                    return Result.failure(
-                        IllegalStateException("Failed to apply ${deploymentFile.name}: ${exception.message}", exception),
-                    )
-                }
-        }
-
-        outputHandler.handleMessage("All Grafana dashboards applied successfully!")
+        outputHandler.handleMessage("All Grafana resources applied successfully!")
         return Result.success(Unit)
     }
 }

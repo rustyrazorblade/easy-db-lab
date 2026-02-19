@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
 import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.TemplateService
@@ -33,6 +34,7 @@ class K8ApplyTest : BaseKoinTest() {
     private lateinit var mockClusterStateManager: ClusterStateManager
     private lateinit var mockDashboardService: GrafanaDashboardService
     private lateinit var mockTemplateService: TemplateService
+    private lateinit var mockManifestBuilder: GrafanaManifestBuilder
 
     @TempDir
     lateinit var testWorkDir: File
@@ -76,6 +78,13 @@ class K8ApplyTest : BaseKoinTest() {
                         mockTemplateService = it
                     }
                 }
+
+                // Mock GrafanaManifestBuilder
+                single {
+                    mock<GrafanaManifestBuilder>().also {
+                        mockManifestBuilder = it
+                    }
+                }
             },
         )
 
@@ -86,10 +95,14 @@ class K8ApplyTest : BaseKoinTest() {
         mockClusterStateManager = getKoin().get()
         mockDashboardService = getKoin().get()
         mockTemplateService = getKoin().get()
+        mockManifestBuilder = getKoin().get()
 
         // Default: datasource ConfigMap creation succeeds
         whenever(mockDashboardService.createDatasourcesConfigMap(any(), any()))
             .thenReturn(Result.success(Unit))
+
+        // Default: manifest builder returns empty list
+        whenever(mockManifestBuilder.buildAllResources()).thenReturn(emptyList())
     }
 
     @Test

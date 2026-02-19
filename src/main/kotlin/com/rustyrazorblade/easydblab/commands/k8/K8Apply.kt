@@ -8,26 +8,37 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.vector.VectorManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.victoria.VictoriaManifestBuilder
 import com.rustyrazorblade.easydblab.output.displayObservabilityAccess
 import com.rustyrazorblade.easydblab.services.K8sService
-import com.rustyrazorblade.easydblab.services.TemplateService
+import io.fabric8.kubernetes.api.model.HasMetadata
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
-import java.nio.file.Path
 
 /**
  * Apply observability stack to the K8s cluster.
  *
- * This command deploys the observability infrastructure (OTel collectors,
- * Prometheus, Grafana) to the K3s cluster running on the lab environment.
+ * This command deploys the observability infrastructure to the K3s cluster
+ * running on the lab environment. All K8s resources are built programmatically
+ * using Fabric8 manifest builders.
  *
  * The observability stack includes:
- * - OTel collector DaemonSet on control node (aggregator)
- * - OTel collector DaemonSet on worker nodes (forwarders)
- * - Prometheus for metrics storage and querying
- * - Grafana with pre-configured dashboards
+ * - OTel collector DaemonSet (metrics, logs, traces collection)
+ * - VictoriaMetrics + VictoriaLogs (metrics and log storage)
+ * - Tempo (trace storage with S3 backend)
+ * - Vector (node log collection + S3/EMR log ingestion)
+ * - Beyla (L7 network eBPF metrics)
+ * - ebpf_exporter (TCP, block I/O, VFS eBPF metrics)
+ * - Grafana with pre-configured dashboards and Pyroscope profiling
+ * - Docker registry and S3 manager
  */
 @McpCommand
 @RequireProfileSetup
@@ -39,7 +50,13 @@ class K8Apply : PicoBaseCommand() {
     private val log = KotlinLogging.logger {}
     private val k8sService: K8sService by inject()
     private val user: User by inject()
-    private val templateService: TemplateService by inject()
+    private val otelManifestBuilder: OtelManifestBuilder by inject()
+    private val ebpfExporterManifestBuilder: EbpfExporterManifestBuilder by inject()
+    private val victoriaManifestBuilder: VictoriaManifestBuilder by inject()
+    private val tempoManifestBuilder: TempoManifestBuilder by inject()
+    private val vectorManifestBuilder: VectorManifestBuilder by inject()
+    private val registryManifestBuilder: RegistryManifestBuilder by inject()
+    private val s3ManagerManifestBuilder: S3ManagerManifestBuilder by inject()
     private val beylaManifestBuilder: BeylaManifestBuilder by inject()
     private val grafanaUpload: GrafanaUpload by inject()
 
@@ -56,14 +73,7 @@ class K8Apply : PicoBaseCommand() {
     )
     var skipWait: Boolean = false
 
-    @Option(
-        names = ["-f", "--file"],
-        description = ["Path to manifest file or directory (default: core observability stack)"],
-    )
-    var manifestPath: Path? = null
-
     companion object {
-        private const val K8S_CORE_MANIFEST_DIR = "k8s/core"
         private const val CLUSTER_CONFIG_NAME = "cluster-config"
         private const val DEFAULT_NAMESPACE = "default"
     }
@@ -80,25 +90,17 @@ class K8Apply : PicoBaseCommand() {
         // Create runtime ConfigMap with dynamic values
         createClusterConfigMap(controlNode)
 
-        // Extract core manifests from classpath with template substitution
-        // (Grafana, Pyroscope, and Beyla YAML files are no longer in core/ - they are built in Kotlin)
-        templateService.extractAndSubstituteResources(
-            filter = { it.startsWith("core/") && !it.contains("beyla") },
-        )
+        // Apply all Fabric8-built observability resources
+        applyFabric8Resources("OTel Collector", controlNode, otelManifestBuilder.buildAllResources())
+        applyFabric8Resources("ebpf_exporter", controlNode, ebpfExporterManifestBuilder.buildAllResources())
+        applyFabric8Resources("VictoriaMetrics/Logs", controlNode, victoriaManifestBuilder.buildAllResources())
+        applyFabric8Resources("Tempo", controlNode, tempoManifestBuilder.buildAllResources())
+        applyFabric8Resources("Vector", controlNode, vectorManifestBuilder.buildAllResources())
+        applyFabric8Resources("Registry", controlNode, registryManifestBuilder.buildAllResources())
+        applyFabric8Resources("S3 Manager", controlNode, s3ManagerManifestBuilder.buildAllResources())
+        applyFabric8Resources("Beyla", controlNode, beylaManifestBuilder.buildAllResources())
 
-        // Determine manifest path - use provided path or default to core manifests
-        val pathToApply = manifestPath ?: Path.of(K8S_CORE_MANIFEST_DIR)
-        log.info { "Applying manifests from: $pathToApply" }
-
-        // Apply manifests to cluster
-        k8sService
-            .applyManifests(controlNode, pathToApply)
-            .getOrElse { exception ->
-                error("Failed to apply K8s manifests: ${exception.message}")
-            }
-
-        // Apply Beyla, Pyroscope, and Grafana resources (built in Kotlin via Fabric8)
-        applyBeylaResources(controlNode)
+        // Apply Grafana + Pyroscope resources (handles its own build and apply)
         grafanaUpload.execute()
 
         // Wait for pods to be ready
@@ -117,15 +119,18 @@ class K8Apply : PicoBaseCommand() {
         outputHandler.displayObservabilityAccess(controlNode.privateIp)
     }
 
-    private fun applyBeylaResources(controlNode: ClusterHost) {
-        outputHandler.handleMessage("Applying Beyla resources...")
-        val resources = beylaManifestBuilder.buildAllResources()
+    private fun applyFabric8Resources(
+        label: String,
+        controlNode: ClusterHost,
+        resources: List<HasMetadata>,
+    ) {
+        outputHandler.handleMessage("Applying $label resources...")
         for (resource in resources) {
             k8sService.applyResource(controlNode, resource).getOrElse { exception ->
-                error("Failed to apply Beyla ${resource.kind}/${resource.metadata?.name}: ${exception.message}")
+                error("Failed to apply $label ${resource.kind}/${resource.metadata?.name}: ${exception.message}")
             }
         }
-        outputHandler.handleMessage("Beyla resources applied successfully")
+        outputHandler.handleMessage("$label resources applied successfully")
     }
 
     /**

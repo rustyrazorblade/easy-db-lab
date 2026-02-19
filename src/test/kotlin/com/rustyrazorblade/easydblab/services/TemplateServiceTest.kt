@@ -161,17 +161,17 @@ class TemplateServiceTest : BaseKoinTest() {
         val service = createService()
         val allFiles = service.extractAndSubstituteResources(destinationDir = manifestDir)
 
-        val coreOnly =
+        val clickhouseOnly =
             service.extractAndSubstituteResources(
                 destinationDir = manifestDir,
-                filter = { it.startsWith("core/") },
+                filter = { it.startsWith("clickhouse/") },
             )
 
-        assertThat(coreOnly).isNotEmpty()
-        assertThat(coreOnly.size).isLessThanOrEqualTo(allFiles.size)
-        // All returned files should be under core/
-        coreOnly.forEach { file ->
-            assertThat(file.path).contains("core")
+        assertThat(clickhouseOnly).isNotEmpty()
+        assertThat(clickhouseOnly.size).isLessThanOrEqualTo(allFiles.size)
+        // All returned files should be under clickhouse/
+        clickhouseOnly.forEach { file ->
+            assertThat(file.path).contains("clickhouse")
         }
     }
 
@@ -196,15 +196,15 @@ class TemplateServiceTest : BaseKoinTest() {
         setupClusterState()
 
         val service = createService()
-        val otelOnly =
+        val clickhouseOnly =
             service.extractResources(
                 destinationDir = manifestDir,
-                filter = { it.contains("otel") },
+                filter = { it.contains("clickhouse") },
             )
 
-        assertThat(otelOnly).isNotEmpty()
-        otelOnly.forEach { file ->
-            assertThat(file.name).contains("otel")
+        assertThat(clickhouseOnly).isNotEmpty()
+        clickhouseOnly.forEach { file ->
+            assertThat(file.name).contains("clickhouse")
         }
     }
 

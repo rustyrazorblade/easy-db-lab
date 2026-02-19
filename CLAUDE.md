@@ -237,9 +237,9 @@ For more details, see [packer/README.md](packer/README.md) and [packer/TESTING.m
 - NEVER build YAML with strings in Kotlin.  If you are building a config in memory to execute with K8, use fabric8.  If it's something that needs to be written to disk, use kotlinx.serialization with data classes.  ALWAYS prefer typed objects over big strings.
 - When outputting multiple lines to the console, use a multiline block instead of multiple calls to `outputHandler.handleMessage`
 - Write new K8 configuration using fabric8.  If there are configuration files, store them as a resource and load them with the TemplateService.
-- If you need to modify a K8 configuration, ask if you should migrate it to the new fabric8 based configs in `src/main/kotlin/com/rustyrazorblade/easydblab/configuration/`
+- If you need to modify a K8 configuration, ask if you should migrate it to the new fabric8 based configs in `src/main/kotlin/coom/rustyrazorblade/easydblab/configuration/`
+- When describing directory structure, use normal lists.  Don't draw them, I don't find them useful.
 
--
 ## Specifications
 
 - Keep track of user experience product decisions and requirements specifications in `specs` under the project root.
@@ -263,19 +263,21 @@ The cluster runs a full observability stack on the control node. When modifying 
 
 ### Data Flow
 
-- **OpenTelemetry Collector** (`k8s/core/10-otel-configmap.yaml`, `30-otel-daemonset.yaml`) runs on all nodes. Collects host metrics, scrapes Prometheus endpoints (ClickHouse, Vector, Beyla, ebpf_exporter), reads file-based logs, and receives OTLP. Exports metrics to VictoriaMetrics, logs to VictoriaLogs, traces to Tempo.
-- **Vector** (`k8s/core/51-*` through `54-*`) runs as a DaemonSet for system/Cassandra/ClickHouse log collection, plus a separate deployment for S3 log ingestion (EMR/Spark via SQS). Both sink to VictoriaLogs.
+All observability K8s resources are built programmatically using Fabric8 manifest builders in `configuration/` subpackages. No raw YAML files remain in the core observability stack.
+
+- **OpenTelemetry Collector** (`configuration/otel/OtelManifestBuilder.kt`) runs on all nodes. Collects host metrics, scrapes Prometheus endpoints (ClickHouse, Vector, Beyla, ebpf_exporter), reads file-based logs, and receives OTLP. Exports metrics to VictoriaMetrics, logs to VictoriaLogs, traces to Tempo.
+- **Vector** (`configuration/vector/VectorManifestBuilder.kt`) runs as a DaemonSet for system/Cassandra/ClickHouse log collection, plus a separate deployment for S3 log ingestion (EMR/Spark via SQS). Both sink to VictoriaLogs.
 - **Grafana Alloy eBPF profiler** (`configuration/pyroscope/PyroscopeManifestBuilder.kt`) runs on all nodes via Grafana Alloy with `pyroscope.ebpf` component. Collects CPU profiles via eBPF for Cassandra, ClickHouse, and stress jobs. Sends profiles to Pyroscope server.
-- **Beyla** (`k8s/core/32-beyla-configmap.yaml`, `33-beyla-daemonset.yaml`) runs on all nodes. Provides L7 network RED metrics (Rate/Errors/Duration) for Cassandra and ClickHouse protocols via eBPF. Exposes Prometheus metrics scraped by OTel collector.
-- **ebpf_exporter** (`k8s/core/34-ebpf-exporter-configmap.yaml`, `35-ebpf-exporter-daemonset.yaml`) runs on all nodes. Provides low-level TCP retransmit, block I/O latency, and VFS latency metrics via eBPF. Exposes Prometheus metrics scraped by OTel collector.
+- **Beyla** (`configuration/beyla/BeylaManifestBuilder.kt`) runs on all nodes. Provides L7 network RED metrics (Rate/Errors/Duration) for Cassandra and ClickHouse protocols via eBPF. Exposes Prometheus metrics scraped by OTel collector.
+- **ebpf_exporter** (`configuration/ebpfexporter/EbpfExporterManifestBuilder.kt`) runs on all nodes. Provides low-level TCP retransmit, block I/O latency, and VFS latency metrics via eBPF. Exposes Prometheus metrics scraped by OTel collector.
 - **Stress job sidecars** (`11-otel-stress-sidecar-configmap.yaml`) — long-running stress jobs get an OTel sidecar that scrapes `cassandra-easy-stress:9500` and forwards to the node's DaemonSet collector.
 
 ### Storage Backends (control node)
 
-- **VictoriaMetrics** (port 8428, 7-day retention) — Prometheus-compatible metrics store. K8s: `k8s/core/44-victoriametrics-deployment.yaml`. Services: `VictoriaStreamService`, `VictoriaBackupService`.
-- **VictoriaLogs** (port 9428, 7-day retention) — log store with Elasticsearch-compatible sink. K8s: `k8s/core/45-victorialogs-deployment.yaml`. Services: `VictoriaLogsService`, `VictoriaStreamService`, `VictoriaBackupService`.
-- **Tempo** (port 3200) — trace store. K8s: `k8s/core/46-tempo-deployment.yaml`.
-- **Pyroscope** (port 4040) — continuous profiling store. K8s: `configuration/pyroscope/PyroscopeManifestBuilder.kt` (Fabric8-based). Receives profiles from Java agent (Cassandra) and eBPF agent (all nodes). Data directory permissions set via SSH in `K8Apply`.
+- **VictoriaMetrics** (port 8428, 7-day retention) — Prometheus-compatible metrics store. K8s: `configuration/victoria/VictoriaManifestBuilder.kt`. Services: `VictoriaStreamService`, `VictoriaBackupService`.
+- **VictoriaLogs** (port 9428, 7-day retention) — log store with Elasticsearch-compatible sink. K8s: `configuration/victoria/VictoriaManifestBuilder.kt`. Services: `VictoriaLogsService`, `VictoriaStreamService`, `VictoriaBackupService`.
+- **Tempo** (port 3200) — trace store. K8s: `configuration/tempo/TempoManifestBuilder.kt`.
+- **Pyroscope** (port 4040) — continuous profiling store. K8s: `configuration/pyroscope/PyroscopeManifestBuilder.kt`. Receives profiles from Java agent (Cassandra) and eBPF agent (all nodes). Data directory permissions set via SSH in `K8Apply`.
 
 ### Grafana Dashboards
 
@@ -297,7 +299,7 @@ Current dashboards: System Overview, AWS CloudWatch (S3/EBS/EC2), EMR, OpenSearc
 
 The `observability/` package provides `TelemetryProvider` with `withSpan()`, `recordDuration()`, `incrementCounter()`. `TelemetryFactory` creates `OtelTelemetryProvider` (when `OTEL_EXPORTER_OTLP_ENDPOINT` is set) or `NoOpTelemetryProvider` (zero overhead). Span/metric names are in `TelemetryNames`. See `docs/reference/opentelemetry.md`.
 
-All K8s manifest paths above are relative to `src/main/resources/com/rustyrazorblade/easydblab/commands/`.
+All builder paths above are relative to `src/main/kotlin/com/rustyrazorblade/easydblab/`. Config resources are at corresponding paths under `src/main/resources/com/rustyrazorblade/easydblab/`.
 
 ## Documentation
 

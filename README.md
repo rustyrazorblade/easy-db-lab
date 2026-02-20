@@ -37,6 +37,7 @@ A tool for creating database lab environments in AWS. Designed for testing, benc
 We use packer to create a single AMI with the following:
 
 * Multiple versions of Cassandra
+* ClickHouse (deployed via K3s)
 * [bcc tools](https://github.com/iovisor/bcc), [learn about these tools here](https://rustyrazorblade.com/post/2023/2023-11-14-bcc-tools/)
 * [async-profiler](https://github.com/async-profiler/async-profiler), [learn about it here](https://rustyrazorblade.com/post/2023/2023-11-07-async-profiler/)
 * [cassandra-easy-stress](https://github.com/apache/cassandra-easy-stress) (Apache project, formerly easy-cass-stress)
@@ -346,6 +347,8 @@ easy-db-lab use 5.0 -j 17 --hosts db0
 
 Unlike production tools, easy-db-lab is designed for testing and breaking things, which I find is the best way to learn.
 
+For deploying other databases, see [ClickHouse](https://rustyrazorblade.github.io/easy-db-lab/user-guide/clickhouse/), [OpenSearch](https://rustyrazorblade.github.io/easy-db-lab/user-guide/opensearch/), and [Spark](https://rustyrazorblade.github.io/easy-db-lab/user-guide/spark/).
+
 ### Modify the YAML Configuration
 
 You'll see a file called `cassandra.patch.yaml` in your directory.  You can add any valid cassandra.yaml parameters,
@@ -469,7 +472,7 @@ https://rustyrazorblade.com/post/2023/2023-11-14-bcc-tools/
 
 ## MCP Server Integration
 
-easy-db-lab includes a Model Context Protocol (MCP) server that enables AI assistants like Claude Code to interact directly with your Cassandra clusters.
+easy-db-lab includes a Model Context Protocol (MCP) server that enables AI assistants like Claude Code to interact directly with your database clusters.
 
 ### Starting the MCP Server
 
@@ -496,8 +499,9 @@ This establishes a Server-Sent Events (SSE) connection between Claude Code and y
 With MCP integration, Claude Code can:
 
 * Manage and provision clusters directly
-* Configure and deploy Cassandra instances
+* Configure and deploy Cassandra, ClickHouse, and OpenSearch
 * Run performance tests and analyze results
+* Submit Spark jobs and check their status
 * Troubleshoot issues by analyzing logs and metrics
 * Automate complex multi-step cluster operations
 

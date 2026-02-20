@@ -68,7 +68,7 @@ opentelemetry-instrumentation = "2.11.0-alpha"
 opentelemetry-semconv = "1.29.0-alpha"
 
 # Gradle Plugins
-shadow = "9.1.0"
+shadow = "9.3.1"
 versions = "0.53.0"
 ktlint = "14.0.1"
 detekt = "1.23.8"

@@ -196,6 +196,7 @@ object Constants {
         const val PYROSCOPE_PORT = 4040
         const val BEYLA_METRICS_PORT = 9400
         const val EBPF_EXPORTER_METRICS_PORT = 9435
+        const val MAAC_METRICS_PORT = 9000
         const val OTEL_GRPC_PORT = 4317
         const val OTEL_HTTP_PORT = 4318
         const val OTEL_HEALTH_PORT = 13133

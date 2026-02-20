@@ -52,7 +52,7 @@ class GrafanaManifestBuilder(
         private const val READINESS_PERIOD = 10
 
         private const val GRAFANA_PLUGINS =
-            "grafana-clickhouse-datasource,victoriametrics-logs-datasource,grafana-pyroscope-datasource"
+            "grafana-clickhouse-datasource,victoriametrics-logs-datasource,grafana-pyroscope-datasource,grafana-polystat-panel"
 
         private const val DASHBOARDS_YAML_RESOURCE = "dashboards.yaml"
     }

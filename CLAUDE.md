@@ -265,7 +265,8 @@ The cluster runs a full observability stack on the control node. When modifying 
 
 All observability K8s resources are built programmatically using Fabric8 manifest builders in `configuration/` subpackages. No raw YAML files remain in the core observability stack.
 
-- **OpenTelemetry Collector** (`configuration/otel/OtelManifestBuilder.kt`) runs on all nodes. Collects host metrics, scrapes Prometheus endpoints (ClickHouse, Vector, Beyla, ebpf_exporter), reads file-based logs, and receives OTLP. Exports metrics to VictoriaMetrics, logs to VictoriaLogs, traces to Tempo.
+- **MAAC agent** (port 9000) runs on Cassandra nodes (4.0, 4.1, 5.0). Loaded as a JVM agent, exposes Cassandra internal metrics (`mcac_*` prefix) as a Prometheus endpoint. Installed per-version at `/opt/management-api/{version}/datastax-mgmtapi-agent.jar`. Configured in `packer/cassandra/cassandra.in.sh`. Scraped by OTel collector (`cassandra-maac` job).
+- **OpenTelemetry Collector** (`configuration/otel/OtelManifestBuilder.kt`) runs on all nodes. Collects host metrics, scrapes Prometheus endpoints (ClickHouse, Vector, Beyla, ebpf_exporter, MAAC), reads file-based logs, and receives OTLP. Exports metrics to VictoriaMetrics, logs to VictoriaLogs, traces to Tempo.
 - **Vector** (`configuration/vector/VectorManifestBuilder.kt`) runs as a DaemonSet for system/Cassandra/ClickHouse log collection, plus a separate deployment for S3 log ingestion (EMR/Spark via SQS). Both sink to VictoriaLogs.
 - **Grafana Alloy eBPF profiler** (`configuration/pyroscope/PyroscopeManifestBuilder.kt`) runs on all nodes via Grafana Alloy with `pyroscope.ebpf` component. Collects CPU profiles via eBPF for Cassandra, ClickHouse, and stress jobs. Sends profiles to Pyroscope server.
 - **Beyla** (`configuration/beyla/BeylaManifestBuilder.kt`) runs on all nodes. Provides L7 network RED metrics (Rate/Errors/Duration) for Cassandra and ClickHouse protocols via eBPF. Exposes Prometheus metrics scraped by OTel collector.
@@ -287,7 +288,7 @@ Kotlin code: `configuration/grafana/GrafanaDashboard.kt` (registry), `configurat
 
 Datasources: VictoriaMetrics (Prometheus), VictoriaLogs, ClickHouse, Tempo, CloudWatch, Pyroscope.
 
-Current dashboards: System Overview, AWS CloudWatch (S3/EBS/EC2), EMR, OpenSearch, Stress, ClickHouse metrics, ClickHouse logs, Profiling.
+Current dashboards: System Overview, AWS CloudWatch (S3/EBS/EC2), EMR, OpenSearch, Stress, ClickHouse metrics, ClickHouse logs, Profiling, Cassandra Condensed, Cassandra Overview.
 
 ### CLI Commands
 

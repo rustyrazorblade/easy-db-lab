@@ -73,6 +73,29 @@ else
     echo "WARNING: AxonOps agent jar not found at $ECL_AGENT_JAR" >&2
 fi
 
+# MAAC (Management API for Apache Cassandra) metrics agent
+# Exposes Cassandra metrics as Prometheus endpoint on port 9000
+MAAC_AGENT_JAR=""
+case "$ECL_CASSANDRA_VERSION" in
+    "4.0")
+        MAAC_AGENT_JAR="/opt/management-api/4.0/datastax-mgmtapi-agent.jar"
+        ;;
+    "4.1")
+        MAAC_AGENT_JAR="/opt/management-api/4.1/datastax-mgmtapi-agent.jar"
+        ;;
+    "5.0")
+        MAAC_AGENT_JAR="/opt/management-api/5.0/datastax-mgmtapi-agent.jar"
+        ;;
+esac
+
+if [ -n "$MAAC_AGENT_JAR" ] && [ -f "$MAAC_AGENT_JAR" ]; then
+    export MAAC_PATH="/opt/management-api"
+    export POD_NAME=$(hostname)
+    export JVM_OPTS="$JVM_OPTS -javaagent:${MAAC_AGENT_JAR}"
+elif [ -n "$MAAC_AGENT_JAR" ]; then
+    echo "WARNING: MAAC agent jar not found at $MAAC_AGENT_JAR" >&2
+fi
+
 # Set log directory based on user
 if [ "$(whoami)" = "cassandra" ]; then
     CASSANDRA_LOG_DIR="/mnt/db1/cassandra/logs"

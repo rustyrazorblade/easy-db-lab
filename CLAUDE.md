@@ -239,6 +239,7 @@ For more details, see [packer/README.md](packer/README.md) and [packer/TESTING.m
 - Write new K8 configuration using fabric8.  If there are configuration files, store them as a resource and load them with the TemplateService.
 - If you need to modify a K8 configuration, ask if you should migrate it to the new fabric8 based configs in `src/main/kotlin/coom/rustyrazorblade/easydblab/configuration/`
 - When describing directory structure, use normal lists.  Don't draw them, I don't find them useful.
+- When running Gradle tests, run them in a subagent.  Never attribute a test containers failure as a pre-existing problem.  Raise to to my attention, I may need to restart docker.
 
 ## Specifications
 

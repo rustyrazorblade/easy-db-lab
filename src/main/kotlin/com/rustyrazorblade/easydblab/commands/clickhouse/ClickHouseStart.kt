@@ -93,6 +93,7 @@ class ClickHouseStart : PicoBaseCommand() {
             "Deploying ClickHouse: $shardCount shards x $replicasPerShard replicas = $actualReplicas nodes",
         )
 
+        ensureLocalStorageClass(controlNode)
         createLocalPersistentVolumes(controlNode, actualReplicas)
         val bucket = setupS3SecretIfConfigured(controlNode)
         applyManifestsAndConfigureCluster(controlNode, actualReplicas)
@@ -132,6 +133,14 @@ class ClickHouseStart : PicoBaseCommand() {
             )
         }
         return actualReplicas
+    }
+
+    private fun ensureLocalStorageClass(controlNode: ClusterHost) {
+        k8sService
+            .ensureLocalStorageClass(controlNode)
+            .getOrElse { exception ->
+                error("Failed to create local-storage StorageClass: ${exception.message}")
+            }
     }
 
     /**
@@ -234,10 +243,7 @@ class ClickHouseStart : PicoBaseCommand() {
             outputHandler.handleMessage("Waiting for ClickHouse pods to be ready (this may take a few minutes)...")
             k8sService
                 .waitForPodsReady(controlNode, timeoutSeconds, Constants.ClickHouse.NAMESPACE)
-                .getOrElse { exception ->
-                    outputHandler.handleError("Warning: Pods may not be ready: ${exception.message}")
-                    outputHandler.handleMessage("You can check status with: easy-db-lab clickhouse status")
-                }
+                .getOrThrow()
         }
     }
 

@@ -361,10 +361,22 @@ interface K8sService {
         localPath: String,
         count: Int,
         storageSize: String,
-        storageClass: String = "local-storage",
+        storageClass: String = Constants.K8s.LOCAL_STORAGE_CLASS,
         namespace: String = "default",
         volumeClaimTemplateName: String = "data",
     ): Result<Unit>
+
+    /**
+     * Ensures the local-storage StorageClass exists in the cluster.
+     *
+     * This StorageClass uses the kubernetes.io/no-provisioner provisioner
+     * with WaitForFirstConsumer binding mode and Retain reclaim policy.
+     * It is required before creating Local PersistentVolumes.
+     *
+     * @param controlHost The control node running the K3s server
+     * @return Result indicating success or failure
+     */
+    fun ensureLocalStorageClass(controlHost: ClusterHost): Result<Unit>
 }
 
 /**
@@ -540,6 +552,7 @@ class DefaultK8sService(
                         .withName(podName)
                         .waitUntilCondition(
                             { p ->
+                                checkForPodFailure(p)
                                 p?.status?.conditions?.any {
                                     it.type == "Ready" && it.status == "True"
                                 } == true
@@ -586,6 +599,7 @@ class DefaultK8sService(
                         .withName(podName)
                         .waitUntilCondition(
                             { p ->
+                                checkForPodFailure(p)
                                 p?.status?.conditions?.any {
                                     it.type == "Ready" && it.status == "True"
                                 } == true
@@ -1340,4 +1354,92 @@ class DefaultK8sService(
                 outputHandler.handleMessage("Created $count Local PVs for $dbName")
             }
         }
+
+    override fun ensureLocalStorageClass(controlHost: ClusterHost): Result<Unit> =
+        runCatching {
+            log.info { "Ensuring local-storage StorageClass exists" }
+
+            createClient(controlHost).use { client ->
+                val existing =
+                    client
+                        .storage()
+                        .v1()
+                        .storageClasses()
+                        .withName(Constants.K8s.LOCAL_STORAGE_CLASS)
+                        .get()
+
+                if (existing != null) {
+                    log.info { "StorageClass ${Constants.K8s.LOCAL_STORAGE_CLASS} already exists" }
+                    return@runCatching
+                }
+
+                val storageClass =
+                    io.fabric8.kubernetes.api.model.storage
+                        .StorageClassBuilder()
+                        .withNewMetadata()
+                        .withName(Constants.K8s.LOCAL_STORAGE_CLASS)
+                        .endMetadata()
+                        .withProvisioner("kubernetes.io/no-provisioner")
+                        .withVolumeBindingMode("WaitForFirstConsumer")
+                        .withReclaimPolicy("Retain")
+                        .build()
+
+                client
+                    .storage()
+                    .v1()
+                    .storageClasses()
+                    .resource(storageClass)
+                    .create()
+
+                log.info { "Created StorageClass ${Constants.K8s.LOCAL_STORAGE_CLASS}" }
+                outputHandler.handleMessage("Created local-storage StorageClass")
+            }
+        }
+
+    companion object {
+        /**
+         * Container waiting reasons that indicate a terminal failure.
+         * When any container enters one of these states, the pod will not recover
+         * without intervention, so we fail fast instead of waiting for timeout.
+         */
+        val TERMINAL_FAILURE_REASONS =
+            setOf(
+                "CrashLoopBackOff",
+                "Error",
+                "ImagePullBackOff",
+                "ErrImagePull",
+            )
+
+        /**
+         * Checks if a pod has any containers in a terminal failure state.
+         * Throws IllegalStateException if a failure is detected, causing
+         * waitUntilCondition to exit immediately.
+         */
+        fun checkForPodFailure(pod: io.fabric8.kubernetes.api.model.Pod?) {
+            val containerStatuses = pod?.status?.containerStatuses ?: return
+            val podName = pod.metadata?.name ?: "unknown"
+
+            for (containerStatus in containerStatuses) {
+                val waitingReason = containerStatus.state?.waiting?.reason ?: continue
+                if (waitingReason in TERMINAL_FAILURE_REASONS) {
+                    val containerName = containerStatus.name ?: "unknown"
+                    val waitingMessage = containerStatus.state?.waiting?.message
+                    val suffix = waitingMessage?.let { ": $it" } ?: ""
+                    error("Pod $podName container $containerName is in $waitingReason state$suffix")
+                }
+            }
+
+            // Also check init container statuses
+            val initContainerStatuses = pod.status?.initContainerStatuses ?: return
+            for (containerStatus in initContainerStatuses) {
+                val waitingReason = containerStatus.state?.waiting?.reason ?: continue
+                if (waitingReason in TERMINAL_FAILURE_REASONS) {
+                    val containerName = containerStatus.name ?: "unknown"
+                    val waitingMessage = containerStatus.state?.waiting?.message
+                    val suffix = waitingMessage?.let { ": $it" } ?: ""
+                    error("Pod $podName init container $containerName is in $waitingReason state$suffix")
+                }
+            }
+        }
+    }
 }

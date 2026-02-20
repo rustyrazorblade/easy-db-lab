@@ -599,8 +599,12 @@ class Up : PicoBaseCommand() {
         // Label db nodes with ordinals for StatefulSet pod-to-node pinning
         labelDbNodesWithOrdinals(controlHosts.first())
 
-        // Apply common K8s resources (StorageClass, etc.)
-        applyCommonK8sManifests(controlHosts.first())
+        // Ensure local-storage StorageClass exists for Local PVs
+        k8sService
+            .ensureLocalStorageClass(controlHosts.first())
+            .getOrElse { exception ->
+                log.warn(exception) { "Failed to create local-storage StorageClass" }
+            }
 
         commandExecutor.execute { K8Apply() }
     }
@@ -630,22 +634,6 @@ class Up : PicoBaseCommand() {
         }
 
         outputHandler.handleMessage("Node labeling complete")
-    }
-
-    /**
-     * Applies common K8s manifests that are shared across all database deployments.
-     *
-     * This includes the local-storage StorageClass needed for Local PersistentVolumes.
-     */
-    private fun applyCommonK8sManifests(controlHost: ClusterHost) {
-        k8sService
-            .applyManifests(
-                controlHost,
-                java.nio.file.Path
-                    .of("k8s/common"),
-            ).getOrElse { exception ->
-                log.warn(exception) { "Failed to apply common K8s manifests" }
-            }
     }
 
     /**

@@ -186,6 +186,7 @@ object Constants {
         const val PATH_PREFIX = "/k8s/"
         const val NAMESPACE = "default"
         const val MANIFEST_DIR = "k8s"
+        const val LOCAL_STORAGE_CLASS = "local-storage"
         const val RESOURCE_PACKAGE = "com.rustyrazorblade.easydblab.commands.k8s"
         const val GRAFANA_PORT = 3000
         const val VICTORIAMETRICS_PORT = 8428

@@ -71,13 +71,6 @@ spec:
               umask 0022
               export KEEPER_SERVER_ID=$((${HOSTNAME##*-} + 1))
               exec clickhouse-keeper --config-file=/etc/clickhouse-keeper/keeper_config.xml
-          resources:
-            # To set memory limits, add:
-            # limits:
-            #   memory: 512Mi
-            requests:
-              memory: 256Mi
-              cpu: 100m
           volumeMounts:
             - name: config
               mountPath: /etc/clickhouse-keeper

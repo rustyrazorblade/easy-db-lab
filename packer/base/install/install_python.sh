@@ -18,23 +18,9 @@ sudo DEBIAN_FRONTEND=noninteractive apt install -y python3.10 python3.10-dev pyt
 sudo update-alternatives --install /usr/bin/python python /usr/bin/python3.10 1
 sudo update-alternatives --set python /usr/bin/python3.10
 
-# Install uv (fast Python package installer) via direct binary download
+# Install uv (fast Python package installer) via official installer
 echo "Installing uv to /usr/local/bin..."
-
-# Detect architecture
-ARCH=$(uname -m)
-case $ARCH in
-    x86_64)  UV_ARCH="x86_64-unknown-linux-gnu" ;;
-    aarch64) UV_ARCH="aarch64-unknown-linux-gnu" ;;
-    *) echo "Unsupported architecture: $ARCH"; exit 1 ;;
-esac
-
-# Download latest release from GitHub
-UV_VERSION=$(curl -s https://api.github.com/repos/astral-sh/uv/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
-echo "Downloading uv ${UV_VERSION} for ${UV_ARCH}..."
-curl -LsSf "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-${UV_ARCH}.tar.gz" -o /tmp/uv.tar.gz
-sudo tar xzf /tmp/uv.tar.gz -C /usr/local/bin --strip-components=1
-rm /tmp/uv.tar.gz
+curl -LsSf https://astral.sh/uv/install.sh | sudo env INSTALLER_NO_MODIFY_PATH=1 UV_INSTALL_DIR=/usr/local/bin sh
 
 # Verify installation
 uv --version

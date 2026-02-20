@@ -15,7 +15,9 @@ class VictoriaBackupJobBuilderTest {
     @Test
     fun `metrics backup job injects S3 destination and region into args`() {
         val job = builder.buildMetricsBackupJob("vmbackup-test", "my-bucket", "backups/vm", "eu-west-1")
-        val container = job.spec.template.spec.containers.first()
+        val container =
+            job.spec.template.spec.containers
+                .first()
 
         // Verify dynamic parameters are injected into vmbackup args
         assertThat(container.args).contains("-dst=s3://my-bucket/backups/vm")
@@ -26,7 +28,11 @@ class VictoriaBackupJobBuilderTest {
     @Test
     fun `logs backup script injects S3 destination and region`() {
         val job = builder.buildLogsBackupJob("vlbackup-test", "my-bucket", "backups/vl", "ap-southeast-1")
-        val script = job.spec.template.spec.containers.first().command.last()
+        val script =
+            job.spec.template.spec.containers
+                .first()
+                .command
+                .last()
 
         // Verify dynamic parameters appear in the shell script
         assertThat(script).contains("s3://my-bucket/backups/vl")

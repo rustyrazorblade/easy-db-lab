@@ -111,13 +111,6 @@ spec:
               echo "Pod $REPLICA: ordinal=$ORDINAL, SHARD=$SHARD, REPLICAS_PER_SHARD=$REPLICAS_PER_SHARD"
               umask 0022
               exec /entrypoint.sh
-          resources:
-            # To set memory limits, add:
-            # limits:
-            #   memory: 4Gi
-            requests:
-              memory: 2Gi
-              cpu: 500m
           volumeMounts:
             - name: config
               mountPath: /etc/clickhouse-server/config.d

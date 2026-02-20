@@ -54,10 +54,7 @@ class K8Apply : PicoBaseCommand() {
         if (!skipWait) {
             k8sService
                 .waitForPodsReady(controlNode, timeoutSeconds)
-                .getOrElse { exception ->
-                    outputHandler.handleError("Warning: Pods may not be ready: ${exception.message}")
-                    outputHandler.handleMessage("You can check status with: kubectl get pods")
-                }
+                .getOrThrow()
         }
 
         // Display access information

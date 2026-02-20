@@ -16,20 +16,11 @@
 - [Network Connectivity](user-guide/network-connectivity.md)
 - [Shell Aliases](user-guide/shell-aliases.md)
 
-## Cassandra
+## Databases
 
 - [Cassandra](user-guide/installing-cassandra.md)
-
-## ClickHouse
-
 - [ClickHouse](user-guide/clickhouse.md)
-
-## OpenSearch
-
 - [OpenSearch](user-guide/opensearch.md)
-
-## Spark
-
 - [Spark](user-guide/spark.md)
 
 ## Observability

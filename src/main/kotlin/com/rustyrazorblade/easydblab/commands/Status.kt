@@ -491,7 +491,7 @@ class Status :
             return
         }
 
-        outputHandler.displayS3ManagerAccess(controlHost.privateIp, clusterState.s3Bucket ?: "")
+        outputHandler.displayS3ManagerAccess(controlHost.privateIp, clusterState.s3Path())
     }
 
     /**

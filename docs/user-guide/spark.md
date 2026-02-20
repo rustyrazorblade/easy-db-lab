@@ -69,33 +69,38 @@ Submit JAR-based Spark applications to your EMR cluster:
 easy-db-lab spark submit \
   --jar /path/to/your-app.jar \
   --main-class com.example.YourMainClass \
-  --args "arg1 arg2"
+  --conf spark.easydblab.keyspace=my_keyspace \
+  --conf spark.easydblab.table=my_table \
+  --wait
 ```
 
 ### Submit Options
 
 | Option | Description | Required |
 |--------|-------------|----------|
-| `--jar` | Path to JAR file (local or s3://) | Yes |
+| `--jar` | Path to JAR file (local path or `s3://` URI) | Yes |
 | `--main-class` | Main class to execute | Yes |
+| `--conf` | Spark configuration (`key=value`), can be repeated | No |
+| `--env` | Environment variable (`KEY=value`), can be repeated | No |
 | `--args` | Arguments for the Spark application | No |
 | `--wait` | Wait for job completion | No |
 | `--name` | Job name (defaults to main class) | No |
 
-### Using S3 for JARs
+When `--jar` is a local path, it is automatically uploaded to the cluster's S3 bucket before submission. When it is an `s3://` URI, it is used directly.
 
-You can upload your JAR to S3 and reference it directly:
+### Using a JAR Already on S3
+
+If your JAR is already on S3 (e.g., from a CI pipeline or a previous upload), pass the S3 URI directly:
 
 ```bash
-# Upload JAR to cluster S3 bucket
-aws s3 cp your-app.jar s3://your-bucket/spark/your-app.jar
-
-# Submit using S3 path
 easy-db-lab spark submit \
-  --jar s3://your-bucket/spark/your-app.jar \
+  --jar s3://my-bucket/jars/your-app.jar \
   --main-class com.example.YourMainClass \
+  --conf spark.easydblab.keyspace=my_keyspace \
   --wait
 ```
+
+This skips the upload step entirely, which is useful for large JARs or when resubmitting the same job.
 
 ## Checking Job Status
 
@@ -211,6 +216,8 @@ Output: `bulk-writer/build/libs/bulk-writer-*.jar` (~140MB fat JAR)
 
 ### Usage
 
+All bulk writers are configured via `--conf` Spark properties, not positional arguments.
+
 #### Direct Mode
 
 Writes SSTables directly to Cassandra via Sidecar:
@@ -219,7 +226,11 @@ Writes SSTables directly to Cassandra via Sidecar:
 easy-db-lab spark submit \
   --jar bulk-writer/build/libs/bulk-writer-*.jar \
   --main-class com.rustyrazorblade.easydblab.spark.DirectBulkWriter \
-  --args "host1,host2,host3 mykeyspace mytable datacenter1 1000000 10" \
+  --conf spark.easydblab.sidecar.contactPoints=host1,host2,host3 \
+  --conf spark.easydblab.keyspace=bulk_test \
+  --conf spark.easydblab.table=data \
+  --conf spark.easydblab.localDc=us-west-2 \
+  --conf spark.easydblab.rowCount=1000000 \
   --wait
 ```
 
@@ -228,27 +239,63 @@ easy-db-lab spark submit \
 Writes SSTables to S3, then Sidecar imports them:
 
 ```bash
-S3_BUCKET=my-bucket easy-db-lab spark submit \
+easy-db-lab spark submit \
   --jar bulk-writer/build/libs/bulk-writer-*.jar \
   --main-class com.rustyrazorblade.easydblab.spark.S3BulkWriter \
-  --args "host1,host2,host3 mykeyspace mytable datacenter1 1000000 10" \
+  --conf spark.easydblab.sidecar.contactPoints=host1,host2,host3 \
+  --conf spark.easydblab.keyspace=bulk_test \
+  --conf spark.easydblab.table=data \
+  --conf spark.easydblab.localDc=us-west-2 \
+  --conf spark.easydblab.s3.bucket=my-bucket \
+  --conf spark.easydblab.rowCount=1000000 \
   --wait
 ```
 
-#### Arguments
+#### Connector Mode
 
-```
-<sidecar-hosts> <keyspace> <table> <datacenter> [rowCount] [parallelism]
+Writes via the standard Spark Cassandra Connector (baseline comparison):
+
+```bash
+easy-db-lab spark submit \
+  --jar connector-writer/build/libs/connector-writer-*.jar \
+  --main-class com.rustyrazorblade.easydblab.spark.StandardConnectorWriter \
+  --conf spark.easydblab.cassandra.host=host1,host2,host3 \
+  --conf spark.easydblab.keyspace=bulk_test \
+  --conf spark.easydblab.table=data \
+  --conf spark.easydblab.localDc=us-west-2 \
+  --conf spark.easydblab.rowCount=1000000 \
+  --wait
 ```
 
-| Argument | Description | Default |
+#### Configuration Properties
+
+**Common properties (all modes):**
+
+| Property | Description | Default |
 |----------|-------------|---------|
-| sidecar-hosts | Comma-separated Sidecar host list | Required |
-| keyspace | Target Cassandra keyspace | Required |
-| table | Target Cassandra table | Required |
-| datacenter | Local datacenter name | Required |
-| rowCount | Number of rows to generate | 1000000 |
-| parallelism | Spark partitions | 10 |
+| `spark.easydblab.keyspace` | Target keyspace | Required |
+| `spark.easydblab.table` | Target table | `data_<timestamp>` |
+| `spark.easydblab.localDc` | Local datacenter name | Required |
+| `spark.easydblab.rowCount` | Number of rows to write | 1000000 |
+| `spark.easydblab.parallelism` | Spark partitions for generation | 10 |
+| `spark.easydblab.partitionCount` | Cassandra partitions to distribute across | 10000 |
+| `spark.easydblab.replicationFactor` | Keyspace replication factor | 3 |
+| `spark.easydblab.skipDdl` | Skip keyspace/table creation | false |
+| `spark.easydblab.compaction` | Compaction strategy (e.g., `LeveledCompactionStrategy`) | (default) |
+
+**Direct/S3 mode (bulk writer):**
+
+| Property | Description | Default |
+|----------|-------------|---------|
+| `spark.easydblab.sidecar.contactPoints` | Comma-separated Sidecar hosts | Required |
+| `spark.easydblab.s3.bucket` | S3 bucket (S3 mode only) | Required for S3 |
+| `spark.easydblab.s3.endpoint` | S3 endpoint override | AWS S3 |
+
+**Connector mode:**
+
+| Property | Description | Default |
+|----------|-------------|---------|
+| `spark.easydblab.cassandra.host` | Comma-separated Cassandra hosts | Required |
 
 ### Test Script
 

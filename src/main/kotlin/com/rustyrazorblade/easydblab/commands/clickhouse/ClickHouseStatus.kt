@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.s3Path
 import com.rustyrazorblade.easydblab.output.displayClickHouseAccess
 import com.rustyrazorblade.easydblab.output.displayS3ManagerClickHouseAccess
 import com.rustyrazorblade.easydblab.services.K8sService
@@ -55,9 +56,8 @@ class ClickHouseStatus : PicoBaseCommand() {
         outputHandler.handleMessage(status)
         outputHandler.displayClickHouseAccess(dbNodeIp)
 
-        val s3Bucket = clusterState.s3Bucket
-        if (!s3Bucket.isNullOrBlank()) {
-            outputHandler.displayS3ManagerClickHouseAccess(controlNode.privateIp, s3Bucket)
+        if (!clusterState.s3Bucket.isNullOrBlank()) {
+            outputHandler.displayS3ManagerClickHouseAccess(controlNode.privateIp, clusterState.s3Path())
         }
     }
 }

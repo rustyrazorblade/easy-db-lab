@@ -467,9 +467,10 @@ class StatusCache(
 
         val clickhouse = buildClickHouseAccess(state, controlHost, instanceStates)
 
+        val s3Path = state.s3Path()
         val s3Manager =
             S3ManagerAccess(
-                ui = "http://$controlIp:${Constants.K8s.S3MANAGER_PORT}/buckets/${state.s3Bucket ?: ""}",
+                ui = "http://$controlIp:${Constants.K8s.S3MANAGER_PORT}/buckets/${s3Path.bucket}/${s3Path.getKey()}/",
             )
 
         val registry =

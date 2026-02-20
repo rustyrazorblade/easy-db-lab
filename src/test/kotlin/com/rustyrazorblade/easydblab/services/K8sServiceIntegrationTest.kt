@@ -1,9 +1,11 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.clickhouse.ClickHouseManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboard
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
@@ -19,6 +21,7 @@ import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.Pod
 import io.fabric8.kubernetes.api.model.apps.DaemonSet
 import io.fabric8.kubernetes.api.model.apps.Deployment
+import io.fabric8.kubernetes.api.model.apps.StatefulSet
 import io.fabric8.kubernetes.client.Config
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientBuilder
@@ -164,7 +167,25 @@ class K8sServiceIntegrationTest {
 
     @Test
     @Order(3)
-    fun `create host directories needed by pods`() {
+    fun `label node and create host directories needed by pods`() {
+        // Label the K3s node as a db node so ClickHouse pods can schedule
+        val nodeName =
+            client
+                .nodes()
+                .list()
+                .items
+                .first()
+                .metadata
+                .name
+        client
+            .nodes()
+            .withName(nodeName)
+            .edit { node ->
+                node.metadata.labels["type"] = "db"
+                node.metadata.labels[Constants.NODE_ORDINAL_LABEL] = "0"
+                node
+            }
+
         // Registry needs /opt/registry/certs with TLS cert and key (hostPath type: Directory)
         k3s.execInContainer("mkdir", "-p", "/opt/registry/certs")
         k3s.execInContainer(
@@ -310,6 +331,33 @@ class K8sServiceIntegrationTest {
         assertDeploymentExists("grafana")
     }
 
+    @Test
+    @Order(20)
+    fun `should apply ClickHouse resources`() {
+        // Create ClickHouse data directories
+        k3s.execInContainer("mkdir", "-p", "/mnt/db1/clickhouse")
+        k3s.execInContainer("mkdir", "-p", "/mnt/db1/clickhouse-keeper")
+
+        val builder = ClickHouseManifestBuilder(DefaultClickHouseConfigService())
+        val resources =
+            builder.buildAllResources(
+                totalReplicas = 3,
+                replicasPerShard = 3,
+                s3CacheSize = "10Gi",
+                s3CacheOnWrite = "true",
+            )
+        applyAndVerify(resources)
+
+        assertConfigMapExists("clickhouse-keeper-config", "keeper_config.xml")
+        assertConfigMapExists("clickhouse-server-config", "config.xml")
+        assertConfigMapExists("clickhouse-cluster-config", "replicas-per-shard")
+        assertServiceExists("clickhouse-keeper")
+        assertServiceExists("clickhouse")
+        assertServiceExists("clickhouse-client")
+        assertStatefulSetExists("clickhouse-keeper")
+        assertStatefulSetExists("clickhouse")
+    }
+
     // -----------------------------------------------------------------------
     // Phase 3: Verify pods actually start running
     // -----------------------------------------------------------------------
@@ -344,12 +392,16 @@ class K8sServiceIntegrationTest {
                 .items
         val problems = mutableListOf<String>()
 
+        // ClickHouse Keeper/Server use required pod anti-affinity (one pod per node)
+        // and the K3s test has only 1 node, so 2 of 3 keeper pods will always be Pending
+        val clickHousePodPrefixes = listOf("clickhouse-keeper-", "clickhouse-")
+
         for (pod in allPods) {
             val podName = pod.metadata?.name ?: "unknown"
             val phase = pod.status?.phase
 
             // Pending means scheduling failed (missing volumes, affinity, etc.)
-            if (phase == "Pending") {
+            if (phase == "Pending" && clickHousePodPrefixes.none { podName.startsWith(it) }) {
                 val conditions = pod.status?.conditions?.joinToString { "${it.type}=${it.status}: ${it.message}" }
                 problems.add("$podName is Pending: $conditions")
             }
@@ -496,6 +548,17 @@ class K8sServiceIntegrationTest {
         assertThat(dep).withFailMessage("Deployment '$name' not found").isNotNull
     }
 
+    private fun assertStatefulSetExists(name: String) {
+        val sts =
+            client
+                .apps()
+                .statefulSets()
+                .inNamespace(DEFAULT_NAMESPACE)
+                .withName(name)
+                .get()
+        assertThat(sts).withFailMessage("StatefulSet '$name' not found").isNotNull
+    }
+
     private fun assertDaemonSetExists(name: String) {
         val ds =
             client
@@ -599,7 +662,13 @@ class K8sServiceIntegrationTest {
             S3ManagerManifestBuilder(templateService).buildAllResources() +
             BeylaManifestBuilder(templateService).buildAllResources() +
             PyroscopeManifestBuilder(templateService).buildAllResources() +
-            GrafanaManifestBuilder(templateService).buildAllResources()
+            GrafanaManifestBuilder(templateService).buildAllResources() +
+            ClickHouseManifestBuilder(DefaultClickHouseConfigService()).buildAllResources(
+                totalReplicas = 3,
+                replicasPerShard = 3,
+                s3CacheSize = "10Gi",
+                s3CacheOnWrite = "true",
+            )
 
     private fun extractContainers(resource: HasMetadata): List<io.fabric8.kubernetes.api.model.Container> =
         when (resource) {
@@ -610,6 +679,12 @@ class K8sServiceIntegrationTest {
                     ?.containers
                     .orEmpty()
             is DaemonSet ->
+                resource.spec
+                    ?.template
+                    ?.spec
+                    ?.containers
+                    .orEmpty()
+            is StatefulSet ->
                 resource.spec
                     ?.template
                     ?.spec

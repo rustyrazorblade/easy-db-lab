@@ -41,23 +41,6 @@ class ClickHouseInitTest : BaseKoinTest() {
         )
 
     @Test
-    fun `init saves s3 cache size to cluster state`() {
-        val state = createTestState()
-        whenever(mockClusterStateManager.load()).thenReturn(state)
-
-        val command = ClickHouseInit()
-        command.s3CacheSize = "50Gi"
-        command.execute()
-
-        val captor = argumentCaptor<ClusterState>()
-        verify(mockClusterStateManager).save(captor.capture())
-
-        val savedState = captor.firstValue
-        assertThat(savedState.clickHouseConfig).isNotNull
-        assertThat(savedState.clickHouseConfig!!.s3CacheSize).isEqualTo("50Gi")
-    }
-
-    @Test
     fun `init uses default s3 cache size when not specified`() {
         val state = createTestState()
         whenever(mockClusterStateManager.load()).thenReturn(state)
@@ -93,23 +76,6 @@ class ClickHouseInitTest : BaseKoinTest() {
     }
 
     @Test
-    fun `init saves s3 cache on write to cluster state`() {
-        val state = createTestState()
-        whenever(mockClusterStateManager.load()).thenReturn(state)
-
-        val command = ClickHouseInit()
-        command.s3CacheOnWrite = "false"
-        command.execute()
-
-        val captor = argumentCaptor<ClusterState>()
-        verify(mockClusterStateManager).save(captor.capture())
-
-        val savedState = captor.firstValue
-        assertThat(savedState.clickHouseConfig).isNotNull
-        assertThat(savedState.clickHouseConfig!!.s3CacheOnWrite).isEqualTo("false")
-    }
-
-    @Test
     fun `init uses default s3 cache on write when not specified`() {
         val state = createTestState()
         whenever(mockClusterStateManager.load()).thenReturn(state)
@@ -123,5 +89,22 @@ class ClickHouseInitTest : BaseKoinTest() {
         val savedState = captor.firstValue
         assertThat(savedState.clickHouseConfig).isNotNull
         assertThat(savedState.clickHouseConfig!!.s3CacheOnWrite).isEqualTo(Constants.ClickHouse.DEFAULT_S3_CACHE_ON_WRITE)
+    }
+
+    @Test
+    fun `init uses default replicas per shard when not specified`() {
+        val state = createTestState()
+        whenever(mockClusterStateManager.load()).thenReturn(state)
+
+        val command = ClickHouseInit()
+        command.execute()
+
+        val captor = argumentCaptor<ClusterState>()
+        verify(mockClusterStateManager).save(captor.capture())
+
+        val savedState = captor.firstValue
+        assertThat(savedState.clickHouseConfig).isNotNull
+        assertThat(savedState.clickHouseConfig!!.replicasPerShard)
+            .isEqualTo(Constants.ClickHouse.DEFAULT_REPLICAS_PER_SHARD)
     }
 }

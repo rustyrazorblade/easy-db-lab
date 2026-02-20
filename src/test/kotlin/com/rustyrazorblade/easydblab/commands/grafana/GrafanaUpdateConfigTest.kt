@@ -30,12 +30,12 @@ import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 
 /**
- * Test suite for GrafanaUpload command.
+ * Test suite for GrafanaUpdateConfig command.
  *
  * Uses real manifest builders (never mock configuration classes) with
  * mocked K8sService to verify the full observability stack is applied.
  */
-class GrafanaUploadTest : BaseKoinTest() {
+class GrafanaUpdateConfigTest : BaseKoinTest() {
     private lateinit var mockDashboardService: GrafanaDashboardService
     private lateinit var mockClusterStateManager: ClusterStateManager
     private lateinit var mockK8sService: K8sService
@@ -104,7 +104,7 @@ class GrafanaUploadTest : BaseKoinTest() {
 
         whenever(mockClusterStateManager.load()).thenReturn(emptyState)
 
-        val command = GrafanaUpload()
+        val command = GrafanaUpdateConfig()
 
         assertThatThrownBy { command.execute() }
             .isInstanceOf(IllegalStateException::class.java)
@@ -127,7 +127,7 @@ class GrafanaUploadTest : BaseKoinTest() {
         whenever(mockK8sService.applyResource(any(), any<HasMetadata>())).thenReturn(Result.success(Unit))
         whenever(mockDashboardService.uploadDashboards(any(), any())).thenReturn(Result.success(Unit))
 
-        val command = GrafanaUpload()
+        val command = GrafanaUpdateConfig()
         command.execute()
 
         // Verify Fabric8 resources were applied (all builders produce multiple resources)
@@ -151,7 +151,7 @@ class GrafanaUploadTest : BaseKoinTest() {
         whenever(mockK8sService.applyResource(any(), any<HasMetadata>()))
             .thenReturn(Result.failure(RuntimeException("server side apply failed")))
 
-        val command = GrafanaUpload()
+        val command = GrafanaUpdateConfig()
 
         assertThatThrownBy { command.execute() }
             .isInstanceOf(IllegalStateException::class.java)
@@ -175,7 +175,7 @@ class GrafanaUploadTest : BaseKoinTest() {
         whenever(mockDashboardService.uploadDashboards(any(), any()))
             .thenReturn(Result.failure(RuntimeException("Upload failed")))
 
-        val command = GrafanaUpload()
+        val command = GrafanaUpdateConfig()
 
         assertThatThrownBy { command.execute() }
             .isInstanceOf(IllegalStateException::class.java)

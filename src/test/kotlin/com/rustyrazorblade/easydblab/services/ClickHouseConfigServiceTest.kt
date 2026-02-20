@@ -1,35 +1,19 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.rustyrazorblade.easydblab.core.YamlDelegate
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.io.TempDir
 import org.w3c.dom.Element
-import java.nio.file.Files
-import java.nio.file.Path
 import javax.xml.parsers.DocumentBuilderFactory
 
 /**
  * Tests for ClickHouseConfigService sharding configuration logic.
  *
  * These tests verify that the XML manipulation for dynamic shard/replica
- * configuration works correctly for various cluster topologies using
- * the actual ConfigMap template from resources.
+ * configuration works correctly for various cluster topologies.
  */
 class ClickHouseConfigServiceTest {
     private val service = DefaultClickHouseConfigService()
-
-    companion object {
-        private const val CONFIGMAP_RESOURCE_PATH =
-            "/com/rustyrazorblade/easydblab/commands/k8s/clickhouse/12-clickhouse-server-configmap.yaml"
-
-        private val yamlMapper: ObjectMapper by YamlDelegate()
-    }
-
-    @TempDir
-    lateinit var tempDir: Path
 
     @Test
     fun `addShardsToConfigXml creates correct topology for 6 nodes with 3 replicas per shard`() {
@@ -230,71 +214,36 @@ class ClickHouseConfigServiceTest {
         assertThat(result).contains("<prometheus>")
     }
 
-    // Tests for createDynamicConfigMap
-
     @Test
-    fun `createDynamicConfigMap loads template and generates correct config`() {
-        // Copy ConfigMap from resources to temp dir
-        val configMapContent =
-            javaClass
-                .getResourceAsStream(CONFIGMAP_RESOURCE_PATH)
-                ?.bufferedReader()
-                ?.readText()
-                ?: error("Could not load ConfigMap from resources")
-        Files.writeString(
-            tempDir.resolve("12-clickhouse-server-configmap.yaml"),
-            configMapContent,
-        )
+    fun `config template uses from_env for s3 cache size instead of hardcoded value`() {
+        val realConfigXml = loadConfigXmlFromResources()
 
-        val configMap =
-            service.createDynamicConfigMap(
-                totalReplicas = 6,
-                replicasPerShard = 3,
-                basePath = tempDir,
-            )
-
-        assertThat(configMap).containsKey("config.xml")
-        assertThat(configMap).containsKey("users.xml")
-
-        // Verify config.xml has correct shards
-        val configXml = configMap["config.xml"]!!
-        val doc = parseXml(configXml)
-        val shards = getShardElements(doc)
-        assertThat(shards).hasSize(2)
-
-        // Verify users.xml is preserved
-        val usersXml = configMap["users.xml"]!!
-        assertThat(usersXml).contains("<users>")
-        assertThat(usersXml).contains("<default>")
+        assertThat(realConfigXml).contains("from_env=\"CLICKHOUSE_S3_CACHE_SIZE\"")
+        assertThat(realConfigXml).doesNotContain("<max_size>10Gi</max_size>")
     }
 
     @Test
-    fun `createDynamicConfigMap throws error when template not found`() {
-        assertThatThrownBy {
-            service.createDynamicConfigMap(
-                totalReplicas = 3,
-                replicasPerShard = 3,
-                basePath = tempDir,
-            )
-        }.isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("ConfigMap template not found")
+    fun `config template uses from_env for s3 cache on write`() {
+        val realConfigXml = loadConfigXmlFromResources()
+
+        assertThat(realConfigXml).contains("from_env=\"CLICKHOUSE_S3_CACHE_ON_WRITE\"")
     }
 
     // Tests for calculateShard
 
     @Test
     fun `calculateShard returns correct shard for ordinals with 3 replicas per shard`() {
-        // Ordinals 0, 1, 2 → shard 1
+        // Ordinals 0, 1, 2 -> shard 1
         assertThat(service.calculateShard(nodeOrdinal = 0, replicasPerShard = 3)).isEqualTo(1)
         assertThat(service.calculateShard(nodeOrdinal = 1, replicasPerShard = 3)).isEqualTo(1)
         assertThat(service.calculateShard(nodeOrdinal = 2, replicasPerShard = 3)).isEqualTo(1)
 
-        // Ordinals 3, 4, 5 → shard 2
+        // Ordinals 3, 4, 5 -> shard 2
         assertThat(service.calculateShard(nodeOrdinal = 3, replicasPerShard = 3)).isEqualTo(2)
         assertThat(service.calculateShard(nodeOrdinal = 4, replicasPerShard = 3)).isEqualTo(2)
         assertThat(service.calculateShard(nodeOrdinal = 5, replicasPerShard = 3)).isEqualTo(2)
 
-        // Ordinals 6, 7, 8 → shard 3
+        // Ordinals 6, 7, 8 -> shard 3
         assertThat(service.calculateShard(nodeOrdinal = 6, replicasPerShard = 3)).isEqualTo(3)
         assertThat(service.calculateShard(nodeOrdinal = 7, replicasPerShard = 3)).isEqualTo(3)
         assertThat(service.calculateShard(nodeOrdinal = 8, replicasPerShard = 3)).isEqualTo(3)
@@ -302,15 +251,15 @@ class ClickHouseConfigServiceTest {
 
     @Test
     fun `calculateShard returns correct shard for ordinals with 2 replicas per shard`() {
-        // Ordinals 0, 1 → shard 1
+        // Ordinals 0, 1 -> shard 1
         assertThat(service.calculateShard(nodeOrdinal = 0, replicasPerShard = 2)).isEqualTo(1)
         assertThat(service.calculateShard(nodeOrdinal = 1, replicasPerShard = 2)).isEqualTo(1)
 
-        // Ordinals 2, 3 → shard 2
+        // Ordinals 2, 3 -> shard 2
         assertThat(service.calculateShard(nodeOrdinal = 2, replicasPerShard = 2)).isEqualTo(2)
         assertThat(service.calculateShard(nodeOrdinal = 3, replicasPerShard = 2)).isEqualTo(2)
 
-        // Ordinals 4, 5 → shard 3
+        // Ordinals 4, 5 -> shard 3
         assertThat(service.calculateShard(nodeOrdinal = 4, replicasPerShard = 2)).isEqualTo(3)
         assertThat(service.calculateShard(nodeOrdinal = 5, replicasPerShard = 2)).isEqualTo(3)
     }
@@ -335,15 +284,15 @@ class ClickHouseConfigServiceTest {
 
     @Test
     fun `generateShardEnvContent calculates shard correctly for different ordinals`() {
-        // Ordinal 0 with 3 replicas per shard → shard 1
+        // Ordinal 0 with 3 replicas per shard -> shard 1
         val content0 = service.generateShardEnvContent(nodeOrdinal = 0, replicasPerShard = 3)
         assertThat(content0).contains("export SHARD=1")
 
-        // Ordinal 3 with 3 replicas per shard → shard 2
+        // Ordinal 3 with 3 replicas per shard -> shard 2
         val content3 = service.generateShardEnvContent(nodeOrdinal = 3, replicasPerShard = 3)
         assertThat(content3).contains("export SHARD=2")
 
-        // Ordinal 5 with 2 replicas per shard → shard 3
+        // Ordinal 5 with 2 replicas per shard -> shard 3
         val content5 = service.generateShardEnvContent(nodeOrdinal = 5, replicasPerShard = 2)
         assertThat(content5).contains("export SHARD=3")
     }
@@ -354,34 +303,14 @@ class ClickHouseConfigServiceTest {
         assertThat(content).contains("export REPLICAS_PER_SHARD=5")
     }
 
-    @Test
-    fun `config template uses from_env for s3 cache size instead of hardcoded value`() {
-        val realConfigXml = loadConfigXmlFromResources()
-
-        assertThat(realConfigXml).contains("from_env=\"CLICKHOUSE_S3_CACHE_SIZE\"")
-        assertThat(realConfigXml).doesNotContain("<max_size>10Gi</max_size>")
-    }
-
-    @Test
-    fun `config template uses from_env for s3 cache on write`() {
-        val realConfigXml = loadConfigXmlFromResources()
-
-        assertThat(realConfigXml).contains("from_env=\"CLICKHOUSE_S3_CACHE_ON_WRITE\"")
-    }
-
     // Helper methods
 
-    private fun loadConfigXmlFromResources(): String {
-        val yamlContent =
-            javaClass
-                .getResourceAsStream(CONFIGMAP_RESOURCE_PATH)
-                ?.bufferedReader()
-                ?.readText()
-                ?: error("Could not load ConfigMap from resources")
-
-        val configMap = yamlMapper.readValue(yamlContent, K8sConfigMap::class.java)
-        return configMap.data["config.xml"] ?: error("Missing config.xml in ConfigMap")
-    }
+    private fun loadConfigXmlFromResources(): String =
+        javaClass
+            .getResourceAsStream("/com/rustyrazorblade/easydblab/configuration/clickhouse/config.xml")
+            ?.bufferedReader()
+            ?.readText()
+            ?: error("Could not load config.xml from resources")
 
     private fun createTemplateXml(): String =
         """

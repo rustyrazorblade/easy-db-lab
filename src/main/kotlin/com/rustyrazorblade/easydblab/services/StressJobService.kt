@@ -207,7 +207,12 @@ class DefaultStressJobService(
     /**
      * Loads the OTel sidecar config from the classpath resource.
      */
-    private fun loadSidecarConfig(): String = templateService.fromResource(this::class.java, SIDECAR_CONFIG_FILE_NAME).substitute()
+    private fun loadSidecarConfig(): String =
+        templateService
+            .fromResource(
+                this::class.java,
+                "/com/rustyrazorblade/easydblab/configuration/cassandra/$SIDECAR_CONFIG_FILE_NAME",
+            ).substitute()
 
     /**
      * Ensures the OTel sidecar ConfigMap exists in the stress namespace.

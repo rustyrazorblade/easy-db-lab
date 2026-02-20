@@ -271,7 +271,12 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
     @Test
     fun `sidecar otel config resource should include resourcedetection processor`() {
         val templateService: TemplateService = getKoin().get()
-        val config = templateService.fromResource(DefaultStressJobService::class.java, "otel-stress-sidecar-config.yaml").substitute()
+        val config =
+            templateService
+                .fromResource(
+                    DefaultStressJobService::class.java,
+                    "/com/rustyrazorblade/easydblab/configuration/cassandra/otel-stress-sidecar-config.yaml",
+                ).substitute()
         assertThat(config).contains("resourcedetection")
         assertThat(config).contains("detectors: [env]")
         assertThat(config).contains("processors: [resourcedetection, batch]")

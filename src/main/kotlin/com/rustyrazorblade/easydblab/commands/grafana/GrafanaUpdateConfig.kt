@@ -44,10 +44,10 @@ import picocli.CommandLine.Command
 @McpCommand
 @RequireProfileSetup
 @Command(
-    name = "upload",
+    name = "update-config",
     description = ["Build and apply the full observability stack to K8s cluster"],
 )
-class GrafanaUpload : PicoBaseCommand() {
+class GrafanaUpdateConfig : PicoBaseCommand() {
     private val log = KotlinLogging.logger {}
     private val dashboardService: GrafanaDashboardService by inject()
     private val user: User by inject()

@@ -8,14 +8,14 @@ import picocli.CommandLine.Spec
  * Parent command for Grafana operations.
  *
  * Available sub-commands:
- * - upload: Build and apply all Grafana dashboard manifests and datasource ConfigMap to K8s cluster
+ * - update-config: Build and apply all Grafana dashboard manifests and datasource ConfigMap to K8s cluster
  */
 @Command(
     name = "grafana",
     description = ["Grafana operations"],
     mixinStandardHelpOptions = true,
     subcommands = [
-        GrafanaUpload::class,
+        GrafanaUpdateConfig::class,
     ],
 )
 class Grafana : Runnable {

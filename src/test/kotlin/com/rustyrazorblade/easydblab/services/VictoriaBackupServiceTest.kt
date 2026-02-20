@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
+import io.fabric8.kubernetes.api.model.batch.v1.Job
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -74,7 +75,7 @@ class VictoriaBackupServiceTest : BaseKoinTest() {
     @Test
     fun `backupMetrics creates K8s Job with correct spec`() {
         // Given - mock createJob to fail early so we don't need job completion mocking
-        whenever(mockK8sService.createJob(any(), any(), any<String>()))
+        whenever(mockK8sService.createJob(any(), any(), any<Job>()))
             .thenReturn(Result.failure(RuntimeException("Test: stop after createJob")))
 
         // When
@@ -84,13 +85,15 @@ class VictoriaBackupServiceTest : BaseKoinTest() {
         verify(mockK8sService).createJob(
             eq(testControlHost),
             eq("default"),
-            argThat<String> { yaml ->
-                yaml.contains("victoriametrics/vmbackup:latest") &&
-                    yaml.contains("-storageDataPath=/mnt/db1/victoriametrics") &&
-                    yaml.contains("-snapshot.createURL=http://localhost:8428/snapshot/create") &&
-                    yaml.contains("s3://easy-db-lab-test-bucket/clusters/test-cluster-test-id/victoriametrics/") &&
-                    yaml.contains("AWS_REGION") &&
-                    yaml.contains("us-west-2")
+            argThat<Job> { job ->
+                val container =
+                    job.spec.template.spec.containers
+                        .first()
+                container.image == "victoriametrics/vmbackup:latest" &&
+                    container.args.any { it.contains("-storageDataPath=/mnt/db1/victoriametrics") } &&
+                    container.args.any { it.contains("-snapshot.createURL=http://localhost:8428/snapshot/create") } &&
+                    container.args.any { it.contains("s3://easy-db-lab-test-bucket/") } &&
+                    container.env.any { it.name == "AWS_REGION" && it.value == "us-west-2" }
             },
         )
     }
@@ -98,7 +101,7 @@ class VictoriaBackupServiceTest : BaseKoinTest() {
     @Test
     fun `backupMetrics handles createJob failure`() {
         // Given
-        whenever(mockK8sService.createJob(any(), any(), any<String>()))
+        whenever(mockK8sService.createJob(any(), any(), any<Job>()))
             .thenReturn(Result.failure(RuntimeException("K8s API error")))
 
         // When
@@ -110,22 +113,28 @@ class VictoriaBackupServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `backupMetrics generates correct S3 path format`() {
-        // Given - capture the YAML to verify the S3 path format
-        var capturedYaml: String? = null
-        whenever(mockK8sService.createJob(any(), any(), any<String>()))
+    fun `backupMetrics generates correct S3 path in job`() {
+        // Given - capture the Job to verify the S3 path
+        var capturedJob: Job? = null
+        whenever(mockK8sService.createJob(any(), any(), any<Job>()))
             .thenAnswer { invocation ->
-                capturedYaml = invocation.getArgument(2)
+                capturedJob = invocation.getArgument(2)
                 Result.failure<String>(RuntimeException("Test: stop after createJob"))
             }
 
         // When
         victoriaBackupService.backupMetrics(testControlHost, testClusterState)
 
-        // Then - verify S3 path format in the job YAML
-        assertThat(capturedYaml).contains("s3://easy-db-lab-test-bucket/clusters/test-cluster-test-id/victoriametrics/")
+        // Then - verify S3 path in the job args
+        val args =
+            capturedJob!!
+                .spec.template.spec.containers
+                .first()
+                .args
+        val dstArg = args.first { it.startsWith("-dst=") }
+        assertThat(dstArg).contains("s3://easy-db-lab-test-bucket/clusters/test-cluster-test-id/victoriametrics/")
         // Verify timestamp format in job name (YYYYMMDD-HHMMSS)
-        assertThat(capturedYaml).containsPattern("name: vmbackup-\\d{8}-\\d{6}")
+        assertThat(capturedJob!!.metadata.name).matches("vmbackup-\\d{8}-\\d{6}")
     }
 
     @Test
@@ -146,7 +155,7 @@ class VictoriaBackupServiceTest : BaseKoinTest() {
     @Test
     fun `backupLogs creates K8s Job with aws-cli for S3 sync`() {
         // Given - mock createJob to fail early so we don't need job completion mocking
-        whenever(mockK8sService.createJob(any(), any(), any<String>()))
+        whenever(mockK8sService.createJob(any(), any(), any<Job>()))
             .thenReturn(Result.failure(RuntimeException("Test: stop after createJob")))
 
         // When
@@ -156,40 +165,50 @@ class VictoriaBackupServiceTest : BaseKoinTest() {
         verify(mockK8sService).createJob(
             eq(testControlHost),
             eq("default"),
-            argThat<String> { yaml ->
-                yaml.contains("amazon/aws-cli:latest") &&
-                    yaml.contains("aws s3 sync") &&
-                    yaml.contains("/mnt/db1/victorialogs") &&
-                    yaml.contains("s3://easy-db-lab-test-bucket/clusters/test-cluster-test-id/victorialogs/") &&
-                    yaml.contains("/internal/partition/snapshot/create") &&
-                    yaml.contains("/internal/partition/snapshot/delete")
+            argThat<Job> { job ->
+                val container =
+                    job.spec.template.spec.containers
+                        .first()
+                val script = container.command.last()
+                container.image == "amazon/aws-cli:latest" &&
+                    script.contains("aws s3 sync") &&
+                    script.contains("/mnt/db1/victorialogs") &&
+                    script.contains("s3://easy-db-lab-test-bucket/") &&
+                    script.contains("/internal/partition/snapshot/create") &&
+                    script.contains("/internal/partition/snapshot/delete")
             },
         )
     }
 
     @Test
-    fun `backupLogs generates correct S3 path format`() {
-        // Given - capture the YAML to verify the S3 path format
-        var capturedYaml: String? = null
-        whenever(mockK8sService.createJob(any(), any(), any<String>()))
+    fun `backupLogs generates correct S3 path in job`() {
+        // Given - capture the Job to verify the S3 path
+        var capturedJob: Job? = null
+        whenever(mockK8sService.createJob(any(), any(), any<Job>()))
             .thenAnswer { invocation ->
-                capturedYaml = invocation.getArgument(2)
+                capturedJob = invocation.getArgument(2)
                 Result.failure<String>(RuntimeException("Test: stop after createJob"))
             }
 
         // When
         victoriaBackupService.backupLogs(testControlHost, testClusterState)
 
-        // Then - verify S3 path format in the job YAML
-        assertThat(capturedYaml).contains("s3://easy-db-lab-test-bucket/clusters/test-cluster-test-id/victorialogs/")
+        // Then - verify S3 path in the job script
+        val script =
+            capturedJob!!
+                .spec.template.spec.containers
+                .first()
+                .command
+                .last()
+        assertThat(script).contains("s3://easy-db-lab-test-bucket/clusters/test-cluster-test-id/victorialogs/")
         // Verify timestamp format in job name (YYYYMMDD-HHMMSS)
-        assertThat(capturedYaml).containsPattern("name: vlbackup-\\d{8}-\\d{6}")
+        assertThat(capturedJob!!.metadata.name).matches("vlbackup-\\d{8}-\\d{6}")
     }
 
     @Test
     fun `backupLogs handles API errors gracefully`() {
         // Given
-        whenever(mockK8sService.createJob(any(), any(), any<String>()))
+        whenever(mockK8sService.createJob(any(), any(), any<Job>()))
             .thenReturn(Result.failure(RuntimeException("K8s API error")))
 
         // When
@@ -217,11 +236,11 @@ class VictoriaBackupServiceTest : BaseKoinTest() {
 
     @Test
     fun `backupMetrics uses custom destination when provided`() {
-        // Given - just mock createJob to capture the YAML
-        var capturedYaml: String? = null
-        whenever(mockK8sService.createJob(any(), any(), any<String>()))
+        // Given - capture the Job
+        var capturedJob: Job? = null
+        whenever(mockK8sService.createJob(any(), any(), any<Job>()))
             .thenAnswer { invocation ->
-                capturedYaml = invocation.getArgument(2)
+                capturedJob = invocation.getArgument(2)
                 Result.failure<String>(RuntimeException("Test: stop after createJob"))
             }
         val customDest = "s3://custom-backup-bucket/my-backups"
@@ -229,34 +248,46 @@ class VictoriaBackupServiceTest : BaseKoinTest() {
         // When
         victoriaBackupService.backupMetrics(testControlHost, testClusterState, customDest)
 
-        // Then - verify the YAML contains the custom destination
-        assertThat(capturedYaml).contains("s3://custom-backup-bucket/my-backups/")
+        // Then - verify the Job contains the custom destination
+        val args =
+            capturedJob!!
+                .spec.template.spec.containers
+                .first()
+                .args
+        val dstArg = args.first { it.startsWith("-dst=") }
+        assertThat(dstArg).contains("s3://custom-backup-bucket/my-backups/")
     }
 
     @Test
     fun `backupMetrics uses cluster bucket when dest is null`() {
-        // Given - just mock createJob to capture the YAML
-        var capturedYaml: String? = null
-        whenever(mockK8sService.createJob(any(), any(), any<String>()))
+        // Given - capture the Job
+        var capturedJob: Job? = null
+        whenever(mockK8sService.createJob(any(), any(), any<Job>()))
             .thenAnswer { invocation ->
-                capturedYaml = invocation.getArgument(2)
+                capturedJob = invocation.getArgument(2)
                 Result.failure<String>(RuntimeException("Test: stop after createJob"))
             }
 
         // When
         victoriaBackupService.backupMetrics(testControlHost, testClusterState, null)
 
-        // Then - verify the YAML contains the cluster bucket
-        assertThat(capturedYaml).contains("s3://easy-db-lab-test-bucket/clusters/test-cluster-test-id/victoriametrics/")
+        // Then - verify the Job contains the cluster bucket
+        val args =
+            capturedJob!!
+                .spec.template.spec.containers
+                .first()
+                .args
+        val dstArg = args.first { it.startsWith("-dst=") }
+        assertThat(dstArg).contains("s3://easy-db-lab-test-bucket/clusters/test-cluster-test-id/victoriametrics/")
     }
 
     @Test
     fun `backupLogs uses custom destination when provided`() {
-        // Given - just mock createJob to capture the YAML
-        var capturedYaml: String? = null
-        whenever(mockK8sService.createJob(any(), any(), any<String>()))
+        // Given - capture the Job
+        var capturedJob: Job? = null
+        whenever(mockK8sService.createJob(any(), any(), any<Job>()))
             .thenAnswer { invocation ->
-                capturedYaml = invocation.getArgument(2)
+                capturedJob = invocation.getArgument(2)
                 Result.failure<String>(RuntimeException("Test: stop after createJob"))
             }
         val customDest = "s3://other-bucket/logs-backup"
@@ -264,25 +295,37 @@ class VictoriaBackupServiceTest : BaseKoinTest() {
         // When
         victoriaBackupService.backupLogs(testControlHost, testClusterState, customDest)
 
-        // Then - verify the YAML contains the custom destination
-        assertThat(capturedYaml).contains("s3://other-bucket/logs-backup/")
+        // Then - verify the Job contains the custom destination
+        val script =
+            capturedJob!!
+                .spec.template.spec.containers
+                .first()
+                .command
+                .last()
+        assertThat(script).contains("s3://other-bucket/logs-backup/")
     }
 
     @Test
     fun `backupLogs uses cluster bucket when dest is null`() {
-        // Given - just mock createJob to capture the YAML
-        var capturedYaml: String? = null
-        whenever(mockK8sService.createJob(any(), any(), any<String>()))
+        // Given - capture the Job
+        var capturedJob: Job? = null
+        whenever(mockK8sService.createJob(any(), any(), any<Job>()))
             .thenAnswer { invocation ->
-                capturedYaml = invocation.getArgument(2)
+                capturedJob = invocation.getArgument(2)
                 Result.failure<String>(RuntimeException("Test: stop after createJob"))
             }
 
         // When
         victoriaBackupService.backupLogs(testControlHost, testClusterState, null)
 
-        // Then - verify the YAML contains the cluster bucket
-        assertThat(capturedYaml).contains("s3://easy-db-lab-test-bucket/clusters/test-cluster-test-id/victorialogs/")
+        // Then - verify the Job contains the cluster bucket
+        val script =
+            capturedJob!!
+                .spec.template.spec.containers
+                .first()
+                .command
+                .last()
+        assertThat(script).contains("s3://easy-db-lab-test-bucket/clusters/test-cluster-test-id/victorialogs/")
     }
 
     // ========== PARSE S3 URI TESTS ==========
@@ -350,12 +393,12 @@ class VictoriaBackupServiceTest : BaseKoinTest() {
     // ========== SNAPSHOT LIFECYCLE TESTS ==========
 
     @Test
-    fun `backupLogs job YAML includes snapshot lifecycle`() {
-        // Given - capture YAML
-        var capturedYaml: String? = null
-        whenever(mockK8sService.createJob(any(), any(), any<String>()))
+    fun `backupLogs job includes snapshot lifecycle`() {
+        // Given - capture Job
+        var capturedJob: Job? = null
+        whenever(mockK8sService.createJob(any(), any(), any<Job>()))
             .thenAnswer { invocation ->
-                capturedYaml = invocation.getArgument(2)
+                capturedJob = invocation.getArgument(2)
                 Result.failure<String>(RuntimeException("Test: stop after createJob"))
             }
 
@@ -363,18 +406,24 @@ class VictoriaBackupServiceTest : BaseKoinTest() {
         victoriaBackupService.backupLogs(testControlHost, testClusterState)
 
         // Then - verify all three steps: create, sync, delete
-        assertThat(capturedYaml).contains("/internal/partition/snapshot/create")
-        assertThat(capturedYaml).contains("aws s3 sync")
-        assertThat(capturedYaml).contains("/internal/partition/snapshot/delete")
+        val script =
+            capturedJob!!
+                .spec.template.spec.containers
+                .first()
+                .command
+                .last()
+        assertThat(script).contains("/internal/partition/snapshot/create")
+        assertThat(script).contains("aws s3 sync")
+        assertThat(script).contains("/internal/partition/snapshot/delete")
     }
 
     @Test
-    fun `backupLogs job YAML translates VL internal path to host mount`() {
-        // Given - capture YAML
-        var capturedYaml: String? = null
-        whenever(mockK8sService.createJob(any(), any(), any<String>()))
+    fun `backupLogs job translates VL internal path to host mount`() {
+        // Given - capture Job
+        var capturedJob: Job? = null
+        whenever(mockK8sService.createJob(any(), any(), any<Job>()))
             .thenAnswer { invocation ->
-                capturedYaml = invocation.getArgument(2)
+                capturedJob = invocation.getArgument(2)
                 Result.failure<String>(RuntimeException("Test: stop after createJob"))
             }
 
@@ -382,16 +431,22 @@ class VictoriaBackupServiceTest : BaseKoinTest() {
         victoriaBackupService.backupLogs(testControlHost, testClusterState)
 
         // Then - verify sed substitution translates VL's internal path to the host mount path
-        assertThat(capturedYaml).contains("sed \"s|/victoria-logs-data|/mnt/db1/victorialogs|\"")
+        val script =
+            capturedJob!!
+                .spec.template.spec.containers
+                .first()
+                .command
+                .last()
+        assertThat(script).contains("sed \"s|/victoria-logs-data|/mnt/db1/victorialogs|\"")
     }
 
     @Test
-    fun `backupLogs job YAML includes snapshot cleanup on failure`() {
-        // Given - capture YAML
-        var capturedYaml: String? = null
-        whenever(mockK8sService.createJob(any(), any(), any<String>()))
+    fun `backupLogs job includes snapshot cleanup on failure`() {
+        // Given - capture Job
+        var capturedJob: Job? = null
+        whenever(mockK8sService.createJob(any(), any(), any<Job>()))
             .thenAnswer { invocation ->
-                capturedYaml = invocation.getArgument(2)
+                capturedJob = invocation.getArgument(2)
                 Result.failure<String>(RuntimeException("Test: stop after createJob"))
             }
 
@@ -399,13 +454,17 @@ class VictoriaBackupServiceTest : BaseKoinTest() {
         victoriaBackupService.backupLogs(testControlHost, testClusterState)
 
         // Then - verify SYNC_FAILED pattern ensures cleanup runs even on failure
-        assertThat(capturedYaml).contains("SYNC_FAILED=0")
-        assertThat(capturedYaml).contains("|| SYNC_FAILED=1")
+        val script =
+            capturedJob!!
+                .spec.template.spec.containers
+                .first()
+                .command
+                .last()
+        assertThat(script).contains("SYNC_FAILED=0")
+        assertThat(script).contains("|| SYNC_FAILED=1")
         // Verify snapshot delete loop comes after sync loop
-        val syncIndex = capturedYaml!!.indexOf("aws s3 sync")
-        val deleteIndex = capturedYaml!!.indexOf("/internal/partition/snapshot/delete")
+        val syncIndex = script.indexOf("aws s3 sync")
+        val deleteIndex = script.indexOf("/internal/partition/snapshot/delete")
         assertThat(deleteIndex).isGreaterThan(syncIndex)
     }
-
-    // ========== HELPER METHODS ==========
 }

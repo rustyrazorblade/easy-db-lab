@@ -41,8 +41,7 @@ import com.rustyrazorblade.easydblab.commands.clickhouse.ClickHouseInit
 import com.rustyrazorblade.easydblab.commands.clickhouse.ClickHouseStart
 import com.rustyrazorblade.easydblab.commands.clickhouse.ClickHouseStatus
 import com.rustyrazorblade.easydblab.commands.clickhouse.ClickHouseStop
-import com.rustyrazorblade.easydblab.commands.grafana.GrafanaUpload
-import com.rustyrazorblade.easydblab.commands.k8.K8Apply
+import com.rustyrazorblade.easydblab.commands.grafana.GrafanaUpdateConfig
 import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearchStart
 import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearchStatus
 import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearchStop
@@ -104,16 +103,13 @@ val commandsModule =
         factory { StressStop() }
 
         // Grafana subcommands
-        factory { GrafanaUpload() }
+        factory { GrafanaUpdateConfig() }
 
         // ClickHouse subcommands
         factory { ClickHouseInit() }
         factory { ClickHouseStart() }
         factory { ClickHouseStatus() }
         factory { ClickHouseStop() }
-
-        // K8s subcommands
-        factory { K8Apply() }
 
         // OpenSearch subcommands
         factory { OpenSearchStart() }

@@ -6,7 +6,7 @@ import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.TriggerBackup
 import com.rustyrazorblade.easydblab.commands.cassandra.WriteConfig
-import com.rustyrazorblade.easydblab.commands.k8.K8Apply
+import com.rustyrazorblade.easydblab.commands.grafana.GrafanaUpdateConfig
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.commands.tailscale.TailscaleStart
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
@@ -606,7 +606,7 @@ class Up : PicoBaseCommand() {
                 log.warn(exception) { "Failed to create local-storage StorageClass" }
             }
 
-        commandExecutor.execute { K8Apply() }
+        commandExecutor.execute { GrafanaUpdateConfig() }
     }
 
     /**

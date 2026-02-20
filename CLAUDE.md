@@ -271,14 +271,14 @@ All observability K8s resources are built programmatically using Fabric8 manifes
 - **Grafana Alloy eBPF profiler** (`configuration/pyroscope/PyroscopeManifestBuilder.kt`) runs on all nodes via Grafana Alloy with `pyroscope.ebpf` component. Collects CPU profiles via eBPF for Cassandra, ClickHouse, and stress jobs. Sends profiles to Pyroscope server.
 - **Beyla** (`configuration/beyla/BeylaManifestBuilder.kt`) runs on all nodes. Provides L7 network RED metrics (Rate/Errors/Duration) for Cassandra and ClickHouse protocols via eBPF. Exposes Prometheus metrics scraped by OTel collector.
 - **ebpf_exporter** (`configuration/ebpfexporter/EbpfExporterManifestBuilder.kt`) runs on all nodes. Provides low-level TCP retransmit, block I/O latency, and VFS latency metrics via eBPF. Exposes Prometheus metrics scraped by OTel collector.
-- **Stress job sidecars** (`11-otel-stress-sidecar-configmap.yaml`) — long-running stress jobs get an OTel sidecar that scrapes `cassandra-easy-stress:9500` and forwards to the node's DaemonSet collector.
+- **Stress job sidecars** (`configuration/cassandra/otel-stress-sidecar-config.yaml`) — long-running stress jobs get an OTel sidecar that scrapes `cassandra-easy-stress:9500` and forwards to the node's DaemonSet collector.
 
 ### Storage Backends (control node)
 
 - **VictoriaMetrics** (port 8428, 7-day retention) — Prometheus-compatible metrics store. K8s: `configuration/victoria/VictoriaManifestBuilder.kt`. Services: `VictoriaStreamService`, `VictoriaBackupService`.
 - **VictoriaLogs** (port 9428, 7-day retention) — log store with Elasticsearch-compatible sink. K8s: `configuration/victoria/VictoriaManifestBuilder.kt`. Services: `VictoriaLogsService`, `VictoriaStreamService`, `VictoriaBackupService`.
 - **Tempo** (port 3200) — trace store. K8s: `configuration/tempo/TempoManifestBuilder.kt`.
-- **Pyroscope** (port 4040) — continuous profiling store. K8s: `configuration/pyroscope/PyroscopeManifestBuilder.kt`. Receives profiles from Java agent (Cassandra) and eBPF agent (all nodes). Data directory permissions set via SSH in `K8Apply`.
+- **Pyroscope** (port 4040) — continuous profiling store. K8s: `configuration/pyroscope/PyroscopeManifestBuilder.kt`. Receives profiles from Java agent (Cassandra) and eBPF agent (all nodes). Data directory permissions set via SSH in `GrafanaUpdateConfig`.
 
 ### Grafana Dashboards
 
@@ -292,7 +292,7 @@ Current dashboards: System Overview, AWS CloudWatch (S3/EBS/EC2), EMR, OpenSearc
 
 ### CLI Commands
 
-- `grafana upload` — build and deploy Grafana dashboards and resources
+- `grafana update-config` — build and deploy Grafana dashboards and resources
 - `logs query` / `logs backup` / `logs import` / `logs ls` — query, backup, import, list log snapshots
 - `metrics backup` / `metrics import` / `metrics ls` — backup, import, list metric snapshots
 

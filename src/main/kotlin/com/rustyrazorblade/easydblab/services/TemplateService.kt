@@ -1,11 +1,8 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
-import io.github.classgraph.ClassGraph
-import io.github.oshai.kotlinlogging.KotlinLogging
 import org.apache.commons.text.StringSubstitutor
 import java.io.File
 
@@ -23,8 +20,6 @@ class TemplateService(
     private val clusterStateManager: ClusterStateManager,
     private val user: User,
 ) {
-    private val log = KotlinLogging.logger {}
-
     /**
      * Builds the variable map from current cluster state and user configuration.
      *
@@ -76,78 +71,6 @@ class TemplateService(
                 ?: error("Resource not found: $resourceName")
         return Template(text, buildContextVariables())
     }
-
-    /**
-     * Extracts K8s YAML resources from the classpath to the given directory without substitution.
-     *
-     * Used by Init when cluster state is not yet available.
-     *
-     * @param destinationDir Directory to write extracted files to
-     * @param filter Predicate on the relative path (e.g. `"core/01-namespace.yaml"`)
-     * @return List of extracted files
-     */
-    fun extractResources(
-        destinationDir: File = File(Constants.K8s.MANIFEST_DIR),
-        filter: (String) -> Boolean = { true },
-    ): List<File> {
-        destinationDir.mkdirs()
-        return scanResources(filter).map { (relativePath, content) ->
-            val targetFile = File(destinationDir, relativePath)
-            targetFile.parentFile?.mkdirs()
-            targetFile.writeBytes(content)
-            log.debug { "Extracted resource: $relativePath" }
-            targetFile
-        }
-    }
-
-    /**
-     * Extracts K8s YAML resources from the classpath, substitutes `__KEY__` placeholders,
-     * and writes the result to the given directory.
-     *
-     * Used by K8Apply and GrafanaDashboardService when cluster state is available.
-     *
-     * @param destinationDir Directory to write extracted files to
-     * @param filter Predicate on the relative path (e.g. `"core/01-namespace.yaml"`)
-     * @return List of extracted files
-     */
-    fun extractAndSubstituteResources(
-        destinationDir: File = File(Constants.K8s.MANIFEST_DIR),
-        filter: (String) -> Boolean = { true },
-    ): List<File> {
-        destinationDir.mkdirs()
-        val variables = buildContextVariables()
-        return scanResources(filter).map { (relativePath, content) ->
-            val targetFile = File(destinationDir, relativePath)
-            targetFile.parentFile?.mkdirs()
-            val substituted = Template(content.toString(Charsets.UTF_8), variables).substitute()
-            targetFile.writeText(substituted)
-            log.debug { "Extracted and substituted: $relativePath" }
-            targetFile
-        }
-    }
-
-    /**
-     * Scans K8s resource package for YAML files and returns their relative paths and content.
-     *
-     * Content is loaded as bytes inside the ScanResult.use {} block since Resource.open()
-     * is only valid while the ScanResult is open.
-     */
-    private fun scanResources(filter: (String) -> Boolean = { true }): List<Pair<String, ByteArray>> =
-        ClassGraph()
-            .acceptPackages(Constants.K8s.RESOURCE_PACKAGE)
-            .scan()
-            .use { scanResult ->
-                val yamlResources =
-                    scanResult.getResourcesWithExtension("yaml") +
-                        scanResult.getResourcesWithExtension("yml")
-                yamlResources.mapNotNull { resource ->
-                    val k8sIndex = resource.path.indexOf(Constants.K8s.PATH_PREFIX)
-                    if (k8sIndex == -1) return@mapNotNull null
-                    val relativePath = resource.path.substring(k8sIndex + Constants.K8s.PATH_PREFIX.length)
-                    if (!filter(relativePath)) return@mapNotNull null
-                    relativePath to resource.load()
-                }
-            }
 
     /**
      * A template string with context variables for `__KEY__` placeholder substitution.

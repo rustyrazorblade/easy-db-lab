@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.configuration.s3manager
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
 
@@ -8,13 +9,19 @@ import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
  * Builds S3 Manager K8s resources as typed Fabric8 objects.
  *
  * Creates a Deployment on the control plane providing a web UI for S3 browsing.
- * No TemplateService needed — all configuration is via env vars.
+ * Pinned to v0.5.0 which uses simple env vars (USE_IAM, ENDPOINT, REGION).
+ * The latest image switched to numbered instance env vars (1_NAME, etc.) which
+ * are incompatible with K8s env var naming rules.
+ *
+ * @property templateService Used to read AWS region from cluster state
  */
-class S3ManagerManifestBuilder {
+class S3ManagerManifestBuilder(
+    private val templateService: TemplateService,
+) {
     companion object {
         private const val NAMESPACE = "default"
         private const val APP_LABEL = "s3manager"
-        private const val IMAGE = "cloudlena/s3manager:latest"
+        private const val IMAGE = "cloudlena/s3manager:v0.5.0"
 
         private const val LIVENESS_INITIAL_DELAY = 10
         private const val LIVENESS_PERIOD = 15
@@ -38,8 +45,10 @@ class S3ManagerManifestBuilder {
      * Runs on control plane with hostNetwork. Uses IAM role for AWS credentials.
      */
     @Suppress("LongMethod")
-    fun buildDeployment() =
-        DeploymentBuilder()
+    fun buildDeployment(): io.fabric8.kubernetes.api.model.apps.Deployment {
+        val region = templateService.buildContextVariables()["AWS_REGION"] ?: "us-east-1"
+
+        return DeploymentBuilder()
             .withNewMetadata()
             .withName(APP_LABEL)
             .withNamespace(NAMESPACE)
@@ -80,6 +89,14 @@ class S3ManagerManifestBuilder {
             .withValue("true")
             .endEnv()
             .addNewEnv()
+            .withName("ENDPOINT")
+            .withValue("s3.$region.amazonaws.com")
+            .endEnv()
+            .addNewEnv()
+            .withName("REGION")
+            .withValue(region)
+            .endEnv()
+            .addNewEnv()
             .withName("PORT")
             .withValue(Constants.K8s.S3MANAGER_PORT.toString())
             .endEnv()
@@ -104,4 +121,5 @@ class S3ManagerManifestBuilder {
             .endTemplate()
             .endSpec()
             .build()
+    }
 }

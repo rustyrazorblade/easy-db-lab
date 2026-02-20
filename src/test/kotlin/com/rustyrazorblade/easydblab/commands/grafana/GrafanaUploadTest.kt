@@ -82,7 +82,7 @@ class GrafanaUploadTest : BaseKoinTest() {
                 single { VectorManifestBuilder(get()) }
                 single { VictoriaManifestBuilder() }
                 single { RegistryManifestBuilder() }
-                single { S3ManagerManifestBuilder() }
+                single { S3ManagerManifestBuilder(get()) }
             },
         )
 

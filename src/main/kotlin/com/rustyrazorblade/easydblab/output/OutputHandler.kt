@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.output
 
 import com.github.dockerjava.api.model.Frame
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.channels.Channel
 
@@ -492,31 +493,33 @@ fun OutputHandler.displayClickHouseAccess(dbNodeIp: String) {
 }
 
 /**
- * Display S3Manager access information.
+ * Display S3Manager access information linking to the cluster's S3 directory.
  * @param controlNodeIp IP address of the control node where S3Manager runs
- * @param bucketName S3 bucket name to link directly to
+ * @param s3Path The cluster's S3 path (provides bucket and key)
  */
 fun OutputHandler.displayS3ManagerAccess(
     controlNodeIp: String,
-    bucketName: String,
+    s3Path: ClusterS3Path,
 ) {
     handleMessage("")
     handleMessage("S3 Manager:")
-    handleMessage("  Web UI: http://$controlNodeIp:${Constants.K8s.S3MANAGER_PORT}/buckets/$bucketName")
+    handleMessage("  Web UI: http://$controlNodeIp:${Constants.K8s.S3MANAGER_PORT}/buckets/${s3Path.bucket}/${s3Path.getKey()}/")
 }
 
 /**
  * Display S3Manager access information for ClickHouse data directory.
  * @param controlNodeIp IP address of the control node where S3Manager runs
- * @param bucketName S3 bucket name
+ * @param s3Path The cluster's S3 path (provides bucket and key)
  */
 fun OutputHandler.displayS3ManagerClickHouseAccess(
     controlNodeIp: String,
-    bucketName: String,
+    s3Path: ClusterS3Path,
 ) {
     handleMessage("")
     handleMessage("S3 Manager:")
-    handleMessage("  ClickHouse Data: http://$controlNodeIp:${Constants.K8s.S3MANAGER_PORT}/buckets/$bucketName/clickhouse/")
+    handleMessage(
+        "  ClickHouse Data: http://$controlNodeIp:${Constants.K8s.S3MANAGER_PORT}/buckets/${s3Path.bucket}/${s3Path.clickhouse().getKey()}/",
+    )
 }
 
 /**

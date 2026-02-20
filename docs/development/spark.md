@@ -102,14 +102,30 @@ bin/submit-direct-bulk-writer 100000 10 3
 easy-db-lab spark submit \
     --jar bulk-writer/build/libs/bulk-writer-*.jar \
     --main-class com.rustyrazorblade.easydblab.spark.DirectBulkWriter \
-    --args "host1,host2 keyspace table datacenter 1000 4 1" \
+    --conf spark.easydblab.sidecar.contactPoints=host1,host2 \
+    --conf spark.easydblab.keyspace=bulk_test \
+    --conf spark.easydblab.table=data \
+    --conf spark.easydblab.localDc=us-west-2 \
+    --conf spark.easydblab.rowCount=1000 \
+    --conf spark.easydblab.replicationFactor=1 \
     --wait
 
 # Submit without wait (returns immediately)
 easy-db-lab spark submit \
     --jar bulk-writer/build/libs/bulk-writer-*.jar \
     --main-class com.rustyrazorblade.easydblab.spark.DirectBulkWriter \
-    --args "..."
+    --conf spark.easydblab.sidecar.contactPoints=host1,host2 \
+    --conf spark.easydblab.keyspace=bulk_test \
+    --conf spark.easydblab.localDc=us-west-2
+
+# Submit using a JAR already on S3
+easy-db-lab spark submit \
+    --jar s3://my-bucket/jars/bulk-writer-0.1.jar \
+    --main-class com.rustyrazorblade.easydblab.spark.DirectBulkWriter \
+    --conf spark.easydblab.sidecar.contactPoints=host1,host2 \
+    --conf spark.easydblab.keyspace=bulk_test \
+    --conf spark.easydblab.localDc=us-west-2 \
+    --wait
 ```
 
 ## Debugging Failed Jobs

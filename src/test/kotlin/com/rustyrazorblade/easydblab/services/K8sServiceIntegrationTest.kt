@@ -256,7 +256,7 @@ class K8sServiceIntegrationTest {
     @Test
     @Order(16)
     fun `should apply S3 Manager resources`() {
-        val resources = S3ManagerManifestBuilder().buildAllResources()
+        val resources = S3ManagerManifestBuilder(templateService).buildAllResources()
         applyAndVerify(resources)
 
         assertDeploymentExists("s3manager")
@@ -596,7 +596,7 @@ class K8sServiceIntegrationTest {
             TempoManifestBuilder(templateService).buildAllResources() +
             VectorManifestBuilder(templateService).buildAllResources() +
             RegistryManifestBuilder().buildAllResources() +
-            S3ManagerManifestBuilder().buildAllResources() +
+            S3ManagerManifestBuilder(templateService).buildAllResources() +
             BeylaManifestBuilder(templateService).buildAllResources() +
             PyroscopeManifestBuilder(templateService).buildAllResources() +
             GrafanaManifestBuilder(templateService).buildAllResources()

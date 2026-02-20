@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.victoria.VictoriaBackupJobBuilder
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.time.Instant
@@ -73,6 +74,7 @@ interface VictoriaBackupService {
 class DefaultVictoriaBackupService(
     private val k8sService: K8sService,
     private val outputHandler: OutputHandler,
+    private val jobBuilder: VictoriaBackupJobBuilder = VictoriaBackupJobBuilder(),
 ) : VictoriaBackupService {
     private val log = KotlinLogging.logger {}
 
@@ -108,10 +110,10 @@ class DefaultVictoriaBackupService(
 
             // Create a Job that runs vmbackup
             val jobName = "vmbackup-${timestamp.lowercase()}"
-            val jobYaml = loadBackupJobYaml("vmbackup-job.yaml", jobName, bucket, s3Path.getKey(), region)
+            val job = jobBuilder.buildMetricsBackupJob(jobName, bucket, s3Path.getKey(), region)
 
             // Apply the job
-            k8sService.createJob(controlHost, NAMESPACE, jobYaml).getOrThrow()
+            k8sService.createJob(controlHost, NAMESPACE, job).getOrThrow()
             log.info { "Created backup job: $jobName" }
 
             outputHandler.handleMessage("Backup job started: $jobName")
@@ -154,10 +156,10 @@ class DefaultVictoriaBackupService(
 
             // Create a Job that snapshots VictoriaLogs partitions and syncs to S3
             val jobName = "vlbackup-${timestamp.lowercase()}"
-            val jobYaml = loadBackupJobYaml("vlbackup-job.yaml", jobName, bucket, s3Path.getKey(), region)
+            val job = jobBuilder.buildLogsBackupJob(jobName, bucket, s3Path.getKey(), region)
 
             // Apply the job
-            k8sService.createJob(controlHost, NAMESPACE, jobYaml).getOrThrow()
+            k8sService.createJob(controlHost, NAMESPACE, job).getOrThrow()
             log.info { "Created backup job: $jobName" }
 
             outputHandler.handleMessage("Backup job started: $jobName")
@@ -210,30 +212,6 @@ class DefaultVictoriaBackupService(
             }
 
         return bucket to s3Path
-    }
-
-    private fun loadBackupJobYaml(
-        resourceName: String,
-        jobName: String,
-        bucket: String,
-        s3Key: String,
-        region: String,
-    ): String {
-        val template =
-            this::class.java
-                .getResourceAsStream(resourceName)
-                ?.bufferedReader()
-                ?.readText()
-                ?: error("Resource not found: $resourceName")
-
-        return TemplateService.Template(template, emptyMap()).substitute(
-            mapOf(
-                "JOB_NAME" to jobName,
-                "S3_BUCKET" to bucket,
-                "S3_KEY" to s3Key,
-                "AWS_REGION" to region,
-            ),
-        )
     }
 
     @Suppress("MagicNumber", "NestedBlockDepth")

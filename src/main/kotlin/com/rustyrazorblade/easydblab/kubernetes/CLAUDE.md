@@ -87,7 +87,7 @@ Both registered as **factory** scope — client holds state tied to proxy sessio
 
 ## K8s Resource Location
 
-K8s YAML manifests (observability stack, etc.) are in:
-`src/main/resources/com/rustyrazorblade/easydblab/commands/k8s/`
-
-These are extracted and template-substituted by `TemplateService` during `K8Apply`.
+All K8s resources are built programmatically using Fabric8 manifest builders in
+`src/main/kotlin/com/rustyrazorblade/easydblab/configuration/` subpackages.
+XML/YAML config files are stored as classpath resources under the corresponding
+`src/main/resources/com/rustyrazorblade/easydblab/configuration/` paths.

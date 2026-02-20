@@ -7,13 +7,12 @@ import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
-import com.rustyrazorblade.easydblab.services.ClickHouseConfigService
+import com.rustyrazorblade.easydblab.configuration.clickhouse.ClickHouseManifestBuilder
 import com.rustyrazorblade.easydblab.services.K8sService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
-import java.nio.file.Path
 
 /**
  * Deploy ClickHouse cluster to K8s.
@@ -51,12 +50,10 @@ class ClickHouseStart : PicoBaseCommand() {
     private val log = KotlinLogging.logger {}
     private val k8sService: K8sService by inject()
     private val userConfig: User by inject()
-    private val clickHouseConfigService: ClickHouseConfigService by inject()
+    private val clickHouseManifestBuilder: ClickHouseManifestBuilder by inject()
 
     companion object {
-        private const val K8S_MANIFEST_BASE = "k8s/clickhouse"
         private const val DEFAULT_TIMEOUT_SECONDS = 300
-        private const val DEFAULT_REPLICAS_PER_SHARD = 3
     }
 
     @Option(
@@ -77,16 +74,15 @@ class ClickHouseStart : PicoBaseCommand() {
     )
     var replicas: Int? = null
 
-    @Option(
-        names = ["--replicas-per-shard"],
-        description = ["Number of replicas per shard (default: 3). Total shards = nodes / replicas-per-shard"],
-    )
-    var replicasPerShard: Int = DEFAULT_REPLICAS_PER_SHARD
-
     override fun execute() {
+        val clickHouseConfig =
+            clusterState.clickHouseConfig
+                ?: error("ClickHouse not configured. Run 'clickhouse init' first.")
+        val replicasPerShard = clickHouseConfig.replicasPerShard
+
         val controlNode = getControlNode()
         val dbHosts = getAndValidateDbHosts()
-        val actualReplicas = calculateReplicaCount(dbHosts)
+        val actualReplicas = calculateReplicaCount(dbHosts, replicasPerShard)
         val shardCount = actualReplicas / replicasPerShard
 
         outputHandler.handleMessage(
@@ -96,7 +92,7 @@ class ClickHouseStart : PicoBaseCommand() {
         ensureLocalStorageClass(controlNode)
         createLocalPersistentVolumes(controlNode, actualReplicas)
         val bucket = setupS3SecretIfConfigured(controlNode)
-        applyManifestsAndConfigureCluster(controlNode, actualReplicas)
+        applyManifestsAndConfigureCluster(controlNode, actualReplicas, replicasPerShard, clickHouseConfig)
         waitForPodsIfRequired(controlNode)
         displayAccessInformation(dbHosts.first().privateIp, bucket)
     }
@@ -125,7 +121,10 @@ class ClickHouseStart : PicoBaseCommand() {
         return dbHosts
     }
 
-    private fun calculateReplicaCount(dbHosts: List<ClusterHost>): Int {
+    private fun calculateReplicaCount(
+        dbHosts: List<ClusterHost>,
+        replicasPerShard: Int,
+    ): Int {
         val actualReplicas = replicas ?: dbHosts.size
         if (actualReplicas % replicasPerShard != 0) {
             error(
@@ -186,50 +185,23 @@ class ClickHouseStart : PicoBaseCommand() {
     private fun applyManifestsAndConfigureCluster(
         controlNode: ClusterHost,
         actualReplicas: Int,
+        replicasPerShard: Int,
+        clickHouseConfig: com.rustyrazorblade.easydblab.configuration.ClickHouseConfig,
     ) {
-        log.info { "Applying ClickHouse manifests from $K8S_MANIFEST_BASE" }
-        k8sService
-            .applyManifests(controlNode, Path.of(K8S_MANIFEST_BASE))
-            .getOrElse { exception ->
-                error("Failed to apply ClickHouse manifests: ${exception.message}")
-            }
+        log.info { "Applying ClickHouse manifests via Fabric8 builder" }
+        val resources =
+            clickHouseManifestBuilder.buildAllResources(
+                totalReplicas = actualReplicas,
+                replicasPerShard = replicasPerShard,
+                s3CacheSize = clickHouseConfig.s3CacheSize,
+                s3CacheOnWrite = clickHouseConfig.s3CacheOnWrite,
+            )
 
-        // Create cluster config with replicas-per-shard, s3-cache-size, and s3-cache-on-write for pods
-        val s3CacheSize =
-            clusterState.clickHouseConfig?.s3CacheSize
-                ?: Constants.ClickHouse.DEFAULT_S3_CACHE_SIZE
-        val s3CacheOnWrite =
-            clusterState.clickHouseConfig?.s3CacheOnWrite
-                ?: Constants.ClickHouse.DEFAULT_S3_CACHE_ON_WRITE
-
-        k8sService
-            .createConfigMap(
-                controlHost = controlNode,
-                namespace = Constants.ClickHouse.NAMESPACE,
-                name = "clickhouse-cluster-config",
-                data =
-                    mapOf(
-                        "replicas-per-shard" to replicasPerShard.toString(),
-                        "s3-cache-size" to s3CacheSize,
-                        "s3-cache-on-write" to s3CacheOnWrite.toString(),
-                    ),
-                labels = mapOf("app.kubernetes.io/name" to "clickhouse-server"),
-            ).getOrElse { exception ->
-                error("Failed to create ClickHouse cluster config: ${exception.message}")
+        for (resource in resources) {
+            k8sService.applyResource(controlNode, resource).getOrElse { exception ->
+                error("Failed to apply ClickHouse ${resource.kind}/${resource.metadata?.name}: ${exception.message}")
             }
-
-        val dynamicConfigMap =
-            clickHouseConfigService.createDynamicConfigMap(actualReplicas, replicasPerShard, Path.of(K8S_MANIFEST_BASE))
-        k8sService
-            .createConfigMap(
-                controlHost = controlNode,
-                namespace = Constants.ClickHouse.NAMESPACE,
-                name = "clickhouse-server-config",
-                data = dynamicConfigMap,
-                labels = mapOf("app.kubernetes.io/name" to "clickhouse-server"),
-            ).getOrElse { exception ->
-                error("Failed to create ClickHouse config: ${exception.message}")
-            }
+        }
 
         k8sService
             .scaleStatefulSet(controlNode, Constants.ClickHouse.NAMESPACE, "clickhouse", actualReplicas)
@@ -257,9 +229,7 @@ class ClickHouseStart : PicoBaseCommand() {
         outputHandler.handleMessage("Storage policies available:")
         outputHandler.handleMessage("  - local: Local disk storage")
         if (!bucket.isNullOrBlank()) {
-            val s3CacheSize =
-                clusterState.clickHouseConfig?.s3CacheSize
-                    ?: Constants.ClickHouse.DEFAULT_S3_CACHE_SIZE
+            val s3CacheSize = clusterState.clickHouseConfig?.s3CacheSize ?: Constants.ClickHouse.DEFAULT_S3_CACHE_SIZE
             outputHandler.handleMessage("  - s3_main: S3 with local cache (bucket: $bucket, cache: $s3CacheSize)")
         }
         outputHandler.handleMessage(

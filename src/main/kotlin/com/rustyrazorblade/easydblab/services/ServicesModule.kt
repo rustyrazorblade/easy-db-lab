@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.clickhouse.ClickHouseManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
@@ -53,6 +54,7 @@ val servicesModule =
         factoryOf(::DefaultK3sService) bind K3sService::class
         factoryOf(::DefaultK3sAgentService) bind K3sAgentService::class
         factoryOf(::DefaultK8sService) bind K8sService::class
+        factoryOf(::ClickHouseManifestBuilder)
         factoryOf(::BeylaManifestBuilder)
         factoryOf(::EbpfExporterManifestBuilder)
         factoryOf(::GrafanaManifestBuilder)

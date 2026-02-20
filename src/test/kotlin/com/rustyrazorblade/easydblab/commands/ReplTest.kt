@@ -96,7 +96,6 @@ class ReplTest : BaseKoinTest() {
                 "spark",
                 "clickhouse",
                 "opensearch",
-                "k8",
                 "aws",
             ),
         )

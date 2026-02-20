@@ -33,14 +33,30 @@ class ClickHouseInit : PicoBaseCommand() {
     )
     var s3CacheOnWrite: String = Constants.ClickHouse.DEFAULT_S3_CACHE_ON_WRITE
 
+    @Option(
+        names = ["--replicas-per-shard"],
+        description = ["Number of replicas per shard (default: ${Constants.ClickHouse.DEFAULT_REPLICAS_PER_SHARD})"],
+    )
+    var replicasPerShard: Int = Constants.ClickHouse.DEFAULT_REPLICAS_PER_SHARD
+
     override fun execute() {
         val state = clusterStateManager.load()
-        val config = ClickHouseConfig(s3CacheSize = s3CacheSize, s3CacheOnWrite = s3CacheOnWrite)
+        val config =
+            ClickHouseConfig(
+                s3CacheSize = s3CacheSize,
+                s3CacheOnWrite = s3CacheOnWrite,
+                replicasPerShard = replicasPerShard,
+            )
         state.updateClickHouseConfig(config)
         clusterStateManager.save(state)
 
-        outputHandler.handleMessage("ClickHouse configuration saved.")
-        outputHandler.handleMessage("  S3 cache size: $s3CacheSize")
-        outputHandler.handleMessage("  S3 cache on write: $s3CacheOnWrite")
+        outputHandler.handleMessage(
+            """
+            ClickHouse configuration saved.
+              Replicas per shard: $replicasPerShard
+              S3 cache size: $s3CacheSize
+              S3 cache on write: $s3CacheOnWrite
+            """.trimIndent(),
+        )
     }
 }

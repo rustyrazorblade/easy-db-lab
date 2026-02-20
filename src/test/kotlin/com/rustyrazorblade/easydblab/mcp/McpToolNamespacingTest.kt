@@ -6,7 +6,6 @@ import com.rustyrazorblade.easydblab.commands.cassandra.Start
 import com.rustyrazorblade.easydblab.commands.cassandra.UpdateConfig
 import com.rustyrazorblade.easydblab.commands.cassandra.stress.StressStart
 import com.rustyrazorblade.easydblab.commands.clickhouse.ClickHouseStart
-import com.rustyrazorblade.easydblab.commands.k8.K8Apply
 import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearchStart
 import com.rustyrazorblade.easydblab.commands.spark.SparkSubmit
 import org.assertj.core.api.Assertions.assertThat
@@ -85,14 +84,6 @@ class McpToolNamespacingTest : BaseKoinTest() {
         val toolName = registry.generateToolName(command, "submit")
 
         assertThat(toolName).isEqualTo("spark_submit")
-    }
-
-    @Test
-    fun `k8 namespace is correct`() {
-        val command = K8Apply()
-        val toolName = registry.generateToolName(command, "apply")
-
-        assertThat(toolName).isEqualTo("k8_apply")
     }
 
     @Test

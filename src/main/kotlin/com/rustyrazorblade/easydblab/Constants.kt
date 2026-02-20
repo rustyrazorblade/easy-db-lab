@@ -183,11 +183,9 @@ object Constants {
 
     // K8s observability configuration
     object K8s {
-        const val PATH_PREFIX = "/k8s/"
         const val NAMESPACE = "default"
         const val MANIFEST_DIR = "k8s"
         const val LOCAL_STORAGE_CLASS = "local-storage"
-        const val RESOURCE_PACKAGE = "com.rustyrazorblade.easydblab.commands.k8s"
         const val GRAFANA_PORT = 3000
         const val VICTORIAMETRICS_PORT = 8428
         const val VICTORIALOGS_PORT = 9428
@@ -226,6 +224,7 @@ object Constants {
         const val S3_SECRET_NAME = "clickhouse-s3-credentials"
         const val DEFAULT_S3_CACHE_SIZE = "10Gi"
         const val DEFAULT_S3_CACHE_ON_WRITE = "true"
+        const val DEFAULT_REPLICAS_PER_SHARD = 3
     }
 
     // Cassandra stress testing configuration

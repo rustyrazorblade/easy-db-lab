@@ -110,104 +110,6 @@ class TemplateServiceTest : BaseKoinTest() {
         assertThat(variables).containsEntry("CONTROL_NODE_IP", "")
     }
 
-    @Test
-    fun `extractResources extracts YAML files from classpath to directory`() {
-        setupClusterState()
-
-        val service = createService()
-        val files = service.extractResources(destinationDir = manifestDir)
-
-        assertThat(files).isNotEmpty()
-        assertThat(files).allSatisfy { file ->
-            assertThat(file.exists()).isTrue()
-            assertThat(file.extension).isIn("yaml", "yml")
-        }
-    }
-
-    @Test
-    fun `extractResources does not substitute placeholders`() {
-        setupClusterState()
-
-        val service = createService()
-        val files = service.extractResources(destinationDir = manifestDir)
-
-        // Find a file that contains __BUCKET_NAME__ placeholder (S3-related dashboards)
-        val filesWithPlaceholders =
-            files.filter { it.readText().contains("__BUCKET_NAME__") }
-        // If any files have placeholders, they should remain un-substituted
-        filesWithPlaceholders.forEach { file ->
-            assertThat(file.readText()).contains("__BUCKET_NAME__")
-        }
-    }
-
-    @Test
-    fun `extractAndSubstituteResources extracts and substitutes placeholders`() {
-        setupClusterState()
-
-        val service = createService()
-        val files = service.extractAndSubstituteResources(destinationDir = manifestDir)
-
-        assertThat(files).isNotEmpty()
-        // No file should contain un-substituted __BUCKET_NAME__ placeholder
-        files.forEach { file ->
-            assertThat(file.readText()).doesNotContain("__BUCKET_NAME__")
-        }
-    }
-
-    @Test
-    fun `extractAndSubstituteResources with filter only includes matching files`() {
-        setupClusterState()
-
-        val service = createService()
-        val allFiles = service.extractAndSubstituteResources(destinationDir = manifestDir)
-
-        val clickhouseOnly =
-            service.extractAndSubstituteResources(
-                destinationDir = manifestDir,
-                filter = { it.startsWith("clickhouse/") },
-            )
-
-        assertThat(clickhouseOnly).isNotEmpty()
-        assertThat(clickhouseOnly.size).isLessThanOrEqualTo(allFiles.size)
-        // All returned files should be under clickhouse/
-        clickhouseOnly.forEach { file ->
-            assertThat(file.path).contains("clickhouse")
-        }
-    }
-
-    @Test
-    fun `extractAndSubstituteResources preserves Grafana dollar-brace syntax`() {
-        setupClusterState()
-
-        val service = createService()
-        val files = service.extractAndSubstituteResources(destinationDir = manifestDir)
-
-        // Grafana dashboard files use ${datasource} syntax that must be preserved
-        val grafanaFiles = files.filter { it.name.contains("grafana") }
-        grafanaFiles.forEach { file ->
-            val content = file.readText()
-            // __KEY__ placeholders should be substituted but ${var} should remain
-            assertThat(content).doesNotContain("__BUCKET_NAME__")
-        }
-    }
-
-    @Test
-    fun `extractResources with filter excludes non-matching files`() {
-        setupClusterState()
-
-        val service = createService()
-        val clickhouseOnly =
-            service.extractResources(
-                destinationDir = manifestDir,
-                filter = { it.contains("clickhouse") },
-            )
-
-        assertThat(clickhouseOnly).isNotEmpty()
-        clickhouseOnly.forEach { file ->
-            assertThat(file.name).contains("clickhouse")
-        }
-    }
-
     // ========== Template class tests ==========
 
     @Test
@@ -256,24 +158,18 @@ class TemplateServiceTest : BaseKoinTest() {
         setupClusterState()
 
         val service = createService()
-        // Use a known resource from VictoriaBackupService
+        // Use a known resource — OTel collector config contains __KEY__ variables
         val template =
             service.fromResource(
-                DefaultVictoriaBackupService::class.java,
-                "vmbackup-job.yaml",
+                com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder::class.java,
+                "otel-collector-config.yaml",
             )
 
-        val result =
-            template.substitute(
-                mapOf(
-                    "JOB_NAME" to "test-job",
-                    "S3_BUCKET" to "test-bucket",
-                    "S3_KEY" to "backups/test",
-                ),
-            )
+        val result = template.substitute()
 
-        assertThat(result).contains("test-job")
-        assertThat(result).contains("test-bucket")
+        // The OTel config should contain standard collector structure
+        assertThat(result).contains("receivers:")
+        assertThat(result).contains("exporters:")
     }
 
     @Test

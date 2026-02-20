@@ -134,8 +134,6 @@ Handles `__KEY__` placeholder substitution in K8s manifests, YAML configs, etc. 
 - `METRICS_FILTER_ID`, `CLUSTER_S3_PREFIX`
 
 **Key methods:**
-- `extractResources(dir, filter)` — extract K8s YAML without substitution (used by `Init`)
-- `extractAndSubstituteResources(dir, filter)` — extract with `__KEY__` substitution (used by `K8Apply`, `GrafanaDashboardService`)
 - `fromString()` / `fromFile()` / `fromResource()` — create `Template` instances
 
 **Template class:**
@@ -173,7 +171,7 @@ All Grafana K8s resources are built programmatically using Fabric8:
 
 All Pyroscope K8s resources are built programmatically using Fabric8:
 
-- **`PyroscopeManifestBuilder`** — builds all Pyroscope K8s resources (server ConfigMap, Service, Deployment, eBPF ConfigMap, eBPF DaemonSet) as typed Fabric8 objects. The server runs on the control plane with a hostPath volume at `/mnt/db1/pyroscope`. Directory permissions are set via SSH in `K8Apply` before deploying (no init container).
+- **`PyroscopeManifestBuilder`** — builds all Pyroscope K8s resources (server ConfigMap, Service, Deployment, eBPF ConfigMap, eBPF DaemonSet) as typed Fabric8 objects. The server runs on the control plane with a hostPath volume at `/mnt/db1/pyroscope`. Directory permissions are set via SSH in `GrafanaUpdateConfig` before deploying (no init container).
 - **Config resources** — `config.yaml` (Pyroscope server config) and `config.alloy` (Grafana Alloy eBPF config) stored in `resources/.../configuration/pyroscope/`.
 
 ### Profiling Architecture
@@ -187,7 +185,7 @@ Three independent profiling mechanisms run simultaneously:
 ### Activation Flow
 
 1. `SetupInstance` writes `/etc/default/cassandra` with `PYROSCOPE_SERVER_ADDRESS=http://<control_ip>:4040` and `CLUSTER_NAME`.
-2. `K8Apply` deploys Pyroscope server to K8s (control plane, port 4040, hostNetwork).
+2. `GrafanaUpdateConfig` deploys Pyroscope server to K8s (control plane, port 4040, hostNetwork).
 3. When Cassandra starts, `cassandra.in.sh` checks for the env var and JAR, then adds `-javaagent` JVM opts. `PYROSCOPE_PROFILER_EVENT` can override the profiler event (default: `cpu`).
 4. When a stress job starts, `StressJobService` mounts the agent JAR and sets `JAVA_TOOL_OPTIONS` with all Pyroscope properties.
 

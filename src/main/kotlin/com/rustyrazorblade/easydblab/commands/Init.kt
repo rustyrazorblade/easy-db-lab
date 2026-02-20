@@ -15,7 +15,6 @@ import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.network.CidrBlock
 import com.rustyrazorblade.easydblab.services.CommandExecutor
-import com.rustyrazorblade.easydblab.services.TemplateService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -60,7 +59,6 @@ import kotlin.system.exitProcess
 class Init : PicoBaseCommand() {
     private val userConfig: User by inject()
     private val commandExecutor: CommandExecutor by inject()
-    private val templateService: TemplateService by inject()
 
     companion object {
         private const val DEFAULT_CASSANDRA_INSTANCE_COUNT = 3
@@ -300,10 +298,6 @@ class Init : PicoBaseCommand() {
         outputHandler.handleMessage("Creating cassandra directory and writing sidecar config")
         File("cassandra").mkdirs()
         extractResourceFile("cassandra-sidecar.yaml", "cassandra/cassandra-sidecar.yaml")
-
-        //         might break? TODO remove
-        outputHandler.handleMessage("Creating k8s directory and writing Kubernetes manifests")
-        templateService.extractResources()
     }
 
     private fun extractResourceFile(

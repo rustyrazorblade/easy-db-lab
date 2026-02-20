@@ -468,7 +468,7 @@ class FilteringChannelOutputHandler(
 
 /**
  * Display observability stack access information.
- * Used by both K8Apply (after deployment) and Status (for reference).
+ * Used by GrafanaUpdateConfig (after deployment) and Status (for reference).
  */
 fun OutputHandler.displayObservabilityAccess(controlNodeIp: String) {
     handleMessage("")

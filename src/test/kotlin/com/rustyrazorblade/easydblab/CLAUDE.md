@@ -151,6 +151,17 @@ src/test/kotlin/com/rustyrazorblade/easydblab/
 └── ...
 ```
 
+## K3s TestContainers Configuration
+
+The `K8sServiceIntegrationTest` runs K3s inside Docker via TestContainers. This requires special container configuration to work in nested container environments (e.g., devcontainers, CI):
+
+- **`withPrivilegedMode(true)`** — K3s needs full privileges to manage its own containers and networking.
+- **`withCgroupnsMode("host")`** — The host uses cgroup v2. Without sharing the host cgroup namespace, K3s fails during "Node controller sync" because it can't properly manage cgroup hierarchies for its internal containers.
+- **`withEnv("K3S_SNAPSHOTTER", "native")`** — In nested container environments, the default overlayfs snapshotter can fail because the outer container's filesystem may already be an overlay. The native snapshotter avoids this by using simple file copies instead.
+- **`withLogConsumer(Slf4jLogConsumer(...))`** — Forwards K3s container logs to SLF4J for debugging startup failures.
+
+If K3s fails to start with `ContainerLaunchException`, check that the devcontainer itself is configured with `--privileged`, `--cgroupns=host`, and `/sys/fs/cgroup` mounted read-write (see `.devcontainer/devcontainer.json`).
+
 ## Key Rules
 
 - **Always** use AssertJ assertions (`assertThat`), not JUnit assertions

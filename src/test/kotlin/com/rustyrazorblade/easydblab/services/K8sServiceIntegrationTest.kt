@@ -34,6 +34,8 @@ import org.junit.jupiter.api.TestInstance
 import org.junit.jupiter.api.TestMethodOrder
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
+import org.slf4j.LoggerFactory
+import org.testcontainers.containers.output.Slf4jLogConsumer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.k3s.K3sContainer
@@ -78,7 +80,14 @@ class K8sServiceIntegrationTest {
 
         @Container
         @JvmStatic
-        val k3s: K3sContainer = K3sContainer(DockerImageName.parse("rancher/k3s:v1.30.6-k3s1"))
+        val k3s: K3sContainer =
+            K3sContainer(DockerImageName.parse("rancher/k3s:v1.30.6-k3s1"))
+                .withPrivilegedMode(true)
+                .withCreateContainerCmdModifier { cmd ->
+                    cmd.hostConfig!!.withCgroupnsMode("host")
+                }
+                .withLogConsumer(Slf4jLogConsumer(LoggerFactory.getLogger("k3s")))
+                .withEnv("K3S_SNAPSHOTTER", "native") as K3sContainer
     }
 
     private lateinit var client: KubernetesClient

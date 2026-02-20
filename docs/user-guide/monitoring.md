@@ -78,6 +78,26 @@ Shows OpenSearch domain metrics via CloudWatch. Available when an OpenSearch dom
 
 Use the `Domain` dropdown to select which OpenSearch domain to view.
 
+### Cassandra Condensed
+
+A single-pane-of-glass summary of the most important Cassandra metrics, powered by the MAAC (Management API for Apache Cassandra) agent. Shows:
+
+- **Cluster Overview:** Nodes up/down, compaction rates, CQL request throughput, dropped messages, connected clients, timeouts, hints, data size, GC time
+- **Condensed Metrics:** Request throughput, coordinator latency percentiles, memtable space, compaction activity, table-level latency, streaming bandwidth
+
+Requires the MAAC agent to be loaded (Cassandra 4.0, 4.1, or 5.0). Metrics are exposed on port 9000 and scraped by the OTel collector.
+
+### Cassandra Overview
+
+A comprehensive deep-dive into Cassandra cluster health, also powered by the MAAC agent. Shows:
+
+- **Request Throughput:** Read/write distribution, latency percentiles (P98-P999), error throughput
+- **Node Status:** Per-node up/down status (polystat panel), node count, status history
+- **Data Status:** Disk space usage, data size, SSTable count, pending compactions
+- **Internals:** Thread pool pending/blocked/active tasks, dropped messages, hinted handoff
+- **Hardware:** CPU, memory, disk I/O, network I/O, load average
+- **JVM/GC:** Application throughput, GC time, heap utilization
+
 ## eBPF Observability
 
 The cluster deploys eBPF-based agents on all nodes for deep system observability:

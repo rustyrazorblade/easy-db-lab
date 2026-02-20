@@ -85,4 +85,20 @@ enum class GrafanaDashboard(
         resourcePath = "dashboards/profiling.json",
         optional = true,
     ),
+    CASSANDRA_CONDENSED(
+        configMapName = "grafana-dashboard-cassandra-condensed",
+        volumeName = "dashboard-cassandra-condensed",
+        mountPath = "/var/lib/grafana/dashboards/cassandra-condensed",
+        jsonFileName = "cassandra-condensed.json",
+        resourcePath = "dashboards/cassandra-condensed.json",
+        optional = true,
+    ),
+    CASSANDRA_OVERVIEW(
+        configMapName = "grafana-dashboard-cassandra-overview",
+        volumeName = "dashboard-cassandra-overview",
+        mountPath = "/var/lib/grafana/dashboards/cassandra-overview",
+        jsonFileName = "cassandra-overview.json",
+        resourcePath = "dashboards/cassandra-overview.json",
+        optional = true,
+    ),
 }

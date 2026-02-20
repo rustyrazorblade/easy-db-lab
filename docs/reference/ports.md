@@ -21,6 +21,12 @@ This page documents the ports used by easy-db-lab and the services it provisions
 | 9428 | VictoriaLogs (log storage) |
 | 3200 | Tempo (trace storage) |
 
+## Cassandra Agent Ports
+
+| Port | Service |
+|------|---------|
+| 9000 | MAAC metrics agent (Prometheus) — Cassandra 4.0, 4.1, 5.0 only |
+
 ## Observability Ports (All Nodes — DaemonSets)
 
 | Port | Service |

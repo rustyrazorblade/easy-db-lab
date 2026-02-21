@@ -438,9 +438,15 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum(irate(org_apache_cassandra_metrics_client_request_latency_count{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$host\"}[$rate])) by ($by, request_type)",
-          "legendFormat": "{{$by}}:{{request_type}}",
+          "expr": "sum(irate({__name__=~\"org_apache_cassandra_metrics_client_request_latency_read_.+_count\", cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$host\"}[$rate])) by ($by)",
+          "legendFormat": "{{$by}}:read",
           "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum(irate({__name__=~\"org_apache_cassandra_metrics_client_request_latency_write_.+_count\", cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$host\"}[$rate])) by ($by)",
+          "legendFormat": "{{$by}}:write",
+          "refId": "C"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
@@ -494,9 +500,15 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "histogram_quantile($latency, sum(rate(org_apache_cassandra_metrics_client_request_latency_bucket{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$host\"}[$rate])) by (le, request_type, $by))",
-          "legendFormat": "$by:{{$by}} {{request_type}} p{{$latency}}",
+          "expr": "histogram_quantile($latency, sum(rate({__name__=~\"org_apache_cassandra_metrics_client_request_latency_read_.+_bucket\", cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$host\"}[$rate])) by (le, $by))",
+          "legendFormat": "$by:{{$by}} read p{{$latency}}",
           "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "histogram_quantile($latency, sum(rate({__name__=~\"org_apache_cassandra_metrics_client_request_latency_write_.+_bucket\", cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$host\"}[$rate])) by (le, $by))",
+          "legendFormat": "$by:{{$by}} write p{{$latency}}",
+          "refId": "B"
         }
       ],
       "title": "Coordinator $latency Latency / $by",

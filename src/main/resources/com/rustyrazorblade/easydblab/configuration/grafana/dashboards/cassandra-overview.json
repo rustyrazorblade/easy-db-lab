@@ -58,9 +58,15 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum by (cluster, request_type) (rate(org_apache_cassandra_metrics_client_request_latency_count{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$node\"}[1m]))",
-          "legendFormat": "{{request_type}}",
+          "expr": "sum by (cluster) (rate({__name__=~\"org_apache_cassandra_metrics_client_request_latency_read_.+_count\", cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$node\"}[1m]))",
+          "legendFormat": "read",
           "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum by (cluster) (rate({__name__=~\"org_apache_cassandra_metrics_client_request_latency_write_.+_count\", cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$node\"}[1m]))",
+          "legendFormat": "write",
+          "refId": "B"
         }
       ],
       "title": "Request Throughputs",
@@ -108,39 +114,21 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum by (cluster, request_type) (rate(org_apache_cassandra_metrics_client_request_failures_total{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$node\"}[1m]))",
-          "legendFormat": "{{request_type}} failures",
+          "expr": "sum by (cluster) (rate({__name__=~\"org_apache_cassandra_metrics_client_request_failures_(read|write)_.+_total\", cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$node\"}[1m]))",
+          "legendFormat": "failures",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum by (cluster, request_type) (rate(org_apache_cassandra_metrics_client_request_timeouts_total{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$node\"}[1m]))",
-          "legendFormat": "{{request_type}} timeouts",
+          "expr": "sum by (cluster) (rate({__name__=~\"org_apache_cassandra_metrics_client_request_timeouts_(read|write)_.+_total\", cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$node\"}[1m]))",
+          "legendFormat": "timeouts",
           "refId": "B"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum by (cluster, request_type) (rate(org_apache_cassandra_metrics_client_request_unavailables_total{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$node\"}[1m]))",
-          "legendFormat": "{{request_type}} unavailable",
+          "expr": "sum by (cluster) (rate({__name__=~\"org_apache_cassandra_metrics_client_request_unavailables_(read|write)_.+_total\", cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$node\"}[1m]))",
+          "legendFormat": "unavailable",
           "refId": "C"
-        },
-        {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum by (cluster, request_type) (rate(org_apache_cassandra_metrics_client_request_unfinished_commit{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$node\"}[1m]))",
-          "legendFormat": "{{request_type}} unfinished commit",
-          "refId": "D"
-        },
-        {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum by (cluster, request_type) (rate(org_apache_cassandra_metrics_client_request_condition_not_met{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$node\"}[1m]))",
-          "legendFormat": "{{request_type}} condition not met",
-          "refId": "E"
-        },
-        {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum by (cluster, request_type) (rate(org_apache_cassandra_metrics_client_request_contention_histogram_count{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$node\"}[1m]))",
-          "legendFormat": "{{request_type}} contention",
-          "refId": "F"
         }
       ],
       "title": "Error Throughputs",
@@ -177,7 +165,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum(rate(org_apache_cassandra_metrics_client_request_latency_count{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$node\", request_type=\"read\"}[1m])) / (sum(rate(org_apache_cassandra_metrics_client_request_latency_count{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$node\", request_type=\"read\"}[1m])) + sum(rate(org_apache_cassandra_metrics_client_request_latency_count{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$node\", request_type=\"write\"}[1m])))",
+          "expr": "sum(rate({__name__=~\"org_apache_cassandra_metrics_client_request_latency_read_.+_count\", cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$node\"}[1m])) / (sum(rate({__name__=~\"org_apache_cassandra_metrics_client_request_latency_read_.+_count\", cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$node\"}[1m])) + sum(rate({__name__=~\"org_apache_cassandra_metrics_client_request_latency_write_.+_count\", cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$node\"}[1m])))",
           "legendFormat": "Reads",
           "refId": "A"
         }
@@ -227,19 +215,19 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "histogram_quantile(0.98, sum(rate(org_apache_cassandra_metrics_client_request_latency_bucket{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$node\", request_type=\"read\"}[5m])) by (le, cluster))",
+          "expr": "histogram_quantile(0.98, sum(rate({__name__=~\"org_apache_cassandra_metrics_client_request_latency_read_.+_bucket\", cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$node\"}[5m])) by (le, cluster))",
           "legendFormat": "p98",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "histogram_quantile(0.99, sum(rate(org_apache_cassandra_metrics_client_request_latency_bucket{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$node\", request_type=\"read\"}[5m])) by (le, cluster))",
+          "expr": "histogram_quantile(0.99, sum(rate({__name__=~\"org_apache_cassandra_metrics_client_request_latency_read_.+_bucket\", cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$node\"}[5m])) by (le, cluster))",
           "legendFormat": "p99",
           "refId": "B"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "histogram_quantile(0.999, sum(rate(org_apache_cassandra_metrics_client_request_latency_bucket{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$node\", request_type=\"read\"}[5m])) by (le, cluster))",
+          "expr": "histogram_quantile(0.999, sum(rate({__name__=~\"org_apache_cassandra_metrics_client_request_latency_read_.+_bucket\", cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$node\"}[5m])) by (le, cluster))",
           "legendFormat": "p999",
           "refId": "C"
         }
@@ -289,19 +277,19 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "histogram_quantile(0.98, sum(rate(org_apache_cassandra_metrics_client_request_latency_bucket{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$node\", request_type=\"write\"}[5m])) by (le, cluster))",
+          "expr": "histogram_quantile(0.98, sum(rate({__name__=~\"org_apache_cassandra_metrics_client_request_latency_write_.+_bucket\", cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$node\"}[5m])) by (le, cluster))",
           "legendFormat": "p98",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "histogram_quantile(0.99, sum(rate(org_apache_cassandra_metrics_client_request_latency_bucket{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$node\", request_type=\"write\"}[5m])) by (le, cluster))",
+          "expr": "histogram_quantile(0.99, sum(rate({__name__=~\"org_apache_cassandra_metrics_client_request_latency_write_.+_bucket\", cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$node\"}[5m])) by (le, cluster))",
           "legendFormat": "p99",
           "refId": "B"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "histogram_quantile(0.999, sum(rate(org_apache_cassandra_metrics_client_request_latency_bucket{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$node\", request_type=\"write\"}[5m])) by (le, cluster))",
+          "expr": "histogram_quantile(0.999, sum(rate({__name__=~\"org_apache_cassandra_metrics_client_request_latency_write_.+_bucket\", cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$node\"}[5m])) by (le, cluster))",
           "legendFormat": "p999",
           "refId": "C"
         }
@@ -351,12 +339,12 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "histogram_quantile(0.99, sum(rate(org_apache_cassandra_metrics_client_request_latency_bucket{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$node\", request_type!~\"write|read|.*-.*\"}[1m])) by (le, request_type, cluster))",
-          "legendFormat": "p99 {{request_type}}",
+          "expr": "histogram_quantile(0.99, sum(rate(org_apache_cassandra_metrics_client_request_latency_bucket{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$node\"}[1m])) by (le, cluster))",
+          "legendFormat": "p99 all operations",
           "refId": "A"
         }
       ],
-      "title": "Other Latencies (p99)",
+      "title": "All Coordinator Latencies (p99)",
       "type": "timeseries"
     },
     {
@@ -514,7 +502,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "100 * system_filesystem_usage_bytes{state=\"used\", mountpoint=~\"/mnt/.*|/\", host_name=~\"$node\"} / (system_filesystem_usage_bytes{state=\"used\", mountpoint=~\"/mnt/.*|/\", host_name=~\"$node\"} + system_filesystem_usage_bytes{state=\"free\", mountpoint=~\"/mnt/.*|/\", host_name=~\"$node\"})",
+          "expr": "100 * sum by (host_name, mountpoint) (system_filesystem_usage_bytes{state=\"used\", mountpoint=~\"/mnt/.*|/\", host_name=~\"$node\"}) / (sum by (host_name, mountpoint) (system_filesystem_usage_bytes{state=\"used\", mountpoint=~\"/mnt/.*|/\", host_name=~\"$node\"}) + sum by (host_name, mountpoint) (system_filesystem_usage_bytes{state=\"free\", mountpoint=~\"/mnt/.*|/\", host_name=~\"$node\"}))",
           "legendFormat": "{{host_name}} {{mountpoint}}",
           "refId": "A"
         }

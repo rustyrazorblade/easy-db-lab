@@ -370,7 +370,7 @@ interface K8sService {
      * Ensures the local-storage StorageClass exists in the cluster.
      *
      * This StorageClass uses the kubernetes.io/no-provisioner provisioner
-     * with WaitForFirstConsumer binding mode and Retain reclaim policy.
+     * with Immediate binding mode and Retain reclaim policy.
      * It is required before creating Local PersistentVolumes.
      *
      * @param controlHost The control node running the K3s server
@@ -1369,8 +1369,21 @@ class DefaultK8sService(
                         .get()
 
                 if (existing != null) {
-                    log.info { "StorageClass ${Constants.K8s.LOCAL_STORAGE_CLASS} already exists" }
-                    return@runCatching
+                    if (existing.volumeBindingMode != "Immediate") {
+                        log.info {
+                            "StorageClass ${Constants.K8s.LOCAL_STORAGE_CLASS} has binding mode " +
+                                "${existing.volumeBindingMode}, recreating with Immediate"
+                        }
+                        client
+                            .storage()
+                            .v1()
+                            .storageClasses()
+                            .withName(Constants.K8s.LOCAL_STORAGE_CLASS)
+                            .delete()
+                    } else {
+                        log.info { "StorageClass ${Constants.K8s.LOCAL_STORAGE_CLASS} already exists" }
+                        return@runCatching
+                    }
                 }
 
                 val storageClass =
@@ -1380,7 +1393,7 @@ class DefaultK8sService(
                         .withName(Constants.K8s.LOCAL_STORAGE_CLASS)
                         .endMetadata()
                         .withProvisioner("kubernetes.io/no-provisioner")
-                        .withVolumeBindingMode("WaitForFirstConsumer")
+                        .withVolumeBindingMode("Immediate")
                         .withReclaimPolicy("Retain")
                         .build()
 

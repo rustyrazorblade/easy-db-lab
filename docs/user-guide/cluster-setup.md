@@ -56,6 +56,7 @@ easy-db-lab up
 - S3 bucket for cluster state
 - VPC with subnets and security groups
 - EC2 instances (Cassandra, Stress, Control nodes)
+  - Control node: `m5d.xlarge` (NVMe-backed instance; K3s data is stored on NVMe to avoid filling the root volume)
 - K3s cluster across all nodes (Cassandra, Stress, Control)
 
 ### Options

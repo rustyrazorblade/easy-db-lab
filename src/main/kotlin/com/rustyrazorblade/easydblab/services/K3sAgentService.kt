@@ -12,6 +12,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import java.io.File
+import java.nio.file.Files
 
 /**
  * Service for managing K3s agent (worker node) lifecycle operations.
@@ -74,6 +75,7 @@ class DefaultK3sAgentService(
         const val CONFIG_TEMP_PATH = "/tmp/k3s-config.yaml"
         const val CONFIG_DIR_PATH = "/etc/rancher/k3s"
         const val AGENT_SCRIPT_PATH = "/usr/local/bin/start-k3s-agent.sh"
+        const val AGENT_SCRIPT_RESOURCE = "/com/rustyrazorblade/easydblab/services/start-k3s-agent.sh"
 
         val yaml =
             Yaml(
@@ -98,6 +100,9 @@ class DefaultK3sAgentService(
         runCatching {
             log.debug { "Starting K3s agent on ${host.alias}" }
 
+            // Upload the startup script from classpath resources
+            uploadScript(host, AGENT_SCRIPT_RESOURCE, AGENT_SCRIPT_PATH)
+
             // Read and parse config to get server URL and token
             val configResult =
                 remoteOps.executeRemotely(
@@ -108,7 +113,7 @@ class DefaultK3sAgentService(
 
             val (serverUrl, token) = parseAgentConfig(configResult.text, host.alias)
 
-            // Call pre-installed script with server URL and token
+            // Call the uploaded script with server URL and token
             remoteOps.executeRemotely(
                 host,
                 "sudo $AGENT_SCRIPT_PATH '$serverUrl' '$token'",
@@ -192,6 +197,32 @@ class DefaultK3sAgentService(
                 tempFile.delete()
             }
         }
+
+    /**
+     * Uploads a script from classpath resources to a remote host.
+     */
+    private fun uploadScript(
+        host: Host,
+        resourcePath: String,
+        remotePath: String,
+    ) {
+        val scriptContent =
+            this::class.java.getResourceAsStream(resourcePath)
+                ?: error("Script not found: $resourcePath")
+
+        val tempFile = Files.createTempFile("k3s-", "-script.sh")
+        try {
+            scriptContent.use { input ->
+                Files.newOutputStream(tempFile).use { output ->
+                    input.copyTo(output)
+                }
+            }
+            remoteOps.upload(host, tempFile, remotePath)
+            remoteOps.executeRemotely(host, "sudo chmod +x $remotePath", output = false)
+        } finally {
+            Files.deleteIfExists(tempFile)
+        }
+    }
 
     /**
      * Builds K3s agent configuration YAML content with server URL, token, and optional node labels.

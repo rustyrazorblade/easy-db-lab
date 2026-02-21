@@ -1,1450 +1,723 @@
 {
-  "__inputs": [],
-  "__requires": [],
   "annotations": {
     "list": []
   },
   "description": "Single pane of glass for most important Cassandra metrics",
   "editable": true,
-  "gnetId": null,
-  "graphTooltip": 0,
-  "hideControls": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
   "id": null,
   "links": [],
-  "refresh": "30s",
-  "rows": [
+  "liveNow": false,
+  "panels": [
     {
-      "collapse": false,
       "collapsed": false,
-      "height": 100,
-      "panels": [
-        {
-          "cacheTimeout": null,
-          "colorBackground": false,
-          "colorValue": true,
-          "colors": [
-            "#d44a3a",
-            "#299c46",
-            "#299c46"
-          ],
-          "datasource": "${datasource}",
-          "decimals": 0,
-          "description": "Nodes that are currently running in this time window",
-          "format": "none",
-          "gauge": {
-            "maxValue": 100,
-            "minValue": 0,
-            "show": false,
-            "thresholdLabels": false,
-            "thresholdMarkers": true
-          },
-          "gridPos": {},
-          "id": 2,
-          "interval": null,
-          "links": [],
-          "mappingType": 1,
-          "mappingTypes": [
-            {
-              "name": "value to text",
-              "value": 1
-            },
-            {
-              "name": "range to text",
-              "value": 2
-            }
-          ],
-          "maxDataPoints": 100,
-          "nullPointMode": "connected",
-          "nullText": null,
-          "postfix": "",
-          "postfixFontSize": "50%",
-          "prefix": "",
-          "prefixFontSize": "50%",
-          "rangeMaps": [
-            {
-              "from": "null",
-              "text": "N/A",
-              "to": "null"
-            }
-          ],
-          "span": 1,
-          "sparkline": {
-            "fillColor": "rgba(31, 118, 189, 0.18)",
-            "full": false,
-            "lineColor": "rgb(31, 120, 193)",
-            "show": false
-          },
-          "tableColumn": "",
-          "targets": [
-            {
-              "expr": "count(mcac_compaction_completed_tasks{cluster=~\"$cluster\", dc=~\"$dc\", rack=~\"$rack\", instance=~\"$host\"} >= 0) or vector(0)",
-              "format": "time_series",
-              "intervalFactor": 2,
-              "legendFormat": "",
-              "refId": "A"
-            }
-          ],
-          "thresholds": "0.1,1000",
-          "title": "Nodes Up",
-          "type": "singlestat",
-          "valueFontSize": "80%",
-          "valueMaps": [
-            {
-              "op": "=",
-              "text": "N/A",
-              "value": "null"
-            }
-          ],
-          "valueName": "avg"
-        },
-        {
-          "cacheTimeout": null,
-          "colorBackground": false,
-          "colorValue": true,
-          "colors": [
-            "#299c46",
-            "rgba(237, 129, 40, 0.89)",
-            "#d44a3a"
-          ],
-          "datasource": "${datasource}",
-          "decimals": 0,
-          "description": "Nodes that are currently not running in this time window",
-          "format": "none",
-          "gauge": {
-            "maxValue": 100,
-            "minValue": 0,
-            "show": false,
-            "thresholdLabels": false,
-            "thresholdMarkers": true
-          },
-          "gridPos": {},
-          "id": 3,
-          "interval": null,
-          "links": [],
-          "mappingType": 1,
-          "mappingTypes": [
-            {
-              "name": "value to text",
-              "value": 1
-            },
-            {
-              "name": "range to text",
-              "value": 2
-            }
-          ],
-          "maxDataPoints": 100,
-          "nullPointMode": "connected",
-          "nullText": null,
-          "postfix": "",
-          "postfixFontSize": "50%",
-          "prefix": "",
-          "prefixFontSize": "50%",
-          "rangeMaps": [
-            {
-              "from": "null",
-              "text": "N/A",
-              "to": "null"
-            }
-          ],
-          "span": 1,
-          "sparkline": {
-            "fillColor": "rgba(31, 118, 189, 0.18)",
-            "full": false,
-            "lineColor": "rgb(31, 120, 193)",
-            "show": false
-          },
-          "tableColumn": "",
-          "targets": [
-            {
-              "expr": "count(absent(sum(rate(mcac_compaction_completed_tasks{cluster=~\"$cluster\", dc=~\"$dc\", rack=~\"$rack\", instance=~\"$host\"}[5m])))) OR vector(0)",
-              "format": "time_series",
-              "intervalFactor": 2,
-              "legendFormat": "",
-              "refId": "A"
-            }
-          ],
-          "thresholds": "1,2",
-          "title": "Nodes Down",
-          "type": "singlestat",
-          "valueFontSize": "80%",
-          "valueMaps": [
-            {
-              "op": "=",
-              "text": "N/A",
-              "value": "null"
-            }
-          ],
-          "valueName": "avg"
-        },
-        {
-          "cacheTimeout": null,
-          "colorBackground": false,
-          "colorValue": false,
-          "colors": [
-            "#299c46",
-            "rgba(237, 129, 40, 0.89)",
-            "#d44a3a"
-          ],
-          "datasource": "${datasource}",
-          "decimals": 0,
-          "description": "Rate of compactions during this window",
-          "format": "none",
-          "gauge": {
-            "maxValue": 100,
-            "minValue": 0,
-            "show": false,
-            "thresholdLabels": false,
-            "thresholdMarkers": true
-          },
-          "gridPos": {},
-          "id": 4,
-          "interval": null,
-          "links": [],
-          "mappingType": 1,
-          "mappingTypes": [
-            {
-              "name": "value to text",
-              "value": 1
-            },
-            {
-              "name": "range to text",
-              "value": 2
-            }
-          ],
-          "maxDataPoints": 100,
-          "nullPointMode": "connected",
-          "nullText": null,
-          "postfix": "",
-          "postfixFontSize": "50%",
-          "prefix": "",
-          "prefixFontSize": "50%",
-          "rangeMaps": [
-            {
-              "from": "null",
-              "text": "N/A",
-              "to": "null"
-            }
-          ],
-          "span": 1,
-          "sparkline": {
-            "fillColor": "rgba(31, 118, 189, 0.18)",
-            "full": false,
-            "lineColor": "rgb(31, 120, 193)",
-            "show": true
-          },
-          "tableColumn": "",
-          "targets": [
-            {
-              "expr": "sum(rate(mcac_compaction_completed_tasks{cluster=~\"$cluster\", dc=~\"$dc\", rack=~\"$rack\", instance=~\"$host\"}[$rate]))",
-              "format": "time_series",
-              "intervalFactor": 2,
-              "legendFormat": "",
-              "refId": "A"
-            }
-          ],
-          "thresholds": "",
-          "title": "Compactions / $rate",
-          "type": "singlestat",
-          "valueFontSize": "80%",
-          "valueMaps": [
-            {
-              "op": "=",
-              "text": "N/A",
-              "value": "null"
-            }
-          ],
-          "valueName": "avg"
-        },
-        {
-          "cacheTimeout": null,
-          "colorBackground": false,
-          "colorValue": false,
-          "colors": [
-            "#299c46",
-            "rgba(237, 129, 40, 0.89)",
-            "#d44a3a"
-          ],
-          "datasource": "${datasource}",
-          "decimals": 0,
-          "description": "Rate of CQL requests during this window",
-          "format": "none",
-          "gauge": {
-            "maxValue": 100,
-            "minValue": 0,
-            "show": false,
-            "thresholdLabels": false,
-            "thresholdMarkers": true
-          },
-          "gridPos": {},
-          "id": 5,
-          "interval": null,
-          "links": [],
-          "mappingType": 1,
-          "mappingTypes": [
-            {
-              "name": "value to text",
-              "value": 1
-            },
-            {
-              "name": "range to text",
-              "value": 2
-            }
-          ],
-          "maxDataPoints": 100,
-          "nullPointMode": "connected",
-          "nullText": null,
-          "postfix": "",
-          "postfixFontSize": "50%",
-          "prefix": "",
-          "prefixFontSize": "50%",
-          "rangeMaps": [
-            {
-              "from": "null",
-              "text": "N/A",
-              "to": "null"
-            }
-          ],
-          "span": 1,
-          "sparkline": {
-            "fillColor": "rgba(31, 118, 189, 0.18)",
-            "full": false,
-            "lineColor": "rgb(31, 120, 193)",
-            "show": true
-          },
-          "tableColumn": "",
-          "targets": [
-            {
-              "expr": "sum(irate(dse_client_request_latency_total{cluster=~\"$cluster\", dc=~\"$dc\", rack=~\"$rack\", instance=~\"$host\"}[$rate]))",
-              "format": "time_series",
-              "intervalFactor": 2,
-              "legendFormat": "",
-              "refId": "A"
-            }
-          ],
-          "thresholds": "",
-          "title": "CQL Requests / $rate",
-          "type": "singlestat",
-          "valueFontSize": "80%",
-          "valueMaps": [
-            {
-              "op": "=",
-              "text": "N/A",
-              "value": "null"
-            }
-          ],
-          "valueName": "avg"
-        },
-        {
-          "cacheTimeout": null,
-          "colorBackground": false,
-          "colorValue": true,
-          "colors": [
-            "#299c46",
-            "rgba(237, 129, 40, 0.89)",
-            "#d44a3a"
-          ],
-          "datasource": "${datasource}",
-          "decimals": 0,
-          "description": "Rate of Dropped requests during this window",
-          "format": "none",
-          "gauge": {
-            "maxValue": 100,
-            "minValue": 0,
-            "show": false,
-            "thresholdLabels": false,
-            "thresholdMarkers": true
-          },
-          "gridPos": {},
-          "id": 6,
-          "interval": null,
-          "links": [],
-          "mappingType": 1,
-          "mappingTypes": [
-            {
-              "name": "value to text",
-              "value": 1
-            },
-            {
-              "name": "range to text",
-              "value": 2
-            }
-          ],
-          "maxDataPoints": 100,
-          "nullPointMode": "connected",
-          "nullText": null,
-          "postfix": "",
-          "postfixFontSize": "50%",
-          "prefix": "",
-          "prefixFontSize": "50%",
-          "rangeMaps": [
-            {
-              "from": "null",
-              "text": "N/A",
-              "to": "null"
-            }
-          ],
-          "span": 1,
-          "sparkline": {
-            "fillColor": "rgba(31, 118, 189, 0.18)",
-            "full": false,
-            "lineColor": "rgb(31, 120, 193)",
-            "show": true
-          },
-          "tableColumn": "",
-          "targets": [
-            {
-              "expr": "sum(irate(mcac_table_dropped_mutations_total{cluster=~\"$cluster\", dc=~\"$dc\", rack=~\"$rack\", instance=~\"$host\"}[$rate]))",
-              "format": "time_series",
-              "intervalFactor": 2,
-              "legendFormat": "",
-              "refId": "A"
-            }
-          ],
-          "thresholds": "30,300",
-          "title": "Dropped Messages / $rate",
-          "type": "singlestat",
-          "valueFontSize": "80%",
-          "valueMaps": [
-            {
-              "op": "=",
-              "text": "N/A",
-              "value": "null"
-            }
-          ],
-          "valueName": "avg"
-        },
-        {
-          "content": "<a href=\"https://cassandra.apache.org\" target=\"new\"><img src=\"https://cassandra.apache.org/img/cassandra_logo.png\"/></a>",
-          "datasource": null,
-          "gridPos": {},
-          "id": 7,
-          "mode": "html",
-          "span": 2,
-          "title": "",
-          "transparent": true,
-          "type": "text"
-        },
-        {
-          "cacheTimeout": null,
-          "colorBackground": false,
-          "colorValue": true,
-          "colors": [
-            "#299c46",
-            "rgba(237, 129, 40, 0.89)",
-            "#d44a3a"
-          ],
-          "datasource": "${datasource}",
-          "decimals": 0,
-          "description": "Number of connected clients during this time window",
-          "format": "none",
-          "gauge": {
-            "maxValue": 100,
-            "minValue": 0,
-            "show": false,
-            "thresholdLabels": false,
-            "thresholdMarkers": true
-          },
-          "gridPos": {},
-          "id": 8,
-          "interval": null,
-          "links": [],
-          "mappingType": 1,
-          "mappingTypes": [
-            {
-              "name": "value to text",
-              "value": 1
-            },
-            {
-              "name": "range to text",
-              "value": 2
-            }
-          ],
-          "maxDataPoints": 100,
-          "nullPointMode": "connected",
-          "nullText": null,
-          "postfix": "",
-          "postfixFontSize": "50%",
-          "prefix": "",
-          "prefixFontSize": "50%",
-          "rangeMaps": [
-            {
-              "from": "null",
-              "text": "N/A",
-              "to": "null"
-            }
-          ],
-          "span": 1,
-          "sparkline": {
-            "fillColor": "rgba(31, 118, 189, 0.18)",
-            "full": false,
-            "lineColor": "rgb(31, 120, 193)",
-            "show": true
-          },
-          "tableColumn": "",
-          "targets": [
-            {
-              "expr": "sum(mcac_client_connected_native_clients{cluster=~\"$cluster\", dc=~\"$dc\", rack=~\"$rack\", instance=~\"$host\"})",
-              "format": "time_series",
-              "intervalFactor": 2,
-              "legendFormat": "",
-              "refId": "A"
-            }
-          ],
-          "thresholds": "100,1000",
-          "title": "CQL Clients",
-          "type": "singlestat",
-          "valueFontSize": "80%",
-          "valueMaps": [
-            {
-              "op": "=",
-              "text": "N/A",
-              "value": "null"
-            }
-          ],
-          "valueName": "avg"
-        },
-        {
-          "cacheTimeout": null,
-          "colorBackground": false,
-          "colorValue": true,
-          "colors": [
-            "#299c46",
-            "rgba(237, 129, 40, 0.89)",
-            "#d44a3a"
-          ],
-          "datasource": "${datasource}",
-          "description": "Client timeouts over the last $rate",
-          "format": "none",
-          "gauge": {
-            "maxValue": 100,
-            "minValue": 0,
-            "show": false,
-            "thresholdLabels": false,
-            "thresholdMarkers": true
-          },
-          "gridPos": {},
-          "id": 9,
-          "interval": null,
-          "links": [],
-          "mappingType": 1,
-          "mappingTypes": [
-            {
-              "name": "value to text",
-              "value": 1
-            },
-            {
-              "name": "range to text",
-              "value": 2
-            }
-          ],
-          "maxDataPoints": 100,
-          "nullPointMode": "connected",
-          "nullText": null,
-          "postfix": "",
-          "postfixFontSize": "50%",
-          "prefix": "",
-          "prefixFontSize": "50%",
-          "rangeMaps": [
-            {
-              "from": "null",
-              "text": "N/A",
-              "to": "null"
-            }
-          ],
-          "span": 1,
-          "sparkline": {
-            "fillColor": "rgba(31, 118, 189, 0.18)",
-            "full": false,
-            "lineColor": "rgb(31, 120, 193)",
-            "show": true
-          },
-          "tableColumn": "",
-          "targets": [
-            {
-              "expr": "sum(irate(mcac_client_request_timeouts_total{cluster=~\"$cluster\", dc=~\"$dc\", rack=~\"$rack\", instance=~\"$host\"}[$rate]))",
-              "format": "time_series",
-              "intervalFactor": 2,
-              "legendFormat": "",
-              "refId": "A"
-            }
-          ],
-          "thresholds": "100,300",
-          "title": "Timeouts / $rate",
-          "type": "singlestat",
-          "valueFontSize": "80%",
-          "valueMaps": [
-            {
-              "op": "=",
-              "text": "N/A",
-              "value": "null"
-            }
-          ],
-          "valueName": "avg"
-        },
-        {
-          "cacheTimeout": null,
-          "colorBackground": false,
-          "colorValue": true,
-          "colors": [
-            "#299c46",
-            "rgba(237, 129, 40, 0.89)",
-            "#d44a3a"
-          ],
-          "datasource": "${datasource}",
-          "description": "Hints stored over the last $rate",
-          "format": "none",
-          "gauge": {
-            "maxValue": 100,
-            "minValue": 0,
-            "show": false,
-            "thresholdLabels": false,
-            "thresholdMarkers": true
-          },
-          "gridPos": {},
-          "id": 10,
-          "interval": null,
-          "links": [],
-          "mappingType": 1,
-          "mappingTypes": [
-            {
-              "name": "value to text",
-              "value": 1
-            },
-            {
-              "name": "range to text",
-              "value": 2
-            }
-          ],
-          "maxDataPoints": 100,
-          "nullPointMode": "connected",
-          "nullText": null,
-          "postfix": "",
-          "postfixFontSize": "50%",
-          "prefix": "",
-          "prefixFontSize": "50%",
-          "rangeMaps": [
-            {
-              "from": "null",
-              "text": "N/A",
-              "to": "null"
-            }
-          ],
-          "span": 1,
-          "sparkline": {
-            "fillColor": "rgba(31, 118, 189, 0.18)",
-            "full": false,
-            "lineColor": "rgb(31, 120, 193)",
-            "show": true
-          },
-          "tableColumn": "",
-          "targets": [
-            {
-              "expr": "sum(irate(mcac_storage_hints_on_disk_total{cluster=~\"$cluster\", dc=~\"$dc\", rack=~\"$rack\", instance=~\"$host\"}[$rate]))",
-              "format": "time_series",
-              "intervalFactor": 2,
-              "legendFormat": "",
-              "refId": "A"
-            }
-          ],
-          "thresholds": "1000,30000",
-          "title": "Hints / $rate",
-          "type": "singlestat",
-          "valueFontSize": "80%",
-          "valueMaps": [
-            {
-              "op": "=",
-              "text": "N/A",
-              "value": "null"
-            }
-          ],
-          "valueName": "avg"
-        },
-        {
-          "cacheTimeout": null,
-          "colorBackground": false,
-          "colorValue": false,
-          "colors": [
-            "#299c46",
-            "rgba(237, 129, 40, 0.89)",
-            "#d44a3a"
-          ],
-          "datasource": "${datasource}",
-          "description": "Data",
-          "format": "bytes",
-          "gauge": {
-            "maxValue": 100,
-            "minValue": 0,
-            "show": false,
-            "thresholdLabels": false,
-            "thresholdMarkers": true
-          },
-          "gridPos": {},
-          "id": 11,
-          "interval": null,
-          "links": [],
-          "mappingType": 1,
-          "mappingTypes": [
-            {
-              "name": "value to text",
-              "value": 1
-            },
-            {
-              "name": "range to text",
-              "value": 2
-            }
-          ],
-          "maxDataPoints": 100,
-          "nullPointMode": "connected",
-          "nullText": null,
-          "postfix": "",
-          "postfixFontSize": "50%",
-          "prefix": "",
-          "prefixFontSize": "50%",
-          "rangeMaps": [
-            {
-              "from": "null",
-              "text": "N/A",
-              "to": "null"
-            }
-          ],
-          "span": 1,
-          "sparkline": {
-            "fillColor": "rgba(31, 118, 189, 0.18)",
-            "full": false,
-            "lineColor": "rgb(31, 120, 193)",
-            "show": true
-          },
-          "tableColumn": "",
-          "targets": [
-            {
-              "expr": "sum(mcac_table_live_disk_space_used_total{cluster=~\"$cluster\", dc=~\"$dc\", rack=~\"$rack\", keyspace=~\"$keyspace\", table=~\"$table\", instance=~\"$host\"})",
-              "format": "time_series",
-              "intervalFactor": 2,
-              "legendFormat": "",
-              "refId": "A"
-            }
-          ],
-          "thresholds": "",
-          "title": "Data Size",
-          "type": "singlestat",
-          "valueFontSize": "80%",
-          "valueMaps": [
-            {
-              "op": "=",
-              "text": "N/A",
-              "value": "null"
-            }
-          ],
-          "valueName": "avg"
-        },
-        {
-          "cacheTimeout": null,
-          "colorBackground": false,
-          "colorValue": false,
-          "colors": [
-            "#299c46",
-            "rgba(237, 129, 40, 0.89)",
-            "#d44a3a"
-          ],
-          "datasource": "${datasource}",
-          "decimals": 1,
-          "description": "Data",
-          "format": "ms",
-          "gauge": {
-            "maxValue": 100,
-            "minValue": 0,
-            "show": false,
-            "thresholdLabels": false,
-            "thresholdMarkers": true
-          },
-          "gridPos": {},
-          "id": 12,
-          "interval": null,
-          "links": [],
-          "mappingType": 1,
-          "mappingTypes": [
-            {
-              "name": "value to text",
-              "value": 1
-            },
-            {
-              "name": "range to text",
-              "value": 2
-            }
-          ],
-          "maxDataPoints": 100,
-          "nullPointMode": "connected",
-          "nullText": null,
-          "postfix": "",
-          "postfixFontSize": "50%",
-          "prefix": "",
-          "prefixFontSize": "50%",
-          "rangeMaps": [
-            {
-              "from": "null",
-              "text": "N/A",
-              "to": "null"
-            }
-          ],
-          "span": 1,
-          "sparkline": {
-            "fillColor": "rgba(31, 118, 189, 0.18)",
-            "full": false,
-            "lineColor": "rgb(31, 120, 193)",
-            "show": true
-          },
-          "tableColumn": "",
-          "targets": [
-            {
-              "expr": "sum(rate(mcac_jvm_gc_time{cluster=~\"$cluster\", dc=~\"$dc\", rack=~\"$rack\", instance=~\"$host\"}[$rate]))",
-              "format": "time_series",
-              "intervalFactor": 2,
-              "legendFormat": "",
-              "refId": "A"
-            }
-          ],
-          "thresholds": "",
-          "title": "GC Time / $rate",
-          "type": "singlestat",
-          "valueFontSize": "80%",
-          "valueMaps": [
-            {
-              "op": "=",
-              "text": "N/A",
-              "value": "null"
-            }
-          ],
-          "valueName": "avg"
-        }
-      ],
-      "repeat": null,
-      "repeatIteration": null,
-      "repeatRowId": null,
-      "showTitle": true,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
       "title": "Cluster Overview",
-      "titleSize": "h6",
       "type": "row"
     },
     {
-      "collapse": false,
-      "collapsed": false,
-      "height": 300,
-      "panels": [
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": "${datasource}",
-          "description": "(no keyspace/table filters apply)",
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {},
-          "id": 13,
-          "legend": {
-            "alignAsTable": false,
-            "avg": false,
-            "current": false,
-            "hideEmpty": true,
-            "hideZero": true,
-            "max": false,
-            "min": false,
-            "rightSide": false,
-            "show": true,
-            "sideWidth": null,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "links": [],
-          "nullPointMode": "null",
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "seriesOverrides": [
-            {
-              "alias": "/.*Connected/",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "span": 4,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "sum(irate(mcac_client_request_latency_total{cluster=~\"$cluster\", dc=~\"$dc\", rack=~\"$rack\", instance=~\"$host\"}[$rate])) by ($by, request_type)",
-              "format": "time_series",
-              "intervalFactor": 2,
-              "legendFormat": "{{$by}}:{{request_type}}",
-              "refId": "A"
-            },
-            {
-              "expr": "sum(mcac_client_connected_native_clients{cluster=~\"$cluster\", dc=~\"$dc\", rack=~\"$rack\", instance=~\"$host\"}) by ($by)",
-              "format": "time_series",
-              "intervalFactor": 2,
-              "legendFormat": "{{$by}}:Clients Connected",
-              "refId": "B"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeShift": null,
-          "title": "Requests Served / $by / $rate",
-          "tooltip": {
-            "shared": true,
-            "sort": 0,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "short",
-              "label": null,
-              "logBase": 1,
-              "max": null,
-              "min": null,
-              "show": true
-            },
-            {
-              "format": "short",
-              "label": "Clients Connected",
-              "logBase": 1,
-              "max": null,
-              "min": null,
-              "show": true
-            }
-          ]
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          }
         },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 3, "x": 0, "y": 1 },
+      "id": 1,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
         {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": "${datasource}",
-          "description": "(no keyspace/table filters apply)",
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {},
-          "id": 14,
-          "legend": {
-            "alignAsTable": false,
-            "avg": false,
-            "current": false,
-            "hideEmpty": true,
-            "hideZero": true,
-            "max": false,
-            "min": false,
-            "rightSide": false,
-            "show": true,
-            "sideWidth": null,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "links": [],
-          "nullPointMode": "null",
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "seriesOverrides": [],
-          "spaceLength": 10,
-          "span": 4,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "histogram_quantile($latency, sum(rate(mcac_client_request_latency_bucket{cluster=~\"$cluster\", dc=~\"$dc\", rack=~\"$rack\", instance=~\"$host\"}[$rate])) by (le, request_type, $by))",
-              "format": "time_series",
-              "intervalFactor": 2,
-              "legendFormat": "$by:{{$by}} {{$latency}} {{request_type}}",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeShift": null,
-          "title": "Coordinator $latency Latency / $by",
-          "tooltip": {
-            "shared": true,
-            "sort": 0,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "\u00b5s",
-              "label": null,
-              "logBase": 1,
-              "max": null,
-              "min": 0,
-              "show": true
-            },
-            {
-              "format": "\u00b5s",
-              "label": null,
-              "logBase": 1,
-              "max": null,
-              "min": 0,
-              "show": true
-            }
-          ]
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": "${datasource}",
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {},
-          "id": 15,
-          "legend": {
-            "alignAsTable": false,
-            "avg": false,
-            "current": false,
-            "hideEmpty": true,
-            "hideZero": true,
-            "max": false,
-            "min": false,
-            "rightSide": false,
-            "show": true,
-            "sideWidth": null,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "links": [],
-          "nullPointMode": "null",
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "seriesOverrides": [
-            {
-              "alias": "/.*Flushes/",
-              "bars": true,
-              "lines": false,
-              "yaxis": 2,
-              "zindex": -3
-            }
-          ],
-          "spaceLength": 10,
-          "span": 4,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "sum(mcac_table_memtable_off_heap_size{cluster=~\"$cluster\", dc=~\"$dc\", rack=~\"$rack\", keyspace=~\"$keyspace\", table=~\"$table\", instance=~\"$host\"}) by ($by)",
-              "format": "time_series",
-              "intervalFactor": 2,
-              "legendFormat": "{{$by}} : Off Heap",
-              "refId": "A"
-            },
-            {
-              "expr": "sum(mcac_table_memtable_on_heap_size{cluster=~\"$cluster\", dc=~\"$dc\", rack=~\"$rack\", keyspace=~\"$keyspace\", table=~\"$table\", instance=~\"$host\"}) by ($by)",
-              "format": "time_series",
-              "intervalFactor": 2,
-              "legendFormat": "{{$by}} : On Heap",
-              "refId": "B"
-            },
-            {
-              "expr": "sum(idelta(mcac_table_memtable_switch_count_total{cluster=~\"$cluster\", dc=~\"$dc\", rack=~\"$rack\", keyspace=~\"$keyspace\", table=~\"$table\", instance=~\"$host\"}[$rate])) by ($by)",
-              "format": "time_series",
-              "intervalFactor": 2,
-              "legendFormat": "{{$by}} : Flushes",
-              "refId": "C"
-            },
-            {
-              "expr": "sum(idelta(mcac_table_pending_flushes_total{cluster=~\"$cluster\", dc=~\"$dc\", rack=~\"$rack\", keyspace=~\"$keyspace\", table=~\"$table\", instance=~\"$host\"}[$rate])) by ($by)",
-              "format": "time_series",
-              "intervalFactor": 2,
-              "legendFormat": "{{$by}} : Pending Flushes",
-              "refId": "D"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeShift": null,
-          "title": "Memtable Space $keyspace.$table / $by",
-          "tooltip": {
-            "shared": true,
-            "sort": 0,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "bytes",
-              "label": null,
-              "logBase": 1,
-              "max": null,
-              "min": 0,
-              "show": true
-            },
-            {
-              "format": "short",
-              "label": "Flush",
-              "logBase": 1,
-              "max": null,
-              "min": 0,
-              "show": true
-            }
-          ]
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": "${datasource}",
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {},
-          "id": 16,
-          "legend": {
-            "alignAsTable": false,
-            "avg": false,
-            "current": false,
-            "hideEmpty": true,
-            "hideZero": true,
-            "max": false,
-            "min": false,
-            "rightSide": false,
-            "show": true,
-            "sideWidth": null,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "links": [],
-          "nullPointMode": "null",
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "seriesOverrides": [
-            {
-              "alias": "/.*Compactions/",
-              "bars": true,
-              "lines": false,
-              "yaxis": 2,
-              "zindex": -3
-            }
-          ],
-          "spaceLength": 10,
-          "span": 4,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "sum(irate(mcac_table_compaction_bytes_written_total{cluster=~\"$cluster\", dc=~\"$dc\", rack=~\"$rack\", keyspace=~\"$keyspace\", table=~\"$table\", instance=~\"$host\"}[$rate])) by ($by)",
-              "format": "time_series",
-              "intervalFactor": 2,
-              "legendFormat": "{{by}} : Bytes Compacted",
-              "refId": "A"
-            },
-            {
-              "expr": "sum(irate(mcac_table_pending_compactions{cluster=~\"$cluster\", dc=~\"$dc\", rack=~\"$rack\", keyspace=~\"$keyspace\", table=~\"$table\", instance=~\"$host\"}[$rate])) by ($by)",
-              "format": "time_series",
-              "intervalFactor": 2,
-              "legendFormat": "{{by}} : Pending Compactions",
-              "refId": "B"
-            },
-            {
-              "expr": "sum(irate(mcac_compaction_completed_tasks{cluster=~\"$cluster\", dc=~\"$dc\", rack=~\"$rack\", instance=~\"$host\"}[$rate])) by ($by)",
-              "format": "time_series",
-              "intervalFactor": 2,
-              "legendFormat": "{{by}} : Completed Compactions",
-              "refId": "C"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeShift": null,
-          "title": "Compactions $keyspace.$table / $by",
-          "tooltip": {
-            "shared": true,
-            "sort": 0,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "bps",
-              "label": null,
-              "logBase": 1,
-              "max": null,
-              "min": 0,
-              "show": true
-            },
-            {
-              "format": "short",
-              "label": "Count",
-              "logBase": 1,
-              "max": null,
-              "min": 0,
-              "show": true
-            }
-          ]
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": "${datasource}",
-          "description": "",
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {},
-          "id": 17,
-          "legend": {
-            "alignAsTable": false,
-            "avg": false,
-            "current": false,
-            "hideEmpty": true,
-            "hideZero": true,
-            "max": false,
-            "min": false,
-            "rightSide": false,
-            "show": true,
-            "sideWidth": null,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "links": [],
-          "nullPointMode": "null",
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "seriesOverrides": [],
-          "spaceLength": 10,
-          "span": 4,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "histogram_quantile($latency, sum(irate(mcac_table_range_latency_bucket{cluster=~\"$cluster\", dc=~\"$dc\", rack=~\"$rack\", keyspace=~\"$keyspace\", table=~\"$table\", instance=~\"$host\"}[$rate])) by (le, $by))",
-              "format": "time_series",
-              "intervalFactor": 2,
-              "legendFormat": "$by:{{$by}} Local Range Scan",
-              "refId": "A"
-            },
-            {
-              "expr": "histogram_quantile($latency, sum(irate(mcac_table_read_latency_bucket{cluster=~\"$cluster\", dc=~\"$dc\", rack=~\"$rack\", keyspace=~\"$keyspace\", table=~\"$table\", instance=~\"$host\"}[$rate])) by (le, $by))",
-              "format": "time_series",
-              "intervalFactor": 2,
-              "legendFormat": "$by:{{$by}} Local Read",
-              "refId": "B"
-            },
-            {
-              "expr": "histogram_quantile($latency, sum(irate(mcac_table_write_latency_bucket{cluster=~\"$cluster\", dc=~\"$dc\", rack=~\"$rack\", keyspace=~\"$keyspace\", table=~\"$table\", instance=~\"$host\"}[$rate])) by (le, $by))",
-              "format": "time_series",
-              "intervalFactor": 2,
-              "legendFormat": "$by:{{$by}} Local Write",
-              "refId": "C"
-            },
-            {
-              "expr": "histogram_quantile($latency, sum(irate(mcac_table_coordinator_read_latency_bucket{cluster=~\"$cluster\", dc=~\"$dc\", rack=~\"$rack\", keyspace=~\"$keyspace\", table=~\"$table\"}[$rate])) by (le, $by))",
-              "format": "time_series",
-              "intervalFactor": 2,
-              "legendFormat": "$by:{{$by}} Coordinator Read",
-              "refId": "D"
-            },
-            {
-              "expr": "histogram_quantile($latency, sum(irate(mcac_table_coordinator_scan_latency_bucket{cluster=~\"$cluster\", dc=~\"$dc\", rack=~\"$rack\", keyspace=~\"$keyspace\", table=~\"$table\", instance=~\"$host\"}[$rate])) by (le, $by))",
-              "format": "time_series",
-              "intervalFactor": 2,
-              "legendFormat": "$by:{{$by}} Coordinator Range Scan",
-              "refId": "E"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeShift": null,
-          "title": "Table $latency Latency / $by",
-          "tooltip": {
-            "shared": true,
-            "sort": 0,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "\u00b5s",
-              "label": null,
-              "logBase": 1,
-              "max": null,
-              "min": 0,
-              "show": true
-            },
-            {
-              "format": "\u00b5s",
-              "label": null,
-              "logBase": 1,
-              "max": null,
-              "min": 0,
-              "show": true
-            }
-          ]
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": "${datasource}",
-          "description": "",
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {},
-          "id": 18,
-          "legend": {
-            "alignAsTable": false,
-            "avg": false,
-            "current": false,
-            "hideEmpty": true,
-            "hideZero": true,
-            "max": false,
-            "min": false,
-            "rightSide": false,
-            "show": true,
-            "sideWidth": null,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "links": [],
-          "nullPointMode": "null",
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "seriesOverrides": [],
-          "spaceLength": 10,
-          "span": 4,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "sum(irate(mcac_streaming_total_incoming_bytes_total{cluster=~\"$cluster\", dc=~\"$dc\", rack=~\"$rack\", instance=~\"$host\"}[$rate])) by ($by)",
-              "format": "time_series",
-              "intervalFactor": 2,
-              "legendFormat": "{{$by}}: Incoming Stream",
-              "refId": "A"
-            },
-            {
-              "expr": "sum(irate(mcac_streaming_total_outgoing_bytes_total{cluster=~\"$cluster\", dc=~\"$dc\", rack=~\"$rack\", instance=~\"$host\"}[$rate])) by ($by)",
-              "format": "time_series",
-              "intervalFactor": 2,
-              "legendFormat": "{{$by}}: Outgoing Stream",
-              "refId": "B"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeShift": null,
-          "title": "Streaming / $by / $rate",
-          "tooltip": {
-            "shared": true,
-            "sort": 0,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "Bps",
-              "label": null,
-              "logBase": 1,
-              "max": null,
-              "min": 0,
-              "show": true
-            },
-            {
-              "format": "Bps",
-              "label": null,
-              "logBase": 1,
-              "max": null,
-              "min": 0,
-              "show": true
-            }
-          ]
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "count(up{job=\"cassandra-maac\", cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$host\"} == 1) or vector(0)",
+          "legendFormat": "",
+          "refId": "A"
         }
       ],
-      "repeat": null,
-      "repeatIteration": null,
-      "repeatRowId": null,
-      "showTitle": true,
-      "title": "Condensed Metrics",
-      "titleSize": "h6",
+      "title": "Nodes Up",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 3, "x": 3, "y": 1 },
+      "id": 2,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "count(up{job=\"cassandra-maac\", cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$host\"} == 0) or vector(0)",
+          "legendFormat": "",
+          "refId": "A"
+        }
+      ],
+      "title": "Nodes Down",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "blue", "value": null }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 3, "x": 6, "y": 1 },
+      "id": 3,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum(rate(org_apache_cassandra_metrics_compaction_completed_tasks{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$host\"}[$rate]))",
+          "legendFormat": "",
+          "refId": "A"
+        }
+      ],
+      "title": "Compactions / $rate",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "blue", "value": null }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 3, "x": 9, "y": 1 },
+      "id": 4,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum(irate(org_apache_cassandra_metrics_client_request_latency_count{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$host\"}[$rate]))",
+          "legendFormat": "",
+          "refId": "A"
+        }
+      ],
+      "title": "CQL Requests / $rate",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 30 },
+              { "color": "red", "value": 300 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 3, "x": 12, "y": 1 },
+      "id": 5,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum(irate(org_apache_cassandra_metrics_dropped_message_dropped_total{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$host\"}[$rate]))",
+          "legendFormat": "",
+          "refId": "A"
+        }
+      ],
+      "title": "Dropped Messages / $rate",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 100 },
+              { "color": "red", "value": 1000 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 3, "x": 15, "y": 1 },
+      "id": 6,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum(org_apache_cassandra_metrics_client_connected_native_clients{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$host\"})",
+          "legendFormat": "",
+          "refId": "A"
+        }
+      ],
+      "title": "CQL Clients",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 100 },
+              { "color": "red", "value": 300 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 3, "x": 18, "y": 1 },
+      "id": 7,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum(irate(org_apache_cassandra_metrics_client_request_timeouts_total{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$host\"}[$rate]))",
+          "legendFormat": "",
+          "refId": "A"
+        }
+      ],
+      "title": "Timeouts / $rate",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 1000 },
+              { "color": "red", "value": 30000 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 3, "x": 0, "y": 5 },
+      "id": 8,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum(irate(org_apache_cassandra_metrics_storage_total_hints{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$host\"}[$rate]))",
+          "legendFormat": "",
+          "refId": "A"
+        }
+      ],
+      "title": "Hints / $rate",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "unit": "bytes",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "blue", "value": null }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 3, "x": 3, "y": 5 },
+      "id": 9,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum(org_apache_cassandra_metrics_table_live_disk_space_used{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", keyspace=~\"$keyspace\", table=~\"$table\", host_name=~\"$host\"})",
+          "legendFormat": "",
+          "refId": "A"
+        }
+      ],
+      "title": "Data Size",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "blue", "value": null }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 3, "x": 6, "y": 5 },
+      "id": 10,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum(rate(jvm_gc_collection_seconds_sum{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$host\"}[$rate]))",
+          "legendFormat": "",
+          "refId": "A"
+        }
+      ],
+      "title": "GC Time / $rate",
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
+      "id": 101,
+      "title": "Request Metrics",
       "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [ { "color": "green", "value": null } ]
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 10 },
+      "id": 11,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum(irate(org_apache_cassandra_metrics_client_request_latency_count{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$host\"}[$rate])) by ($by, request_type)",
+          "legendFormat": "{{$by}}:{{request_type}}",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum(org_apache_cassandra_metrics_client_connected_native_clients{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$host\"}) by ($by)",
+          "legendFormat": "{{$by}}:Clients Connected",
+          "refId": "B"
+        }
+      ],
+      "title": "Requests Served / $by / $rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [ { "color": "green", "value": null } ]
+          },
+          "unit": "\u00b5s"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 10 },
+      "id": 12,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "histogram_quantile($latency, sum(rate(org_apache_cassandra_metrics_client_request_latency_bucket{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$host\"}[$rate])) by (le, request_type, $by))",
+          "legendFormat": "$by:{{$by}} {{request_type}} p{{$latency}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Coordinator $latency Latency / $by",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 },
+      "id": 102,
+      "title": "Table Metrics",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [ { "color": "green", "value": null } ]
+          },
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 19 },
+      "id": 13,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum(org_apache_cassandra_metrics_table_memtable_off_heap_data_size{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", keyspace=~\"$keyspace\", table=~\"$table\", host_name=~\"$host\"}) by ($by)",
+          "legendFormat": "{{$by}} : Off Heap",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum(org_apache_cassandra_metrics_table_memtable_on_heap_data_size{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", keyspace=~\"$keyspace\", table=~\"$table\", host_name=~\"$host\"}) by ($by)",
+          "legendFormat": "{{$by}} : On Heap",
+          "refId": "B"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum(idelta(org_apache_cassandra_metrics_table_memtable_switch_count{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", keyspace=~\"$keyspace\", table=~\"$table\", host_name=~\"$host\"}[$rate])) by ($by)",
+          "legendFormat": "{{$by}} : Flushes",
+          "refId": "C"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum(idelta(org_apache_cassandra_metrics_table_pending_flushes{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", keyspace=~\"$keyspace\", table=~\"$table\", host_name=~\"$host\"}[$rate])) by ($by)",
+          "legendFormat": "{{$by}} : Pending Flushes",
+          "refId": "D"
+        }
+      ],
+      "title": "Memtable Space $keyspace.$table / $by",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [ { "color": "green", "value": null } ]
+          },
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 19 },
+      "id": 14,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum(irate(org_apache_cassandra_metrics_table_compaction_bytes_written{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", keyspace=~\"$keyspace\", table=~\"$table\", host_name=~\"$host\"}[$rate])) by ($by)",
+          "legendFormat": "{{$by}} : Bytes Compacted",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum(org_apache_cassandra_metrics_table_pending_compactions{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", keyspace=~\"$keyspace\", table=~\"$table\", host_name=~\"$host\"}) by ($by)",
+          "legendFormat": "{{$by}} : Pending Compactions",
+          "refId": "B"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum(irate(org_apache_cassandra_metrics_compaction_completed_tasks{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", host_name=~\"$host\"}[$rate])) by ($by)",
+          "legendFormat": "{{$by}} : Completed Compactions",
+          "refId": "C"
+        }
+      ],
+      "title": "Compactions $keyspace.$table / $by",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [ { "color": "green", "value": null } ]
+          },
+          "unit": "\u00b5s"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 19 },
+      "id": 15,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "histogram_quantile($latency, sum(irate(org_apache_cassandra_metrics_table_range_latency_bucket{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", keyspace=~\"$keyspace\", table=~\"$table\", host_name=~\"$host\"}[$rate])) by (le, $by))",
+          "legendFormat": "$by:{{$by}} Local Range Scan",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "histogram_quantile($latency, sum(irate(org_apache_cassandra_metrics_table_read_latency_bucket{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", keyspace=~\"$keyspace\", table=~\"$table\", host_name=~\"$host\"}[$rate])) by (le, $by))",
+          "legendFormat": "$by:{{$by}} Local Read",
+          "refId": "B"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "histogram_quantile($latency, sum(irate(org_apache_cassandra_metrics_table_write_latency_bucket{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", keyspace=~\"$keyspace\", table=~\"$table\", host_name=~\"$host\"}[$rate])) by (le, $by))",
+          "legendFormat": "$by:{{$by}} Local Write",
+          "refId": "C"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "histogram_quantile($latency, sum(irate(org_apache_cassandra_metrics_table_coordinator_read_latency_bucket{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", keyspace=~\"$keyspace\", table=~\"$table\", host_name=~\"$host\"}[$rate])) by (le, $by))",
+          "legendFormat": "$by:{{$by}} Coordinator Read",
+          "refId": "D"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "histogram_quantile($latency, sum(irate(org_apache_cassandra_metrics_table_coordinator_scan_latency_bucket{cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\", keyspace=~\"$keyspace\", table=~\"$table\", host_name=~\"$host\"}[$rate])) by (le, $by))",
+          "legendFormat": "$by:{{$by}} Coordinator Range Scan",
+          "refId": "E"
+        }
+      ],
+      "title": "Table $latency Latency / $by",
+      "type": "timeseries"
     }
   ],
-  "schemaVersion": 14,
+  "refresh": "30s",
+  "schemaVersion": 38,
   "style": "dark",
-  "tags": [
-    "os"
-  ],
+  "tags": ["cassandra"],
   "templating": {
     "list": [
       {
@@ -1467,7 +740,6 @@
         "type": "datasource"
       },
       {
-        "allValue": null,
         "current": {
           "text": "Cluster",
           "value": "cluster"
@@ -1478,24 +750,12 @@
         "multi": false,
         "name": "by",
         "options": [
-          {
-            "text": "Cluster",
-            "value": "cluster"
-          },
-          {
-            "text": "Datacenter",
-            "value": "dc"
-          },
-          {
-            "text": "Rack",
-            "value": "rack"
-          },
-          {
-            "text": "Host",
-            "value": "instance"
-          }
+          { "text": "Cluster", "value": "cluster" },
+          { "text": "Datacenter", "value": "datacenter" },
+          { "text": "Rack", "value": "rack" },
+          { "text": "Host", "value": "host_name" }
         ],
-        "query": "cluster,dc,rack,instance",
+        "query": "cluster,datacenter,rack,host_name",
         "refresh": 0,
         "type": "custom"
       },
@@ -1503,10 +763,7 @@
         "auto": false,
         "auto_count": 300,
         "auto_min": "10s",
-        "current": {
-          "text": "5m",
-          "value": "5m"
-        },
+        "current": { "text": "5m", "value": "5m" },
         "hide": 0,
         "label": "Rate",
         "name": "rate",
@@ -1517,181 +774,114 @@
       {
         "allValue": ".*",
         "current": {},
-        "datasource": {
-          "type": "prometheus",
-          "uid": "${datasource}"
-        },
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
         "hide": 0,
         "includeAll": true,
         "label": "Cluster",
         "multi": false,
         "name": "cluster",
         "options": [],
-        "query": "label_values(collectd_collectd_queue_length{}, cluster)",
+        "query": "label_values(up{job=\"cassandra-maac\"}, cluster)",
         "refresh": 2,
         "regex": "",
         "sort": 0,
-        "tagValuesQuery": "",
-        "tags": [],
-        "tagsQuery": "",
-        "type": "query",
-        "useTags": false
+        "type": "query"
       },
       {
         "allValue": ".*",
         "current": {},
-        "datasource": {
-          "type": "prometheus",
-          "uid": "${datasource}"
-        },
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
         "hide": 0,
         "includeAll": true,
-        "label": "DataCenter",
+        "label": "Datacenter",
         "multi": false,
-        "name": "dc",
+        "name": "datacenter",
         "options": [],
-        "query": "label_values(collectd_collectd_queue_length{cluster=~\"$cluster\"}, dc)",
+        "query": "label_values(up{job=\"cassandra-maac\", cluster=~\"$cluster\"}, datacenter)",
         "refresh": 2,
         "regex": "",
         "sort": 0,
-        "tagValuesQuery": "",
-        "tags": [],
-        "tagsQuery": "",
-        "type": "query",
-        "useTags": false
+        "type": "query"
       },
       {
         "allValue": ".*",
         "current": {},
-        "datasource": {
-          "type": "prometheus",
-          "uid": "${datasource}"
-        },
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
         "hide": 0,
         "includeAll": true,
         "label": "Rack",
         "multi": false,
         "name": "rack",
         "options": [],
-        "query": "label_values(collectd_collectd_queue_length{cluster=~\"$cluster\", dc=~\"$dc\"}, rack)",
+        "query": "label_values(up{job=\"cassandra-maac\", cluster=~\"$cluster\", datacenter=~\"$datacenter\"}, rack)",
         "refresh": 2,
         "regex": "",
         "sort": 0,
-        "tagValuesQuery": "",
-        "tags": [],
-        "tagsQuery": "",
-        "type": "query",
-        "useTags": false
+        "type": "query"
       },
       {
         "allValue": ".*",
         "current": {},
-        "datasource": {
-          "type": "prometheus",
-          "uid": "${datasource}"
-        },
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
         "hide": 0,
         "includeAll": true,
         "label": "Keyspace",
         "multi": false,
         "name": "keyspace",
         "options": [],
-        "query": "label_values(mcac_table_read_latency_total{cluster=~\"$cluster\", dc=~\"$dc\"}, keyspace)",
+        "query": "label_values(org_apache_cassandra_metrics_table_read_latency_count{cluster=~\"$cluster\"}, keyspace)",
         "refresh": 2,
         "regex": "",
         "sort": 0,
-        "tagValuesQuery": "",
-        "tags": [],
-        "tagsQuery": "",
-        "type": "query",
-        "useTags": false
+        "type": "query"
       },
       {
         "allValue": ".*",
         "current": {},
-        "datasource": {
-          "type": "prometheus",
-          "uid": "${datasource}"
-        },
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
         "hide": 0,
         "includeAll": true,
         "label": "Table",
         "multi": false,
         "name": "table",
         "options": [],
-        "query": "label_values(mcac_table_read_latency_total{cluster=~\"$cluster\", dc=~\"$dc\", keyspace=~\"$keyspace\"}, table)",
+        "query": "label_values(org_apache_cassandra_metrics_table_read_latency_count{cluster=~\"$cluster\", keyspace=~\"$keyspace\"}, table)",
         "refresh": 2,
         "regex": "",
         "sort": 0,
-        "tagValuesQuery": "",
-        "tags": [],
-        "tagsQuery": "",
-        "type": "query",
-        "useTags": false
+        "type": "query"
       },
       {
         "allValue": ".*",
         "current": {},
-        "datasource": {
-          "type": "prometheus",
-          "uid": "${datasource}"
-        },
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
         "hide": 0,
         "includeAll": true,
         "label": "Host",
         "multi": false,
         "name": "host",
         "options": [],
-        "query": "label_values(collectd_collectd_queue_length{cluster=~\"$cluster\", dc=~\"$dc\", rack=~\"$rack\"}, instance)",
+        "query": "label_values(up{job=\"cassandra-maac\", cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\"}, host_name)",
         "refresh": 2,
         "regex": "",
         "sort": 0,
-        "tagValuesQuery": "",
-        "tags": [],
-        "tagsQuery": "",
-        "type": "query",
-        "useTags": false
+        "type": "query"
       },
       {
-        "allValue": null,
-        "current": {
-          "text": "P95",
-          "value": "0.95"
-        },
+        "current": { "text": "P95", "value": "0.95" },
         "hide": 0,
         "includeAll": false,
         "label": "Percentile",
         "multi": false,
         "name": "latency",
         "options": [
-          {
-            "text": "P999",
-            "value": "0.999"
-          },
-          {
-            "text": "P99",
-            "value": "0.99"
-          },
-          {
-            "text": "P98",
-            "value": "0.98"
-          },
-          {
-            "text": "P95",
-            "value": "0.95"
-          },
-          {
-            "text": "P90",
-            "value": "0.90"
-          },
-          {
-            "text": "P75",
-            "value": "0.75"
-          },
-          {
-            "text": "P50",
-            "value": "0.50"
-          }
+          { "text": "P999", "value": "0.999" },
+          { "text": "P99", "value": "0.99" },
+          { "text": "P98", "value": "0.98" },
+          { "text": "P95", "value": "0.95" },
+          { "text": "P90", "value": "0.90" },
+          { "text": "P75", "value": "0.75" },
+          { "text": "P50", "value": "0.50" }
         ],
         "query": "0.999,0.99,0.98,0.95,0.90,0.75,0.50",
         "refresh": 0,
@@ -1699,34 +889,9 @@
       }
     ]
   },
-  "time": {
-    "from": "now-30m",
-    "to": "now"
-  },
+  "time": { "from": "now-30m", "to": "now" },
   "timepicker": {
-    "refresh_intervals": [
-      "5s",
-      "10s",
-      "30s",
-      "1m",
-      "5m",
-      "15m",
-      "30m",
-      "1h",
-      "2h",
-      "1d"
-    ],
-    "time_options": [
-      "5m",
-      "15m",
-      "1h",
-      "6h",
-      "12h",
-      "24h",
-      "2d",
-      "7d",
-      "30d"
-    ]
+    "refresh_intervals": ["5s", "10s", "30s", "1m", "5m", "15m", "30m", "1h", "2h", "1d"]
   },
   "timezone": "browser",
   "title": "Cassandra Cluster Condensed",

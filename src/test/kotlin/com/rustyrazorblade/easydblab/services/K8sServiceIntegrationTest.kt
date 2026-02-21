@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.github.dockerjava.api.model.Ulimit
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -34,7 +35,6 @@ import org.junit.jupiter.api.TestInstance
 import org.junit.jupiter.api.TestMethodOrder
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
-import com.github.dockerjava.api.model.Ulimit
 import org.slf4j.LoggerFactory
 import org.testcontainers.containers.output.Slf4jLogConsumer
 import org.testcontainers.junit.jupiter.Container
@@ -88,8 +88,7 @@ class K8sServiceIntegrationTest {
                     cmd.hostConfig!!
                         .withCgroupnsMode("host")
                         .withUlimits(listOf(Ulimit("nofile", 65536L, 65536L)))
-                }
-                .withLogConsumer(Slf4jLogConsumer(LoggerFactory.getLogger("k3s")))
+                }.withLogConsumer(Slf4jLogConsumer(LoggerFactory.getLogger("k3s")))
                 .withEnv("K3S_SNAPSHOTTER", "native") as K3sContainer
     }
 

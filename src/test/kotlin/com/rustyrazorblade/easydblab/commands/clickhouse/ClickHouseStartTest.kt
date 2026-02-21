@@ -93,7 +93,7 @@ class ClickHouseStartTest : BaseKoinTest() {
             .thenReturn(Result.success(Unit))
         whenever(mockK8sService.createLocalPersistentVolumes(any(), any(), any(), any(), any(), any(), any(), any()))
             .thenReturn(Result.success(Unit))
-        whenever(mockK8sService.createClickHouseS3Secret(any(), any(), any()))
+        whenever(mockK8sService.createClickHouseS3ConfigMap(any(), any(), any()))
             .thenReturn(Result.success(Unit))
         whenever(mockK8sService.applyResource(any(), any()))
             .thenReturn(Result.success(Unit))
@@ -221,7 +221,7 @@ class ClickHouseStartTest : BaseKoinTest() {
             val command = ClickHouseStart()
             command.execute()
 
-            verify(mockK8sService).createClickHouseS3Secret(
+            verify(mockK8sService).createClickHouseS3ConfigMap(
                 any(),
                 eq(Constants.ClickHouse.NAMESPACE),
                 any(),

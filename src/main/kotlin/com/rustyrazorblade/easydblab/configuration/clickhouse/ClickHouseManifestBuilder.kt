@@ -14,7 +14,7 @@ import io.fabric8.kubernetes.api.model.KeyToPathBuilder
 import io.fabric8.kubernetes.api.model.ObjectFieldSelectorBuilder
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaimBuilder
 import io.fabric8.kubernetes.api.model.Quantity
-import io.fabric8.kubernetes.api.model.SecretEnvSourceBuilder
+import io.fabric8.kubernetes.api.model.ConfigMapEnvSourceBuilder
 import io.fabric8.kubernetes.api.model.SecurityContextBuilder
 import io.fabric8.kubernetes.api.model.ServiceBuilder
 import io.fabric8.kubernetes.api.model.VolumeMountBuilder
@@ -602,7 +602,7 @@ class ClickHouseManifestBuilder(
             ).withEnvFrom(
                 io.fabric8.kubernetes.api.model
                     .EnvFromSourceBuilder()
-                    .withSecretRef(SecretEnvSourceBuilder().withName("clickhouse-s3-credentials").withOptional(true).build())
+                    .withConfigMapRef(ConfigMapEnvSourceBuilder().withName(Constants.ClickHouse.S3_CONFIG_NAME).withOptional(false).build())
                     .build(),
             ).withCommand(
                 "/bin/bash",

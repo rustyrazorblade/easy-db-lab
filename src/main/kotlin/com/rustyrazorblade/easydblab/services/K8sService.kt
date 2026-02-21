@@ -136,15 +136,13 @@ interface K8sService {
      *
      * @param controlHost The control node running the K3s server
      * @param namespace The namespace to create the secret in
-     * @param region AWS region for the S3 bucket
-     * @param bucket S3 bucket name
+     * @param s3EndpointUrl The S3 HTTPS endpoint URL for ClickHouse storage
      * @return Result indicating success or failure
      */
     fun createClickHouseS3Secret(
         controlHost: ClusterHost,
         namespace: String,
-        region: String,
-        bucket: String,
+        s3EndpointUrl: String,
     ): Result<Unit>
 
     /**
@@ -807,15 +805,11 @@ class DefaultK8sService(
     override fun createClickHouseS3Secret(
         controlHost: ClusterHost,
         namespace: String,
-        region: String,
-        bucket: String,
+        s3EndpointUrl: String,
     ): Result<Unit> =
         runCatching {
             log.info { "Creating ClickHouse S3 secret in namespace $namespace" }
-
-            // Build the S3 endpoint URL
-            val s3Endpoint = "https://$bucket.s3.$region.amazonaws.com/clickhouse/"
-            log.info { "S3 endpoint: $s3Endpoint" }
+            log.info { "S3 endpoint: $s3EndpointUrl" }
 
             createClient(controlHost).use { client ->
                 // Check if secret already exists and delete it
@@ -845,7 +839,7 @@ class DefaultK8sService(
                         .addToLabels("app.kubernetes.io/name", "clickhouse-server")
                         .endMetadata()
                         .withType("Opaque")
-                        .addToStringData("CLICKHOUSE_S3_ENDPOINT", s3Endpoint)
+                        .addToStringData("CLICKHOUSE_S3_ENDPOINT", s3EndpointUrl)
                         .build()
 
                 client

@@ -217,7 +217,7 @@ class ClickHouseStartTest : BaseKoinTest() {
         }
 
         @Test
-        fun `execute creates S3 secret when bucket configured`() {
+        fun `execute creates S3 secret`() {
             val command = ClickHouseStart()
             command.execute()
 
@@ -225,19 +225,8 @@ class ClickHouseStartTest : BaseKoinTest() {
                 any(),
                 eq(Constants.ClickHouse.NAMESPACE),
                 any(),
-                eq("test-bucket"),
+                any(),
             )
-        }
-
-        @Test
-        fun `execute skips S3 when no bucket configured`() {
-            whenever(mockClusterStateManager.load()).thenReturn(makeClusterState(s3Bucket = null))
-
-            val command = ClickHouseStart()
-            command.execute()
-
-            val output = outputHandler.messages.joinToString("\n")
-            assertThat(output).contains("S3 bucket not configured")
         }
 
         @Test

@@ -156,6 +156,22 @@ data class ClusterS3Path(
     fun toUri(): String = toString()
 
     /**
+     * Returns the HTTPS endpoint URL for this S3 path.
+     * Used by services like ClickHouse that need an HTTP endpoint rather than an s3:// URI.
+     *
+     * @param region AWS region for the S3 bucket
+     * @return The HTTPS endpoint URL (e.g. https://bucket.s3.us-west-2.amazonaws.com/clusters/name-id/clickhouse/)
+     */
+    fun toEndpointUrl(region: String): String {
+        val key = getKey()
+        return if (key.isEmpty()) {
+            "https://$bucket.s3.$region.amazonaws.com/"
+        } else {
+            "https://$bucket.s3.$region.amazonaws.com/$key/"
+        }
+    }
+
+    /**
      * Returns just the path portion without the s3://bucket prefix.
      * Useful for S3 SDK calls that require bucket and key separately.
      *

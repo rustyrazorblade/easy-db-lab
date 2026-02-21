@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.clickhouse.ClickHouseManifestBuilder
@@ -91,7 +92,7 @@ class ClickHouseStart : PicoBaseCommand() {
 
         ensureLocalStorageClass(controlNode)
         createLocalPersistentVolumes(controlNode, actualReplicas)
-        val bucket = setupS3SecretIfConfigured(controlNode)
+        val bucket = setupS3Secret(controlNode)
         applyManifestsAndConfigureCluster(controlNode, actualReplicas, replicasPerShard, clickHouseConfig)
         waitForPodsIfRequired(controlNode)
         displayAccessInformation(dbHosts.first().privateIp, bucket)
@@ -166,20 +167,14 @@ class ClickHouseStart : PicoBaseCommand() {
             }
     }
 
-    private fun setupS3SecretIfConfigured(controlNode: ClusterHost): String? {
-        val bucket = clusterState.s3Bucket
-        if (!bucket.isNullOrBlank()) {
-            log.info { "Creating S3 secret for s3_main storage policy" }
-            k8sService
-                .createClickHouseS3Secret(controlNode, Constants.ClickHouse.NAMESPACE, userConfig.region, bucket)
-                .getOrElse { exception ->
-                    log.warn { "Failed to create S3 secret: ${exception.message}" }
-                    outputHandler.handleMessage("Warning: S3 storage policy may not work (no S3 bucket configured)")
-                }
-        } else {
-            outputHandler.handleMessage("Note: S3 bucket not configured. Only 'local' storage policy available.")
-        }
-        return bucket
+    private fun setupS3Secret(controlNode: ClusterHost): String {
+        val s3Path = ClusterS3Path.from(clusterState)
+        val endpointUrl = s3Path.clickhouse().toEndpointUrl(userConfig.region)
+        log.info { "Creating S3 secret for s3_main storage policy" }
+        k8sService
+            .createClickHouseS3Secret(controlNode, Constants.ClickHouse.NAMESPACE, endpointUrl)
+            .getOrThrow()
+        return s3Path.bucket
     }
 
     private fun applyManifestsAndConfigureCluster(
@@ -221,17 +216,15 @@ class ClickHouseStart : PicoBaseCommand() {
 
     private fun displayAccessInformation(
         dbNodeIp: String,
-        bucket: String?,
+        bucket: String,
     ) {
+        val s3CacheSize = clusterState.clickHouseConfig?.s3CacheSize ?: Constants.ClickHouse.DEFAULT_S3_CACHE_SIZE
         outputHandler.handleMessage("")
         outputHandler.handleMessage("ClickHouse cluster deployed successfully!")
         outputHandler.handleMessage("")
         outputHandler.handleMessage("Storage policies available:")
         outputHandler.handleMessage("  - local: Local disk storage")
-        if (!bucket.isNullOrBlank()) {
-            val s3CacheSize = clusterState.clickHouseConfig?.s3CacheSize ?: Constants.ClickHouse.DEFAULT_S3_CACHE_SIZE
-            outputHandler.handleMessage("  - s3_main: S3 with local cache (bucket: $bucket, cache: $s3CacheSize)")
-        }
+        outputHandler.handleMessage("  - s3_main: S3 with local cache (bucket: $bucket, cache: $s3CacheSize)")
         outputHandler.handleMessage(
             """
 

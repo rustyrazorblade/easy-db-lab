@@ -115,9 +115,11 @@ class SetupInstance : PicoBaseCommand() {
             remoteOps.executeRemotely(h, "sudo bash setup_instance.sh").text
         }
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Control, "") { host ->
-            // Control nodes need minimal setup - just hostname configuration
-            // K3s installation will happen later in startK3sOnAllNodes()
-            remoteOps.executeRemotely(host.toHost(), "sudo hostnamectl set-hostname ${host.alias}").text
+            val h = host.toHost()
+            setup(h)
+            remoteOps.executeRemotely(h, "sudo hostnamectl set-hostname ${h.alias}").text
+            remoteOps.upload(h, Path.of("setup_instance.sh"), "setup_instance.sh")
+            remoteOps.executeRemotely(h, "sudo bash setup_instance.sh").text
         }
     }
 }

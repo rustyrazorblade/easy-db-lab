@@ -139,27 +139,6 @@ build {
     script = "install/install_k9s.sh"
   }
 
-  # install k3s startup scripts
-  provisioner "file" {
-    source      = "install/start_k3s_server.sh"
-    destination = "/tmp/start_k3s_server.sh"
-  }
-
-  provisioner "file" {
-    source      = "install/start_k3s_agent.sh"
-    destination = "/tmp/start_k3s_agent.sh"
-  }
-
-  provisioner "shell" {
-    inline = [
-      "sudo mv /tmp/start_k3s_server.sh /usr/local/bin/start-k3s-server.sh",
-      "sudo mv /tmp/start_k3s_agent.sh /usr/local/bin/start-k3s-agent.sh",
-      "sudo chmod +x /usr/local/bin/start-k3s-server.sh",
-      "sudo chmod +x /usr/local/bin/start-k3s-agent.sh",
-      "echo '✓ K3s startup scripts installed successfully'"
-    ]
-  }
-
   provisioner "shell" {
     inline = [
       "sudo apt install openjdk-8-jdk openjdk-8-dbg openjdk-11-jdk openjdk-11-dbg openjdk-17-jdk openjdk-17-dbg -y",

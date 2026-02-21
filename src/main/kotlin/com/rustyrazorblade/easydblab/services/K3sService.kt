@@ -16,6 +16,7 @@ import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import io.github.oshai.kotlinlogging.KLogger
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
+import java.nio.file.Files
 import java.nio.file.Path
 
 /**
@@ -121,6 +122,11 @@ class DefaultK3sService(
     K3sService {
     override val log: KLogger = KotlinLogging.logger {}
 
+    private companion object {
+        const val SERVER_SCRIPT_RESOURCE = "/com/rustyrazorblade/easydblab/services/start-k3s-server.sh"
+        const val SERVER_SCRIPT_PATH = "/usr/local/bin/start-k3s-server.sh"
+    }
+
     private val yamlMapper =
         ObjectMapper(YAMLFactory())
             .registerKotlinModule()
@@ -140,10 +146,13 @@ class DefaultK3sService(
         runCatching {
             log.debug { "Starting K3s server on ${host.alias}" }
 
-            // Call pre-installed script to install and start k3s
+            // Upload the startup script from classpath resources
+            uploadScript(host, SERVER_SCRIPT_RESOURCE, SERVER_SCRIPT_PATH)
+
+            // Call the uploaded script to install and start k3s
             remoteOps.executeRemotely(
                 host,
-                "sudo /usr/local/bin/start-k3s-server.sh",
+                "sudo $SERVER_SCRIPT_PATH",
                 output = true,
             )
 
@@ -242,4 +251,34 @@ class DefaultK3sService(
             // List all pods
             kubeService.listPods().getOrThrow()
         }
+
+    /**
+     * Uploads a script from classpath resources to a remote host.
+     *
+     * @param host The host to upload to
+     * @param resourcePath The classpath resource path
+     * @param remotePath The destination path on the remote host
+     */
+    private fun uploadScript(
+        host: Host,
+        resourcePath: String,
+        remotePath: String,
+    ) {
+        val scriptContent =
+            this::class.java.getResourceAsStream(resourcePath)
+                ?: error("Script not found: $resourcePath")
+
+        val tempFile = Files.createTempFile("k3s-", "-script.sh")
+        try {
+            scriptContent.use { input ->
+                Files.newOutputStream(tempFile).use { output ->
+                    input.copyTo(output)
+                }
+            }
+            remoteOps.upload(host, tempFile, remotePath)
+            remoteOps.executeRemotely(host, "sudo chmod +x $remotePath", output = false)
+        } finally {
+            Files.deleteIfExists(tempFile)
+        }
+    }
 }

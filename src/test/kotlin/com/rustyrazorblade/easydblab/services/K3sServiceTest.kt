@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
+import org.mockito.kotlin.doNothing
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
@@ -59,7 +60,8 @@ class K3sServiceTest : BaseKoinTest() {
         val scriptCommand = "sudo /usr/local/bin/start-k3s-server.sh"
         val successResponse = Response(text = "", stderr = "")
 
-        whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(scriptCommand), any(), any()))
+        doNothing().whenever(mockRemoteOps).upload(eq(testHost), any(), any())
+        whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
             .thenReturn(successResponse)
 
         // When
@@ -74,7 +76,12 @@ class K3sServiceTest : BaseKoinTest() {
     fun `start should return failure when script execution fails`() {
         // Given
         val scriptCommand = "sudo /usr/local/bin/start-k3s-server.sh"
+        val successResponse = Response(text = "", stderr = "")
 
+        doNothing().whenever(mockRemoteOps).upload(eq(testHost), any(), any())
+        // chmod succeeds but script execution fails
+        whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
+            .thenReturn(successResponse)
         whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(scriptCommand), any(), any()))
             .thenThrow(RuntimeException("Script execution failed"))
 
@@ -89,10 +96,10 @@ class K3sServiceTest : BaseKoinTest() {
 
     @Test
     fun `start should return failure when SSH operation throws exception`() {
-        // Given
-        val scriptCommand = "sudo /usr/local/bin/start-k3s-server.sh"
+        // Given - upload itself fails
+        doNothing().whenever(mockRemoteOps).upload(eq(testHost), any(), any())
 
-        whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(scriptCommand), any(), any()))
+        whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
             .thenThrow(RuntimeException("Connection refused"))
 
         // When

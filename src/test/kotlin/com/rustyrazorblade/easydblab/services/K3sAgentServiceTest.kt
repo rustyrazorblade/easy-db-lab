@@ -176,7 +176,11 @@ class K3sAgentServiceTest : BaseKoinTest() {
         val configResponse = Response(text = configContent, stderr = "")
         val scriptCommand = "sudo /usr/local/bin/start-k3s-agent.sh '$serverUrl' '$token'"
         val scriptResponse = Response(text = "", stderr = "")
+        val successResponse = Response(text = "", stderr = "")
 
+        doNothing().whenever(mockRemoteOps).upload(eq(testHost), any(), any())
+        whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
+            .thenReturn(successResponse)
         whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(configCommand), any(), any()))
             .thenReturn(configResponse)
         whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(scriptCommand), any(), any()))
@@ -195,10 +199,14 @@ class K3sAgentServiceTest : BaseKoinTest() {
     fun `start should return failure when config file is missing server URL`() {
         // Given
         val configContent = "token: K10abcdef1234567890::server:1234567890abcdef"
+        val successResponse = Response(text = "", stderr = "")
 
         val configCommand = "cat /etc/rancher/k3s/config.yaml"
         val configResponse = Response(text = configContent, stderr = "")
 
+        doNothing().whenever(mockRemoteOps).upload(eq(testHost), any(), any())
+        whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
+            .thenReturn(successResponse)
         whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(configCommand), any(), any()))
             .thenReturn(configResponse)
 
@@ -216,10 +224,14 @@ class K3sAgentServiceTest : BaseKoinTest() {
     fun `start should return failure when config file is missing token`() {
         // Given
         val configContent = "server: https://10.0.1.5:6443"
+        val successResponse = Response(text = "", stderr = "")
 
         val configCommand = "cat /etc/rancher/k3s/config.yaml"
         val configResponse = Response(text = configContent, stderr = "")
 
+        doNothing().whenever(mockRemoteOps).upload(eq(testHost), any(), any())
+        whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
+            .thenReturn(successResponse)
         whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(configCommand), any(), any()))
             .thenReturn(configResponse)
 
@@ -243,11 +255,15 @@ class K3sAgentServiceTest : BaseKoinTest() {
             server: $serverUrl
             token: $token
             """.trimIndent()
+        val successResponse = Response(text = "", stderr = "")
 
         val configCommand = "cat /etc/rancher/k3s/config.yaml"
         val configResponse = Response(text = configContent, stderr = "")
         val scriptCommand = "sudo /usr/local/bin/start-k3s-agent.sh '$serverUrl' '$token'"
 
+        doNothing().whenever(mockRemoteOps).upload(eq(testHost), any(), any())
+        whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
+            .thenReturn(successResponse)
         whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(configCommand), any(), any()))
             .thenReturn(configResponse)
         whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(scriptCommand), any(), any()))
@@ -264,10 +280,10 @@ class K3sAgentServiceTest : BaseKoinTest() {
 
     @Test
     fun `start should return failure when SSH operation throws exception`() {
-        // Given
-        val configCommand = "cat /etc/rancher/k3s/config.yaml"
+        // Given - upload itself fails
+        doNothing().whenever(mockRemoteOps).upload(eq(testHost), any(), any())
 
-        whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(configCommand), any(), any()))
+        whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
             .thenThrow(RuntimeException("Connection refused"))
 
         // When

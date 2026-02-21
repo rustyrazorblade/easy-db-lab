@@ -129,17 +129,17 @@ interface K8sService {
     ): Result<Unit>
 
     /**
-     * Creates a Kubernetes secret for ClickHouse S3 storage configuration.
+     * Creates a Kubernetes ConfigMap for ClickHouse S3 storage configuration.
      *
-     * This creates a secret containing only the S3 endpoint URL. AWS credentials
+     * This creates a ConfigMap containing the S3 endpoint URL. AWS credentials
      * are obtained from EC2 instance IAM roles via the instance metadata service.
      *
      * @param controlHost The control node running the K3s server
-     * @param namespace The namespace to create the secret in
+     * @param namespace The namespace to create the ConfigMap in
      * @param s3EndpointUrl The S3 HTTPS endpoint URL for ClickHouse storage
      * @return Result indicating success or failure
      */
-    fun createClickHouseS3Secret(
+    fun createClickHouseS3ConfigMap(
         controlHost: ClusterHost,
         namespace: String,
         s3EndpointUrl: String,
@@ -802,55 +802,54 @@ class DefaultK8sService(
             outputHandler.handleMessage("Resources deleted successfully")
         }
 
-    override fun createClickHouseS3Secret(
+    override fun createClickHouseS3ConfigMap(
         controlHost: ClusterHost,
         namespace: String,
         s3EndpointUrl: String,
     ): Result<Unit> =
         runCatching {
-            log.info { "Creating ClickHouse S3 secret in namespace $namespace" }
+            log.info { "Creating ClickHouse S3 ConfigMap in namespace $namespace" }
             log.info { "S3 endpoint: $s3EndpointUrl" }
 
             createClient(controlHost).use { client ->
-                // Check if secret already exists and delete it
-                val existingSecret =
+                // Check if ConfigMap already exists and delete it
+                val existing =
                     client
-                        .secrets()
+                        .configMaps()
                         .inNamespace(namespace)
-                        .withName(Constants.ClickHouse.S3_SECRET_NAME)
+                        .withName(Constants.ClickHouse.S3_CONFIG_NAME)
                         .get()
 
-                if (existingSecret != null) {
-                    log.info { "Deleting existing secret ${Constants.ClickHouse.S3_SECRET_NAME}" }
+                if (existing != null) {
+                    log.info { "Deleting existing ConfigMap ${Constants.ClickHouse.S3_CONFIG_NAME}" }
                     client
-                        .secrets()
+                        .configMaps()
                         .inNamespace(namespace)
-                        .withName(Constants.ClickHouse.S3_SECRET_NAME)
+                        .withName(Constants.ClickHouse.S3_CONFIG_NAME)
                         .delete()
                 }
 
-                // Create the secret with S3 endpoint
-                val secret =
+                // Create the ConfigMap with S3 endpoint
+                val configMap =
                     io.fabric8.kubernetes.api.model
-                        .SecretBuilder()
+                        .ConfigMapBuilder()
                         .withNewMetadata()
-                        .withName(Constants.ClickHouse.S3_SECRET_NAME)
+                        .withName(Constants.ClickHouse.S3_CONFIG_NAME)
                         .withNamespace(namespace)
                         .addToLabels("app.kubernetes.io/name", "clickhouse-server")
                         .endMetadata()
-                        .withType("Opaque")
-                        .addToStringData("CLICKHOUSE_S3_ENDPOINT", s3EndpointUrl)
+                        .addToData("CLICKHOUSE_S3_ENDPOINT", s3EndpointUrl)
                         .build()
 
                 client
-                    .secrets()
+                    .configMaps()
                     .inNamespace(namespace)
-                    .resource(secret)
+                    .resource(configMap)
                     .create()
-                log.info { "Created secret ${Constants.ClickHouse.S3_SECRET_NAME}" }
+                log.info { "Created ConfigMap ${Constants.ClickHouse.S3_CONFIG_NAME}" }
             }
 
-            outputHandler.handleMessage("Created ClickHouse S3 secret")
+            outputHandler.handleMessage("Created ClickHouse S3 ConfigMap")
         }
 
     override fun applyManifestFromResources(

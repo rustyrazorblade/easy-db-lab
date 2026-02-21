@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.configuration.clickhouse
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.services.ClickHouseConfigService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
+import io.fabric8.kubernetes.api.model.ConfigMapEnvSourceBuilder
 import io.fabric8.kubernetes.api.model.ConfigMapKeySelectorBuilder
 import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.ContainerBuilder
@@ -14,7 +15,6 @@ import io.fabric8.kubernetes.api.model.KeyToPathBuilder
 import io.fabric8.kubernetes.api.model.ObjectFieldSelectorBuilder
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaimBuilder
 import io.fabric8.kubernetes.api.model.Quantity
-import io.fabric8.kubernetes.api.model.ConfigMapEnvSourceBuilder
 import io.fabric8.kubernetes.api.model.SecurityContextBuilder
 import io.fabric8.kubernetes.api.model.ServiceBuilder
 import io.fabric8.kubernetes.api.model.VolumeMountBuilder

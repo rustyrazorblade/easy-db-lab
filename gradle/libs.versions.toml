@@ -23,7 +23,7 @@ kaml = "0.77.0"
 kotlinx-coroutines = "1.10.2"
 
 # Testing
-jupiter = "5.5.2"
+jupiter = "6.0.2"
 assertj = "3.27.6"
 mockito-kotlin = "6.1.0"
 testcontainers = "1.21.4"

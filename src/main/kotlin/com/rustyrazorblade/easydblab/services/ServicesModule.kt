@@ -67,7 +67,7 @@ val servicesModule =
         factoryOf(::VictoriaManifestBuilder)
         factoryOf(::DefaultGrafanaDashboardService) bind GrafanaDashboardService::class
         factoryOf(::TemplateService)
-        factoryOf(::DefaultVictoriaBackupService) bind VictoriaBackupService::class
+        factory<VictoriaBackupService> { DefaultVictoriaBackupService(get(), get()) }
         factoryOf(::DefaultVictoriaStreamService) bind VictoriaStreamService::class
         factoryOf(::DefaultSidecarService) bind SidecarService::class
         singleOf(::DefaultStressJobService) bind StressJobService::class

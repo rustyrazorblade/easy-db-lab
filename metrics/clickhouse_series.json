@@ -1,0 +1,5 @@
+{
+  "status": "error",
+  "errorType": "422",
+  "error": "cannot parse matches[]=__name__=~\"ClickHouse.*\": identExpr: unexpected token \"=~\"; want \"(\", \"{\", \"[\", \")\", \",\" or \"@\"; unparsed data: \"=~\\\"ClickHouse.*\\\"\""
+}

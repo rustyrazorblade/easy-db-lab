@@ -1,0 +1,5 @@
+{
+  "status": "error",
+  "errorType": "422",
+  "error": "error when executing query=\"__name__=~\\\"ClickHouse.*\\\"\" for (time=1771652892108, step=300000): identExpr: unexpected token \"=~\"; want \"(\", \"{\", \"[\", \")\", \",\" or \"@\"; unparsed data: \"=~\\\"ClickHouse.*\\\"\""
+}

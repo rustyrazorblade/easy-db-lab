@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.toHost
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -39,13 +40,13 @@ class ConfigureAxonOps : PicoBaseCommand() {
         val axonOrg = if (org.isNotBlank()) org else userConfig.axonOpsOrg
         val axonKey = if (key.isNotBlank()) key else userConfig.axonOpsKey
         if ((axonOrg.isBlank() || axonKey.isBlank())) {
-            outputHandler.handleMessage("--org and --key are required")
+            eventBus.emit(Event.Message("--org and --key are required"))
             exitProcess(1)
         }
 
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList) { host ->
             val it = host.toHost()
-            outputHandler.handleMessage("Configure axonops on $it")
+            eventBus.emit(Event.Message("Configure axonops on $it"))
 
             remoteOps
                 .executeRemotely(

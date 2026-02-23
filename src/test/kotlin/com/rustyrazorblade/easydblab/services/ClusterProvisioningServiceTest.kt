@@ -7,7 +7,10 @@ import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.OpenSearchClusterState
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
-import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.CreatedInstance
 import com.rustyrazorblade.easydblab.providers.aws.InstanceCreationConfig
@@ -33,9 +36,9 @@ class ClusterProvisioningServiceTest {
     private lateinit var ec2InstanceService: EC2InstanceService
     private lateinit var emrProvisioningService: EMRProvisioningService
     private lateinit var openSearchService: OpenSearchService
-    private lateinit var outputHandler: OutputHandler
     private lateinit var aws: AWS
     private lateinit var user: User
+    private lateinit var eventBus: EventBus
     private lateinit var service: ClusterProvisioningService
 
     @BeforeEach
@@ -43,9 +46,9 @@ class ClusterProvisioningServiceTest {
         ec2InstanceService = mock()
         emrProvisioningService = mock()
         openSearchService = mock()
-        outputHandler = mock()
         aws = mock()
         user = mock()
+        eventBus = EventBus()
         whenever(aws.getAccountId()).thenReturn("123456789012")
         whenever(user.region).thenReturn("us-west-2")
         service =
@@ -53,9 +56,9 @@ class ClusterProvisioningServiceTest {
                 ec2InstanceService = ec2InstanceService,
                 emrProvisioningService = emrProvisioningService,
                 openSearchService = openSearchService,
-                outputHandler = outputHandler,
                 aws = aws,
                 user = user,
+                eventBus = eventBus,
             )
     }
 
@@ -115,7 +118,7 @@ class ClusterProvisioningServiceTest {
         }
 
         @Test
-        fun `should output message for existing instances`() {
+        fun `should emit event for existing instances`() {
             val spec =
                 InstanceSpec(
                     serverType = ServerType.Cassandra,
@@ -126,11 +129,24 @@ class ClusterProvisioningServiceTest {
                 )
             val config = createInstanceConfig(specs = listOf(spec))
 
+            val emittedEvents = mutableListOf<Event>()
+            eventBus.addListener(
+                object : EventListener {
+                    override fun onEvent(envelope: EventEnvelope) {
+                        emittedEvents.add(envelope.event)
+                    }
+
+                    override fun close() {}
+                },
+            )
+
             service.provisionInstances(config, emptyMap()) { _, _ -> }
 
-            verify(outputHandler).handleMessage(
-                "Found 3 existing Cassandra instances, no new instances needed",
-            )
+            assertThat(emittedEvents).anyMatch { event ->
+                event is Event.Ec2.ExistingInstancesFound &&
+                    event.serverType == "Cassandra" &&
+                    event.count == 3
+            }
         }
 
         @Test

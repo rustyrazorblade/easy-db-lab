@@ -17,7 +17,7 @@ class ShowIamPoliciesTest : BaseKoinTest() {
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
-                single { AWSResourceSetupService(get<AWS>(), get<OutputHandler>()) }
+                single { AWSResourceSetupService(get<AWS>(), get()) }
             },
         )
 

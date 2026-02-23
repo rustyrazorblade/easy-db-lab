@@ -125,6 +125,12 @@ object Constants {
         const val AWS_CREDENTIALS_ENV = "AWS_SHARED_CREDENTIALS_FILE"
     }
 
+    // Event Bus configuration
+    object EventBus {
+        const val REDIS_URL_ENV_VAR = "EASY_DB_LAB_REDIS_URL"
+        const val DEFAULT_CHANNEL = "easydblab-events"
+    }
+
     // Environment variables
     object Environment {
         const val USER_DIR = "EASY_DB_LAB_USER_DIR"

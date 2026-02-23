@@ -5,7 +5,6 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -30,7 +29,6 @@ internal class BackupRestoreServiceTest {
     private val mockVpcService: VpcService = mock()
     private val mockClusterBackupService: ClusterBackupService = mock()
     private val mockClusterStateManager: ClusterStateManager = mock()
-    private val mockOutputHandler: OutputHandler = mock()
 
     @TempDir
     lateinit var tempDir: File
@@ -44,7 +42,8 @@ internal class BackupRestoreServiceTest {
                 mockVpcService,
                 mockClusterBackupService,
                 mockClusterStateManager,
-                mockOutputHandler,
+                com.rustyrazorblade.easydblab.events
+                    .EventBus(),
             )
     }
 

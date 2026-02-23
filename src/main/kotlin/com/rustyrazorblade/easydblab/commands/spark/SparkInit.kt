@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.EMRProvisioningService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -108,9 +109,9 @@ class SparkInit : PicoBaseCommand() {
             )
         clusterStateManager.save(state)
 
-        outputHandler.handleMessage("Spark EMR cluster provisioned: ${emrCluster.clusterId}")
+        eventBus.emit(Event.Message("Spark EMR cluster provisioned: ${emrCluster.clusterId}"))
         emrCluster.masterPublicDns?.let {
-            outputHandler.handleMessage("Master DNS: $it")
+            eventBus.emit(Event.Message("Master DNS: $it"))
         }
     }
 }

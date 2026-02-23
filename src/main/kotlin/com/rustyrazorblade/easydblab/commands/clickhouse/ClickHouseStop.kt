@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.K8sService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
@@ -42,12 +43,12 @@ class ClickHouseStop : PicoBaseCommand() {
         log.debug { "Using control node: ${controlNode.alias} (${controlNode.publicIp})" }
 
         if (!force) {
-            outputHandler.handleMessage("This will delete the ClickHouse cluster and all its data.")
-            outputHandler.handleMessage("Use --force to confirm deletion.")
+            eventBus.emit(Event.Message("This will delete the ClickHouse cluster and all its data."))
+            eventBus.emit(Event.Message("Use --force to confirm deletion."))
             return
         }
 
-        outputHandler.handleMessage("Stopping ClickHouse cluster...")
+        eventBus.emit(Event.Message("Stopping ClickHouse cluster..."))
 
         // Delete ClickHouse resources by label selector
         val labelKey = "app.kubernetes.io/name"
@@ -59,6 +60,6 @@ class ClickHouseStop : PicoBaseCommand() {
                 error("Failed to delete ClickHouse cluster: ${exception.message}")
             }
 
-        outputHandler.handleMessage("ClickHouse cluster stopped and removed successfully.")
+        eventBus.emit(Event.Message("ClickHouse cluster stopped and removed successfully."))
     }
 }

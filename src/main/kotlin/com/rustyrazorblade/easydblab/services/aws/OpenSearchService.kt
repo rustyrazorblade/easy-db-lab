@@ -1,7 +1,8 @@
 package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.IamPolicyAction
 import com.rustyrazorblade.easydblab.providers.aws.IamPolicyDocument
@@ -105,7 +106,7 @@ data class OpenSearchDomainResult(
 class OpenSearchService(
     private val openSearchClient: OpenSearchClient,
     private val aws: AWS,
-    private val outputHandler: OutputHandler,
+    private val eventBus: EventBus = EventBus(),
 ) {
     companion object {
         private val log = KotlinLogging.logger {}
@@ -137,7 +138,7 @@ class OpenSearchService(
      */
     fun createDomain(config: OpenSearchDomainConfig): OpenSearchDomainResult {
         log.info { "Creating OpenSearch domain: ${config.domainName}" }
-        outputHandler.handleMessage("Creating OpenSearch domain: ${config.domainName}...")
+        eventBus.emit(Event.OpenSearch.Creating(config.domainName))
 
         val tags =
             config.tags.map { (key, value) ->
@@ -216,7 +217,7 @@ class OpenSearchService(
         val domainStatus = response.domainStatus()
 
         log.info { "OpenSearch domain creation initiated: ${domainStatus.domainId()}" }
-        outputHandler.handleMessage("OpenSearch domain initiated: ${domainStatus.domainName()}")
+        eventBus.emit(Event.OpenSearch.Initiated(domainStatus.domainName()))
 
         return OpenSearchDomainResult(
             domainName = domainStatus.domainName(),
@@ -266,7 +267,7 @@ class OpenSearchService(
      */
     fun deleteDomain(domainName: String) {
         log.info { "Deleting OpenSearch domain: $domainName" }
-        outputHandler.handleMessage("Deleting OpenSearch domain: $domainName...")
+        eventBus.emit(Event.OpenSearch.Deleting(domainName))
 
         val request =
             DeleteDomainRequest
@@ -310,7 +311,7 @@ class OpenSearchService(
         pollIntervalMs: Long = Constants.OpenSearch.POLL_INTERVAL_MS,
     ): OpenSearchDomainResult {
         log.info { "Waiting for OpenSearch domain $domainName to become active..." }
-        outputHandler.handleMessage("Waiting for OpenSearch domain to become active (this may take 10-30 minutes)...")
+        eventBus.emit(Event.Message("Waiting for OpenSearch domain to become active (this may take 10-30 minutes)..."))
 
         val startTime = System.currentTimeMillis()
         var pollCount = 0
@@ -362,7 +363,7 @@ class OpenSearchService(
     ): OpenSearchDomainResult? =
         if (result.endpoint != null) {
             log.info { "OpenSearch domain $domainName is active with endpoint: ${result.endpoint}" }
-            outputHandler.handleMessage("OpenSearch domain is ready")
+            eventBus.emit(Event.OpenSearch.Ready)
             result
         } else {
             logPollProgress(pollCount, startTime, "Domain active, waiting for endpoint")
@@ -379,7 +380,7 @@ class OpenSearchService(
     ) {
         if (pollCount % Constants.OpenSearch.LOG_INTERVAL_POLLS == 0) {
             val elapsedMinutes = (System.currentTimeMillis() - startTime) / Constants.Time.MILLIS_PER_MINUTE
-            outputHandler.handleMessage("$message... ($elapsedMinutes minutes elapsed)")
+            eventBus.emit(Event.OpenSearch.WaitProgress(message, elapsedMinutes))
         }
     }
 
@@ -400,7 +401,7 @@ class OpenSearchService(
         pollIntervalMs: Long = Constants.OpenSearch.POLL_INTERVAL_MS,
     ) {
         log.info { "Waiting for OpenSearch domain $domainName to be deleted..." }
-        outputHandler.handleMessage("Waiting for OpenSearch domain $domainName to be deleted (this may take 10-20 minutes)...")
+        eventBus.emit(Event.Message("Waiting for OpenSearch domain $domainName to be deleted (this may take 10-20 minutes)..."))
 
         val startTime = System.currentTimeMillis()
         var pollCount = 0
@@ -433,7 +434,7 @@ class OpenSearchService(
             handleDeletedPollResult(result, domainName, pollCount, startTime)
         } catch (e: software.amazon.awssdk.services.opensearch.model.ResourceNotFoundException) {
             log.info { "OpenSearch domain $domainName no longer exists (deleted)" }
-            outputHandler.handleMessage("OpenSearch domain $domainName deleted")
+            eventBus.emit(Event.OpenSearch.Deleted(domainName))
             true
         }
 
@@ -451,7 +452,7 @@ class OpenSearchService(
         when (result.state) {
             DomainState.DELETED -> {
                 log.info { "OpenSearch domain $domainName is deleted" }
-                outputHandler.handleMessage("OpenSearch domain $domainName deleted")
+                eventBus.emit(Event.OpenSearch.Deleted(domainName))
                 true
             }
             DomainState.ACTIVE, DomainState.PROCESSING -> {

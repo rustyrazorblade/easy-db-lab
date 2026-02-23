@@ -7,7 +7,6 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InfrastructureState
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.output.OutputHandler
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -65,9 +64,14 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
     @BeforeEach
     fun setup() {
         mockK8sService = getKoin().get()
-        val outputHandler: OutputHandler = getKoin().get()
         val clusterStateManager: ClusterStateManager = getKoin().get()
-        service = DefaultStressJobService(mockK8sService, outputHandler, clusterStateManager)
+        service =
+            DefaultStressJobService(
+                mockK8sService,
+                clusterStateManager,
+                com.rustyrazorblade.easydblab.events
+                    .EventBus(),
+            )
     }
 
     @Test

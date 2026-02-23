@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.commands.aws
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -23,7 +24,7 @@ class Vpcs : PicoBaseCommand() {
         val vpcIds = vpcService.findVpcsByTag(Constants.Vpc.TAG_KEY, Constants.Vpc.TAG_VALUE)
 
         if (vpcIds.isEmpty()) {
-            outputHandler.handleMessage("No easy-db-lab VPCs found")
+            eventBus.emit(Event.Message("No easy-db-lab VPCs found"))
             return
         }
 
@@ -31,7 +32,7 @@ class Vpcs : PicoBaseCommand() {
             val tags = vpcService.getVpcTags(vpcId)
             val name = tags["Name"] ?: "(unnamed)"
             val clusterId = tags["ClusterId"] ?: "(no cluster id)"
-            outputHandler.handleMessage("$name $vpcId $clusterId")
+            eventBus.emit(Event.Message("$name $vpcId $clusterId"))
         }
     }
 }

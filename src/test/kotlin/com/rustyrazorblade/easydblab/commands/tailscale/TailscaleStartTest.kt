@@ -75,8 +75,8 @@ class TailscaleStartTest : BaseKoinTest() {
             val command = TailscaleStart()
             command.execute()
 
-            val output = outputHandler.messages.joinToString("\n")
-            assertThat(output).contains("OAuth credentials not configured")
+            val errorOutput = outputHandler.errors.joinToString("\n") { it.first }
+            assertThat(errorOutput).contains("OAuth credentials not configured")
         }
     }
 
@@ -98,8 +98,8 @@ class TailscaleStartTest : BaseKoinTest() {
             command.clientSecret = "client-secret"
             command.execute()
 
-            val output = outputHandler.messages.joinToString("\n")
-            assertThat(output).contains("No control node found")
+            val errorOutput = outputHandler.errors.joinToString("\n") { it.first }
+            assertThat(errorOutput).contains("No control node found")
         }
     }
 
@@ -198,9 +198,9 @@ class TailscaleStartTest : BaseKoinTest() {
             command.clientSecret = "client-secret"
             command.execute()
 
-            val output = outputHandler.messages.joinToString("\n")
-            assertThat(output).contains("Failed to start Tailscale")
-            assertThat(output).contains("Invalid tags")
+            val errorOutput = outputHandler.errors.joinToString("\n") { it.first }
+            assertThat(errorOutput).contains("Failed to start Tailscale")
+            assertThat(errorOutput).contains("Invalid tags")
         }
 
         @Test

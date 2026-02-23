@@ -73,8 +73,8 @@ class TailscaleStatusTest : BaseKoinTest() {
         val command = TailscaleStatus()
         command.execute()
 
-        val output = outputHandler.messages.joinToString("\n")
-        assertThat(output).contains("No control node found")
+        val errorOutput = outputHandler.errors.joinToString("\n") { it.first }
+        assertThat(errorOutput).contains("No control node found")
     }
 
     @Test
@@ -111,7 +111,7 @@ class TailscaleStatusTest : BaseKoinTest() {
         val command = TailscaleStatus()
         command.execute()
 
-        val output = outputHandler.messages.joinToString("\n")
-        assertThat(output).contains("Failed to get Tailscale status")
+        val errorOutput = outputHandler.errors.joinToString("\n") { it.first }
+        assertThat(errorOutput).contains("Failed to get Tailscale status")
     }
 }

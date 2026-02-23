@@ -3,7 +3,8 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDatasourceConfig
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
-import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 
 /**
  * Service for managing Grafana dashboard manifests.
@@ -44,13 +45,12 @@ interface GrafanaDashboardService {
  * resource files and applies them directly via [K8sService.applyResource].
  *
  * @property k8sService Service for K8s operations
- * @property outputHandler Handler for user-facing output
  * @property manifestBuilder Builder for Grafana K8s resources
  */
 class DefaultGrafanaDashboardService(
     private val k8sService: K8sService,
-    private val outputHandler: OutputHandler,
     private val manifestBuilder: GrafanaManifestBuilder,
+    private val eventBus: EventBus,
 ) : GrafanaDashboardService {
     companion object {
         private const val DATASOURCES_CONFIGMAP_NAME = "grafana-datasources"
@@ -77,7 +77,7 @@ class DefaultGrafanaDashboardService(
         controlHost: ClusterHost,
         region: String,
     ): Result<Unit> {
-        outputHandler.handleMessage("Creating Grafana datasources ConfigMap...")
+        eventBus.emit(Event.Grafana.DatasourcesCreating)
         createDatasourcesConfigMap(controlHost, region).getOrElse { exception ->
             return Result.failure(
                 IllegalStateException("Failed to create Grafana datasources ConfigMap: ${exception.message}", exception),
@@ -85,11 +85,11 @@ class DefaultGrafanaDashboardService(
         }
 
         val resources = manifestBuilder.buildAllResources()
-        outputHandler.handleMessage("Applying ${resources.size} Grafana resources...")
+        eventBus.emit(Event.Grafana.ResourcesApplying(resources.size))
         for (resource in resources) {
             val kind = resource.kind
             val name = resource.metadata?.name ?: "unknown"
-            outputHandler.handleMessage("Applying $kind/$name...")
+            eventBus.emit(Event.Grafana.ResourceApplying(kind, name))
             k8sService.applyResource(controlHost, resource).getOrElse { exception ->
                 return Result.failure(
                     IllegalStateException("Failed to apply $kind/$name: ${exception.message}", exception),
@@ -97,7 +97,7 @@ class DefaultGrafanaDashboardService(
             }
         }
 
-        outputHandler.handleMessage("All Grafana resources applied successfully!")
+        eventBus.emit(Event.Grafana.ResourcesApplied)
         return Result.success(Unit)
     }
 }

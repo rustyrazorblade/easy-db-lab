@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.getHosts
 import com.rustyrazorblade.easydblab.configuration.toHost
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -61,13 +62,13 @@ class Exec : PicoBaseCommand() {
         val commandString = command.joinToString(" ")
 
         if (commandString.isBlank()) {
-            outputHandler.handleError("Command cannot be empty", null)
+            eventBus.emit(Event.Error("Command cannot be empty"))
             return
         }
 
         val hostList = clusterState.getHosts(serverType)
         if (hostList.isEmpty()) {
-            outputHandler.handleMessage("No hosts found for server type: $serverType")
+            eventBus.emit(Event.Message("No hosts found for server type: $serverType"))
             return
         }
 
@@ -97,23 +98,23 @@ class Exec : PicoBaseCommand() {
             // Display output with color-coded header
             with(TermColors()) {
                 val headerColor = if (hasError) red("=== ${host.alias} ===") else green("=== ${host.alias} ===")
-                outputHandler.handleMessage(bold(headerColor))
+                eventBus.emit(Event.Message(bold(headerColor)))
 
                 // Display stdout if present
                 if (response.text.isNotEmpty()) {
-                    outputHandler.handleMessage(response.text)
+                    eventBus.emit(Event.Message(response.text))
                 }
 
                 // Display stderr if present
                 if (hasError) {
-                    outputHandler.handleMessage(red(response.stderr))
+                    eventBus.emit(Event.Message(red(response.stderr)))
                 }
             }
         } catch (e: Exception) {
             // Handle execution failures
             with(TermColors()) {
-                outputHandler.handleMessage(bold(red("=== ${host.alias} ===")))
-                outputHandler.handleMessage(red("Error executing command: ${e.message}"))
+                eventBus.emit(Event.Message(bold(red("=== ${host.alias} ==="))))
+                eventBus.emit(Event.Message(red("Error executing command: ${e.message}")))
             }
         }
     }

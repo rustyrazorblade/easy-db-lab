@@ -4,9 +4,10 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
-import com.rustyrazorblade.easydblab.output.OutputHandler
 import io.fabric8.kubernetes.api.model.ContainerBuilder
 import io.fabric8.kubernetes.api.model.EnvVarBuilder
 import io.fabric8.kubernetes.api.model.VolumeBuilder
@@ -116,8 +117,8 @@ interface StressJobService {
  */
 class DefaultStressJobService(
     private val k8sService: K8sService,
-    private val outputHandler: OutputHandler,
     private val clusterStateManager: ClusterStateManager,
+    private val eventBus: EventBus,
 ) : StressJobService,
     KoinComponent {
     private val log = KotlinLogging.logger {}
@@ -161,7 +162,7 @@ class DefaultStressJobService(
                     promPort = promPort,
                 )
 
-            outputHandler.handleMessage("Starting stress job: $jobName")
+            eventBus.emit(Event.Stress.JobStarting(jobName))
             k8sService
                 .createJob(controlHost, Constants.Stress.NAMESPACE, job)
                 .getOrThrow()
@@ -195,7 +196,7 @@ class DefaultStressJobService(
                 val pod = pods.first()
                 when (pod.status) {
                     "Running", "Succeeded" -> {
-                        outputHandler.handleMessage("Pod ${pod.name} is ${pod.status}")
+                        eventBus.emit(Event.Stress.PodStatus(pod.name, pod.status))
                         jobName
                     }
                     "Failed" -> error("Pod ${pod.name} failed")

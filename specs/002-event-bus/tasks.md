@@ -17,8 +17,8 @@
 
 **Purpose**: Add dependencies and constants needed for all user stories
 
-- [ ] T001 Add Lettuce Redis client dependency to `gradle/libs.versions.toml` (version entry) and `build.gradle.kts` (implementation dependency)
-- [ ] T002 Add EventBus constants to `Constants.kt` — new `EventBus` object with `REDIS_URL_ENV_VAR = "EASY_DB_LAB_REDIS_URL"`, `DEFAULT_CHANNEL = "easydblab-events"`
+- [X] T001 Add Lettuce Redis client dependency to `gradle/libs.versions.toml` (version entry) and `build.gradle.kts` (implementation dependency)
+- [X] T002 Add EventBus constants to `Constants.kt` — new `EventBus` object with `REDIS_URL_ENV_VAR = "EASY_DB_LAB_REDIS_URL"`, `DEFAULT_CHANNEL = "easydblab-events"`
 
 ---
 
@@ -28,18 +28,18 @@
 
 **CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T003 Create `EventContext` with stack-based `ThreadLocal<ArrayDeque>` in `events/EventContext.kt` — `push(commandName)`, `pop()`, `current(): String?` static methods
-- [ ] T004 [P] Create `Event` sealed interface in `events/Event.kt` — root interface with `toDisplayString(): String`, no metadata fields
-- [ ] T005 [P] Create `EventEnvelope` data class in `events/EventEnvelope.kt` — fields: `event: Event`, `timestamp: Instant`, `commandName: String?`; add `@Serializable` with polymorphic event support
-- [ ] T006 [P] Create `EventListener` interface in `events/EventListener.kt` — `onEvent(envelope: EventEnvelope)`, `close()`
-- [ ] T007 Create `EventBus` class in `events/EventBus.kt` — `emit(event: Event)` reads `EventContext.current()`, creates `EventEnvelope`, dispatches to synchronized list of `EventListener` instances; `addListener()`, `removeListener()`, `close()`
-- [ ] T008 Create `ConsoleEventListener` in `events/ConsoleEventListener.kt` — writes `envelope.event.toDisplayString()` to stdout; writes error events to stderr
-- [ ] T009 Create `EventBusModule.kt` in `di/EventBusModule.kt` — register `EventBus` as Koin singleton, register `ConsoleEventListener`, add module to `KoinModules.getAllModules()`
-- [ ] T010 Integrate EventContext into command execution — modify `PicoBaseCommand.kt` to `push(commandName)` before `execute()` and `pop()` in `finally`; add `protected val eventBus: EventBus by inject()` alongside existing `outputHandler`
-- [ ] T011 [P] Test EventContext push/pop/nesting in `src/test/kotlin/.../events/EventContextTest.kt` — verify: single push/pop, nested push shows inner name, pop restores outer, empty stack returns null, thread isolation
-- [ ] T012 [P] Test EventBus dispatch in `src/test/kotlin/.../events/EventBusTest.kt` — verify: dispatches to multiple listeners, envelope has timestamp and commandName from context, thread-safe add/remove, close propagates to listeners
-- [ ] T013 Add kotlinx.serialization polymorphic module skeleton for Event sealed hierarchy in `events/Event.kt` — configure `classDiscriminator = "type"`, register root sealed interface. Concrete event type registrations are added in T026 after event sub-interfaces are created in Phase 3
-- [ ] T014 Test serialization round-trip in `src/test/kotlin/.../events/EventSerializationTest.kt` — verify: EventEnvelope serializes to JSON with `type` discriminator, deserializes back, all domain-specific fields preserved
+- [X] T003 Create `EventContext` with stack-based `ThreadLocal<ArrayDeque>` in `events/EventContext.kt` — `push(commandName)`, `pop()`, `current(): String?` static methods
+- [X] T004 [P] Create `Event` sealed interface in `events/Event.kt` — root interface with `toDisplayString(): String`, no metadata fields
+- [X] T005 [P] Create `EventEnvelope` data class in `events/EventEnvelope.kt` — fields: `event: Event`, `timestamp: Instant`, `commandName: String?`; add `@Serializable` with polymorphic event support
+- [X] T006 [P] Create `EventListener` interface in `events/EventListener.kt` — `onEvent(envelope: EventEnvelope)`, `close()`
+- [X] T007 Create `EventBus` class in `events/EventBus.kt` — `emit(event: Event)` reads `EventContext.current()`, creates `EventEnvelope`, dispatches to synchronized list of `EventListener` instances; `addListener()`, `removeListener()`, `close()`
+- [X] T008 Create `ConsoleEventListener` in `events/ConsoleEventListener.kt` — writes `envelope.event.toDisplayString()` to stdout; writes error events to stderr
+- [X] T009 Create `EventBusModule.kt` in `di/EventBusModule.kt` — register `EventBus` as Koin singleton, register `ConsoleEventListener`, add module to `KoinModules.getAllModules()`
+- [X] T010 Integrate EventContext into command execution — modify `PicoBaseCommand.kt` to `push(commandName)` before `execute()` and `pop()` in `finally`; add `protected val eventBus: EventBus by inject()` alongside existing `outputHandler`
+- [X] T011 [P] Test EventContext push/pop/nesting in `src/test/kotlin/.../events/EventContextTest.kt` — verify: single push/pop, nested push shows inner name, pop restores outer, empty stack returns null, thread isolation
+- [X] T012 [P] Test EventBus dispatch in `src/test/kotlin/.../events/EventBusTest.kt` — verify: dispatches to multiple listeners, envelope has timestamp and commandName from context, thread-safe add/remove, close propagates to listeners
+- [X] T013 Add kotlinx.serialization polymorphic module skeleton for Event sealed hierarchy in `events/Event.kt` — configure `classDiscriminator = "type"`, register root sealed interface. Concrete event type registrations are added in T026 after event sub-interfaces are created in Phase 3
+- [X] T014 Test serialization round-trip in `src/test/kotlin/.../events/EventSerializationTest.kt` — verify: EventEnvelope serializes to JSON with `type` discriminator, deserializes back, all domain-specific fields preserved
 
 **Checkpoint**: EventBus infrastructure compiles, is tested, and is injectable via Koin. Both `outputHandler` and `eventBus` are available in commands during migration.
 
@@ -55,19 +55,19 @@
 
 Each task creates the sealed sub-interface with all event data classes (per data-model.md) AND migrates the call sites in the corresponding service/command files. Event types include `toDisplayString()` returning the exact current message string.
 
-- [ ] T015 [P] [US1] Create `Event.Cassandra` sealed sub-interface + migrate `CassandraService.kt` (~5 call sites) — events: Starting, StartedWaitingReady, Restarting, WaitingReady
-- [ ] T016 [P] [US1] Create `Event.K3s` sealed sub-interface + migrate `K3sClusterService.kt` (~12 call sites) — events: ClusterStarting, ServerStarting, ServerStartFailed, NodeTokenFailed, KubeconfigFailed, KubeconfigWritten, KubeconfigInstruction, ClusterStarted, AgentConfiguring, AgentConfigFailed, AgentStartFailed
-- [ ] T017 [P] [US1] Create `Event.K8s` sealed sub-interface + migrate `K8sService.kt` (~30 call sites) — events per data-model.md Event.K8s table
-- [ ] T018 [P] [US1] Create `Event.Infra` + `Event.Ec2` sealed sub-interfaces + migrate `EC2VpcService.kt` and `AwsInfrastructureService.kt` (~35 call sites) — events per data-model.md Event.Infra and Event.Ec2 tables
-- [ ] T019 [P] [US1] Create `Event.Emr` sealed sub-interface + migrate `EMRService.kt`, `EMRSparkService.kt`, `EMRProvisioningService.kt` (~25 call sites) — events per data-model.md Event.Emr table
-- [ ] T020 [P] [US1] Create `Event.OpenSearch` sealed sub-interface + migrate `OpenSearchService.kt` (~12 call sites) — events per data-model.md Event.OpenSearch table
-- [ ] T021 [P] [US1] Create `Event.S3` + `Event.Sqs` sealed sub-interfaces + migrate `S3ObjectStore.kt`, `SQSService.kt` (~16 call sites) — events per data-model.md Event.S3 and Event.Sqs tables
-- [ ] T022 [P] [US1] Create `Event.Backup` sealed sub-interface + migrate `VictoriaBackupService.kt`, `ClusterBackupService.kt`, `BackupRestoreService.kt`, `ClusterConfigurationService.kt` (~15 call sites) — events per data-model.md Event.Backup table
-- [ ] T023 [P] [US1] Create `Event.Grafana` + `Event.Registry` + `Event.Tailscale` + `Event.Stress` + `Event.AwsSetup` + `Event.Service` sealed sub-interfaces + migrate `GrafanaDashboardService.kt`, `EC2RegistryService.kt`, `TailscaleService.kt`, `StressJobService.kt`, `AWSResourceSetupService.kt`, `SystemDServiceManager.kt` (~20 call sites)
-- [ ] T024 [P] [US1] Create `Event.Provision` + `Event.Command` sealed sub-interfaces + migrate `Up.kt`, `CommandExecutor.kt`, `ClusterProvisioningService.kt`, `EC2InstanceService.kt` (~40 call sites) — events per data-model.md Event.Provision and Event.Command tables
-- [ ] T025 [US1] Remove `outputHandler` injection from `PicoBaseCommand.kt` — all call sites now use `eventBus.emit()`; remove `OutputHandler` injection from all migrated services; update `McpToolRegistry.kt` OutputHandler usage. `Docker.kt` frame output stays outside EventBus (frames are raw byte streams, not structured events) — keep a minimal OutputHandler or direct stdout writer for frame output only
-- [ ] T026 [US1] Register all new sealed sub-interfaces in the kotlinx.serialization polymorphic module (T013) — ensure every concrete event type is registered
-- [ ] T027 [US1] Test ConsoleEventListener rendering in `src/test/kotlin/.../events/ConsoleEventListenerTest.kt` — for each domain, verify `toDisplayString()` matches the exact original `handleMessage()` string using representative events
+- [X] T015 [P] [US1] Create `Event.Cassandra` sealed sub-interface + migrate `CassandraService.kt` (~5 call sites) — events: Starting, StartedWaitingReady, Restarting, WaitingReady
+- [X] T016 [P] [US1] Create `Event.K3s` sealed sub-interface + migrate `K3sClusterService.kt` (~12 call sites) — events: ClusterStarting, ServerStarting, ServerStartFailed, NodeTokenFailed, KubeconfigFailed, KubeconfigWritten, KubeconfigInstruction, ClusterStarted, AgentConfiguring, AgentConfigFailed, AgentStartFailed
+- [X] T017 [P] [US1] Create `Event.K8s` sealed sub-interface + migrate `K8sService.kt` (~30 call sites) — events per data-model.md Event.K8s table
+- [X] T018 [P] [US1] Create `Event.Infra` + `Event.Ec2` sealed sub-interfaces + migrate `EC2VpcService.kt` and `AwsInfrastructureService.kt` (~35 call sites) — events per data-model.md Event.Infra and Event.Ec2 tables
+- [X] T019 [P] [US1] Create `Event.Emr` sealed sub-interface + migrate `EMRService.kt`, `EMRSparkService.kt`, `EMRProvisioningService.kt` (~25 call sites) — events per data-model.md Event.Emr table
+- [X] T020 [P] [US1] Create `Event.OpenSearch` sealed sub-interface + migrate `OpenSearchService.kt` (~12 call sites) — events per data-model.md Event.OpenSearch table
+- [X] T021 [P] [US1] Create `Event.S3` + `Event.Sqs` sealed sub-interfaces + migrate `S3ObjectStore.kt`, `SQSService.kt` (~16 call sites) — events per data-model.md Event.S3 and Event.Sqs tables
+- [X] T022 [P] [US1] Create `Event.Backup` sealed sub-interface + migrate `VictoriaBackupService.kt`, `ClusterBackupService.kt`, `BackupRestoreService.kt`, `ClusterConfigurationService.kt` (~15 call sites) — events per data-model.md Event.Backup table
+- [X] T023 [P] [US1] Create `Event.Grafana` + `Event.Registry` + `Event.Tailscale` + `Event.Stress` + `Event.AwsSetup` + `Event.Service` sealed sub-interfaces + migrate `GrafanaDashboardService.kt`, `EC2RegistryService.kt`, `TailscaleService.kt`, `StressJobService.kt`, `AWSResourceSetupService.kt`, `SystemDServiceManager.kt` (~20 call sites)
+- [X] T024 [P] [US1] Create `Event.Provision` + `Event.Command` sealed sub-interfaces + migrate `Up.kt`, `CommandExecutor.kt`, `ClusterProvisioningService.kt`, `EC2InstanceService.kt` (~40 call sites) — events per data-model.md Event.Provision and Event.Command tables
+- [X] T025 [US1] Remove `outputHandler` injection from `PicoBaseCommand.kt` — all call sites now use `eventBus.emit()`; remove `OutputHandler` injection from all migrated services; update `McpToolRegistry.kt` OutputHandler usage. `Docker.kt` frame output stays outside EventBus (frames are raw byte streams, not structured events) — keep a minimal OutputHandler or direct stdout writer for frame output only
+- [X] T026 [US1] Register all new sealed sub-interfaces in the kotlinx.serialization polymorphic module (T013) — ensure every concrete event type is registered
+- [X] T027 [US1] Test ConsoleEventListener rendering in `src/test/kotlin/.../events/ConsoleEventListenerTest.kt` — for each domain, verify `toDisplayString()` matches the exact original `handleMessage()` string using representative events
 
 **Checkpoint**: All commands produce identical console output. `outputHandler.handleMessage()` calls eliminated. `eventBus.emit()` used everywhere. SC-001 (100% backward compatibility) verifiable.
 
@@ -79,10 +79,10 @@ Each task creates the sealed sub-interface with all event data classes (per data
 
 **Independent Test**: Start MCP server, trigger a command, poll `get_server_status` — response contains JSON events with `type`, `timestamp`, `commandName`, and domain-specific fields.
 
-- [ ] T028 [US2] Create `McpEventListener` in `events/McpEventListener.kt` — sends `EventEnvelope` objects through a `Channel<EventEnvelope>`; provides `resetFrameCount()`. Docker frame filtering stays in the existing frame output path (frames are excluded from EventBus)
-- [ ] T029 [US2] Update `ChannelMessageBuffer` in `mcp/ChannelMessageBuffer.kt` — change internal buffer from `String` to `EventEnvelope`; `getAndClearMessages()` returns serialized JSON event envelopes
-- [ ] T030 [US2] Update `McpServer` in `mcp/McpServer.kt` — register `McpEventListener` with `EventBus` instead of using `FilteringChannelOutputHandler` with `CompositeOutputHandler`; update `get_server_status` tool response to include structured event data
-- [ ] T031 [US2] Test MCP structured events in `src/test/kotlin/.../events/McpEventListenerTest.kt` — verify: events buffered with metadata, status endpoint returns typed JSON
+- [X] T028 [US2] Create `McpEventListener` in `events/McpEventListener.kt` — sends `EventEnvelope` objects through a `Channel<EventEnvelope>`; provides `resetFrameCount()`. Docker frame filtering stays in the existing frame output path (frames are excluded from EventBus)
+- [X] T029 [US2] Update `ChannelMessageBuffer` in `mcp/ChannelMessageBuffer.kt` — change internal buffer from `String` to `EventEnvelope`; `getAndClearMessages()` returns serialized JSON event envelopes
+- [X] T030 [US2] Update `McpServer` in `mcp/McpServer.kt` — register `McpEventListener` with `EventBus` instead of using `FilteringChannelOutputHandler` with `CompositeOutputHandler`; update `get_server_status` tool response to include structured event data
+- [X] T031 [US2] Test MCP structured events in `src/test/kotlin/.../events/McpEventListenerTest.kt` — verify: events buffered with metadata, status endpoint returns typed JSON
 
 **Checkpoint**: MCP clients receive structured events. SC-006 (all events plus metadata) verifiable.
 
@@ -94,10 +94,10 @@ Each task creates the sealed sub-interface with all event data classes (per data
 
 **Independent Test**: Set `EASY_DB_LAB_REDIS_URL`, start Redis subscriber, run a command — events appear on the channel as JSON envelopes.
 
-- [ ] T032 [US3] Create `RedisEventListener` in `events/RedisEventListener.kt` — uses Lettuce async API; parses `EASY_DB_LAB_REDIS_URL` with `java.net.URI` (host, port from authority; channel from path); serializes `EventEnvelope` to JSON via kotlinx.serialization; publishes non-blocking; logs warning on connection failure; `close()` shuts down Lettuce connection
-- [ ] T033 [US3] Add conditional Redis listener registration in `di/EventBusModule.kt` — check `System.getenv(Constants.EventBus.REDIS_URL_ENV_VAR)`; if set, parse URL, create `RedisEventListener`, add to `EventBus`; if malformed URL, log error and skip (don't crash)
-- [ ] T034 [US3] Test Redis publish/subscribe with TestContainers in `src/test/kotlin/.../events/RedisEventListenerTest.kt` — start Redis container, configure listener, emit events, verify subscriber receives JSON envelopes with correct structure
-- [ ] T035 [US3] Test graceful degradation in `src/test/kotlin/.../events/RedisEventListenerTest.kt` — verify: unavailable Redis at startup logs warning and continues; malformed URL logs error and skips; runtime disconnection drops events without blocking
+- [X] T032 [US3] Create `RedisEventListener` in `events/RedisEventListener.kt` — uses Lettuce async API; parses `EASY_DB_LAB_REDIS_URL` with `java.net.URI` (host, port from authority; channel from path); serializes `EventEnvelope` to JSON via kotlinx.serialization; publishes non-blocking; logs warning on connection failure; `close()` shuts down Lettuce connection
+- [X] T033 [US3] Add conditional Redis listener registration in `di/EventBusModule.kt` — check `System.getenv(Constants.EventBus.REDIS_URL_ENV_VAR)`; if set, parse URL, create `RedisEventListener`, add to `EventBus`; if malformed URL, log error and skip (don't crash)
+- [X] T034 [US3] Test Redis publish/subscribe with TestContainers in `src/test/kotlin/.../events/RedisEventListenerTest.kt` — start Redis container, configure listener, emit events, verify subscriber receives JSON envelopes with correct structure
+- [X] T035 [US3] Test graceful degradation in `src/test/kotlin/.../events/RedisEventListenerTest.kt` — verify: unavailable Redis at startup logs warning and continues; malformed URL logs error and skips; runtime disconnection drops events without blocking
 
 **Checkpoint**: Redis integration works end-to-end. SC-002 (<100ms delivery), SC-003 (0% failure from Redis issues) verifiable.
 
@@ -111,9 +111,9 @@ Each task creates the sealed sub-interface with all event data classes (per data
 - [ ] T037 [P] Create `BufferedEventListener` for test infrastructure in `src/test/kotlin/.../events/BufferedEventListener.kt` — thread-safe in-memory event buffering for test assertions; update `BaseKoinTest` to register it; update tests that previously mocked `OutputHandler`
 - [ ] T038 [P] Author AsyncAPI 3.0 specification in `docs/reference/event-bus-asyncapi.yaml` — define channel, EventEnvelope schema, all ~120 event type schemas with discriminator, per contracts/redis-wire-format.md skeleton
 - [ ] T039 [P] Add event bus user guide in `docs/reference/event-bus.md` — Redis setup, event types overview, consumer guidelines, link to AsyncAPI spec; update `docs/SUMMARY.md` to include new pages
-- [ ] T040 [P] Update CLAUDE.md files — root `CLAUDE.md` (add event bus to architecture overview), `commands/CLAUDE.md` (EventBus instead of OutputHandler), `mcp/CLAUDE.md` (McpEventListener flow), new `events/CLAUDE.md` (event hierarchy patterns, adding new events)
+- [X] T040 [P] Update CLAUDE.md files — root `CLAUDE.md` (add event bus to architecture overview), `commands/CLAUDE.md` (EventBus instead of OutputHandler), `mcp/CLAUDE.md` (McpEventListener flow), new `events/CLAUDE.md` (event hierarchy patterns, adding new events)
 - [ ] T041 [P] Verify constitution.md amendment (Principle I updated to `eventBus.emit()` pattern, version 1.1.0) — already applied during analysis, confirm it's accurate post-implementation
-- [ ] T042 Run `./gradlew ktlintFormat && ./gradlew ktlintCheck && ./gradlew detekt && ./gradlew :test` to verify no regressions across all quality gates
+- [X] T042 Run `./gradlew ktlintFormat && ./gradlew ktlintCheck && ./gradlew detekt && ./gradlew :test` to verify no regressions across all quality gates
 
 ---
 

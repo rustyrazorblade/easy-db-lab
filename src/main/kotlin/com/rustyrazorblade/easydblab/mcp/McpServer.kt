@@ -2,6 +2,9 @@ package com.rustyrazorblade.easydblab.mcp
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.McpEventListener
 import com.rustyrazorblade.easydblab.output.CompositeOutputHandler
 import com.rustyrazorblade.easydblab.output.FilteringChannelOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputEvent
@@ -67,8 +70,10 @@ class McpServer(
 
     private val context: Context by inject()
     private val outputHandler: OutputHandler by inject()
+    private val eventBus: EventBus by inject()
 
     private val toolRegistry = McpToolRegistry()
+    private val mcpEventListener = McpEventListener()
     private val executionSemaphore = Semaphore(1) // Only allow one tool execution at a time
     private val statusCache = StatusCache(refreshIntervalSeconds)
 
@@ -97,6 +102,10 @@ class McpServer(
         compositeHandler.addHandler(streamingHandler)
         streamingInitialized = true
         log.info { "Streaming handler added to composite output handler" }
+
+        // Register EventBus listener for structured events
+        eventBus.addListener(mcpEventListener)
+        log.info { "McpEventListener registered with EventBus" }
     }
 
     /**
@@ -120,8 +129,13 @@ class McpServer(
                     0
                 }
 
-            // Get accumulated messages and clear buffer
-            val messages = messageBuffer.getAndClearMessages()
+            // Get accumulated messages from both old OutputHandler path and new EventBus path
+            val oldMessages = messageBuffer.getAndClearMessages()
+            val eventMessages =
+                mcpEventListener.getAndClearEnvelopes().map { envelope ->
+                    "[${envelope.timestamp}] ${envelope.event.toDisplayString()}"
+                }
+            val messages = oldMessages + eventMessages
 
             val statusResponse =
                 ServerStatusResponse(
@@ -184,14 +198,13 @@ class McpServer(
 
                         toolRegistry.executeTool(request.name, request.arguments)
                         log.info { "Completed background execution of tool: ${request.name}" }
-                        outputHandler.handleMessage(
-                            "Background execution of tool '${request.name}' complete.",
+                        eventBus.emit(
+                            Event.Message("Background execution of tool '${request.name}' complete."),
                         )
                     } catch (e: RuntimeException) {
                         log.error(e) { "Error in background execution of tool ${request.name}" }
-                        outputHandler.handleError(
-                            "Background execution of tool '${request.name}' failed: ${e.message}",
-                            e,
+                        eventBus.emit(
+                            Event.Error("Background execution of tool '${request.name}' failed: ${e.message}"),
                         )
                     } finally {
                         executionSemaphore.release()
@@ -466,13 +479,15 @@ class McpServer(
         // Notify caller of actual port before blocking
         onStarted(actualPort)
 
-        outputHandler.handleMessage(
-            """
-            Starting MCP server on port $actualPort...
+        eventBus.emit(
+            Event.Message(
+                """
+                Starting MCP server on port $actualPort...
 
-            Server is now available at: http://$bind:$actualPort/sse
-            Swagger UI available at:    http://$bind:$actualPort/swagger
-            """.trimIndent(),
+                Server is now available at: http://$bind:$actualPort/sse
+                Swagger UI available at:    http://$bind:$actualPort/swagger
+                """.trimIndent(),
+            ),
         )
 
         // Wait for shutdown

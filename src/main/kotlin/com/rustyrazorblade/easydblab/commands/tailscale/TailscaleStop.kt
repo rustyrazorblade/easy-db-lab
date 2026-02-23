@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.toHost
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.TailscaleService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
@@ -33,8 +34,8 @@ class TailscaleStop : PicoBaseCommand() {
         val controlHost = clusterState.getControlHost()
         if (controlHost == null) {
             with(TermColors()) {
-                outputHandler.handleMessage(
-                    red("No control node found. Ensure your cluster is running with 'easy-db-lab up'."),
+                eventBus.emit(
+                    Event.Error(red("No control node found. Ensure your cluster is running with 'easy-db-lab up'.")),
                 )
             }
             return
@@ -47,7 +48,7 @@ class TailscaleStop : PicoBaseCommand() {
         val isConnected =
             tailscaleService.isConnected(host).getOrElse { false }
         if (!isConnected) {
-            outputHandler.handleMessage("Tailscale is not running on ${controlHost.alias}.")
+            eventBus.emit(Event.Message("Tailscale is not running on ${controlHost.alias}."))
             return
         }
 
@@ -57,12 +58,12 @@ class TailscaleStop : PicoBaseCommand() {
             .onSuccess {
                 deleteTailscaleAuthKey()
                 with(TermColors()) {
-                    outputHandler.handleMessage(green("Tailscale stopped successfully."))
+                    eventBus.emit(Event.Message(green("Tailscale stopped successfully.")))
                 }
             }.onFailure { error ->
                 with(TermColors()) {
-                    outputHandler.handleMessage(
-                        red("Failed to stop Tailscale: ${error.message}"),
+                    eventBus.emit(
+                        Event.Error(red("Failed to stop Tailscale: ${error.message}")),
                     )
                 }
             }
@@ -81,7 +82,7 @@ class TailscaleStop : PicoBaseCommand() {
 
         try {
             tailscaleService.deleteAuthKey(clientId, clientSecret, keyId)
-            outputHandler.handleMessage("Deleted Tailscale auth key: $keyId")
+            eventBus.emit(Event.Message("Deleted Tailscale auth key: $keyId"))
         } catch (e: Exception) {
             log.warn(e) { "Failed to delete Tailscale auth key: $keyId" }
         }

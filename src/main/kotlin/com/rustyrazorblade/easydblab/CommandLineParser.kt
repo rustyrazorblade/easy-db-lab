@@ -35,7 +35,8 @@ import com.rustyrazorblade.easydblab.commands.spark.Spark
 import com.rustyrazorblade.easydblab.commands.tailscale.Tailscale
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.di.KoinCommandFactory
-import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.DefaultCommandExecutor
 import org.koin.core.component.KoinComponent
@@ -108,7 +109,7 @@ class EasyDBLabCommand : Runnable {
  * KoinCommandFactory provides command instances with injected dependencies.
  */
 class CommandLineParser : KoinComponent {
-    private val outputHandler: OutputHandler by inject()
+    private val eventBus: EventBus by inject()
 
     /** The main PicoCLI CommandLine instance with all subcommands registered. */
     private val commandLine: CommandLine =
@@ -157,13 +158,15 @@ class CommandLineParser : KoinComponent {
             val userConfigProvider: UserConfigProvider by inject()
             if (!userConfigProvider.isSetup()) {
                 with(TermColors()) {
-                    outputHandler.handleMessage(
-                        yellow(
-                            """
+                    eventBus.emit(
+                        Event.Message(
+                            yellow(
+                                """
 
-                            Profile not configured. Please run 'easy-db-lab setup-profile' to configure your environment.
+                                Profile not configured. Please run 'easy-db-lab setup-profile' to configure your environment.
 
-                            """.trimIndent(),
+                                """.trimIndent(),
+                            ),
                         ),
                     )
                 }

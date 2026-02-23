@@ -4,7 +4,8 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.victoria.VictoriaBackupJobBuilder
-import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.time.Instant
 import java.time.ZoneOffset
@@ -69,11 +70,10 @@ interface VictoriaBackupService {
  * Uses Kubernetes Jobs to run backup operations on the control node.
  *
  * @property k8sService Service for Kubernetes operations
- * @property outputHandler Handler for user-facing output messages
  */
 class DefaultVictoriaBackupService(
     private val k8sService: K8sService,
-    private val outputHandler: OutputHandler,
+    private val eventBus: EventBus,
     private val jobBuilder: VictoriaBackupJobBuilder = VictoriaBackupJobBuilder(),
 ) : VictoriaBackupService {
     private val log = KotlinLogging.logger {}
@@ -106,7 +106,7 @@ class DefaultVictoriaBackupService(
                     s3Bucket to ClusterS3Path.from(clusterState).victoriaMetrics().resolve(timestamp)
                 }
 
-            outputHandler.handleMessage("Creating VictoriaMetrics backup to ${s3Path.toUri()}...")
+            eventBus.emit(Event.Backup.VictoriaMetricsStarting(s3Path.toUri()))
 
             // Create a Job that runs vmbackup
             val jobName = "vmbackup-${timestamp.lowercase()}"
@@ -116,7 +116,7 @@ class DefaultVictoriaBackupService(
             k8sService.createJob(controlHost, NAMESPACE, job).getOrThrow()
             log.info { "Created backup job: $jobName" }
 
-            outputHandler.handleMessage("Backup job started: $jobName")
+            eventBus.emit(Event.Backup.VictoriaMetricsJobStarted(jobName))
 
             // Wait for job completion
             waitForJobCompletion(controlHost, jobName)
@@ -126,7 +126,7 @@ class DefaultVictoriaBackupService(
                 log.warn { "Failed to delete backup job: ${it.message}" }
             }
 
-            outputHandler.handleMessage("VictoriaMetrics backup completed: ${s3Path.toUri()}")
+            eventBus.emit(Event.Backup.VictoriaMetricsComplete(s3Path.toUri()))
 
             VictoriaBackupResult(s3Path, timestamp)
         }
@@ -152,7 +152,7 @@ class DefaultVictoriaBackupService(
                     s3Bucket to ClusterS3Path.from(clusterState).victoriaLogs().resolve(timestamp)
                 }
 
-            outputHandler.handleMessage("Creating VictoriaLogs backup to ${s3Path.toUri()}...")
+            eventBus.emit(Event.Backup.VictoriaLogsStarting(s3Path.toUri()))
 
             // Create a Job that snapshots VictoriaLogs partitions and syncs to S3
             val jobName = "vlbackup-${timestamp.lowercase()}"
@@ -162,7 +162,7 @@ class DefaultVictoriaBackupService(
             k8sService.createJob(controlHost, NAMESPACE, job).getOrThrow()
             log.info { "Created backup job: $jobName" }
 
-            outputHandler.handleMessage("Backup job started: $jobName")
+            eventBus.emit(Event.Backup.VictoriaLogsJobStarted(jobName))
 
             // Wait for job completion
             waitForJobCompletion(controlHost, jobName)
@@ -172,7 +172,7 @@ class DefaultVictoriaBackupService(
                 log.warn { "Failed to delete backup job: ${it.message}" }
             }
 
-            outputHandler.handleMessage("VictoriaLogs backup completed: ${s3Path.toUri()}")
+            eventBus.emit(Event.Backup.VictoriaLogsComplete(s3Path.toUri()))
 
             VictoriaBackupResult(s3Path, timestamp)
         }
@@ -256,7 +256,7 @@ class DefaultVictoriaBackupService(
             }
 
             Thread.sleep(JOB_POLL_INTERVAL_MS)
-            outputHandler.handleMessage("Waiting for backup to complete...")
+            eventBus.emit(Event.Backup.Waiting)
         }
 
         error("Backup job $jobName timed out after $JOB_TIMEOUT_SECONDS seconds")

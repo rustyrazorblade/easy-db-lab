@@ -2,7 +2,8 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.Host
-import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.nio.file.Files
@@ -18,11 +19,10 @@ import java.nio.file.Files
  * and relies on the AWS CLI (available on all nodes via IAM instance profile) for S3 operations.
  *
  * @property remoteOps Service for executing SSH commands on remote hosts
- * @property outputHandler Handler for user-facing output messages
  */
 class EC2RegistryService(
     private val remoteOps: RemoteOperationsService,
-    private val outputHandler: OutputHandler,
+    private val eventBus: EventBus,
 ) : RegistryService {
     private val log = KotlinLogging.logger {}
 
@@ -45,7 +45,7 @@ class EC2RegistryService(
         controlHost: Host,
         s3Bucket: String,
     ) {
-        outputHandler.handleMessage("Generating TLS certificate for registry on ${controlHost.alias}...")
+        eventBus.emit(Event.Registry.CertGenerating(controlHost.alias))
 
         val registryIp = controlHost.private
         val certDir = Constants.Registry.CERT_DIR
@@ -59,7 +59,7 @@ class EC2RegistryService(
         )
 
         log.info { "Generated TLS certificate on ${controlHost.alias}" }
-        outputHandler.handleMessage("Uploaded registry certificate to S3")
+        eventBus.emit(Event.Registry.CertUploaded)
         log.info { "Uploaded certificate to s3://$s3Bucket/$s3Path" }
     }
 
@@ -79,7 +79,7 @@ class EC2RegistryService(
         registryHost: String,
         s3Bucket: String,
     ) {
-        outputHandler.handleMessage("Configuring registry TLS on ${host.alias}...")
+        eventBus.emit(Event.Registry.TlsConfiguring(host.alias))
 
         val registryPort = Constants.Registry.PORT
         val s3Path = Constants.Registry.S3_CERT_PATH

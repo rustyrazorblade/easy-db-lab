@@ -5,7 +5,8 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.Host
-import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import okhttp3.FormBody
@@ -130,7 +131,7 @@ interface TailscaleService : AutoCloseable {
  */
 class DefaultTailscaleService(
     private val remoteOps: RemoteOperationsService,
-    private val outputHandler: OutputHandler,
+    private val eventBus: EventBus,
 ) : TailscaleService {
     private val httpClient: OkHttpClient =
         OkHttpClient
@@ -285,7 +286,7 @@ class DefaultTailscaleService(
         cidr: String,
     ): Result<Unit> =
         runCatching {
-            outputHandler.handleMessage("Starting Tailscale daemon on ${host.alias}...")
+            eventBus.emit(Event.Tailscale.DaemonStarting(host.alias))
 
             // Start the daemon
             remoteOps.executeRemotely(
@@ -296,7 +297,7 @@ class DefaultTailscaleService(
             // Give the daemon a moment to initialize
             Thread.sleep(Constants.Tailscale.DAEMON_STARTUP_DELAY_MS)
 
-            outputHandler.handleMessage("Authenticating Tailscale on ${host.alias}...")
+            eventBus.emit(Event.Tailscale.Authenticating(host.alias))
 
             // Authenticate and advertise routes
             // Note: secret=true to prevent auth key from being logged
@@ -307,12 +308,12 @@ class DefaultTailscaleService(
             )
 
             log.info { "Tailscale started successfully on ${host.alias}" }
-            outputHandler.handleMessage("Tailscale connected on ${host.alias}")
+            eventBus.emit(Event.Tailscale.Connected(host.alias))
         }
 
     override fun stopTailscale(host: Host): Result<Unit> =
         runCatching {
-            outputHandler.handleMessage("Stopping Tailscale on ${host.alias}...")
+            eventBus.emit(Event.Tailscale.Stopping(host.alias))
 
             // Disconnect from Tailscale network
             remoteOps.executeRemotely(
@@ -327,7 +328,7 @@ class DefaultTailscaleService(
             )
 
             log.info { "Tailscale stopped on ${host.alias}" }
-            outputHandler.handleMessage("Tailscale stopped on ${host.alias}")
+            eventBus.emit(Event.Tailscale.Stopped(host.alias))
         }
 
     override fun getStatus(host: Host): Result<String> =

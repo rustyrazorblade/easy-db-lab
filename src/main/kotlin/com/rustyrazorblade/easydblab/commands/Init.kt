@@ -13,6 +13,7 @@ import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.network.CidrBlock
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -206,12 +207,12 @@ class Init : PicoBaseCommand() {
 
         val clusterState = prepareEnvironment()
 
-        outputHandler.handleMessage("Initializing directory")
+        eventBus.emit(Event.Message("Initializing directory"))
 
         // Only set VPC ID if user explicitly provided one via --vpc
         // Otherwise, VPC will be created during 'up'
         if (existingVpcId != null) {
-            outputHandler.handleMessage("Using existing VPC: $existingVpcId")
+            eventBus.emit(Event.Message("Using existing VPC: $existingVpcId"))
             clusterState.vpcId = existingVpcId
             clusterStateManager.save(clusterState)
         }
@@ -221,13 +222,15 @@ class Init : PicoBaseCommand() {
         displayCompletionMessage(clusterState)
 
         if (start) {
-            outputHandler.handleMessage("Provisioning instances")
+            eventBus.emit(Event.Message("Provisioning instances"))
             // Schedule Up to run after Init's full lifecycle completes
             commandExecutor.schedule { Up() }
         } else {
             with(TermColors()) {
-                outputHandler.handleMessage(
-                    "Next you'll want to run " + green("easy-db-lab up") + " to start your instances.",
+                eventBus.emit(
+                    Event.Message(
+                        "Next you'll want to run " + green("easy-db-lab up") + " to start your instances.",
+                    ),
                 )
             }
         }
@@ -269,14 +272,14 @@ class Init : PicoBaseCommand() {
                             "or run 'easy-db-lab clean' first.",
                     )
                 }
-            outputHandler.handleMessage(message)
+            eventBus.emit(Event.Message(message))
             exitProcess(1)
         }
     }
 
     private fun prepareEnvironment(): ClusterState {
         if (clean) {
-            outputHandler.handleMessage("Cleaning existing configuration...")
+            eventBus.emit(Event.Message("Cleaning existing configuration..."))
             // Execute Clean immediately with full lifecycle
             commandExecutor.execute { Clean() }
         }
@@ -292,10 +295,10 @@ class Init : PicoBaseCommand() {
     }
 
     private fun extractResourceFiles() {
-        outputHandler.handleMessage("Writing setup_instance.sh")
+        eventBus.emit(Event.Message("Writing setup_instance.sh"))
         extractResourceFile("setup_instance.sh", "setup_instance.sh")
 
-        outputHandler.handleMessage("Creating cassandra directory and writing sidecar config")
+        eventBus.emit(Event.Message("Creating cassandra directory and writing sidecar config"))
         File("cassandra").mkdirs()
         extractResourceFile("cassandra-sidecar.yaml", "cassandra/cassandra-sidecar.yaml")
     }
@@ -312,10 +315,12 @@ class Init : PicoBaseCommand() {
 
     private fun displayCompletionMessage(clusterState: ClusterState) {
         val initConfig = clusterState.initConfig ?: return
-        outputHandler.handleMessage(
-            "Your workspace has been initialized with ${initConfig.cassandraInstances} Cassandra instances " +
-                "(${initConfig.instanceType}) and ${initConfig.stressInstances} stress instances " +
-                "in ${initConfig.region}",
+        eventBus.emit(
+            Event.Message(
+                "Your workspace has been initialized with ${initConfig.cassandraInstances} Cassandra instances " +
+                    "(${initConfig.instanceType}) and ${initConfig.stressInstances} stress instances " +
+                    "in ${initConfig.region}",
+            ),
         )
     }
 }

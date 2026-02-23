@@ -2,7 +2,8 @@ package com.rustyrazorblade.easydblab.mcp
 
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.commands.PicoCommand
-import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.serialization.json.JsonArrayBuilder
@@ -27,7 +28,7 @@ import picocli.CommandLine.Command as PicoCommandAnnotation
 
 /** Registry that manages easy-db-lab commands as MCP tools. */
 open class McpToolRegistry : KoinComponent {
-    val outputHandler: OutputHandler by inject()
+    val eventBus: EventBus by inject()
     private val commandExecutor: CommandExecutor by inject()
 
     companion object {
@@ -118,13 +119,13 @@ open class McpToolRegistry : KoinComponent {
         action: () -> Unit,
     ): ToolResult =
         try {
-            outputHandler.handleMessage("Starting execution of tool: $name")
+            eventBus.emit(Event.Message("Starting execution of tool: $name"))
             action()
-            outputHandler.handleMessage("Tool '$name' completed successfully")
+            eventBus.emit(Event.Message("Tool '$name' completed successfully"))
             ToolResult(content = listOf("Tool executed successfully"))
         } catch (e: Exception) {
             log.error(e) { "Error executing command $name" }
-            outputHandler.handleError("Tool '$name' failed: ${e.message}", e)
+            eventBus.emit(Event.Error("Tool '$name' failed: ${e.message}"))
             ToolResult(content = listOf("Error executing command: ${e.message}"), isError = true)
         }
 

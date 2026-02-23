@@ -4,7 +4,8 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InfrastructureStatus
-import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.VpcId
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -97,7 +98,7 @@ class DefaultBackupRestoreService(
     private val vpcService: VpcService,
     private val clusterBackupService: ClusterBackupService,
     private val clusterStateManager: ClusterStateManager,
-    private val outputHandler: OutputHandler,
+    private val eventBus: EventBus,
 ) : BackupRestoreService {
     override fun restoreFromVpc(
         vpcId: VpcId,
@@ -115,7 +116,7 @@ class DefaultBackupRestoreService(
 
             // Step 1: Look up cluster info and S3 bucket from VPC tags
             log.info { "Looking up cluster info from VPC: $vpcId" }
-            outputHandler.handleMessage("Looking up cluster info from VPC: $vpcId")
+            eventBus.emit(Event.Backup.ClusterLookup(vpcId.toString()))
 
             val vpcTags = vpcService.getVpcTags(vpcId)
             val clusterId =
@@ -126,7 +127,7 @@ class DefaultBackupRestoreService(
                 vpcTags[Constants.Vpc.BUCKET_TAG_KEY]
                     ?: error("VPC $vpcId has no '${Constants.Vpc.BUCKET_TAG_KEY}' tag — cannot restore without S3 bucket.")
 
-            outputHandler.handleMessage("Found cluster '$clusterName' with S3 bucket: $s3Bucket")
+            eventBus.emit(Event.Backup.ClusterFound(clusterName, s3Bucket))
 
             // Step 2: Build minimal ClusterState to bootstrap the S3 restore
             val bootstrapState =
@@ -140,26 +141,30 @@ class DefaultBackupRestoreService(
                 )
 
             // Step 3: Download all files from S3 (including state.json)
-            outputHandler.handleMessage("Restoring cluster configuration from S3...")
+            eventBus.emit(Event.Backup.RestoreStarting)
             val result = clusterBackupService.restoreAll(workingDirectory, bootstrapState).getOrThrow()
 
             if (result.hasRestores()) {
-                outputHandler.handleMessage("Configuration restored from S3:")
-                for (target in result.successfulTargets) {
-                    outputHandler.handleMessage("  - ${target.displayName}")
-                }
+                eventBus.emit(
+                    Event.Backup.RestoreComplete(
+                        result.successfulTargets.map { it.displayName },
+                    ),
+                )
             } else {
-                outputHandler.handleMessage("No configuration files found in S3 to restore")
+                eventBus.emit(Event.Backup.RestoreEmpty)
             }
 
             // Step 4: Load the restored state.json (the real one from S3)
             val restoredState =
                 if (clusterStateManager.exists()) {
                     val state = clusterStateManager.load()
-                    outputHandler.handleMessage("State restored successfully:")
-                    outputHandler.handleMessage("  Cluster name: ${state.name}")
-                    outputHandler.handleMessage("  Cluster ID: ${state.clusterId}")
-                    outputHandler.handleMessage("  Hosts: ${state.hosts.values.sumOf { it.size }}")
+                    eventBus.emit(
+                        Event.Backup.StateRestored(
+                            clusterName = state.name,
+                            clusterId = state.clusterId,
+                            hostCount = state.hosts.values.sumOf { it.size },
+                        ),
+                    )
                     state
                 } else {
                     log.warn { "state.json was not found in S3 backup, using bootstrap state" }

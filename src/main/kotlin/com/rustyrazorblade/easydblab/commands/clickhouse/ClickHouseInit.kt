@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.ClickHouseConfig
+import com.rustyrazorblade.easydblab.events.Event
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
 
@@ -50,13 +51,15 @@ class ClickHouseInit : PicoBaseCommand() {
         state.updateClickHouseConfig(config)
         clusterStateManager.save(state)
 
-        outputHandler.handleMessage(
-            """
-            ClickHouse configuration saved.
-              Replicas per shard: $replicasPerShard
-              S3 cache size: $s3CacheSize
-              S3 cache on write: $s3CacheOnWrite
-            """.trimIndent(),
+        eventBus.emit(
+            Event.Message(
+                """
+                ClickHouse configuration saved.
+                  Replicas per shard: $replicasPerShard
+                  S3 cache size: $s3CacheSize
+                  S3 cache on write: $s3CacheOnWrite
+                """.trimIndent(),
+            ),
         )
     }
 }

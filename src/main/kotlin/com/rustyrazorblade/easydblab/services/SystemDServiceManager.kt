@@ -1,7 +1,8 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.configuration.Host
-import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import io.github.oshai.kotlinlogging.KLogger
 
@@ -78,8 +79,8 @@ interface SystemDServiceManager {
  * ```
  * class MyService(
  *     remoteOps: RemoteOperationsService,
- *     outputHandler: OutputHandler
- * ) : AbstractSystemDServiceManager("my-service", remoteOps, outputHandler) {
+ *     eventBus: EventBus
+ * ) : AbstractSystemDServiceManager("my-service", remoteOps, eventBus) {
  *     override val log: KLogger = KotlinLogging.logger {}
  *
  *     // Optionally override methods for custom behavior
@@ -91,12 +92,12 @@ interface SystemDServiceManager {
  *
  * @property serviceName The name of the SystemD service (e.g., "cassandra", "cassandra-sidecar")
  * @property remoteOps Service for executing SSH commands on remote hosts
- * @property outputHandler Handler for user-facing output messages
+ * @property eventBus Event bus for emitting structured domain events
  */
 abstract class AbstractSystemDServiceManager(
     protected val serviceName: String,
     protected val remoteOps: RemoteOperationsService,
-    protected val outputHandler: OutputHandler,
+    protected val eventBus: EventBus,
 ) : SystemDServiceManager {
     /**
      * Logger instance for this service. Each concrete service should provide its own logger
@@ -106,7 +107,7 @@ abstract class AbstractSystemDServiceManager(
 
     override fun start(host: Host): Result<Unit> =
         runCatching {
-            outputHandler.handleMessage("Starting $serviceName on ${host.alias}...")
+            eventBus.emit(Event.Service.Starting(serviceName, host.alias))
 
             remoteOps.executeRemotely(
                 host,
@@ -118,7 +119,7 @@ abstract class AbstractSystemDServiceManager(
 
     override fun stop(host: Host): Result<Unit> =
         runCatching {
-            outputHandler.handleMessage("Stopping $serviceName on ${host.alias}...")
+            eventBus.emit(Event.Service.Stopping(serviceName, host.alias))
 
             remoteOps.executeRemotely(
                 host,
@@ -130,7 +131,7 @@ abstract class AbstractSystemDServiceManager(
 
     open override fun restart(host: Host): Result<Unit> =
         runCatching {
-            outputHandler.handleMessage("Restarting $serviceName on ${host.alias}...")
+            eventBus.emit(Event.Service.Restarting(serviceName, host.alias))
 
             remoteOps.executeRemotely(
                 host,

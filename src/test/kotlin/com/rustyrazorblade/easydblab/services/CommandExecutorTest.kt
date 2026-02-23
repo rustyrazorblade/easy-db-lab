@@ -8,8 +8,8 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.observability.TelemetryProvider
-import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -36,7 +36,6 @@ import picocli.CommandLine.Command
 class CommandExecutorTest : BaseKoinTest() {
     private lateinit var mockClusterStateManager: ClusterStateManager
     private lateinit var mockBackupRestoreService: BackupRestoreService
-    private lateinit var mockOutputHandler: OutputHandler
     private lateinit var mockUserConfigProvider: UserConfigProvider
     private lateinit var mockDockerClientProvider: DockerClientProvider
     private lateinit var mockResourceManager: ResourceManager
@@ -52,7 +51,6 @@ class CommandExecutorTest : BaseKoinTest() {
             module {
                 single<ClusterStateManager> { mockClusterStateManager }
                 single<BackupRestoreService> { mockBackupRestoreService }
-                single<OutputHandler> { mockOutputHandler }
                 single<UserConfigProvider> { mockUserConfigProvider }
                 single<DockerClientProvider> { mockDockerClientProvider }
                 single<ResourceManager> { mockResourceManager }
@@ -66,7 +64,6 @@ class CommandExecutorTest : BaseKoinTest() {
         executionOrder.clear()
         mockClusterStateManager = mock()
         mockBackupRestoreService = mock()
-        mockOutputHandler = mock()
         mockUserConfigProvider = mock()
         mockDockerClientProvider = mock()
         mockResourceManager = mock()
@@ -87,11 +84,11 @@ class CommandExecutorTest : BaseKoinTest() {
             DefaultCommandExecutor(
                 context = context,
                 clusterStateManager = mockClusterStateManager,
-                outputHandler = mockOutputHandler,
                 userConfigProvider = mockUserConfigProvider,
                 dockerClientProvider = mockDockerClientProvider,
                 resourceManager = mockResourceManager,
                 telemetryProvider = mockTelemetryProvider,
+                eventBus = EventBus(),
             )
     }
 

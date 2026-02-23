@@ -17,8 +17,8 @@ import com.rustyrazorblade.easydblab.configuration.vector.VectorManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.victoria.VictoriaManifestBuilder
 import com.rustyrazorblade.easydblab.driver.CqlSessionFactory
 import com.rustyrazorblade.easydblab.driver.DefaultCqlSessionFactory
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.observability.TelemetryProvider
-import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
@@ -80,7 +80,7 @@ val servicesModule =
         single<EMRProvisioningService> {
             DefaultEMRProvisioningService(
                 get<EMRService>(),
-                get<OutputHandler>(),
+                get<EventBus>(),
             )
         }
 
@@ -90,9 +90,9 @@ val servicesModule =
                 get<EC2InstanceService>(),
                 get<EMRProvisioningService>(),
                 get<OpenSearchService>(),
-                get<OutputHandler>(),
                 get<AWS>(),
                 get<User>(),
+                get<EventBus>(),
             )
         }
 
@@ -101,7 +101,7 @@ val servicesModule =
             DefaultK3sClusterService(
                 get<K3sService>(),
                 get<K3sAgentService>(),
-                get<OutputHandler>(),
+                get<EventBus>(),
                 get<ClusterBackupService>(),
             )
         }
@@ -110,7 +110,7 @@ val servicesModule =
         single<ClusterBackupService> {
             DefaultClusterBackupService(
                 get<ObjectStore>(),
-                get<OutputHandler>(),
+                get<EventBus>(),
             )
         }
 
@@ -120,7 +120,7 @@ val servicesModule =
                 get<VpcService>(),
                 get<ClusterBackupService>(),
                 get<ClusterStateManager>(),
-                get<OutputHandler>(),
+                get<EventBus>(),
             )
         }
 
@@ -131,11 +131,11 @@ val servicesModule =
             DefaultCommandExecutor(
                 get<Context>(),
                 get<ClusterStateManager>(),
-                get<OutputHandler>(),
                 get<UserConfigProvider>(),
                 get<DockerClientProvider>(),
                 get<ResourceManager>(),
                 get<TelemetryProvider>(),
+                get<EventBus>(),
             )
         }
     }

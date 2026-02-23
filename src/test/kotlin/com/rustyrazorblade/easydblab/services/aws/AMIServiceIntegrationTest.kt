@@ -1,6 +1,6 @@
 package com.rustyrazorblade.easydblab.services.aws
 
-import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.AWS
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeAll
@@ -43,7 +43,7 @@ class AMIServiceIntegrationTest {
     }
 
     private lateinit var ec2Client: Ec2Client
-    private lateinit var outputHandler: BufferedOutputHandler
+    private lateinit var eventBus: EventBus
     private lateinit var amiService: AMIService
 
     @BeforeAll
@@ -67,9 +67,9 @@ class AMIServiceIntegrationTest {
 
     @BeforeEach
     fun setup() {
-        outputHandler = BufferedOutputHandler()
+        eventBus = EventBus()
         val aws: AWS = mock()
-        amiService = AMIService(ec2Client, outputHandler, aws)
+        amiService = AMIService(ec2Client, eventBus, aws)
     }
 
     /**

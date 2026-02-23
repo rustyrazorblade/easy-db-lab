@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.VictoriaStreamService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -39,19 +40,19 @@ class MetricsImport : PicoBaseCommand() {
     override fun execute() {
         val controlHost = clusterState.getControlHost()
         if (controlHost == null) {
-            outputHandler.handleError("No control node found. Please ensure the cluster is running.")
+            eventBus.emit(Event.Error("No control node found. Please ensure the cluster is running."))
             return
         }
 
-        outputHandler.handleMessage("Streaming metrics from cluster to $target...")
+        eventBus.emit(Event.Message("Streaming metrics from cluster to $target..."))
 
         victoriaStreamService
             .streamMetrics(controlHost, target, match)
             .onSuccess { result ->
-                outputHandler.handleMessage("Metrics import completed successfully.")
-                outputHandler.handleMessage("Bytes transferred: ${result.bytesTransferred}")
+                eventBus.emit(Event.Message("Metrics import completed successfully."))
+                eventBus.emit(Event.Message("Bytes transferred: ${result.bytesTransferred}"))
             }.onFailure { exception ->
-                outputHandler.handleError("Metrics import failed: ${exception.message}")
+                eventBus.emit(Event.Error("Metrics import failed: ${exception.message}"))
             }
     }
 }

@@ -2,7 +2,8 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
-import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
 import java.nio.file.Path
@@ -239,11 +240,10 @@ data class IncrementalBackupResult(
  * Default implementation of ClusterBackupService using ObjectStore.
  *
  * @property objectStore The cloud storage service for S3 operations
- * @property outputHandler Handler for user-facing output messages
  */
 class DefaultClusterBackupService(
     private val objectStore: ObjectStore,
-    private val outputHandler: OutputHandler,
+    private val eventBus: EventBus,
 ) : ClusterBackupService {
     override fun backupAll(
         workingDirectory: String,
@@ -276,7 +276,7 @@ class DefaultClusterBackupService(
                     objectStore.uploadFile(localFile, s3Path, showProgress = true)
                     filesBackedUp++
                 }
-                outputHandler.handleMessage("${target.displayName} backed up to S3: ${s3Path.toUri()}")
+                eventBus.emit(Event.Backup.ConfigBackedUp(target.displayName, s3Path.toUri()))
                 successfulTargets.add(target)
             }
 
@@ -317,7 +317,7 @@ class DefaultClusterBackupService(
                     objectStore.downloadFile(s3Path, localPath, showProgress = true)
                     filesRestored++
                 }
-                outputHandler.handleMessage("${target.displayName} restored from S3: ${s3Path.toUri()}")
+                eventBus.emit(Event.Backup.ConfigRestored(target.displayName, s3Path.toUri()))
                 successfulTargets.add(target)
             }
 
@@ -341,7 +341,7 @@ class DefaultClusterBackupService(
             log.info { "Backing up kubeconfig to S3: ${s3Path.toUri()}" }
             objectStore.uploadFile(localFile, s3Path, showProgress = true)
 
-            outputHandler.handleMessage("Kubeconfig backed up to S3: ${s3Path.toUri()}")
+            eventBus.emit(Event.Backup.KubeconfigBackedUp(s3Path.toUri()))
         }
 
     override fun restoreKubeconfig(
@@ -360,7 +360,7 @@ class DefaultClusterBackupService(
             log.info { "Restoring kubeconfig from S3: ${s3Path.toUri()}" }
             objectStore.downloadFile(s3Path, localPath, showProgress = true)
 
-            outputHandler.handleMessage("Kubeconfig restored from S3: ${s3Path.toUri()}")
+            eventBus.emit(Event.Backup.KubeconfigRestored(s3Path.toUri()))
         }
 
     override fun backupK8sManifests(
@@ -380,7 +380,7 @@ class DefaultClusterBackupService(
             log.info { "Backing up k8s manifests to S3: ${s3Path.toUri()}" }
             objectStore.uploadDirectory(localDir, s3Path, showProgress = true)
 
-            outputHandler.handleMessage("K8s manifests backed up to S3: ${s3Path.toUri()}")
+            eventBus.emit(Event.Backup.K8sManifestsBackedUp(s3Path.toUri()))
         }
 
     override fun restoreK8sManifests(
@@ -399,7 +399,7 @@ class DefaultClusterBackupService(
             log.info { "Restoring k8s manifests from S3: ${s3Path.toUri()}" }
             objectStore.downloadDirectory(s3Path, localDir, showProgress = true)
 
-            outputHandler.handleMessage("K8s manifests restored from S3: ${s3Path.toUri()}")
+            eventBus.emit(Event.Backup.K8sManifestsRestored(s3Path.toUri()))
         }
 
     override fun kubeconfigExistsInS3(clusterState: ClusterState): Boolean {
@@ -439,7 +439,7 @@ class DefaultClusterBackupService(
             log.info { "Backing up cassandra.patch.yaml to S3: ${s3Path.toUri()}" }
             objectStore.uploadFile(localFile, s3Path, showProgress = true)
 
-            outputHandler.handleMessage("Cassandra patch backed up to S3: ${s3Path.toUri()}")
+            eventBus.emit(Event.Backup.CassandraPatchBackedUp(s3Path.toUri()))
         }
 
     override fun restoreCassandraPatch(
@@ -458,7 +458,7 @@ class DefaultClusterBackupService(
             log.info { "Restoring cassandra.patch.yaml from S3: ${s3Path.toUri()}" }
             objectStore.downloadFile(s3Path, localPath, showProgress = true)
 
-            outputHandler.handleMessage("Cassandra patch restored from S3: ${s3Path.toUri()}")
+            eventBus.emit(Event.Backup.CassandraPatchRestored(s3Path.toUri()))
         }
 
     override fun cassandraPatchExistsInS3(clusterState: ClusterState): Boolean {

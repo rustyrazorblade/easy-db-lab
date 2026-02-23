@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.StressJobService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
@@ -53,7 +54,7 @@ class StressFields : PicoBaseCommand() {
         val args = mutableListOf("fields")
         args.addAll(stressArgs)
 
-        outputHandler.handleMessage("Running cassandra-easy-stress fields...")
+        eventBus.emit(Event.Message("Running cassandra-easy-stress fields..."))
 
         val output =
             stressJobService
@@ -63,7 +64,7 @@ class StressFields : PicoBaseCommand() {
                 }
 
         if (output.isNotEmpty()) {
-            outputHandler.handleMessage(output)
+            eventBus.emit(Event.Message(output))
         }
     }
 }

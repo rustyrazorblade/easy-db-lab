@@ -5,6 +5,9 @@ import com.github.dockerjava.api.model.AccessMode
 import com.github.dockerjava.api.model.Frame
 import com.github.dockerjava.api.model.Image
 import com.github.dockerjava.api.model.StreamType
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import org.junit.jupiter.api.AfterEach
@@ -41,6 +44,24 @@ class DockerTest {
         val testModule =
             module {
                 factory<OutputHandler> { bufferedOutputHandler }
+                single {
+                    val eventBus = EventBus()
+                    eventBus.addListener(
+                        object : EventListener {
+                            override fun onEvent(envelope: EventEnvelope) {
+                                val text = envelope.event.toDisplayString()
+                                if (envelope.event.isError()) {
+                                    bufferedOutputHandler.handleError(text)
+                                } else {
+                                    bufferedOutputHandler.handleMessage(text)
+                                }
+                            }
+
+                            override fun close() {}
+                        },
+                    )
+                    eventBus
+                }
             }
 
         startKoin {

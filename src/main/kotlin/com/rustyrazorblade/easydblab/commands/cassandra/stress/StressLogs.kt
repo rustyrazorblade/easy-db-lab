@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.StressJobService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
@@ -62,24 +63,24 @@ class StressLogs : PicoBaseCommand() {
         // Get logs from each pod
         for (pod in pods) {
             if (pods.size > 1) {
-                outputHandler.handleMessage("=== Pod: ${pod.name} (${pod.status}) ===")
+                eventBus.emit(Event.Message("=== Pod: ${pod.name} (${pod.status}) ==="))
             }
 
             val logsResult = stressJobService.getPodLogs(controlNode, pod.name, tailLines)
             if (logsResult.isFailure) {
-                outputHandler.handleMessage("Failed to get logs for pod ${pod.name}: ${logsResult.exceptionOrNull()?.message}")
+                eventBus.emit(Event.Error("Failed to get logs for pod ${pod.name}: ${logsResult.exceptionOrNull()?.message}"))
                 continue
             }
 
             val logs = logsResult.getOrThrow()
             if (logs.isEmpty()) {
-                outputHandler.handleMessage("(no logs available yet)")
+                eventBus.emit(Event.Message("(no logs available yet)"))
             } else {
-                outputHandler.handleMessage(logs)
+                eventBus.emit(Event.Message(logs))
             }
 
             if (pods.size > 1) {
-                outputHandler.handleMessage("")
+                eventBus.emit(Event.Message(""))
             }
         }
     }

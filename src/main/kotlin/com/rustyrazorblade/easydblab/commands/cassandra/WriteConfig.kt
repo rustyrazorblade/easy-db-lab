@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.annotations.TriggerBackup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.getHosts
+import com.rustyrazorblade.easydblab.events.Event
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
 import picocli.CommandLine.Parameters
@@ -35,10 +36,12 @@ class WriteConfig : PicoBaseCommand() {
 
     override fun execute() {
         // create the cassandra.yaml patch file
-        outputHandler.handleMessage("Writing new configuration file to $file.")
-        outputHandler.handleMessage(
-            "It can be applied to the lab via easy-db-lab update-config " +
-                "(or automatically when calling use-cassandra)",
+        eventBus.emit(Event.Message("Writing new configuration file to $file."))
+        eventBus.emit(
+            Event.Message(
+                "It can be applied to the lab via easy-db-lab update-config " +
+                    "(or automatically when calling use-cassandra)",
+            ),
         )
 
         val data =

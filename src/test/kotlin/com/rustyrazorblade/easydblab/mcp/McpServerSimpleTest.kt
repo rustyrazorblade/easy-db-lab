@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.mcp
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
+import com.rustyrazorblade.easydblab.events.Event
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import org.assertj.core.api.Assertions.assertThat
@@ -67,7 +68,9 @@ class McpServerSimpleTest : BaseKoinTest() {
         var enabled: Boolean = false
 
         override fun execute() {
-            outputHandler.handleMessage("Executing with name=$name, count=$count, enabled=$enabled")
+            eventBus.emit(
+                Event.Message("Executing with name=$name, count=$count, enabled=$enabled"),
+            )
         }
     }
 }

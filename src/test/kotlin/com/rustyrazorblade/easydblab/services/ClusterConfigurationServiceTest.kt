@@ -6,14 +6,15 @@ import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
-import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.mockito.kotlin.mock
-import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.io.File
 import java.nio.file.Path
@@ -22,9 +23,10 @@ import java.nio.file.Path
  * Tests for ClusterConfigurationService.
  */
 class ClusterConfigurationServiceTest {
-    private lateinit var outputHandler: OutputHandler
     private lateinit var userConfigProvider: UserConfigProvider
     private lateinit var service: ClusterConfigurationService
+    private lateinit var eventBus: EventBus
+    private val capturedEvents = mutableListOf<EventEnvelope>()
 
     @TempDir
     lateinit var tempDir: Path
@@ -35,10 +37,24 @@ class ClusterConfigurationServiceTest {
 
     @BeforeEach
     fun setup() {
-        outputHandler = mock()
         userConfigProvider = mock()
+        capturedEvents.clear()
+        eventBus = EventBus()
+        eventBus.addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    capturedEvents.add(envelope)
+                }
+
+                override fun close() {}
+            },
+        )
         whenever(userConfigProvider.sshKeyPath).thenReturn(TEST_SSH_KEY_PATH)
-        service = DefaultClusterConfigurationService(outputHandler, userConfigProvider)
+        service =
+            DefaultClusterConfigurationService(
+                userConfigProvider,
+                eventBus,
+            )
     }
 
     @Nested
@@ -232,7 +248,8 @@ class ClusterConfigurationServiceTest {
 
             service.writeAxonOpsWorkbenchConfig(tempDir, clusterState, userConfig)
 
-            verify(outputHandler).handleMessage("AxonOps Workbench configuration written to axonops-workbench.json")
+            assertThat(capturedEvents.map { it.event.toDisplayString() })
+                .anyMatch { it.contains("AxonOps Workbench configuration written") }
         }
 
         @Test

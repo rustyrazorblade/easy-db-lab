@@ -3,7 +3,6 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.output.OutputHandler
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
@@ -23,7 +22,6 @@ import java.nio.file.Path
 class K3sClusterServiceTest {
     private lateinit var k3sService: K3sService
     private lateinit var k3sAgentService: K3sAgentService
-    private lateinit var outputHandler: OutputHandler
     private lateinit var clusterBackupService: ClusterBackupService
     private lateinit var service: K3sClusterService
     private lateinit var serviceWithBackup: K3sClusterService
@@ -35,7 +33,6 @@ class K3sClusterServiceTest {
     fun setup() {
         k3sService = mock()
         k3sAgentService = mock()
-        outputHandler = mock()
         clusterBackupService = mock()
 
         // Service without backup capability (for backward compatibility tests)
@@ -43,7 +40,6 @@ class K3sClusterServiceTest {
             DefaultK3sClusterService(
                 k3sService = k3sService,
                 k3sAgentService = k3sAgentService,
-                outputHandler = outputHandler,
             )
 
         // Service with backup capability
@@ -51,7 +47,6 @@ class K3sClusterServiceTest {
             DefaultK3sClusterService(
                 k3sService = k3sService,
                 k3sAgentService = k3sAgentService,
-                outputHandler = outputHandler,
                 clusterBackupService = clusterBackupService,
             )
     }

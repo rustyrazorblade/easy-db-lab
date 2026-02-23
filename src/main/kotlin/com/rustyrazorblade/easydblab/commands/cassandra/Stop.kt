@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.toHost
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.CassandraService
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import com.rustyrazorblade.easydblab.services.SidecarService
@@ -33,7 +34,7 @@ class Stop : PicoBaseCommand() {
     var hosts = HostsMixin()
 
     override fun execute() {
-        outputHandler.handleMessage("Stopping cassandra service on all nodes.")
+        eventBus.emit(Event.Message("Stopping cassandra service on all nodes."))
 
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList) { host ->
             cassandraService.stop(host.toHost()).getOrThrow()
@@ -46,16 +47,16 @@ class Stop : PicoBaseCommand() {
      * Stop cassandra-sidecar service on Cassandra nodes
      */
     private fun stopSidecar() {
-        outputHandler.handleMessage("Stopping cassandra-sidecar on Cassandra nodes...")
+        eventBus.emit(Event.Message("Stopping cassandra-sidecar on Cassandra nodes..."))
 
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList, parallel = true) { host ->
             sidecarService
                 .stop(host.toHost())
                 .onFailure { e ->
-                    outputHandler.handleMessage("Warning: Failed to stop cassandra-sidecar on ${host.alias}: ${e.message}")
+                    eventBus.emit(Event.Error("Warning: Failed to stop cassandra-sidecar on ${host.alias}: ${e.message}"))
                 }
         }
 
-        outputHandler.handleMessage("cassandra-sidecar shutdown completed on Cassandra nodes")
+        eventBus.emit(Event.Message("cassandra-sidecar shutdown completed on Cassandra nodes"))
     }
 }

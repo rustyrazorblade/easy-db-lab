@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.mcp
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.PicoCommand
+import com.rustyrazorblade.easydblab.events.Event
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -101,7 +102,7 @@ class McpEnumTest : BaseKoinTest() {
         var mode: TestMode = TestMode.DEVELOPMENT
 
         override fun execute() {
-            outputHandler.handleMessage("Executing with arch=$arch, mode=$mode")
+            eventBus.emit(Event.Message("Executing with arch=$arch, mode=$mode"))
         }
     }
 }

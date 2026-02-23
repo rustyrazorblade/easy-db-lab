@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.toHost
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.TailscaleService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -32,8 +33,8 @@ class TailscaleStatus : PicoBaseCommand() {
         val controlHost = clusterState.getControlHost()
         if (controlHost == null) {
             with(TermColors()) {
-                outputHandler.handleMessage(
-                    red("No control node found. Ensure your cluster is running with 'easy-db-lab up'."),
+                eventBus.emit(
+                    Event.Error(red("No control node found. Ensure your cluster is running with 'easy-db-lab up'.")),
                 )
             }
             return
@@ -47,8 +48,8 @@ class TailscaleStatus : PicoBaseCommand() {
             tailscaleService.isConnected(host).getOrElse { false }
 
         if (!isConnected) {
-            outputHandler.handleMessage("Tailscale is not running on ${controlHost.alias}.")
-            outputHandler.handleMessage("Run 'easy-db-lab tailscale start' to connect.")
+            eventBus.emit(Event.Message("Tailscale is not running on ${controlHost.alias}."))
+            eventBus.emit(Event.Message("Run 'easy-db-lab tailscale start' to connect."))
             return
         }
 
@@ -56,12 +57,12 @@ class TailscaleStatus : PicoBaseCommand() {
         tailscaleService
             .getStatus(host)
             .onSuccess { status ->
-                outputHandler.handleMessage("Tailscale status on ${controlHost.alias}:")
-                outputHandler.handleMessage(status)
+                eventBus.emit(Event.Message("Tailscale status on ${controlHost.alias}:"))
+                eventBus.emit(Event.Message(status))
             }.onFailure { error ->
                 with(TermColors()) {
-                    outputHandler.handleMessage(
-                        red("Failed to get Tailscale status: ${error.message}"),
+                    eventBus.emit(
+                        Event.Error(red("Failed to get Tailscale status: ${error.message}")),
                     )
                 }
             }

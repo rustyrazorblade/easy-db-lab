@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.ssh
 
-import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.apache.sshd.client.session.ClientSession
 import org.apache.sshd.scp.client.CloseableScpClient
@@ -40,7 +41,7 @@ class SSHClient(
     private val session: ClientSession,
 ) : ISSHClient,
     KoinComponent {
-    private val outputHandler: OutputHandler by inject()
+    private val eventBus: EventBus by inject()
     private val log = KotlinLogging.logger {}
 
     // Synchronization lock to ensure thread-safe access to the session
@@ -70,16 +71,16 @@ class SSHClient(
 
             // Create connection for this host
             if (!secret) {
-                outputHandler.handleMessage("Executing remote command: $command")
+                eventBus.emit(Event.Message("Executing remote command: $command"))
             } else {
-                outputHandler.handleMessage("Executing remote command: [hidden]")
+                eventBus.emit(Event.Message("Executing remote command: [hidden]"))
             }
 
             val stderrStream = ByteArrayOutputStream()
             val result = session.executeRemoteCommand(command, stderrStream, Charset.defaultCharset())
 
             if (output) {
-                outputHandler.handleMessage(result)
+                eventBus.emit(Event.Message(result))
             }
 
             return@synchronized Response(result, stderrStream.toString())
@@ -97,7 +98,7 @@ class SSHClient(
             require(local.toFile().exists()) { "Local file does not exist: ${local.toAbsolutePath()}" }
             require(local.toFile().isFile) { "Local path is not a file: ${local.toAbsolutePath()}" }
 
-            outputHandler.handleMessage("Uploading file ${local.toAbsolutePath()} to $remoteAddress:$remote")
+            eventBus.emit(Event.Message("Uploading file ${local.toAbsolutePath()} to $remoteAddress:$remote"))
             getScpClient().upload(local, remote)
         }
 

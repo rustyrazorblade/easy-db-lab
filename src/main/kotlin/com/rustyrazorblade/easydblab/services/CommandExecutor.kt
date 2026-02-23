@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.github.ajalt.mordant.TermColors
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.annotations.RequireDocker
@@ -11,9 +10,10 @@ import com.rustyrazorblade.easydblab.commands.PicoCommand
 import com.rustyrazorblade.easydblab.commands.SetupProfile
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.observability.TelemetryNames
 import com.rustyrazorblade.easydblab.observability.TelemetryProvider
-import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.KoinComponent
@@ -74,11 +74,11 @@ interface CommandExecutor {
 class DefaultCommandExecutor(
     private val context: Context,
     private val clusterStateManager: ClusterStateManager,
-    private val outputHandler: OutputHandler,
     private val userConfigProvider: UserConfigProvider,
     private val dockerClientProvider: DockerClientProvider,
     private val resourceManager: ResourceManager,
     private val telemetryProvider: TelemetryProvider,
+    private val eventBus: EventBus,
 ) : CommandExecutor,
     KoinComponent {
     // Lazy injection - only resolves when first accessed (defers AWS dependency chain)
@@ -158,7 +158,7 @@ class DefaultCommandExecutor(
                     command.call()
                 } catch (e: Exception) {
                     log.error(e) { "Command execution failed" }
-                    outputHandler.handleError(e.message ?: "Command execution failed")
+                    eventBus.emit(Event.Command.ExecutionError(e.message ?: "Command execution failed"))
                     Constants.ExitCodes.ERROR
                 }
             }
@@ -203,9 +203,7 @@ class DefaultCommandExecutor(
                 executeWithLifecycle(SetupProfile())
 
                 // Show message and exit
-                with(TermColors()) {
-                    outputHandler.handleMessage(green("\nYou can now run the command again."))
-                }
+                eventBus.emit(Event.Command.RetryInstruction)
                 exitProcess(0)
             }
         }
@@ -213,9 +211,11 @@ class DefaultCommandExecutor(
         // Check if the command requires Docker
         if (annotations.any { it is RequireDocker }) {
             if (!checkDockerAvailability()) {
-                outputHandler.handleError("Error: Docker is not available or not running.")
-                outputHandler.handleError(
-                    "Please ensure Docker is installed and running before executing this command.",
+                eventBus.emit(Event.Command.DockerNotAvailable)
+                eventBus.emit(
+                    Event.Command.DockerSetupInstruction(
+                        "Please ensure Docker is installed and running before executing this command.",
+                    ),
                 )
                 exitProcess(1)
             }
@@ -224,7 +224,7 @@ class DefaultCommandExecutor(
         // Check if the command requires an SSH key
         if (annotations.any { it is RequireSSHKey }) {
             if (!checkSSHKeyAvailability()) {
-                outputHandler.handleError("SSH key not found at ${userConfigProvider.sshKeyPath}")
+                eventBus.emit(Event.Command.SshKeyMissing(userConfigProvider.sshKeyPath))
                 exitProcess(1)
             }
         }
@@ -267,11 +267,11 @@ class DefaultCommandExecutor(
                     // Update state with new hashes
                     state.backupHashes = state.backupHashes + result.updatedHashes
                     clusterStateManager.save(state)
-                    outputHandler.handleMessage("Backed up ${result.filesUploaded} changed configuration files to S3")
+                    eventBus.emit(Event.Backup.IncrementalBackupComplete(result.filesUploaded))
                 }
             }.onFailure { e ->
                 log.warn(e) { "Incremental backup failed" }
-                outputHandler.handleMessage("Warning: Incremental backup failed: ${e.message}")
+                eventBus.emit(Event.Backup.IncrementalBackupFailed(e.message ?: "Unknown error"))
             }
     }
 

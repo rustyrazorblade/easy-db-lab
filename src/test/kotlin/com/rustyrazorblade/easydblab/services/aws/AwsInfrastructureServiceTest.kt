@@ -1,6 +1,8 @@
 package com.rustyrazorblade.easydblab.services.aws
 
-import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.providers.aws.InfrastructureConfig
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import org.assertj.core.api.Assertions.assertThat
@@ -8,7 +10,6 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
-import org.mockito.kotlin.argThat
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
@@ -25,7 +26,6 @@ class AwsInfrastructureServiceTest {
     private lateinit var vpcService: VpcService
     private lateinit var emrService: EMRService
     private lateinit var openSearchService: OpenSearchService
-    private lateinit var outputHandler: OutputHandler
     private lateinit var service: AwsInfrastructureService
 
     @BeforeEach
@@ -33,13 +33,14 @@ class AwsInfrastructureServiceTest {
         vpcService = mock()
         emrService = mock()
         openSearchService = mock()
-        outputHandler = mock()
         service =
             AwsInfrastructureService(
                 vpcService = vpcService,
                 emrService = emrService,
                 openSearchService = openSearchService,
-                outputHandler = outputHandler,
+                eventBus =
+                    com.rustyrazorblade.easydblab.events
+                        .EventBus(),
             )
     }
 
@@ -499,12 +500,30 @@ class AwsInfrastructureServiceTest {
             whenever(vpcService.findRouteTablesInVpc(vpcId)).thenReturn(emptyList())
             whenever(emrService.findClustersInVpc(any(), any())).thenReturn(emptyList())
             whenever(openSearchService.findDomainsInVpc(any())).thenReturn(emptyList())
-            // Throw an exception on the "Tearing down" message to trigger the outer catch block
-            // Use argThat to match only the teardown message, not the discovery message
-            whenever(outputHandler.handleMessage(argThat { startsWith("\nTearing down") }))
-                .thenThrow(RuntimeException("Unexpected output failure"))
 
-            val result = service.teardownVpc(vpcId, dryRun = false)
+            // Use an EventBus with a listener that throws when it sees the "Tearing down" event
+            // to trigger the outer catch block in executeVpcTeardown
+            val throwingEventBus = EventBus()
+            throwingEventBus.addListener(
+                object : EventListener {
+                    override fun onEvent(envelope: EventEnvelope) {
+                        if (envelope.event.toDisplayString().startsWith("\nTearing down")) {
+                            throw RuntimeException("Unexpected event listener failure")
+                        }
+                    }
+
+                    override fun close() {}
+                },
+            )
+            val throwingService =
+                AwsInfrastructureService(
+                    vpcService = vpcService,
+                    emrService = emrService,
+                    openSearchService = openSearchService,
+                    eventBus = throwingEventBus,
+                )
+
+            val result = throwingService.teardownVpc(vpcId, dryRun = false)
 
             assertThat(result.success).isFalse()
             assertThat(result.errors).anyMatch { it.contains("Unexpected error") }

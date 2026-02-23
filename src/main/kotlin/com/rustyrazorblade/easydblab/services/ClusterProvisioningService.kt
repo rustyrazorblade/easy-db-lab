@@ -8,7 +8,8 @@ import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.OpenSearchClusterState
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
-import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.InstanceCreationConfig
 import com.rustyrazorblade.easydblab.services.aws.DomainState
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
@@ -121,9 +122,9 @@ class DefaultClusterProvisioningService(
     private val ec2InstanceService: EC2InstanceService,
     private val emrProvisioningService: EMRProvisioningService,
     private val openSearchService: OpenSearchService,
-    private val outputHandler: OutputHandler,
     private val aws: com.rustyrazorblade.easydblab.providers.aws.AWS,
     private val user: User,
+    private val eventBus: EventBus,
 ) : ClusterProvisioningService {
     companion object {
         private val log = KotlinLogging.logger {}
@@ -142,9 +143,7 @@ class DefaultClusterProvisioningService(
         config.specs
             .filter { it.neededCount <= 0 && it.configuredCount > 0 && it.existingCount > 0 }
             .forEach { spec ->
-                outputHandler.handleMessage(
-                    "Found ${spec.existingCount} existing ${spec.serverType.name} instances, no new instances needed",
-                )
+                eventBus.emit(Event.Ec2.ExistingInstancesFound(spec.serverType.name, spec.existingCount))
             }
 
         // Build and run instance creation threads
@@ -204,9 +203,7 @@ class DefaultClusterProvisioningService(
         instanceConfig.specs
             .filter { it.neededCount <= 0 && it.configuredCount > 0 && it.existingCount > 0 }
             .forEach { spec ->
-                outputHandler.handleMessage(
-                    "Found ${spec.existingCount} existing ${spec.serverType.name} instances, no new instances needed",
-                )
+                eventBus.emit(Event.Ec2.ExistingInstancesFound(spec.serverType.name, spec.existingCount))
             }
 
         // Instance creation threads
@@ -241,7 +238,7 @@ class DefaultClusterProvisioningService(
         // EMR thread
         if (servicesConfig.initConfig.sparkEnabled) {
             if (servicesConfig.clusterState.emrCluster != null) {
-                outputHandler.handleMessage("EMR cluster already exists, skipping creation")
+                eventBus.emit(Event.Emr.ClusterAlreadyExists)
             } else {
                 allThreads.add(
                     thread(start = true, name = "create-EMR") {
@@ -360,7 +357,7 @@ class DefaultClusterProvisioningService(
         securityGroupId: String,
         tags: Map<String, String>,
     ): OpenSearchClusterState {
-        outputHandler.handleMessage("Creating OpenSearch domain...")
+        eventBus.emit(Event.Provision.OpenSearchCreating)
 
         val domainName = "${initConfig.name}-os".take(Constants.OpenSearch.DOMAIN_NAME_MAX_LENGTH)
 

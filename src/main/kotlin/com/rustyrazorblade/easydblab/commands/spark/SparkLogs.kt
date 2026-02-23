@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.commands.spark
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.SparkService
 import com.rustyrazorblade.easydblab.services.VictoriaLogsService
 import org.koin.core.component.inject
@@ -62,7 +63,7 @@ class SparkLogs : PicoBaseCommand() {
         val targetStepId =
             stepId ?: getMostRecentStepId(clusterInfo.clusterId)
 
-        outputHandler.handleMessage("Querying logs for step: $targetStepId\n")
+        eventBus.emit(Event.Message("Querying logs for step: $targetStepId\n"))
 
         // Query Victoria Logs for EMR logs matching this step ID
         val query = "source:emr AND \"$targetStepId\""
@@ -70,31 +71,35 @@ class SparkLogs : PicoBaseCommand() {
             victoriaLogsService
                 .query(query, since, limit)
                 .getOrElse { exception ->
-                    outputHandler.handleError("Failed to query logs: ${exception.message}")
-                    outputHandler.handleMessage(
-                        """
+                    eventBus.emit(Event.Error("Failed to query logs: ${exception.message}"))
+                    eventBus.emit(
+                        Event.Message(
+                            """
                         |Tips:
                         |  - Ensure observability stack is deployed: easy-db-lab k8 apply
                         |  - Check if Victoria Logs is running: kubectl get pods
                         |  - Logs may take a few minutes to be ingested from S3
-                        """.trimMargin(),
+                            """.trimMargin(),
+                        ),
                     )
                     return
                 }
 
         if (logs.isEmpty()) {
-            outputHandler.handleMessage(
-                """
+            eventBus.emit(
+                Event.Message(
+                    """
                 |No logs found for step $targetStepId
                 |
                 |Tips:
                 |  - Logs may take a few minutes to be ingested from S3
                 |  - Try increasing the time range with --since 1d
-                """.trimMargin(),
+                    """.trimMargin(),
+                ),
             )
         } else {
-            outputHandler.handleMessage(logs.joinToString("\n"))
-            outputHandler.handleMessage("\nFound ${logs.size} log entries.")
+            eventBus.emit(Event.Message(logs.joinToString("\n")))
+            eventBus.emit(Event.Message("\nFound ${logs.size} log entries."))
         }
     }
 

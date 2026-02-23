@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredInstance
 import com.rustyrazorblade.easydblab.providers.aws.InstanceCreationConfig
 import org.assertj.core.api.Assertions.assertThat
@@ -26,8 +25,12 @@ import software.amazon.awssdk.services.ec2.model.Tag
 
 internal class EC2InstanceServiceTest {
     private val mockEc2Client: Ec2Client = mock()
-    private val mockOutputHandler: OutputHandler = mock()
-    private val ec2InstanceService = EC2InstanceService(mockEc2Client, mockOutputHandler)
+    private val ec2InstanceService =
+        EC2InstanceService(
+            mockEc2Client,
+            com.rustyrazorblade.easydblab.events
+                .EventBus(),
+        )
 
     @Test
     fun `findInstancesByClusterId should return empty map when no instances found`() {

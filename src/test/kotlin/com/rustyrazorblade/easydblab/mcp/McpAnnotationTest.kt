@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.PicoCommand
+import com.rustyrazorblade.easydblab.events.Event
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import org.assertj.core.api.Assertions.assertThat
@@ -24,9 +25,9 @@ class TestMcpCommand : PicoBaseCommand() {
 
     override fun execute() {
         if (testParam.isNotEmpty()) {
-            outputHandler.handleMessage("Test MCP command executed with param: $testParam")
+            eventBus.emit(Event.Message("Test MCP command executed with param: $testParam"))
         } else {
-            outputHandler.handleMessage("Test MCP command executed")
+            eventBus.emit(Event.Message("Test MCP command executed"))
         }
     }
 }

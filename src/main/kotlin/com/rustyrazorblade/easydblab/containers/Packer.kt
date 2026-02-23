@@ -10,7 +10,8 @@ import com.rustyrazorblade.easydblab.commands.mixins.BuildArgsMixin
 import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.CassandraVersion
 import com.rustyrazorblade.easydblab.configuration.User
-import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.AWSCredentialsManager
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.apache.commons.io.FileUtils
@@ -28,7 +29,7 @@ class Packer(
     var directory: String,
 ) : KoinComponent {
     private val docker: Docker by inject { parametersOf(context) }
-    private val outputHandler: OutputHandler by inject()
+    private val eventBus: EventBus by inject()
     private val user: User by inject()
     private val awsCredentialsManager by lazy { AWSCredentialsManager(context.profileDir, user) }
 
@@ -105,7 +106,7 @@ class Packer(
         require(directory.isNotBlank()) { "Directory cannot be blank" }
 
         if (!File(localPackerPath).exists()) {
-            outputHandler.handleError("packer directory not found: $localPackerPath")
+            eventBus.emit(Event.Error("packer directory not found: $localPackerPath"))
             exitProcess(1)
         }
 

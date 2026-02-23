@@ -4,7 +4,8 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.EMRClusterInfo
 import com.rustyrazorblade.easydblab.configuration.s3Path
-import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.SparkService
@@ -43,15 +44,14 @@ import java.util.zip.GZIPInputStream
  * - The polling is blocking - it holds the thread until job completion or timeout
  *
  * @property emrClient AWS EMR client for API operations
- * @property outputHandler Handler for user-facing output messages
  * @property clusterStateManager Manager for cluster state persistence
  */
 class EMRSparkService(
     private val emrClient: EmrClient,
-    private val outputHandler: OutputHandler,
     private val objectStore: ObjectStore,
     private val clusterStateManager: ClusterStateManager,
     private val victoriaLogsService: VictoriaLogsService,
+    private val eventBus: EventBus,
 ) : SparkService {
     private val log = KotlinLogging.logger {}
 
@@ -113,7 +113,7 @@ class EMRSparkService(
         stepId: String,
     ): Result<SparkService.JobStatus> =
         runCatching {
-            outputHandler.handleMessage("Waiting for job completion...")
+            eventBus.emit(Event.Emr.SparkJobWaiting)
 
             val startTime = System.currentTimeMillis()
             var currentStatus: SparkService.JobStatus
@@ -135,13 +135,13 @@ class EMRSparkService(
 
                 // Log less frequently to reduce noise (every 60 seconds at default 5s interval)
                 if (pollCount % Constants.EMR.LOG_INTERVAL_POLLS == 0) {
-                    outputHandler.handleMessage("Job state: ${currentStatus.state}")
+                    eventBus.emit(Event.Emr.SparkJobStateUpdate(currentStatus.state.toString()))
                 }
             } while (currentStatus.state !in TERMINAL_JOB_STATES)
 
             when (currentStatus.state) {
                 StepState.COMPLETED -> {
-                    outputHandler.handleMessage("Job completed successfully")
+                    eventBus.emit(Event.Emr.SparkJobCompleted)
                     currentStatus
                 }
                 StepState.FAILED -> handleFailedJob(clusterId, stepId, currentStatus)
@@ -183,21 +183,23 @@ class EMRSparkService(
     ) {
         val stepDetails = getStepDetails(clusterId, stepId).getOrNull()
         if (stepDetails != null) {
-            outputHandler.handleMessage(stepDetails.toDisplayString())
+            eventBus.emit(Event.Emr.SparkStepDetails(stepDetails.toDisplayString()))
         } else {
-            outputHandler.handleMessage(
-                """
-                |=== Job Failed ===
-                |Step ID: $stepId
-                |Failure: ${currentStatus.failureDetails ?: "Unknown reason"}
-                """.trimMargin(),
+            eventBus.emit(
+                Event.Emr.SparkStepError(
+                    """
+                    |=== Job Failed ===
+                    |Step ID: $stepId
+                    |Failure: ${currentStatus.failureDetails ?: "Unknown reason"}
+                    """.trimMargin(),
+                ),
             )
         }
     }
 
     @Suppress("TooGenericExceptionCaught")
     private fun queryVictoriaLogs(stepId: String) {
-        outputHandler.handleMessage("\n=== Step Logs ===")
+        eventBus.emit(Event.Message("\n=== Step Logs ==="))
         try {
             Thread.sleep(Constants.EMR.LOG_INGESTION_WAIT_MS)
 
@@ -205,19 +207,19 @@ class EMRSparkService(
                 .query(query = "step_id:$stepId", timeRange = "1h", limit = Constants.EMR.MAX_LOG_LINES)
                 .onSuccess { logs ->
                     if (logs.isEmpty()) {
-                        outputHandler.handleMessage("No logs found yet. Try: easy-db-lab spark logs --step-id $stepId")
+                        eventBus.emit(Event.Message("No logs found yet. Try: easy-db-lab spark logs --step-id $stepId"))
                     } else {
-                        logs.forEach { outputHandler.handleMessage(it) }
-                        outputHandler.handleMessage("\nFound ${logs.size} log entries.")
+                        logs.forEach { eventBus.emit(Event.Emr.SparkLogLine(it)) }
+                        eventBus.emit(Event.Message("\nFound ${logs.size} log entries."))
                     }
                 }.onFailure { e ->
-                    outputHandler.handleMessage("Could not query logs: ${e.message}")
-                    outputHandler.handleMessage("Try: easy-db-lab spark logs --step-id $stepId")
+                    eventBus.emit(Event.Emr.SparkLogError(e.message ?: "Unknown error"))
+                    eventBus.emit(Event.Emr.SparkLogInstruction(stepId))
                 }
         } catch (e: Exception) {
             log.warn { "Failed to query Victoria Logs: ${e.message}" }
-            outputHandler.handleMessage("Could not query logs automatically.")
-            outputHandler.handleMessage("Try: easy-db-lab spark logs --step-id $stepId")
+            eventBus.emit(Event.Message("Could not query logs automatically."))
+            eventBus.emit(Event.Emr.SparkLogInstruction(stepId))
         }
     }
 
@@ -239,16 +241,16 @@ class EMRSparkService(
             |  aws s3 cp s3://$s3Bucket/${emrLogsPath}stderr.gz - | gunzip
             """.trimMargin()
 
-        outputHandler.handleMessage("\n=== Downloading Step Logs ===")
+        eventBus.emit(Event.Message("\n=== Downloading Step Logs ==="))
         try {
             downloadStepLogs(clusterId, stepId)
                 .onFailure { e ->
-                    outputHandler.handleMessage("Could not download logs: ${e.message}")
-                    outputHandler.handleMessage(manualDebugCommands)
+                    eventBus.emit(Event.Emr.SparkLogDownloadFailed(e.message ?: "Unknown error"))
+                    eventBus.emit(Event.Emr.SparkDebugInstructions(manualDebugCommands))
                 }
         } catch (e: Exception) {
             log.warn { "Failed to download step logs: ${e.message}" }
-            outputHandler.handleMessage(manualDebugCommands)
+            eventBus.emit(Event.Emr.SparkDebugInstructions(manualDebugCommands))
         }
     }
 
@@ -427,8 +429,8 @@ class EMRSparkService(
             val localGzFile = localLogsDir.resolve(logType.filename)
             val localLogFile = localLogsDir.resolve(logType.filename.removeSuffix(".gz"))
 
-            outputHandler.handleMessage("Downloading logs from: ${logPath.toUri()}")
-            outputHandler.handleMessage("Saving to: $localLogFile")
+            eventBus.emit(Event.Emr.SparkLogDownloadStart(logPath.toUri().toString()))
+            eventBus.emit(Event.Emr.SparkLogDownloadSaveTo(localLogFile.toString()))
 
             // Download with retry (logs may not be immediately available)
             executeS3LogRetrievalWithRetry("s3-download-logs") {
@@ -452,8 +454,8 @@ class EMRSparkService(
             val localLogsDir = Paths.get("logs", "emr", stepId)
             Files.createDirectories(localLogsDir)
 
-            outputHandler.handleMessage("Downloading all EMR logs from: ${emrLogsPath.toUri()}")
-            outputHandler.handleMessage("Saving to: $localLogsDir")
+            eventBus.emit(Event.Emr.EmrLogsDownloading(emrLogsPath.toUri().toString()))
+            eventBus.emit(Event.Emr.EmrLogsSaveTo(localLogsDir.toString()))
 
             objectStore.downloadDirectory(emrLogsPath, localLogsDir, showProgress = true)
 
@@ -472,7 +474,7 @@ class EMRSparkService(
             val localLogsDir = Paths.get("logs", clusterId, stepId)
             Files.createDirectories(localLogsDir)
 
-            outputHandler.handleMessage("Downloading step logs to: $localLogsDir")
+            eventBus.emit(Event.Emr.StepLogsDownloading(localLogsDir.toString()))
 
             // Download both stdout and stderr
             var logsDownloaded = 0
@@ -495,32 +497,38 @@ class EMRSparkService(
                     decompressGzipFile(localGzFile, localLogFile)
                     // Remove the .gz file after decompression
                     Files.deleteIfExists(localGzFile)
-                    outputHandler.handleMessage("Downloaded: ${logType.name.lowercase()}")
+                    eventBus.emit(Event.Emr.SparkLogDownloadComplete(logType.name.lowercase()))
                     logsDownloaded++
                 } catch (e: Exception) {
                     log.warn { "Could not download ${logType.filename}: ${e.message}" }
-                    outputHandler.handleMessage("Could not download ${logType.name.lowercase()} (logs may not be available yet)")
+                    eventBus.emit(
+                        Event.Message(
+                            "Could not download ${logType.name.lowercase()} (logs may not be available yet)",
+                        ),
+                    )
                 }
             }
 
             if (logsDownloaded == 0) {
                 val s3Bucket = clusterState.s3Bucket ?: "UNKNOWN_BUCKET"
                 val emrLogsPath = "${Constants.EMR.S3_LOG_PREFIX}$clusterId/steps/$stepId/"
-                outputHandler.handleMessage(
-                    """
-                    |
-                    |No logs were available. EMR logs typically take 30-60 seconds to upload after job completion.
-                    |
-                    |=== Manual Debug Commands ===
-                    |  # Retry log download
-                    |  easy-db-lab spark logs --step-id $stepId
-                    |
-                    |  # Check step details
-                    |  aws emr describe-step --cluster-id $clusterId --step-id $stepId
-                    |
-                    |  # View stderr directly from S3 (once available)
-                    |  aws s3 cp s3://$s3Bucket/${emrLogsPath}stderr.gz - | gunzip
-                    """.trimMargin(),
+                eventBus.emit(
+                    Event.Emr.SparkDebugInstructions(
+                        """
+                        |
+                        |No logs were available. EMR logs typically take 30-60 seconds to upload after job completion.
+                        |
+                        |=== Manual Debug Commands ===
+                        |  # Retry log download
+                        |  easy-db-lab spark logs --step-id $stepId
+                        |
+                        |  # Check step details
+                        |  aws emr describe-step --cluster-id $clusterId --step-id $stepId
+                        |
+                        |  # View stderr directly from S3 (once available)
+                        |  aws s3 cp s3://$s3Bucket/${emrLogsPath}stderr.gz - | gunzip
+                        """.trimMargin(),
+                    ),
                 )
             }
 
@@ -529,7 +537,11 @@ class EMRSparkService(
             if (Files.exists(stderrFile)) {
                 val stderrContent = Files.readString(stderrFile)
                 if (stderrContent.isNotBlank()) {
-                    outputHandler.handleMessage("\n=== stderr (last ${Constants.EMR.STDERR_TAIL_LINES} lines) ===")
+                    eventBus.emit(
+                        Event.Message(
+                            "\n=== stderr (last ${Constants.EMR.STDERR_TAIL_LINES} lines) ===",
+                        ),
+                    )
                     val lines = stderrContent.lines()
                     val lastLines =
                         if (lines.size > Constants.EMR.STDERR_TAIL_LINES) {
@@ -537,8 +549,8 @@ class EMRSparkService(
                         } else {
                             lines
                         }
-                    lastLines.forEach { outputHandler.handleMessage(it) }
-                    outputHandler.handleMessage("=== end stderr ===\n")
+                    lastLines.forEach { eventBus.emit(Event.Emr.SparkStderrLine(it)) }
+                    eventBus.emit(Event.Message("=== end stderr ===\n"))
                 }
             }
 

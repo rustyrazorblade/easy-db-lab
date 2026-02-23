@@ -16,6 +16,7 @@ import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.toHost
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredInstance
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import com.rustyrazorblade.easydblab.providers.aws.VpcNetworkingConfig
@@ -132,7 +133,7 @@ class Up : PicoBaseCommand() {
      * Uses a wildcard policy that grants access to all easy-db-lab-* buckets.
      */
     private fun reapplyS3Policy() {
-        outputHandler.handleMessage("Ensuring IAM policies are up to date...")
+        eventBus.emit(Event.Provision.IamUpdating)
         runCatching {
             s3BucketService.attachS3Policy(Constants.AWS.Roles.EC2_INSTANCE_ROLE)
         }.onFailure { e ->
@@ -159,7 +160,7 @@ class Up : PicoBaseCommand() {
             "No S3 bucket configured in profile. Run 'easy-db-lab setup-profile' first."
         }
 
-        outputHandler.handleMessage("Using account S3 bucket: $accountBucket")
+        eventBus.emit(Event.S3.BucketUsing(accountBucket))
 
         // Apply bucket policy for IAM role access (idempotent)
         s3BucketService.putBucketPolicy(accountBucket)
@@ -167,12 +168,12 @@ class Up : PicoBaseCommand() {
         // Enable CloudWatch metrics scoped to this cluster's prefix
         val clusterPrefix = workingState.clusterPrefix()
         s3BucketService.enableBucketRequestMetrics(accountBucket, clusterPrefix, workingState.metricsConfigId())
-        outputHandler.handleMessage("S3 request metrics enabled for cluster prefix: $clusterPrefix")
+        eventBus.emit(Event.S3.MetricsEnabled(clusterPrefix))
 
         workingState.s3Bucket = accountBucket
         clusterStateManager.save(workingState)
 
-        outputHandler.handleMessage("S3 bucket configured: $accountBucket (prefix: $clusterPrefix)")
+        eventBus.emit(Event.S3.BucketConfigured(accountBucket, clusterPrefix))
     }
 
     /**
@@ -213,7 +214,7 @@ class Up : PicoBaseCommand() {
         workingState.updateSqsQueue(queueInfo.queueUrl, queueInfo.queueArn)
         clusterStateManager.save(workingState)
 
-        outputHandler.handleMessage("SQS queue configured for log ingestion: ${queueInfo.queueUrl}")
+        eventBus.emit(Event.Sqs.QueueConfigured(queueInfo.queueUrl))
     }
 
     /**
@@ -225,7 +226,7 @@ class Up : PicoBaseCommand() {
         bucket: String,
         expectedQueueArn: String,
     ) {
-        outputHandler.handleMessage("Validating log ingestion pipeline...")
+        eventBus.emit(Event.Provision.LogPipelineValidating)
 
         val notifConfig = s3ObjectStore.getBucketNotificationConfiguration(bucket)
         val hasEMRNotification =
@@ -238,7 +239,7 @@ class Up : PicoBaseCommand() {
             )
         }
 
-        outputHandler.handleMessage("✓ S3 → SQS notifications configured correctly")
+        eventBus.emit(Event.Provision.LogPipelineValid)
     }
 
     /**
@@ -277,7 +278,7 @@ class Up : PicoBaseCommand() {
         }
 
         // Create new VPC
-        outputHandler.handleMessage("Creating VPC for cluster: ${initConfig.name}")
+        eventBus.emit(Event.Provision.VpcCreating(initConfig.name))
         val vpcTags =
             buildMap {
                 put(Constants.Vpc.TAG_KEY, Constants.Vpc.TAG_VALUE)
@@ -290,7 +291,7 @@ class Up : PicoBaseCommand() {
             }
 
         val vpcId = vpcService.createVpc(initConfig.name, initConfig.cidr, vpcTags)
-        outputHandler.handleMessage("VPC created: $vpcId")
+        eventBus.emit(Event.Provision.VpcCreated(vpcId))
 
         // Save VPC ID to state
         workingState.vpcId = vpcId
@@ -306,7 +307,7 @@ class Up : PicoBaseCommand() {
      * Each resource type updates cluster state atomically when complete.
      */
     private fun provisionInfrastructure(initConfig: InitConfig) {
-        outputHandler.handleMessage("Provisioning infrastructure...")
+        eventBus.emit(Event.Provision.InfrastructureStarting)
 
         // Create VPC if needed, or validate existing one
         val vpcId = createOrValidateVpc(initConfig)
@@ -402,23 +403,23 @@ class Up : PicoBaseCommand() {
                         workingState.updateEmrCluster(emrState)
                         clusterStateManager.save(workingState)
                     }
-                    outputHandler.handleMessage("EMR cluster ready: ${emrState.masterPublicDns}")
+                    eventBus.emit(Event.Provision.EmrReady(emrState.masterPublicDns ?: "unknown"))
                 },
                 onOpenSearchCreated = { osState ->
                     synchronized(stateLock) {
                         workingState.updateOpenSearchDomain(osState)
                         clusterStateManager.save(workingState)
                     }
-                    outputHandler.handleMessage("OpenSearch domain ready: https://${osState.endpoint}")
-                    osState.dashboardsEndpoint?.let { outputHandler.handleMessage("Dashboards: $it") }
+                    eventBus.emit(Event.Provision.OpenSearchReady(osState.endpoint ?: "unknown"))
+                    osState.dashboardsEndpoint?.let { eventBus.emit(Event.Provision.OpenSearchDashboards("Dashboards: $it")) }
                 },
             )
 
         // Report any failures
         if (result.errors.isNotEmpty()) {
-            outputHandler.handleMessage("\nInfrastructure creation had failures:")
+            eventBus.emit(Event.Provision.InfrastructureFailureHeader)
             result.errors.forEach { (resource, error) ->
-                outputHandler.handleMessage("  - $resource: ${error.message}")
+                eventBus.emit(Event.Provision.InfrastructureFailure(resource, error.message ?: "Unknown error"))
             }
             error(
                 "Failed to create ${result.errors.size} infrastructure resource(s): " +
@@ -442,7 +443,13 @@ class Up : PicoBaseCommand() {
         }
 
         printProvisioningSuccessMessage()
-        outputHandler.handleMessage("Cluster state updated: ${result.hosts.values.flatten().size} hosts tracked")
+        eventBus.emit(
+            Event.Provision.ClusterStateUpdated(
+                result.hosts.values
+                    .flatten()
+                    .size,
+            ),
+        )
     }
 
     private fun logExistingInstances(existingInstances: Map<ServerType, List<DiscoveredInstance>>) {
@@ -450,28 +457,32 @@ class Up : PicoBaseCommand() {
             val cassandra = existingInstances[ServerType.Cassandra]?.size ?: 0
             val stress = existingInstances[ServerType.Stress]?.size ?: 0
             val control = existingInstances[ServerType.Control]?.size ?: 0
-            outputHandler.handleMessage(
-                "Discovered existing instances: Cassandra=$cassandra, Stress=$stress, Control=$control",
-            )
+            eventBus.emit(Event.Provision.InstancesDiscovered(cassandra, stress, control))
         }
     }
 
     private fun printProvisioningSuccessMessage() {
         with(TermColors()) {
-            outputHandler.handleMessage(
-                "Instances have been provisioned.\n\n" +
-                    "Use " + green("easy-db-lab list") + " to see all available versions\n\n" +
-                    "Then use " + green("easy-db-lab use <version>") +
-                    " to use a specific version of Cassandra.\n",
+            eventBus.emit(
+                Event.Provision.ProvisioningComplete(
+                    "Instances have been provisioned.\n\n" +
+                        "Use " + green("easy-db-lab list") + " to see all available versions\n\n" +
+                        "Then use " + green("easy-db-lab use <version>") +
+                        " to use a specific version of Cassandra.\n",
+                ),
             )
-            outputHandler.handleMessage("Writing ssh config file to sshConfig.")
-            outputHandler.handleMessage(
-                "The following alias will allow you to easily work with the cluster:\n\n" +
-                    green("source env.sh") + "\n",
+            eventBus.emit(Event.Provision.ProvisioningInstructions("Writing ssh config file to sshConfig."))
+            eventBus.emit(
+                Event.Provision.ProvisioningInstructions(
+                    "The following alias will allow you to easily work with the cluster:\n\n" +
+                        green("source env.sh") + "\n",
+                ),
             )
-            outputHandler.handleMessage(
-                "You can edit " + green("cassandra.patch.yaml") +
-                    " with any changes you'd like to see merge in into the remote cassandra.yaml file.",
+            eventBus.emit(
+                Event.Provision.ProvisioningInstructions(
+                    "You can edit " + green("cassandra.patch.yaml") +
+                        " with any changes you'd like to see merge in into the remote cassandra.yaml file.",
+                ),
             )
         }
     }
@@ -490,16 +501,14 @@ class Up : PicoBaseCommand() {
 
     /** Waits for SSH to become available on instances and downloads Cassandra version info. */
     private fun waitForSshAndDownloadVersions() {
-        outputHandler.handleMessage("Waiting for SSH to come up..")
+        eventBus.emit(Event.Provision.SshWaiting)
         Thread.sleep(SSH_STARTUP_DELAY.toMillis())
 
         val retryConfig = RetryUtil.createSshConnectionRetryConfig()
         val retry =
             Retry.of("ssh-connection", retryConfig).also {
                 it.eventPublisher.onRetry { event ->
-                    outputHandler.handleMessage(
-                        "SSH still not up yet, waiting... (attempt ${event.numberOfRetryAttempts})",
-                    )
+                    eventBus.emit(Event.Provision.SshRetrying(event.numberOfRetryAttempts))
                 }
             }
 
@@ -528,9 +537,11 @@ class Up : PicoBaseCommand() {
     private fun setupInstancesIfNeeded() {
         if (noSetup) {
             with(TermColors()) {
-                outputHandler.handleMessage(
-                    "Skipping node setup.  You will need to run " +
-                        green("easy-db-lab setup-instance") + " to complete setup",
+                eventBus.emit(
+                    Event.Provision.NodeSetupInstructions(
+                        "Skipping node setup.  You will need to run " +
+                            green("easy-db-lab setup-instance") + " to complete setup",
+                    ),
                 )
             }
         } else {
@@ -540,7 +551,7 @@ class Up : PicoBaseCommand() {
             startTailscaleIfConfigured()
 
             if (userConfig.axonOpsKey.isNotBlank() && userConfig.axonOpsOrg.isNotBlank()) {
-                outputHandler.handleMessage("Setting up axonops for ${userConfig.axonOpsOrg}")
+                eventBus.emit(Event.Provision.AxonOpsSetup(userConfig.axonOpsOrg))
                 commandExecutor.execute { ConfigureAxonOps() }
             }
         }
@@ -554,12 +565,12 @@ class Up : PicoBaseCommand() {
      */
     private fun startTailscaleIfConfigured() {
         if (userConfig.tailscaleClientId.isNotBlank() && userConfig.tailscaleClientSecret.isNotBlank()) {
-            outputHandler.handleMessage("Starting Tailscale VPN...")
+            eventBus.emit(Event.Provision.TailscaleStarting)
             try {
                 commandExecutor.execute { TailscaleStart() }
             } catch (e: Exception) {
-                outputHandler.handleMessage("Warning: Failed to start Tailscale: ${e.message}")
-                outputHandler.handleMessage("You can manually start it later with: easy-db-lab tailscale start")
+                eventBus.emit(Event.Provision.TailscaleWarning(e.message ?: "Unknown error"))
+                eventBus.emit(Event.Provision.TailscaleManualInstruction)
             }
         }
     }
@@ -568,7 +579,7 @@ class Up : PicoBaseCommand() {
     private fun startK3sOnAllNodes() {
         val controlHosts = workingState.hosts[ServerType.Control] ?: emptyList()
         if (controlHosts.isEmpty()) {
-            outputHandler.handleError("No control nodes found, skipping K3s setup")
+            eventBus.emit(Event.Provision.NoControlNodes)
             return
         }
 
@@ -622,7 +633,7 @@ class Up : PicoBaseCommand() {
             return
         }
 
-        outputHandler.handleMessage("Labeling ${dbHosts.size} db nodes with ordinals...")
+        eventBus.emit(Event.Provision.NodeLabeling(dbHosts.size))
 
         dbHosts.forEachIndexed { index, host ->
             val nodeName = host.alias
@@ -633,7 +644,7 @@ class Up : PicoBaseCommand() {
             }
         }
 
-        outputHandler.handleMessage("Node labeling complete")
+        eventBus.emit(Event.Provision.NodeLabelingComplete)
     }
 
     /**
@@ -672,6 +683,6 @@ class Up : PicoBaseCommand() {
             registryService.configureTlsOnNode(clusterHost.toHost(), registryHost, s3Bucket)
         }
 
-        outputHandler.handleMessage("Registry TLS configured on all nodes")
+        eventBus.emit(Event.Registry.TlsConfigured)
     }
 }

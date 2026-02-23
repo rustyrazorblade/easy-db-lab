@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.services.aws
 
-import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.services.aws.EC2VpcService
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -38,7 +37,6 @@ class EC2VpcServiceIntegrationTest {
     }
 
     private lateinit var ec2Client: Ec2Client
-    private lateinit var outputHandler: BufferedOutputHandler
     private lateinit var vpcService: EC2VpcService
 
     @BeforeAll
@@ -62,8 +60,12 @@ class EC2VpcServiceIntegrationTest {
 
     @BeforeEach
     fun setup() {
-        outputHandler = BufferedOutputHandler()
-        vpcService = EC2VpcService(ec2Client, outputHandler)
+        vpcService =
+            EC2VpcService(
+                ec2Client,
+                com.rustyrazorblade.easydblab.events
+                    .EventBus(),
+            )
     }
 
     @Nested

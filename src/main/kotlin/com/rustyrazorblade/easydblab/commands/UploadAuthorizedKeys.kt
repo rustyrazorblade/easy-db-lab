@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.toHost
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -39,14 +40,14 @@ class UploadAuthorizedKeys : PicoBaseCommand() {
     override fun execute() {
         val path = Paths.get(localDir)
         if (!path.exists()) {
-            outputHandler.handleMessage("$localDir does not exist")
+            eventBus.emit(Event.Message("$localDir does not exist"))
             exitProcess(1)
         }
 
         val files =
             File(localDir).listFiles(FileFilter { it.name.endsWith(".pub") })
                 ?: error("Failed to list files in $localDir")
-        outputHandler.handleMessage("Files: ${files.map { it.name }}")
+        eventBus.emit(Event.Message("Files: ${files.map { it.name }}"))
 
         // collect all the keys into a single file then upload
         val keys = files.joinToString("\n") { it.readText().trim() }
@@ -57,8 +58,8 @@ class UploadAuthorizedKeys : PicoBaseCommand() {
             it.write("\n")
         }
 
-        outputHandler.handleMessage("Uploading the following keys:")
-        outputHandler.handleMessage(keys)
+        eventBus.emit(Event.Message("Uploading the following keys:"))
+        eventBus.emit(Event.Message(keys))
 
         val upload = doUpload(authorizedKeysExtraFile)
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList) { upload(it.toHost()) }

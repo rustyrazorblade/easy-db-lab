@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.s3Path
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.output.displayClickHouseAccess
 import com.rustyrazorblade.easydblab.output.displayS3ManagerClickHouseAccess
 import com.rustyrazorblade.easydblab.services.K8sService
@@ -51,13 +52,13 @@ class ClickHouseStatus : PicoBaseCommand() {
                     error("Failed to get ClickHouse status: ${exception.message}")
                 }
 
-        outputHandler.handleMessage("ClickHouse Cluster Status:")
-        outputHandler.handleMessage("")
-        outputHandler.handleMessage(status)
-        outputHandler.displayClickHouseAccess(dbNodeIp)
+        eventBus.emit(Event.Message("ClickHouse Cluster Status:"))
+        eventBus.emit(Event.Message(""))
+        eventBus.emit(Event.Message(status))
+        eventBus.displayClickHouseAccess(dbNodeIp)
 
         if (!clusterState.s3Bucket.isNullOrBlank()) {
-            outputHandler.displayS3ManagerClickHouseAccess(controlNode.privateIp, clusterState.s3Path())
+            eventBus.displayS3ManagerClickHouseAccess(controlNode.privateIp, clusterState.s3Path())
         }
     }
 }

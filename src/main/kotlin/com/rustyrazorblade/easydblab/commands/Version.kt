@@ -1,7 +1,8 @@
 package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.Context
-import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -17,9 +18,9 @@ class Version :
     PicoCommand,
     KoinComponent {
     private val context: Context by inject()
-    private val outputHandler: OutputHandler by inject()
+    private val eventBus: EventBus by inject()
 
     override fun execute() {
-        outputHandler.handleMessage(context.version.toString())
+        eventBus.emit(Event.Message(context.version.toString()))
     }
 }

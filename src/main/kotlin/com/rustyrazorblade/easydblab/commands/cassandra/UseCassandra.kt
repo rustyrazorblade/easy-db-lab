@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.getHosts
 import com.rustyrazorblade.easydblab.configuration.toHost
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -54,16 +55,18 @@ class UseCassandra : PicoBaseCommand() {
         val state = clusterState
 
         if (!clusterStateManager.exists()) {
-            outputHandler.handleMessage(
-                "Error: cluster state not found. Please run easy-db-lab up first to " +
-                    "establish IP addresses for seed listing.",
+            eventBus.emit(
+                Event.Error(
+                    "cluster state not found. Please run easy-db-lab up first to " +
+                        "establish IP addresses for seed listing.",
+                ),
             )
             exitProcess(1)
         }
 
         val cassandraHosts = state.getHosts(ServerType.Cassandra)
-        outputHandler.handleMessage(
-            "Using version $version on ${cassandraHosts.size} hosts, filter: $hosts",
+        eventBus.emit(
+            Event.Message("Using version $version on ${cassandraHosts.size} hosts, filter: $hosts"),
         )
 
         hostOperationsService.withHosts(state.hosts, ServerType.Cassandra, hosts.hostList, parallel = true) { host ->
@@ -85,9 +88,11 @@ class UseCassandra : PicoBaseCommand() {
         }
 
         with(TermColors()) {
-            outputHandler.handleMessage(
-                "You can update ${green("cassandra.patch.yaml")} and the JVM config files under ${green(version)}, " +
-                    "then run ${green("easy-db-lab update-config")} to apply the changes.",
+            eventBus.emit(
+                Event.Message(
+                    "You can update ${green("cassandra.patch.yaml")} and the JVM config files under ${green(version)}, " +
+                        "then run ${green("easy-db-lab update-config")} to apply the changes.",
+                ),
             )
         }
     }

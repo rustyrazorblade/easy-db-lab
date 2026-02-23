@@ -6,11 +6,11 @@ import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.Host
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kubernetes.DefaultKubernetesService
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import com.rustyrazorblade.easydblab.kubernetes.ProxiedKubernetesClientFactory
-import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import io.github.oshai.kotlinlogging.KLogger
@@ -112,13 +112,12 @@ interface K3sService : SystemDServiceManager {
  * in server mode on first start.
  *
  * @property remoteOps Service for executing SSH commands on remote hosts
- * @property outputHandler Handler for user-facing output messages
  */
 class DefaultK3sService(
     remoteOps: RemoteOperationsService,
-    outputHandler: OutputHandler,
     private val socksProxyService: SocksProxyService,
-) : AbstractSystemDServiceManager("k3s", remoteOps, outputHandler),
+    eventBus: EventBus,
+) : AbstractSystemDServiceManager("k3s", remoteOps, eventBus),
     K3sService {
     override val log: KLogger = KotlinLogging.logger {}
 

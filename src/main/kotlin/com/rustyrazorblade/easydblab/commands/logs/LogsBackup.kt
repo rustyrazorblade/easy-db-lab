@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.commands.logs
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.VictoriaBackupService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -36,17 +37,17 @@ class LogsBackup : PicoBaseCommand() {
     override fun execute() {
         val controlHost = clusterState.getControlHost()
         if (controlHost == null) {
-            outputHandler.handleError("No control node found. Please ensure the cluster is running.")
+            eventBus.emit(Event.Error("No control node found. Please ensure the cluster is running."))
             return
         }
 
         victoriaBackupService
             .backupLogs(controlHost, clusterState, dest)
             .onSuccess { result ->
-                outputHandler.handleMessage("VictoriaLogs backup completed successfully")
-                outputHandler.handleMessage("Backup location: ${result.s3Path.toUri()}")
+                eventBus.emit(Event.Message("VictoriaLogs backup completed successfully"))
+                eventBus.emit(Event.Message("Backup location: ${result.s3Path.toUri()}"))
             }.onFailure { exception ->
-                outputHandler.handleError("VictoriaLogs backup failed: ${exception.message}")
+                eventBus.emit(Event.Error("VictoriaLogs backup failed: ${exception.message}"))
             }
     }
 }

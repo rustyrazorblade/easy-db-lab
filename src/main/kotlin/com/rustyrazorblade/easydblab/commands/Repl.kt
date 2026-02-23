@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.commands.clickhouse.ClickHouse
 import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearch
 import com.rustyrazorblade.easydblab.commands.spark.Spark
 import com.rustyrazorblade.easydblab.di.KoinCommandFactory
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.DefaultCommandExecutor
 import com.rustyrazorblade.easydblab.services.ResourceManager
@@ -130,7 +131,7 @@ class Repl : PicoBaseCommand() {
             runReplLoop(reader, systemRegistry)
         } catch (e: Exception) {
             log.error(e) { "Error in REPL" }
-            outputHandler.handleError("Error starting REPL: ${e.message ?: e::class.simpleName}", e)
+            eventBus.emit(Event.Error("Error starting REPL: ${e.message ?: e::class.simpleName}"))
         } finally {
             // Clean up resources on REPL exit
             log.debug { "REPL exiting, cleaning up resources" }
@@ -196,9 +197,9 @@ class Repl : PicoBaseCommand() {
             .build()
 
     private fun printWelcomeMessage() {
-        outputHandler.handleMessage("easy-db-lab interactive shell. Type 'help' for commands, TAB for completion.")
-        outputHandler.handleMessage("Press Alt+S to toggle command description tips.")
-        outputHandler.handleMessage("")
+        eventBus.emit(Event.Message("easy-db-lab interactive shell. Type 'help' for commands, TAB for completion."))
+        eventBus.emit(Event.Message("Press Alt+S to toggle command description tips."))
+        eventBus.emit(Event.Message(""))
     }
 
     private fun runReplLoop(

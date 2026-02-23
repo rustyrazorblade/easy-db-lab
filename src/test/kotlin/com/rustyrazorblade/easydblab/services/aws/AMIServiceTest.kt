@@ -1,6 +1,6 @@
 package com.rustyrazorblade.easydblab.services.aws
 
-import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.model.AMI
 import org.assertj.core.api.Assertions.assertThat
@@ -30,7 +30,7 @@ import com.rustyrazorblade.easydblab.assertions.assertThat as assertThatPruneRes
  */
 internal class AMIServiceTest {
     private val mockEc2Client: Ec2Client = mock()
-    private val mockOutputHandler: OutputHandler = mock()
+    private val eventBus: EventBus = EventBus()
     private val mockAws: AWS = mock()
     private lateinit var amiService: AMIService
 
@@ -40,7 +40,7 @@ internal class AMIServiceTest {
             spy(
                 AMIService(
                     ec2Client = mockEc2Client,
-                    outputHandler = mockOutputHandler,
+                    eventBus = eventBus,
                     aws = mockAws,
                 ),
             )

@@ -2,7 +2,6 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.Host
-import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.ssh.Response
 import io.github.oshai.kotlinlogging.KLogger
@@ -42,8 +41,8 @@ class SystemDServiceManagerTest : BaseKoinTest() {
      */
     private class TestSystemDService(
         remoteOps: RemoteOperationsService,
-        outputHandler: OutputHandler,
-    ) : AbstractSystemDServiceManager("test-service", remoteOps, outputHandler) {
+        eventBus: com.rustyrazorblade.easydblab.events.EventBus,
+    ) : AbstractSystemDServiceManager("test-service", remoteOps, eventBus) {
         override val log: KLogger = KotlinLogging.logger {}
     }
 
@@ -57,7 +56,12 @@ class SystemDServiceManagerTest : BaseKoinTest() {
     @BeforeEach
     fun setupMocks() {
         mockRemoteOps = mock()
-        testService = TestSystemDService(mockRemoteOps, getKoin().get())
+        testService =
+            TestSystemDService(
+                mockRemoteOps,
+                com.rustyrazorblade.easydblab.events
+                    .EventBus(),
+            )
     }
 
     // ========== START OPERATION TESTS ==========
@@ -310,12 +314,16 @@ class SystemDServiceManagerTest : BaseKoinTest() {
     fun `restart should be overridable for custom implementations`() {
         // Given a service with custom restart logic
         val customService =
-            object : AbstractSystemDServiceManager("custom-service", mockRemoteOps, getKoin().get()) {
+            object : AbstractSystemDServiceManager(
+                "custom-service",
+                mockRemoteOps,
+                com.rustyrazorblade.easydblab.events
+                    .EventBus(),
+            ) {
                 override val log: KLogger = KotlinLogging.logger {}
 
                 override fun restart(host: Host): Result<Unit> =
                     runCatching {
-                        outputHandler.handleMessage("Custom restart logic for ${host.alias}...")
                         remoteOps.executeRemotely(host, "/custom/restart-script")
                     }
             }

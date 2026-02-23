@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.s3Path
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.SparkService
 import org.koin.core.component.inject
@@ -87,7 +88,7 @@ class SparkSubmit : PicoBaseCommand() {
         // Determine JAR location (S3 or local)
         val s3JarPath =
             if (jarPath.startsWith("s3://")) {
-                outputHandler.handleMessage("Using S3 JAR: $jarPath")
+                eventBus.emit(Event.Message("Using S3 JAR: $jarPath"))
                 jarPath
             } else {
                 uploadJarToS3(jarPath)
@@ -124,7 +125,7 @@ class SparkSubmit : PicoBaseCommand() {
                     error(exception.message ?: "Failed to submit Spark job")
                 }
 
-        outputHandler.handleMessage("Submitted Spark job: $stepId to cluster ${clusterInfo.clusterId}")
+        eventBus.emit(Event.Message("Submitted Spark job: $stepId to cluster ${clusterInfo.clusterId}"))
 
         // Optionally wait for completion
         if (wait) {
@@ -134,8 +135,8 @@ class SparkSubmit : PicoBaseCommand() {
                     error(exception.message ?: "Job failed")
                 }
         } else {
-            outputHandler.handleMessage(
-                "Job submitted. Use 'easy-db-lab spark status --step-id $stepId' to check status.",
+            eventBus.emit(
+                Event.Message("Job submitted. Use 'easy-db-lab spark status --step-id $stepId' to check status."),
             )
         }
     }

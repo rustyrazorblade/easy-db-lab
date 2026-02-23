@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.StressJobService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
@@ -69,18 +70,18 @@ class StressStop : PicoBaseCommand() {
                     }
 
             if (jobs.isEmpty()) {
-                outputHandler.handleMessage("No stress jobs found.")
+                eventBus.emit(Event.Message("No stress jobs found."))
                 return
             }
 
-            outputHandler.handleMessage("Found ${jobs.size} stress job(s) to delete:")
+            eventBus.emit(Event.Message("Found ${jobs.size} stress job(s) to delete:"))
             jobs.forEach { job ->
-                outputHandler.handleMessage("  - ${job.name} (${job.status})")
+                eventBus.emit(Event.Message("  - ${job.name} (${job.status})"))
             }
 
             if (!force) {
-                outputHandler.handleMessage("")
-                outputHandler.handleMessage("Use --force to confirm deletion.")
+                eventBus.emit(Event.Message(""))
+                eventBus.emit(Event.Message("Use --force to confirm deletion."))
                 return
             }
 
@@ -91,13 +92,13 @@ class StressStop : PicoBaseCommand() {
                 deleted++
             }
 
-            outputHandler.handleMessage("")
-            outputHandler.handleMessage("Deleted $deleted stress job(s).")
+            eventBus.emit(Event.Message(""))
+            eventBus.emit(Event.Message("Deleted $deleted stress job(s)."))
         } else {
             // Delete specific job
             val name = jobName!!
             deleteJobAndConfigMap(controlNode, name)
-            outputHandler.handleMessage("Deleted stress job: $name")
+            eventBus.emit(Event.Message("Deleted stress job: $name"))
         }
     }
 

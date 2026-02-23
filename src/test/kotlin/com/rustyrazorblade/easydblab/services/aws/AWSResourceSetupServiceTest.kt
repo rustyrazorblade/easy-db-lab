@@ -3,7 +3,10 @@ package com.rustyrazorblade.easydblab.services.aws
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.User
-import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.services.aws.AWSResourceSetupService
 import org.assertj.core.api.Assertions.assertThat
@@ -38,12 +41,29 @@ internal class AWSResourceSetupServiceTest :
 
     // Mock dependencies - fully mocked AWS for service-level orchestration testing
     private val mockAws: AWS = mock()
-    private val mockOutputHandler: OutputHandler = mock()
+
+    private lateinit var eventBus: EventBus
+    private val capturedEvents = mutableListOf<EventEnvelope>()
 
     @BeforeEach
     fun setupTest() {
+        capturedEvents.clear()
+        eventBus = EventBus()
+        eventBus.addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    capturedEvents.add(envelope)
+                }
+
+                override fun close() {}
+            },
+        )
         // Create service with mocked dependencies (no more userConfigProvider)
-        service = AWSResourceSetupService(mockAws, mockOutputHandler)
+        service =
+            AWSResourceSetupService(
+                mockAws,
+                eventBus,
+            )
     }
 
     @Test
@@ -158,8 +178,8 @@ internal class AWSResourceSetupServiceTest :
         // When
         service.ensureAWSResources(userConfig)
 
-        // Then: Should output repair warning
-        verify(mockOutputHandler).handleMessage("Warning: IAM role configuration incomplete or invalid. Will attempt to repair.")
+        // Then: Should emit repair warning event
+        assertThat(capturedEvents).anyMatch { it.event is Event.AwsSetup.RepairWarning }
     }
 
     @Test
@@ -190,8 +210,8 @@ internal class AWSResourceSetupServiceTest :
         // Should call checkPermissions but not proceed to resource creation
         verify(mockAws).checkPermissions()
         verify(mockAws, never()).createRoleWithS3Policy(any())
-        // Verify user-facing error message was displayed
-        verify(mockOutputHandler).handleMessage(org.mockito.kotlin.argThat { contains("AWS PERMISSION ERROR") })
+        // Verify permission error event was emitted (IamException is an SdkServiceException)
+        assertThat(capturedEvents).anyMatch { it.event is Event.AwsSetup.IamPermissionError }
     }
 
     @Test
@@ -307,8 +327,8 @@ internal class AWSResourceSetupServiceTest :
             service.ensureAWSResources(userConfig)
         }
 
-        // Should handle error with appropriate message
-        verify(mockOutputHandler).handleError(any<String>(), any())
+        // Should emit IAM permission error event
+        assertThat(capturedEvents).anyMatch { it.event is Event.AwsSetup.IamPermissionError }
     }
 
     // Helper method to create test user config

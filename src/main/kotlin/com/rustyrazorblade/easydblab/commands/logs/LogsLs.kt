@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.s3Path
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -32,7 +33,7 @@ class LogsLs : PicoBaseCommand() {
         val files = objectStore.listFiles(clusterState.s3Path().victoriaLogs(), recursive = true)
 
         if (files.isEmpty()) {
-            outputHandler.handleMessage("No VictoriaLogs backups found.")
+            eventBus.emit(Event.Message("No VictoriaLogs backups found."))
             return
         }
 
@@ -44,15 +45,15 @@ class LogsLs : PicoBaseCommand() {
                 relativePath.substringBefore("/")
             }
 
-        outputHandler.handleMessage("VictoriaLogs backups:")
-        outputHandler.handleMessage("")
-        outputHandler.handleMessage("%-30s  %10s  %15s".format("Timestamp", "Files", "Total Size"))
-        outputHandler.handleMessage("-".repeat(TABLE_SEPARATOR_LENGTH))
+        eventBus.emit(Event.Message("VictoriaLogs backups:"))
+        eventBus.emit(Event.Message(""))
+        eventBus.emit(Event.Message("%-30s  %10s  %15s".format("Timestamp", "Files", "Total Size")))
+        eventBus.emit(Event.Message("-".repeat(TABLE_SEPARATOR_LENGTH)))
 
         for ((timestamp, groupFiles) in grouped.toSortedMap()) {
             val totalSize = groupFiles.sumOf { it.size }
-            outputHandler.handleMessage(
-                "%-30s  %10d  %15s".format(timestamp, groupFiles.size, formatSize(totalSize)),
+            eventBus.emit(
+                Event.Message("%-30s  %10d  %15s".format(timestamp, groupFiles.size, formatSize(totalSize))),
             )
         }
     }

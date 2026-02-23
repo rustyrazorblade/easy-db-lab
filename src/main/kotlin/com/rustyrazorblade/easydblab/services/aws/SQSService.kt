@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services.aws
 
-import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
@@ -62,11 +63,10 @@ interface SQSService {
  * - User feedback via OutputHandler
  *
  * @property sqsClient AWS SDK SQS client for queue operations
- * @property outputHandler Handler for user-facing output messages
  */
 class AWSSQSService(
     private val sqsClient: SqsClient,
-    private val outputHandler: OutputHandler,
+    private val eventBus: EventBus,
 ) : SQSService {
     private val log = KotlinLogging.logger {}
 
@@ -77,7 +77,7 @@ class AWSSQSService(
         runCatching {
             val queueName = "easy-db-lab-logs-$clusterId"
 
-            outputHandler.handleMessage("Creating SQS queue: $queueName")
+            eventBus.emit(Event.Sqs.QueueCreating(queueName))
 
             val retryConfig = RetryUtil.createAwsRetryConfig<String>()
             val retry = Retry.of("sqs-create-queue", retryConfig)
@@ -123,14 +123,14 @@ class AWSSQSService(
             sqsClient.setQueueAttributes(setAttrsRequest)
             log.info { "Configured SQS queue policy for S3 notifications" }
 
-            outputHandler.handleMessage("SQS queue created: $queueUrl")
+            eventBus.emit(Event.Sqs.QueueCreated(queueUrl))
 
             QueueInfo(queueUrl, queueArn)
         }
 
     override fun deleteLogIngestQueue(queueUrl: String): Result<Unit> =
         runCatching {
-            outputHandler.handleMessage("Deleting SQS queue: $queueUrl")
+            eventBus.emit(Event.Sqs.QueueDeleting(queueUrl))
 
             val retryConfig = RetryUtil.createAwsRetryConfig<Unit>()
             val retry = Retry.of("sqs-delete-queue", retryConfig)
@@ -146,7 +146,7 @@ class AWSSQSService(
                     log.info { "Deleted SQS queue: $queueUrl" }
                 }.run()
 
-            outputHandler.handleMessage("SQS queue deleted")
+            eventBus.emit(Event.Sqs.QueueDeleted)
         }
 
     /**

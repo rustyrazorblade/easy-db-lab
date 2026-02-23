@@ -167,9 +167,21 @@ Commands should delegate to these services:
 
 ## Output
 
-Use `outputHandler.handleMessage()` for user-facing output:
+Commands have two output mechanisms available via `PicoBaseCommand`:
+
+- **`eventBus`** — preferred for structured output. Services are fully migrated to `eventBus.emit()`.
+- **`outputHandler`** — legacy pattern, still used in many command files during the migration.
+
+Both coexist during the transition. New code should use `eventBus.emit()` with domain-specific events:
+
 ```kotlin
+// Preferred — structured event
+eventBus.emit(Event.Cassandra.Starting(host.alias))
+
+// Legacy — still works, will be migrated
 outputHandler.handleMessage("Starting Cassandra on ${host.alias}...")
 ```
 
 Do not use logging frameworks for user output - this breaks the CLI UX.
+
+See [`events/CLAUDE.md`](../events/CLAUDE.md) for the event hierarchy and how to add new events.

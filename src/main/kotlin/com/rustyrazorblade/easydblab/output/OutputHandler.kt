@@ -3,6 +3,8 @@ package com.rustyrazorblade.easydblab.output
 import com.github.dockerjava.api.model.Frame
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.channels.Channel
 
@@ -470,13 +472,19 @@ class FilteringChannelOutputHandler(
  * Display observability stack access information.
  * Used by GrafanaUpdateConfig (after deployment) and Status (for reference).
  */
-fun OutputHandler.displayObservabilityAccess(controlNodeIp: String) {
-    handleMessage("")
-    handleMessage("Observability:")
-    handleMessage("  Grafana:         http://$controlNodeIp:${Constants.K8s.GRAFANA_PORT}")
-    handleMessage("  VictoriaMetrics: http://$controlNodeIp:${Constants.K8s.VICTORIAMETRICS_PORT}")
-    handleMessage("  VictoriaLogs:    http://$controlNodeIp:${Constants.K8s.VICTORIALOGS_PORT}")
-    handleMessage("")
+fun EventBus.displayObservabilityAccess(controlNodeIp: String) {
+    emit(
+        Event.Message(
+            """
+            |
+            |Observability:
+            |  Grafana:         http://$controlNodeIp:${Constants.K8s.GRAFANA_PORT}
+            |  VictoriaMetrics: http://$controlNodeIp:${Constants.K8s.VICTORIAMETRICS_PORT}
+            |  VictoriaLogs:    http://$controlNodeIp:${Constants.K8s.VICTORIALOGS_PORT}
+            |
+            """.trimMargin(),
+        ),
+    )
 }
 
 /**
@@ -484,12 +492,18 @@ fun OutputHandler.displayObservabilityAccess(controlNodeIp: String) {
  * Used by both ClickHouseStatus (after start) and Status (for reference).
  * @param dbNodeIp IP address of a db node where ClickHouse pods are scheduled
  */
-fun OutputHandler.displayClickHouseAccess(dbNodeIp: String) {
-    handleMessage("")
-    handleMessage("ClickHouse:")
-    handleMessage("  Play UI:         http://$dbNodeIp:${Constants.ClickHouse.HTTP_PORT}/play")
-    handleMessage("  HTTP Interface:  http://$dbNodeIp:${Constants.ClickHouse.HTTP_PORT}")
-    handleMessage("  Native Protocol: $dbNodeIp:${Constants.ClickHouse.NATIVE_PORT}")
+fun EventBus.displayClickHouseAccess(dbNodeIp: String) {
+    emit(
+        Event.Message(
+            """
+            |
+            |ClickHouse:
+            |  Play UI:         http://$dbNodeIp:${Constants.ClickHouse.HTTP_PORT}/play
+            |  HTTP Interface:  http://$dbNodeIp:${Constants.ClickHouse.HTTP_PORT}
+            |  Native Protocol: $dbNodeIp:${Constants.ClickHouse.NATIVE_PORT}
+            """.trimMargin(),
+        ),
+    )
 }
 
 /**
@@ -497,13 +511,19 @@ fun OutputHandler.displayClickHouseAccess(dbNodeIp: String) {
  * @param controlNodeIp IP address of the control node where S3Manager runs
  * @param s3Path The cluster's S3 path (provides bucket and key)
  */
-fun OutputHandler.displayS3ManagerAccess(
+fun EventBus.displayS3ManagerAccess(
     controlNodeIp: String,
     s3Path: ClusterS3Path,
 ) {
-    handleMessage("")
-    handleMessage("S3 Manager:")
-    handleMessage("  Web UI: http://$controlNodeIp:${Constants.K8s.S3MANAGER_PORT}/buckets/${s3Path.bucket}/${s3Path.getKey()}/")
+    emit(
+        Event.Message(
+            """
+            |
+            |S3 Manager:
+            |  Web UI: http://$controlNodeIp:${Constants.K8s.S3MANAGER_PORT}/buckets/${s3Path.bucket}/${s3Path.getKey()}/
+            """.trimMargin(),
+        ),
+    )
 }
 
 /**
@@ -511,14 +531,18 @@ fun OutputHandler.displayS3ManagerAccess(
  * @param controlNodeIp IP address of the control node where S3Manager runs
  * @param s3Path The cluster's S3 path (provides bucket and key)
  */
-fun OutputHandler.displayS3ManagerClickHouseAccess(
+fun EventBus.displayS3ManagerClickHouseAccess(
     controlNodeIp: String,
     s3Path: ClusterS3Path,
 ) {
-    handleMessage("")
-    handleMessage("S3 Manager:")
-    handleMessage(
-        "  ClickHouse Data: http://$controlNodeIp:${Constants.K8s.S3MANAGER_PORT}/buckets/${s3Path.bucket}/${s3Path.clickhouse().getKey()}/",
+    emit(
+        Event.Message(
+            """
+            |
+            |S3 Manager:
+            |  ClickHouse Data: http://$controlNodeIp:${Constants.K8s.S3MANAGER_PORT}/buckets/${s3Path.bucket}/${s3Path.clickhouse().getKey()}/
+            """.trimMargin(),
+        ),
     )
 }
 
@@ -527,33 +551,35 @@ fun OutputHandler.displayS3ManagerClickHouseAccess(
  * @param controlNodeIp IP address of the control node where the registry runs
  * @param socksPort SOCKS5 proxy port (defaults to 1080)
  */
-fun OutputHandler.displayRegistryAccess(
+fun EventBus.displayRegistryAccess(
     controlNodeIp: String,
     socksPort: Int = Constants.Proxy.DEFAULT_SOCKS5_PORT,
 ) {
     val registryUrl = "$controlNodeIp:${Constants.K8s.REGISTRY_PORT}"
-    handleMessage(
-        """
-        |
-        |=== CONTAINER REGISTRY ===
-        |Registry URL: $registryUrl
-        |
-        |Push images with Gradle Jib (no build.gradle changes required):
-        |
-        |  1. Ensure SOCKS proxy is running:
-        |     source env.sh
-        |
-        |  2. Build and push:
-        |     ./gradlew jib \
-        |       -Djib.to.image=$registryUrl/your-image:tag \
-        |       -Djib.allowInsecureRegistries=true \
-        |       -Djib.httpTimeout=60000 \
-        |       -DsocksProxyHost=localhost \
-        |       -DsocksProxyPort=$socksPort
-        |
-        |  Or use environment variable:
-        |     export JAVA_TOOL_OPTIONS="-DsocksProxyHost=localhost -DsocksProxyPort=$socksPort"
-        |     ./gradlew jib -Djib.to.image=$registryUrl/your-image:tag -Djib.allowInsecureRegistries=true
-        """.trimMargin(),
+    emit(
+        Event.Message(
+            """
+            |
+            |=== CONTAINER REGISTRY ===
+            |Registry URL: $registryUrl
+            |
+            |Push images with Gradle Jib (no build.gradle changes required):
+            |
+            |  1. Ensure SOCKS proxy is running:
+            |     source env.sh
+            |
+            |  2. Build and push:
+            |     ./gradlew jib \
+            |       -Djib.to.image=$registryUrl/your-image:tag \
+            |       -Djib.allowInsecureRegistries=true \
+            |       -Djib.httpTimeout=60000 \
+            |       -DsocksProxyHost=localhost \
+            |       -DsocksProxyPort=$socksPort
+            |
+            |  Or use environment variable:
+            |     export JAVA_TOOL_OPTIONS="-DsocksProxyHost=localhost -DsocksProxyPort=$socksPort"
+            |     ./gradlew jib -Djib.to.image=$registryUrl/your-image:tag -Djib.allowInsecureRegistries=true
+            """.trimMargin(),
+        ),
     )
 }

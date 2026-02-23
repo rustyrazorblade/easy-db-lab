@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.aws.AWSResourceSetupService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -20,6 +21,6 @@ class ConfigureAWS : PicoBaseCommand() {
 
     override fun execute() {
         awsResourceSetupService.ensureAWSResources(userConfig)
-        outputHandler.handleMessage("✓ AWS infrastructure configured successfully")
+        eventBus.emit(Event.Message("✓ AWS infrastructure configured successfully"))
     }
 }

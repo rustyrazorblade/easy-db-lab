@@ -2,7 +2,7 @@ package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
-import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -29,6 +29,7 @@ import software.amazon.awssdk.services.s3.model.S3KeyFilter
 import java.io.File
 import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Path
+import com.rustyrazorblade.easydblab.events.Event as DomainEvent
 
 /**
  * AWS S3 implementation of the ObjectStore interface.
@@ -43,11 +44,10 @@ import java.nio.file.Path
  * conflicts when multiple clusters share the same S3 bucket.
  *
  * @property s3Client AWS SDK S3 client for S3 operations
- * @property outputHandler Handler for user-facing output messages
  */
 class S3ObjectStore(
     private val s3Client: S3Client,
-    private val outputHandler: OutputHandler,
+    private val eventBus: EventBus,
 ) : ObjectStore {
     private val log = KotlinLogging.logger {}
 
@@ -61,7 +61,7 @@ class S3ObjectStore(
         }
 
         if (showProgress) {
-            outputHandler.handleMessage("Uploading ${localFile.name} to ${remotePath.toUri()}...")
+            eventBus.emit(DomainEvent.S3.Uploading(localFile.name, remotePath.toUri()))
         }
 
         val putRequest =
@@ -81,7 +81,7 @@ class S3ObjectStore(
             }.run()
 
         if (showProgress) {
-            outputHandler.handleMessage("Upload complete: ${remotePath.toUri()}")
+            eventBus.emit(DomainEvent.S3.UploadComplete(remotePath.toUri()))
         }
 
         return ObjectStore.UploadResult(
@@ -96,7 +96,7 @@ class S3ObjectStore(
         showProgress: Boolean,
     ): ObjectStore.DownloadResult {
         if (showProgress) {
-            outputHandler.handleMessage("Downloading ${remotePath.toUri()} to $localPath...")
+            eventBus.emit(DomainEvent.S3.Downloading(remotePath.toUri(), localPath.toString()))
         }
 
         val getRequest =
@@ -130,7 +130,7 @@ class S3ObjectStore(
         }
 
         if (showProgress) {
-            outputHandler.handleMessage("Download complete: $localPath")
+            eventBus.emit(DomainEvent.S3.DownloadComplete(localPath.toString()))
         }
 
         return ObjectStore.DownloadResult(
@@ -177,7 +177,7 @@ class S3ObjectStore(
         showProgress: Boolean,
     ) {
         if (showProgress) {
-            outputHandler.handleMessage("Deleting ${remotePath.toUri()}...")
+            eventBus.emit(DomainEvent.S3.Deleting(remotePath.toUri()))
         }
 
         val deleteRequest =
@@ -197,7 +197,7 @@ class S3ObjectStore(
             }.run()
 
         if (showProgress) {
-            outputHandler.handleMessage("Deleted: ${remotePath.toUri()}")
+            eventBus.emit(DomainEvent.S3.Deleted(remotePath.toUri()))
         }
     }
 
@@ -236,7 +236,7 @@ class S3ObjectStore(
         val files = listFiles(remotePath, recursive = true)
 
         if (showProgress) {
-            outputHandler.handleMessage("Found ${files.size} files to download")
+            eventBus.emit(DomainEvent.S3.DirectoryDownloadFound(files.size))
         }
 
         // Ensure base directory exists and use absolute path for reliable directory creation
@@ -273,7 +273,7 @@ class S3ObjectStore(
         }
 
         if (showProgress) {
-            outputHandler.handleMessage("Downloaded $filesDownloaded files to $localDir")
+            eventBus.emit(DomainEvent.S3.DirectoryDownloadComplete(filesDownloaded, localDir.toString()))
         }
 
         return ObjectStore.DownloadDirectoryResult(localDir, filesDownloaded, totalBytes)
@@ -296,7 +296,7 @@ class S3ObjectStore(
                 .toList()
 
         if (showProgress) {
-            outputHandler.handleMessage("Found ${files.size} files to upload to ${remotePath.toUri()}")
+            eventBus.emit(DomainEvent.S3.DirectoryUploadFound(files.size, remotePath.toUri()))
         }
 
         var totalBytes = 0L
@@ -314,7 +314,7 @@ class S3ObjectStore(
         }
 
         if (showProgress) {
-            outputHandler.handleMessage("Uploaded $filesUploaded files to ${remotePath.toUri()}")
+            eventBus.emit(DomainEvent.S3.DirectoryUploadComplete(filesUploaded, remotePath.toUri()))
         }
 
         return ObjectStore.UploadDirectoryResult(remotePath, filesUploaded, totalBytes)
@@ -358,7 +358,7 @@ class S3ObjectStore(
         prefix: String = Constants.EMR.S3_LOG_PREFIX,
     ): Result<Unit> =
         runCatching {
-            outputHandler.handleMessage("Configuring S3 bucket notifications for EMR logs...")
+            eventBus.emit(DomainEvent.S3.NotificationsConfiguring)
 
             val filterRule =
                 FilterRule
@@ -410,7 +410,7 @@ class S3ObjectStore(
                     log.info { "Configured S3 bucket notifications for $bucket with prefix $prefix" }
                 }.run()
 
-            outputHandler.handleMessage("S3 bucket notifications configured for EMR logs")
+            eventBus.emit(DomainEvent.S3.NotificationsConfigured)
         }
 
     /**

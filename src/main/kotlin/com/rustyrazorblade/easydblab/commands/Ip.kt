@@ -5,7 +5,8 @@ import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.getHosts
-import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -33,7 +34,7 @@ import picocli.CommandLine.Parameters
 class Ip :
     PicoCommand,
     KoinComponent {
-    private val outputHandler: OutputHandler by inject()
+    private val eventBus: EventBus by inject()
     private val clusterStateManager: ClusterStateManager by inject()
     private val clusterState by lazy { clusterStateManager.load() }
 
@@ -64,6 +65,6 @@ class Ip :
                 else -> foundHost.public
             }
 
-        outputHandler.handleMessage(ip)
+        eventBus.emit(Event.Message(ip))
     }
 }

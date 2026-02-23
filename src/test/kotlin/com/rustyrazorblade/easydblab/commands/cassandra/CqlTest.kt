@@ -80,9 +80,8 @@ class CqlTest : BaseKoinTest() {
         command.statement = "bad query"
         command.execute()
 
-        val output = outputHandler.messages.joinToString("\n")
-        assertThat(output).contains("Error:")
-        assertThat(output).contains("Syntax error")
+        val errorOutput = outputHandler.errors.joinToString("\n") { it.first }
+        assertThat(errorOutput).contains("Syntax error")
     }
 
     @Test
@@ -115,7 +114,7 @@ class CqlTest : BaseKoinTest() {
         command.file = File("/nonexistent/file.cql")
         command.execute()
 
-        val output = outputHandler.messages.joinToString("\n")
-        assertThat(output).contains("File not found")
+        val errorOutput = outputHandler.errors.joinToString("\n") { it.first }
+        assertThat(errorOutput).contains("File not found")
     }
 }

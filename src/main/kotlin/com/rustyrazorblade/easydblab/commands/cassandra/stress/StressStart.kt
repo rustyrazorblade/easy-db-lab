@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.StressJobService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
@@ -105,21 +106,23 @@ class StressStart : PicoBaseCommand() {
                 error("Failed to create job: ${e.message}")
             }
 
-        outputHandler.handleMessage(
-            """
-            |
-            |Stress job started successfully!
-            |
-            |Job name: $fullJobName
-            |Image: $image
-            |Contact point: $contactPoints
-            |Prometheus port: $promPort
-            |Stress args: ${args.joinToString(" ")}
-            |
-            |Check status: easy-db-lab cassandra stress status
-            |View logs: easy-db-lab cassandra stress logs $fullJobName
-            |Stop job: easy-db-lab cassandra stress stop $fullJobName
-            """.trimMargin(),
+        eventBus.emit(
+            Event.Message(
+                """
+                |
+                |Stress job started successfully!
+                |
+                |Job name: $fullJobName
+                |Image: $image
+                |Contact point: $contactPoints
+                |Prometheus port: $promPort
+                |Stress args: ${args.joinToString(" ")}
+                |
+                |Check status: easy-db-lab cassandra stress status
+                |View logs: easy-db-lab cassandra stress logs $fullJobName
+                |Stop job: easy-db-lab cassandra stress stop $fullJobName
+                """.trimMargin(),
+            ),
         )
     }
 

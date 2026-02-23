@@ -57,6 +57,9 @@ commons-text = "1.13.0"
 # Cassandra
 cassandra-driver = "4.19.2"
 
+# Redis
+lettuce = "6.5.5.RELEASE"
+
 # Other
 classgraph = "4.8.184"
 resilience4j = "2.3.0"
@@ -155,6 +158,9 @@ kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-t
 # MCP SDK
 mcp-sdk = { module = "io.modelcontextprotocol:kotlin-sdk", version.ref = "mcp-sdk" }
 kotlinx-io = { module = "org.jetbrains.kotlinx:kotlinx-io-core", version.ref = "kotlinx-io" }
+
+# Redis
+lettuce-core = { module = "io.lettuce:lettuce-core", version.ref = "lettuce" }
 
 # Resilience4j
 resilience4j-retry = { module = "io.github.resilience4j:resilience4j-retry", version.ref = "resilience4j" }

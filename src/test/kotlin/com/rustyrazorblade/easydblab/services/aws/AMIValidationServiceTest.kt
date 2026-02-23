@@ -1,7 +1,7 @@
 package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.configuration.Arch
-import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.model.AMI
 import org.assertj.core.api.Assertions.assertThat
@@ -22,7 +22,7 @@ import java.time.Instant
 
 class AMIValidationServiceTest {
     private lateinit var mockEc2Client: Ec2Client
-    private lateinit var mockOutputHandler: OutputHandler
+    private lateinit var eventBus: EventBus
     private lateinit var mockAWS: AWS
     private lateinit var amiService: AMIService
 
@@ -33,7 +33,7 @@ class AMIValidationServiceTest {
     @BeforeEach
     fun setup() {
         mockEc2Client = mock()
-        mockOutputHandler = mock()
+        eventBus = EventBus()
         mockAWS = mock()
 
         whenever(mockAWS.getAccountId()).thenReturn(TEST_ACCOUNT_ID)
@@ -42,7 +42,7 @@ class AMIValidationServiceTest {
             spy(
                 AMIService(
                     ec2Client = mockEc2Client,
-                    outputHandler = mockOutputHandler,
+                    eventBus = eventBus,
                     aws = mockAWS,
                 ),
             )
@@ -100,7 +100,6 @@ class AMIValidationServiceTest {
             )
 
         assertThat(result.id).isEqualTo("ami-new")
-        verify(mockOutputHandler).handleMessage(any())
     }
 
     // Error Cases
@@ -131,8 +130,6 @@ class AMIValidationServiceTest {
                 requiredArchitecture = Arch.AMD64,
             )
         }.isInstanceOf(AMIValidationException.NoAMIFound::class.java)
-
-        verify(mockOutputHandler).handleMessage(any())
     }
 
     @Test

@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.services.aws
 
-import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.services.aws.EC2VpcService
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -27,8 +26,12 @@ import software.amazon.awssdk.services.ec2.model.SecurityGroup
  */
 internal class EC2VpcServiceTest {
     private val mockEc2Client: Ec2Client = mock()
-    private val mockOutputHandler: OutputHandler = mock()
-    private val vpcService = EC2VpcService(mockEc2Client, mockOutputHandler)
+    private val vpcService =
+        EC2VpcService(
+            mockEc2Client,
+            com.rustyrazorblade.easydblab.events
+                .EventBus(),
+        )
 
     @Test
     fun `ensureRouteTable should throw exception when no main route table found`() {

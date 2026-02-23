@@ -21,6 +21,7 @@ object KoinModules {
         listOf(
             contextModule,
             outputModule,
+            eventBusModule,
             dockerModule,
             sshModule,
             proxyModule,

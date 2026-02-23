@@ -1,7 +1,8 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.configuration.Host
-import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import io.github.oshai.kotlinlogging.KLogger
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -76,12 +77,11 @@ interface CassandraService {
  * - Additional waitForUpNormal() method for explicit status waiting
  *
  * @property remoteOps Service for executing SSH commands on remote hosts
- * @property outputHandler Handler for user-facing output messages
  */
 class DefaultCassandraService(
     remoteOps: RemoteOperationsService,
-    outputHandler: OutputHandler,
-) : AbstractSystemDServiceManager("cassandra", remoteOps, outputHandler),
+    eventBus: EventBus,
+) : AbstractSystemDServiceManager("cassandra", remoteOps, eventBus),
     CassandraService {
     override val log: KLogger = KotlinLogging.logger {}
 
@@ -90,7 +90,7 @@ class DefaultCassandraService(
         wait: Boolean,
     ): Result<Unit> =
         runCatching {
-            outputHandler.handleMessage("Starting Cassandra on ${host.alias}...")
+            eventBus.emit(Event.Cassandra.Starting(host.alias))
 
             remoteOps.executeRemotely(
                 host,
@@ -98,7 +98,7 @@ class DefaultCassandraService(
             )
 
             if (wait) {
-                outputHandler.handleMessage("Cassandra started, waiting for ${host.alias} to become UP/NORMAL...")
+                eventBus.emit(Event.Cassandra.StartedWaitingReady(host.alias))
                 remoteOps.executeRemotely(
                     host,
                     "sudo wait-for-up-normal",
@@ -111,7 +111,7 @@ class DefaultCassandraService(
 
     override fun restart(host: Host): Result<Unit> =
         runCatching {
-            outputHandler.handleMessage("Restarting Cassandra on ${host.alias}...")
+            eventBus.emit(Event.Cassandra.Restarting(host.alias))
 
             remoteOps.executeRemotely(
                 host,
@@ -123,7 +123,7 @@ class DefaultCassandraService(
 
     override fun waitForUpNormal(host: Host): Result<Unit> =
         runCatching {
-            outputHandler.handleMessage("Waiting for ${host.alias} to become UP/NORMAL...")
+            eventBus.emit(Event.Cassandra.WaitingReady(host.alias))
 
             remoteOps.executeRemotely(
                 host,

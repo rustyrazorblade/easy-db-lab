@@ -1,7 +1,8 @@
 package com.rustyrazorblade.easydblab.services.aws
 
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.exceptions.AwsTimeoutException
-import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.ClusterId
 import com.rustyrazorblade.easydblab.providers.aws.EMRClusterConfig
 import com.rustyrazorblade.easydblab.providers.aws.EMRClusterResult
@@ -33,7 +34,7 @@ import software.amazon.awssdk.services.emr.model.TerminateJobFlowsRequest
 @Suppress("TooManyFunctions")
 class EMRService(
     private val emrClient: EmrClient,
-    private val outputHandler: OutputHandler,
+    private val eventBus: EventBus,
 ) {
     companion object {
         private val log = KotlinLogging.logger {}
@@ -73,7 +74,7 @@ class EMRService(
      */
     fun createCluster(config: EMRClusterConfig): EMRClusterResult {
         log.info { "Creating EMR cluster: ${config.clusterName}" }
-        outputHandler.handleMessage("Creating EMR cluster: ${config.clusterName}...")
+        eventBus.emit(Event.Emr.ClusterCreating(config.clusterName))
 
         val tags =
             config.tags.map { (key, value) ->
@@ -144,7 +145,7 @@ class EMRService(
         val clusterId = response.jobFlowId()
 
         log.info { "EMR cluster creation initiated: $clusterId" }
-        outputHandler.handleMessage("EMR cluster initiated: $clusterId")
+        eventBus.emit(Event.Emr.ClusterInitiated(clusterId))
 
         return EMRClusterResult(
             clusterId = clusterId,
@@ -166,7 +167,7 @@ class EMRService(
         timeoutMs: Long = DEFAULT_READY_TIMEOUT_MS,
     ): EMRClusterResult {
         log.info { "Waiting for EMR cluster $clusterId to be ready..." }
-        outputHandler.handleMessage("Waiting for EMR cluster to start (this may take 10-15 minutes)...")
+        eventBus.emit(Event.Message("Waiting for EMR cluster to start (this may take 10-15 minutes)..."))
 
         val startTime = System.currentTimeMillis()
 
@@ -178,7 +179,7 @@ class EMRService(
             when {
                 clusterState in READY_STATES -> {
                     log.info { "EMR cluster $clusterId is ready (state: ${status.state})" }
-                    outputHandler.handleMessage("EMR cluster is ready")
+                    eventBus.emit(Event.Emr.ClusterReady)
 
                     // Get the full details including master DNS
                     val details = getClusterDetails(clusterId)
@@ -259,7 +260,7 @@ class EMRService(
      */
     fun terminateCluster(clusterId: ClusterId) {
         log.info { "Terminating EMR cluster: $clusterId" }
-        outputHandler.handleMessage("Terminating EMR cluster: $clusterId...")
+        eventBus.emit(Event.Emr.ClusterTerminating(clusterId))
 
         val request =
             TerminateJobFlowsRequest
@@ -283,7 +284,7 @@ class EMRService(
         timeoutMs: Long = DEFAULT_READY_TIMEOUT_MS,
     ) {
         log.info { "Waiting for EMR cluster $clusterId to terminate..." }
-        outputHandler.handleMessage("Waiting for EMR cluster to terminate...")
+        eventBus.emit(Event.Emr.ClusterTerminateWaiting)
 
         val startTime = System.currentTimeMillis()
 
@@ -293,7 +294,7 @@ class EMRService(
 
             if (clusterState in TERMINAL_STATES) {
                 log.info { "EMR cluster $clusterId terminated (state: ${status.state})" }
-                outputHandler.handleMessage("EMR cluster terminated")
+                eventBus.emit(Event.Emr.ClusterTerminated)
                 return
             }
 
@@ -386,7 +387,7 @@ class EMRService(
         }
 
         log.info { "Terminating ${clusterIds.size} EMR clusters: $clusterIds" }
-        outputHandler.handleMessage("Terminating ${clusterIds.size} EMR clusters...")
+        eventBus.emit(Event.Emr.ClustersTerminating(clusterIds.size))
 
         val terminateRequest =
             TerminateJobFlowsRequest
@@ -416,7 +417,7 @@ class EMRService(
         }
 
         log.info { "Waiting for ${clusterIds.size} EMR clusters to terminate..." }
-        outputHandler.handleMessage("Waiting for EMR clusters to terminate...")
+        eventBus.emit(Event.Emr.ClustersTerminateWaiting)
 
         val startTime = System.currentTimeMillis()
 
@@ -429,7 +430,7 @@ class EMRService(
 
             if (allTerminated) {
                 log.info { "All EMR clusters terminated successfully" }
-                outputHandler.handleMessage("All EMR clusters terminated")
+                eventBus.emit(Event.Emr.ClustersTerminated)
                 return
             }
 

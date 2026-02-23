@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.toHost
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.CassandraService
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import com.rustyrazorblade.easydblab.services.SidecarService
@@ -48,7 +49,7 @@ class Start : PicoBaseCommand() {
         with(TermColors()) {
             hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList) { host ->
                 val h = host.toHost()
-                outputHandler.handleMessage(green("Starting $h"))
+                eventBus.emit(Event.Cassandra.Starting(h.alias))
                 // start() defaults to wait=true, which includes waiting for UP/NORMAL
                 cassandraService.start(h).getOrThrow()
             }
@@ -58,14 +59,14 @@ class Start : PicoBaseCommand() {
                 sidecarService
                     .start(host.toHost())
                     .onFailure { e ->
-                        outputHandler.handleMessage("Warning: Failed to start cassandra-sidecar on ${host.alias}: ${e.message}")
+                        eventBus.emit(Event.Error("Warning: Failed to start cassandra-sidecar on ${host.alias}: ${e.message}"))
                     }
             }
         }
 
         // Start axon-agent on Cassandra nodes if configured
         if (userConfig.axonOpsOrg.isNotBlank() && userConfig.axonOpsKey.isNotBlank()) {
-            outputHandler.handleMessage("Starting axon-agent on Cassandra nodes...")
+            eventBus.emit(Event.Message("Starting axon-agent on Cassandra nodes..."))
             hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, "", parallel = true) { host ->
                 remoteOps.executeRemotely(host.toHost(), "sudo systemctl start axon-agent")
             }
@@ -74,13 +75,17 @@ class Start : PicoBaseCommand() {
         // Inform user about AxonOps Workbench configuration if it exists
         val axonOpsWorkbenchFile = File("axonops-workbench.json")
         if (axonOpsWorkbenchFile.exists()) {
-            outputHandler.handleMessage("")
-            outputHandler.handleMessage("AxonOps Workbench configuration available:")
-            outputHandler.handleMessage("To import into AxonOps Workbench, run:")
-            outputHandler.handleMessage(
-                "  /path/to/axonops-workbench -v --import-workspace=axonops-workbench.json",
+            eventBus.emit(
+                Event.Message(
+                    """
+                    |
+                    |AxonOps Workbench configuration available:
+                    |To import into AxonOps Workbench, run:
+                    |  /path/to/axonops-workbench -v --import-workspace=axonops-workbench.json
+                    |
+                    """.trimMargin(),
+                ),
             )
-            outputHandler.handleMessage("")
         }
     }
 }

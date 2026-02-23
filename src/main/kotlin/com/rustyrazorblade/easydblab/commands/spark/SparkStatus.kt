@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.commands.spark
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.SparkService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -64,7 +65,7 @@ class SparkStatus : PicoBaseCommand() {
                     .getOrElse { error ->
                         error(error.message ?: "Failed to get step details")
                     }
-            outputHandler.handleMessage(stepDetails.toDisplayString())
+            eventBus.emit(Event.Message(stepDetails.toDisplayString()))
         } else {
             // Show basic status
             val jobStatus =
@@ -86,19 +87,21 @@ class SparkStatus : PicoBaseCommand() {
                         appendLine("Failure Details: $it")
                     }
                 }
-            outputHandler.handleMessage(statusInfo.trimEnd())
+            eventBus.emit(Event.Message(statusInfo.trimEnd()))
 
             // Show log query hint for failed jobs
             if (jobStatus.state == StepState.FAILED) {
-                outputHandler.handleMessage(
-                    """
+                eventBus.emit(
+                    Event.Message(
+                        """
                     |
                     |For more details, run:
                     |  easy-db-lab spark status --step-id $targetStepId --verbose
                     |
                     |View logs with:
                     |  easy-db-lab spark logs --step-id $targetStepId
-                    """.trimMargin(),
+                        """.trimMargin(),
+                    ),
                 )
             }
         }

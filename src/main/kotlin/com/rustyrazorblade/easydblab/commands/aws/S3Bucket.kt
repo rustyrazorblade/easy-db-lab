@@ -4,7 +4,8 @@ import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoCommand
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
-import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -27,7 +28,7 @@ import picocli.CommandLine.Command
 class S3Bucket :
     PicoCommand,
     KoinComponent {
-    private val outputHandler: OutputHandler by inject()
+    private val eventBus: EventBus by inject()
     private val clusterStateManager: ClusterStateManager by inject()
     private val clusterState by lazy { clusterStateManager.load() }
 
@@ -36,6 +37,6 @@ class S3Bucket :
         if (bucket.isNullOrBlank()) {
             error("No S3 bucket configured. Run 'easy-db-lab up' first.")
         }
-        outputHandler.handleMessage(bucket)
+        eventBus.emit(Event.Message(bucket))
     }
 }

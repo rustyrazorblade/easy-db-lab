@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.VictoriaStreamService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -39,19 +40,19 @@ class LogsImport : PicoBaseCommand() {
     override fun execute() {
         val controlHost = clusterState.getControlHost()
         if (controlHost == null) {
-            outputHandler.handleError("No control node found. Please ensure the cluster is running.")
+            eventBus.emit(Event.Error("No control node found. Please ensure the cluster is running."))
             return
         }
 
-        outputHandler.handleMessage("Streaming logs from cluster to $target...")
+        eventBus.emit(Event.Message("Streaming logs from cluster to $target..."))
 
         victoriaStreamService
             .streamLogs(controlHost, target, query)
             .onSuccess { result ->
-                outputHandler.handleMessage("Logs import completed successfully.")
-                outputHandler.handleMessage("Bytes transferred: ${result.bytesTransferred}")
+                eventBus.emit(Event.Message("Logs import completed successfully."))
+                eventBus.emit(Event.Message("Bytes transferred: ${result.bytesTransferred}"))
             }.onFailure { exception ->
-                outputHandler.handleError("Logs import failed: ${exception.message}")
+                eventBus.emit(Event.Error("Logs import failed: ${exception.message}"))
             }
     }
 }

@@ -5,6 +5,8 @@ import com.github.dockerjava.api.command.InspectContainerResponse
 import com.github.dockerjava.api.model.Frame
 import com.rustyrazorblade.easydblab.DockerClientInterface
 import com.rustyrazorblade.easydblab.DockerException
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -23,7 +25,7 @@ import kotlin.concurrent.thread
 class ContainerExecutor(
     private val dockerClient: DockerClientInterface,
 ) : KoinComponent {
-    private val outputHandler: OutputHandler by inject()
+    private val eventBus: EventBus by inject()
 
     companion object {
         private val log = KotlinLogging.logger {}
@@ -52,16 +54,16 @@ class ContainerExecutor(
                 .decorateRunnable(retry) {
                     dockerClient.startContainer(containerId)
                 }.run()
-            outputHandler.handleMessage("Starting container $containerId")
+            eventBus.emit(Event.Message("Starting container $containerId"))
         } catch (e: com.github.dockerjava.api.exception.DockerException) {
             val errorMsg = "Docker error starting container: $containerId"
             log.error(e) { errorMsg }
-            outputHandler.handleError("Error starting container: ${e.message}", e)
+            eventBus.emit(Event.Error("Error starting container: ${e.message}"))
             throw DockerException("Failed to start container $containerId", e)
         } catch (e: IOException) {
             val errorMsg = "IO error starting container: $containerId"
             log.error(e) { errorMsg }
-            outputHandler.handleError("Error starting container: ${e.message}", e)
+            eventBus.emit(Event.Error("Error starting container: ${e.message}"))
             throw DockerException("IO error starting container $containerId", e)
         }
 
@@ -115,10 +117,10 @@ class ContainerExecutor(
                 }.run()
         } catch (e: DockerException) {
             log.error(e) { "Docker error while removing container $containerId" }
-            outputHandler.handleError("Failed to remove container: ${e.message}", e)
+            eventBus.emit(Event.Error("Failed to remove container: ${e.message}"))
         } catch (e: RuntimeException) {
             log.error(e) { "Runtime error while removing container $containerId" }
-            outputHandler.handleError("Failed to remove container: ${e.message}", e)
+            eventBus.emit(Event.Error("Failed to remove container: ${e.message}"))
         }
     }
 }
@@ -130,6 +132,7 @@ class ContainerIOManager(
     private val dockerClient: DockerClientInterface,
 ) : KoinComponent {
     private val outputHandler: OutputHandler by inject()
+    private val eventBus: EventBus by inject()
 
     companion object {
         private val log = KotlinLogging.logger {}
@@ -156,7 +159,7 @@ class ContainerIOManager(
             setupStdinRedirection()
         }
 
-        outputHandler.handleMessage("Attaching to running container")
+        eventBus.emit(Event.Message("Attaching to running container"))
 
         val frameCallback =
             object : ResultCallback.Adapter<Frame>() {
@@ -164,12 +167,13 @@ class ContainerIOManager(
                     if (item == null) return
 
                     framesRead++
+                    // Frame output stays outside EventBus (frames are raw byte streams)
                     outputHandler.handleFrame(item)
                 }
 
                 override fun onError(throwable: Throwable) {
                     log.error(throwable) { "Container attachment error" }
-                    outputHandler.handleError("Container attachment error", throwable)
+                    eventBus.emit(Event.Error("Container attachment error"))
                     super.onError(throwable)
                 }
             }
@@ -223,7 +227,7 @@ class ContainerIOManager(
  * Monitors and reports on container state.
  */
 class ContainerStateMonitor : KoinComponent {
-    private val outputHandler: OutputHandler by inject()
+    private val eventBus: EventBus by inject()
 
     companion object {
         private val log = KotlinLogging.logger {}
@@ -257,7 +261,7 @@ class ContainerStateMonitor : KoinComponent {
         framesRead: Int,
     ) {
         val message = buildReturnMessage(containerState, framesRead)
-        outputHandler.handleMessage(message)
+        eventBus.emit(Event.Message(message))
         log.info { message }
     }
 }

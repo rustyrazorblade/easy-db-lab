@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.services.aws
 
-import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
 import com.rustyrazorblade.easydblab.services.aws.EC2VpcService
 import com.rustyrazorblade.easydblab.services.aws.EMRService
@@ -55,7 +54,6 @@ class AwsInfrastructureServiceIntegrationTest {
     }
 
     private lateinit var ec2Client: Ec2Client
-    private lateinit var outputHandler: BufferedOutputHandler
     private lateinit var vpcService: EC2VpcService
     private lateinit var emrService: EMRService
     private lateinit var openSearchService: OpenSearchService
@@ -82,8 +80,12 @@ class AwsInfrastructureServiceIntegrationTest {
 
     @BeforeEach
     fun setup() {
-        outputHandler = BufferedOutputHandler()
-        vpcService = EC2VpcService(ec2Client, outputHandler)
+        vpcService =
+            EC2VpcService(
+                ec2Client,
+                com.rustyrazorblade.easydblab.events
+                    .EventBus(),
+            )
         emrService = mock()
         openSearchService = mock()
 
@@ -96,7 +98,9 @@ class AwsInfrastructureServiceIntegrationTest {
                 vpcService = vpcService,
                 emrService = emrService,
                 openSearchService = openSearchService,
-                outputHandler = outputHandler,
+                eventBus =
+                    com.rustyrazorblade.easydblab.events
+                        .EventBus(),
             )
     }
 

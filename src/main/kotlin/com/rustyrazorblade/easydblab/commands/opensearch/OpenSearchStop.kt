@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.commands.opensearch
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
@@ -34,14 +35,14 @@ class OpenSearchStop : PicoBaseCommand() {
     override fun execute() {
         val domainState = clusterState.openSearchDomain
         if (domainState == null) {
-            outputHandler.handleMessage("No OpenSearch domain configured for this cluster.")
+            eventBus.emit(Event.Message("No OpenSearch domain configured for this cluster."))
             return
         }
 
         if (!force) {
-            outputHandler.handleMessage("This will delete the OpenSearch domain and all its data.")
-            outputHandler.handleMessage("Domain: ${domainState.domainName}")
-            outputHandler.handleMessage("Use --force to confirm deletion.")
+            eventBus.emit(Event.Message("This will delete the OpenSearch domain and all its data."))
+            eventBus.emit(Event.Message("Domain: ${domainState.domainName}"))
+            eventBus.emit(Event.Message("Use --force to confirm deletion."))
             return
         }
 
@@ -53,7 +54,7 @@ class OpenSearchStop : PicoBaseCommand() {
         clusterState.updateOpenSearchDomain(null)
         clusterStateManager.save(clusterState)
 
-        outputHandler.handleMessage("OpenSearch domain deletion initiated: ${domainState.domainName}")
-        outputHandler.handleMessage("Note: Domain deletion may take several minutes to complete.")
+        eventBus.emit(Event.Message("OpenSearch domain deletion initiated: ${domainState.domainName}"))
+        eventBus.emit(Event.Message("Note: Domain deletion may take several minutes to complete."))
     }
 }

@@ -7,7 +7,8 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.configuration.getHosts
-import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
 import java.nio.file.Path
@@ -86,12 +87,11 @@ interface ClusterConfigurationService {
 /**
  * Default implementation of ClusterConfigurationService.
  *
- * @property outputHandler Handler for user-facing messages
  * @property userConfigProvider Provider for user configuration including SSH key path
  */
 class DefaultClusterConfigurationService(
-    private val outputHandler: OutputHandler,
     private val userConfigProvider: UserConfigProvider,
+    private val eventBus: EventBus,
 ) : ClusterConfigurationService {
     companion object {
         private val log = KotlinLogging.logger {}
@@ -184,6 +184,6 @@ class DefaultClusterConfigurationService(
                 )
             val configFile = File(workingDirectory.toFile(), AXONOPS_CONFIG_FILE)
             AxonOpsWorkbenchConfig.writeToFile(config, configFile)
-            outputHandler.handleMessage("AxonOps Workbench configuration written to $AXONOPS_CONFIG_FILE")
+            eventBus.emit(Event.Message("AxonOps Workbench configuration written to $AXONOPS_CONFIG_FILE"))
         }
 }

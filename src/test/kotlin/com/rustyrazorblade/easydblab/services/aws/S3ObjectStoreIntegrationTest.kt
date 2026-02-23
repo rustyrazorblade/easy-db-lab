@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
-import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.services.aws.S3ObjectStore
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -44,7 +43,6 @@ class S3ObjectStoreIntegrationTest {
     }
 
     private lateinit var s3Client: S3Client
-    private lateinit var outputHandler: BufferedOutputHandler
     private lateinit var objectStore: S3ObjectStore
 
     @BeforeAll
@@ -71,8 +69,12 @@ class S3ObjectStoreIntegrationTest {
 
     @BeforeEach
     fun setup() {
-        outputHandler = BufferedOutputHandler()
-        objectStore = S3ObjectStore(s3Client, outputHandler)
+        objectStore =
+            S3ObjectStore(
+                s3Client,
+                com.rustyrazorblade.easydblab.events
+                    .EventBus(),
+            )
     }
 
     @Nested

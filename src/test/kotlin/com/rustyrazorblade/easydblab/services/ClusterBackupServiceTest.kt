@@ -3,7 +3,10 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
-import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
@@ -26,7 +29,8 @@ import java.nio.file.Path
  */
 internal class ClusterBackupServiceTest {
     private val mockObjectStore: ObjectStore = mock()
-    private val mockOutputHandler: OutputHandler = mock()
+    private lateinit var eventBus: EventBus
+    private val capturedEvents = mutableListOf<EventEnvelope>()
 
     @TempDir
     lateinit var tempDir: File
@@ -35,7 +39,22 @@ internal class ClusterBackupServiceTest {
 
     @BeforeEach
     fun setUp() {
-        service = DefaultClusterBackupService(mockObjectStore, mockOutputHandler)
+        capturedEvents.clear()
+        eventBus = EventBus()
+        eventBus.addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    capturedEvents.add(envelope)
+                }
+
+                override fun close() {}
+            },
+        )
+        service =
+            DefaultClusterBackupService(
+                mockObjectStore,
+                eventBus,
+            )
     }
 
     @Nested
@@ -59,7 +78,7 @@ internal class ClusterBackupServiceTest {
             // Then
             assertThat(result.isSuccess).isTrue()
             verify(mockObjectStore).uploadFile(eq(localKubeconfig), eq(expectedS3Path), eq(true))
-            verify(mockOutputHandler).handleMessage("Kubeconfig backed up to S3: ${expectedS3Path.toUri()}")
+            assertThat(capturedEvents).anyMatch { it.event is Event.Backup.KubeconfigBackedUp }
         }
 
         @Test
@@ -121,7 +140,7 @@ internal class ClusterBackupServiceTest {
             // Then
             assertThat(result.isSuccess).isTrue()
             verify(mockObjectStore).downloadFile(eq(expectedS3Path), eq(localPath), eq(true))
-            verify(mockOutputHandler).handleMessage("Kubeconfig restored from S3: ${expectedS3Path.toUri()}")
+            assertThat(capturedEvents).anyMatch { it.event is Event.Backup.KubeconfigRestored }
         }
 
         @Test
@@ -186,7 +205,7 @@ internal class ClusterBackupServiceTest {
             // Then
             assertThat(result.isSuccess).isTrue()
             verify(mockObjectStore).uploadDirectory(eq(k8sDir.toPath()), eq(expectedS3Path), eq(true))
-            verify(mockOutputHandler).handleMessage("K8s manifests backed up to S3: ${expectedS3Path.toUri()}")
+            assertThat(capturedEvents).anyMatch { it.event is Event.Backup.K8sManifestsBackedUp }
         }
 
         @Test
@@ -224,7 +243,7 @@ internal class ClusterBackupServiceTest {
             // Then
             assertThat(result.isSuccess).isTrue()
             verify(mockObjectStore).downloadDirectory(eq(expectedS3Path), eq(localPath), eq(true))
-            verify(mockOutputHandler).handleMessage("K8s manifests restored from S3: ${expectedS3Path.toUri()}")
+            assertThat(capturedEvents).anyMatch { it.event is Event.Backup.K8sManifestsRestored }
         }
 
         @Test
@@ -267,7 +286,7 @@ internal class ClusterBackupServiceTest {
             // Then
             assertThat(result.isSuccess).isTrue()
             verify(mockObjectStore).uploadFile(eq(localPatch), eq(expectedS3Path), eq(true))
-            verify(mockOutputHandler).handleMessage("Cassandra patch backed up to S3: ${expectedS3Path.toUri()}")
+            assertThat(capturedEvents).anyMatch { it.event is Event.Backup.CassandraPatchBackedUp }
         }
 
         @Test
@@ -329,7 +348,7 @@ internal class ClusterBackupServiceTest {
             // Then
             assertThat(result.isSuccess).isTrue()
             verify(mockObjectStore).downloadFile(eq(expectedS3Path), eq(localPath), eq(true))
-            verify(mockOutputHandler).handleMessage("Cassandra patch restored from S3: ${expectedS3Path.toUri()}")
+            assertThat(capturedEvents).anyMatch { it.event is Event.Backup.CassandraPatchRestored }
         }
 
         @Test

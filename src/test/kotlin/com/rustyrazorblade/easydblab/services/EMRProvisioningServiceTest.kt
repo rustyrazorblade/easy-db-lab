@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.configuration.ClusterState
-import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.EMRClusterConfig
 import com.rustyrazorblade.easydblab.providers.aws.EMRClusterResult
 import com.rustyrazorblade.easydblab.services.aws.EMRService
@@ -20,14 +19,17 @@ import org.mockito.kotlin.whenever
  */
 internal class EMRProvisioningServiceTest {
     private lateinit var mockEmrService: EMRService
-    private lateinit var mockOutputHandler: OutputHandler
     private lateinit var service: DefaultEMRProvisioningService
 
     @BeforeEach
     fun setUp() {
         mockEmrService = mock()
-        mockOutputHandler = mock()
-        service = DefaultEMRProvisioningService(mockEmrService, mockOutputHandler)
+        service =
+            DefaultEMRProvisioningService(
+                mockEmrService,
+                com.rustyrazorblade.easydblab.events
+                    .EventBus(),
+            )
     }
 
     @Test

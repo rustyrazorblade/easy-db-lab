@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.commands.logs
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.VictoriaLogsService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -99,30 +100,32 @@ class LogsQuery : PicoBaseCommand() {
         // Build the query
         val query = rawQuery ?: buildQuery()
 
-        outputHandler.handleMessage("Query: $query, Time range: $since, Limit: $limit\n")
+        eventBus.emit(Event.Message("Query: $query, Time range: $since, Limit: $limit\n"))
 
         // Execute the query
         val logs =
             victoriaLogsService
                 .query(query, since, limit)
                 .getOrElse { exception ->
-                    outputHandler.handleError("Failed to query logs: ${exception.message}")
-                    outputHandler.handleMessage(
-                        """
-                        |Tips:
-                        |  - Ensure observability stack is deployed: easy-db-lab k8 apply
-                        |  - Check if Victoria Logs is running: kubectl get pods
-                        """.trimMargin(),
+                    eventBus.emit(Event.Error("Failed to query logs: ${exception.message}"))
+                    eventBus.emit(
+                        Event.Message(
+                            """
+                            |Tips:
+                            |  - Ensure observability stack is deployed: easy-db-lab k8 apply
+                            |  - Check if Victoria Logs is running: kubectl get pods
+                            """.trimMargin(),
+                        ),
                     )
                     return
                 }
 
         // Display results
         if (logs.isEmpty()) {
-            outputHandler.handleMessage("No logs found matching the query.")
+            eventBus.emit(Event.Message("No logs found matching the query."))
         } else {
-            outputHandler.handleMessage(logs.joinToString("\n"))
-            outputHandler.handleMessage("\nFound ${logs.size} log entries.")
+            eventBus.emit(Event.Message(logs.joinToString("\n")))
+            eventBus.emit(Event.Message("\nFound ${logs.size} log entries."))
         }
     }
 

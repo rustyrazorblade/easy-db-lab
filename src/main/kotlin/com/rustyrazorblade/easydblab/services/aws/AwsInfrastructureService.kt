@@ -1,8 +1,9 @@
 package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.network.CidrBlock
-import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredResources
 import com.rustyrazorblade.easydblab.providers.aws.InfrastructureConfig
 import com.rustyrazorblade.easydblab.providers.aws.TeardownResult
@@ -48,7 +49,7 @@ class AwsInfrastructureService(
     private val vpcService: VpcService,
     private val emrService: EMRService,
     private val openSearchService: OpenSearchService,
-    private val outputHandler: OutputHandler,
+    private val eventBus: EventBus,
 ) {
     companion object {
         private val log = KotlinLogging.logger {}
@@ -67,7 +68,7 @@ class AwsInfrastructureService(
      */
     fun ensureInfrastructure(config: InfrastructureConfig): VpcInfrastructure {
         log.info { "Ensuring infrastructure exists for: ${config.vpcName}" }
-        outputHandler.handleMessage("Ensuring infrastructure exists for: ${config.vpcName}")
+        eventBus.emit(Event.Infra.InfrastructureEnsuring(config.vpcName))
 
         // Create VPC
         val vpcId = vpcService.createVpc(config.vpcName, config.vpcCidr, config.tags)
@@ -116,7 +117,7 @@ class AwsInfrastructureService(
         log.info {
             "Infrastructure ready: VPC=$vpcId, Subnets=${subnetIds.size}, SG=$sgId, IGW=$igwId"
         }
-        outputHandler.handleMessage("Infrastructure ready for: ${config.vpcName}")
+        eventBus.emit(Event.Infra.InfrastructureReady(config.vpcName))
 
         return infrastructure
     }
@@ -138,7 +139,7 @@ class AwsInfrastructureService(
         val existingVpcId = vpcService.findVpcByName(config.vpcName)
         if (existingVpcId != null) {
             log.info { "Reusing existing packer VPC: ${config.vpcName} ($existingVpcId)" }
-            outputHandler.handleMessage("Using existing VPC: ${config.vpcName}")
+            eventBus.emit(Event.Infra.VpcUsing(config.vpcName))
 
             // Find or create remaining resources in existing VPC
             val igwId = vpcService.findOrCreateInternetGateway(existingVpcId, config.internetGatewayName, config.tags)
@@ -162,7 +163,7 @@ class AwsInfrastructureService(
                 vpcService.authorizeSecurityGroupIngress(sgId, rule.fromPort, rule.toPort, rule.cidr, rule.protocol)
             }
 
-            outputHandler.handleMessage("Infrastructure ready for: ${config.vpcName}")
+            eventBus.emit(Event.Infra.InfrastructureReady(config.vpcName))
             return VpcInfrastructure(existingVpcId, listOf(subnetId), sgId, igwId)
         }
 
@@ -210,7 +211,7 @@ class AwsInfrastructureService(
         externalIpProvider: () -> String,
     ): VpcInfrastructure {
         log.info { "Setting up VPC networking for cluster: ${config.clusterName}" }
-        outputHandler.handleMessage("Setting up VPC networking for: ${config.clusterName}")
+        eventBus.emit(Event.Infra.VpcNetworkingSetup(config.clusterName))
 
         val baseTags = config.tags + mapOf("easy_cass_lab" to "1", "ClusterId" to config.clusterId)
         val cidrBlock = CidrBlock(config.vpcCidr)
@@ -277,7 +278,7 @@ class AwsInfrastructureService(
         log.info {
             "VPC networking ready: Subnets=${subnetIds.size}, SG=$securityGroupId, IGW=$igwId"
         }
-        outputHandler.handleMessage("VPC networking ready for: ${config.clusterName}")
+        eventBus.emit(Event.Infra.VpcNetworkingReady(config.clusterName))
 
         return infrastructure
     }
@@ -292,7 +293,7 @@ class AwsInfrastructureService(
      */
     fun discoverResources(vpcId: VpcId): DiscoveredResources {
         log.info { "Discovering resources in VPC: $vpcId" }
-        outputHandler.handleMessage("Discovering resources in VPC: $vpcId")
+        eventBus.emit(Event.Infra.ResourceDiscovering(vpcId))
 
         val vpcName = vpcService.getVpcName(vpcId)
         val instanceIds = vpcService.findInstancesInVpc(vpcId)
@@ -352,16 +353,16 @@ class AwsInfrastructureService(
         includePackerVpc: Boolean = false,
     ): TeardownResult {
         log.info { "Starting teardown of all tagged VPCs (dryRun=$dryRun, includePackerVpc=$includePackerVpc)" }
-        outputHandler.handleMessage("Finding all VPCs tagged with ${Constants.Vpc.TAG_KEY}=${Constants.Vpc.TAG_VALUE}...")
+        eventBus.emit(Event.Infra.VpcTeardownSearching(Constants.Vpc.TAG_KEY, Constants.Vpc.TAG_VALUE))
 
         val vpcIds = vpcService.findVpcsByTag(Constants.Vpc.TAG_KEY, Constants.Vpc.TAG_VALUE)
 
         if (vpcIds.isEmpty()) {
-            outputHandler.handleMessage("No VPCs found with tag ${Constants.Vpc.TAG_KEY}=${Constants.Vpc.TAG_VALUE}")
+            eventBus.emit(Event.Infra.VpcTeardownNoneFound(Constants.Vpc.TAG_KEY, Constants.Vpc.TAG_VALUE))
             return TeardownResult.success(emptyList())
         }
 
-        outputHandler.handleMessage("Found ${vpcIds.size} VPCs to tear down")
+        eventBus.emit(Event.Infra.VpcTeardownFound(vpcIds.size))
 
         val allResources = mutableListOf<DiscoveredResources>()
         val errors = mutableListOf<String>()
@@ -371,7 +372,7 @@ class AwsInfrastructureService(
 
             // Skip packer VPC unless explicitly included
             if (resources.isPackerVpc() && !includePackerVpc) {
-                outputHandler.handleMessage("Skipping packer VPC: $vpcId (use --packer to include)")
+                eventBus.emit(Event.Infra.PackerVpcSkipping(vpcId))
                 continue
             }
 
@@ -405,12 +406,12 @@ class AwsInfrastructureService(
      */
     fun teardownPackerInfrastructure(dryRun: Boolean = false): TeardownResult {
         log.info { "Starting teardown of packer infrastructure (dryRun=$dryRun)" }
-        outputHandler.handleMessage("Finding packer infrastructure VPC...")
+        eventBus.emit(Event.Infra.PackerVpcSearching)
 
         val packerVpcId = vpcService.findVpcByName(InfrastructureConfig.PACKER_VPC_NAME)
 
         if (packerVpcId == null) {
-            outputHandler.handleMessage("No packer VPC found (${InfrastructureConfig.PACKER_VPC_NAME})")
+            eventBus.emit(Event.Infra.PackerVpcNotFound(InfrastructureConfig.PACKER_VPC_NAME))
             return TeardownResult.success(emptyList())
         }
 
@@ -434,9 +435,11 @@ class AwsInfrastructureService(
         val errors = mutableListOf<String>()
 
         try {
-            outputHandler.handleMessage(
-                "\nTearing down VPC: ${resources.vpcId}" +
-                    (resources.vpcName?.let { " ($it)" } ?: ""),
+            eventBus.emit(
+                Event.Message(
+                    "\nTearing down VPC: ${resources.vpcId}" +
+                        (resources.vpcName?.let { " ($it)" } ?: ""),
+                ),
             )
 
             // Phase 1: Parallel resource termination
@@ -530,7 +533,7 @@ class AwsInfrastructureService(
     private fun deleteOpenSearchDomains(resources: DiscoveredResources): TeardownStepResult {
         if (resources.openSearchDomainNames.isEmpty()) return TeardownStepResult.success()
 
-        outputHandler.handleMessage("Deleting ${resources.openSearchDomainNames.size} OpenSearch domains...")
+        eventBus.emit(Event.Message("Deleting ${resources.openSearchDomainNames.size} OpenSearch domains..."))
 
         val errors = mutableListOf<String>()
         val domainsToWait = mutableListOf<String>()
@@ -552,9 +555,11 @@ class AwsInfrastructureService(
                 openSearchService.waitForDomainDeleted(domainName)
             } catch (e: Exception) {
                 errors.add(logError("Timeout waiting for OpenSearch domain $domainName to delete", e))
-                outputHandler.handleMessage(
-                    "Warning: OpenSearch domain $domainName is still deleting. " +
-                        "VPC cleanup may fail - run teardown again later.",
+                eventBus.emit(
+                    Event.Message(
+                        "Warning: OpenSearch domain $domainName is still deleting. " +
+                            "VPC cleanup may fail - run teardown again later.",
+                    ),
                 )
                 allDeleted = false
             }
@@ -600,9 +605,11 @@ class AwsInfrastructureService(
         } catch (e: Exception) {
             // ENI timeout is non-fatal — teardown continues, errors recorded
             errors.add(logError("Timeout waiting for network interfaces to clear in VPC ${resources.vpcId}", e))
-            outputHandler.handleMessage(
-                "Warning: Some network interfaces are still active. " +
-                    "Subsequent deletions may fail with DependencyViolation errors.",
+            eventBus.emit(
+                Event.Message(
+                    "Warning: Some network interfaces are still active. " +
+                        "Subsequent deletions may fail with DependencyViolation errors.",
+                ),
             )
         }
     }
@@ -616,7 +623,7 @@ class AwsInfrastructureService(
     ) {
         if (resources.securityGroupIds.isEmpty()) return
 
-        outputHandler.handleMessage("Revoking rules from ${resources.securityGroupIds.size} security groups...")
+        eventBus.emit(Event.Infra.SecurityGroupRulesRevoking(resources.securityGroupIds.size))
 
         resources.securityGroupIds.forEach { sgId ->
             try {
@@ -691,7 +698,7 @@ class AwsInfrastructureService(
     ) {
         try {
             vpcService.deleteVpc(resources.vpcId)
-            outputHandler.handleMessage("VPC ${resources.vpcId} deleted successfully")
+            eventBus.emit(Event.Infra.VpcDeleted(resources.vpcId))
         } catch (e: Exception) {
             errors.add(logError("Failed to delete VPC ${resources.vpcId}", e))
         }

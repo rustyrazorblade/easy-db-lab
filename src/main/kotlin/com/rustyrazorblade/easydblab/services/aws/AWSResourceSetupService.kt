@@ -2,7 +2,8 @@ package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.User
-import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.AWSPolicy
 
@@ -20,7 +21,7 @@ import com.rustyrazorblade.easydblab.providers.aws.AWSPolicy
  */
 class AWSResourceSetupService(
     private val aws: AWS,
-    private val outputHandler: OutputHandler,
+    private val eventBus: EventBus,
 ) {
     companion object {
         // User-facing messages
@@ -89,7 +90,7 @@ class AWSResourceSetupService(
             return
         }
 
-        outputHandler.handleMessage(MSG_SETUP_START)
+        eventBus.emit(Event.AwsSetup.Starting(MSG_SETUP_START))
 
         // Step 1: Validate credentials
         validateCredentials()
@@ -112,8 +113,8 @@ class AWSResourceSetupService(
         }
 
         // Resources exist in config but validation failed - will attempt to fix
-        outputHandler.handleMessage(MSG_REPAIR_WARNING)
-        outputHandler.handleMessage("  ${validation.errorMessage}")
+        eventBus.emit(Event.AwsSetup.RepairWarning(MSG_REPAIR_WARNING))
+        eventBus.emit(Event.AwsSetup.RepairWarning("  ${validation.errorMessage}"))
         return false
     }
 
@@ -138,7 +139,7 @@ class AWSResourceSetupService(
             handlePermissionError(e)
             throw e
         } catch (e: Exception) {
-            outputHandler.handleError(ERR_CREDENTIAL_VALIDATION, e)
+            eventBus.emit(Event.AwsSetup.CredentialError(ERR_CREDENTIAL_VALIDATION))
             throw e
         }
     }
@@ -150,23 +151,23 @@ class AWSResourceSetupService(
         try {
             // EC2 role (for Cassandra, Stress, Control nodes) with wildcard S3 policy
             aws.createRoleWithS3Policy(roleName)
-            outputHandler.handleMessage("$MSG_EC2_ROLE_READY $roleName")
+            eventBus.emit(Event.AwsSetup.Ec2RoleReady(roleName))
 
             // EMR Service role
             aws.createServiceRole()
-            outputHandler.handleMessage("$MSG_EMR_SERVICE_READY ${Constants.AWS.Roles.EMR_SERVICE_ROLE}")
+            eventBus.emit(Event.AwsSetup.EmrServiceRoleReady(Constants.AWS.Roles.EMR_SERVICE_ROLE))
 
             // EMR EC2 role (for Spark clusters)
             aws.createEMREC2Role()
-            outputHandler.handleMessage("$MSG_EMR_EC2_READY ${Constants.AWS.Roles.EMR_EC2_ROLE}")
+            eventBus.emit(Event.AwsSetup.EmrEc2RoleReady(Constants.AWS.Roles.EMR_EC2_ROLE))
         } catch (e: software.amazon.awssdk.services.iam.model.IamException) {
-            outputHandler.handleError(ERR_IAM_PERMISSIONS, e)
+            eventBus.emit(Event.AwsSetup.IamPermissionError(ERR_IAM_PERMISSIONS))
             throw e
         } catch (e: IllegalStateException) {
-            outputHandler.handleError(ERR_IAM_VALIDATION, e)
+            eventBus.emit(Event.AwsSetup.IamValidationError(ERR_IAM_VALIDATION))
             throw e
         } catch (e: Exception) {
-            outputHandler.handleError(ERR_IAM_UNEXPECTED, e)
+            eventBus.emit(Event.AwsSetup.IamUnexpectedError(ERR_IAM_UNEXPECTED))
             throw e
         }
     }
@@ -190,11 +191,11 @@ class AWSResourceSetupService(
 
                 This may be due to AWS eventual consistency. Please wait a few seconds and try again.
                 """.trimIndent()
-            outputHandler.handleError(errorMsg, null)
+            eventBus.emit(Event.AwsSetup.ValidationFailed(errorMsg))
             throw IllegalStateException(errorMsg)
         }
 
-        outputHandler.handleMessage(MSG_SETUP_COMPLETE)
+        eventBus.emit(Event.AwsSetup.Complete(MSG_SETUP_COMPLETE))
     }
 
     /**
@@ -202,57 +203,63 @@ class AWSResourceSetupService(
      * Provides guidance for reconfiguring easy-db-lab profile.
      */
     private fun handleAuthenticationError(exception: software.amazon.awssdk.core.exception.SdkServiceException) {
-        outputHandler.handleMessage(
-            """
-            |
-            |========================================
-            |AWS CREDENTIAL ERROR
-            |========================================
-            |
-            |Unable to validate AWS credentials: ${exception.message}
-            |
-            |This usually means:
-            |  - AWS credentials are not configured
-            |  - AWS credentials have expired
-            |  - AWS access key or secret key is invalid
-            |
-            |To fix this issue, reconfigure your easy-db-lab profile:
-            |
-            |  1. Remove incorrect profile: rm -rf ~/.easy_cass_lab/profiles/<PROFILE>
-            |     (Replace <PROFILE> with your profile name, usually 'default')
-            |
-            |  2. Run: easy-db-lab setup-profile
-            |
-            |  3. When prompted, enter your AWS access key and secret key
-            |
-            |To verify your credentials are working, run:
-            |  aws sts get-caller-identity
-            |
-            |For full AWS permissions required by easy-db-lab, add THREE inline policies:
-            |
-            """.trimMargin(),
+        eventBus.emit(
+            Event.AwsSetup.CredentialError(
+                """
+                |
+                |========================================
+                |AWS CREDENTIAL ERROR
+                |========================================
+                |
+                |Unable to validate AWS credentials: ${exception.message}
+                |
+                |This usually means:
+                |  - AWS credentials are not configured
+                |  - AWS credentials have expired
+                |  - AWS access key or secret key is invalid
+                |
+                |To fix this issue, reconfigure your easy-db-lab profile:
+                |
+                |  1. Remove incorrect profile: rm -rf ~/.easy_cass_lab/profiles/<PROFILE>
+                |     (Replace <PROFILE> with your profile name, usually 'default')
+                |
+                |  2. Run: easy-db-lab setup-profile
+                |
+                |  3. When prompted, enter your AWS access key and secret key
+                |
+                |To verify your credentials are working, run:
+                |  aws sts get-caller-identity
+                |
+                |For full AWS permissions required by easy-db-lab, add THREE inline policies:
+                |
+                """.trimMargin(),
+            ),
         )
 
         // Show required IAM policies
         val policies = AWSPolicy.UserIAM.loadAll("ACCOUNT_ID")
         policies.forEachIndexed { index, policy ->
-            outputHandler.handleMessage(
-                """
-                |========================================
-                |Policy ${index + 1}: ${policy.name}
-                |========================================
-                |
-                |${policy.body}
-                |
-                """.trimMargin(),
+            eventBus.emit(
+                Event.Message(
+                    """
+                    |========================================
+                    |Policy ${index + 1}: ${policy.name}
+                    |========================================
+                    |
+                    |${policy.body}
+                    |
+                    """.trimMargin(),
+                ),
             )
         }
 
-        outputHandler.handleMessage(
-            """
-            |========================================
-            |
-            """.trimMargin(),
+        eventBus.emit(
+            Event.Message(
+                """
+                |========================================
+                |
+                """.trimMargin(),
+            ),
         )
     }
 
@@ -261,19 +268,21 @@ class AWSResourceSetupService(
      * Provides detailed IAM policy guidance.
      */
     private fun handlePermissionError(exception: software.amazon.awssdk.core.exception.SdkServiceException) {
-        outputHandler.handleMessage(
-            """
-            |
-            |========================================
-            |AWS PERMISSION ERROR
-            |========================================
-            |
-            |Error: ${exception.message}
-            |
-            |To fix this issue, add the following IAM policies to your AWS user.
-            |You need to create THREE separate inline policies:
-            |
-            """.trimMargin(),
+        eventBus.emit(
+            Event.AwsSetup.IamPermissionError(
+                """
+                |
+                |========================================
+                |AWS PERMISSION ERROR
+                |========================================
+                |
+                |Error: ${exception.message}
+                |
+                |To fix this issue, add the following IAM policies to your AWS user.
+                |You need to create THREE separate inline policies:
+                |
+                """.trimMargin(),
+            ),
         )
 
         // Try to get account ID, fallback to placeholder if that fails
@@ -281,54 +290,60 @@ class AWSResourceSetupService(
             try {
                 aws.getAccountId() ?: error("Account ID is null")
             } catch (e: Exception) {
-                outputHandler.handleMessage(
-                    """
-                    |NOTE: Replace ACCOUNT_ID in the policies below with your AWS account ID.
-                    |You can find your account ID in the error message above (the 12-digit number in the ARN).
-                    |
-                    """.trimMargin(),
+                eventBus.emit(
+                    Event.Message(
+                        """
+                        |NOTE: Replace ACCOUNT_ID in the policies below with your AWS account ID.
+                        |You can find your account ID in the error message above (the 12-digit number in the ARN).
+                        |
+                        """.trimMargin(),
+                    ),
                 )
                 "ACCOUNT_ID"
             }
 
         val policies = AWSPolicy.UserIAM.loadAll(accountId)
         policies.forEachIndexed { index, policy ->
-            outputHandler.handleMessage(
-                """
-                |========================================
-                |Policy ${index + 1}: ${policy.name}
-                |========================================
-                |
-                |${policy.body}
-                |
-                """.trimMargin(),
+            eventBus.emit(
+                Event.Message(
+                    """
+                    |========================================
+                    |Policy ${index + 1}: ${policy.name}
+                    |========================================
+                    |
+                    |${policy.body}
+                    |
+                    """.trimMargin(),
+                ),
             )
         }
 
-        outputHandler.handleMessage(
-            """
-            |========================================
-            |
-            |RECOMMENDED: Create managed policies and attach to a group
-            |  • No size limits (inline policies limited to 5,120 bytes total)
-            |  • Required for EMR/Spark cluster functionality
-            |  • Reusable across multiple users
-            |
-            |To apply these policies:
-            |  1. Go to AWS IAM Console (https://console.aws.amazon.com/iam/)
-            |  2. Create IAM group (e.g., "EasyDBLabUsers")
-            |  3. Create three managed policies:
-            |     - Policies → Create Policy → JSON tab
-            |     - Paste policy content and name: EasyDBLabEC2, EasyDBLabIAM, EasyDBLabEMR
-            |  4. Attach policies to your group
-            |  5. Add your IAM user to the group
-            |
-            |ALTERNATIVE (single user): Attach as inline policies to your user
-            |  WARNING: May hit 5,120 byte limit with all three policies
-            |
-            |========================================
-            |
-            """.trimMargin(),
+        eventBus.emit(
+            Event.Message(
+                """
+                |========================================
+                |
+                |RECOMMENDED: Create managed policies and attach to a group
+                |  • No size limits (inline policies limited to 5,120 bytes total)
+                |  • Required for EMR/Spark cluster functionality
+                |  • Reusable across multiple users
+                |
+                |To apply these policies:
+                |  1. Go to AWS IAM Console (https://console.aws.amazon.com/iam/)
+                |  2. Create IAM group (e.g., "EasyDBLabUsers")
+                |  3. Create three managed policies:
+                |     - Policies → Create Policy → JSON tab
+                |     - Paste policy content and name: EasyDBLabEC2, EasyDBLabIAM, EasyDBLabEMR
+                |  4. Attach policies to your group
+                |  5. Add your IAM user to the group
+                |
+                |ALTERNATIVE (single user): Attach as inline policies to your user
+                |  WARNING: May hit 5,120 byte limit with all three policies
+                |
+                |========================================
+                |
+                """.trimMargin(),
+            ),
         )
     }
 }

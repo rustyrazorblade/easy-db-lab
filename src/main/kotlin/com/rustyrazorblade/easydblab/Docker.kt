@@ -14,8 +14,9 @@ import com.github.dockerjava.api.model.Volume
 import com.rustyrazorblade.easydblab.docker.ContainerExecutor
 import com.rustyrazorblade.easydblab.docker.ContainerIOManager
 import com.rustyrazorblade.easydblab.docker.ContainerStateMonitor
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
-import com.rustyrazorblade.easydblab.output.OutputHandler
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
@@ -224,14 +225,14 @@ data class VolumeMapping(
  * @param context The execution context
  * @param dockerClient The Docker client interface for container operations
  * @param userIdProvider Provider for getting the current user ID (for permissions)
- * @param outputHandler Handler for container output (default: console)
+ * Events are emitted via the EventBus for user-facing output.
  */
 class Docker(
     val context: Context,
     private val dockerClient: DockerClientInterface,
     private val userIdProvider: UserIdProvider = DefaultUserIdProvider(),
 ) : KoinComponent {
-    private val outputHandler: OutputHandler by inject()
+    private val eventBus: EventBus by inject()
 
     companion object {
         private const val CONTAINER_ID_DISPLAY_LENGTH = 12
@@ -299,7 +300,7 @@ class Docker(
                         val current = detail.current
                         val total = detail.total
                         if (current != null && total != null) {
-                            outputHandler.handleMessage("Pulling: $current / $total")
+                            eventBus.emit(Event.Message("Pulling: $current / $total"))
                         }
                     }
                     return super.onNext(item)
@@ -352,13 +353,8 @@ class Docker(
         require(imageTag.isNotBlank()) { "Image tag cannot be blank" }
         require(command.isNotEmpty()) { "Command list cannot be empty" }
 
-        // Use a buffered handler to capture output while also displaying it
+        // Use a buffered handler to capture output for the return value
         val bufferedHandler = BufferedOutputHandler()
-        val compositeHandler =
-            com.rustyrazorblade.easydblab.output.CompositeOutputHandler(
-                outputHandler,
-                bufferedHandler,
-            )
 
         val dockerCommandBuilder = dockerClient.createContainer(imageTag)
 
@@ -383,13 +379,17 @@ class Docker(
         }
 
         if (workingDirectory.isNotEmpty()) {
-            compositeHandler.handleMessage("Setting working directory inside container to $workingDirectory")
+            val workDirMsg = "Setting working directory inside container to $workingDirectory"
+            eventBus.emit(Event.Message(workDirMsg))
+            bufferedHandler.handleMessage(workDirMsg)
             dockerCommandBuilder.withWorkingDir(workingDirectory)
         }
 
         val dockerContainer = dockerCommandBuilder.exec()
         val containerId = dockerContainer.id.substring(0, CONTAINER_ID_DISPLAY_LENGTH)
-        compositeHandler.handleMessage("Starting $imageTag container ($containerId)")
+        val startMsg = "Starting $imageTag container ($containerId)"
+        eventBus.emit(Event.Message(startMsg))
+        bufferedHandler.handleMessage(startMsg)
 
         // Use the new modular components
         val ioManager = ContainerIOManager(dockerClient)

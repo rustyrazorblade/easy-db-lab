@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.SparkService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -46,8 +47,8 @@ class SparkJobs : PicoBaseCommand() {
                     error(error.message ?: "Failed to validate EMR cluster")
                 }
 
-        outputHandler.handleMessage("Listing jobs for cluster: ${clusterInfo.clusterId}")
-        outputHandler.handleMessage("")
+        eventBus.emit(Event.Message("Listing jobs for cluster: ${clusterInfo.clusterId}"))
+        eventBus.emit(Event.Message(""))
 
         // Get job list
         val jobs =
@@ -58,12 +59,12 @@ class SparkJobs : PicoBaseCommand() {
                 }
 
         if (jobs.isEmpty()) {
-            outputHandler.handleMessage("No jobs found on cluster.")
+            eventBus.emit(Event.Message("No jobs found on cluster."))
             return
         }
 
         // Display jobs in a formatted table
-        outputHandler.handleMessage(formatJobsTable(jobs))
+        eventBus.emit(Event.Message(formatJobsTable(jobs)))
     }
 
     /**

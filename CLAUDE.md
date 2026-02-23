@@ -1,5 +1,6 @@
 - This is a command line tool.  The user interacts by reading the output.  Do not suggest replacing print statements with logging, because it breaks the UX.
-- Commands should use `outputHandler.handleMessage()` for user-facing output, not logging frameworks.
+- **Services** should use `eventBus.emit(Event.Domain.Type(...))` for user-facing output. Events are defined as sealed data classes in `events/Event.kt`. See [`events/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/events/CLAUDE.md).
+- **Commands** that have been migrated use `eventBus.emit()`. Commands not yet migrated still use `outputHandler.handleMessage()`. Both are available in `PicoBaseCommand`.
 - Do not add logging frameworks to command classes unless there is a specific internal debugging need separate from user output.
 - When logging is needed, use: `import io.github.oshai.kotlinlogging.KotlinLogging` and create a logger with `private val log = KotlinLogging.logger {}`
 
@@ -11,6 +12,10 @@ The project follows a layered architecture with clear separation of concerns:
 
 ```
 Commands (PicoCLI) → Services → External Systems (K8s, AWS, Filesystem)
+                  ↘        ↘
+                   EventBus → ConsoleEventListener (stdout/stderr)
+                            → McpEventListener (MCP server status)
+                            → RedisEventListener (pub/sub, optional)
 ```
 
 ### Project Modules
@@ -312,6 +317,7 @@ If I refer to Kubernetes configs or k8 configs, I am referring to these: `src/ma
 ## Subdirectory Documentation
 
 Detailed patterns live in package-level CLAUDE.md files:
+- [`events/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/events/CLAUDE.md) — Event bus, event hierarchy, adding new events, serialization
 - [`commands/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/commands/CLAUDE.md) — command patterns, available services
 - [`services/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/services/CLAUDE.md) — SystemD service management
 - [`services/aws/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/services/aws/CLAUDE.md) — AWS service classes (AMI, EC2, EMR, OpenSearch, S3, SQS)

@@ -3,7 +3,8 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.EMRClusterState
 import com.rustyrazorblade.easydblab.configuration.s3Path
-import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.EMRClusterConfig
 import com.rustyrazorblade.easydblab.services.aws.EMRService
 
@@ -49,7 +50,7 @@ interface EMRProvisioningService {
  */
 class DefaultEMRProvisioningService(
     private val emrService: EMRService,
-    private val outputHandler: OutputHandler,
+    private val eventBus: EventBus,
 ) : EMRProvisioningService {
     override fun provisionEmrCluster(
         clusterName: String,
@@ -62,7 +63,7 @@ class DefaultEMRProvisioningService(
         clusterState: ClusterState,
         tags: Map<String, String>,
     ): EMRClusterState {
-        outputHandler.handleMessage("Creating EMR Spark cluster...")
+        eventBus.emit(Event.Message("Creating EMR Spark cluster..."))
 
         val emrConfig =
             EMRClusterConfig(

@@ -3,7 +3,7 @@ package com.rustyrazorblade.easydblab.services
 import com.charleskorn.kaml.Yaml
 import com.charleskorn.kaml.YamlConfiguration
 import com.rustyrazorblade.easydblab.configuration.Host
-import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import io.github.oshai.kotlinlogging.KLogger
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -61,12 +61,11 @@ interface K3sAgentService : SystemDServiceManager {
  * in agent mode on first start.
  *
  * @property remoteOps Service for executing SSH commands on remote hosts
- * @property outputHandler Handler for user-facing output messages
  */
 class DefaultK3sAgentService(
     remoteOps: RemoteOperationsService,
-    outputHandler: OutputHandler,
-) : AbstractSystemDServiceManager("k3s-agent", remoteOps, outputHandler),
+    eventBus: EventBus,
+) : AbstractSystemDServiceManager("k3s-agent", remoteOps, eventBus),
     K3sAgentService {
     override val log: KLogger = KotlinLogging.logger {}
 

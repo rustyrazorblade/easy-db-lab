@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.toHost
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.TailscaleApiException
 import com.rustyrazorblade.easydblab.services.TailscaleService
 import org.koin.core.component.inject
@@ -83,20 +84,22 @@ class TailscaleStart : PicoBaseCommand() {
 
     private fun showMissingCredentialsError() {
         with(TermColors()) {
-            outputHandler.handleMessage(
-                red(
-                    """
-                    Tailscale OAuth credentials not configured.
+            eventBus.emit(
+                Event.Error(
+                    red(
+                        """
+                        Tailscale OAuth credentials not configured.
 
-                    Please provide credentials via:
-                    1. CLI arguments: --client-id and --client-secret
-                    2. Setup profile: easy-db-lab setup-profile
+                        Please provide credentials via:
+                        1. CLI arguments: --client-id and --client-secret
+                        2. Setup profile: easy-db-lab setup-profile
 
-                    To get OAuth credentials:
-                    1. Go to https://login.tailscale.com/admin/settings/oauth
-                    2. Generate an OAuth client with "Devices: write" scope
-                    3. Copy the client ID and secret
-                    """.trimIndent(),
+                        To get OAuth credentials:
+                        1. Go to https://login.tailscale.com/admin/settings/oauth
+                        2. Generate an OAuth client with "Devices: write" scope
+                        3. Copy the client ID and secret
+                        """.trimIndent(),
+                    ),
                 ),
             )
         }
@@ -106,8 +109,8 @@ class TailscaleStart : PicoBaseCommand() {
         val controlHost = clusterState.getControlHost()
         if (controlHost == null) {
             with(TermColors()) {
-                outputHandler.handleMessage(
-                    red("No control node found. Ensure your cluster is running with 'easy-db-lab up'."),
+                eventBus.emit(
+                    Event.Error(red("No control node found. Ensure your cluster is running with 'easy-db-lab up'.")),
                 )
             }
         }
@@ -121,10 +124,10 @@ class TailscaleStart : PicoBaseCommand() {
         val isConnected = tailscaleService.isConnected(host).getOrElse { false }
         if (isConnected) {
             with(TermColors()) {
-                outputHandler.handleMessage(yellow("Tailscale is already connected on $alias."))
+                eventBus.emit(Event.Message(yellow("Tailscale is already connected on $alias.")))
             }
             tailscaleService.getStatus(host).onSuccess { status ->
-                outputHandler.handleMessage(status)
+                eventBus.emit(Event.Message(status))
             }
         }
         return isConnected
@@ -138,7 +141,7 @@ class TailscaleStart : PicoBaseCommand() {
         val cidr = clusterState.initConfig?.cidr ?: Constants.Vpc.DEFAULT_CIDR
 
         try {
-            outputHandler.handleMessage("Generating Tailscale auth key...")
+            eventBus.emit(Event.Message("Generating Tailscale auth key..."))
             val authKeyResult =
                 tailscaleService.generateAuthKey(
                     credentials.clientId,
@@ -154,24 +157,26 @@ class TailscaleStart : PicoBaseCommand() {
             showCurrentStatus(host)
         } catch (e: TailscaleApiException) {
             with(TermColors()) {
-                outputHandler.handleMessage(red("Failed to start Tailscale: ${e.message}"))
+                eventBus.emit(Event.Error(red("Failed to start Tailscale: ${e.message}")))
                 if (e.message?.contains("tags") == true) {
-                    outputHandler.handleMessage(
-                        yellow(
-                            """
+                    eventBus.emit(
+                        Event.Message(
+                            yellow(
+                                """
 
-                            The tag '${credentials.tag}' must be configured in your Tailscale ACL.
+                                The tag '${credentials.tag}' must be configured in your Tailscale ACL.
 
-                            To fix this:
-                            1. Go to https://login.tailscale.com/admin/acls
-                            2. Add this to your ACL policy:
-                               "tagOwners": {
-                                 "${credentials.tag}": ["autogroup:admin"]
-                               }
-                            3. Ensure your OAuth client has permission to use this tag
+                                To fix this:
+                                1. Go to https://login.tailscale.com/admin/acls
+                                2. Add this to your ACL policy:
+                                   "tagOwners": {
+                                     "${credentials.tag}": ["autogroup:admin"]
+                                   }
+                                3. Ensure your OAuth client has permission to use this tag
 
-                            Or use a different tag: --tag tag:your-existing-tag
-                            """.trimIndent(),
+                                Or use a different tag: --tag tag:your-existing-tag
+                                """.trimIndent(),
+                            ),
                         ),
                     )
                 }
@@ -184,27 +189,29 @@ class TailscaleStart : PicoBaseCommand() {
         cidr: String,
     ) {
         with(TermColors()) {
-            outputHandler.handleMessage(green("\nTailscale started successfully!"))
-            outputHandler.handleMessage(
-                """
+            eventBus.emit(Event.Message(green("\nTailscale started successfully!")))
+            eventBus.emit(
+                Event.Message(
+                    """
 
-                The control node ($alias) is now accessible via Tailscale.
-                Subnet route advertised: $cidr
+                    The control node ($alias) is now accessible via Tailscale.
+                    Subnet route advertised: $cidr
 
-                NOTE: You may need to approve the subnet route in the Tailscale admin console:
-                https://login.tailscale.com/admin/machines
+                    NOTE: You may need to approve the subnet route in the Tailscale admin console:
+                    https://login.tailscale.com/admin/machines
 
-                Once approved, you can access all cluster nodes through the control node's
-                Tailscale connection using their private IPs.
-                """.trimIndent(),
+                    Once approved, you can access all cluster nodes through the control node's
+                    Tailscale connection using their private IPs.
+                    """.trimIndent(),
+                ),
             )
         }
     }
 
     private fun showCurrentStatus(host: Host) {
         tailscaleService.getStatus(host).onSuccess { status ->
-            outputHandler.handleMessage("\nCurrent status:")
-            outputHandler.handleMessage(status)
+            eventBus.emit(Event.Message("\nCurrent status:"))
+            eventBus.emit(Event.Message(status))
         }
     }
 

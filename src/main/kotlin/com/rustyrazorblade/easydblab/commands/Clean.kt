@@ -2,7 +2,8 @@ package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.annotations.McpCommand
-import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -20,7 +21,7 @@ class Clean :
     PicoCommand,
     KoinComponent {
     private val context: Context by inject()
-    private val outputHandler: OutputHandler by inject()
+    private val eventBus: EventBus by inject()
 
     companion object {
         val filesToClean =
@@ -59,8 +60,10 @@ class Clean :
             if (artifacts.listFiles().isEmpty()) {
                 artifacts.delete()
             } else {
-                outputHandler.handleMessage(
-                    "Not deleting artifacts directory, it contains artifacts.",
+                eventBus.emit(
+                    Event.Message(
+                        "Not deleting artifacts directory, it contains artifacts.",
+                    ),
                 )
             }
         }

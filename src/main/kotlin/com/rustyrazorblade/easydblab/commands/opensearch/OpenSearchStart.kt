@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.OpenSearchClusterState
 import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchDomainConfig
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -83,7 +84,7 @@ class OpenSearchStart : PicoBaseCommand() {
         log.info { "Creating OpenSearch domain: $domainName" }
 
         // Ensure the OpenSearch service-linked role exists (required for VPC access)
-        outputHandler.handleMessage("Ensuring OpenSearch service-linked role exists...")
+        eventBus.emit(Event.Message("Ensuring OpenSearch service-linked role exists..."))
         openSearchService.ensureServiceLinkedRole()
 
         val config =
@@ -119,7 +120,7 @@ class OpenSearchStart : PicoBaseCommand() {
         clusterStateManager.save(clusterState)
 
         if (wait) {
-            outputHandler.handleMessage("Waiting for OpenSearch domain to become active...")
+            eventBus.emit(Event.OpenSearch.Waiting)
             val activeResult = openSearchService.waitForDomainActive(domainName)
 
             // Update state with endpoint info
@@ -136,11 +137,11 @@ class OpenSearchStart : PicoBaseCommand() {
 
             displayAccessInfo(activeResult.endpoint, activeResult.dashboardsEndpoint)
         } else {
-            outputHandler.handleMessage("")
-            outputHandler.handleMessage("OpenSearch domain creation started.")
-            outputHandler.handleMessage("This typically takes 10-30 minutes to complete.")
-            outputHandler.handleMessage("")
-            outputHandler.handleMessage("Use 'opensearch status' to check when the endpoint is available.")
+            eventBus.emit(Event.Message(""))
+            eventBus.emit(Event.Message("OpenSearch domain creation started."))
+            eventBus.emit(Event.Message("This typically takes 10-30 minutes to complete."))
+            eventBus.emit(Event.Message(""))
+            eventBus.emit(Event.Message("Use 'opensearch status' to check when the endpoint is available."))
         }
     }
 
@@ -162,14 +163,14 @@ class OpenSearchStart : PicoBaseCommand() {
         endpoint: String?,
         dashboardsEndpoint: String?,
     ) {
-        outputHandler.handleMessage("")
-        outputHandler.handleMessage("OpenSearch domain created successfully!")
-        outputHandler.handleMessage("")
+        eventBus.emit(Event.Message(""))
+        eventBus.emit(Event.Message("OpenSearch domain created successfully!"))
+        eventBus.emit(Event.Message(""))
         if (endpoint != null) {
-            outputHandler.handleMessage("REST API: https://$endpoint")
-            outputHandler.handleMessage("Dashboards: $dashboardsEndpoint")
-            outputHandler.handleMessage("")
-            outputHandler.handleMessage("Note: Access requires VPC connectivity (SSH tunnel or VPN)")
+            eventBus.emit(Event.Message("REST API: https://$endpoint"))
+            eventBus.emit(Event.Message("Dashboards: $dashboardsEndpoint"))
+            eventBus.emit(Event.Message(""))
+            eventBus.emit(Event.Message("Note: Access requires VPC connectivity (SSH tunnel or VPN)"))
         }
     }
 }

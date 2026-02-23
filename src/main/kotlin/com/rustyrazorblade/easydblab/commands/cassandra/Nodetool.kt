@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.toHost
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -39,17 +40,17 @@ class Nodetool : PicoBaseCommand() {
 
     override fun execute() {
         if (args.isEmpty()) {
-            outputHandler.handleMessage("Usage: easy-db-lab cassandra nt [--hosts host1,host2] <nodetool-command>")
-            outputHandler.handleMessage("Example: easy-db-lab cassandra nt status")
+            eventBus.emit(Event.Message("Usage: easy-db-lab cassandra nt [--hosts host1,host2] <nodetool-command>"))
+            eventBus.emit(Event.Message("Example: easy-db-lab cassandra nt status"))
             return
         }
 
         val command = args.joinToString(" ")
 
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList) { host ->
-            outputHandler.handleMessage("=== ${host.alias} ===")
+            eventBus.emit(Event.Message("=== ${host.alias} ==="))
             val result = remoteOps.executeRemotely(host.toHost(), "/usr/local/cassandra/current/bin/nodetool $command")
-            outputHandler.handleMessage(result.text)
+            eventBus.emit(Event.Message(result.text))
         }
     }
 }

@@ -2,13 +2,14 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import com.rustyrazorblade.easydblab.kubernetes.ManifestApplier
 import com.rustyrazorblade.easydblab.kubernetes.ProxiedKubernetesClientFactory
 import com.rustyrazorblade.easydblab.observability.TelemetryNames
 import com.rustyrazorblade.easydblab.observability.TelemetryProvider
-import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.client.KubernetesClient
@@ -384,13 +385,13 @@ interface K8sService {
  * The proxy ensures reliable connectivity regardless of local network configuration.
  *
  * @property socksProxyService Service for managing the SOCKS5 proxy connection
- * @property outputHandler Handler for user-facing output messages
  * @property telemetryProvider Provider for observability telemetry
+ * @property eventBus Event bus for emitting domain events
  */
 class DefaultK8sService(
     private val socksProxyService: SocksProxyService,
-    private val outputHandler: OutputHandler,
     private val telemetryProvider: TelemetryProvider,
+    private val eventBus: EventBus,
 ) : K8sService {
     private val log = KotlinLogging.logger {}
 
@@ -434,7 +435,7 @@ class DefaultK8sService(
                 log.info { "Applying K8s manifests from $manifestPath via SOCKS proxy" }
 
                 createClient(controlHost).use { client ->
-                    outputHandler.handleMessage("Applying K8s manifests...")
+                    eventBus.emit(Event.K8s.ManifestsApplying)
 
                     val pathFile = manifestPath.toFile()
                     val manifestFiles =
@@ -463,7 +464,7 @@ class DefaultK8sService(
                     }
 
                     log.info { "All ${manifestFiles.size} manifests applied successfully" }
-                    outputHandler.handleMessage("K8s manifests applied successfully")
+                    eventBus.emit(Event.K8s.ManifestsApplied)
                 }
             }
         }
@@ -503,7 +504,7 @@ class DefaultK8sService(
         runCatching {
             log.debug { "Deleting observability namespace via SOCKS proxy" }
 
-            outputHandler.handleMessage("Deleting observability namespace...")
+            eventBus.emit(Event.K8s.ObservabilityNamespaceDeleting)
 
             createClient(controlHost).use { client ->
                 val namespace = client.namespaces().withName(Constants.K8s.NAMESPACE).get()
@@ -515,7 +516,7 @@ class DefaultK8sService(
                 }
             }
 
-            outputHandler.handleMessage("Observability namespace deleted")
+            eventBus.emit(Event.K8s.ObservabilityNamespaceDeleted)
         }
 
     override fun waitForPodsReady(
@@ -525,7 +526,7 @@ class DefaultK8sService(
         runCatching {
             log.debug { "Waiting for pods to be ready in ${Constants.K8s.NAMESPACE} namespace" }
 
-            outputHandler.handleMessage("Waiting for observability pods to be ready...")
+            eventBus.emit(Event.K8s.ObservabilityPodsWaiting)
 
             createClient(controlHost).use { client ->
                 val pods =
@@ -561,7 +562,7 @@ class DefaultK8sService(
                 }
             }
 
-            outputHandler.handleMessage("All observability pods are ready")
+            eventBus.emit(Event.K8s.ObservabilityPodsReady)
         }
 
     override fun waitForPodsReady(
@@ -572,7 +573,7 @@ class DefaultK8sService(
         runCatching {
             log.debug { "Waiting for pods to be ready in $namespace namespace" }
 
-            outputHandler.handleMessage("Waiting for pods in $namespace to be ready...")
+            eventBus.emit(Event.K8s.PodsWaiting(namespace))
 
             createClient(controlHost).use { client ->
                 val pods =
@@ -608,7 +609,7 @@ class DefaultK8sService(
                 }
             }
 
-            outputHandler.handleMessage("All pods in $namespace are ready")
+            eventBus.emit(Event.K8s.PodsReady(namespace))
         }
 
     override fun getNamespaceStatus(
@@ -658,7 +659,7 @@ class DefaultK8sService(
             telemetryProvider.withSpan(TelemetryNames.Spans.K8S_DELETE_NAMESPACE, attributes) {
                 log.debug { "Deleting namespace $namespace via SOCKS proxy" }
 
-                outputHandler.handleMessage("Deleting $namespace namespace...")
+                eventBus.emit(Event.K8s.NamespaceDeleting(namespace))
 
                 createClient(controlHost).use { client ->
                     val ns = client.namespaces().withName(namespace).get()
@@ -670,7 +671,7 @@ class DefaultK8sService(
                     }
                 }
 
-                outputHandler.handleMessage("Namespace $namespace deleted")
+                eventBus.emit(Event.K8s.NamespaceDeleted(namespace))
             }
         }
 
@@ -683,7 +684,7 @@ class DefaultK8sService(
         runCatching {
             log.info { "Deleting resources with $labelKey in $labelValues from namespace $namespace" }
 
-            outputHandler.handleMessage("Deleting resources with label $labelKey...")
+            eventBus.emit(Event.K8s.ResourcesDeleting(labelKey))
 
             createClient(controlHost).use { client ->
                 // Build label selector for "key in (value1, value2, ...)"
@@ -799,7 +800,7 @@ class DefaultK8sService(
                 log.info { "All resources with label $labelKey deleted" }
             }
 
-            outputHandler.handleMessage("Resources deleted successfully")
+            eventBus.emit(Event.K8s.ResourcesDeleted)
         }
 
     override fun createClickHouseS3ConfigMap(
@@ -849,7 +850,7 @@ class DefaultK8sService(
                 log.info { "Created ConfigMap ${Constants.ClickHouse.S3_CONFIG_NAME}" }
             }
 
-            outputHandler.handleMessage("Created ClickHouse S3 ConfigMap")
+            eventBus.emit(Event.K8s.ClickHouseS3ConfigMapCreated)
         }
 
     override fun applyManifestFromResources(
@@ -885,7 +886,7 @@ class DefaultK8sService(
                 }
             }
 
-            outputHandler.handleMessage("Manifest applied: $resourcePath")
+            eventBus.emit(Event.K8s.ManifestApplied(resourcePath))
         }
 
     override fun scaleStatefulSet(
@@ -915,7 +916,7 @@ class DefaultK8sService(
                     log.info { "StatefulSet $statefulSetName scaled to $replicas replicas" }
                 }
 
-                outputHandler.handleMessage("Scaled $statefulSetName to $replicas replicas")
+                eventBus.emit(Event.K8s.StatefulSetScaled(statefulSetName, replicas))
             }
         }
 
@@ -990,7 +991,7 @@ class DefaultK8sService(
                 log.info { "Deleted job: $jobName" }
             }
 
-            outputHandler.handleMessage("Deleted job: $jobName")
+            eventBus.emit(Event.K8s.JobDeleted(jobName))
         }
 
     override fun getJobsByLabel(
@@ -1172,7 +1173,7 @@ class DefaultK8sService(
                 log.info { "Created ConfigMap: $name" }
             }
 
-            outputHandler.handleMessage("Created ConfigMap: $name")
+            eventBus.emit(Event.K8s.ConfigMapCreated(name))
         }
 
     override fun deleteConfigMap(
@@ -1193,7 +1194,7 @@ class DefaultK8sService(
                 log.info { "Deleted ConfigMap: $name" }
             }
 
-            outputHandler.handleMessage("Deleted ConfigMap: $name")
+            eventBus.emit(Event.K8s.ConfigMapDeleted(name))
         }
 
     override fun applyYaml(
@@ -1344,7 +1345,7 @@ class DefaultK8sService(
                     log.info { "Created PV $pvName pre-bound to PVC $pvcName on node ordinal $ordinal" }
                 }
 
-                outputHandler.handleMessage("Created $count Local PVs for $dbName")
+                eventBus.emit(Event.K8s.LocalPvsCreated(count, dbName))
             }
         }
 
@@ -1398,7 +1399,7 @@ class DefaultK8sService(
                     .create()
 
                 log.info { "Created StorageClass ${Constants.K8s.LOCAL_STORAGE_CLASS}" }
-                outputHandler.handleMessage("Created local-storage StorageClass")
+                eventBus.emit(Event.K8s.StorageClassCreated)
             }
         }
 

@@ -4,7 +4,8 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.toHost
-import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
@@ -116,13 +117,12 @@ interface K3sClusterService {
  *
  * @property k3sService Service for K3s server operations
  * @property k3sAgentService Service for K3s agent operations
- * @property outputHandler Handler for user-facing messages
  * @property clusterBackupService Service for backing up cluster config to S3
  */
 class DefaultK3sClusterService(
     private val k3sService: K3sService,
     private val k3sAgentService: K3sAgentService,
-    private val outputHandler: OutputHandler,
+    private val eventBus: EventBus = EventBus(),
     private val clusterBackupService: ClusterBackupService? = null,
 ) : K3sClusterService {
     companion object {
@@ -131,18 +131,18 @@ class DefaultK3sClusterService(
     }
 
     override fun setupCluster(config: K3sClusterConfig): K3sSetupResult {
-        outputHandler.handleMessage("Starting K3s cluster...")
+        eventBus.emit(Event.K3s.ClusterStarting)
 
         val errors = mutableMapOf<String, Exception>()
         val controlHost = config.controlHost
 
         // Step 1: Start K3s server
-        outputHandler.handleMessage("Starting K3s server on control node ${controlHost.alias}...")
+        eventBus.emit(Event.K3s.ServerStarting(controlHost.alias))
         val serverStartResult = k3sService.start(controlHost.toHost())
         if (serverStartResult.isFailure) {
             val error = serverStartResult.exceptionOrNull()!!
             log.error(error) { "Failed to start K3s server on ${controlHost.alias}" }
-            outputHandler.handleError("Failed to start K3s server: ${error.message}")
+            eventBus.emit(Event.K3s.ServerStartFailed(error.message ?: "unknown error"))
             errors["K3s server start"] = Exception(error.message, error)
             return K3sSetupResult(
                 serverStarted = false,
@@ -156,7 +156,7 @@ class DefaultK3sClusterService(
         if (tokenResult.isFailure) {
             val error = tokenResult.exceptionOrNull()!!
             log.error(error) { "Failed to retrieve K3s node token from ${controlHost.alias}" }
-            outputHandler.handleError("Failed to retrieve K3s node token: ${error.message}")
+            eventBus.emit(Event.K3s.NodeTokenFailed(error.message ?: "unknown error"))
             errors["K3s node token retrieval"] = Exception(error.message, error)
             return K3sSetupResult(
                 serverStarted = true,
@@ -177,12 +177,12 @@ class DefaultK3sClusterService(
         kubeconfigResult
             .onFailure { error ->
                 log.error(error) { "Failed to download kubeconfig from ${controlHost.alias}" }
-                outputHandler.handleError("Failed to download kubeconfig: ${error.message}")
+                eventBus.emit(Event.K3s.KubeconfigFailed(error.message ?: "unknown error"))
                 errors["Kubeconfig download"] = Exception(error.message, error)
             }.onSuccess {
                 kubeconfigWritten = true
-                outputHandler.handleMessage("Kubeconfig written to ${config.kubeconfigPath.fileName}")
-                outputHandler.handleMessage("Use 'source env.sh' to configure kubectl for cluster access")
+                eventBus.emit(Event.K3s.KubeconfigWritten(config.kubeconfigPath.fileName.toString()))
+                eventBus.emit(Event.K3s.KubeconfigInstruction)
 
                 // Step 3b: Backup kubeconfig to S3 if ClusterState is available
                 kubeconfigBackedUp = backupKubeconfigToS3(config, errors)
@@ -201,7 +201,7 @@ class DefaultK3sClusterService(
                 }
             }
 
-        outputHandler.handleMessage("K3s cluster started successfully")
+        eventBus.emit(Event.K3s.ClusterStarted)
 
         return K3sSetupResult(
             serverStarted = true,
@@ -295,14 +295,14 @@ class DefaultK3sClusterService(
         nodeLabels: Map<String, String>,
     ): AgentSetupResult {
         val host = clusterHost.toHost()
-        outputHandler.handleMessage("Configuring K3s agent on ${host.alias} with labels: $nodeLabels...")
+        eventBus.emit(Event.K3s.AgentConfiguring(host.alias, nodeLabels.toString()))
 
         // Configure agent
         val configResult = k3sAgentService.configure(host, serverUrl, nodeToken, nodeLabels)
         if (configResult.isFailure) {
             val error = configResult.exceptionOrNull()!!
             log.error(error) { "Failed to configure K3s agent on ${host.alias}" }
-            outputHandler.handleError("Failed to configure K3s agent on ${host.alias}: ${error.message}")
+            eventBus.emit(Event.K3s.AgentConfigFailed(host.alias, error.message ?: "unknown error"))
             return AgentSetupResult(
                 alias = host.alias,
                 success = false,
@@ -315,7 +315,7 @@ class DefaultK3sClusterService(
         if (startResult.isFailure) {
             val error = startResult.exceptionOrNull()!!
             log.error(error) { "Failed to start K3s agent on ${host.alias}" }
-            outputHandler.handleError("Failed to start K3s agent on ${host.alias}: ${error.message}")
+            eventBus.emit(Event.K3s.AgentStartFailed(host.alias, error.message ?: "unknown error"))
             return AgentSetupResult(
                 alias = host.alias,
                 success = false,

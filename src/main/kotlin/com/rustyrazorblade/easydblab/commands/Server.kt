@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.mcp.McpServer
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.serialization.Serializable
@@ -80,8 +81,10 @@ class Server : PicoBaseCommand() {
                 val configFile = File(".mcp.json")
                 configFile.writeText(json.encodeToString(config))
 
-                outputHandler.handleMessage(
-                    "MCP configuration saved to: ${configFile.absolutePath}\n",
+                eventBus.emit(
+                    Event.Message(
+                        "MCP configuration saved to: ${configFile.absolutePath}\n",
+                    ),
                 )
             }
 

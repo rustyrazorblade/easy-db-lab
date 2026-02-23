@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredResources
 import com.rustyrazorblade.easydblab.providers.aws.TeardownMode
 import com.rustyrazorblade.easydblab.providers.aws.TeardownResult
@@ -99,7 +100,7 @@ class Down : PicoBaseCommand() {
     override fun execute() {
         val mode = determineTeardownMode()
 
-        outputHandler.handleMessage("Crushing dreams, terminating instances.")
+        eventBus.emit(Event.Message("Crushing dreams, terminating instances."))
 
         // Cleanup local resources first
         cleanupSocks5Proxy()
@@ -144,7 +145,7 @@ class Down : PicoBaseCommand() {
     private fun teardownCurrentCluster(): TeardownResult {
         // Get the VPC ID from cluster state
         if (!clusterStateManager.exists()) {
-            outputHandler.handleMessage("No cluster state found. Use --all to find tagged VPCs or specify a VPC ID.")
+            eventBus.emit(Event.Message("No cluster state found. Use --all to find tagged VPCs or specify a VPC ID."))
             return TeardownResult.Companion.failure("No cluster state found")
         }
 
@@ -152,9 +153,11 @@ class Down : PicoBaseCommand() {
         val currentVpcId = clusterState.vpcId
 
         if (currentVpcId == null) {
-            outputHandler.handleMessage(
-                "No VPC ID stored in cluster state for '${clusterState.name}'. " +
-                    "Use --all to find tagged VPCs or specify a VPC ID.",
+            eventBus.emit(
+                Event.Message(
+                    "No VPC ID stored in cluster state for '${clusterState.name}'. " +
+                        "Use --all to find tagged VPCs or specify a VPC ID.",
+                ),
             )
             return TeardownResult.Companion.failure("No VPC ID in cluster state")
         }
@@ -166,13 +169,13 @@ class Down : PicoBaseCommand() {
      * Tears down a specific VPC by ID.
      */
     private fun teardownSpecificVpc(targetVpcId: String): TeardownResult {
-        outputHandler.handleMessage("Preparing to tear down VPC: $targetVpcId")
+        eventBus.emit(Event.Message("Preparing to tear down VPC: $targetVpcId"))
 
         // Preview to discover resources
         val previewResult = teardownService.teardownVpc(targetVpcId, dryRun = true)
 
         if (previewResult.resourcesDeleted.isEmpty()) {
-            outputHandler.handleMessage("No resources found in VPC")
+            eventBus.emit(Event.Message("No resources found in VPC"))
             return previewResult
         }
 
@@ -185,7 +188,7 @@ class Down : PicoBaseCommand() {
 
         // Confirm if not auto-approved
         if (!autoApprove && !confirmTeardown(summary)) {
-            outputHandler.handleMessage("Teardown cancelled by user")
+            eventBus.emit(Event.Message("Teardown cancelled by user"))
             return TeardownResult.Companion.failure("Teardown cancelled by user")
         }
 
@@ -196,13 +199,13 @@ class Down : PicoBaseCommand() {
      * Tears down all VPCs tagged with easy_cass_lab.
      */
     private fun teardownAllTagged(): TeardownResult {
-        outputHandler.handleMessage("Finding all VPCs tagged with easy_cass_lab...")
+        eventBus.emit(Event.Message("Finding all VPCs tagged with easy_cass_lab..."))
 
         // Preview first
         val previewResult = teardownService.teardownAllTagged(dryRun = true, includePackerVpc = teardownPacker)
 
         if (previewResult.resourcesDeleted.isEmpty()) {
-            outputHandler.handleMessage("No tagged VPCs found to tear down")
+            eventBus.emit(Event.Message("No tagged VPCs found to tear down"))
             return previewResult
         }
 
@@ -216,7 +219,7 @@ class Down : PicoBaseCommand() {
 
         // Confirm if not auto-approved
         if (!autoApprove && !confirmTeardown(summary)) {
-            outputHandler.handleMessage("Teardown cancelled by user")
+            eventBus.emit(Event.Message("Teardown cancelled by user"))
             return TeardownResult.Companion.failure("Teardown cancelled by user")
         }
 
@@ -227,13 +230,13 @@ class Down : PicoBaseCommand() {
      * Tears down the packer infrastructure VPC.
      */
     private fun teardownPackerInfrastructure(): TeardownResult {
-        outputHandler.handleMessage("Finding packer infrastructure VPC...")
+        eventBus.emit(Event.Message("Finding packer infrastructure VPC..."))
 
         // Preview first
         val previewResult = teardownService.teardownPackerInfrastructure(dryRun = true)
 
         if (previewResult.resourcesDeleted.isEmpty()) {
-            outputHandler.handleMessage("No packer VPC found")
+            eventBus.emit(Event.Message("No packer VPC found"))
             return previewResult
         }
 
@@ -246,7 +249,7 @@ class Down : PicoBaseCommand() {
 
         // Confirm if not auto-approved
         if (!autoApprove && !confirmTeardown(summary)) {
-            outputHandler.handleMessage("Teardown cancelled by user")
+            eventBus.emit(Event.Message("Teardown cancelled by user"))
             return TeardownResult.Companion.failure("Teardown cancelled by user")
         }
 
@@ -259,9 +262,9 @@ class Down : PicoBaseCommand() {
      * @param summary Summary of resources that would be deleted
      */
     private fun printDryRunOutput(summary: String) {
-        outputHandler.handleMessage("\n=== DRY RUN - Resources that would be deleted ===")
-        outputHandler.handleMessage(summary)
-        outputHandler.handleMessage("=== End DRY RUN ===\n")
+        eventBus.emit(Event.Message("\n=== DRY RUN - Resources that would be deleted ==="))
+        eventBus.emit(Event.Message(summary))
+        eventBus.emit(Event.Message("=== End DRY RUN ===\n"))
     }
 
     /**
@@ -287,10 +290,10 @@ class Down : PicoBaseCommand() {
      * @return True if user confirms, false otherwise
      */
     private fun confirmTeardown(summary: String): Boolean {
-        outputHandler.handleMessage("\n=== Resources to be deleted ===")
-        outputHandler.handleMessage(summary)
-        outputHandler.handleMessage("================================\n")
-        outputHandler.handleMessage("Are you sure you want to delete these resources? (yes/no)")
+        eventBus.emit(Event.Message("\n=== Resources to be deleted ==="))
+        eventBus.emit(Event.Message(summary))
+        eventBus.emit(Event.Message("================================\n"))
+        eventBus.emit(Event.Message("Are you sure you want to delete these resources? (yes/no)"))
 
         return Scanner(System.`in`).use { scanner ->
             val response = scanner.nextLine().trim().lowercase()
@@ -303,11 +306,11 @@ class Down : PicoBaseCommand() {
      */
     private fun reportResult(result: TeardownResult) {
         if (result.success) {
-            outputHandler.handleMessage("\nTeardown completed successfully")
+            eventBus.emit(Event.Message("\nTeardown completed successfully"))
         } else {
-            outputHandler.handleMessage("\nTeardown completed with errors:")
+            eventBus.emit(Event.Message("\nTeardown completed with errors:"))
             result.errors.forEach { error ->
-                outputHandler.handleMessage("  - $error")
+                eventBus.emit(Event.Message("  - $error"))
             }
         }
     }
@@ -331,7 +334,7 @@ class Down : PicoBaseCommand() {
                 val process = ProcessBuilder("kill", proxyState.pid.toString()).start()
                 process.waitFor()
                 if (process.exitValue() == 0) {
-                    outputHandler.handleMessage("Stopped SOCKS5 proxy (PID: ${proxyState.pid})")
+                    eventBus.emit(Event.Message("Stopped SOCKS5 proxy (PID: ${proxyState.pid})"))
                 } else {
                     log.warn { "Failed to kill SOCKS5 proxy process ${proxyState.pid}, it may already be stopped" }
                 }
@@ -377,7 +380,7 @@ class Down : PicoBaseCommand() {
                 clusterState.updateSqsQueue(null, null)
                 clusterState.updateTailscaleAuthKeyId(null)
                 clusterStateManager.save(clusterState)
-                outputHandler.handleMessage("Cluster state updated: infrastructure marked as DOWN")
+                eventBus.emit(Event.Message("Cluster state updated: infrastructure marked as DOWN"))
             }
         } catch (e: Exception) {
             log.warn(e) { "Failed to update cluster state, continuing anyway" }
@@ -405,7 +408,7 @@ class Down : PicoBaseCommand() {
 
         try {
             tailscaleService.deleteAuthKey(clientId, clientSecret, keyId)
-            outputHandler.handleMessage("Deleted Tailscale auth key: $keyId")
+            eventBus.emit(Event.Message("Deleted Tailscale auth key: $keyId"))
         } catch (e: Exception) {
             log.warn(e) { "Failed to delete Tailscale auth key: $keyId" }
         }
@@ -440,7 +443,7 @@ class Down : PicoBaseCommand() {
         try {
             val clusterPrefix = clusterState.clusterPrefix() + "/"
             s3BucketService.setLifecycleExpirationRule(bucketName, clusterPrefix, retentionDays)
-            outputHandler.handleMessage("S3 lifecycle rule set: data under $clusterPrefix will expire in $retentionDays day(s)")
+            eventBus.emit(Event.Message("S3 lifecycle rule set: data under $clusterPrefix will expire in $retentionDays day(s)"))
         } catch (e: Exception) {
             log.warn(e) { "Failed to set S3 lifecycle rule" }
         }
@@ -461,7 +464,7 @@ class Down : PicoBaseCommand() {
         try {
             val configId = clusterState.metricsConfigId()
             s3BucketService.disableBucketRequestMetrics(bucketName, configId)
-            outputHandler.handleMessage("Disabled S3 request metrics for cluster: ${clusterState.name}")
+            eventBus.emit(Event.Message("Disabled S3 request metrics for cluster: ${clusterState.name}"))
         } catch (e: Exception) {
             log.warn(e) { "Failed to disable S3 request metrics: $bucketName" }
         }

@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.configuration.ClusterState
-import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.services.aws.S3ObjectStore
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeAll
@@ -43,7 +42,6 @@ class ClusterBackupServiceS3IntegrationTest {
 
     private lateinit var s3Client: S3Client
     private lateinit var objectStore: ObjectStore
-    private lateinit var outputHandler: BufferedOutputHandler
     private lateinit var service: ClusterBackupService
 
     @TempDir
@@ -77,9 +75,18 @@ class ClusterBackupServiceS3IntegrationTest {
 
     @BeforeEach
     fun setup() {
-        outputHandler = BufferedOutputHandler()
-        objectStore = S3ObjectStore(s3Client, outputHandler)
-        service = DefaultClusterBackupService(objectStore, outputHandler)
+        objectStore =
+            S3ObjectStore(
+                s3Client,
+                com.rustyrazorblade.easydblab.events
+                    .EventBus(),
+            )
+        service =
+            DefaultClusterBackupService(
+                objectStore,
+                com.rustyrazorblade.easydblab.events
+                    .EventBus(),
+            )
     }
 
     private fun createClusterState(): ClusterState =

@@ -16,6 +16,7 @@ import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.toHost
 import com.rustyrazorblade.easydblab.configuration.vector.VectorManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.victoria.VictoriaManifestBuilder
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
 import com.rustyrazorblade.easydblab.services.K8sService
 import io.fabric8.kubernetes.api.model.HasMetadata
@@ -103,17 +104,17 @@ class GrafanaUpdateConfig : PicoBaseCommand() {
         controlNode: ClusterHost,
         resources: List<HasMetadata>,
     ) {
-        outputHandler.handleMessage("Applying $label resources...")
+        eventBus.emit(Event.Message("Applying $label resources..."))
         for (resource in resources) {
             k8sService.applyResource(controlNode, resource).getOrElse { exception ->
                 error("Failed to apply $label ${resource.kind}/${resource.metadata?.name}: ${exception.message}")
             }
         }
-        outputHandler.handleMessage("$label resources applied successfully")
+        eventBus.emit(Event.Message("$label resources applied successfully"))
     }
 
     private fun applyPyroscopeResources(controlNode: ClusterHost) {
-        outputHandler.handleMessage("Preparing Pyroscope data directory...")
+        eventBus.emit(Event.Message("Preparing Pyroscope data directory..."))
         remoteOps.executeRemotely(
             controlNode.toHost(),
             "sudo mkdir -p /mnt/db1/pyroscope && " +

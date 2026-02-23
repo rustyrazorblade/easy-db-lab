@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.OpenSearchClusterState
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.aws.DomainState
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchDomainResult
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
@@ -36,8 +37,8 @@ class OpenSearchStatus : PicoBaseCommand() {
         val domainState = clusterState.openSearchDomain
         if (domainState == null) {
             if (!endpointOnly) {
-                outputHandler.handleMessage("No OpenSearch domain configured for this cluster.")
-                outputHandler.handleMessage("Use 'opensearch start' to create one.")
+                eventBus.emit(Event.Message("No OpenSearch domain configured for this cluster."))
+                eventBus.emit(Event.Message("Use 'opensearch start' to create one."))
             }
             return
         }
@@ -49,7 +50,7 @@ class OpenSearchStatus : PicoBaseCommand() {
 
             if (endpointOnly) {
                 if (result.endpoint != null) {
-                    outputHandler.handleMessage(result.endpoint)
+                    eventBus.emit(Event.Message(result.endpoint))
                 }
                 return
             }
@@ -73,27 +74,29 @@ class OpenSearchStatus : PicoBaseCommand() {
                 else -> "Creating..."
             }
 
-        outputHandler.handleMessage(
-            """
+        eventBus.emit(
+            Event.Message(
+                """
             |
             |OpenSearch Domain Status
             |========================
             |Domain Name: ${result.domainName}
             |Domain ID:   ${result.domainId}
             |Status:      $statusDisplay
-            """.trimMargin(),
+                """.trimMargin(),
+            ),
         )
-        outputHandler.handleMessage("")
+        eventBus.emit(Event.Message(""))
 
         if (isReady) {
-            outputHandler.handleMessage("Endpoints:")
-            outputHandler.handleMessage("  REST API:   https://${result.endpoint}")
-            outputHandler.handleMessage("  Dashboards: ${result.dashboardsEndpoint}")
+            eventBus.emit(Event.Message("Endpoints:"))
+            eventBus.emit(Event.Message("  REST API:   https://${result.endpoint}"))
+            eventBus.emit(Event.Message("  Dashboards: ${result.dashboardsEndpoint}"))
         } else {
-            outputHandler.handleMessage("Endpoint not yet available.")
-            outputHandler.handleMessage("Domain creation typically takes 10-30 minutes.")
+            eventBus.emit(Event.Message("Endpoint not yet available."))
+            eventBus.emit(Event.Message("Domain creation typically takes 10-30 minutes."))
         }
-        outputHandler.handleMessage("")
+        eventBus.emit(Event.Message(""))
     }
 
     private fun updateLocalStateIfChanged(
@@ -115,8 +118,8 @@ class OpenSearchStatus : PicoBaseCommand() {
     private fun handleDomainNotFound(domainState: OpenSearchClusterState) {
         log.info { "OpenSearch domain ${domainState.domainName} no longer exists" }
         if (!endpointOnly) {
-            outputHandler.handleMessage("OpenSearch domain '${domainState.domainName}' no longer exists.")
-            outputHandler.handleMessage("Clearing local state.")
+            eventBus.emit(Event.Message("OpenSearch domain '${domainState.domainName}' no longer exists."))
+            eventBus.emit(Event.Message("Clearing local state."))
         }
         clusterState.updateOpenSearchDomain(null)
         clusterStateManager.save(clusterState)
@@ -128,13 +131,13 @@ class OpenSearchStatus : PicoBaseCommand() {
     ) {
         log.warn { "Failed to get domain status: ${e.message}" }
         if (!endpointOnly) {
-            outputHandler.handleMessage("Warning: Could not fetch current domain status (${e.message})")
-            outputHandler.handleMessage("")
-            outputHandler.handleMessage("Cached state (may be stale):")
-            outputHandler.handleMessage("  Domain:   ${domainState.domainName}")
-            outputHandler.handleMessage("  State:    ${domainState.state}")
+            eventBus.emit(Event.Message("Warning: Could not fetch current domain status (${e.message})"))
+            eventBus.emit(Event.Message(""))
+            eventBus.emit(Event.Message("Cached state (may be stale):"))
+            eventBus.emit(Event.Message("  Domain:   ${domainState.domainName}"))
+            eventBus.emit(Event.Message("  State:    ${domainState.state}"))
             if (domainState.endpoint != null) {
-                outputHandler.handleMessage("  Endpoint: ${domainState.endpoint}")
+                eventBus.emit(Event.Message("  Endpoint: ${domainState.endpoint}"))
             }
         }
     }

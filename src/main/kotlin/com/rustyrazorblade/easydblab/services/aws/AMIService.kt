@@ -1,7 +1,8 @@
 package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.configuration.Arch
-import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import com.rustyrazorblade.easydblab.providers.aws.model.AMI
@@ -24,14 +25,14 @@ import java.time.Instant
  * cohesive service.
  *
  * @property ec2Client The AWS SDK EC2 client for making API calls
- * @property outputHandler Handler for user-facing messages
+ * @property eventBus Event bus for user-facing messages
  * @property aws AWS service for retrieving account ID
  * @property validationRetryConfig Retry configuration for AMI validation resilience
  */
 @Suppress("TooManyFunctions")
 class AMIService(
     private val ec2Client: Ec2Client,
-    private val outputHandler: OutputHandler,
+    private val eventBus: EventBus,
     private val aws: AWS,
     validationRetryConfig: RetryConfig = defaultValidationRetryConfig,
 ) : AMIValidator {
@@ -360,9 +361,11 @@ class AMIService(
         val selectedAMI = matchingArchAMIs.maxByOrNull { it.creationDate }!!
 
         if (matchingArchAMIs.size > 1) {
-            outputHandler.handleMessage(
-                "Warning: Found ${matchingArchAMIs.size} AMIs matching pattern. " +
-                    "Using newest: ${selectedAMI.id} (${selectedAMI.creationDate})",
+            eventBus.emit(
+                Event.Message(
+                    "Warning: Found ${matchingArchAMIs.size} AMIs matching pattern. " +
+                        "Using newest: ${selectedAMI.id} (${selectedAMI.creationDate})",
+                ),
             )
         }
 
@@ -378,31 +381,33 @@ class AMIService(
         pattern: String,
         architecture: Arch,
     ) {
-        outputHandler.handleMessage(
-            """
-            |
-            |========================================
-            |AMI NOT FOUND
-            |========================================
-            |
-            |No AMI found in your AWS account matching:
-            |  Pattern: $pattern
-            |  Architecture: ${architecture.type}
-            |
-            |Before you can provision instances, you need to build the AMI images.
-            |
-            |To build the required AMI, run:
-            |  easy-db-lab build-image --arch ${architecture.type}
-            |
-            |This will create both the base and Cassandra AMIs in your AWS account.
-            |
-            |Alternatively, you can specify a custom AMI with:
-            |  --ami <ami-id>
-            |  or set EASY_CASS_LAB_AMI environment variable
-            |
-            |========================================
-            |
-            """.trimMargin(),
+        eventBus.emit(
+            Event.Error(
+                """
+                |
+                |========================================
+                |AMI NOT FOUND
+                |========================================
+                |
+                |No AMI found in your AWS account matching:
+                |  Pattern: $pattern
+                |  Architecture: ${architecture.type}
+                |
+                |Before you can provision instances, you need to build the AMI images.
+                |
+                |To build the required AMI, run:
+                |  easy-db-lab build-image --arch ${architecture.type}
+                |
+                |This will create both the base and Cassandra AMIs in your AWS account.
+                |
+                |Alternatively, you can specify a custom AMI with:
+                |  --ami <ami-id>
+                |  or set EASY_CASS_LAB_AMI environment variable
+                |
+                |========================================
+                |
+                """.trimMargin(),
+            ),
         )
     }
 }

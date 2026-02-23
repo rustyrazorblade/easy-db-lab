@@ -2,9 +2,9 @@ package com.rustyrazorblade.easydblab.providers.aws
 
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.observability.OtelTelemetryProvider
 import com.rustyrazorblade.easydblab.observability.TelemetryProvider
-import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.SparkService
 import com.rustyrazorblade.easydblab.services.VictoriaLogsService
@@ -176,7 +176,7 @@ val awsModule =
         single {
             EC2InstanceService(
                 get<Ec2Client>(),
-                get<OutputHandler>(),
+                get<EventBus>(),
             )
         }
 
@@ -184,7 +184,7 @@ val awsModule =
         single {
             AMIService(
                 get<Ec2Client>(),
-                get<OutputHandler>(),
+                get<EventBus>(),
                 get<AWS>(),
             )
         }
@@ -196,7 +196,7 @@ val awsModule =
         single<VpcService> {
             EC2VpcService(
                 get<Ec2Client>(),
-                get<OutputHandler>(),
+                get<EventBus>(),
             )
         }
 
@@ -206,7 +206,7 @@ val awsModule =
                 get<VpcService>(),
                 get<EMRService>(),
                 get<OpenSearchService>(),
-                get<OutputHandler>(),
+                get<EventBus>(),
             )
         }
 
@@ -214,7 +214,7 @@ val awsModule =
         single {
             AWSResourceSetupService(
                 get<AWS>(),
-                get<OutputHandler>(),
+                get<EventBus>(),
             )
         }
 
@@ -225,7 +225,7 @@ val awsModule =
         single<ObjectStore> {
             S3ObjectStore(
                 get<S3Client>(),
-                get<OutputHandler>(),
+                get<EventBus>(),
             )
         }
 
@@ -233,10 +233,10 @@ val awsModule =
         single<SparkService> {
             EMRSparkService(
                 get<EmrClient>(),
-                get<OutputHandler>(),
                 get<ObjectStore>(),
                 get<ClusterStateManager>(),
                 get<VictoriaLogsService>(),
+                get<EventBus>(),
             )
         }
 
@@ -244,7 +244,7 @@ val awsModule =
         single {
             EMRService(
                 get<EmrClient>(),
-                get<OutputHandler>(),
+                get<EventBus>(),
             )
         }
 
@@ -253,7 +253,7 @@ val awsModule =
             OpenSearchService(
                 get<OpenSearchClient>(),
                 get<AWS>(),
-                get<OutputHandler>(),
+                get<EventBus>(),
             )
         }
 
@@ -272,7 +272,7 @@ val awsModule =
         single<SQSService> {
             AWSSQSService(
                 get<SqsClient>(),
-                get<OutputHandler>(),
+                get<EventBus>(),
             )
         }
     }

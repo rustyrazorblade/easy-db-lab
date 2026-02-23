@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.providers.aws
 
-import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.services.aws.EC2VpcService
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -17,8 +16,12 @@ import software.amazon.awssdk.services.ec2.model.SecurityGroup
 
 internal class EC2SecurityGroupServiceTest {
     private val mockEc2Client: Ec2Client = mock()
-    private val mockOutputHandler: OutputHandler = mock()
-    private val vpcService = EC2VpcService(mockEc2Client, mockOutputHandler)
+    private val vpcService =
+        EC2VpcService(
+            mockEc2Client,
+            com.rustyrazorblade.easydblab.events
+                .EventBus(),
+        )
 
     @Test
     fun `describeSecurityGroup throws when security group not found`() {

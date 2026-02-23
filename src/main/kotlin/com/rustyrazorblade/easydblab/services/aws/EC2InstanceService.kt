@@ -1,7 +1,8 @@
 package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.CreatedInstance
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredInstance
 import com.rustyrazorblade.easydblab.providers.aws.EBSConfig
@@ -38,7 +39,7 @@ import java.time.Duration
  */
 class EC2InstanceService(
     private val ec2Client: Ec2Client,
-    private val outputHandler: OutputHandler,
+    private val eventBus: EventBus,
 ) {
     companion object {
         private val log = KotlinLogging.logger {}
@@ -66,9 +67,7 @@ class EC2InstanceService(
         log.info {
             "Creating ${config.count} ${config.serverType} instances of type ${config.instanceType}"
         }
-        outputHandler.handleMessage(
-            "Creating ${config.count} ${config.serverType.serverType} instance(s)...",
-        )
+        eventBus.emit(Event.Ec2.InstancesCreating(config.count, config.serverType.serverType))
 
         val instances = mutableListOf<CreatedInstance>()
 
@@ -84,9 +83,7 @@ class EC2InstanceService(
             log.info { "Created instance ${instance.instanceId} ($alias) in subnet $subnetId" }
         }
 
-        outputHandler.handleMessage(
-            "Created ${instances.size} ${config.serverType.serverType} instance(s)",
-        )
+        eventBus.emit(Event.Ec2.InstancesCreated(instances.size, config.serverType.serverType))
 
         return instances
     }
@@ -231,7 +228,7 @@ class EC2InstanceService(
         }
 
         log.info { "Waiting for ${instanceIds.size} instances to reach running state..." }
-        outputHandler.handleMessage("Waiting for instances to start...")
+        eventBus.emit(Event.Ec2.InstancesStartWaiting)
 
         val startTime = System.currentTimeMillis()
 
@@ -246,7 +243,7 @@ class EC2InstanceService(
 
             if (allRunningWithPublicIp) {
                 log.info { "All instances running with public IPs" }
-                outputHandler.handleMessage("All instances running")
+                eventBus.emit(Event.Ec2.InstancesRunning)
                 return details
             }
 
@@ -283,7 +280,7 @@ class EC2InstanceService(
         }
 
         log.info { "Waiting for instance status checks on ${instanceIds.size} instances..." }
-        outputHandler.handleMessage("Waiting for instance status checks to pass...")
+        eventBus.emit(Event.Ec2.StatusCheckWaiting)
 
         val waiter =
             Ec2Waiter
@@ -304,7 +301,7 @@ class EC2InstanceService(
         }
 
         log.info { "Instance status checks passed for all ${instanceIds.size} instances" }
-        outputHandler.handleMessage("Instance status checks passed")
+        eventBus.emit(Event.Ec2.StatusCheckPassed)
     }
 
     /**

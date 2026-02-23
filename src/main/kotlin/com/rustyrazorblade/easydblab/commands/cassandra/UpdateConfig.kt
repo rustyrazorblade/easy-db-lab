@@ -11,6 +11,7 @@ import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.toHost
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import org.koin.core.component.inject
@@ -54,7 +55,7 @@ class UpdateConfig : PicoBaseCommand() {
         // upload the patch file
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList) { host ->
             val it = host.toHost()
-            outputHandler.handleMessage("Uploading $file to $it")
+            eventBus.emit(Event.Message("Uploading $file to $it"))
 
             val yaml = context.yaml.readTree(Path.of(file).inputStream())
             (yaml as ObjectNode)
@@ -62,7 +63,7 @@ class UpdateConfig : PicoBaseCommand() {
                 .put("rpc_address", it.private)
                 .put("broadcast_rpc_address", it.private)
 
-            outputHandler.handleMessage("Patching $it")
+            eventBus.emit(Event.Message("Patching $it"))
             val tmp = Files.createTempFile("easydblab", "yaml")
             context.yaml.writeValue(tmp.toFile(), yaml)
 
@@ -74,19 +75,19 @@ class UpdateConfig : PicoBaseCommand() {
             // Execute patch-config and handle errors
             val patchResult = remoteOps.executeRemotely(it, "/usr/local/bin/patch-config $file")
             if (patchResult.stderr.isNotEmpty()) {
-                outputHandler.handleError("patch-config stderr: ${patchResult.stderr}")
+                eventBus.emit(Event.Error("patch-config stderr: ${patchResult.stderr}"))
                 error("Failed to patch configuration on ${it.alias}: ${patchResult.stderr}")
             }
-            outputHandler.handleMessage(patchResult.text)
+            eventBus.emit(Event.Message(patchResult.text))
 
             // Create a temporary directory on the remote filesystem using mktemp
             val tempDir =
                 remoteOps.executeRemotely(it, "mktemp -d -t easydblab.XXXXXX").text.trim()
-            outputHandler.handleMessage("Created temporary directory $tempDir on $it")
+            eventBus.emit(Event.Message("Created temporary directory $tempDir on $it"))
 
             // Upload files to the temporary directory first
-            outputHandler.handleMessage(
-                "Uploading configuration files to temporary directory $tempDir",
+            eventBus.emit(
+                Event.Message("Uploading configuration files to temporary directory $tempDir"),
             )
             remoteOps.uploadDirectory(it, resolvedVersion.file, tempDir)
 
@@ -94,8 +95,8 @@ class UpdateConfig : PicoBaseCommand() {
             remoteOps.executeRemotely(it, "sudo mkdir -p ${resolvedVersion.conf}").text
 
             // Copy files from temp directory to the final location
-            outputHandler.handleMessage(
-                "Copying files from temporary directory to ${resolvedVersion.conf}",
+            eventBus.emit(
+                Event.Message("Copying files from temporary directory to ${resolvedVersion.conf}"),
             )
             remoteOps.executeRemotely(it, "sudo cp -R $tempDir/* ${resolvedVersion.conf}/").text
 
@@ -109,7 +110,7 @@ class UpdateConfig : PicoBaseCommand() {
             // Clean up the temporary directory
             remoteOps.executeRemotely(it, "rm -rf $tempDir").text
 
-            outputHandler.handleMessage("Configuration updated for $it")
+            eventBus.emit(Event.Message("Configuration updated for $it"))
 
             uploadSidecarConfig(it)
         }
@@ -149,6 +150,6 @@ class UpdateConfig : PicoBaseCommand() {
             host,
             "sudo mv cassandra-sidecar.yaml ${Constants.ConfigPaths.CASSANDRA_REMOTE_SIDECAR_CONFIG}",
         )
-        outputHandler.handleMessage("Sidecar configuration updated for $host")
+        eventBus.emit(Event.Message("Sidecar configuration updated for $host"))
     }
 }

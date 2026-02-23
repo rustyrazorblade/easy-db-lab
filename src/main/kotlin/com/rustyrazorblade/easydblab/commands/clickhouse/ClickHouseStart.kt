@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.clickhouse.ClickHouseManifestBuilder
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.K8sService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
@@ -86,8 +87,8 @@ class ClickHouseStart : PicoBaseCommand() {
         val actualReplicas = calculateReplicaCount(dbHosts, replicasPerShard)
         val shardCount = actualReplicas / replicasPerShard
 
-        outputHandler.handleMessage(
-            "Deploying ClickHouse: $shardCount shards x $replicasPerShard replicas = $actualReplicas nodes",
+        eventBus.emit(
+            Event.Message("Deploying ClickHouse: $shardCount shards x $replicasPerShard replicas = $actualReplicas nodes"),
         )
 
         ensureLocalStorageClass(controlNode)
@@ -152,7 +153,7 @@ class ClickHouseStart : PicoBaseCommand() {
         controlNode: ClusterHost,
         replicaCount: Int,
     ) {
-        outputHandler.handleMessage("Creating Local PersistentVolumes for ClickHouse...")
+        eventBus.emit(Event.Message("Creating Local PersistentVolumes for ClickHouse..."))
         k8sService
             .createLocalPersistentVolumes(
                 controlHost = controlNode,
@@ -207,7 +208,7 @@ class ClickHouseStart : PicoBaseCommand() {
 
     private fun waitForPodsIfRequired(controlNode: ClusterHost) {
         if (!skipWait) {
-            outputHandler.handleMessage("Waiting for ClickHouse pods to be ready (this may take a few minutes)...")
+            eventBus.emit(Event.Message("Waiting for ClickHouse pods to be ready (this may take a few minutes)..."))
             k8sService
                 .waitForPodsReady(controlNode, timeoutSeconds, Constants.ClickHouse.NAMESPACE)
                 .getOrThrow()
@@ -219,35 +220,37 @@ class ClickHouseStart : PicoBaseCommand() {
         bucket: String,
     ) {
         val s3CacheSize = clusterState.clickHouseConfig?.s3CacheSize ?: Constants.ClickHouse.DEFAULT_S3_CACHE_SIZE
-        outputHandler.handleMessage("")
-        outputHandler.handleMessage("ClickHouse cluster deployed successfully!")
-        outputHandler.handleMessage("")
-        outputHandler.handleMessage("Storage policies available:")
-        outputHandler.handleMessage("  - local: Local disk storage")
-        outputHandler.handleMessage("  - s3_main: S3 with local cache (bucket: $bucket, cache: $s3CacheSize)")
-        outputHandler.handleMessage(
-            """
+        eventBus.emit(Event.Message(""))
+        eventBus.emit(Event.Message("ClickHouse cluster deployed successfully!"))
+        eventBus.emit(Event.Message(""))
+        eventBus.emit(Event.Message("Storage policies available:"))
+        eventBus.emit(Event.Message("  - local: Local disk storage"))
+        eventBus.emit(Event.Message("  - s3_main: S3 with local cache (bucket: $bucket, cache: $s3CacheSize)"))
+        eventBus.emit(
+            Event.Message(
+                """
 
-            Example - Create a distributed replicated table:
+                Example - Create a distributed replicated table:
 
-              -- Create local replicated table on all nodes
-              CREATE TABLE events_local ON CLUSTER easy_db_lab (
-                  id UInt64,
-                  timestamp DateTime,
-                  data String
-              ) ENGINE = ReplicatedMergeTree('/clickhouse/tables/{shard}/events', '{replica}')
-              ORDER BY (timestamp, id)
-              SETTINGS storage_policy = 's3_main';
+                  -- Create local replicated table on all nodes
+                  CREATE TABLE events_local ON CLUSTER easy_db_lab (
+                      id UInt64,
+                      timestamp DateTime,
+                      data String
+                  ) ENGINE = ReplicatedMergeTree('/clickhouse/tables/{shard}/events', '{replica}')
+                  ORDER BY (timestamp, id)
+                  SETTINGS storage_policy = 's3_main';
 
-              -- Create distributed table for querying across all shards
-              CREATE TABLE events ON CLUSTER easy_db_lab AS events_local
-              ENGINE = Distributed(easy_db_lab, default, events_local, rand());
-            """.trimIndent(),
+                  -- Create distributed table for querying across all shards
+                  CREATE TABLE events ON CLUSTER easy_db_lab AS events_local
+                  ENGINE = Distributed(easy_db_lab, default, events_local, rand());
+                """.trimIndent(),
+            ),
         )
-        outputHandler.handleMessage("")
-        outputHandler.handleMessage("HTTP Interface: http://$dbNodeIp:${Constants.ClickHouse.HTTP_PORT}")
-        outputHandler.handleMessage("Native Protocol: $dbNodeIp:${Constants.ClickHouse.NATIVE_PORT}")
-        outputHandler.handleMessage("")
-        outputHandler.handleMessage("Connect with: clickhouse-client --host $dbNodeIp")
+        eventBus.emit(Event.Message(""))
+        eventBus.emit(Event.Message("HTTP Interface: http://$dbNodeIp:${Constants.ClickHouse.HTTP_PORT}"))
+        eventBus.emit(Event.Message("Native Protocol: $dbNodeIp:${Constants.ClickHouse.NATIVE_PORT}"))
+        eventBus.emit(Event.Message(""))
+        eventBus.emit(Event.Message("Connect with: clickhouse-client --host $dbNodeIp"))
     }
 }

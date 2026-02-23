@@ -4,7 +4,8 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.github.ajalt.mordant.TermColors
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
-import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.AWSPolicy
 import io.github.oshai.kotlinlogging.KotlinLogging
 import software.amazon.awssdk.core.exception.SdkServiceException
@@ -60,62 +61,68 @@ data class User(
          * Displays helpful error message when AWS permission is denied
          */
         private fun handlePermissionError(
-            outputHandler: OutputHandler,
+            eventBus: EventBus,
             exception: SdkServiceException,
             operation: String,
         ) {
             with(TermColors()) {
-                outputHandler.handleMessage(
-                    """
-                    |
-                    |========================================
-                    |AWS PERMISSION ERROR
-                    |========================================
-                    |
-                    |Operation: $operation
-                    |Error: ${exception.message}
-                    |
-                    |To fix this issue, add the following IAM policies to your AWS user.
-                    |You need to create THREE separate inline policies:
-                    |
-                    """.trimMargin(),
+                eventBus.emit(
+                    Event.Error(
+                        """
+                        |
+                        |========================================
+                        |AWS PERMISSION ERROR
+                        |========================================
+                        |
+                        |Operation: $operation
+                        |Error: ${exception.message}
+                        |
+                        |To fix this issue, add the following IAM policies to your AWS user.
+                        |You need to create THREE separate inline policies:
+                        |
+                        """.trimMargin(),
+                    ),
                 )
 
                 val policies = getRequiredIAMPolicies("ACCOUNT_ID")
                 policies.forEachIndexed { index, policy ->
-                    outputHandler.handleMessage(
-                        """
-                        |${green("========================================")}
-                        |${green("Policy ${index + 1}: ${policy.name}")}
-                        |${green("========================================")}
-                        |
-                        |${policy.body}
-                        |
-                        """.trimMargin(),
+                    eventBus.emit(
+                        Event.Message(
+                            """
+                            |${green("========================================")}
+                            |${green("Policy ${index + 1}: ${policy.name}")}
+                            |${green("========================================")}
+                            |
+                            |${policy.body}
+                            |
+                            """.trimMargin(),
+                        ),
                     )
                 }
 
-                outputHandler.handleMessage(
-                    """
-                    |========================================
-                    |
-                    |RECOMMENDED: Create managed policies and attach to a group
-                    |  • No size limits (inline policies limited to 5,120 bytes total)
-                    |  • Required for EMR/Spark cluster functionality
-                    |  • Reusable across multiple users
-                    |
-                    |To apply these policies:
-                    |  1. Go to AWS IAM Console (https://console.aws.amazon.com/iam/)
-                    |  2. Create IAM group (e.g., "EasyDBLabUsers")
-                    |  3. Create three managed policies:
-                    |     - Policies → Create Policy → JSON tab
-                    |     - Paste policy content and name: EasyDBLabEC2, EasyDBLabIAM, EasyDBLabEMR
-                    |  4. Attach policies to your group
-                    |  5. Add your IAM user to the group
-                    |
-                    |========================================
-                    |
-                    """.trimMargin(),
+                eventBus.emit(
+                    Event.Message(
+                        """
+                        |========================================
+                        |
+                        |RECOMMENDED: Create managed policies and attach to a group
+                        |  • No size limits (inline policies limited to 5,120 bytes total)
+                        |  • Required for EMR/Spark cluster functionality
+                        |  • Reusable across multiple users
+                        |
+                        |To apply these policies:
+                        |  1. Go to AWS IAM Console (https://console.aws.amazon.com/iam/)
+                        |  2. Create IAM group (e.g., "EasyDBLabUsers")
+                        |  3. Create three managed policies:
+                        |     - Policies → Create Policy → JSON tab
+                        |     - Paste policy content and name: EasyDBLabEC2, EasyDBLabIAM, EasyDBLabEMR
+                        |  4. Attach policies to your group
+                        |  5. Add your IAM user to the group
+                        |
+                        |========================================
+                        |
+                        """.trimMargin(),
+                    ),
                 )
             }
         }
@@ -132,9 +139,9 @@ data class User(
         fun generateAwsKeyPair(
             context: Context,
             ec2Client: Ec2Client,
-            outputHandler: OutputHandler,
+            eventBus: EventBus,
         ): AwsKeyName {
-            outputHandler.handleMessage("Generating AWS key pair and SSH credentials...")
+            eventBus.emit(Event.Message("Generating AWS key pair and SSH credentials..."))
 
             try {
                 val keyName = "easy-db-lab-${UUID.randomUUID()}"
@@ -176,7 +183,7 @@ data class User(
                 return keyName
             } catch (e: Ec2Exception) {
                 if (e.statusCode() == Constants.HttpStatus.FORBIDDEN || e.awsErrorDetails()?.errorCode() == "UnauthorizedOperation") {
-                    handlePermissionError(outputHandler, e, "EC2 CreateKeyPair")
+                    handlePermissionError(eventBus, e, "EC2 CreateKeyPair")
                 }
                 throw e
             }

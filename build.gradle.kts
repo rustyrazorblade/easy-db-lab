@@ -130,6 +130,9 @@ dependencies {
     // Kubernetes
     implementation(libs.fabric8.kubernetes.client)
 
+    // Redis (Event Bus)
+    implementation(libs.lettuce.core)
+
     // Cassandra Driver
     implementation(libs.cassandra.driver.core)
 

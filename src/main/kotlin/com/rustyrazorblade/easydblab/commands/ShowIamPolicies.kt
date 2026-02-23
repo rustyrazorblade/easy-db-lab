@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.aws.AWSResourceSetupService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -33,7 +34,7 @@ class ShowIamPolicies : PicoBaseCommand() {
             try {
                 awsResourceSetup.getAccountId()
             } catch (e: Exception) {
-                outputHandler.handleError("Failed to get AWS account ID. Please run 'easy-db-lab init' to set up credentials.")
+                eventBus.emit(Event.Error("Failed to get AWS account ID. Please run 'easy-db-lab init' to set up credentials."))
                 throw e
             }
 
@@ -48,16 +49,16 @@ class ShowIamPolicies : PicoBaseCommand() {
             }
 
         if (filtered.isEmpty()) {
-            outputHandler.handleMessage("No policies found matching: $policyName")
+            eventBus.emit(Event.Message("No policies found matching: $policyName"))
             return
         }
 
         filtered.forEach { policy ->
             if (policyName.isBlank()) {
                 // Show all policies with headers for readability
-                outputHandler.handleMessage("\n=== ${policy.name} ===\n")
+                eventBus.emit(Event.Message("\n=== ${policy.name} ===\n"))
             }
-            outputHandler.handleMessage(policy.body)
+            eventBus.emit(Event.Message(policy.body))
         }
     }
 }

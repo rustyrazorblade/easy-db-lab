@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.commands
 
-import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import picocli.CommandLine
@@ -21,7 +22,7 @@ class Commands :
     @Spec
     lateinit var spec: CommandSpec
 
-    private val outputHandler: OutputHandler by inject()
+    private val eventBus: EventBus by inject()
 
     override fun execute() {
         // Navigate to root command
@@ -43,9 +44,9 @@ class Commands :
         // Print command name and description
         val description = spec.usageMessage().description().firstOrNull() ?: ""
         if (depth == 0) {
-            outputHandler.handleMessage("${spec.name()} - $description")
+            eventBus.emit(Event.Message("${spec.name()} - $description"))
         } else {
-            outputHandler.handleMessage("$indent${spec.name()} - $description")
+            eventBus.emit(Event.Message("$indent${spec.name()} - $description"))
         }
 
         // Print options (skip standard help options at root level for brevity)
@@ -64,7 +65,7 @@ class Commands :
                 } else {
                     ""
                 }
-            outputHandler.handleMessage("$indent    $names$paramLabel$required - $optDesc")
+            eventBus.emit(Event.Message("$indent    $names$paramLabel$required - $optDesc"))
         }
 
         // Print positional parameters
@@ -72,7 +73,7 @@ class Commands :
             if (!param.hidden()) {
                 val paramDesc = param.description().firstOrNull() ?: ""
                 val required = if (param.required()) " (required)" else ""
-                outputHandler.handleMessage("$indent    <${param.paramLabel()}>$required - $paramDesc")
+                eventBus.emit(Event.Message("$indent    <${param.paramLabel()}>$required - $paramDesc"))
             }
         }
 

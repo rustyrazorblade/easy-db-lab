@@ -7,7 +7,8 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.getHosts
-import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -26,7 +27,7 @@ class Hosts :
     PicoCommand,
     KoinComponent {
     private val context: Context by inject()
-    private val outputHandler: OutputHandler by inject()
+    private val eventBus: EventBus by inject()
     private val clusterStateManager: ClusterStateManager by inject()
     private val clusterState by lazy { clusterStateManager.load() }
 
@@ -41,8 +42,10 @@ class Hosts :
 
     override fun execute() {
         if (!clusterStateManager.exists()) {
-            outputHandler.handleMessage(
-                "Cluster state does not exist yet, most likely easy-db-lab up has not been run.",
+            eventBus.emit(
+                Event.Message(
+                    "Cluster state does not exist yet, most likely easy-db-lab up has not been run.",
+                ),
             )
             return
         }
@@ -59,7 +62,7 @@ class Hosts :
         if (cassandra) {
             val hosts = clusterState.getHosts(ServerType.Cassandra)
             val csv = hosts.map { it.public }.joinToString(",")
-            outputHandler.handleMessage(csv)
+            eventBus.emit(Event.Message(csv))
         } else {
             context.yaml.writeValue(System.out, output)
         }

@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.CqlSessionService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -40,19 +41,25 @@ class Cql : PicoBaseCommand() {
             when {
                 file != null -> {
                     if (!file!!.exists()) {
-                        outputHandler.handleMessage("Error: File not found: ${file!!.absolutePath}")
+                        eventBus.emit(Event.Error("File not found: ${file!!.absolutePath}"))
                         return
                     }
                     file!!.readText()
                 }
                 statement != null -> statement!!
                 else -> {
-                    outputHandler.handleMessage("Usage: easy-db-lab cassandra cql <statement>")
-                    outputHandler.handleMessage("       easy-db-lab cassandra cql --file <file.cql>")
-                    outputHandler.handleMessage("")
-                    outputHandler.handleMessage("Examples:")
-                    outputHandler.handleMessage("  easy-db-lab cassandra cql \"SELECT * FROM system.local\"")
-                    outputHandler.handleMessage("  easy-db-lab cassandra cql --file schema.cql")
+                    eventBus.emit(
+                        Event.Message(
+                            """
+                            |Usage: easy-db-lab cassandra cql <statement>
+                            |       easy-db-lab cassandra cql --file <file.cql>
+                            |
+                            |Examples:
+                            |  easy-db-lab cassandra cql "SELECT * FROM system.local"
+                            |  easy-db-lab cassandra cql --file schema.cql
+                            """.trimMargin(),
+                        ),
+                    )
                     return
                 }
             }
@@ -64,13 +71,13 @@ class Cql : PicoBaseCommand() {
             .execute(query)
             .onSuccess { output ->
                 if (output.isNotBlank()) {
-                    outputHandler.handleMessage(output)
+                    eventBus.emit(Event.Message(output))
                 } else {
                     // DDL statements (CREATE, ALTER, DROP, etc.) return no rows
-                    outputHandler.handleMessage("OK")
+                    eventBus.emit(Event.Message("OK"))
                 }
             }.onFailure { e ->
-                outputHandler.handleMessage("Error: ${e.message}")
+                eventBus.emit(Event.Error("${e.message}"))
             }
         // Note: Session cleanup is handled by ResourceManager via CommandExecutor
     }

@@ -6,9 +6,10 @@ This package implements the Model Context Protocol (MCP) server that exposes CLI
 
 ```
 AI Agent → SSE transport → McpServer → McpToolRegistry → PicoCLI Command → Service Layer
-                                ↓
-                          StatusCache (background refresh every 30s)
-                          ChannelMessageBuffer (captures output)
+                                ↓                                               ↓
+                          StatusCache (background refresh every 30s)       eventBus.emit()
+                          ChannelMessageBuffer (legacy output)                  ↓
+                          McpEventListener (structured events)            EventBus dispatches
 ```
 
 **Transport:** SSE (Server-Sent Events) via Ktor embedded Netty server
@@ -68,11 +69,22 @@ Tools execute asynchronously to avoid SSE timeouts:
 1. Client calls tool (e.g., `cassandra_start`)
 2. `createToolHandler()` returns immediately: `"Tool started in background"`
 3. Command runs in separate thread (semaphore enforces single execution)
-4. Output captured to `ChannelMessageBuffer`
+4. Output captured via two parallel paths:
+   - **`ChannelMessageBuffer`** — legacy string-based output from `OutputHandler`
+   - **`McpEventListener`** — structured `EventEnvelope` objects from `EventBus`
 5. Client polls `get_server_status` for progress
-6. Status returns: `{ status, command, runtimeSeconds, messages }`
+6. Status returns messages from both sources (merged)
 
 Status values: `"idle"`, `"running"`, `"completed"`
+
+## McpEventListener
+
+`McpEventListener` (in `events/McpEventListener.kt`) implements `EventListener` to buffer structured events for MCP status polling:
+
+- Registered with `EventBus` during `initializeStreaming()`
+- `getAndClearEnvelopes()` atomically returns and clears buffered events
+- Thread-safe via `Collections.synchronizedList`
+- Events include full type information, timestamps, and command context via `EventEnvelope`
 
 ## StatusCache
 

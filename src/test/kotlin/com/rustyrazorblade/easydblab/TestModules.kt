@@ -6,6 +6,9 @@ import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.di.commandsModule
 import com.rustyrazorblade.easydblab.di.prompterModule
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.AWS
@@ -52,6 +55,7 @@ object TestModules {
             testContextModule(tempDir),
             testAWSModule(),
             testOutputModule(),
+            testEventBusModule(),
             testSSHModule(),
             testCommandExecutorModule(),
             commandsModule,
@@ -174,6 +178,34 @@ object TestModules {
 
             // AwsS3BucketService using mocked AWS
             single { AwsS3BucketService(get<AWS>()) }
+        }
+
+    /**
+     * Creates a test EventBus module. The EventBus is wired with a listener that
+     * forwards events to the BufferedOutputHandler so existing test assertions
+     * against outputHandler.messages continue to work.
+     */
+    fun testEventBusModule() =
+        module {
+            single {
+                val outputHandler = get<OutputHandler>()
+                val eventBus = EventBus()
+                eventBus.addListener(
+                    object : EventListener {
+                        override fun onEvent(envelope: EventEnvelope) {
+                            val text = envelope.event.toDisplayString()
+                            if (envelope.event.isError()) {
+                                outputHandler.handleError(text)
+                            } else {
+                                outputHandler.handleMessage(text)
+                            }
+                        }
+
+                        override fun close() {}
+                    },
+                )
+                eventBus
+            }
         }
 
     /**

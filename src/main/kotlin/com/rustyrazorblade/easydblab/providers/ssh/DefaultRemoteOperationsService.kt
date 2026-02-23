@@ -2,9 +2,10 @@ package com.rustyrazorblade.easydblab.providers.ssh
 
 import com.rustyrazorblade.easydblab.Version
 import com.rustyrazorblade.easydblab.configuration.Host
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.observability.TelemetryNames
 import com.rustyrazorblade.easydblab.observability.TelemetryProvider
-import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.ssh.Response
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
@@ -29,7 +30,7 @@ class DefaultRemoteOperationsService(
     retryConfig: RetryConfig = defaultRetryConfig,
 ) : RemoteOperationsService,
     KoinComponent {
-    private val outputHandler: OutputHandler by inject()
+    private val eventBus: EventBus by inject()
     private val telemetryProvider: TelemetryProvider by inject()
 
     companion object {
@@ -112,7 +113,7 @@ class DefaultRemoteOperationsService(
         remoteDir: String,
     ) {
         log.info { "Uploading directory $localDir to ${host.alias}:$remoteDir" }
-        outputHandler.handleMessage("Uploading directory $localDir to $remoteDir")
+        eventBus.emit(Event.Message("Uploading directory $localDir to $remoteDir"))
         val attributes =
             mapOf(
                 TelemetryNames.Attributes.HOST_ALIAS to host.alias,

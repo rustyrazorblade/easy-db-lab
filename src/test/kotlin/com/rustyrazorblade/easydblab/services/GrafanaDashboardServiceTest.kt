@@ -84,7 +84,13 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
         whenever(mockK8sService.createConfigMap(any(), any(), any(), any(), any()))
             .thenReturn(Result.success(Unit))
 
-        val service = DefaultGrafanaDashboardService(mockK8sService, getKoin().get(), mockManifestBuilder)
+        val service =
+            DefaultGrafanaDashboardService(
+                mockK8sService,
+                mockManifestBuilder,
+                com.rustyrazorblade.easydblab.events
+                    .EventBus(),
+            )
         val result = service.createDatasourcesConfigMap(testControlHost, "us-east-1")
 
         assertThat(result.isSuccess).isTrue()
@@ -106,7 +112,13 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
         whenever(mockK8sService.applyResource(any(), any()))
             .thenReturn(Result.success(Unit))
 
-        val service = DefaultGrafanaDashboardService(mockK8sService, getKoin().get(), mockManifestBuilder)
+        val service =
+            DefaultGrafanaDashboardService(
+                mockK8sService,
+                mockManifestBuilder,
+                com.rustyrazorblade.easydblab.events
+                    .EventBus(),
+            )
         val result = service.uploadDashboards(testControlHost, "us-west-2")
 
         assertThat(result.isSuccess).isTrue()
@@ -123,7 +135,13 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
         whenever(mockK8sService.createConfigMap(any(), any(), any(), any(), any()))
             .thenReturn(Result.failure(RuntimeException("ConfigMap creation failed")))
 
-        val service = DefaultGrafanaDashboardService(mockK8sService, getKoin().get(), mockManifestBuilder)
+        val service =
+            DefaultGrafanaDashboardService(
+                mockK8sService,
+                mockManifestBuilder,
+                com.rustyrazorblade.easydblab.events
+                    .EventBus(),
+            )
         val result = service.uploadDashboards(testControlHost, "us-west-2")
 
         assertThat(result.isFailure).isTrue()
@@ -139,7 +157,13 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
         whenever(mockK8sService.applyResource(any(), any()))
             .thenReturn(Result.failure(RuntimeException("Apply failed")))
 
-        val service = DefaultGrafanaDashboardService(mockK8sService, getKoin().get(), mockManifestBuilder)
+        val service =
+            DefaultGrafanaDashboardService(
+                mockK8sService,
+                mockManifestBuilder,
+                com.rustyrazorblade.easydblab.events
+                    .EventBus(),
+            )
         val result = service.uploadDashboards(testControlHost, "us-west-2")
 
         assertThat(result.isFailure).isTrue()

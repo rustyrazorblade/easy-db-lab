@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.toHost
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.CassandraService
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import com.rustyrazorblade.easydblab.services.SidecarService
@@ -31,7 +32,7 @@ class Restart : PicoBaseCommand() {
     var hosts = HostsMixin()
 
     override fun execute() {
-        outputHandler.handleMessage("Restarting cassandra service on all nodes.")
+        eventBus.emit(Event.Message("Restarting cassandra service on all nodes."))
 
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList) { host ->
             cassandraService.restart(host.toHost()).getOrThrow()
@@ -44,16 +45,16 @@ class Restart : PicoBaseCommand() {
      * Restart cassandra-sidecar service on Cassandra nodes
      */
     private fun restartSidecar() {
-        outputHandler.handleMessage("Restarting cassandra-sidecar on Cassandra nodes...")
+        eventBus.emit(Event.Message("Restarting cassandra-sidecar on Cassandra nodes..."))
 
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList, parallel = true) { host ->
             sidecarService
                 .restart(host.toHost())
                 .onFailure { e ->
-                    outputHandler.handleMessage("Warning: Failed to restart cassandra-sidecar on ${host.alias}: ${e.message}")
+                    eventBus.emit(Event.Error("Warning: Failed to restart cassandra-sidecar on ${host.alias}: ${e.message}"))
                 }
         }
 
-        outputHandler.handleMessage("cassandra-sidecar restart completed on Cassandra nodes")
+        eventBus.emit(Event.Message("cassandra-sidecar restart completed on Cassandra nodes"))
     }
 }

@@ -1,6 +1,9 @@
 package com.rustyrazorblade.easydblab.services.aws
 
-import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.providers.aws.AWS
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -34,15 +37,26 @@ import software.amazon.awssdk.services.opensearch.model.VolumeType
 internal class OpenSearchServiceTest {
     private lateinit var mockOpenSearchClient: OpenSearchClient
     private lateinit var mockAws: AWS
-    private lateinit var mockOutputHandler: OutputHandler
+    private lateinit var eventBus: EventBus
+    private val capturedEvents = mutableListOf<EventEnvelope>()
     private lateinit var openSearchService: OpenSearchService
 
     @BeforeEach
     fun setUp() {
         mockOpenSearchClient = mock()
         mockAws = mock()
-        mockOutputHandler = mock()
-        openSearchService = OpenSearchService(mockOpenSearchClient, mockAws, mockOutputHandler)
+        capturedEvents.clear()
+        eventBus = EventBus()
+        eventBus.addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    capturedEvents.add(envelope)
+                }
+
+                override fun close() {}
+            },
+        )
+        openSearchService = OpenSearchService(mockOpenSearchClient, mockAws, eventBus)
     }
 
     @Test
@@ -83,7 +97,7 @@ internal class OpenSearchServiceTest {
         assertThat(result.domainId).isEqualTo("123456789012/test-domain")
         assertThat(result.state).isEqualTo(DomainState.PROCESSING)
         verify(mockOpenSearchClient).createDomain(any<CreateDomainRequest>())
-        verify(mockOutputHandler).handleMessage("Creating OpenSearch domain: test-domain...")
+        assertThat(capturedEvents).anyMatch { it.event is Event.OpenSearch.Creating }
     }
 
     @Test
@@ -133,7 +147,7 @@ internal class OpenSearchServiceTest {
         openSearchService.deleteDomain("test-domain")
 
         verify(mockOpenSearchClient).deleteDomain(any<DeleteDomainRequest>())
-        verify(mockOutputHandler).handleMessage("Deleting OpenSearch domain: test-domain...")
+        assertThat(capturedEvents).anyMatch { it.event is Event.OpenSearch.Deleting }
     }
 
     @Test
@@ -284,8 +298,9 @@ internal class OpenSearchServiceTest {
         // Should complete without throwing
         openSearchService.waitForDomainDeleted("test-domain", pollIntervalMs = 10)
 
-        verify(mockOutputHandler).handleMessage("Waiting for OpenSearch domain test-domain to be deleted (this may take 10-20 minutes)...")
-        verify(mockOutputHandler).handleMessage("OpenSearch domain test-domain deleted")
+        assertThat(capturedEvents.map { it.event.toDisplayString() })
+            .anyMatch { it.contains("Waiting for OpenSearch domain test-domain to be deleted") }
+        assertThat(capturedEvents).anyMatch { it.event is Event.OpenSearch.Deleted }
     }
 
     @Test
@@ -301,7 +316,7 @@ internal class OpenSearchServiceTest {
         // Should complete without throwing
         openSearchService.waitForDomainDeleted("test-domain", pollIntervalMs = 10)
 
-        verify(mockOutputHandler).handleMessage("OpenSearch domain test-domain deleted")
+        assertThat(capturedEvents).anyMatch { it.event is Event.OpenSearch.Deleted }
     }
 
     @Test
@@ -320,7 +335,7 @@ internal class OpenSearchServiceTest {
 
         openSearchService.waitForDomainDeleted("test-domain", pollIntervalMs = 10)
 
-        verify(mockOutputHandler).handleMessage("OpenSearch domain test-domain deleted")
+        assertThat(capturedEvents).anyMatch { it.event is Event.OpenSearch.Deleted }
     }
 
     @Test

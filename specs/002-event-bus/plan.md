@@ -129,13 +129,13 @@ Add Lettuce dependency. Implement `RedisEventListener` that serializes events to
 
 ### Phase 4: MCP Listener
 
-Replace `FilteringChannelOutputHandler` + `ChannelMessageBuffer` with `McpEventListener`. The MCP status endpoint returns structured event objects with metadata instead of plain strings. Docker frame filtering logic moves into the listener.
+Replace `ChannelMessageBuffer` with `McpEventListener`. The MCP status endpoint returns structured event objects with metadata instead of plain strings. Docker frame output stays outside EventBus — frames are raw byte streams, not structured events. The existing `FilteringChannelOutputHandler` is retained solely for frame output to MCP.
 
 **Key decisions**:
 - McpEventListener sends Event objects through the channel
 - ChannelMessageBuffer updated to buffer Event objects
 - `get_server_status` returns JSON events with type, timestamp, message, and domain-specific fields
-- Frame filtering (every Nth frame) preserved in McpEventListener
+- Docker frames excluded from EventBus (not serializable structured data); frame filtering remains in existing path
 
 **Tests**: MCP event buffering, frame filtering, status endpoint returns structured data.
 
@@ -165,8 +165,8 @@ Remove or deprecate the old `OutputHandler` interface and implementations that a
 - `ConsoleOutputHandler` → replaced by `ConsoleEventListener`
 - `LoggerOutputHandler` → evaluate if still needed for non-event logging
 - `CompositeOutputHandler` → replaced by EventBus fan-out
-- `FilteringChannelOutputHandler` → replaced by `McpEventListener`
-- `ChannelOutputHandler` → replaced by `McpEventListener`
+- `FilteringChannelOutputHandler` → retained for Docker frame output to MCP (frames excluded from EventBus)
+- `ChannelOutputHandler` → evaluate if still needed for frame output path
 - `BufferedOutputHandler` → replaced by a test-oriented `BufferedEventListener`
 
 Update all test infrastructure to use EventBus instead of OutputHandler mocks.

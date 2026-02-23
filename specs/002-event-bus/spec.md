@@ -66,7 +66,7 @@ An operator wants external systems (dashboards, alerting tools, log aggregators)
 
 - What happens when Redis connection string is malformed? System logs an error at startup and disables Redis output (does not crash).
 - What happens when Redis channel receives very high message volume? Messages are published without blocking; if Redis backs up, events may be dropped rather than blocking CLI operations.
-- What happens when an event contains data that cannot be serialized? System falls back to a string representation and logs a warning.
+- What happens when an event contains data that cannot be serialized? This is a programming error — all Event fields must be serializable. The system fails fast with a clear error rather than silently degrading.
 - What happens when multiple output destinations are configured simultaneously? All configured destinations receive events (fan-out pattern).
 
 ## Requirements *(mandatory)*

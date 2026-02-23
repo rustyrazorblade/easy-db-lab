@@ -38,7 +38,7 @@
 - [ ] T010 Integrate EventContext into command execution — modify `PicoBaseCommand.kt` to `push(commandName)` before `execute()` and `pop()` in `finally`; add `protected val eventBus: EventBus by inject()` alongside existing `outputHandler`
 - [ ] T011 [P] Test EventContext push/pop/nesting in `src/test/kotlin/.../events/EventContextTest.kt` — verify: single push/pop, nested push shows inner name, pop restores outer, empty stack returns null, thread isolation
 - [ ] T012 [P] Test EventBus dispatch in `src/test/kotlin/.../events/EventBusTest.kt` — verify: dispatches to multiple listeners, envelope has timestamp and commandName from context, thread-safe add/remove, close propagates to listeners
-- [ ] T013 Add kotlinx.serialization polymorphic module for Event sealed hierarchy in `events/Event.kt` — register all sealed sub-interfaces, configure `classDiscriminator = "type"`
+- [ ] T013 Add kotlinx.serialization polymorphic module skeleton for Event sealed hierarchy in `events/Event.kt` — configure `classDiscriminator = "type"`, register root sealed interface. Concrete event type registrations are added in T026 after event sub-interfaces are created in Phase 3
 - [ ] T014 Test serialization round-trip in `src/test/kotlin/.../events/EventSerializationTest.kt` — verify: EventEnvelope serializes to JSON with `type` discriminator, deserializes back, all domain-specific fields preserved
 
 **Checkpoint**: EventBus infrastructure compiles, is tested, and is injectable via Koin. Both `outputHandler` and `eventBus` are available in commands during migration.
@@ -65,7 +65,7 @@ Each task creates the sealed sub-interface with all event data classes (per data
 - [ ] T022 [P] [US1] Create `Event.Backup` sealed sub-interface + migrate `VictoriaBackupService.kt`, `ClusterBackupService.kt`, `BackupRestoreService.kt`, `ClusterConfigurationService.kt` (~15 call sites) — events per data-model.md Event.Backup table
 - [ ] T023 [P] [US1] Create `Event.Grafana` + `Event.Registry` + `Event.Tailscale` + `Event.Stress` + `Event.AwsSetup` + `Event.Service` sealed sub-interfaces + migrate `GrafanaDashboardService.kt`, `EC2RegistryService.kt`, `TailscaleService.kt`, `StressJobService.kt`, `AWSResourceSetupService.kt`, `SystemDServiceManager.kt` (~20 call sites)
 - [ ] T024 [P] [US1] Create `Event.Provision` + `Event.Command` sealed sub-interfaces + migrate `Up.kt`, `CommandExecutor.kt`, `ClusterProvisioningService.kt`, `EC2InstanceService.kt` (~40 call sites) — events per data-model.md Event.Provision and Event.Command tables
-- [ ] T025 [US1] Remove `outputHandler` injection from `PicoBaseCommand.kt` — all call sites now use `eventBus.emit()`; remove `OutputHandler` injection from all migrated services; update `Docker.kt` and `McpToolRegistry.kt` OutputHandler usage
+- [ ] T025 [US1] Remove `outputHandler` injection from `PicoBaseCommand.kt` — all call sites now use `eventBus.emit()`; remove `OutputHandler` injection from all migrated services; update `McpToolRegistry.kt` OutputHandler usage. `Docker.kt` frame output stays outside EventBus (frames are raw byte streams, not structured events) — keep a minimal OutputHandler or direct stdout writer for frame output only
 - [ ] T026 [US1] Register all new sealed sub-interfaces in the kotlinx.serialization polymorphic module (T013) — ensure every concrete event type is registered
 - [ ] T027 [US1] Test ConsoleEventListener rendering in `src/test/kotlin/.../events/ConsoleEventListenerTest.kt` — for each domain, verify `toDisplayString()` matches the exact original `handleMessage()` string using representative events
 
@@ -79,10 +79,10 @@ Each task creates the sealed sub-interface with all event data classes (per data
 
 **Independent Test**: Start MCP server, trigger a command, poll `get_server_status` — response contains JSON events with `type`, `timestamp`, `commandName`, and domain-specific fields.
 
-- [ ] T028 [US2] Create `McpEventListener` in `events/McpEventListener.kt` — sends `EventEnvelope` objects through a `Channel<EventEnvelope>`; preserves Docker frame filtering logic (every Nth frame as progress event per `Constants.Docker.FRAME_REPORTING_INTERVAL`); provides `resetFrameCount()`
+- [ ] T028 [US2] Create `McpEventListener` in `events/McpEventListener.kt` — sends `EventEnvelope` objects through a `Channel<EventEnvelope>`; provides `resetFrameCount()`. Docker frame filtering stays in the existing frame output path (frames are excluded from EventBus)
 - [ ] T029 [US2] Update `ChannelMessageBuffer` in `mcp/ChannelMessageBuffer.kt` — change internal buffer from `String` to `EventEnvelope`; `getAndClearMessages()` returns serialized JSON event envelopes
 - [ ] T030 [US2] Update `McpServer` in `mcp/McpServer.kt` — register `McpEventListener` with `EventBus` instead of using `FilteringChannelOutputHandler` with `CompositeOutputHandler`; update `get_server_status` tool response to include structured event data
-- [ ] T031 [US2] Test MCP structured events in `src/test/kotlin/.../events/McpEventListenerTest.kt` — verify: events buffered with metadata, frame filtering works, status endpoint returns typed JSON, Docker frame throttling preserved
+- [ ] T031 [US2] Test MCP structured events in `src/test/kotlin/.../events/McpEventListenerTest.kt` — verify: events buffered with metadata, status endpoint returns typed JSON
 
 **Checkpoint**: MCP clients receive structured events. SC-006 (all events plus metadata) verifiable.
 
@@ -107,7 +107,7 @@ Each task creates the sealed sub-interface with all event data classes (per data
 
 **Purpose**: Cleanup, documentation, and quality assurance
 
-- [ ] T036 [P] Remove old OutputHandler infrastructure — delete `ConsoleOutputHandler`, `CompositeOutputHandler`, `ChannelOutputHandler`, `FilteringChannelOutputHandler` from `output/OutputHandler.kt`; evaluate `LoggerOutputHandler` (keep if used for non-event internal logging) and `BufferedOutputHandler` (replace with `BufferedEventListener` for tests); remove `OutputModule.kt` if fully replaced by `EventBusModule.kt`
+- [ ] T036 [P] Remove old OutputHandler infrastructure — delete `ConsoleOutputHandler`, `CompositeOutputHandler` from `output/OutputHandler.kt`; retain `FilteringChannelOutputHandler` and `ChannelOutputHandler` for Docker frame output to MCP (frames excluded from EventBus); evaluate `LoggerOutputHandler` (keep if used for non-event internal logging) and `BufferedOutputHandler` (replace with `BufferedEventListener` for tests); remove `OutputModule.kt` if fully replaced by `EventBusModule.kt`
 - [ ] T037 [P] Create `BufferedEventListener` for test infrastructure in `src/test/kotlin/.../events/BufferedEventListener.kt` — thread-safe in-memory event buffering for test assertions; update `BaseKoinTest` to register it; update tests that previously mocked `OutputHandler`
 - [ ] T038 [P] Author AsyncAPI 3.0 specification in `docs/reference/event-bus-asyncapi.yaml` — define channel, EventEnvelope schema, all ~120 event type schemas with discriminator, per contracts/redis-wire-format.md skeleton
 - [ ] T039 [P] Add event bus user guide in `docs/reference/event-bus.md` — Redis setup, event types overview, consumer guidelines, link to AsyncAPI spec; update `docs/SUMMARY.md` to include new pages

@@ -320,3 +320,10 @@ Detailed patterns live in package-level CLAUDE.md files:
 - [`mcp/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/mcp/CLAUDE.md) — MCP server architecture
 - [`kubernetes/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/kubernetes/CLAUDE.md) — K8s client patterns
 - [`src/test/.../CLAUDE.md`](src/test/kotlin/com/rustyrazorblade/easydblab/CLAUDE.md) — test infrastructure
+
+## Active Technologies
+- Kotlin (JVM 21, Temurin) + PicoCLI, Koin (DI), kotlinx.serialization, Lettuce (new — Redis client), Ktor (MCP server) (002-event-bus)
+- N/A (Redis is pub/sub only, not storage) (002-event-bus)
+
+## Recent Changes
+- 002-event-bus: Added Kotlin (JVM 21, Temurin) + PicoCLI, Koin (DI), kotlinx.serialization, Lettuce (new — Redis client), Ktor (MCP server)

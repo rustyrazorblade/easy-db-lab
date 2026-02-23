@@ -23,7 +23,7 @@ Follow-up TODOs: None
 
 ### I. CLI-First User Experience
 
-All user interaction occurs through command-line output. Commands MUST use `outputHandler.handleMessage()` for user-facing messages, not logging frameworks. Print statements are intentional UX — do not replace them with logging. Multiline output MUST use a single multiline block rather than multiple `handleMessage` calls.
+All user interaction occurs through command-line output. Commands and services MUST use `eventBus.emit()` with domain-specific Event types for user-facing messages, not logging frameworks. Each Event implements `toDisplayString()` which produces the console output — this is intentional UX, do not replace it with logging. Multiline output MUST be a single event whose `toDisplayString()` returns the full multiline block, not multiple separate events.
 
 **Rationale**: Users interact by reading terminal output. Logging frameworks break the UX by mixing debug information with user-facing content.
 
@@ -113,4 +113,4 @@ This constitution supersedes all other development practices for easy-db-lab. Al
 
 **Compliance Review**: All PRs and code reviews MUST verify adherence to Core Principles. Complexity beyond what is needed for the current task MUST be justified.
 
-**Version**: 1.0.0 | **Ratified**: 2026-02-22 | **Last Amended**: 2026-02-22
+**Version**: 1.1.0 | **Ratified**: 2026-02-22 | **Last Amended**: 2026-02-23

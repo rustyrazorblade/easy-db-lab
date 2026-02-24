@@ -86,17 +86,7 @@ class SparkLogs : PicoBaseCommand() {
                 }
 
         if (logs.isEmpty()) {
-            eventBus.emit(
-                Event.Emr.StepNoLogsFound(
-                    """
-                |No logs found for step $targetStepId
-                |
-                |Tips:
-                |  - Logs may take a few minutes to be ingested from S3
-                |  - Try increasing the time range with --since 1d
-                    """.trimMargin(),
-                ),
-            )
+            eventBus.emit(Event.Emr.StepNoLogsFound(targetStepId))
         } else {
             eventBus.emit(Event.Emr.StepLogsOutput(logs.joinToString("\n")))
             eventBus.emit(Event.Emr.StepLogsCount(logs.size))

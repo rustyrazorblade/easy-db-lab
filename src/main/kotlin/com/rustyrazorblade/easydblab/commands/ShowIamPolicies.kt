@@ -34,11 +34,7 @@ class ShowIamPolicies : PicoBaseCommand() {
             try {
                 awsResourceSetup.getAccountId()
             } catch (e: Exception) {
-                eventBus.emit(
-                    Event.Command.IamPoliciesCredentialError(
-                        "Failed to get AWS account ID. Please run 'easy-db-lab init' to set up credentials.",
-                    ),
-                )
+                eventBus.emit(Event.Command.IamPoliciesCredentialError)
                 throw e
             }
 

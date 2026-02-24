@@ -379,17 +379,15 @@ class Docker(
         }
 
         if (workingDirectory.isNotEmpty()) {
-            val workDirMsg = "Setting working directory inside container to $workingDirectory"
-            eventBus.emit(Event.Docker.ExecutionWorkDir(workDirMsg))
-            bufferedHandler.handleMessage(workDirMsg)
+            eventBus.emit(Event.Docker.ExecutionWorkDir(workingDirectory))
+            bufferedHandler.handleMessage("Setting working directory inside container to $workingDirectory")
             dockerCommandBuilder.withWorkingDir(workingDirectory)
         }
 
         val dockerContainer = dockerCommandBuilder.exec()
         val containerId = dockerContainer.id.substring(0, CONTAINER_ID_DISPLAY_LENGTH)
-        val startMsg = "Starting $imageTag container ($containerId)"
-        eventBus.emit(Event.Docker.ExecutionStarting(startMsg))
-        bufferedHandler.handleMessage(startMsg)
+        eventBus.emit(Event.Docker.ExecutionStarting(imageTag, containerId))
+        bufferedHandler.handleMessage("Starting $imageTag container ($containerId)")
 
         // Use the new modular components
         val ioManager = ContainerIOManager(dockerClient)

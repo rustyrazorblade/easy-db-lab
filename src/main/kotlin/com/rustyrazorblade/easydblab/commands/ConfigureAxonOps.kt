@@ -40,7 +40,7 @@ class ConfigureAxonOps : PicoBaseCommand() {
         val axonOrg = if (org.isNotBlank()) org else userConfig.axonOpsOrg
         val axonKey = if (key.isNotBlank()) key else userConfig.axonOpsKey
         if ((axonOrg.isBlank() || axonKey.isBlank())) {
-            eventBus.emit(Event.Setup.AxonOpsMissingArgs("--org and --key are required"))
+            eventBus.emit(Event.Setup.AxonOpsMissingArgs)
             exitProcess(1)
         }
 

@@ -20,7 +20,7 @@ class EventSerializationTest {
             Event.Backup.VictoriaMetricsStarting("s3://backup"),
             Event.Registry.CertGenerating("control0"),
             Event.Tailscale.DaemonStarting("control0"),
-            Event.AwsSetup.Starting("Setting up..."),
+            Event.AwsSetup.Starting,
             Event.Stress.JobStarting("stress-job"),
             Event.Service.Starting("cassandra", "node0"),
             Event.Provision.IamUpdating,

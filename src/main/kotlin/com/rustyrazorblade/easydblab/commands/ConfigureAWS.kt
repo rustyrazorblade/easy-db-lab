@@ -21,6 +21,6 @@ class ConfigureAWS : PicoBaseCommand() {
 
     override fun execute() {
         awsResourceSetupService.ensureAWSResources(userConfig)
-        eventBus.emit(Event.Setup.AwsConfigured("✓ AWS infrastructure configured successfully"))
+        eventBus.emit(Event.Setup.AwsConfigured)
     }
 }

@@ -225,11 +225,7 @@ class Init : PicoBaseCommand() {
             // Schedule Up to run after Init's full lifecycle completes
             commandExecutor.schedule { Up() }
         } else {
-            eventBus.emit(
-                Event.Setup.InitNextSteps(
-                    "Next you'll want to run easy-db-lab up to start your instances.",
-                ),
-            )
+            eventBus.emit(Event.Setup.InitNextSteps)
         }
     }
 
@@ -259,17 +255,7 @@ class Init : PicoBaseCommand() {
         }
 
         if (existingFiles.isNotEmpty()) {
-            val message =
-                buildString {
-                    appendLine("Error: Directory already contains configuration files:")
-                    existingFiles.forEach { appendLine("  - $it") }
-                    appendLine()
-                    appendLine(
-                        "Please use --clean flag to remove existing configuration, " +
-                            "or run 'easy-db-lab clean' first.",
-                    )
-                }
-            eventBus.emit(Event.Setup.InitError(message))
+            eventBus.emit(Event.Setup.InitError(existingFiles))
             exitProcess(1)
         }
     }
@@ -314,9 +300,10 @@ class Init : PicoBaseCommand() {
         val initConfig = clusterState.initConfig ?: return
         eventBus.emit(
             Event.Setup.WorkspaceInitialized(
-                "Your workspace has been initialized with ${initConfig.cassandraInstances} Cassandra instances " +
-                    "(${initConfig.instanceType}) and ${initConfig.stressInstances} stress instances " +
-                    "in ${initConfig.region}",
+                cassandraInstances = initConfig.cassandraInstances,
+                instanceType = initConfig.instanceType,
+                stressInstances = initConfig.stressInstances,
+                region = initConfig.region,
             ),
         )
     }

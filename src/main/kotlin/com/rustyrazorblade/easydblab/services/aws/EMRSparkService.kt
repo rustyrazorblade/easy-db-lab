@@ -183,7 +183,7 @@ class EMRSparkService(
     ) {
         val stepDetails = getStepDetails(clusterId, stepId).getOrNull()
         if (stepDetails != null) {
-            eventBus.emit(Event.Emr.SparkStepDetails(stepDetails.toDisplayString()))
+            eventBus.emit(stepDetails.toEvent())
         } else {
             eventBus.emit(
                 Event.Emr.SparkStepError(

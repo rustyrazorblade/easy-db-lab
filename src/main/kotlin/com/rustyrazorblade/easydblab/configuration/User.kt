@@ -92,7 +92,7 @@ data class User(
             ec2Client: Ec2Client,
             eventBus: EventBus,
         ): AwsKeyName {
-            eventBus.emit(Event.Setup.GeneratingKeyPairAndSsh("Generating AWS key pair and SSH credentials..."))
+            eventBus.emit(Event.Setup.GeneratingKeyPairAndSsh)
 
             try {
                 val keyName = "easy-db-lab-${UUID.randomUUID()}"

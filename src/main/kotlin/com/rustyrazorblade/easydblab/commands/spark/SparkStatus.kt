@@ -65,7 +65,7 @@ class SparkStatus : PicoBaseCommand() {
                     .getOrElse { error ->
                         error(error.message ?: "Failed to get step details")
                     }
-            eventBus.emit(Event.Emr.StepDetailsOutput(stepDetails.toDisplayString()))
+            eventBus.emit(stepDetails.toEvent())
         } else {
             // Show basic status
             val jobStatus =

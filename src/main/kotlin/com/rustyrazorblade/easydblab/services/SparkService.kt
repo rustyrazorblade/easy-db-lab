@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.configuration.EMRClusterInfo
+import com.rustyrazorblade.easydblab.events.Event
 import software.amazon.awssdk.services.emr.model.StepState
 import java.nio.file.Path
 import java.time.Instant
@@ -256,6 +257,37 @@ interface SparkService {
                     failureLogFile?.let { appendLine("Log File: $it") }
                 }
             }
+
+        /**
+         * Convert to a structured [Event.Emr.SparkStepDetails] event.
+         */
+        fun toEvent(): Event.Emr.SparkStepDetails {
+            val durationSecs =
+                if (startTime != null && endTime != null) {
+                    java.time.Duration
+                        .between(startTime, endTime)
+                        .seconds
+                } else {
+                    null
+                }
+            return Event.Emr.SparkStepDetails(
+                stepId = stepId,
+                name = name,
+                state = state.toString(),
+                stateChangeReasonCode = stateChangeReasonCode,
+                stateChangeReasonMessage = stateChangeReasonMessage,
+                creationTime = creationTime?.toString(),
+                startTime = startTime?.toString(),
+                endTime = endTime?.toString(),
+                durationSeconds = durationSecs,
+                jarPath = jarPath,
+                mainClass = mainClass,
+                args = args,
+                failureReason = failureReason,
+                failureMessage = failureMessage,
+                failureLogFile = failureLogFile,
+            )
+        }
     }
 
     /**

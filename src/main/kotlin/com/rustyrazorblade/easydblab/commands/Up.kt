@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.commands
 
-import com.github.ajalt.mordant.TermColors
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
@@ -462,29 +461,10 @@ class Up : PicoBaseCommand() {
     }
 
     private fun printProvisioningSuccessMessage() {
-        with(TermColors()) {
-            eventBus.emit(
-                Event.Provision.ProvisioningComplete(
-                    "Instances have been provisioned.\n\n" +
-                        "Use " + green("easy-db-lab list") + " to see all available versions\n\n" +
-                        "Then use " + green("easy-db-lab use <version>") +
-                        " to use a specific version of Cassandra.\n",
-                ),
-            )
-            eventBus.emit(Event.Provision.ProvisioningInstructions("Writing ssh config file to sshConfig."))
-            eventBus.emit(
-                Event.Provision.ProvisioningInstructions(
-                    "The following alias will allow you to easily work with the cluster:\n\n" +
-                        green("source env.sh") + "\n",
-                ),
-            )
-            eventBus.emit(
-                Event.Provision.ProvisioningInstructions(
-                    "You can edit " + green("cassandra.patch.yaml") +
-                        " with any changes you'd like to see merge in into the remote cassandra.yaml file.",
-                ),
-            )
-        }
+        eventBus.emit(Event.Provision.ProvisioningComplete)
+        eventBus.emit(Event.Provision.WritingSshConfig)
+        eventBus.emit(Event.Provision.SourceEnvInstruction)
+        eventBus.emit(Event.Provision.CassandraPatchInstruction)
     }
 
     /** Writes SSH config, environment files, and AxonOps configuration to the working directory. */
@@ -536,14 +516,7 @@ class Up : PicoBaseCommand() {
     /** Runs instance setup, K3s configuration, and optional AxonOps setup unless --no-setup. */
     private fun setupInstancesIfNeeded() {
         if (noSetup) {
-            with(TermColors()) {
-                eventBus.emit(
-                    Event.Provision.NodeSetupInstructions(
-                        "Skipping node setup.  You will need to run " +
-                            green("easy-db-lab setup-instance") + " to complete setup",
-                    ),
-                )
-            }
+            eventBus.emit(Event.Provision.SkippingNodeSetup)
         } else {
             commandExecutor.execute { SetupInstance() }
             startK3sOnAllNodes()

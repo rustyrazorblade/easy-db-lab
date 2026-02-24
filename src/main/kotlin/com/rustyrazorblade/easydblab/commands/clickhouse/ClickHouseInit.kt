@@ -53,12 +53,9 @@ class ClickHouseInit : PicoBaseCommand() {
 
         eventBus.emit(
             Event.ClickHouse.ConfigSaved(
-                """
-                ClickHouse configuration saved.
-                  Replicas per shard: $replicasPerShard
-                  S3 cache size: $s3CacheSize
-                  S3 cache on write: $s3CacheOnWrite
-                """.trimIndent(),
+                replicasPerShard = replicasPerShard,
+                s3CacheSize = s3CacheSize,
+                s3CacheOnWrite = s3CacheOnWrite,
             ),
         )
     }

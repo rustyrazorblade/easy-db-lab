@@ -993,9 +993,46 @@ sealed interface Event {
 
         @Serializable
         data class SparkStepDetails(
-            val details: String,
+            val stepId: String,
+            val name: String,
+            val state: String,
+            val stateChangeReasonCode: String? = null,
+            val stateChangeReasonMessage: String? = null,
+            val creationTime: String? = null,
+            val startTime: String? = null,
+            val endTime: String? = null,
+            val durationSeconds: Long? = null,
+            val jarPath: String? = null,
+            val mainClass: String? = null,
+            val args: List<String> = emptyList(),
+            val failureReason: String? = null,
+            val failureMessage: String? = null,
+            val failureLogFile: String? = null,
         ) : Emr {
-            override fun toDisplayString(): String = details
+            override fun toDisplayString(): String =
+                listOfNotNull(
+                    "=== Step Details ===",
+                    "Step ID: $stepId",
+                    "Name: $name",
+                    "State: $state",
+                    stateChangeReasonCode?.let { "State Change Reason Code: $it" },
+                    stateChangeReasonMessage?.let { "State Change Reason: $it" },
+                    "",
+                    "=== Timeline ===",
+                    creationTime?.let { "Created: $it" },
+                    startTime?.let { "Started: $it" },
+                    endTime?.let { "Ended: $it" },
+                    durationSeconds?.let { "Duration: ${it}s" },
+                    "",
+                    "=== Configuration ===",
+                    jarPath?.let { "JAR: $it" },
+                    mainClass?.let { "Main Class: $it" },
+                    args.takeIf { it.isNotEmpty() }?.let { "Args: ${it.joinToString(" ")}" },
+                    if (failureReason != null || failureMessage != null) "\n=== Failure Details ===" else null,
+                    failureReason?.let { "Reason: $it" },
+                    failureMessage?.let { "Message: $it" },
+                    failureLogFile?.let { "Log File: $it" },
+                ).joinToString("\n")
         }
 
         @Serializable
@@ -1247,9 +1284,16 @@ sealed interface Event {
 
         @Serializable
         data class StepNoLogsFound(
-            val message: String,
+            val stepId: String,
         ) : Emr {
-            override fun toDisplayString(): String = message
+            override fun toDisplayString(): String =
+                """
+                |No logs found for step $stepId
+                |
+                |Tips:
+                |  - Logs may take a few minutes to be ingested from S3
+                |  - Try increasing the time range with --since 1d
+                """.trimMargin()
         }
 
         @Serializable
@@ -1264,13 +1308,6 @@ sealed interface Event {
             val count: Int,
         ) : Emr {
             override fun toDisplayString(): String = "\nFound $count log entries."
-        }
-
-        @Serializable
-        data class StepDetailsOutput(
-            val details: String,
-        ) : Emr {
-            override fun toDisplayString(): String = details
         }
 
         @Serializable
@@ -1501,13 +1538,6 @@ sealed interface Event {
         @Serializable
         data object DeletionNote : OpenSearch {
             override fun toDisplayString(): String = "Note: Domain deletion may take several minutes to complete."
-        }
-
-        @Serializable
-        data class WaitingForStart(
-            val message: String,
-        ) : OpenSearch {
-            override fun toDisplayString(): String = message
         }
 
         @Serializable
@@ -2026,9 +2056,23 @@ sealed interface Event {
 
         @Serializable
         data class TagConfigWarning(
-            val message: String,
+            val tag: String,
         ) : Tailscale {
-            override fun toDisplayString(): String = message
+            override fun toDisplayString(): String =
+                """
+
+                The tag '$tag' must be configured in your Tailscale ACL.
+
+                To fix this:
+                1. Go to https://login.tailscale.com/admin/acls
+                2. Add this to your ACL policy:
+                   "tagOwners": {
+                     "$tag": ["autogroup:admin"]
+                   }
+                3. Ensure your OAuth client has permission to use this tag
+
+                Or use a different tag: --tag tag:your-existing-tag
+                """.trimIndent()
         }
 
         @Serializable
@@ -2133,26 +2177,60 @@ sealed interface Event {
     @Serializable
     sealed interface AwsSetup : Event {
         @Serializable
-        data class Starting(
-            val message: String,
-        ) : AwsSetup {
-            override fun toDisplayString(): String = message
+        data object Starting : AwsSetup {
+            override fun toDisplayString(): String = "Setting up AWS resources (IAM roles, instance profiles)..."
         }
 
         @Serializable
         data class RepairWarning(
-            val errorMessage: String,
+            val validationError: String,
         ) : AwsSetup {
-            override fun toDisplayString(): String = errorMessage
+            override fun toDisplayString(): String =
+                "Warning: IAM role configuration incomplete or invalid. Will attempt to repair.\n  $validationError"
 
             override fun isError(): Boolean = true
         }
 
         @Serializable
-        data class CredentialError(
-            val error: String,
+        data object CredentialValidationFailed : AwsSetup {
+            override fun toDisplayString(): String = "AWS credential validation failed. Please check your AWS credentials and permissions."
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        data class AuthenticationError(
+            val exceptionMessage: String,
         ) : AwsSetup {
-            override fun toDisplayString(): String = error
+            override fun toDisplayString(): String =
+                """
+                |
+                |========================================
+                |AWS CREDENTIAL ERROR
+                |========================================
+                |
+                |Unable to validate AWS credentials: $exceptionMessage
+                |
+                |This usually means:
+                |  - AWS credentials are not configured
+                |  - AWS credentials have expired
+                |  - AWS access key or secret key is invalid
+                |
+                |To fix this issue, reconfigure your easy-db-lab profile:
+                |
+                |  1. Remove incorrect profile: rm -rf ~/.easy_cass_lab/profiles/<PROFILE>
+                |     (Replace <PROFILE> with your profile name, usually 'default')
+                |
+                |  2. Run: easy-db-lab setup-profile
+                |
+                |  3. When prompted, enter your AWS access key and secret key
+                |
+                |To verify your credentials are working, run:
+                |  aws sts get-caller-identity
+                |
+                |For full AWS permissions required by easy-db-lab, add THREE inline policies:
+                |
+                """.trimMargin()
 
             override fun isError(): Boolean = true
         }
@@ -2215,10 +2293,8 @@ sealed interface Event {
         }
 
         @Serializable
-        data class Complete(
-            val message: String,
-        ) : AwsSetup {
-            override fun toDisplayString(): String = message
+        data object Complete : AwsSetup {
+            override fun toDisplayString(): String = "✓ AWS resources setup complete and validated"
         }
 
         @Serializable
@@ -2546,17 +2622,28 @@ sealed interface Event {
         }
 
         @Serializable
-        data class ProvisioningComplete(
-            val message: String,
-        ) : Provision {
-            override fun toDisplayString(): String = message
+        data object ProvisioningComplete : Provision {
+            override fun toDisplayString(): String =
+                "Instances have been provisioned.\n\n" +
+                    "Use easy-db-lab list to see all available versions\n\n" +
+                    "Then use easy-db-lab use <version> to use a specific version of Cassandra.\n"
         }
 
         @Serializable
-        data class ProvisioningInstructions(
-            val message: String,
-        ) : Provision {
-            override fun toDisplayString(): String = message
+        data object WritingSshConfig : Provision {
+            override fun toDisplayString(): String = "Writing ssh config file to sshConfig."
+        }
+
+        @Serializable
+        data object SourceEnvInstruction : Provision {
+            override fun toDisplayString(): String =
+                "The following alias will allow you to easily work with the cluster:\n\nsource env.sh\n"
+        }
+
+        @Serializable
+        data object CassandraPatchInstruction : Provision {
+            override fun toDisplayString(): String =
+                "You can edit cassandra.patch.yaml with any changes you'd like to see merge in into the remote cassandra.yaml file."
         }
 
         @Serializable
@@ -2572,10 +2659,9 @@ sealed interface Event {
         }
 
         @Serializable
-        data class NodeSetupInstructions(
-            val message: String,
-        ) : Provision {
-            override fun toDisplayString(): String = message
+        data object SkippingNodeSetup : Provision {
+            override fun toDisplayString(): String =
+                "Skipping node setup.  You will need to run easy-db-lab setup-instance to complete setup"
         }
 
         @Serializable
@@ -3011,10 +3097,8 @@ sealed interface Event {
         }
 
         @Serializable
-        data class IamPoliciesCredentialError(
-            val message: String,
-        ) : Command {
-            override fun toDisplayString(): String = message
+        data object IamPoliciesCredentialError : Command {
+            override fun toDisplayString(): String = "Failed to get AWS account ID. Please run 'easy-db-lab init' to set up credentials."
 
             override fun isError(): Boolean = true
         }
@@ -3024,13 +3108,6 @@ sealed interface Event {
             val path: String,
         ) : Command {
             override fun toDisplayString(): String = "MCP configuration saved to: $path\n"
-        }
-
-        @Serializable
-        data class DeprecationWarning(
-            val message: String,
-        ) : Command {
-            override fun toDisplayString(): String = message
         }
 
         @Serializable
@@ -3656,13 +3733,6 @@ sealed interface Event {
         }
 
         @Serializable
-        data class AmiWarning(
-            val message: String,
-        ) : Ami {
-            override fun toDisplayString(): String = message
-        }
-
-        @Serializable
         data class MultipleAmisFound(
             val count: Int,
             val selectedId: String,
@@ -3670,15 +3740,6 @@ sealed interface Event {
         ) : Ami {
             override fun toDisplayString(): String =
                 "Warning: Found $count AMIs matching pattern. Using newest: $selectedId ($selectedDate)"
-        }
-
-        @Serializable
-        data class AmiNotFoundError(
-            val message: String,
-        ) : Ami {
-            override fun toDisplayString(): String = message
-
-            override fun isError(): Boolean = true
         }
 
         @Serializable
@@ -3811,9 +3872,17 @@ sealed interface Event {
 
         @Serializable
         data class ConfigSaved(
-            val details: String,
+            val replicasPerShard: Int,
+            val s3CacheSize: String,
+            val s3CacheOnWrite: String,
         ) : ClickHouse {
-            override fun toDisplayString(): String = details
+            override fun toDisplayString(): String =
+                """
+                ClickHouse configuration saved.
+                  Replicas per shard: $replicasPerShard
+                  S3 cache size: $s3CacheSize
+                  S3 cache on write: $s3CacheOnWrite
+                """.trimIndent()
         }
     }
 
@@ -3877,16 +3946,17 @@ sealed interface Event {
 
         @Serializable
         data class ExecutionWorkDir(
-            val message: String,
+            val workingDirectory: String,
         ) : Docker {
-            override fun toDisplayString(): String = message
+            override fun toDisplayString(): String = "Setting working directory inside container to $workingDirectory"
         }
 
         @Serializable
         data class ExecutionStarting(
-            val message: String,
+            val imageTag: String,
+            val containerId: String,
         ) : Docker {
-            override fun toDisplayString(): String = message
+            override fun toDisplayString(): String = "Starting $imageTag container ($containerId)"
         }
 
         @Serializable
@@ -4510,17 +4580,24 @@ sealed interface Event {
         }
 
         @Serializable
-        data class InitNextSteps(
-            val message: String,
-        ) : Setup {
-            override fun toDisplayString(): String = message
+        data object InitNextSteps : Setup {
+            override fun toDisplayString(): String = "Next you'll want to run easy-db-lab up to start your instances."
         }
 
         @Serializable
         data class InitError(
-            val message: String,
+            val existingFiles: List<String>,
         ) : Setup {
-            override fun toDisplayString(): String = message
+            override fun toDisplayString(): String =
+                buildString {
+                    appendLine("Error: Directory already contains configuration files:")
+                    existingFiles.forEach { appendLine("  - $it") }
+                    appendLine()
+                    appendLine(
+                        "Please use --clean flag to remove existing configuration, " +
+                            "or run 'easy-db-lab clean' first.",
+                    )
+                }
         }
 
         @Serializable
@@ -4540,16 +4617,20 @@ sealed interface Event {
 
         @Serializable
         data class WorkspaceInitialized(
-            val message: String,
+            val cassandraInstances: Int,
+            val instanceType: String,
+            val stressInstances: Int,
+            val region: String,
         ) : Setup {
-            override fun toDisplayString(): String = message
+            override fun toDisplayString(): String =
+                "Your workspace has been initialized with $cassandraInstances Cassandra instances " +
+                    "($instanceType) and $stressInstances stress instances " +
+                    "in $region"
         }
 
         @Serializable
-        data class AwsConfigured(
-            val message: String,
-        ) : Setup {
-            override fun toDisplayString(): String = message
+        data object AwsConfigured : Setup {
+            override fun toDisplayString(): String = "✓ AWS infrastructure configured successfully"
         }
 
         @Serializable
@@ -4560,10 +4641,10 @@ sealed interface Event {
         }
 
         @Serializable
-        data class AxonOpsMissingArgs(
-            val message: String,
-        ) : Setup {
-            override fun toDisplayString(): String = message
+        data object AxonOpsMissingArgs : Setup {
+            override fun toDisplayString(): String = "--org and --key are required"
+
+            override fun isError(): Boolean = true
         }
 
         @Serializable
@@ -4574,10 +4655,8 @@ sealed interface Event {
         }
 
         @Serializable
-        data class GeneratingKeyPairAndSsh(
-            val message: String,
-        ) : Setup {
-            override fun toDisplayString(): String = message
+        data object GeneratingKeyPairAndSsh : Setup {
+            override fun toDisplayString(): String = "Generating AWS key pair and SSH credentials..."
         }
 
         @Serializable

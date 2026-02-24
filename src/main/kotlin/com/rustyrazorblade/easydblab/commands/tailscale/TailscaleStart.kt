@@ -147,24 +147,7 @@ class TailscaleStart : PicoBaseCommand() {
         } catch (e: TailscaleApiException) {
             eventBus.emit(Event.Tailscale.StartFailed(e.message ?: "unknown error"))
             if (e.message?.contains("tags") == true) {
-                eventBus.emit(
-                    Event.Tailscale.TagConfigWarning(
-                        """
-
-                        The tag '${credentials.tag}' must be configured in your Tailscale ACL.
-
-                        To fix this:
-                        1. Go to https://login.tailscale.com/admin/acls
-                        2. Add this to your ACL policy:
-                           "tagOwners": {
-                             "${credentials.tag}": ["autogroup:admin"]
-                           }
-                        3. Ensure your OAuth client has permission to use this tag
-
-                        Or use a different tag: --tag tag:your-existing-tag
-                        """.trimIndent(),
-                    ),
-                )
+                eventBus.emit(Event.Tailscale.TagConfigWarning(credentials.tag))
             }
         }
     }

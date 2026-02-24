@@ -24,13 +24,7 @@ class AWSResourceSetupService(
     private val eventBus: EventBus,
 ) {
     companion object {
-        // User-facing messages
-        private const val MSG_REPAIR_WARNING = "Warning: IAM role configuration incomplete or invalid. Will attempt to repair."
-        private const val MSG_SETUP_START = "Setting up AWS resources (IAM roles, instance profiles)..."
-        private const val MSG_SETUP_COMPLETE = "✓ AWS resources setup complete and validated"
         // Error messages
-        private const val ERR_CREDENTIAL_VALIDATION =
-            "AWS credential validation failed. Please check your AWS credentials and permissions."
         private const val ERR_IAM_VALIDATION =
             "IAM roles were created but failed validation. This may indicate an AWS propagation delay or configuration issue."
         private const val ERR_IAM_UNEXPECTED = "Unexpected error during IAM role setup"
@@ -86,7 +80,7 @@ class AWSResourceSetupService(
             return
         }
 
-        eventBus.emit(Event.AwsSetup.Starting(MSG_SETUP_START))
+        eventBus.emit(Event.AwsSetup.Starting)
 
         // Step 1: Validate credentials
         validateCredentials()
@@ -109,8 +103,7 @@ class AWSResourceSetupService(
         }
 
         // Resources exist in config but validation failed - will attempt to fix
-        eventBus.emit(Event.AwsSetup.RepairWarning(MSG_REPAIR_WARNING))
-        eventBus.emit(Event.AwsSetup.RepairWarning("  ${validation.errorMessage}"))
+        eventBus.emit(Event.AwsSetup.RepairWarning(validation.errorMessage ?: "Unknown validation error"))
         return false
     }
 
@@ -135,7 +128,7 @@ class AWSResourceSetupService(
             handlePermissionError(e)
             throw e
         } catch (e: Exception) {
-            eventBus.emit(Event.AwsSetup.CredentialError(ERR_CREDENTIAL_VALIDATION))
+            eventBus.emit(Event.AwsSetup.CredentialValidationFailed)
             throw e
         }
     }
@@ -191,7 +184,7 @@ class AWSResourceSetupService(
             throw IllegalStateException(errorMsg)
         }
 
-        eventBus.emit(Event.AwsSetup.Complete(MSG_SETUP_COMPLETE))
+        eventBus.emit(Event.AwsSetup.Complete)
     }
 
     /**
@@ -199,38 +192,7 @@ class AWSResourceSetupService(
      * Provides guidance for reconfiguring easy-db-lab profile.
      */
     private fun handleAuthenticationError(exception: software.amazon.awssdk.core.exception.SdkServiceException) {
-        eventBus.emit(
-            Event.AwsSetup.CredentialError(
-                """
-                |
-                |========================================
-                |AWS CREDENTIAL ERROR
-                |========================================
-                |
-                |Unable to validate AWS credentials: ${exception.message}
-                |
-                |This usually means:
-                |  - AWS credentials are not configured
-                |  - AWS credentials have expired
-                |  - AWS access key or secret key is invalid
-                |
-                |To fix this issue, reconfigure your easy-db-lab profile:
-                |
-                |  1. Remove incorrect profile: rm -rf ~/.easy_cass_lab/profiles/<PROFILE>
-                |     (Replace <PROFILE> with your profile name, usually 'default')
-                |
-                |  2. Run: easy-db-lab setup-profile
-                |
-                |  3. When prompted, enter your AWS access key and secret key
-                |
-                |To verify your credentials are working, run:
-                |  aws sts get-caller-identity
-                |
-                |For full AWS permissions required by easy-db-lab, add THREE inline policies:
-                |
-                """.trimMargin(),
-            ),
-        )
+        eventBus.emit(Event.AwsSetup.AuthenticationError(exception.message ?: "Unknown error"))
 
         // Show required IAM policies
         val policies = AWSPolicy.UserIAM.loadAll("ACCOUNT_ID")

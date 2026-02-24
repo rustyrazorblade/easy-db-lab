@@ -40,19 +40,18 @@ class LogsImport : PicoBaseCommand() {
     override fun execute() {
         val controlHost = clusterState.getControlHost()
         if (controlHost == null) {
-            eventBus.emit(Event.Error("No control node found. Please ensure the cluster is running."))
+            eventBus.emit(Event.Logs.NoControlNode)
             return
         }
 
-        eventBus.emit(Event.Message("Streaming logs from cluster to $target..."))
+        eventBus.emit(Event.Logs.ImportStarting(target))
 
         victoriaStreamService
             .streamLogs(controlHost, target, query)
             .onSuccess { result ->
-                eventBus.emit(Event.Message("Logs import completed successfully."))
-                eventBus.emit(Event.Message("Bytes transferred: ${result.bytesTransferred}"))
+                eventBus.emit(Event.Logs.ImportComplete(result.bytesTransferred))
             }.onFailure { exception ->
-                eventBus.emit(Event.Error("Logs import failed: ${exception.message}"))
+                eventBus.emit(Event.Logs.ImportFailed(exception.message ?: "Unknown error"))
             }
     }
 }

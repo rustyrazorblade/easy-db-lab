@@ -63,24 +63,29 @@ class StressLogs : PicoBaseCommand() {
         // Get logs from each pod
         for (pod in pods) {
             if (pods.size > 1) {
-                eventBus.emit(Event.Message("=== Pod: ${pod.name} (${pod.status}) ==="))
+                eventBus.emit(Event.Stress.PodLogHeader(podName = pod.name, podStatus = pod.status))
             }
 
             val logsResult = stressJobService.getPodLogs(controlNode, pod.name, tailLines)
             if (logsResult.isFailure) {
-                eventBus.emit(Event.Error("Failed to get logs for pod ${pod.name}: ${logsResult.exceptionOrNull()?.message}"))
+                eventBus.emit(
+                    Event.Stress.PodLogFailed(
+                        podName = pod.name,
+                        error = logsResult.exceptionOrNull()?.message ?: "unknown error",
+                    ),
+                )
                 continue
             }
 
             val logs = logsResult.getOrThrow()
             if (logs.isEmpty()) {
-                eventBus.emit(Event.Message("(no logs available yet)"))
+                eventBus.emit(Event.Stress.PodLogsEmpty)
             } else {
-                eventBus.emit(Event.Message(logs))
+                eventBus.emit(Event.Stress.PodLogOutput(logs))
             }
 
             if (pods.size > 1) {
-                eventBus.emit(Event.Message(""))
+                eventBus.emit(Event.Stress.PodLogSeparator)
             }
         }
     }

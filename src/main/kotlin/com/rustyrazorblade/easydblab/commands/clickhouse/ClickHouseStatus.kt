@@ -7,8 +7,6 @@ import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.s3Path
 import com.rustyrazorblade.easydblab.events.Event
-import com.rustyrazorblade.easydblab.output.displayClickHouseAccess
-import com.rustyrazorblade.easydblab.output.displayS3ManagerClickHouseAccess
 import com.rustyrazorblade.easydblab.services.K8sService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
@@ -52,13 +50,25 @@ class ClickHouseStatus : PicoBaseCommand() {
                     error("Failed to get ClickHouse status: ${exception.message}")
                 }
 
-        eventBus.emit(Event.Message("ClickHouse Cluster Status:"))
-        eventBus.emit(Event.Message(""))
-        eventBus.emit(Event.Message(status))
-        eventBus.displayClickHouseAccess(dbNodeIp)
+        eventBus.emit(Event.ClickHouse.StatusOutput(status))
+        eventBus.emit(
+            Event.Provision.ClickHouseAccessInfo(
+                dbNodeIp = dbNodeIp,
+                httpPort = Constants.ClickHouse.HTTP_PORT,
+                nativePort = Constants.ClickHouse.NATIVE_PORT,
+            ),
+        )
 
         if (!clusterState.s3Bucket.isNullOrBlank()) {
-            eventBus.displayS3ManagerClickHouseAccess(controlNode.privateIp, clusterState.s3Path())
+            val s3Path = clusterState.s3Path()
+            eventBus.emit(
+                Event.Provision.S3ManagerClickHouseAccessInfo(
+                    controlNodeIp = controlNode.privateIp,
+                    s3ManagerPort = Constants.K8s.S3MANAGER_PORT,
+                    bucket = s3Path.bucket,
+                    clickhouseKey = s3Path.clickhouse().getKey(),
+                ),
+            )
         }
     }
 }

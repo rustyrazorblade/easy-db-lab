@@ -65,7 +65,7 @@ class SparkStatus : PicoBaseCommand() {
                     .getOrElse { error ->
                         error(error.message ?: "Failed to get step details")
                     }
-            eventBus.emit(Event.Message(stepDetails.toDisplayString()))
+            eventBus.emit(Event.Emr.StepDetailsOutput(stepDetails.toDisplayString()))
         } else {
             // Show basic status
             val jobStatus =
@@ -87,22 +87,11 @@ class SparkStatus : PicoBaseCommand() {
                         appendLine("Failure Details: $it")
                     }
                 }
-            eventBus.emit(Event.Message(statusInfo.trimEnd()))
+            eventBus.emit(Event.Emr.StepStatusInfo(statusInfo.trimEnd()))
 
             // Show log query hint for failed jobs
             if (jobStatus.state == StepState.FAILED) {
-                eventBus.emit(
-                    Event.Message(
-                        """
-                    |
-                    |For more details, run:
-                    |  easy-db-lab spark status --step-id $targetStepId --verbose
-                    |
-                    |View logs with:
-                    |  easy-db-lab spark logs --step-id $targetStepId
-                        """.trimMargin(),
-                    ),
-                )
+                eventBus.emit(Event.Emr.StepFailedHint(targetStepId))
             }
         }
     }

@@ -46,19 +46,15 @@ class PruneAMIs : PicoBaseCommand() {
     var type: String? = null
 
     override fun execute() {
-        eventBus.emit(Event.Message("Pruning AMIs matching pattern: $pattern"))
-        if (type != null) {
-            eventBus.emit(Event.Message("Filtering by type: $type"))
-        }
-        eventBus.emit(Event.Message("Keeping newest $keep AMIs per architecture/type combination"))
-        eventBus.emit(Event.Message(""))
+        eventBus.emit(Event.Ami.PruningStarting(pattern, type, keep))
+        eventBus.emit(Event.Ami.Separator)
 
         val preview = service.pruneAMIs(namePattern = pattern, keepCount = keep, dryRun = true, typeFilter = type)
 
         displayKeptAMIs(preview)
 
         if (preview.deleted.isEmpty()) {
-            eventBus.emit(Event.Message("No AMIs to delete"))
+            eventBus.emit(Event.Ami.NoAmisToDelete)
             return
         }
 
@@ -72,29 +68,38 @@ class PruneAMIs : PicoBaseCommand() {
 
     private fun displayKeptAMIs(preview: AMIService.PruneResult) {
         if (preview.kept.isNotEmpty()) {
-            eventBus.emit(Event.Message("Will keep ${preview.kept.size} AMIs:"))
-            for (ami in preview.kept) {
-                eventBus.emit(Event.Message("  ✓ ${ami.id}: ${ami.name} (${ami.architecture}, ${ami.creationDate})"))
-            }
-            eventBus.emit(Event.Message(""))
+            eventBus.emit(
+                Event.Ami.KeptAmis(
+                    preview.kept.map {
+                        Event.Ami.AmiSummary(it.id, it.name, it.architecture, it.creationDate.toString())
+                    },
+                ),
+            )
+            eventBus.emit(Event.Ami.Separator)
         }
     }
 
     private fun displayDryRunPreview(preview: AMIService.PruneResult) {
-        eventBus.emit(Event.Message("DRY RUN - Would delete ${preview.deleted.size} AMIs:"))
-        for (ami in preview.deleted) {
-            val visibility = if (ami.isPublic) "public" else "private"
-            eventBus.emit(Event.Message("  × ${ami.id}: ${ami.name} (${ami.architecture}, ${ami.creationDate})"))
-            eventBus.emit(Event.Message("    Owner: ${ami.ownerId}, Visibility: $visibility"))
-            if (ami.snapshotIds.isNotEmpty()) {
-                eventBus.emit(Event.Message("    Snapshots: ${ami.snapshotIds.joinToString(", ")}"))
-            }
-        }
+        eventBus.emit(
+            Event.Ami.DryRunPreview(
+                preview.deleted.map {
+                    Event.Ami.AmiDeleteCandidate(
+                        it.id,
+                        it.name,
+                        it.architecture,
+                        it.creationDate.toString(),
+                        it.ownerId,
+                        it.isPublic,
+                        it.snapshotIds,
+                    )
+                },
+            ),
+        )
     }
 
     @Suppress("TooGenericExceptionCaught")
     private fun deleteWithConfirmation(preview: AMIService.PruneResult) {
-        eventBus.emit(Event.Message("Found ${preview.deleted.size} AMIs to delete"))
+        eventBus.emit(Event.Ami.DeletionStarting(preview.deleted.size))
 
         val actuallyDeleted = mutableListOf<String>()
         val skipped = mutableListOf<String>()
@@ -112,47 +117,31 @@ class PruneAMIs : PicoBaseCommand() {
                     for (snapshotId in ami.snapshotIds) {
                         service.deleteSnapshot(snapshotId)
                     }
-                    eventBus.emit(Event.Message("  ✓ Deleted"))
+                    eventBus.emit(Event.Ami.Deleted)
                     actuallyDeleted.add(ami.id)
                 } catch (e: Exception) {
-                    eventBus.emit(Event.Message("  ✗ Error deleting: ${e.message}"))
+                    eventBus.emit(Event.Ami.DeleteFailed(e.message ?: "unknown error"))
                 }
             } else {
-                eventBus.emit(Event.Message("  - Skipped"))
+                eventBus.emit(Event.Ami.Skipped)
                 skipped.add(ami.id)
             }
         }
 
-        eventBus.emit(
-            Event.Message(
-                """
-            |
-            |Summary:
-            |  Deleted: ${actuallyDeleted.size} AMIs
-            |  Skipped: ${skipped.size} AMIs
-            |  Kept: ${preview.kept.size} AMIs
-                """.trimMargin(),
-            ),
-        )
+        eventBus.emit(Event.Ami.PruningSummary(actuallyDeleted.size, skipped.size, preview.kept.size))
     }
 
     private fun displayAMIDetails(ami: AMI) {
-        val visibility = if (ami.isPublic) "public" else "private"
         eventBus.emit(
-            Event.Message(
-                """
-            |
-            |AMI: ${ami.id}
-            |  Name: ${ami.name}
-            |  Architecture: ${ami.architecture}
-            |  Created: ${ami.creationDate}
-            |  Owner: ${ami.ownerId}
-            |  Visibility: $visibility
-                """.trimMargin(),
+            Event.Ami.AmiDetails(
+                ami.id,
+                ami.name,
+                ami.architecture,
+                ami.creationDate.toString(),
+                ami.ownerId,
+                ami.isPublic,
+                ami.snapshotIds,
             ),
         )
-        if (ami.snapshotIds.isNotEmpty()) {
-            eventBus.emit(Event.Message("  Snapshots: ${ami.snapshotIds.joinToString(", ")}"))
-        }
     }
 }

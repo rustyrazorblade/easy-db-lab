@@ -107,21 +107,12 @@ class StressStart : PicoBaseCommand() {
             }
 
         eventBus.emit(
-            Event.Message(
-                """
-                |
-                |Stress job started successfully!
-                |
-                |Job name: $fullJobName
-                |Image: $image
-                |Contact point: $contactPoints
-                |Prometheus port: $promPort
-                |Stress args: ${args.joinToString(" ")}
-                |
-                |Check status: easy-db-lab cassandra stress status
-                |View logs: easy-db-lab cassandra stress logs $fullJobName
-                |Stop job: easy-db-lab cassandra stress stop $fullJobName
-                """.trimMargin(),
+            Event.Stress.JobStarted(
+                jobName = fullJobName,
+                image = image,
+                contactPoint = contactPoints,
+                promPort = promPort,
+                args = args,
             ),
         )
     }

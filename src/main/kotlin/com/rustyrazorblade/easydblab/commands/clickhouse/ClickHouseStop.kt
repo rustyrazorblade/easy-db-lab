@@ -43,12 +43,11 @@ class ClickHouseStop : PicoBaseCommand() {
         log.debug { "Using control node: ${controlNode.alias} (${controlNode.publicIp})" }
 
         if (!force) {
-            eventBus.emit(Event.Message("This will delete the ClickHouse cluster and all its data."))
-            eventBus.emit(Event.Message("Use --force to confirm deletion."))
+            eventBus.emit(Event.ClickHouse.StopConfirmRequired)
             return
         }
 
-        eventBus.emit(Event.Message("Stopping ClickHouse cluster..."))
+        eventBus.emit(Event.ClickHouse.Stopping)
 
         // Delete ClickHouse resources by label selector
         val labelKey = "app.kubernetes.io/name"
@@ -60,6 +59,6 @@ class ClickHouseStop : PicoBaseCommand() {
                 error("Failed to delete ClickHouse cluster: ${exception.message}")
             }
 
-        eventBus.emit(Event.Message("ClickHouse cluster stopped and removed successfully."))
+        eventBus.emit(Event.ClickHouse.Stopped)
     }
 }

@@ -40,19 +40,18 @@ class MetricsImport : PicoBaseCommand() {
     override fun execute() {
         val controlHost = clusterState.getControlHost()
         if (controlHost == null) {
-            eventBus.emit(Event.Error("No control node found. Please ensure the cluster is running."))
+            eventBus.emit(Event.Metrics.NoControlNode)
             return
         }
 
-        eventBus.emit(Event.Message("Streaming metrics from cluster to $target..."))
+        eventBus.emit(Event.Metrics.ImportStarting(target))
 
         victoriaStreamService
             .streamMetrics(controlHost, target, match)
             .onSuccess { result ->
-                eventBus.emit(Event.Message("Metrics import completed successfully."))
-                eventBus.emit(Event.Message("Bytes transferred: ${result.bytesTransferred}"))
+                eventBus.emit(Event.Metrics.ImportComplete(result.bytesTransferred))
             }.onFailure { exception ->
-                eventBus.emit(Event.Error("Metrics import failed: ${exception.message}"))
+                eventBus.emit(Event.Metrics.ImportFailed(exception.message ?: "Unknown error"))
             }
     }
 }

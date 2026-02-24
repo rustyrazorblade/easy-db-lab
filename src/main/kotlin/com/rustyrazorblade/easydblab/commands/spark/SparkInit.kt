@@ -109,9 +109,9 @@ class SparkInit : PicoBaseCommand() {
             )
         clusterStateManager.save(state)
 
-        eventBus.emit(Event.Message("Spark EMR cluster provisioned: ${emrCluster.clusterId}"))
+        eventBus.emit(Event.Emr.ClusterProvisioned(emrCluster.clusterId))
         emrCluster.masterPublicDns?.let {
-            eventBus.emit(Event.Message("Master DNS: $it"))
+            eventBus.emit(Event.Emr.MasterDns(it))
         }
     }
 }

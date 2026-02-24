@@ -70,18 +70,20 @@ class StressStop : PicoBaseCommand() {
                     }
 
             if (jobs.isEmpty()) {
-                eventBus.emit(Event.Message("No stress jobs found."))
+                eventBus.emit(Event.Stress.NoJobsFound)
                 return
             }
 
-            eventBus.emit(Event.Message("Found ${jobs.size} stress job(s) to delete:"))
-            jobs.forEach { job ->
-                eventBus.emit(Event.Message("  - ${job.name} (${job.status})"))
-            }
+            eventBus.emit(
+                Event.Stress.JobsToDelete(
+                    jobs.map { job ->
+                        Event.Stress.JobSummary(name = job.name, status = job.status)
+                    },
+                ),
+            )
 
             if (!force) {
-                eventBus.emit(Event.Message(""))
-                eventBus.emit(Event.Message("Use --force to confirm deletion."))
+                eventBus.emit(Event.Stress.DeleteConfirmRequired)
                 return
             }
 
@@ -92,13 +94,12 @@ class StressStop : PicoBaseCommand() {
                 deleted++
             }
 
-            eventBus.emit(Event.Message(""))
-            eventBus.emit(Event.Message("Deleted $deleted stress job(s)."))
+            eventBus.emit(Event.Stress.BulkDeleted(deleted))
         } else {
             // Delete specific job
             val name = jobName!!
             deleteJobAndConfigMap(controlNode, name)
-            eventBus.emit(Event.Message("Deleted stress job: $name"))
+            eventBus.emit(Event.Stress.SingleDeleted(name))
         }
     }
 

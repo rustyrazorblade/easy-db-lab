@@ -60,22 +60,22 @@ class StressStatus : PicoBaseCommand() {
             }
 
         if (filteredJobs.isEmpty()) {
-            eventBus.emit(Event.Message("No stress jobs found."))
+            eventBus.emit(Event.Stress.NoJobsFound)
             return
         }
 
-        // Print header
         eventBus.emit(
-            Event.Message("%-40s %-12s %-12s %s".format("NAME", "STATUS", "COMPLETIONS", "AGE")),
+            Event.Stress.JobStatusList(
+                filteredJobs.sortedByDescending { it.age }.map { job ->
+                    Event.Stress.JobStatusRow(
+                        name = job.name,
+                        status = job.status,
+                        completions = job.completions,
+                        age = formatDuration(job.age),
+                    )
+                },
+            ),
         )
-
-        // Print jobs
-        for (job in filteredJobs.sortedByDescending { it.age }) {
-            val ageStr = formatDuration(job.age)
-            eventBus.emit(
-                Event.Message("%-40s %-12s %-12s %s".format(job.name, job.status, job.completions, ageStr)),
-            )
-        }
     }
 
     /**

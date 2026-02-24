@@ -34,7 +34,7 @@ class Stop : PicoBaseCommand() {
     var hosts = HostsMixin()
 
     override fun execute() {
-        eventBus.emit(Event.Message("Stopping cassandra service on all nodes."))
+        eventBus.emit(Event.Cassandra.StoppingAllNodes)
 
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList) { host ->
             cassandraService.stop(host.toHost()).getOrThrow()
@@ -47,16 +47,16 @@ class Stop : PicoBaseCommand() {
      * Stop cassandra-sidecar service on Cassandra nodes
      */
     private fun stopSidecar() {
-        eventBus.emit(Event.Message("Stopping cassandra-sidecar on Cassandra nodes..."))
+        eventBus.emit(Event.Cassandra.SidecarStopping)
 
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList, parallel = true) { host ->
             sidecarService
                 .stop(host.toHost())
                 .onFailure { e ->
-                    eventBus.emit(Event.Error("Warning: Failed to stop cassandra-sidecar on ${host.alias}: ${e.message}"))
+                    eventBus.emit(Event.Cassandra.SidecarStopFailed(host.alias, "${e.message}"))
                 }
         }
 
-        eventBus.emit(Event.Message("cassandra-sidecar shutdown completed on Cassandra nodes"))
+        eventBus.emit(Event.Cassandra.SidecarStopped)
     }
 }

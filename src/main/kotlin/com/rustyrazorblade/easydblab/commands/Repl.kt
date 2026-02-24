@@ -131,7 +131,7 @@ class Repl : PicoBaseCommand() {
             runReplLoop(reader, systemRegistry)
         } catch (e: Exception) {
             log.error(e) { "Error in REPL" }
-            eventBus.emit(Event.Error("Error starting REPL: ${e.message ?: e::class.simpleName}"))
+            eventBus.emit(Event.Command.ReplStartError(e.message ?: e::class.simpleName ?: "Unknown error"))
         } finally {
             // Clean up resources on REPL exit
             log.debug { "REPL exiting, cleaning up resources" }
@@ -197,9 +197,7 @@ class Repl : PicoBaseCommand() {
             .build()
 
     private fun printWelcomeMessage() {
-        eventBus.emit(Event.Message("easy-db-lab interactive shell. Type 'help' for commands, TAB for completion."))
-        eventBus.emit(Event.Message("Press Alt+S to toggle command description tips."))
-        eventBus.emit(Event.Message(""))
+        eventBus.emit(Event.Command.ReplWelcome)
     }
 
     private fun runReplLoop(

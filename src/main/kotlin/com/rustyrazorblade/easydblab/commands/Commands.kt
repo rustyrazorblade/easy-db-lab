@@ -43,11 +43,7 @@ class Commands :
 
         // Print command name and description
         val description = spec.usageMessage().description().firstOrNull() ?: ""
-        if (depth == 0) {
-            eventBus.emit(Event.Message("${spec.name()} - $description"))
-        } else {
-            eventBus.emit(Event.Message("$indent${spec.name()} - $description"))
-        }
+        eventBus.emit(Event.Command.CommandDescription(spec.name(), description, indent))
 
         // Print options (skip standard help options at root level for brevity)
         val options =
@@ -58,22 +54,20 @@ class Commands :
         for (opt in options) {
             val optDesc = opt.description().firstOrNull() ?: ""
             val names = opt.names().joinToString(", ")
-            val required = if (opt.required()) " (required)" else ""
             val paramLabel =
                 if (opt.paramLabel().isNotEmpty() && opt.paramLabel() != "PARAM") {
                     " <${opt.paramLabel()}>"
                 } else {
                     ""
                 }
-            eventBus.emit(Event.Message("$indent    $names$paramLabel$required - $optDesc"))
+            eventBus.emit(Event.Command.CommandOptionHelp(names, paramLabel, opt.required(), optDesc, indent))
         }
 
         // Print positional parameters
         for (param in spec.positionalParameters()) {
             if (!param.hidden()) {
                 val paramDesc = param.description().firstOrNull() ?: ""
-                val required = if (param.required()) " (required)" else ""
-                eventBus.emit(Event.Message("$indent    <${param.paramLabel()}>$required - $paramDesc"))
+                eventBus.emit(Event.Command.CommandPositionalHelp(param.paramLabel(), param.required(), paramDesc, indent))
             }
         }
 

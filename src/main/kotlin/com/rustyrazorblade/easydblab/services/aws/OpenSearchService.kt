@@ -311,7 +311,7 @@ class OpenSearchService(
         pollIntervalMs: Long = Constants.OpenSearch.POLL_INTERVAL_MS,
     ): OpenSearchDomainResult {
         log.info { "Waiting for OpenSearch domain $domainName to become active..." }
-        eventBus.emit(Event.Message("Waiting for OpenSearch domain to become active (this may take 10-30 minutes)..."))
+        eventBus.emit(Event.OpenSearch.WaitingForActive)
 
         val startTime = System.currentTimeMillis()
         var pollCount = 0
@@ -401,7 +401,7 @@ class OpenSearchService(
         pollIntervalMs: Long = Constants.OpenSearch.POLL_INTERVAL_MS,
     ) {
         log.info { "Waiting for OpenSearch domain $domainName to be deleted..." }
-        eventBus.emit(Event.Message("Waiting for OpenSearch domain $domainName to be deleted (this may take 10-20 minutes)..."))
+        eventBus.emit(Event.OpenSearch.WaitingForDeleted(domainName))
 
         val startTime = System.currentTimeMillis()
         var pollCount = 0

@@ -91,7 +91,8 @@ Build the event sealed class hierarchy, EventContext (stack-based ThreadLocal), 
 
 **Key decisions**:
 - Events are pure domain data — no metadata fields (no timestamp, no commandName)
-- Each concrete event has `toDisplayString()` for human-readable rendering
+- Event constructors carry ONLY structured data fields — never pre-formatted display strings
+- Each concrete event has `toDisplayString()` that constructs human-readable rendering from its data fields
 - `EventContext` uses stack-based `ThreadLocal<ArrayDeque<EventContext>>` for nested command support (e.g., Init → Up shows "up" as command name)
 - `PicoBaseCommand.run()` pushes context before `execute()`, pops in `finally` block
 - `EventBus.emit(event)` reads context from stack top, creates `EventEnvelope(event, Instant.now(), context?.commandName)`, dispatches envelope to listeners
@@ -108,7 +109,7 @@ Generate an AsyncAPI 3.0 specification document (`docs/reference/event-bus-async
 
 **Key decisions**:
 - Polymorphic serializer with class discriminator field `"type"`
-- All event fields serializable (no Throwable fields — convert to String)
+- All event fields serializable (no Throwable fields — convert to String). No `message` or `displayString` field in wire format — only structured domain data
 - JSON wire format
 - AsyncAPI spec lives in `docs/reference/` and is linked from the mdbook SUMMARY.md
 - AsyncAPI spec is hand-authored YAML (not generated), kept in sync with the sealed class hierarchy

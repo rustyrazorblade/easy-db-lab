@@ -65,6 +65,6 @@ class Ip :
                 else -> foundHost.public
             }
 
-        eventBus.emit(Event.Message(ip))
+        eventBus.emit(Event.Command.IpAddress(ip))
     }
 }

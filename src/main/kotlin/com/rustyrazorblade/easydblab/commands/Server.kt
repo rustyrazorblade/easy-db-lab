@@ -81,11 +81,7 @@ class Server : PicoBaseCommand() {
                 val configFile = File(".mcp.json")
                 configFile.writeText(json.encodeToString(config))
 
-                eventBus.emit(
-                    Event.Message(
-                        "MCP configuration saved to: ${configFile.absolutePath}\n",
-                    ),
-                )
+                eventBus.emit(Event.Command.McpConfigSaved(configFile.absolutePath))
             }
 
             log.info { "MCP server stopped." }

@@ -474,15 +474,11 @@ class FilteringChannelOutputHandler(
  */
 fun EventBus.displayObservabilityAccess(controlNodeIp: String) {
     emit(
-        Event.Message(
-            """
-            |
-            |Observability:
-            |  Grafana:         http://$controlNodeIp:${Constants.K8s.GRAFANA_PORT}
-            |  VictoriaMetrics: http://$controlNodeIp:${Constants.K8s.VICTORIAMETRICS_PORT}
-            |  VictoriaLogs:    http://$controlNodeIp:${Constants.K8s.VICTORIALOGS_PORT}
-            |
-            """.trimMargin(),
+        Event.Provision.ObservabilityAccessInfo(
+            controlNodeIp,
+            Constants.K8s.GRAFANA_PORT,
+            Constants.K8s.VICTORIAMETRICS_PORT,
+            Constants.K8s.VICTORIALOGS_PORT,
         ),
     )
 }
@@ -494,14 +490,10 @@ fun EventBus.displayObservabilityAccess(controlNodeIp: String) {
  */
 fun EventBus.displayClickHouseAccess(dbNodeIp: String) {
     emit(
-        Event.Message(
-            """
-            |
-            |ClickHouse:
-            |  Play UI:         http://$dbNodeIp:${Constants.ClickHouse.HTTP_PORT}/play
-            |  HTTP Interface:  http://$dbNodeIp:${Constants.ClickHouse.HTTP_PORT}
-            |  Native Protocol: $dbNodeIp:${Constants.ClickHouse.NATIVE_PORT}
-            """.trimMargin(),
+        Event.Provision.ClickHouseAccessInfo(
+            dbNodeIp,
+            Constants.ClickHouse.HTTP_PORT,
+            Constants.ClickHouse.NATIVE_PORT,
         ),
     )
 }
@@ -516,12 +508,11 @@ fun EventBus.displayS3ManagerAccess(
     s3Path: ClusterS3Path,
 ) {
     emit(
-        Event.Message(
-            """
-            |
-            |S3 Manager:
-            |  Web UI: http://$controlNodeIp:${Constants.K8s.S3MANAGER_PORT}/buckets/${s3Path.bucket}/${s3Path.getKey()}/
-            """.trimMargin(),
+        Event.Provision.S3ManagerAccessInfo(
+            controlNodeIp,
+            Constants.K8s.S3MANAGER_PORT,
+            s3Path.bucket,
+            s3Path.getKey(),
         ),
     )
 }
@@ -536,12 +527,11 @@ fun EventBus.displayS3ManagerClickHouseAccess(
     s3Path: ClusterS3Path,
 ) {
     emit(
-        Event.Message(
-            """
-            |
-            |S3 Manager:
-            |  ClickHouse Data: http://$controlNodeIp:${Constants.K8s.S3MANAGER_PORT}/buckets/${s3Path.bucket}/${s3Path.clickhouse().getKey()}/
-            """.trimMargin(),
+        Event.Provision.S3ManagerClickHouseAccessInfo(
+            controlNodeIp,
+            Constants.K8s.S3MANAGER_PORT,
+            s3Path.bucket,
+            s3Path.clickhouse().getKey(),
         ),
     )
 }
@@ -555,31 +545,11 @@ fun EventBus.displayRegistryAccess(
     controlNodeIp: String,
     socksPort: Int = Constants.Proxy.DEFAULT_SOCKS5_PORT,
 ) {
-    val registryUrl = "$controlNodeIp:${Constants.K8s.REGISTRY_PORT}"
     emit(
-        Event.Message(
-            """
-            |
-            |=== CONTAINER REGISTRY ===
-            |Registry URL: $registryUrl
-            |
-            |Push images with Gradle Jib (no build.gradle changes required):
-            |
-            |  1. Ensure SOCKS proxy is running:
-            |     source env.sh
-            |
-            |  2. Build and push:
-            |     ./gradlew jib \
-            |       -Djib.to.image=$registryUrl/your-image:tag \
-            |       -Djib.allowInsecureRegistries=true \
-            |       -Djib.httpTimeout=60000 \
-            |       -DsocksProxyHost=localhost \
-            |       -DsocksProxyPort=$socksPort
-            |
-            |  Or use environment variable:
-            |     export JAVA_TOOL_OPTIONS="-DsocksProxyHost=localhost -DsocksProxyPort=$socksPort"
-            |     ./gradlew jib -Djib.to.image=$registryUrl/your-image:tag -Djib.allowInsecureRegistries=true
-            """.trimMargin(),
+        Event.Provision.RegistryAccessInfo(
+            controlNodeIp,
+            Constants.K8s.REGISTRY_PORT,
+            socksPort,
         ),
     )
 }

@@ -167,7 +167,7 @@ class EMRService(
         timeoutMs: Long = DEFAULT_READY_TIMEOUT_MS,
     ): EMRClusterResult {
         log.info { "Waiting for EMR cluster $clusterId to be ready..." }
-        eventBus.emit(Event.Message("Waiting for EMR cluster to start (this may take 10-15 minutes)..."))
+        eventBus.emit(Event.Emr.ClusterWaitingNote)
 
         val startTime = System.currentTimeMillis()
 

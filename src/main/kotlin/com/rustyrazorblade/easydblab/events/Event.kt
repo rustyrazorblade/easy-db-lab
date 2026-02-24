@@ -85,6 +85,257 @@ sealed interface Event {
         ) : Cassandra {
             override fun toDisplayString(): String = "Waiting for $host to become UP/NORMAL..."
         }
+
+        @Serializable
+        data object StoppingAllNodes : Cassandra {
+            override fun toDisplayString(): String = "Stopping cassandra service on all nodes."
+        }
+
+        @Serializable
+        data object SidecarStopping : Cassandra {
+            override fun toDisplayString(): String = "Stopping cassandra-sidecar on Cassandra nodes..."
+        }
+
+        @Serializable
+        data class SidecarStopFailed(
+            val host: String,
+            val error: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String = "Warning: Failed to stop cassandra-sidecar on $host: $error"
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        data object SidecarStopped : Cassandra {
+            override fun toDisplayString(): String = "cassandra-sidecar shutdown completed on Cassandra nodes"
+        }
+
+        @Serializable
+        data object RestartingAllNodes : Cassandra {
+            override fun toDisplayString(): String = "Restarting cassandra service on all nodes."
+        }
+
+        @Serializable
+        data object SidecarRestarting : Cassandra {
+            override fun toDisplayString(): String = "Restarting cassandra-sidecar on Cassandra nodes..."
+        }
+
+        @Serializable
+        data class SidecarRestartFailed(
+            val host: String,
+            val error: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String = "Warning: Failed to restart cassandra-sidecar on $host: $error"
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        data object SidecarRestarted : Cassandra {
+            override fun toDisplayString(): String = "cassandra-sidecar restart completed on Cassandra nodes"
+        }
+
+        @Serializable
+        data class SidecarStartFailed(
+            val host: String,
+            val error: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String = "Warning: Failed to start cassandra-sidecar on $host: $error"
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        data object AxonAgentStarting : Cassandra {
+            override fun toDisplayString(): String = "Starting axon-agent on Cassandra nodes..."
+        }
+
+        @Serializable
+        data class AxonOpsWorkbenchInfo(
+            val orgId: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String =
+                """
+                |
+                |AxonOps Workbench configuration available:
+                |To import into AxonOps Workbench, run:
+                |  /path/to/axonops-workbench -v --import-workspace=axonops-workbench.json
+                |
+                """.trimMargin()
+        }
+
+        @Serializable
+        data object ClusterStateNotFound : Cassandra {
+            override fun toDisplayString(): String =
+                "cluster state not found. Please run easy-db-lab up first to establish IP addresses for seed listing."
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        data class UsingVersion(
+            val version: String,
+            val hostCount: Int,
+            val hostsFilter: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String = "Using version $version on $hostCount hosts, filter: $hostsFilter"
+        }
+
+        @Serializable
+        data class ConfigUpdateHint(
+            val version: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String =
+                "You can update cassandra.patch.yaml and the JVM config files under $version, " +
+                    "then run easy-db-lab update-config to apply the changes."
+        }
+
+        @Serializable
+        data class ConfigFileUploading(
+            val file: String,
+            val host: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String = "Uploading $file to $host"
+        }
+
+        @Serializable
+        data class ConfigPatching(
+            val host: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String = "Patching $host"
+        }
+
+        @Serializable
+        data class PatchStderr(
+            val stderr: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String = "patch-config stderr: $stderr"
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        data class PatchOutput(
+            val output: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String = output
+        }
+
+        @Serializable
+        data class TempDirCreated(
+            val tempDir: String,
+            val host: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String = "Created temporary directory $tempDir on $host"
+        }
+
+        @Serializable
+        data class ConfigFilesUploading(
+            val tempDir: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String = "Uploading configuration files to temporary directory $tempDir"
+        }
+
+        @Serializable
+        data class ConfigFilesCopying(
+            val host: String,
+            val confDir: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String = "Copying files from temporary directory to $confDir"
+        }
+
+        @Serializable
+        data class ConfigUpdated(
+            val host: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String = "Configuration updated for $host"
+        }
+
+        @Serializable
+        data class SidecarConfigUpdated(
+            val host: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String = "Sidecar configuration updated for $host"
+        }
+
+        @Serializable
+        data class WriteConfigDone(
+            val file: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String = "Writing new configuration file to $file."
+        }
+
+        @Serializable
+        data object WriteConfigHint : Cassandra {
+            override fun toDisplayString(): String =
+                "It can be applied to the lab via easy-db-lab update-config (or automatically when calling use-cassandra)"
+        }
+
+        @Serializable
+        data object NodetoolUsage : Cassandra {
+            override fun toDisplayString(): String =
+                "Usage: easy-db-lab cassandra nt [--hosts host1,host2] <nodetool-command>\n" +
+                    "Example: easy-db-lab cassandra nt status"
+        }
+
+        @Serializable
+        data class NodetoolOutput(
+            val host: String,
+            val output: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String = "=== $host ===\n$output"
+        }
+
+        @Serializable
+        data class VersionList(
+            val versions: List<String>,
+        ) : Cassandra {
+            override fun toDisplayString(): String = versions.joinToString("\n")
+        }
+
+        @Serializable
+        data class CqlFileNotFound(
+            val path: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String = "File not found: $path"
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        data object CqlUsage : Cassandra {
+            override fun toDisplayString(): String =
+                """
+                |Usage: easy-db-lab cassandra cql <statement>
+                |       easy-db-lab cassandra cql --file <file.cql>
+                |
+                |Examples:
+                |  easy-db-lab cassandra cql "SELECT * FROM system.local"
+                |  easy-db-lab cassandra cql --file schema.cql
+                """.trimMargin()
+        }
+
+        @Serializable
+        data class CqlQueryOutput(
+            val output: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String = output
+        }
+
+        @Serializable
+        data object CqlDdlOk : Cassandra {
+            override fun toDisplayString(): String = "OK"
+        }
+
+        @Serializable
+        data class CqlQueryError(
+            val error: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String = error
+
+            override fun isError(): Boolean = true
+        }
     }
 
     // =========================================================================
@@ -549,6 +800,41 @@ sealed interface Event {
         ) : Infra {
             override fun toDisplayString(): String = "No packer VPC found ($name)"
         }
+
+        @Serializable
+        data class VpcTeardownStarting(
+            val vpcId: String,
+            val vpcName: String?,
+        ) : Infra {
+            override fun toDisplayString(): String = "\nTearing down VPC: $vpcId" + (vpcName?.let { " ($it)" } ?: "")
+        }
+
+        @Serializable
+        data class OpenSearchDomainsDeleting(
+            val count: Int,
+        ) : Infra {
+            override fun toDisplayString(): String = "Deleting $count OpenSearch domains..."
+        }
+
+        @Serializable
+        data class OpenSearchDomainStillDeleting(
+            val domainName: String,
+        ) : Infra {
+            override fun toDisplayString(): String =
+                "Warning: OpenSearch domain $domainName is still deleting. " +
+                    "VPC cleanup may fail - run teardown again later."
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        data object NetworkInterfacesStillActive : Infra {
+            override fun toDisplayString(): String =
+                "Warning: Some network interfaces are still active. " +
+                    "Subsequent deletions may fail with DependencyViolation errors."
+
+            override fun isError(): Boolean = true
+        }
     }
 
     // =========================================================================
@@ -723,7 +1009,7 @@ sealed interface Event {
 
         @Serializable
         data object SparkLogHeader : Emr {
-            override fun toDisplayString(): String = "=== Step Logs ==="
+            override fun toDisplayString(): String = "\n=== Step Logs ==="
         }
 
         @Serializable
@@ -737,7 +1023,7 @@ sealed interface Event {
         data class SparkLogCount(
             val count: Int,
         ) : Emr {
-            override fun toDisplayString(): String = "Found $count log entries."
+            override fun toDisplayString(): String = "\nFound $count log entries."
         }
 
         @Serializable
@@ -781,7 +1067,7 @@ sealed interface Event {
         data class SparkLogDownloadUnavailable(
             val logType: String,
         ) : Emr {
-            override fun toDisplayString(): String = "Could not download $logType..."
+            override fun toDisplayString(): String = "Could not download $logType (logs may not be available yet)"
         }
 
         @Serializable
@@ -804,7 +1090,7 @@ sealed interface Event {
         data class SparkStderrHeader(
             val lineCount: Int,
         ) : Emr {
-            override fun toDisplayString(): String = "=== stderr (last $lineCount lines) ==="
+            override fun toDisplayString(): String = "\n=== stderr (last $lineCount lines) ==="
         }
 
         @Serializable
@@ -816,7 +1102,7 @@ sealed interface Event {
 
         @Serializable
         data object SparkStderrFooter : Emr {
-            override fun toDisplayString(): String = "=== end stderr ==="
+            override fun toDisplayString(): String = "=== end stderr ===\n"
         }
 
         @Serializable
@@ -838,6 +1124,168 @@ sealed interface Event {
             val localDir: String,
         ) : Emr {
             override fun toDisplayString(): String = "Downloading step logs to: $localDir"
+        }
+
+        @Serializable
+        data object ClusterWaitingNote : Emr {
+            override fun toDisplayString(): String = "Waiting for EMR cluster to start (this may take 10-15 minutes)..."
+        }
+
+        @Serializable
+        data object SparkClusterCreating : Emr {
+            override fun toDisplayString(): String = "Creating EMR Spark cluster..."
+        }
+
+        @Serializable
+        data class SparkNoLogsInstruction(
+            val stepId: String,
+        ) : Emr {
+            override fun toDisplayString(): String = "No logs found yet. Try: easy-db-lab spark logs --step-id $stepId"
+        }
+
+        @Serializable
+        data object SparkLogQueryFailed : Emr {
+            override fun toDisplayString(): String = "Could not query logs automatically."
+        }
+
+        @Serializable
+        data object DownloadingStepLogsHeader : Emr {
+            override fun toDisplayString(): String = "\n=== Downloading Step Logs ==="
+        }
+
+        @Serializable
+        data class UsingS3Jar(
+            val jarPath: String,
+        ) : Emr {
+            override fun toDisplayString(): String = "Using S3 JAR: $jarPath"
+        }
+
+        @Serializable
+        data class JobSubmitted(
+            val stepId: String,
+            val clusterId: String,
+        ) : Emr {
+            override fun toDisplayString(): String = "Submitted Spark job: $stepId to cluster $clusterId"
+        }
+
+        @Serializable
+        data class JobSubmittedCheckStatus(
+            val stepId: String,
+        ) : Emr {
+            override fun toDisplayString(): String = "Job submitted. Use 'easy-db-lab spark status --step-id $stepId' to check status."
+        }
+
+        @Serializable
+        data class ClusterProvisioned(
+            val clusterId: String,
+        ) : Emr {
+            override fun toDisplayString(): String = "Spark EMR cluster provisioned: $clusterId"
+        }
+
+        @Serializable
+        data class MasterDns(
+            val dns: String,
+        ) : Emr {
+            override fun toDisplayString(): String = "Master DNS: $dns"
+        }
+
+        @Serializable
+        data class ListingJobs(
+            val clusterId: String,
+        ) : Emr {
+            override fun toDisplayString(): String = "Listing jobs for cluster: $clusterId"
+        }
+
+        @Serializable
+        data object NoJobsFound : Emr {
+            override fun toDisplayString(): String = "No jobs found on cluster."
+        }
+
+        @Serializable
+        data class JobsTable(
+            val table: String,
+        ) : Emr {
+            override fun toDisplayString(): String = table
+        }
+
+        @Serializable
+        data class StepStatusInfo(
+            val info: String,
+        ) : Emr {
+            override fun toDisplayString(): String = info
+        }
+
+        @Serializable
+        data class StepHints(
+            val hints: String,
+        ) : Emr {
+            override fun toDisplayString(): String = hints
+        }
+
+        @Serializable
+        data class QueryingStepLogs(
+            val stepId: String,
+        ) : Emr {
+            override fun toDisplayString(): String = "Querying logs for step: $stepId\n"
+        }
+
+        @Serializable
+        data class StepQueryFailed(
+            val error: String,
+        ) : Emr {
+            override fun toDisplayString(): String = "Failed to query logs: $error"
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        data class StepQueryTips(
+            val tips: String,
+        ) : Emr {
+            override fun toDisplayString(): String = tips
+        }
+
+        @Serializable
+        data class StepNoLogsFound(
+            val message: String,
+        ) : Emr {
+            override fun toDisplayString(): String = message
+        }
+
+        @Serializable
+        data class StepLogsOutput(
+            val logs: String,
+        ) : Emr {
+            override fun toDisplayString(): String = logs
+        }
+
+        @Serializable
+        data class StepLogsCount(
+            val count: Int,
+        ) : Emr {
+            override fun toDisplayString(): String = "\nFound $count log entries."
+        }
+
+        @Serializable
+        data class StepDetailsOutput(
+            val details: String,
+        ) : Emr {
+            override fun toDisplayString(): String = details
+        }
+
+        @Serializable
+        data class StepFailedHint(
+            val stepId: String,
+        ) : Emr {
+            override fun toDisplayString(): String =
+                """
+
+                |For more details, run:
+                |  easy-db-lab spark status --step-id $stepId --verbose
+                |
+                |View logs with:
+                |  easy-db-lab spark logs --step-id $stepId
+                """.trimMargin()
         }
     }
 
@@ -898,6 +1346,176 @@ sealed interface Event {
             val domainName: String,
         ) : OpenSearch {
             override fun toDisplayString(): String = "OpenSearch domain $domainName deleted"
+        }
+
+        @Serializable
+        data object NotConfigured : OpenSearch {
+            override fun toDisplayString(): String = "No OpenSearch domain configured for this cluster."
+        }
+
+        @Serializable
+        data object UseStartHint : OpenSearch {
+            override fun toDisplayString(): String = "Use 'opensearch start' to create one."
+        }
+
+        @Serializable
+        data object WaitingForActive : OpenSearch {
+            override fun toDisplayString(): String = "Waiting for OpenSearch domain to become active (this may take 10-30 minutes)..."
+        }
+
+        @Serializable
+        data class WaitingForDeleted(
+            val domainName: String,
+        ) : OpenSearch {
+            override fun toDisplayString(): String =
+                "Waiting for OpenSearch domain $domainName to be deleted (this may take 10-20 minutes)..."
+        }
+
+        @Serializable
+        data object ServiceLinkedRoleEnsuring : OpenSearch {
+            override fun toDisplayString(): String = "Ensuring OpenSearch service-linked role exists..."
+        }
+
+        @Serializable
+        data object CreateStarted : OpenSearch {
+            override fun toDisplayString(): String = "OpenSearch domain creation started."
+        }
+
+        @Serializable
+        data object CreateTimingNote : OpenSearch {
+            override fun toDisplayString(): String = "This typically takes 10-30 minutes to complete."
+        }
+
+        @Serializable
+        data object CreateStatusCheckHint : OpenSearch {
+            override fun toDisplayString(): String = "Use 'opensearch status' to check when the endpoint is available."
+        }
+
+        @Serializable
+        data object DomainCreatedSuccessfully : OpenSearch {
+            override fun toDisplayString(): String = "OpenSearch domain created successfully!"
+        }
+
+        @Serializable
+        data class AccessInfo(
+            val endpoint: String,
+            val dashboardsEndpoint: String?,
+        ) : OpenSearch {
+            override fun toDisplayString(): String =
+                buildString {
+                    appendLine("REST API: https://$endpoint")
+                    if (dashboardsEndpoint != null) {
+                        appendLine("Dashboards: $dashboardsEndpoint")
+                    }
+                    append("Note: Access requires VPC connectivity (SSH tunnel or VPN)")
+                }
+        }
+
+        @Serializable
+        data class EndpointOnly(
+            val endpoint: String,
+        ) : OpenSearch {
+            override fun toDisplayString(): String = endpoint
+        }
+
+        @Serializable
+        data class DomainStatus(
+            val domainName: String,
+            val domainId: String?,
+            val state: String?,
+            val endpoint: String?,
+            val dashboardsEndpoint: String?,
+        ) : OpenSearch {
+            override fun toDisplayString(): String =
+                buildString {
+                    appendLine("OpenSearch Domain: $domainName")
+                    if (domainId != null) appendLine("  Domain ID: $domainId")
+                    if (state != null) appendLine("  Status: $state")
+                    appendLine("")
+                    if (endpoint != null) {
+                        appendLine("Endpoints:")
+                        appendLine("  REST API:   https://$endpoint")
+                        if (dashboardsEndpoint != null) {
+                            append("  Dashboards: $dashboardsEndpoint")
+                        }
+                    } else {
+                        appendLine("Endpoint not yet available.")
+                        append("Domain creation typically takes 10-30 minutes.")
+                    }
+                }
+        }
+
+        @Serializable
+        data class DomainNotExists(
+            val domainName: String,
+        ) : OpenSearch {
+            override fun toDisplayString(): String = "OpenSearch domain '$domainName' no longer exists."
+        }
+
+        @Serializable
+        data object ClearingState : OpenSearch {
+            override fun toDisplayString(): String = "Clearing local state."
+        }
+
+        @Serializable
+        data class FetchWarning(
+            val error: String,
+        ) : OpenSearch {
+            override fun toDisplayString(): String = "Warning: Could not fetch current domain status ($error)"
+        }
+
+        @Serializable
+        data class CachedState(
+            val domainName: String,
+            val state: String?,
+            val endpoint: String?,
+        ) : OpenSearch {
+            override fun toDisplayString(): String =
+                buildString {
+                    appendLine("Cached state (may be stale):")
+                    appendLine("  Domain:   $domainName")
+                    appendLine("  State:    $state")
+                    append("  Endpoint: $endpoint")
+                }
+        }
+
+        @Serializable
+        data class StopConfirmation(
+            val domainName: String,
+        ) : OpenSearch {
+            override fun toDisplayString(): String = "This will delete the OpenSearch domain and all its data.\nDomain: $domainName"
+        }
+
+        @Serializable
+        data object StopConfirmRequired : OpenSearch {
+            override fun toDisplayString(): String = "Use --force to confirm deletion."
+        }
+
+        @Serializable
+        data class DeletionInitiated(
+            val domainName: String,
+        ) : OpenSearch {
+            override fun toDisplayString(): String = "OpenSearch domain deletion initiated: $domainName"
+        }
+
+        @Serializable
+        data object DeletionNote : OpenSearch {
+            override fun toDisplayString(): String = "Note: Domain deletion may take several minutes to complete."
+        }
+
+        @Serializable
+        data class WaitingForStart(
+            val message: String,
+        ) : OpenSearch {
+            override fun toDisplayString(): String = message
+        }
+
+        @Serializable
+        data class WaitingForDeletion(
+            val domainName: String,
+        ) : OpenSearch {
+            override fun toDisplayString(): String =
+                "Waiting for OpenSearch domain $domainName to be deleted (this may take 10-20 minutes)..."
         }
     }
 
@@ -1008,6 +1626,21 @@ sealed interface Event {
         }
 
         @Serializable
+        data class LifecycleRuleSet(
+            val prefix: String,
+            val retentionDays: Int,
+        ) : S3 {
+            override fun toDisplayString(): String = "S3 lifecycle rule set: data under $prefix will expire in $retentionDays day(s)"
+        }
+
+        @Serializable
+        data class RequestMetricsDisabled(
+            val clusterName: String,
+        ) : S3 {
+            override fun toDisplayString(): String = "Disabled S3 request metrics for cluster: $clusterName"
+        }
+
+        @Serializable
         data class BucketUsing(
             val bucket: String,
         ) : S3 {
@@ -1084,6 +1717,25 @@ sealed interface Event {
         @Serializable
         data object ResourcesApplied : Grafana {
             override fun toDisplayString(): String = "All Grafana resources applied successfully!"
+        }
+
+        @Serializable
+        data class LabelResourcesApplying(
+            val label: String,
+        ) : Grafana {
+            override fun toDisplayString(): String = "Applying $label resources..."
+        }
+
+        @Serializable
+        data class LabelResourcesApplied(
+            val label: String,
+        ) : Grafana {
+            override fun toDisplayString(): String = "$label resources applied successfully"
+        }
+
+        @Serializable
+        data object PyroscopeDirectoryPreparing : Grafana {
+            override fun toDisplayString(): String = "Preparing Pyroscope data directory..."
         }
     }
 
@@ -1327,6 +1979,151 @@ sealed interface Event {
         ) : Tailscale {
             override fun toDisplayString(): String = "Tailscale stopped on $host"
         }
+
+        @Serializable
+        data object NoControlNode : Tailscale {
+            override fun toDisplayString(): String = "No control node found. Ensure your cluster is running with 'easy-db-lab up'."
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        data class CredentialMissing(
+            val instructions: String,
+        ) : Tailscale {
+            override fun toDisplayString(): String = instructions
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        data class AlreadyConnected(
+            val alias: String,
+        ) : Tailscale {
+            override fun toDisplayString(): String = "Tailscale is already connected on $alias."
+        }
+
+        @Serializable
+        data class CurrentStatusOutput(
+            val status: String,
+        ) : Tailscale {
+            override fun toDisplayString(): String = status
+        }
+
+        @Serializable
+        data object GeneratingAuthKey : Tailscale {
+            override fun toDisplayString(): String = "Generating Tailscale auth key..."
+        }
+
+        @Serializable
+        data class StartFailed(
+            val error: String,
+        ) : Tailscale {
+            override fun toDisplayString(): String = "Failed to start Tailscale: $error"
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        data class TagConfigWarning(
+            val message: String,
+        ) : Tailscale {
+            override fun toDisplayString(): String = message
+        }
+
+        @Serializable
+        data object StartedSuccessfully : Tailscale {
+            override fun toDisplayString(): String = "\nTailscale started successfully!"
+        }
+
+        @Serializable
+        data class AccessDetails(
+            val controlNodeIp: String,
+            val tailscaleIp: String,
+            val hostname: String,
+        ) : Tailscale {
+            override fun toDisplayString(): String =
+                """
+                |
+                |Access your cluster via Tailscale:
+                |  Control node: $controlNodeIp (Tailscale IP: $tailscaleIp)
+                |  Hostname: $hostname
+                """.trimMargin()
+        }
+
+        @Serializable
+        data object CurrentStatusLabel : Tailscale {
+            override fun toDisplayString(): String = "\nCurrent status:"
+        }
+
+        @Serializable
+        data class NotRunning(
+            val alias: String,
+        ) : Tailscale {
+            override fun toDisplayString(): String = "Tailscale is not running on $alias."
+        }
+
+        @Serializable
+        data class AuthKeyDeleted(
+            val keyId: String,
+        ) : Tailscale {
+            override fun toDisplayString(): String = "Deleted Tailscale auth key: $keyId"
+        }
+
+        @Serializable
+        data object StoppedSuccessfully : Tailscale {
+            override fun toDisplayString(): String = "Tailscale stopped successfully."
+        }
+
+        @Serializable
+        data class StopFailed(
+            val error: String,
+        ) : Tailscale {
+            override fun toDisplayString(): String = "Failed to stop Tailscale: $error"
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        data object RunInstructions : Tailscale {
+            override fun toDisplayString(): String = "Run 'easy-db-lab tailscale start' to connect."
+        }
+
+        @Serializable
+        data class StatusInfo(
+            val alias: String,
+            val status: String,
+        ) : Tailscale {
+            override fun toDisplayString(): String = "Tailscale status on $alias:\n$status"
+        }
+
+        @Serializable
+        data class StatusFailed(
+            val error: String,
+        ) : Tailscale {
+            override fun toDisplayString(): String = "Failed to get Tailscale status: $error"
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        data class ConnectionDetails(
+            val alias: String,
+            val cidr: String,
+        ) : Tailscale {
+            override fun toDisplayString(): String =
+                """
+
+                The control node ($alias) is now accessible via Tailscale.
+                Subnet route advertised: $cidr
+
+                NOTE: You may need to approve the subnet route in the Tailscale admin console:
+                https://login.tailscale.com/admin/machines
+
+                Once approved, you can access all cluster nodes through the control node's
+                Tailscale connection using their private IPs.
+                """.trimIndent()
+        }
     }
 
     // =========================================================================
@@ -1423,6 +2220,68 @@ sealed interface Event {
         ) : AwsSetup {
             override fun toDisplayString(): String = message
         }
+
+        @Serializable
+        data class PolicyDisplay(
+            val index: Int,
+            val name: String,
+            val body: String,
+        ) : AwsSetup {
+            override fun toDisplayString(): String =
+                """
+                |========================================
+                |Policy $index: $name
+                |========================================
+                |
+                |$body
+                |
+                """.trimMargin()
+        }
+
+        @Serializable
+        data object PolicySeparator : AwsSetup {
+            override fun toDisplayString(): String =
+                """
+                |========================================
+                |
+                """.trimMargin()
+        }
+
+        @Serializable
+        data object AccountIdNote : AwsSetup {
+            override fun toDisplayString(): String =
+                """
+                |NOTE: Replace ACCOUNT_ID in the policies below with your AWS account ID.
+                |You can find your account ID in the error message above (the 12-digit number in the ARN).
+                |
+                """.trimMargin()
+        }
+
+        @Serializable
+        data object PolicyRecommendation : AwsSetup {
+            @Suppress("MaxLineLength")
+            override fun toDisplayString(): String =
+                "========================================\n" +
+                    "\n" +
+                    "RECOMMENDED: Create managed policies and attach to a group\n" +
+                    "  \u2022 No size limits (inline policies limited to 5,120 bytes total)\n" +
+                    "  \u2022 Required for EMR/Spark cluster functionality\n" +
+                    "  \u2022 Reusable across multiple users\n" +
+                    "\n" +
+                    "To apply these policies:\n" +
+                    "  1. Go to AWS IAM Console (https://console.aws.amazon.com/iam/)\n" +
+                    "  2. Create IAM group (e.g., \"EasyDBLabUsers\")\n" +
+                    "  3. Create three managed policies:\n" +
+                    "     - Policies \u2192 Create Policy \u2192 JSON tab\n" +
+                    "     - Paste policy content and name: EasyDBLabEC2, EasyDBLabIAM, EasyDBLabEMR\n" +
+                    "  4. Attach policies to your group\n" +
+                    "  5. Add your IAM user to the group\n" +
+                    "\n" +
+                    "ALTERNATIVE (single user): Attach as inline policies to your user\n" +
+                    "  WARNING: May hit 5,120 byte limit with all three policies\n" +
+                    "\n" +
+                    "========================================\n"
+        }
     }
 
     // =========================================================================
@@ -1444,6 +2303,144 @@ sealed interface Event {
             val status: String,
         ) : Stress {
             override fun toDisplayString(): String = "Pod $podName is $status"
+        }
+
+        @Serializable
+        data class JobStarted(
+            val jobName: String,
+            val image: String,
+            val contactPoint: String,
+            val promPort: Int,
+            val args: List<String>,
+        ) : Stress {
+            override fun toDisplayString(): String =
+                """
+                |
+                |Stress job started successfully!
+                |
+                |Job name: $jobName
+                |Image: $image
+                |Contact point: $contactPoint
+                |Prometheus port: $promPort
+                |Stress args: ${args.joinToString(" ")}
+                |
+                |Check status: easy-db-lab cassandra stress status
+                |View logs: easy-db-lab cassandra stress logs $jobName
+                |Stop job: easy-db-lab cassandra stress stop $jobName
+                """.trimMargin()
+        }
+
+        @Serializable
+        data object NoJobsFound : Stress {
+            override fun toDisplayString(): String = "No stress jobs found."
+        }
+
+        @Serializable
+        data class JobStatusRow(
+            val name: String,
+            val status: String,
+            val completions: String,
+            val age: String,
+        )
+
+        @Serializable
+        data class JobStatusList(
+            val jobs: List<JobStatusRow>,
+        ) : Stress {
+            override fun toDisplayString(): String =
+                buildString {
+                    appendLine("%-40s %-12s %-12s %s".format("NAME", "STATUS", "COMPLETIONS", "AGE"))
+                    jobs.forEach { job ->
+                        appendLine("%-40s %-12s %-12s %s".format(job.name, job.status, job.completions, job.age))
+                    }
+                }.trimEnd()
+        }
+
+        @Serializable
+        data class JobSummary(
+            val name: String,
+            val status: String,
+        )
+
+        @Serializable
+        data class JobsToDelete(
+            val jobs: List<JobSummary>,
+        ) : Stress {
+            override fun toDisplayString(): String =
+                buildString {
+                    appendLine("Found ${jobs.size} stress job(s) to delete:")
+                    jobs.forEach { job ->
+                        appendLine("  - ${job.name} (${job.status})")
+                    }
+                }.trimEnd()
+        }
+
+        @Serializable
+        data object DeleteConfirmRequired : Stress {
+            override fun toDisplayString(): String = "\nUse --force to confirm deletion."
+        }
+
+        @Serializable
+        data class BulkDeleted(
+            val count: Int,
+        ) : Stress {
+            override fun toDisplayString(): String = "\nDeleted $count stress job(s)."
+        }
+
+        @Serializable
+        data class SingleDeleted(
+            val name: String,
+        ) : Stress {
+            override fun toDisplayString(): String = "Deleted stress job: $name"
+        }
+
+        @Serializable
+        data class PodLogHeader(
+            val podName: String,
+            val podStatus: String,
+        ) : Stress {
+            override fun toDisplayString(): String = "=== Pod: $podName ($podStatus) ==="
+        }
+
+        @Serializable
+        data class PodLogFailed(
+            val podName: String,
+            val error: String,
+        ) : Stress {
+            override fun toDisplayString(): String = "Failed to get logs for pod $podName: $error"
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        data object PodLogsEmpty : Stress {
+            override fun toDisplayString(): String = "(no logs available yet)"
+        }
+
+        @Serializable
+        data class PodLogOutput(
+            val logs: String,
+        ) : Stress {
+            override fun toDisplayString(): String = logs
+        }
+
+        @Serializable
+        data class CommandRunning(
+            val commandName: String,
+        ) : Stress {
+            override fun toDisplayString(): String = "Running cassandra-easy-stress $commandName..."
+        }
+
+        @Serializable
+        data class CommandOutput(
+            val output: String,
+        ) : Stress {
+            override fun toDisplayString(): String = output
+        }
+
+        @Serializable
+        data object PodLogSeparator : Stress {
+            override fun toDisplayString(): String = ""
         }
     }
 
@@ -1661,6 +2658,110 @@ sealed interface Event {
         ) : Provision {
             override fun toDisplayString(): String = "AxonOps configuration written to $configFile"
         }
+
+        @Serializable
+        data class AxonOpsWorkbenchConfigWritten(
+            val configFile: String,
+        ) : Provision {
+            override fun toDisplayString(): String = "AxonOps Workbench configuration written to $configFile"
+        }
+
+        @Serializable
+        data class ObservabilityAccessInfo(
+            val controlNodeIp: String,
+            val grafanaPort: Int,
+            val victoriaMetricsPort: Int,
+            val victoriaLogsPort: Int,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                """
+                |
+                |Observability:
+                |  Grafana:         http://$controlNodeIp:$grafanaPort
+                |  VictoriaMetrics: http://$controlNodeIp:$victoriaMetricsPort
+                |  VictoriaLogs:    http://$controlNodeIp:$victoriaLogsPort
+                |
+                """.trimMargin()
+        }
+
+        @Serializable
+        data class ClickHouseAccessInfo(
+            val dbNodeIp: String,
+            val httpPort: Int,
+            val nativePort: Int,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                """
+                |
+                |ClickHouse:
+                |  Play UI:         http://$dbNodeIp:$httpPort/play
+                |  HTTP Interface:  http://$dbNodeIp:$httpPort
+                |  Native Protocol: $dbNodeIp:$nativePort
+                """.trimMargin()
+        }
+
+        @Serializable
+        data class S3ManagerAccessInfo(
+            val controlNodeIp: String,
+            val s3ManagerPort: Int,
+            val bucket: String,
+            val key: String,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                """
+                |
+                |S3 Manager:
+                |  Web UI: http://$controlNodeIp:$s3ManagerPort/buckets/$bucket/$key/
+                """.trimMargin()
+        }
+
+        @Serializable
+        data class S3ManagerClickHouseAccessInfo(
+            val controlNodeIp: String,
+            val s3ManagerPort: Int,
+            val bucket: String,
+            val clickhouseKey: String,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                """
+                |
+                |S3 Manager:
+                |  ClickHouse Data: http://$controlNodeIp:$s3ManagerPort/buckets/$bucket/$clickhouseKey/
+                """.trimMargin()
+        }
+
+        @Serializable
+        data class RegistryAccessInfo(
+            val controlNodeIp: String,
+            val registryPort: Int,
+            val socksPort: Int,
+        ) : Provision {
+            override fun toDisplayString(): String {
+                val registryUrl = "$controlNodeIp:$registryPort"
+                return """
+                    |
+                    |=== CONTAINER REGISTRY ===
+                    |Registry URL: $registryUrl
+                    |
+                    |Push images with Gradle Jib (no build.gradle changes required):
+                    |
+                    |  1. Ensure SOCKS proxy is running:
+                    |     source env.sh
+                    |
+                    |  2. Build and push:
+                    |     ./gradlew jib \
+                    |       -Djib.to.image=$registryUrl/your-image:tag \
+                    |       -Djib.allowInsecureRegistries=true \
+                    |       -Djib.httpTimeout=60000 \
+                    |       -DsocksProxyHost=localhost \
+                    |       -DsocksProxyPort=$socksPort
+                    |
+                    |  Or use environment variable:
+                    |     export JAVA_TOOL_OPTIONS="-DsocksProxyHost=localhost -DsocksProxyPort=$socksPort"
+                    |     ./gradlew jib -Djib.to.image=$registryUrl/your-image:tag -Djib.allowInsecureRegistries=true
+                    """.trimMargin()
+            }
+        }
     }
 
     // =========================================================================
@@ -1706,6 +2807,1885 @@ sealed interface Event {
             override fun toDisplayString(): String = "SSH key not found at $path"
 
             override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        data object EmptyCommand : Command {
+            override fun toDisplayString(): String = "Command cannot be empty"
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        data class NoHostsFound(
+            val serverType: String,
+        ) : Command {
+            override fun toDisplayString(): String = "No hosts found for server type: $serverType"
+        }
+
+        @Serializable
+        data class HostExecHeader(
+            val host: String,
+        ) : Command {
+            override fun toDisplayString(): String = "=== $host ==="
+        }
+
+        @Serializable
+        data class HostExecOutput(
+            val output: String,
+        ) : Command {
+            override fun toDisplayString(): String = output
+        }
+
+        @Serializable
+        data class HostExecStderr(
+            val stderr: String,
+        ) : Command {
+            override fun toDisplayString(): String = stderr
+        }
+
+        @Serializable
+        data class HostExecError(
+            val host: String,
+            val error: String,
+        ) : Command {
+            override fun toDisplayString(): String = "=== $host ===\nError executing command: $error"
+        }
+
+        @Serializable
+        data class ReplStartError(
+            val error: String,
+        ) : Command {
+            override fun toDisplayString(): String = "Error starting REPL: $error"
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        data object ReplWelcome : Command {
+            override fun toDisplayString(): String =
+                "easy-db-lab interactive shell. Type 'help' for commands, TAB for completion.\n" +
+                    "Press Alt+S to toggle command description tips.\n"
+        }
+
+        @Serializable
+        data class IpAddress(
+            val ip: String,
+        ) : Command {
+            override fun toDisplayString(): String = ip
+        }
+
+        @Serializable
+        data class RegionName(
+            val region: String,
+        ) : Command {
+            override fun toDisplayString(): String = region
+        }
+
+        @Serializable
+        data class CommandDescription(
+            val name: String,
+            val description: String,
+            val indent: String,
+        ) : Command {
+            override fun toDisplayString(): String = "$indent$name - $description"
+        }
+
+        @Serializable
+        data class CommandOptionHelp(
+            val names: String,
+            val paramLabel: String,
+            val isRequired: Boolean,
+            val description: String,
+            val indent: String,
+        ) : Command {
+            override fun toDisplayString(): String {
+                val required = if (isRequired) " (required)" else ""
+                return "$indent    $names$paramLabel$required - $description"
+            }
+        }
+
+        @Serializable
+        data class CommandPositionalHelp(
+            val paramLabel: String,
+            val isRequired: Boolean,
+            val description: String,
+            val indent: String,
+        ) : Command {
+            override fun toDisplayString(): String {
+                val required = if (isRequired) " (required)" else ""
+                return "$indent    <$paramLabel>$required - $description"
+            }
+        }
+
+        @Serializable
+        data class S3BucketName(
+            val bucket: String,
+        ) : Command {
+            override fun toDisplayString(): String = bucket
+        }
+
+        @Serializable
+        data class HostsCsvOutput(
+            val csv: String,
+        ) : Command {
+            override fun toDisplayString(): String = csv
+        }
+
+        @Serializable
+        data object HostsNoClusterState : Command {
+            override fun toDisplayString(): String = "Cluster state does not exist yet, most likely easy-db-lab up has not been run."
+        }
+
+        @Serializable
+        data class VersionOutput(
+            val version: String,
+        ) : Command {
+            override fun toDisplayString(): String = version
+        }
+
+        @Serializable
+        data object ArtifactsNotEmpty : Command {
+            override fun toDisplayString(): String = "Not deleting artifacts directory, it contains artifacts."
+        }
+
+        @Serializable
+        data class VpcListItem(
+            val name: String,
+            val vpcId: String,
+            val clusterId: String,
+        ) : Command {
+            override fun toDisplayString(): String = "$name $vpcId $clusterId"
+        }
+
+        @Serializable
+        data object NoVpcsFound : Command {
+            override fun toDisplayString(): String = "No easy-db-lab VPCs found"
+        }
+
+        @Serializable
+        data class UploadKeysNotFound(
+            val localDir: String,
+        ) : Command {
+            override fun toDisplayString(): String = "$localDir does not exist"
+        }
+
+        @Serializable
+        data class UploadKeysFiles(
+            val files: String,
+        ) : Command {
+            override fun toDisplayString(): String = "Files: $files"
+        }
+
+        @Serializable
+        data object UploadKeysStarting : Command {
+            override fun toDisplayString(): String = "Uploading the following keys:"
+        }
+
+        @Serializable
+        data class UploadKeysBody(
+            val keys: String,
+        ) : Command {
+            override fun toDisplayString(): String = keys
+        }
+
+        @Serializable
+        data class IamPoliciesNotFound(
+            val policyName: String,
+        ) : Command {
+            override fun toDisplayString(): String = "No policies found matching: $policyName"
+        }
+
+        @Serializable
+        data class IamPolicyHeader(
+            val name: String,
+        ) : Command {
+            override fun toDisplayString(): String = "\n=== $name ===\n"
+        }
+
+        @Serializable
+        data class IamPolicyBody(
+            val body: String,
+        ) : Command {
+            override fun toDisplayString(): String = body
+        }
+
+        @Serializable
+        data class IamPoliciesCredentialError(
+            val message: String,
+        ) : Command {
+            override fun toDisplayString(): String = message
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        data class McpConfigSaved(
+            val path: String,
+        ) : Command {
+            override fun toDisplayString(): String = "MCP configuration saved to: $path\n"
+        }
+
+        @Serializable
+        data class DeprecationWarning(
+            val message: String,
+        ) : Command {
+            override fun toDisplayString(): String = message
+        }
+
+        @Serializable
+        data object ProfileNotConfigured : Command {
+            override fun toDisplayString(): String =
+                "\nProfile not configured. Please run 'easy-db-lab setup-profile' to configure your environment.\n"
+        }
+    }
+
+    // =========================================================================
+    // Event.Status — Status command sections
+    // =========================================================================
+
+    @Serializable
+    sealed interface Status : Event {
+        @Serializable
+        data object NoClusterState : Status {
+            override fun toDisplayString(): String = "Cluster state does not exist yet. Run 'easy-db-lab init' first."
+        }
+
+        @Serializable
+        data class ClusterInfo(
+            val clusterId: String,
+            val name: String,
+            val createdAt: String,
+            val infrastructureStatus: String,
+        ) : Status {
+            override fun toDisplayString(): String =
+                """
+                |
+                |=== CLUSTER STATUS ===
+                |Cluster ID: $clusterId
+                |Name: $name
+                |Created: $createdAt
+                |Infrastructure: $infrastructureStatus
+                """.trimMargin()
+        }
+
+        @Serializable
+        data class NodeDetail(
+            val alias: String,
+            val instanceId: String,
+            val publicIp: String,
+            val privateIp: String,
+            val availabilityZone: String,
+            val state: String,
+        )
+
+        @Serializable
+        data class NodesSection(
+            val databaseNodes: List<NodeDetail>,
+            val appNodes: List<NodeDetail>,
+            val controlNodes: List<NodeDetail>,
+        ) : Status {
+            override fun toDisplayString(): String =
+                buildString {
+                    appendLine("")
+                    appendLine("=== NODES ===")
+                    formatNodeGroup("DATABASE NODES", databaseNodes)
+                    formatNodeGroup("APP NODES", appNodes)
+                    formatNodeGroup("CONTROL NODES", controlNodes)
+                }.trimEnd()
+
+            private fun StringBuilder.formatNodeGroup(
+                header: String,
+                nodes: List<NodeDetail>,
+            ) {
+                if (nodes.isEmpty()) return
+                appendLine("")
+                appendLine("$header:")
+                nodes.forEach { node ->
+                    appendLine(
+                        "  %-12s %-20s %-16s %-16s %-12s %s".format(
+                            node.alias,
+                            node.instanceId.ifEmpty { "(no id)" },
+                            "${node.publicIp} (public)",
+                            "${node.privateIp} (private)",
+                            node.availabilityZone,
+                            node.state.uppercase(),
+                        ),
+                    )
+                }
+            }
+        }
+
+        @Serializable
+        data class NetworkingInfo(
+            val vpcId: String,
+            val internetGatewayId: String?,
+            val subnetIds: List<String>,
+            val routeTableId: String?,
+        ) : Status {
+            override fun toDisplayString(): String =
+                """
+                |
+                |=== NETWORKING ===
+                |VPC:              $vpcId
+                |Internet Gateway: ${internetGatewayId ?: "(none)"}
+                |Subnets:          ${subnetIds.joinToString(", ")}
+                |Route Tables:     ${routeTableId ?: "(default)"}
+                """.trimMargin()
+        }
+
+        @Serializable
+        data object NoInfrastructureData : Status {
+            override fun toDisplayString(): String = "\n=== NETWORKING ===\n(no infrastructure data)"
+        }
+
+        @Serializable
+        data class SecurityRuleDetail(
+            val protocol: String,
+            val fromPort: Int?,
+            val toPort: Int?,
+            val cidrBlocks: List<String>,
+            val description: String?,
+        )
+
+        @Serializable
+        data class SecurityGroupInfo(
+            val sgId: String,
+            val name: String,
+            val inboundRules: List<SecurityRuleDetail>,
+            val outboundRules: List<SecurityRuleDetail>,
+        ) : Status {
+            override fun toDisplayString(): String =
+                buildString {
+                    appendLine("")
+                    appendLine("=== SECURITY GROUP ===")
+                    appendLine("Security Group: $sgId ($name)")
+                    appendLine("")
+                    appendLine("Inbound Rules:")
+                    formatRules(inboundRules)
+                    appendLine("")
+                    appendLine("Outbound Rules:")
+                    formatRules(outboundRules)
+                }.trimEnd()
+
+            private fun StringBuilder.formatRules(rules: List<SecurityRuleDetail>) {
+                if (rules.isEmpty()) {
+                    appendLine("  (none)")
+                    return
+                }
+                rules.forEach { rule ->
+                    val portRange =
+                        when {
+                            rule.fromPort == null && rule.toPort == null -> "All"
+                            rule.fromPort == rule.toPort -> "${rule.fromPort}"
+                            else -> "${rule.fromPort}-${rule.toPort}"
+                        }
+                    val cidrs = rule.cidrBlocks.joinToString(", ").ifEmpty { "(none)" }
+                    val description = rule.description ?: ""
+                    appendLine("  %-6s %-8s %-20s %s".format(rule.protocol, portRange, cidrs, description))
+                }
+            }
+        }
+
+        @Serializable
+        data object NoSecurityGroup : Status {
+            override fun toDisplayString(): String = "\n=== SECURITY GROUP ===\n(no security group configured)"
+        }
+
+        @Serializable
+        data class SecurityGroupFetchFailed(
+            val sgId: String,
+        ) : Status {
+            override fun toDisplayString(): String = "\n=== SECURITY GROUP ===\nSecurity Group: $sgId (unable to fetch details)"
+        }
+
+        @Serializable
+        data class SparkClusterInfo(
+            val clusterId: String,
+            val clusterName: String,
+            val state: String,
+            val masterPublicDns: String?,
+        ) : Status {
+            override fun toDisplayString(): String =
+                buildString {
+                    appendLine("")
+                    appendLine("=== SPARK CLUSTER ===")
+                    appendLine("Cluster ID:   $clusterId")
+                    appendLine("Name:         $clusterName")
+                    appendLine("State:        $state")
+                    if (masterPublicDns != null) {
+                        append("Master DNS:   $masterPublicDns")
+                    }
+                }.trimEnd()
+        }
+
+        @Serializable
+        data object NoSparkCluster : Status {
+            override fun toDisplayString(): String = "\n=== SPARK CLUSTER ===\n(no Spark cluster configured)"
+        }
+
+        @Serializable
+        data class OpenSearchInfo(
+            val domainName: String,
+            val domainId: String?,
+            val state: String,
+            val endpoint: String?,
+            val dashboardsEndpoint: String?,
+        ) : Status {
+            override fun toDisplayString(): String =
+                buildString {
+                    appendLine("")
+                    appendLine("=== OPENSEARCH DOMAIN ===")
+                    appendLine("Domain Name:  $domainName")
+                    if (domainId != null) appendLine("Domain ID:    $domainId")
+                    appendLine("State:        $state")
+                    if (endpoint != null) appendLine("Endpoint:     https://$endpoint")
+                    if (dashboardsEndpoint != null) append("Dashboards:   $dashboardsEndpoint")
+                }.trimEnd()
+        }
+
+        @Serializable
+        data object NoOpenSearchDomain : Status {
+            override fun toDisplayString(): String = "\n=== OPENSEARCH DOMAIN ===\n(no OpenSearch domain configured)"
+        }
+
+        @Serializable
+        data class S3BucketInfo(
+            val bucket: String,
+            val fullPath: String,
+            val cassandraPath: String,
+            val clickhousePath: String,
+            val sparkPath: String,
+            val emrLogsPath: String,
+        ) : Status {
+            override fun toDisplayString(): String =
+                """
+                |
+                |=== S3 BUCKET ===
+                |Bucket:       $bucket
+                |Fullpath:     $fullPath
+                |Cassandra:    $cassandraPath
+                |ClickHouse:   $clickhousePath
+                |Spark:        $sparkPath
+                |EMR Logs:     $emrLogsPath
+                """.trimMargin()
+        }
+
+        @Serializable
+        data object NoS3Bucket : Status {
+            override fun toDisplayString(): String = "\n=== S3 BUCKET ===\n(no S3 bucket configured)"
+        }
+
+        @Serializable
+        data class PodDetail(
+            val namespace: String,
+            val name: String,
+            val ready: String,
+            val status: String,
+            val restarts: Int,
+            val age: String,
+        )
+
+        @Serializable
+        data class KubernetesPodsSection(
+            val pods: List<PodDetail>,
+        ) : Status {
+            override fun toDisplayString(): String =
+                buildString {
+                    appendLine("")
+                    appendLine("=== KUBERNETES PODS ===")
+                    if (pods.isEmpty()) {
+                        append("(no pods running)")
+                    } else {
+                        appendLine(
+                            "%-14s %-40s %-8s %-10s %-10s %s".format(
+                                "NAMESPACE",
+                                "NAME",
+                                "READY",
+                                "STATUS",
+                                "RESTARTS",
+                                "AGE",
+                            ),
+                        )
+                        pods.forEach { pod ->
+                            appendLine(
+                                "%-14s %-40s %-8s %-10s %-10s %s".format(
+                                    pod.namespace,
+                                    pod.name,
+                                    pod.ready,
+                                    pod.status,
+                                    pod.restarts.toString(),
+                                    pod.age,
+                                ),
+                            )
+                        }
+                    }
+                }.trimEnd()
+        }
+
+        @Serializable
+        data object KubernetesNoControlNode : Status {
+            override fun toDisplayString(): String = "\n=== KUBERNETES PODS ===\n(no control node configured)"
+        }
+
+        @Serializable
+        data object KubernetesNoKubeconfig : Status {
+            override fun toDisplayString(): String = "\n=== KUBERNETES PODS ===\n(kubeconfig not found - K3s may not be initialized)"
+        }
+
+        @Serializable
+        data class KubernetesConnectionError(
+            val error: String,
+        ) : Status {
+            override fun toDisplayString(): String = "\n=== KUBERNETES PODS ===\n(unable to connect to K3s: $error)"
+        }
+
+        @Serializable
+        data class StressJobDetail(
+            val name: String,
+            val status: String,
+            val completions: String,
+            val age: String,
+        )
+
+        @Serializable
+        data class StressJobsSection(
+            val jobs: List<StressJobDetail>,
+        ) : Status {
+            override fun toDisplayString(): String =
+                buildString {
+                    appendLine("")
+                    appendLine("=== STRESS JOBS ===")
+                    if (jobs.isEmpty()) {
+                        append("(no stress jobs running)")
+                    } else {
+                        appendLine("%-40s %-12s %-12s %s".format("NAME", "STATUS", "COMPLETIONS", "AGE"))
+                        jobs.forEach { job ->
+                            appendLine("%-40s %-12s %-12s %s".format(job.name, job.status, job.completions, job.age))
+                        }
+                    }
+                }.trimEnd()
+        }
+
+        @Serializable
+        data object StressJobsNoControlNode : Status {
+            override fun toDisplayString(): String = "\n=== STRESS JOBS ===\n(no control node configured)"
+        }
+
+        @Serializable
+        data class StressJobsError(
+            val error: String,
+        ) : Status {
+            override fun toDisplayString(): String = "\n=== STRESS JOBS ===\n(unable to list stress jobs: $error)"
+        }
+
+        @Serializable
+        data object StressJobsUnavailable : Status {
+            override fun toDisplayString(): String = "\n=== STRESS JOBS ===\n(unable to list stress jobs)"
+        }
+
+        @Serializable
+        data class CassandraVersionLive(
+            val version: String,
+        ) : Status {
+            override fun toDisplayString(): String = "\n=== CASSANDRA VERSION ===\nVersion: $version (all nodes)"
+        }
+
+        @Serializable
+        data class CassandraVersionCached(
+            val version: String,
+        ) : Status {
+            override fun toDisplayString(): String = "\n=== CASSANDRA VERSION ===\nVersion: $version (cached - nodes unavailable)"
+        }
+
+        @Serializable
+        data object CassandraNoNodes : Status {
+            override fun toDisplayString(): String = "\n=== CASSANDRA VERSION ===\n(no Cassandra nodes configured)"
+        }
+    }
+
+    // =========================================================================
+    // Event.Teardown — Teardown operations
+    // =========================================================================
+
+    @Serializable
+    sealed interface Teardown : Event {
+        @Serializable
+        data object Starting : Teardown {
+            override fun toDisplayString(): String = "Crushing dreams, terminating instances."
+        }
+
+        @Serializable
+        data object NoClusterState : Teardown {
+            override fun toDisplayString(): String = "No cluster state found. Use --all to find tagged VPCs or specify a VPC ID."
+        }
+
+        @Serializable
+        data class NoVpcId(
+            val clusterName: String,
+        ) : Teardown {
+            override fun toDisplayString(): String =
+                "No VPC ID stored in cluster state for '$clusterName'. " +
+                    "Use --all to find tagged VPCs or specify a VPC ID."
+        }
+
+        @Serializable
+        data class PreparingVpc(
+            val vpcId: String,
+        ) : Teardown {
+            override fun toDisplayString(): String = "Preparing to tear down VPC: $vpcId"
+        }
+
+        @Serializable
+        data object NoResourcesFound : Teardown {
+            override fun toDisplayString(): String = "No resources found in VPC"
+        }
+
+        @Serializable
+        data class DryRunPreview(
+            val summary: String,
+        ) : Teardown {
+            override fun toDisplayString(): String = "\n=== DRY RUN - Resources that would be deleted ===\n$summary\n=== End DRY RUN ===\n"
+        }
+
+        @Serializable
+        data class ConfirmationPrompt(
+            val summary: String,
+        ) : Teardown {
+            override fun toDisplayString(): String =
+                "\n=== Resources to be deleted ===\n$summary\n================================\n\n" +
+                    "Are you sure you want to delete these resources? (yes/no)"
+        }
+
+        @Serializable
+        data object CancelledByUser : Teardown {
+            override fun toDisplayString(): String = "Teardown cancelled by user"
+        }
+
+        @Serializable
+        data object CompletedSuccessfully : Teardown {
+            override fun toDisplayString(): String = "\nTeardown completed successfully"
+        }
+
+        @Serializable
+        data class CompletedWithErrors(
+            val errors: List<String>,
+        ) : Teardown {
+            override fun toDisplayString(): String =
+                buildString {
+                    appendLine("\nTeardown completed with errors:")
+                    errors.forEach { error ->
+                        appendLine("  - $error")
+                    }
+                }.trimEnd()
+        }
+
+        @Serializable
+        data object FindingTaggedVpcs : Teardown {
+            override fun toDisplayString(): String = "Finding all VPCs tagged with easy_cass_lab..."
+        }
+
+        @Serializable
+        data object NoTaggedVpcsFound : Teardown {
+            override fun toDisplayString(): String = "No tagged VPCs found to tear down"
+        }
+
+        @Serializable
+        data object FindingPackerVpc : Teardown {
+            override fun toDisplayString(): String = "Finding packer infrastructure VPC..."
+        }
+
+        @Serializable
+        data object NoPackerVpcFound : Teardown {
+            override fun toDisplayString(): String = "No packer VPC found"
+        }
+
+        @Serializable
+        data class Socks5ProxyStopped(
+            val pid: Int,
+        ) : Teardown {
+            override fun toDisplayString(): String = "Stopped SOCKS5 proxy (PID: $pid)"
+        }
+
+        @Serializable
+        data object ClusterStateMarkedDown : Teardown {
+            override fun toDisplayString(): String = "Cluster state updated: infrastructure marked as DOWN"
+        }
+    }
+
+    // =========================================================================
+    // Event.Ami — AMI management operations
+    // =========================================================================
+
+    @Serializable
+    sealed interface Ami : Event {
+        @Serializable
+        data class PruningStarting(
+            val pattern: String,
+            val typeFilter: String?,
+            val keep: Int,
+        ) : Ami {
+            override fun toDisplayString(): String =
+                buildString {
+                    appendLine("Pruning AMIs matching pattern: $pattern")
+                    if (typeFilter != null) appendLine("Filtering by type: $typeFilter")
+                    append("Keeping newest $keep AMIs per architecture/type combination")
+                }
+        }
+
+        @Serializable
+        data object NoAmisToDelete : Ami {
+            override fun toDisplayString(): String = "No AMIs to delete"
+        }
+
+        @Serializable
+        data class AmiSummary(
+            val id: String,
+            val name: String,
+            val architecture: String,
+            val creationDate: String,
+        )
+
+        @Serializable
+        data class KeptAmis(
+            val amis: List<AmiSummary>,
+        ) : Ami {
+            override fun toDisplayString(): String =
+                buildString {
+                    appendLine("Will keep ${amis.size} AMIs:")
+                    amis.forEach { ami ->
+                        appendLine("  ✓ ${ami.id}: ${ami.name} (${ami.architecture}, ${ami.creationDate})")
+                    }
+                }.trimEnd()
+        }
+
+        @Serializable
+        data class AmiDeleteCandidate(
+            val id: String,
+            val name: String,
+            val architecture: String,
+            val creationDate: String,
+            val ownerId: String,
+            val isPublic: Boolean,
+            val snapshotIds: List<String>,
+        )
+
+        @Serializable
+        data class DryRunPreview(
+            val amis: List<AmiDeleteCandidate>,
+        ) : Ami {
+            override fun toDisplayString(): String =
+                buildString {
+                    appendLine("DRY RUN - Would delete ${amis.size} AMIs:")
+                    amis.forEach { ami ->
+                        val visibility = if (ami.isPublic) "public" else "private"
+                        appendLine("  × ${ami.id}: ${ami.name} (${ami.architecture}, ${ami.creationDate})")
+                        appendLine("    Owner: ${ami.ownerId}, Visibility: $visibility")
+                        if (ami.snapshotIds.isNotEmpty()) {
+                            appendLine("    Snapshots: ${ami.snapshotIds.joinToString(", ")}")
+                        }
+                    }
+                }.trimEnd()
+        }
+
+        @Serializable
+        data class DeletionStarting(
+            val count: Int,
+        ) : Ami {
+            override fun toDisplayString(): String = "Found $count AMIs to delete"
+        }
+
+        @Serializable
+        data class AmiDetails(
+            val id: String,
+            val name: String,
+            val architecture: String,
+            val creationDate: String,
+            val ownerId: String,
+            val isPublic: Boolean,
+            val snapshotIds: List<String>,
+        ) : Ami {
+            override fun toDisplayString(): String {
+                val visibility = if (isPublic) "public" else "private"
+                return buildString {
+                    appendLine("")
+                    appendLine("AMI: $id")
+                    appendLine("  Name: $name")
+                    appendLine("  Architecture: $architecture")
+                    appendLine("  Created: $creationDate")
+                    appendLine("  Owner: $ownerId")
+                    append("  Visibility: $visibility")
+                    if (snapshotIds.isNotEmpty()) {
+                        append("\n  Snapshots: ${snapshotIds.joinToString(", ")}")
+                    }
+                }
+            }
+        }
+
+        @Serializable
+        data object Deleted : Ami {
+            override fun toDisplayString(): String = "  ✓ Deleted"
+        }
+
+        @Serializable
+        data class DeleteFailed(
+            val error: String,
+        ) : Ami {
+            override fun toDisplayString(): String = "  ✗ Error deleting: $error"
+        }
+
+        @Serializable
+        data object Skipped : Ami {
+            override fun toDisplayString(): String = "  - Skipped"
+        }
+
+        @Serializable
+        data class PruningSummary(
+            val deleted: Int,
+            val skipped: Int,
+            val kept: Int,
+        ) : Ami {
+            override fun toDisplayString(): String =
+                """
+                |
+                |Summary:
+                |  Deleted: $deleted AMIs
+                |  Skipped: $skipped AMIs
+                |  Kept: $kept AMIs
+                """.trimMargin()
+        }
+
+        @Serializable
+        data class AmiWarning(
+            val message: String,
+        ) : Ami {
+            override fun toDisplayString(): String = message
+        }
+
+        @Serializable
+        data class MultipleAmisFound(
+            val count: Int,
+            val selectedId: String,
+            val selectedDate: String,
+        ) : Ami {
+            override fun toDisplayString(): String =
+                "Warning: Found $count AMIs matching pattern. Using newest: $selectedId ($selectedDate)"
+        }
+
+        @Serializable
+        data class AmiNotFoundError(
+            val message: String,
+        ) : Ami {
+            override fun toDisplayString(): String = message
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        data class AmiNotFoundDetail(
+            val pattern: String,
+            val architecture: String,
+        ) : Ami {
+            override fun toDisplayString(): String =
+                """
+                |
+                |========================================
+                |AMI NOT FOUND
+                |========================================
+                |
+                |No AMI found in your AWS account matching:
+                |  Pattern: $pattern
+                |  Architecture: $architecture
+                |
+                |Before you can provision instances, you need to build the AMI images.
+                |
+                |To build the required AMI, run:
+                |  easy-db-lab build-image --arch $architecture
+                |
+                |This will create both the base and Cassandra AMIs in your AWS account.
+                |
+                |Alternatively, you can specify a custom AMI with:
+                |  --ami <ami-id>
+                |  or set EASY_CASS_LAB_AMI environment variable
+                |
+                |========================================
+                |
+                """.trimMargin()
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        data object Separator : Ami {
+            override fun toDisplayString(): String = ""
+        }
+    }
+
+    // =========================================================================
+    // Event.ClickHouse — ClickHouse operations
+    // =========================================================================
+
+    @Serializable
+    sealed interface ClickHouse : Event {
+        @Serializable
+        data class Deploying(
+            val shardCount: Int,
+            val replicasPerShard: Int,
+            val actualReplicas: Int,
+        ) : ClickHouse {
+            override fun toDisplayString(): String =
+                "Deploying ClickHouse: $shardCount shards x $replicasPerShard replicas = $actualReplicas nodes"
+        }
+
+        @Serializable
+        data object CreatingPvs : ClickHouse {
+            override fun toDisplayString(): String = "Creating Local PersistentVolumes for ClickHouse..."
+        }
+
+        @Serializable
+        data object WaitingPodsReady : ClickHouse {
+            override fun toDisplayString(): String = "Waiting for ClickHouse pods to be ready (this may take a few minutes)..."
+        }
+
+        @Serializable
+        data class DeploySuccess(
+            val bucket: String,
+            val s3CacheSize: String,
+            val dbNodeIp: String,
+            val httpPort: Int,
+            val nativePort: Int,
+        ) : ClickHouse {
+            override fun toDisplayString(): String =
+                """
+                |
+                |ClickHouse cluster deployed successfully!
+                |
+                |Storage policies available:
+                |  - local: Local disk storage
+                |  - s3_main: S3 with local cache (bucket: $bucket, cache: $s3CacheSize)
+                |
+                |Example - Create a distributed replicated table:
+                |
+                |  -- Create local replicated table on all nodes
+                |  CREATE TABLE events_local ON CLUSTER easy_db_lab (
+                |      id UInt64,
+                |      timestamp DateTime,
+                |      data String
+                |  ) ENGINE = ReplicatedMergeTree('/clickhouse/tables/{shard}/events', '{replica}')
+                |  ORDER BY (timestamp, id)
+                |  SETTINGS storage_policy = 's3_main';
+                |
+                |  -- Create distributed table for querying across all shards
+                |  CREATE TABLE events ON CLUSTER easy_db_lab AS events_local
+                |  ENGINE = Distributed(easy_db_lab, default, events_local, rand());
+                |
+                |HTTP Interface: http://$dbNodeIp:$httpPort
+                |Native Protocol: $dbNodeIp:$nativePort
+                |
+                |Connect with: clickhouse-client --host $dbNodeIp
+                """.trimMargin()
+        }
+
+        @Serializable
+        data class StatusOutput(
+            val status: String,
+        ) : ClickHouse {
+            override fun toDisplayString(): String = "ClickHouse Cluster Status:\n\n$status"
+        }
+
+        @Serializable
+        data object StopConfirmRequired : ClickHouse {
+            override fun toDisplayString(): String =
+                "This will delete the ClickHouse cluster and all its data.\nUse --force to confirm deletion."
+        }
+
+        @Serializable
+        data object Stopping : ClickHouse {
+            override fun toDisplayString(): String = "Stopping ClickHouse cluster..."
+        }
+
+        @Serializable
+        data object Stopped : ClickHouse {
+            override fun toDisplayString(): String = "ClickHouse cluster stopped and removed successfully."
+        }
+
+        @Serializable
+        data class ConfigSaved(
+            val details: String,
+        ) : ClickHouse {
+            override fun toDisplayString(): String = details
+        }
+    }
+
+    // =========================================================================
+    // Event.Docker — Container lifecycle operations
+    // =========================================================================
+
+    @Serializable
+    sealed interface Docker : Event {
+        @Serializable
+        data class ContainerStarting(
+            val containerId: String,
+        ) : Docker {
+            override fun toDisplayString(): String = "Starting container $containerId"
+        }
+
+        @Serializable
+        data class ContainerStartError(
+            val error: String,
+        ) : Docker {
+            override fun toDisplayString(): String = "Error starting container: $error"
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        data object ContainerAttaching : Docker {
+            override fun toDisplayString(): String = "Attaching to running container"
+        }
+
+        @Serializable
+        data object ContainerAttachError : Docker {
+            override fun toDisplayString(): String = "Container attachment error"
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        data class ContainerRemoveError(
+            val error: String,
+        ) : Docker {
+            override fun toDisplayString(): String = "Failed to remove container: $error"
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        data class ContainerOutput(
+            val message: String,
+        ) : Docker {
+            override fun toDisplayString(): String = message
+        }
+
+        @Serializable
+        data class ImagePulling(
+            val current: Long,
+            val total: Long,
+        ) : Docker {
+            override fun toDisplayString(): String = "Pulling: $current / $total"
+        }
+
+        @Serializable
+        data class ExecutionWorkDir(
+            val message: String,
+        ) : Docker {
+            override fun toDisplayString(): String = message
+        }
+
+        @Serializable
+        data class ExecutionStarting(
+            val message: String,
+        ) : Docker {
+            override fun toDisplayString(): String = message
+        }
+
+        @Serializable
+        data class PackerDirectoryNotFound(
+            val path: String,
+        ) : Docker {
+            override fun toDisplayString(): String = "packer directory not found: $path"
+
+            override fun isError(): Boolean = true
+        }
+    }
+
+    // =========================================================================
+    // Event.Mcp — MCP server operations
+    // =========================================================================
+
+    @Serializable
+    sealed interface Mcp : Event {
+        @Serializable
+        data class ToolExecutionStarting(
+            val toolName: String,
+        ) : Mcp {
+            override fun toDisplayString(): String = "Starting execution of tool: $toolName"
+        }
+
+        @Serializable
+        data class ToolExecutionComplete(
+            val toolName: String,
+        ) : Mcp {
+            override fun toDisplayString(): String = "Tool '$toolName' completed successfully"
+        }
+
+        @Serializable
+        data class ToolExecutionFailed(
+            val toolName: String,
+            val error: String,
+        ) : Mcp {
+            override fun toDisplayString(): String = "Tool '$toolName' failed: $error"
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        data class ServerStarting(
+            val port: Int,
+        ) : Mcp {
+            override fun toDisplayString(): String = "Starting MCP server on port $port..."
+        }
+
+        @Serializable
+        data class BackgroundToolComplete(
+            val toolName: String,
+        ) : Mcp {
+            override fun toDisplayString(): String = "Background execution of tool '$toolName' complete."
+        }
+
+        @Serializable
+        data class BackgroundToolFailed(
+            val toolName: String,
+            val error: String,
+        ) : Mcp {
+            override fun toDisplayString(): String = "Background execution of tool '$toolName' failed: $error"
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        data class ServerReady(
+            val port: Int,
+            val bind: String,
+        ) : Mcp {
+            override fun toDisplayString(): String =
+                """
+                Starting MCP server on port $port...
+
+                Server is now available at: http://$bind:$port/sse
+                Swagger UI available at:    http://$bind:$port/swagger
+                """.trimIndent()
+        }
+    }
+
+    // =========================================================================
+    // Event.Logs — Log query and backup operations
+    // =========================================================================
+
+    @Serializable
+    sealed interface Logs : Event {
+        @Serializable
+        data class QueryInfo(
+            val query: String,
+            val timeRange: String,
+            val limit: Int,
+        ) : Logs {
+            override fun toDisplayString(): String = "Query: $query, Time range: $timeRange, Limit: $limit\n"
+        }
+
+        @Serializable
+        data class QueryFailed(
+            val error: String,
+        ) : Logs {
+            override fun toDisplayString(): String = "Failed to query logs: $error"
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        data class QueryTips(
+            val tips: String,
+        ) : Logs {
+            override fun toDisplayString(): String = tips
+        }
+
+        @Serializable
+        data object NoLogsFound : Logs {
+            override fun toDisplayString(): String = "No logs found matching the query."
+        }
+
+        @Serializable
+        data class QueryResults(
+            val logs: List<String>,
+        ) : Logs {
+            override fun toDisplayString(): String = logs.joinToString("\n") + "\n\nFound ${logs.size} log entries."
+        }
+
+        @Serializable
+        data object NoControlNode : Logs {
+            override fun toDisplayString(): String = "No control node found. Please ensure the cluster is running."
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        data class BackupComplete(
+            val s3Path: String,
+        ) : Logs {
+            override fun toDisplayString(): String = "VictoriaLogs backup completed successfully\nBackup location: $s3Path"
+        }
+
+        @Serializable
+        data class BackupFailed(
+            val error: String,
+        ) : Logs {
+            override fun toDisplayString(): String = "VictoriaLogs backup failed: $error"
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        data class ImportStarting(
+            val target: String,
+        ) : Logs {
+            override fun toDisplayString(): String = "Streaming logs from cluster to $target..."
+        }
+
+        @Serializable
+        data class ImportComplete(
+            val bytesTransferred: Long,
+        ) : Logs {
+            override fun toDisplayString(): String = "Logs import completed successfully.\nBytes transferred: $bytesTransferred"
+        }
+
+        @Serializable
+        data class ImportFailed(
+            val error: String,
+        ) : Logs {
+            override fun toDisplayString(): String = "Logs import failed: $error"
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        data object BackupListEmpty : Logs {
+            override fun toDisplayString(): String = "No VictoriaLogs backups found."
+        }
+
+        @Serializable
+        data class BackupEntry(
+            val timestamp: String,
+            val fileCount: Int,
+            val totalSize: String,
+        )
+
+        @Serializable
+        data class BackupList(
+            val entries: List<BackupEntry>,
+        ) : Logs {
+            override fun toDisplayString(): String =
+                buildString {
+                    appendLine("VictoriaLogs backups:")
+                    appendLine("")
+                    appendLine("%-30s  %10s  %15s".format("Timestamp", "Files", "Total Size"))
+                    appendLine("-".repeat(59))
+                    entries.forEach { entry ->
+                        appendLine("%-30s  %10d  %15s".format(entry.timestamp, entry.fileCount, entry.totalSize))
+                    }
+                }.trimEnd()
+        }
+    }
+
+    // =========================================================================
+    // Event.Metrics — Metrics backup and import operations
+    // =========================================================================
+
+    @Serializable
+    sealed interface Metrics : Event {
+        @Serializable
+        data object NoControlNode : Metrics {
+            override fun toDisplayString(): String = "No control node found. Please ensure the cluster is running."
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        data class BackupComplete(
+            val s3Path: String,
+        ) : Metrics {
+            override fun toDisplayString(): String = "VictoriaMetrics backup completed successfully\nBackup location: $s3Path"
+        }
+
+        @Serializable
+        data class BackupFailed(
+            val error: String,
+        ) : Metrics {
+            override fun toDisplayString(): String = "VictoriaMetrics backup failed: $error"
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        data class ImportStarting(
+            val target: String,
+        ) : Metrics {
+            override fun toDisplayString(): String = "Streaming metrics from cluster to $target..."
+        }
+
+        @Serializable
+        data class ImportComplete(
+            val bytesTransferred: Long,
+        ) : Metrics {
+            override fun toDisplayString(): String = "Metrics import completed successfully.\nBytes transferred: $bytesTransferred"
+        }
+
+        @Serializable
+        data class ImportFailed(
+            val error: String,
+        ) : Metrics {
+            override fun toDisplayString(): String = "Metrics import failed: $error"
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        data object BackupListEmpty : Metrics {
+            override fun toDisplayString(): String = "No VictoriaMetrics backups found."
+        }
+
+        @Serializable
+        data class BackupEntry(
+            val timestamp: String,
+            val fileCount: Int,
+            val totalSize: String,
+        )
+
+        @Serializable
+        data class BackupList(
+            val entries: List<BackupEntry>,
+        ) : Metrics {
+            override fun toDisplayString(): String =
+                buildString {
+                    appendLine("VictoriaMetrics backups:")
+                    appendLine("")
+                    appendLine("%-30s  %10s  %15s".format("Timestamp", "Files", "Total Size"))
+                    appendLine("-".repeat(59))
+                    entries.forEach { entry ->
+                        appendLine("%-30s  %10d  %15s".format(entry.timestamp, entry.fileCount, entry.totalSize))
+                    }
+                }.trimEnd()
+        }
+    }
+
+    // =========================================================================
+    // Event.Setup — Profile setup and initialization
+    // =========================================================================
+
+    @Serializable
+    sealed interface Setup : Event {
+        @Serializable
+        data class ProfileAlreadyConfigured(
+            val profileName: String,
+        ) : Setup {
+            override fun toDisplayString(): String = "Profile '$profileName' is already configured."
+        }
+
+        @Serializable
+        data object UpdatePrompt : Setup {
+            override fun toDisplayString(): String = "Press Enter to keep existing value, or type a new value to update.\n"
+        }
+
+        @Serializable
+        data object ConfigurationUpdated : Setup {
+            override fun toDisplayString(): String = "\nConfiguration updated!"
+        }
+
+        @Serializable
+        data object CredentialsSaved : Setup {
+            override fun toDisplayString(): String = "Credentials saved"
+        }
+
+        @Serializable
+        data class CredentialValidationRetry(
+            val attempt: Int,
+            val maxAttempts: Int,
+        ) : Setup {
+            override fun toDisplayString(): String =
+                "\nCredential validation failed. Please try again. (Attempt $attempt of $maxAttempts)\n"
+        }
+
+        @Serializable
+        data object EmailPromptInfo : Setup {
+            override fun toDisplayString(): String = "Your email will be added to AWS resource tags to identify the owner."
+        }
+
+        @Serializable
+        data object ValidatingCredentials : Setup {
+            override fun toDisplayString(): String = "Validating AWS credentials..."
+        }
+
+        @Serializable
+        data object CredentialsValidSuccess : Setup {
+            override fun toDisplayString(): String = "AWS credentials validated successfully"
+        }
+
+        @Serializable
+        data object CredentialsValidFailed : Setup {
+            override fun toDisplayString(): String = "\nAWS credentials are invalid. Please check your credentials.\n"
+        }
+
+        @Serializable
+        data object GeneratingKeyPair : Setup {
+            override fun toDisplayString(): String = "Generating AWS key pair..."
+        }
+
+        @Serializable
+        data object KeyPairSaved : Setup {
+            override fun toDisplayString(): String = "Key pair saved"
+        }
+
+        @Serializable
+        data object IamRolesConfiguring : Setup {
+            override fun toDisplayString(): String = "Ensuring IAM roles are configured..."
+        }
+
+        @Serializable
+        data object IamRolesValidated : Setup {
+            override fun toDisplayString(): String = "IAM resources validated"
+        }
+
+        @Serializable
+        data object S3BucketCreating : Setup {
+            override fun toDisplayString(): String = "Creating S3 bucket for shared resources..."
+        }
+
+        @Serializable
+        data class S3BucketCreated(
+            val bucketName: String,
+        ) : Setup {
+            override fun toDisplayString(): String = "S3 bucket created: $bucketName"
+        }
+
+        @Serializable
+        data object PackerVpcCreating : Setup {
+            override fun toDisplayString(): String = "Creating Packer VPC infrastructure..."
+        }
+
+        @Serializable
+        data object PackerVpcReady : Setup {
+            override fun toDisplayString(): String = "Packer VPC infrastructure ready"
+        }
+
+        @Serializable
+        data object CheckingAmi : Setup {
+            override fun toDisplayString(): String = "Checking for required AMI..."
+        }
+
+        @Serializable
+        data class AmiFound(
+            val archType: String,
+        ) : Setup {
+            override fun toDisplayString(): String = "AMI found for $archType architecture"
+        }
+
+        @Serializable
+        data class AmiNotFound(
+            val archType: String,
+        ) : Setup {
+            override fun toDisplayString(): String =
+                """
+                |
+                |AMI not found for $archType architecture.
+                |
+                |The system needs to build a custom AMI for your architecture.
+                |This process takes approximately 10-15 minutes.
+                |
+                """.trimMargin()
+        }
+
+        @Serializable
+        data object AmiSkipped : Setup {
+            override fun toDisplayString(): String = "Setup cancelled. Run 'easy-db-lab build-image' to build the AMI later."
+        }
+
+        @Serializable
+        data class AmiBuildStarting(
+            val archType: String,
+        ) : Setup {
+            override fun toDisplayString(): String = "Building AMI for $archType architecture..."
+        }
+
+        @Serializable
+        data object AmiBuildSuccess : Setup {
+            override fun toDisplayString(): String = "AMI build completed successfully"
+        }
+
+        @Serializable
+        data class AmiBuildFailed(
+            val error: String,
+            val archType: String,
+            val region: String,
+        ) : Setup {
+            override fun toDisplayString(): String =
+                """
+                |
+                |Failed to build AMI: $error
+                |
+                |You can manually build the AMI later by running:
+                |  easy-db-lab build-image --arch $archType --region $region
+                |
+                """.trimMargin()
+        }
+
+        @Serializable
+        data object SetupComplete : Setup {
+            override fun toDisplayString(): String = "\nAccount setup complete!"
+        }
+
+        @Serializable
+        data class WelcomeMessage(
+            val profileName: String,
+        ) : Setup {
+            override fun toDisplayString(): String =
+                """
+                |Welcome to the easy-db-lab interactive setup for profile '$profileName'.
+                |(To use a different profile, set the EASY_DB_LAB_PROFILE environment variable)
+                |
+                |**** IMPORTANT ****
+                |
+                |This tool provisions and destroys AWS infrastructure!
+                |
+                |We strongly recommend using a separate AWS account under an organization
+                |for lab environments to isolate costs and resources from production.
+                |
+                |*******************
+                |
+                |We need AWS credentials for the account that will be used in this environment.
+                |
+                |During setup, we will create the following AWS resources:
+                |  • EC2 key pair for SSH access to instances
+                |  • IAM role for instance permissions
+                |  • S3 bucket (shared across all labs in this profile)
+                |  • Packer VPC infrastructure for building AMIs
+                |
+                |Lab environments may also require permissions to start a Spark cluster via EMR if requested.
+                |
+                |You will be asked if you want to see the required IAM permissions before
+                |entering your credentials.
+                |
+                |OPTIONAL: We can automatically configure AxonOps for free Cassandra monitoring.
+                |To use this feature, create an account at https://axonops.com/ and obtain
+                |your organization name and API key from: Agent Setup → Keys
+                |
+                |Let's gather some information to get started.
+                """.trimMargin()
+        }
+
+        @Serializable
+        data object ConfigurationSaved : Setup {
+            override fun toDisplayString(): String = "Configuration saved"
+        }
+
+        @Serializable
+        data class TailscaleSetupInstructions(
+            val defaultTag: String,
+        ) : Setup {
+            override fun toDisplayString(): String =
+                """
+                |
+                |--- Tailscale VPN Setup (optional) ---
+                |Tailscale provides secure VPN access to your cluster.
+                |
+                |Setup steps:
+                |1. Go to https://login.tailscale.com/admin/acls
+                |2. Add to your ACL policy:
+                |   "tagOwners": {
+                |     "$defaultTag": ["autogroup:admin"]
+                |   }
+                |3. Go to https://login.tailscale.com/admin/settings/oauth
+                |4. Create OAuth client with 'Devices: Write' scope
+                |5. Under 'Add tags', add: $defaultTag
+                |
+                """.trimMargin()
+        }
+
+        @Serializable
+        data object AxonOpsConfigHeader : Setup {
+            override fun toDisplayString(): String = "--- AxonOps Configuration ---"
+        }
+
+        @Serializable
+        data class TailscaleConfigHeader(
+            val defaultTag: String,
+        ) : Setup {
+            override fun toDisplayString(): String =
+                """
+                |
+                |--- Tailscale VPN Configuration ---
+                |Setup steps (if not already done):
+                |1. Go to https://login.tailscale.com/admin/acls
+                |2. Add to your ACL policy:
+                |   "tagOwners": {
+                |     "$defaultTag": ["autogroup:admin"]
+                |   }
+                |3. Go to https://login.tailscale.com/admin/settings/oauth
+                |4. Create OAuth client with 'Devices: Write' scope
+                |5. Under 'Add tags', add: $defaultTag
+                """.trimMargin()
+        }
+
+        @Serializable
+        data object ConfigSectionSaved : Setup {
+            override fun toDisplayString(): String = "\nConfiguration saved"
+        }
+
+        @Serializable
+        data object IamPoliciesHeader : Setup {
+            override fun toDisplayString(): String =
+                """
+                |
+                |========================================
+                |AWS IAM PERMISSIONS REQUIRED
+                |========================================
+                |
+                |RECOMMENDED APPROACH: Managed Policies on a Group
+                |
+                |Best for teams with multiple users:
+                |  • No size limits (inline policies limited to 5,120 bytes total)
+                |  • Required for EMR/Spark cluster functionality
+                |  • Easier to update and manage
+                |  • Reusable across multiple users
+                |
+                """.trimMargin()
+        }
+
+        @Serializable
+        data class IamPolicyDisplay(
+            val index: Int,
+            val name: String,
+            val body: String,
+        ) : Setup {
+            override fun toDisplayString(): String =
+                """
+                |========================================
+                |Policy ${index + 1}: $name
+                |========================================
+                |
+                |$body
+                |
+                """.trimMargin()
+        }
+
+        @Serializable
+        data object IamPoliciesFooter : Setup {
+            override fun toDisplayString(): String =
+                """
+                |========================================
+                |
+                |SETUP STEPS (Managed Policies on Group):
+                |
+                |  1. Create IAM group (e.g., "EasyDBLabUsers")
+                |     IAM Console → Groups → Create Group
+                |
+                |  2. Create three managed policies from JSON above:
+                |     IAM Console → Policies → Create Policy
+                |     • Select JSON tab and paste policy content
+                |     • Name: EasyDBLabEC2, EasyDBLabIAM, EasyDBLabEMR
+                |
+                |  3. Attach all three managed policies to your group:
+                |     Groups → Your Group → Permissions → Attach Policy
+                |     • Select EasyDBLabEC2, EasyDBLabIAM, EasyDBLabEMR
+                |
+                |  4. Add your IAM user(s) to the group:
+                |     Groups → Your Group → Users → Add Users
+                |
+                |ALTERNATIVE (Single User Only):
+                |  • Attach as inline policies directly to your IAM user
+                |  • WARNING: May hit 5,120 byte limit (won't fit all three policies)
+                |  • Not recommended if using EMR/Spark clusters
+                |
+                |========================================
+                |
+                """.trimMargin()
+        }
+
+        @Serializable
+        data object InitializingDirectory : Setup {
+            override fun toDisplayString(): String = "Initializing directory"
+        }
+
+        @Serializable
+        data object ProvisioningInstances : Setup {
+            override fun toDisplayString(): String = "Provisioning instances"
+        }
+
+        @Serializable
+        data class InitNextSteps(
+            val message: String,
+        ) : Setup {
+            override fun toDisplayString(): String = message
+        }
+
+        @Serializable
+        data class InitError(
+            val message: String,
+        ) : Setup {
+            override fun toDisplayString(): String = message
+        }
+
+        @Serializable
+        data object CleaningExistingConfig : Setup {
+            override fun toDisplayString(): String = "Cleaning existing configuration..."
+        }
+
+        @Serializable
+        data object WritingSetupScript : Setup {
+            override fun toDisplayString(): String = "Writing setup_instance.sh"
+        }
+
+        @Serializable
+        data object CreatingCassandraDir : Setup {
+            override fun toDisplayString(): String = "Creating cassandra directory and writing sidecar config"
+        }
+
+        @Serializable
+        data class WorkspaceInitialized(
+            val message: String,
+        ) : Setup {
+            override fun toDisplayString(): String = message
+        }
+
+        @Serializable
+        data class AwsConfigured(
+            val message: String,
+        ) : Setup {
+            override fun toDisplayString(): String = message
+        }
+
+        @Serializable
+        data class AxonOpsConfiguring(
+            val host: String,
+        ) : Setup {
+            override fun toDisplayString(): String = "Configure axonops on $host"
+        }
+
+        @Serializable
+        data class AxonOpsMissingArgs(
+            val message: String,
+        ) : Setup {
+            override fun toDisplayString(): String = message
+        }
+
+        @Serializable
+        data class ExistingVpc(
+            val vpcId: String,
+        ) : Setup {
+            override fun toDisplayString(): String = "Using existing VPC: $vpcId"
+        }
+
+        @Serializable
+        data class GeneratingKeyPairAndSsh(
+            val message: String,
+        ) : Setup {
+            override fun toDisplayString(): String = message
+        }
+
+        @Serializable
+        data class AwsPermissionError(
+            val operation: String,
+            val error: String,
+        ) : Setup {
+            override fun toDisplayString(): String =
+                """
+                |
+                |========================================
+                |AWS PERMISSION ERROR
+                |========================================
+                |
+                |Operation: $operation
+                |Error: $error
+                |
+                |To fix this issue, add the following IAM policies to your AWS user.
+                |You need to create THREE separate inline policies:
+                |
+                """.trimMargin()
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        data class AwsPermissionPolicyDisplay(
+            val index: Int,
+            val name: String,
+            val body: String,
+        ) : Setup {
+            override fun toDisplayString(): String =
+                """
+                |========================================
+                |Policy ${index + 1}: $name
+                |========================================
+                |
+                |$body
+                |
+                """.trimMargin()
+        }
+
+        @Serializable
+        data object AwsPermissionPolicyFooter : Setup {
+            override fun toDisplayString(): String =
+                """
+                |========================================
+                |
+                |RECOMMENDED: Create managed policies and attach to a group
+                |  • No size limits (inline policies limited to 5,120 bytes total)
+                |  • Required for EMR/Spark cluster functionality
+                |  • Reusable across multiple users
+                |
+                |To apply these policies:
+                |  1. Go to AWS IAM Console (https://console.aws.amazon.com/iam/)
+                |  2. Create IAM group (e.g., "EasyDBLabUsers")
+                |  3. Create three managed policies:
+                |     - Policies → Create Policy → JSON tab
+                |     - Paste policy content and name: EasyDBLabEC2, EasyDBLabIAM, EasyDBLabEMR
+                |  4. Attach policies to your group
+                |  5. Add your IAM user to the group
+                |
+                |========================================
+                |
+                """.trimMargin()
+        }
+    }
+
+    // =========================================================================
+    // Event.Ssh — SSH operations
+    // =========================================================================
+
+    @Serializable
+    sealed interface Ssh : Event {
+        @Serializable
+        data class ExecutingCommand(
+            val command: String,
+        ) : Ssh {
+            override fun toDisplayString(): String = "Executing remote command: $command"
+        }
+
+        @Serializable
+        data object ExecutingHiddenCommand : Ssh {
+            override fun toDisplayString(): String = "Executing remote command: [hidden]"
+        }
+
+        @Serializable
+        data class CommandOutput(
+            val output: String,
+        ) : Ssh {
+            override fun toDisplayString(): String = output
+        }
+
+        @Serializable
+        data class UploadingFile(
+            val localPath: String,
+            val remoteAddress: String,
+            val remotePath: String,
+        ) : Ssh {
+            override fun toDisplayString(): String = "Uploading file $localPath to $remoteAddress:$remotePath"
+        }
+
+        @Serializable
+        data class UploadingDirectory(
+            val localDir: String,
+            val remoteDir: String,
+        ) : Ssh {
+            override fun toDisplayString(): String = "Uploading directory $localDir to $remoteDir"
         }
     }
 }

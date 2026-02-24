@@ -32,7 +32,7 @@ class Restart : PicoBaseCommand() {
     var hosts = HostsMixin()
 
     override fun execute() {
-        eventBus.emit(Event.Message("Restarting cassandra service on all nodes."))
+        eventBus.emit(Event.Cassandra.RestartingAllNodes)
 
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList) { host ->
             cassandraService.restart(host.toHost()).getOrThrow()
@@ -45,16 +45,16 @@ class Restart : PicoBaseCommand() {
      * Restart cassandra-sidecar service on Cassandra nodes
      */
     private fun restartSidecar() {
-        eventBus.emit(Event.Message("Restarting cassandra-sidecar on Cassandra nodes..."))
+        eventBus.emit(Event.Cassandra.SidecarRestarting)
 
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList, parallel = true) { host ->
             sidecarService
                 .restart(host.toHost())
                 .onFailure { e ->
-                    eventBus.emit(Event.Error("Warning: Failed to restart cassandra-sidecar on ${host.alias}: ${e.message}"))
+                    eventBus.emit(Event.Cassandra.SidecarRestartFailed(host.alias, "${e.message}"))
                 }
         }
 
-        eventBus.emit(Event.Message("cassandra-sidecar restart completed on Cassandra nodes"))
+        eventBus.emit(Event.Cassandra.SidecarRestarted)
     }
 }

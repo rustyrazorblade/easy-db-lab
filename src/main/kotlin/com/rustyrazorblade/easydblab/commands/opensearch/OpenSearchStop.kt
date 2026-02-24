@@ -35,14 +35,13 @@ class OpenSearchStop : PicoBaseCommand() {
     override fun execute() {
         val domainState = clusterState.openSearchDomain
         if (domainState == null) {
-            eventBus.emit(Event.Message("No OpenSearch domain configured for this cluster."))
+            eventBus.emit(Event.OpenSearch.NotConfigured)
             return
         }
 
         if (!force) {
-            eventBus.emit(Event.Message("This will delete the OpenSearch domain and all its data."))
-            eventBus.emit(Event.Message("Domain: ${domainState.domainName}"))
-            eventBus.emit(Event.Message("Use --force to confirm deletion."))
+            eventBus.emit(Event.OpenSearch.StopConfirmation(domainState.domainName))
+            eventBus.emit(Event.OpenSearch.StopConfirmRequired)
             return
         }
 
@@ -54,7 +53,7 @@ class OpenSearchStop : PicoBaseCommand() {
         clusterState.updateOpenSearchDomain(null)
         clusterStateManager.save(clusterState)
 
-        eventBus.emit(Event.Message("OpenSearch domain deletion initiated: ${domainState.domainName}"))
-        eventBus.emit(Event.Message("Note: Domain deletion may take several minutes to complete."))
+        eventBus.emit(Event.OpenSearch.DeletionInitiated(domainState.domainName))
+        eventBus.emit(Event.OpenSearch.DeletionNote)
     }
 }

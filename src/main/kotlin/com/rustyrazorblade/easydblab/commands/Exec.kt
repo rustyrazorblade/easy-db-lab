@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.commands
 
-import com.github.ajalt.mordant.TermColors
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
 import com.rustyrazorblade.easydblab.commands.converters.PicoServerTypeConverter
@@ -62,13 +61,13 @@ class Exec : PicoBaseCommand() {
         val commandString = command.joinToString(" ")
 
         if (commandString.isBlank()) {
-            eventBus.emit(Event.Error("Command cannot be empty"))
+            eventBus.emit(Event.Command.EmptyCommand)
             return
         }
 
         val hostList = clusterState.getHosts(serverType)
         if (hostList.isEmpty()) {
-            eventBus.emit(Event.Message("No hosts found for server type: $serverType"))
+            eventBus.emit(Event.Command.NoHostsFound(serverType.toString()))
             return
         }
 
@@ -92,30 +91,21 @@ class Exec : PicoBaseCommand() {
         try {
             val response = remoteOps.executeRemotely(host, commandString, output = true, secret = false)
 
-            // Determine if there was an error (stderr present)
-            val hasError = response.stderr.isNotEmpty()
+            // Display header
+            eventBus.emit(Event.Command.HostExecHeader(host.alias))
 
-            // Display output with color-coded header
-            with(TermColors()) {
-                val headerColor = if (hasError) red("=== ${host.alias} ===") else green("=== ${host.alias} ===")
-                eventBus.emit(Event.Message(bold(headerColor)))
+            // Display stdout if present
+            if (response.text.isNotEmpty()) {
+                eventBus.emit(Event.Command.HostExecOutput(response.text))
+            }
 
-                // Display stdout if present
-                if (response.text.isNotEmpty()) {
-                    eventBus.emit(Event.Message(response.text))
-                }
-
-                // Display stderr if present
-                if (hasError) {
-                    eventBus.emit(Event.Message(red(response.stderr)))
-                }
+            // Display stderr if present
+            if (response.stderr.isNotEmpty()) {
+                eventBus.emit(Event.Command.HostExecStderr(response.stderr))
             }
         } catch (e: Exception) {
             // Handle execution failures
-            with(TermColors()) {
-                eventBus.emit(Event.Message(bold(red("=== ${host.alias} ==="))))
-                eventBus.emit(Event.Message(red("Error executing command: ${e.message}")))
-            }
+            eventBus.emit(Event.Command.HostExecError(host.alias, e.message ?: e::class.simpleName ?: "Unknown error"))
         }
     }
 }

@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.commands
 
-import com.github.ajalt.mordant.TermColors
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Prompter
 import com.rustyrazorblade.easydblab.configuration.Arch
@@ -59,8 +58,8 @@ class SetupProfile : PicoBaseCommand() {
      * Prompts for each optional field individually, allowing updates.
      */
     private fun handleExistingProfile(existingConfig: Map<String, Any>) {
-        eventBus.emit(Event.Message("Profile '${context.profile}' is already configured."))
-        eventBus.emit(Event.Message("Press Enter to keep existing value, or type a new value to update.\n"))
+        eventBus.emit(Event.Setup.ProfileAlreadyConfigured(context.profile))
+        eventBus.emit(Event.Setup.UpdatePrompt)
 
         // Load existing config as User object
         val userConfig = userConfigProvider.getUserConfig()
@@ -68,9 +67,7 @@ class SetupProfile : PicoBaseCommand() {
         // Collect optional info, allowing updates
         collectAndSaveOptionalInfoWithUpdate(existingConfig, userConfig)
 
-        with(TermColors()) {
-            eventBus.emit(Event.Message(green("\nConfiguration updated!")))
-        }
+        eventBus.emit(Event.Setup.ConfigurationUpdated)
     }
 
     /**
@@ -84,7 +81,7 @@ class SetupProfile : PicoBaseCommand() {
 
         val userConfig = createInitialUserConfig(credentials, existingConfig)
         userConfigProvider.saveUserConfig(userConfig)
-        eventBus.emit(Event.Message("Credentials saved"))
+        eventBus.emit(Event.Setup.CredentialsSaved)
 
         collectAndSaveOptionalInfo(existingConfig, userConfig)
 
@@ -126,13 +123,7 @@ class SetupProfile : PicoBaseCommand() {
                 if (attempt >= MAX_CREDENTIAL_RETRIES) {
                     throw e
                 }
-                with(TermColors()) {
-                    eventBus.emit(
-                        Event.Message(
-                            yellow("\nCredential validation failed. Please try again. (Attempt $attempt of $MAX_CREDENTIAL_RETRIES)\n"),
-                        ),
-                    )
-                }
+                eventBus.emit(Event.Setup.CredentialValidationRetry(attempt, MAX_CREDENTIAL_RETRIES))
                 // Loop continues - will ask for profile/credentials again
             }
         }
@@ -150,7 +141,7 @@ class SetupProfile : PicoBaseCommand() {
      * Asks for AWS profile first; if provided, skips access key/secret prompts.
      */
     private fun collectCoreCredentials(existingConfig: Map<String, Any>): CoreCredentials {
-        eventBus.emit(Event.Message("Your email will be added to AWS resource tags to identify the owner."))
+        eventBus.emit(Event.Setup.EmailPromptInfo)
         val email = promptIfMissing(existingConfig, "email", "What's your email?", "")
         val region = promptIfMissing(existingConfig, "region", "What AWS region do you use?", "us-west-2")
 
@@ -188,31 +179,17 @@ class SetupProfile : PicoBaseCommand() {
         credentials: CoreCredentials,
         regionObj: Region,
     ) {
-        eventBus.emit(Event.Message("Validating AWS credentials..."))
+        eventBus.emit(Event.Setup.ValidatingCredentials)
 
         try {
             val tempAWS = createAwsClient(credentials, regionObj)
             tempAWS.checkPermissions()
 
-            with(TermColors()) {
-                eventBus.emit(Event.Message(green("AWS credentials validated successfully")))
-            }
+            eventBus.emit(Event.Setup.CredentialsValidSuccess)
 
             offerIamPolicyDisplay(tempAWS)
         } catch (e: Exception) {
-            with(TermColors()) {
-                eventBus.emit(
-                    Event.Message(
-                        red(
-                            """
-
-                            AWS credentials are invalid. Please check your credentials.
-
-                            """.trimIndent(),
-                        ),
-                    ),
-                )
-            }
+            eventBus.emit(Event.Setup.CredentialsValidFailed)
             throw SetupProfileException("AWS credentials are invalid", e)
         }
     }
@@ -290,26 +267,7 @@ class SetupProfile : PicoBaseCommand() {
         userConfig.axonOpsKey = axonOpsKey
 
         // Collect optional Tailscale credentials
-        eventBus.emit(
-            Event.Message(
-                """
-
-                --- Tailscale VPN Setup (optional) ---
-                Tailscale provides secure VPN access to your cluster.
-
-                Setup steps:
-                1. Go to https://login.tailscale.com/admin/acls
-                2. Add to your ACL policy:
-                   "tagOwners": {
-                     "${Constants.Tailscale.DEFAULT_DEVICE_TAG}": ["autogroup:admin"]
-                   }
-                3. Go to https://login.tailscale.com/admin/settings/oauth
-                4. Create OAuth client with 'Devices: Write' scope
-                5. Under 'Add tags', add: ${Constants.Tailscale.DEFAULT_DEVICE_TAG}
-
-                """.trimIndent(),
-            ),
-        )
+        eventBus.emit(Event.Setup.TailscaleSetupInstructions(Constants.Tailscale.DEFAULT_DEVICE_TAG))
         val tailscaleClientId =
             promptIfMissing(
                 existingConfig,
@@ -325,7 +283,7 @@ class SetupProfile : PicoBaseCommand() {
         userConfig.tailscaleClientSecret = tailscaleClientSecret
 
         userConfigProvider.saveUserConfig(userConfig)
-        eventBus.emit(Event.Message("Configuration saved"))
+        eventBus.emit(Event.Setup.ConfigurationSaved)
     }
 
     /**
@@ -338,7 +296,7 @@ class SetupProfile : PicoBaseCommand() {
         userConfig: User,
     ) {
         // AxonOps settings
-        eventBus.emit(Event.Message("--- AxonOps Configuration ---"))
+        eventBus.emit(Event.Setup.AxonOpsConfigHeader)
         userConfig.axonOpsOrg =
             promptForUpdate(
                 "AxonOps Org",
@@ -352,23 +310,7 @@ class SetupProfile : PicoBaseCommand() {
             )
 
         // Tailscale settings
-        eventBus.emit(
-            Event.Message(
-                """
-
-                --- Tailscale VPN Configuration ---
-                Setup steps (if not already done):
-                1. Go to https://login.tailscale.com/admin/acls
-                2. Add to your ACL policy:
-                   "tagOwners": {
-                     "${Constants.Tailscale.DEFAULT_DEVICE_TAG}": ["autogroup:admin"]
-                   }
-                3. Go to https://login.tailscale.com/admin/settings/oauth
-                4. Create OAuth client with 'Devices: Write' scope
-                5. Under 'Add tags', add: ${Constants.Tailscale.DEFAULT_DEVICE_TAG}
-                """.trimIndent(),
-            ),
-        )
+        eventBus.emit(Event.Setup.TailscaleConfigHeader(Constants.Tailscale.DEFAULT_DEVICE_TAG))
         userConfig.tailscaleClientId =
             promptForUpdate(
                 "Tailscale OAuth Client ID",
@@ -382,7 +324,7 @@ class SetupProfile : PicoBaseCommand() {
             )
 
         userConfigProvider.saveUserConfig(userConfig)
-        eventBus.emit(Event.Message("\nConfiguration saved"))
+        eventBus.emit(Event.Setup.ConfigSectionSaved)
     }
 
     /**
@@ -440,7 +382,7 @@ class SetupProfile : PicoBaseCommand() {
         regionObj: Region,
     ) {
         if (userConfig.keyName.isBlank()) {
-            eventBus.emit(Event.Message("Generating AWS key pair..."))
+            eventBus.emit(Event.Setup.GeneratingKeyPair)
             val ec2Client = createEc2Client(credentials, regionObj)
             val keyName =
                 User.generateAwsKeyPair(
@@ -450,7 +392,7 @@ class SetupProfile : PicoBaseCommand() {
                 )
             userConfig.keyName = keyName
             userConfigProvider.saveUserConfig(userConfig)
-            eventBus.emit(Event.Message("Key pair saved"))
+            eventBus.emit(Event.Setup.KeyPairSaved)
         }
     }
 
@@ -470,9 +412,9 @@ class SetupProfile : PicoBaseCommand() {
      * Ensures IAM roles are configured.
      */
     private fun ensureIamRoles(userConfig: User) {
-        eventBus.emit(Event.Message("Ensuring IAM roles are configured..."))
+        eventBus.emit(Event.Setup.IamRolesConfiguring)
         awsResourceSetup.ensureAWSResources(userConfig)
-        eventBus.emit(Event.Message("IAM resources validated"))
+        eventBus.emit(Event.Setup.IamRolesValidated)
     }
 
     /**
@@ -484,7 +426,7 @@ class SetupProfile : PicoBaseCommand() {
         regionObj: Region,
     ) {
         if (userConfig.s3Bucket.isBlank()) {
-            eventBus.emit(Event.Message("Creating S3 bucket for shared resources..."))
+            eventBus.emit(Event.Setup.S3BucketCreating)
             val bucketName = "easy-db-lab-${java.util.UUID.randomUUID()}"
 
             val awsClient = createAwsClient(credentials, regionObj)
@@ -501,7 +443,7 @@ class SetupProfile : PicoBaseCommand() {
 
             userConfig.s3Bucket = bucketName
             userConfigProvider.saveUserConfig(userConfig)
-            eventBus.emit(Event.Message("S3 bucket created: $bucketName"))
+            eventBus.emit(Event.Setup.S3BucketCreated(bucketName))
         }
     }
 
@@ -509,21 +451,21 @@ class SetupProfile : PicoBaseCommand() {
      * Creates Packer VPC infrastructure.
      */
     private fun ensurePackerVpc() {
-        eventBus.emit(Event.Message("Creating Packer VPC infrastructure..."))
+        eventBus.emit(Event.Setup.PackerVpcCreating)
         awsInfra.ensurePackerInfrastructure(Constants.Network.SSH_PORT)
-        eventBus.emit(Event.Message("Packer VPC infrastructure ready"))
+        eventBus.emit(Event.Setup.PackerVpcReady)
     }
 
     /**
      * Validates that a required AMI exists, offering to build one if not found.
      */
     private fun ensureAmi(userConfig: User) {
-        eventBus.emit(Event.Message("Checking for required AMI..."))
+        eventBus.emit(Event.Setup.CheckingAmi)
         val archType = Arch.AMD64
 
         try {
             amiValidator.validateAMI(overrideAMI = "", requiredArchitecture = archType)
-            eventBus.emit(Event.Message("AMI found for ${archType.type} architecture"))
+            eventBus.emit(Event.Setup.AmiFound(archType.type))
         } catch (e: AMIValidationException.NoAMIFound) {
             handleMissingAmi(archType, userConfig)
         }
@@ -536,27 +478,12 @@ class SetupProfile : PicoBaseCommand() {
         archType: Arch,
         userConfig: User,
     ) {
-        with(TermColors()) {
-            eventBus.emit(
-                Event.Message(
-                    yellow(
-                        """
-
-                        AMI not found for ${archType.type} architecture.
-
-                        The system needs to build a custom AMI for your architecture.
-                        This process takes approximately 10-15 minutes.
-
-                        """.trimIndent(),
-                    ),
-                ),
-            )
-        }
+        eventBus.emit(Event.Setup.AmiNotFound(archType.type))
 
         val proceed = prompter.prompt("Press Enter to start building the AMI, or type 'skip' to exit setup", "")
 
         if (proceed.equals("skip", ignoreCase = true)) {
-            eventBus.emit(Event.Message("Setup cancelled. Run 'easy-db-lab build-image' to build the AMI later."))
+            eventBus.emit(Event.Setup.AmiSkipped)
             return
         }
 
@@ -571,7 +498,7 @@ class SetupProfile : PicoBaseCommand() {
         userConfig: User,
     ) {
         try {
-            eventBus.emit(Event.Message("Building AMI for ${archType.type} architecture..."))
+            eventBus.emit(Event.Setup.AmiBuildStarting(archType.type))
 
             commandExecutor.execute {
                 BuildImage().apply {
@@ -580,26 +507,9 @@ class SetupProfile : PicoBaseCommand() {
                 }
             }
 
-            with(TermColors()) {
-                eventBus.emit(Event.Message(green("AMI build completed successfully")))
-            }
+            eventBus.emit(Event.Setup.AmiBuildSuccess)
         } catch (buildError: Exception) {
-            with(TermColors()) {
-                eventBus.emit(
-                    Event.Message(
-                        red(
-                            """
-
-                            Failed to build AMI: ${buildError.message}
-
-                            You can manually build the AMI later by running:
-                              easy-db-lab build-image --arch ${archType.type} --region ${userConfig.region}
-
-                            """.trimIndent(),
-                        ),
-                    ),
-                )
-            }
+            eventBus.emit(Event.Setup.AmiBuildFailed(buildError.message ?: "unknown error", archType.type, userConfig.region))
         }
     }
 
@@ -607,48 +517,11 @@ class SetupProfile : PicoBaseCommand() {
      * Shows the success message after setup completes.
      */
     private fun showSuccessMessage() {
-        with(TermColors()) {
-            eventBus.emit(Event.Message(green("\nAccount setup complete!")))
-        }
+        eventBus.emit(Event.Setup.SetupComplete)
     }
 
     private fun showWelcomeMessage() {
-        eventBus.emit(
-            Event.Message(
-                """
-                Welcome to the easy-db-lab interactive setup for profile '${context.profile}'.
-                (To use a different profile, set the EASY_DB_LAB_PROFILE environment variable)
-
-                **** IMPORTANT ****
-
-                This tool provisions and destroys AWS infrastructure!
-
-                We strongly recommend using a separate AWS account under an organization
-                for lab environments to isolate costs and resources from production.
-
-                *******************
-
-                We need AWS credentials for the account that will be used in this environment.
-
-                During setup, we will create the following AWS resources:
-                  • EC2 key pair for SSH access to instances
-                  • IAM role for instance permissions
-                  • S3 bucket (shared across all labs in this profile)
-                  • Packer VPC infrastructure for building AMIs
-
-                Lab environments may also require permissions to start a Spark cluster via EMR if requested.
-
-                You will be asked if you want to see the required IAM permissions before
-                entering your credentials.
-
-                OPTIONAL: We can automatically configure AxonOps for free Cassandra monitoring.
-                To use this feature, create an account at https://axonops.com/ and obtain
-                your organization name and API key from: Agent Setup → Keys
-
-                Let's gather some information to get started.
-                """.trimIndent(),
-            ),
-        )
+        eventBus.emit(Event.Setup.WelcomeMessage(context.profile))
     }
 
     /**
@@ -659,85 +532,15 @@ class SetupProfile : PicoBaseCommand() {
      */
     private fun displayIAMPolicies(accountId: String) {
         val policies = User.getRequiredIAMPolicies(accountId)
-        displayIamPolicyHeader()
+        eventBus.emit(Event.Setup.IamPoliciesHeader)
         displayPolicyBodies(policies)
-        displayIamPolicyFooter()
-    }
-
-    private fun displayIamPolicyHeader() {
-        eventBus.emit(
-            Event.Message(
-                """
-
-                ========================================
-                AWS IAM PERMISSIONS REQUIRED
-                ========================================
-
-                RECOMMENDED APPROACH: Managed Policies on a Group
-
-                Best for teams with multiple users:
-                  • No size limits (inline policies limited to 5,120 bytes total)
-                  • Required for EMR/Spark cluster functionality
-                  • Easier to update and manage
-                  • Reusable across multiple users
-
-                """.trimIndent(),
-            ),
-        )
+        eventBus.emit(Event.Setup.IamPoliciesFooter)
     }
 
     private fun displayPolicyBodies(policies: List<Policy>) {
         policies.forEachIndexed { index, policy ->
-            with(TermColors()) {
-                eventBus.emit(
-                    Event.Message(
-                        """
-                        ${green("========================================")}
-                        ${green("Policy ${index + 1}: ${policy.name}")}
-                        ${green("========================================")}
-
-                        ${policy.body}
-
-                        """.trimIndent(),
-                    ),
-                )
-            }
+            eventBus.emit(Event.Setup.IamPolicyDisplay(index, policy.name, policy.body))
         }
-    }
-
-    private fun displayIamPolicyFooter() {
-        eventBus.emit(
-            Event.Message(
-                """
-                ========================================
-
-                SETUP STEPS (Managed Policies on Group):
-
-                  1. Create IAM group (e.g., "EasyDBLabUsers")
-                     IAM Console → Groups → Create Group
-
-                  2. Create three managed policies from JSON above:
-                     IAM Console → Policies → Create Policy
-                     • Select JSON tab and paste policy content
-                     • Name: EasyDBLabEC2, EasyDBLabIAM, EasyDBLabEMR
-
-                  3. Attach all three managed policies to your group:
-                     Groups → Your Group → Permissions → Attach Policy
-                     • Select EasyDBLabEC2, EasyDBLabIAM, EasyDBLabEMR
-
-                  4. Add your IAM user(s) to the group:
-                     Groups → Your Group → Users → Add Users
-
-                ALTERNATIVE (Single User Only):
-                  • Attach as inline policies directly to your IAM user
-                  • WARNING: May hit 5,120 byte limit (won't fit all three policies)
-                  • Not recommended if using EMR/Spark clusters
-
-                ========================================
-
-                """.trimIndent(),
-            ),
-        )
     }
 
     /**

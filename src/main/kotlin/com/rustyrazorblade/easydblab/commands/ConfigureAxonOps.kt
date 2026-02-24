@@ -40,13 +40,13 @@ class ConfigureAxonOps : PicoBaseCommand() {
         val axonOrg = if (org.isNotBlank()) org else userConfig.axonOpsOrg
         val axonKey = if (key.isNotBlank()) key else userConfig.axonOpsKey
         if ((axonOrg.isBlank() || axonKey.isBlank())) {
-            eventBus.emit(Event.Message("--org and --key are required"))
+            eventBus.emit(Event.Setup.AxonOpsMissingArgs("--org and --key are required"))
             exitProcess(1)
         }
 
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList) { host ->
             val it = host.toHost()
-            eventBus.emit(Event.Message("Configure axonops on $it"))
+            eventBus.emit(Event.Setup.AxonOpsConfiguring(it.toString()))
 
             remoteOps
                 .executeRemotely(

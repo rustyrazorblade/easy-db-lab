@@ -113,7 +113,7 @@ class DefaultRemoteOperationsService(
         remoteDir: String,
     ) {
         log.info { "Uploading directory $localDir to ${host.alias}:$remoteDir" }
-        eventBus.emit(Event.Message("Uploading directory $localDir to $remoteDir"))
+        eventBus.emit(Event.Ssh.UploadingDirectory(localDir.toString(), remoteDir))
         val attributes =
             mapOf(
                 TelemetryNames.Attributes.HOST_ALIAS to host.alias,

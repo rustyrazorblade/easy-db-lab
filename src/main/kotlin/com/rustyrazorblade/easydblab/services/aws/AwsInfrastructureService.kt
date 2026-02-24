@@ -436,9 +436,9 @@ class AwsInfrastructureService(
 
         try {
             eventBus.emit(
-                Event.Message(
-                    "\nTearing down VPC: ${resources.vpcId}" +
-                        (resources.vpcName?.let { " ($it)" } ?: ""),
+                Event.Infra.VpcTeardownStarting(
+                    vpcId = resources.vpcId,
+                    vpcName = resources.vpcName,
                 ),
             )
 
@@ -533,7 +533,7 @@ class AwsInfrastructureService(
     private fun deleteOpenSearchDomains(resources: DiscoveredResources): TeardownStepResult {
         if (resources.openSearchDomainNames.isEmpty()) return TeardownStepResult.success()
 
-        eventBus.emit(Event.Message("Deleting ${resources.openSearchDomainNames.size} OpenSearch domains..."))
+        eventBus.emit(Event.Infra.OpenSearchDomainsDeleting(resources.openSearchDomainNames.size))
 
         val errors = mutableListOf<String>()
         val domainsToWait = mutableListOf<String>()
@@ -555,12 +555,7 @@ class AwsInfrastructureService(
                 openSearchService.waitForDomainDeleted(domainName)
             } catch (e: Exception) {
                 errors.add(logError("Timeout waiting for OpenSearch domain $domainName to delete", e))
-                eventBus.emit(
-                    Event.Message(
-                        "Warning: OpenSearch domain $domainName is still deleting. " +
-                            "VPC cleanup may fail - run teardown again later.",
-                    ),
-                )
+                eventBus.emit(Event.Infra.OpenSearchDomainStillDeleting(domainName))
                 allDeleted = false
             }
         }
@@ -605,12 +600,7 @@ class AwsInfrastructureService(
         } catch (e: Exception) {
             // ENI timeout is non-fatal — teardown continues, errors recorded
             errors.add(logError("Timeout waiting for network interfaces to clear in VPC ${resources.vpcId}", e))
-            eventBus.emit(
-                Event.Message(
-                    "Warning: Some network interfaces are still active. " +
-                        "Subsequent deletions may fail with DependencyViolation errors.",
-                ),
-            )
+            eventBus.emit(Event.Infra.NetworkInterfacesStillActive)
         }
     }
 

@@ -362,9 +362,10 @@ class AMIService(
 
         if (matchingArchAMIs.size > 1) {
             eventBus.emit(
-                Event.Message(
-                    "Warning: Found ${matchingArchAMIs.size} AMIs matching pattern. " +
-                        "Using newest: ${selectedAMI.id} (${selectedAMI.creationDate})",
+                Event.Ami.MultipleAmisFound(
+                    count = matchingArchAMIs.size,
+                    selectedId = selectedAMI.id,
+                    selectedDate = selectedAMI.creationDate.toString(),
                 ),
             )
         }
@@ -382,31 +383,9 @@ class AMIService(
         architecture: Arch,
     ) {
         eventBus.emit(
-            Event.Error(
-                """
-                |
-                |========================================
-                |AMI NOT FOUND
-                |========================================
-                |
-                |No AMI found in your AWS account matching:
-                |  Pattern: $pattern
-                |  Architecture: ${architecture.type}
-                |
-                |Before you can provision instances, you need to build the AMI images.
-                |
-                |To build the required AMI, run:
-                |  easy-db-lab build-image --arch ${architecture.type}
-                |
-                |This will create both the base and Cassandra AMIs in your AWS account.
-                |
-                |Alternatively, you can specify a custom AMI with:
-                |  --ami <ami-id>
-                |  or set EASY_CASS_LAB_AMI environment variable
-                |
-                |========================================
-                |
-                """.trimMargin(),
+            Event.Ami.AmiNotFoundDetail(
+                pattern = pattern,
+                architecture = architecture.type,
             ),
         )
     }

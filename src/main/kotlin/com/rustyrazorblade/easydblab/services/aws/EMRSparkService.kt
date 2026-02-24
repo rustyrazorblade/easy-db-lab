@@ -199,7 +199,7 @@ class EMRSparkService(
 
     @Suppress("TooGenericExceptionCaught")
     private fun queryVictoriaLogs(stepId: String) {
-        eventBus.emit(Event.Message("\n=== Step Logs ==="))
+        eventBus.emit(Event.Emr.SparkLogHeader)
         try {
             Thread.sleep(Constants.EMR.LOG_INGESTION_WAIT_MS)
 
@@ -207,10 +207,10 @@ class EMRSparkService(
                 .query(query = "step_id:$stepId", timeRange = "1h", limit = Constants.EMR.MAX_LOG_LINES)
                 .onSuccess { logs ->
                     if (logs.isEmpty()) {
-                        eventBus.emit(Event.Message("No logs found yet. Try: easy-db-lab spark logs --step-id $stepId"))
+                        eventBus.emit(Event.Emr.SparkNoLogsInstruction(stepId))
                     } else {
                         logs.forEach { eventBus.emit(Event.Emr.SparkLogLine(it)) }
-                        eventBus.emit(Event.Message("\nFound ${logs.size} log entries."))
+                        eventBus.emit(Event.Emr.SparkLogCount(logs.size))
                     }
                 }.onFailure { e ->
                     eventBus.emit(Event.Emr.SparkLogError(e.message ?: "Unknown error"))
@@ -218,7 +218,7 @@ class EMRSparkService(
                 }
         } catch (e: Exception) {
             log.warn { "Failed to query Victoria Logs: ${e.message}" }
-            eventBus.emit(Event.Message("Could not query logs automatically."))
+            eventBus.emit(Event.Emr.SparkLogQueryFailed)
             eventBus.emit(Event.Emr.SparkLogInstruction(stepId))
         }
     }
@@ -241,7 +241,7 @@ class EMRSparkService(
             |  aws s3 cp s3://$s3Bucket/${emrLogsPath}stderr.gz - | gunzip
             """.trimMargin()
 
-        eventBus.emit(Event.Message("\n=== Downloading Step Logs ==="))
+        eventBus.emit(Event.Emr.DownloadingStepLogsHeader)
         try {
             downloadStepLogs(clusterId, stepId)
                 .onFailure { e ->
@@ -501,11 +501,7 @@ class EMRSparkService(
                     logsDownloaded++
                 } catch (e: Exception) {
                     log.warn { "Could not download ${logType.filename}: ${e.message}" }
-                    eventBus.emit(
-                        Event.Message(
-                            "Could not download ${logType.name.lowercase()} (logs may not be available yet)",
-                        ),
-                    )
+                    eventBus.emit(Event.Emr.SparkLogDownloadUnavailable(logType.name.lowercase()))
                 }
             }
 
@@ -537,11 +533,7 @@ class EMRSparkService(
             if (Files.exists(stderrFile)) {
                 val stderrContent = Files.readString(stderrFile)
                 if (stderrContent.isNotBlank()) {
-                    eventBus.emit(
-                        Event.Message(
-                            "\n=== stderr (last ${Constants.EMR.STDERR_TAIL_LINES} lines) ===",
-                        ),
-                    )
+                    eventBus.emit(Event.Emr.SparkStderrHeader(Constants.EMR.STDERR_TAIL_LINES))
                     val lines = stderrContent.lines()
                     val lastLines =
                         if (lines.size > Constants.EMR.STDERR_TAIL_LINES) {
@@ -550,7 +542,7 @@ class EMRSparkService(
                             lines
                         }
                     lastLines.forEach { eventBus.emit(Event.Emr.SparkStderrLine(it)) }
-                    eventBus.emit(Event.Message("=== end stderr ===\n"))
+                    eventBus.emit(Event.Emr.SparkStderrFooter)
                 }
             }
 

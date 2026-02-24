@@ -41,25 +41,14 @@ class Cql : PicoBaseCommand() {
             when {
                 file != null -> {
                     if (!file!!.exists()) {
-                        eventBus.emit(Event.Error("File not found: ${file!!.absolutePath}"))
+                        eventBus.emit(Event.Cassandra.CqlFileNotFound(file!!.absolutePath))
                         return
                     }
                     file!!.readText()
                 }
                 statement != null -> statement!!
                 else -> {
-                    eventBus.emit(
-                        Event.Message(
-                            """
-                            |Usage: easy-db-lab cassandra cql <statement>
-                            |       easy-db-lab cassandra cql --file <file.cql>
-                            |
-                            |Examples:
-                            |  easy-db-lab cassandra cql "SELECT * FROM system.local"
-                            |  easy-db-lab cassandra cql --file schema.cql
-                            """.trimMargin(),
-                        ),
-                    )
+                    eventBus.emit(Event.Cassandra.CqlUsage)
                     return
                 }
             }
@@ -71,13 +60,13 @@ class Cql : PicoBaseCommand() {
             .execute(query)
             .onSuccess { output ->
                 if (output.isNotBlank()) {
-                    eventBus.emit(Event.Message(output))
+                    eventBus.emit(Event.Cassandra.CqlQueryOutput(output))
                 } else {
                     // DDL statements (CREATE, ALTER, DROP, etc.) return no rows
-                    eventBus.emit(Event.Message("OK"))
+                    eventBus.emit(Event.Cassandra.CqlDdlOk)
                 }
             }.onFailure { e ->
-                eventBus.emit(Event.Error("${e.message}"))
+                eventBus.emit(Event.Cassandra.CqlQueryError("${e.message}"))
             }
         // Note: Session cleanup is handled by ResourceManager via CommandExecutor
     }

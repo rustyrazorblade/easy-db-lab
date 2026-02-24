@@ -100,16 +100,16 @@ class LogsQuery : PicoBaseCommand() {
         // Build the query
         val query = rawQuery ?: buildQuery()
 
-        eventBus.emit(Event.Message("Query: $query, Time range: $since, Limit: $limit\n"))
+        eventBus.emit(Event.Logs.QueryInfo(query, since, limit))
 
         // Execute the query
         val logs =
             victoriaLogsService
                 .query(query, since, limit)
                 .getOrElse { exception ->
-                    eventBus.emit(Event.Error("Failed to query logs: ${exception.message}"))
+                    eventBus.emit(Event.Logs.QueryFailed(exception.message ?: "Unknown error"))
                     eventBus.emit(
-                        Event.Message(
+                        Event.Logs.QueryTips(
                             """
                             |Tips:
                             |  - Ensure observability stack is deployed: easy-db-lab k8 apply
@@ -122,10 +122,9 @@ class LogsQuery : PicoBaseCommand() {
 
         // Display results
         if (logs.isEmpty()) {
-            eventBus.emit(Event.Message("No logs found matching the query."))
+            eventBus.emit(Event.Logs.NoLogsFound)
         } else {
-            eventBus.emit(Event.Message(logs.joinToString("\n")))
-            eventBus.emit(Event.Message("\nFound ${logs.size} log entries."))
+            eventBus.emit(Event.Logs.QueryResults(logs))
         }
     }
 

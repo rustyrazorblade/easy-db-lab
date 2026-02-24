@@ -42,11 +42,7 @@ class Hosts :
 
     override fun execute() {
         if (!clusterStateManager.exists()) {
-            eventBus.emit(
-                Event.Message(
-                    "Cluster state does not exist yet, most likely easy-db-lab up has not been run.",
-                ),
-            )
+            eventBus.emit(Event.Command.HostsNoClusterState)
             return
         }
 
@@ -62,7 +58,7 @@ class Hosts :
         if (cassandra) {
             val hosts = clusterState.getHosts(ServerType.Cassandra)
             val csv = hosts.map { it.public }.joinToString(",")
-            eventBus.emit(Event.Message(csv))
+            eventBus.emit(Event.Command.HostsCsvOutput(csv))
         } else {
             context.yaml.writeValue(System.out, output)
         }

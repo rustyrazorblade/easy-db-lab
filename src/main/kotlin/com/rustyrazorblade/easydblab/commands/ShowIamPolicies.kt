@@ -34,7 +34,11 @@ class ShowIamPolicies : PicoBaseCommand() {
             try {
                 awsResourceSetup.getAccountId()
             } catch (e: Exception) {
-                eventBus.emit(Event.Error("Failed to get AWS account ID. Please run 'easy-db-lab init' to set up credentials."))
+                eventBus.emit(
+                    Event.Command.IamPoliciesCredentialError(
+                        "Failed to get AWS account ID. Please run 'easy-db-lab init' to set up credentials.",
+                    ),
+                )
                 throw e
             }
 
@@ -49,16 +53,16 @@ class ShowIamPolicies : PicoBaseCommand() {
             }
 
         if (filtered.isEmpty()) {
-            eventBus.emit(Event.Message("No policies found matching: $policyName"))
+            eventBus.emit(Event.Command.IamPoliciesNotFound(policyName))
             return
         }
 
         filtered.forEach { policy ->
             if (policyName.isBlank()) {
                 // Show all policies with headers for readability
-                eventBus.emit(Event.Message("\n=== ${policy.name} ===\n"))
+                eventBus.emit(Event.Command.IamPolicyHeader(policy.name))
             }
-            eventBus.emit(Event.Message(policy.body))
+            eventBus.emit(Event.Command.IamPolicyBody(policy.body))
         }
     }
 }

@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.commands.tailscale
 
-import com.github.ajalt.mordant.TermColors
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
@@ -33,11 +32,7 @@ class TailscaleStop : PicoBaseCommand() {
         // Get control host
         val controlHost = clusterState.getControlHost()
         if (controlHost == null) {
-            with(TermColors()) {
-                eventBus.emit(
-                    Event.Error(red("No control node found. Ensure your cluster is running with 'easy-db-lab up'.")),
-                )
-            }
+            eventBus.emit(Event.Tailscale.NoControlNode)
             return
         }
 
@@ -48,7 +43,7 @@ class TailscaleStop : PicoBaseCommand() {
         val isConnected =
             tailscaleService.isConnected(host).getOrElse { false }
         if (!isConnected) {
-            eventBus.emit(Event.Message("Tailscale is not running on ${controlHost.alias}."))
+            eventBus.emit(Event.Tailscale.NotRunning(controlHost.alias))
             return
         }
 
@@ -57,15 +52,9 @@ class TailscaleStop : PicoBaseCommand() {
             .stopTailscale(host)
             .onSuccess {
                 deleteTailscaleAuthKey()
-                with(TermColors()) {
-                    eventBus.emit(Event.Message(green("Tailscale stopped successfully.")))
-                }
+                eventBus.emit(Event.Tailscale.StoppedSuccessfully)
             }.onFailure { error ->
-                with(TermColors()) {
-                    eventBus.emit(
-                        Event.Error(red("Failed to stop Tailscale: ${error.message}")),
-                    )
-                }
+                eventBus.emit(Event.Tailscale.StopFailed(error.message ?: "unknown error"))
             }
     }
 
@@ -82,7 +71,7 @@ class TailscaleStop : PicoBaseCommand() {
 
         try {
             tailscaleService.deleteAuthKey(clientId, clientSecret, keyId)
-            eventBus.emit(Event.Message("Deleted Tailscale auth key: $keyId"))
+            eventBus.emit(Event.Tailscale.AuthKeyDeleted(keyId))
         } catch (e: Exception) {
             log.warn(e) { "Failed to delete Tailscale auth key: $keyId" }
         }

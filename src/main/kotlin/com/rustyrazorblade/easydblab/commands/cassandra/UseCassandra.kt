@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.commands.cassandra
 
 import com.fasterxml.jackson.annotation.JsonIgnore
-import com.github.ajalt.mordant.TermColors
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.TriggerBackup
@@ -55,18 +54,13 @@ class UseCassandra : PicoBaseCommand() {
         val state = clusterState
 
         if (!clusterStateManager.exists()) {
-            eventBus.emit(
-                Event.Error(
-                    "cluster state not found. Please run easy-db-lab up first to " +
-                        "establish IP addresses for seed listing.",
-                ),
-            )
+            eventBus.emit(Event.Cassandra.ClusterStateNotFound)
             exitProcess(1)
         }
 
         val cassandraHosts = state.getHosts(ServerType.Cassandra)
         eventBus.emit(
-            Event.Message("Using version $version on ${cassandraHosts.size} hosts, filter: $hosts"),
+            Event.Cassandra.UsingVersion(version, cassandraHosts.size, "$hosts"),
         )
 
         hostOperationsService.withHosts(state.hosts, ServerType.Cassandra, hosts.hostList, parallel = true) { host ->
@@ -87,13 +81,6 @@ class UseCassandra : PicoBaseCommand() {
             UpdateConfig().apply { this.hosts = this@UseCassandra.hosts }
         }
 
-        with(TermColors()) {
-            eventBus.emit(
-                Event.Message(
-                    "You can update ${green("cassandra.patch.yaml")} and the JVM config files under ${green(version)}, " +
-                        "then run ${green("easy-db-lab update-config")} to apply the changes.",
-                ),
-            )
-        }
+        eventBus.emit(Event.Cassandra.ConfigUpdateHint(version))
     }
 }

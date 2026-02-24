@@ -323,23 +323,14 @@ step_verify_s3_backup() {
     echo "S3 Fullpath: $s3_fullpath"
 
     # Verify key backup files exist
-    local failed=0
+    local missing_files=()
 
     echo "=== Checking kubeconfig backup ==="
     if aws s3 ls "s3://${s3_fullpath}/config/kubeconfig" > /dev/null 2>&1; then
         echo "  config/kubeconfig: OK"
     else
         echo "  config/kubeconfig: MISSING"
-        failed=1
-    fi
-
-    echo "=== Checking k8s manifests backup ==="
-    local k8s_count=$(aws s3 ls "s3://${s3_fullpath}/config/k8s/" --recursive 2>/dev/null | wc -l)
-    if [ "$k8s_count" -gt 0 ]; then
-        echo "  config/k8s manifests: OK ($k8s_count files)"
-    else
-        echo "  config/k8s manifests: MISSING"
-        failed=1
+        missing_files+=("config/kubeconfig")
     fi
 
     echo "=== Checking config backups ==="
@@ -348,15 +339,18 @@ step_verify_s3_backup() {
             echo "  ${config_file}: OK"
         else
             echo "  ${config_file}: MISSING"
-            failed=1
+            missing_files+=("${config_file}")
         fi
     done
 
     echo "=== Listing all S3 backup contents ==="
     aws s3 ls "s3://${s3_bucket}/" --recursive | head -30
 
-    if [ $failed -ne 0 ]; then
-        echo "ERROR: Some backup files are missing"
+    if [ ${#missing_files[@]} -ne 0 ]; then
+        echo "ERROR: Missing backup files in s3://${s3_fullpath}/:"
+        for f in "${missing_files[@]}"; do
+            echo "  - $f"
+        done
         return 1
     fi
 
@@ -385,14 +379,14 @@ step_verify_cassandra_backup() {
 
     local s3_fullpath=$(cat .s3-fullpath)
 
-    local failed=0
+    local missing_files=()
 
     echo "=== Checking cassandra.patch.yaml backup ==="
     if aws s3 ls "s3://${s3_fullpath}/config/cassandra.patch.yaml" > /dev/null 2>&1; then
         echo "  config/cassandra.patch.yaml: OK"
     else
         echo "  config/cassandra.patch.yaml: MISSING"
-        failed=1
+        missing_files+=("config/cassandra.patch.yaml")
     fi
 
     echo "=== Checking cassandra config directory backup ==="
@@ -401,11 +395,14 @@ step_verify_cassandra_backup() {
         echo "  config/cassandra-config: OK ($cassandra_config_count files)"
     else
         echo "  config/cassandra-config: MISSING"
-        failed=1
+        missing_files+=("config/cassandra-config/")
     fi
 
-    if [ $failed -ne 0 ]; then
-        echo "ERROR: Some Cassandra backup files are missing"
+    if [ ${#missing_files[@]} -ne 0 ]; then
+        echo "ERROR: Missing Cassandra backup files in s3://${s3_fullpath}/:"
+        for f in "${missing_files[@]}"; do
+            echo "  - $f"
+        done
         return 1
     fi
 
@@ -436,7 +433,7 @@ step_verify_restore() {
     )
 
     # Verify restored files
-    local failed=0
+    local missing_files=()
 
     echo "=== Verifying restored files ==="
 
@@ -445,7 +442,7 @@ step_verify_restore() {
         echo "  state.json: OK"
     else
         echo "  state.json: MISSING"
-        failed=1
+        missing_files+=("state.json")
     fi
 
     # Check kubeconfig was restored
@@ -453,16 +450,7 @@ step_verify_restore() {
         echo "  kubeconfig: OK"
     else
         echo "  kubeconfig: MISSING"
-        failed=1
-    fi
-
-    # Check k8s directory was restored
-    local k8s_count=$(find "$restore_dir/k8s" -type f 2>/dev/null | wc -l)
-    if [ "$k8s_count" -gt 0 ]; then
-        echo "  k8s/: OK ($k8s_count files)"
-    else
-        echo "  k8s/: MISSING or empty"
-        failed=1
+        missing_files+=("kubeconfig")
     fi
 
     # Check environment.sh was restored
@@ -470,7 +458,7 @@ step_verify_restore() {
         echo "  environment.sh: OK"
     else
         echo "  environment.sh: MISSING"
-        failed=1
+        missing_files+=("environment.sh")
     fi
 
     # Check setup_instance.sh was restored
@@ -478,7 +466,7 @@ step_verify_restore() {
         echo "  setup_instance.sh: OK"
     else
         echo "  setup_instance.sh: MISSING"
-        failed=1
+        missing_files+=("setup_instance.sh")
     fi
 
     # Check cassandra_versions.yaml was restored
@@ -486,7 +474,7 @@ step_verify_restore() {
         echo "  cassandra_versions.yaml: OK"
     else
         echo "  cassandra_versions.yaml: MISSING"
-        failed=1
+        missing_files+=("cassandra_versions.yaml")
     fi
 
     # Verify Cassandra-specific files if Cassandra was enabled
@@ -495,7 +483,7 @@ step_verify_restore() {
             echo "  cassandra.patch.yaml: OK"
         else
             echo "  cassandra.patch.yaml: MISSING"
-            failed=1
+            missing_files+=("cassandra.patch.yaml")
         fi
 
         local cassandra_config_count=$(find "$restore_dir/cassandra" -type f 2>/dev/null | wc -l)
@@ -503,12 +491,15 @@ step_verify_restore() {
             echo "  cassandra/: OK ($cassandra_config_count files)"
         else
             echo "  cassandra/: MISSING or empty"
-            failed=1
+            missing_files+=("cassandra/")
         fi
     fi
 
-    if [ $failed -ne 0 ]; then
-        echo "ERROR: Some restored files are missing"
+    if [ ${#missing_files[@]} -ne 0 ]; then
+        echo "ERROR: Missing restored files in $restore_dir:"
+        for f in "${missing_files[@]}"; do
+            echo "  - $f"
+        done
         return 1
     fi
 

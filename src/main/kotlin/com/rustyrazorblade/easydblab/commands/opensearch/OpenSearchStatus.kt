@@ -37,8 +37,8 @@ class OpenSearchStatus : PicoBaseCommand() {
         val domainState = clusterState.openSearchDomain
         if (domainState == null) {
             if (!endpointOnly) {
-                eventBus.emit(Event.Message("No OpenSearch domain configured for this cluster."))
-                eventBus.emit(Event.Message("Use 'opensearch start' to create one."))
+                eventBus.emit(Event.OpenSearch.NotConfigured)
+                eventBus.emit(Event.OpenSearch.UseStartHint)
             }
             return
         }
@@ -50,7 +50,7 @@ class OpenSearchStatus : PicoBaseCommand() {
 
             if (endpointOnly) {
                 if (result.endpoint != null) {
-                    eventBus.emit(Event.Message(result.endpoint))
+                    eventBus.emit(Event.OpenSearch.EndpointOnly(result.endpoint))
                 }
                 return
             }
@@ -65,38 +65,23 @@ class OpenSearchStatus : PicoBaseCommand() {
     }
 
     private fun displayDomainStatus(result: OpenSearchDomainResult) {
-        val isReady = result.endpoint != null
         val statusDisplay =
             when {
-                isReady -> "Ready"
+                result.endpoint != null -> "Ready"
                 result.state == DomainState.PROCESSING -> "Creating..."
                 result.state == DomainState.DELETED -> "Deleted"
                 else -> "Creating..."
             }
 
         eventBus.emit(
-            Event.Message(
-                """
-            |
-            |OpenSearch Domain Status
-            |========================
-            |Domain Name: ${result.domainName}
-            |Domain ID:   ${result.domainId}
-            |Status:      $statusDisplay
-                """.trimMargin(),
+            Event.OpenSearch.DomainStatus(
+                domainName = result.domainName,
+                domainId = result.domainId,
+                state = statusDisplay,
+                endpoint = result.endpoint,
+                dashboardsEndpoint = result.dashboardsEndpoint,
             ),
         )
-        eventBus.emit(Event.Message(""))
-
-        if (isReady) {
-            eventBus.emit(Event.Message("Endpoints:"))
-            eventBus.emit(Event.Message("  REST API:   https://${result.endpoint}"))
-            eventBus.emit(Event.Message("  Dashboards: ${result.dashboardsEndpoint}"))
-        } else {
-            eventBus.emit(Event.Message("Endpoint not yet available."))
-            eventBus.emit(Event.Message("Domain creation typically takes 10-30 minutes."))
-        }
-        eventBus.emit(Event.Message(""))
     }
 
     private fun updateLocalStateIfChanged(
@@ -118,8 +103,8 @@ class OpenSearchStatus : PicoBaseCommand() {
     private fun handleDomainNotFound(domainState: OpenSearchClusterState) {
         log.info { "OpenSearch domain ${domainState.domainName} no longer exists" }
         if (!endpointOnly) {
-            eventBus.emit(Event.Message("OpenSearch domain '${domainState.domainName}' no longer exists."))
-            eventBus.emit(Event.Message("Clearing local state."))
+            eventBus.emit(Event.OpenSearch.DomainNotExists(domainState.domainName))
+            eventBus.emit(Event.OpenSearch.ClearingState)
         }
         clusterState.updateOpenSearchDomain(null)
         clusterStateManager.save(clusterState)
@@ -131,14 +116,14 @@ class OpenSearchStatus : PicoBaseCommand() {
     ) {
         log.warn { "Failed to get domain status: ${e.message}" }
         if (!endpointOnly) {
-            eventBus.emit(Event.Message("Warning: Could not fetch current domain status (${e.message})"))
-            eventBus.emit(Event.Message(""))
-            eventBus.emit(Event.Message("Cached state (may be stale):"))
-            eventBus.emit(Event.Message("  Domain:   ${domainState.domainName}"))
-            eventBus.emit(Event.Message("  State:    ${domainState.state}"))
-            if (domainState.endpoint != null) {
-                eventBus.emit(Event.Message("  Endpoint: ${domainState.endpoint}"))
-            }
+            eventBus.emit(Event.OpenSearch.FetchWarning(e.message ?: "unknown error"))
+            eventBus.emit(
+                Event.OpenSearch.CachedState(
+                    domainName = domainState.domainName,
+                    state = domainState.state,
+                    endpoint = domainState.endpoint,
+                ),
+            )
         }
     }
 }

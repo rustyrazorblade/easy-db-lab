@@ -88,7 +88,7 @@ class SparkSubmit : PicoBaseCommand() {
         // Determine JAR location (S3 or local)
         val s3JarPath =
             if (jarPath.startsWith("s3://")) {
-                eventBus.emit(Event.Message("Using S3 JAR: $jarPath"))
+                eventBus.emit(Event.Emr.UsingS3Jar(jarPath))
                 jarPath
             } else {
                 uploadJarToS3(jarPath)
@@ -125,7 +125,7 @@ class SparkSubmit : PicoBaseCommand() {
                     error(exception.message ?: "Failed to submit Spark job")
                 }
 
-        eventBus.emit(Event.Message("Submitted Spark job: $stepId to cluster ${clusterInfo.clusterId}"))
+        eventBus.emit(Event.Emr.JobSubmitted(stepId, clusterInfo.clusterId))
 
         // Optionally wait for completion
         if (wait) {
@@ -135,9 +135,7 @@ class SparkSubmit : PicoBaseCommand() {
                     error(exception.message ?: "Job failed")
                 }
         } else {
-            eventBus.emit(
-                Event.Message("Job submitted. Use 'easy-db-lab spark status --step-id $stepId' to check status."),
-            )
+            eventBus.emit(Event.Emr.JobSubmittedCheckStatus(stepId))
         }
     }
 

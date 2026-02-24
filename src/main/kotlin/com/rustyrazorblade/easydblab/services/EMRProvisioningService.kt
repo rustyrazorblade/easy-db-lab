@@ -63,7 +63,7 @@ class DefaultEMRProvisioningService(
         clusterState: ClusterState,
         tags: Map<String, String>,
     ): EMRClusterState {
-        eventBus.emit(Event.Message("Creating EMR Spark cluster..."))
+        eventBus.emit(Event.Emr.SparkClusterCreating)
 
         val emrConfig =
             EMRClusterConfig(

@@ -60,11 +60,7 @@ class Clean :
             if (artifacts.listFiles().isEmpty()) {
                 artifacts.delete()
             } else {
-                eventBus.emit(
-                    Event.Message(
-                        "Not deleting artifacts directory, it contains artifacts.",
-                    ),
-                )
+                eventBus.emit(Event.Command.ArtifactsNotEmpty)
             }
         }
     }

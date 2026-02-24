@@ -37,17 +37,16 @@ class MetricsBackup : PicoBaseCommand() {
     override fun execute() {
         val controlHost = clusterState.getControlHost()
         if (controlHost == null) {
-            eventBus.emit(Event.Error("No control node found. Please ensure the cluster is running."))
+            eventBus.emit(Event.Metrics.NoControlNode)
             return
         }
 
         victoriaBackupService
             .backupMetrics(controlHost, clusterState, dest)
             .onSuccess { result ->
-                eventBus.emit(Event.Message("VictoriaMetrics backup completed successfully"))
-                eventBus.emit(Event.Message("Backup location: ${result.s3Path.toUri()}"))
+                eventBus.emit(Event.Metrics.BackupComplete(result.s3Path.toUri()))
             }.onFailure { exception ->
-                eventBus.emit(Event.Error("VictoriaMetrics backup failed: ${exception.message}"))
+                eventBus.emit(Event.Metrics.BackupFailed(exception.message ?: "Unknown error"))
             }
     }
 }

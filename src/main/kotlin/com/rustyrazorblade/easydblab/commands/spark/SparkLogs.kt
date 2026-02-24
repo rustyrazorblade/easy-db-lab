@@ -63,7 +63,7 @@ class SparkLogs : PicoBaseCommand() {
         val targetStepId =
             stepId ?: getMostRecentStepId(clusterInfo.clusterId)
 
-        eventBus.emit(Event.Message("Querying logs for step: $targetStepId\n"))
+        eventBus.emit(Event.Emr.QueryingStepLogs(targetStepId))
 
         // Query Victoria Logs for EMR logs matching this step ID
         val query = "source:emr AND \"$targetStepId\""
@@ -71,9 +71,9 @@ class SparkLogs : PicoBaseCommand() {
             victoriaLogsService
                 .query(query, since, limit)
                 .getOrElse { exception ->
-                    eventBus.emit(Event.Error("Failed to query logs: ${exception.message}"))
+                    eventBus.emit(Event.Emr.StepQueryFailed(exception.message ?: "Unknown error"))
                     eventBus.emit(
-                        Event.Message(
+                        Event.Emr.StepQueryTips(
                             """
                         |Tips:
                         |  - Ensure observability stack is deployed: easy-db-lab k8 apply
@@ -87,7 +87,7 @@ class SparkLogs : PicoBaseCommand() {
 
         if (logs.isEmpty()) {
             eventBus.emit(
-                Event.Message(
+                Event.Emr.StepNoLogsFound(
                     """
                 |No logs found for step $targetStepId
                 |
@@ -98,8 +98,8 @@ class SparkLogs : PicoBaseCommand() {
                 ),
             )
         } else {
-            eventBus.emit(Event.Message(logs.joinToString("\n")))
-            eventBus.emit(Event.Message("\nFound ${logs.size} log entries."))
+            eventBus.emit(Event.Emr.StepLogsOutput(logs.joinToString("\n")))
+            eventBus.emit(Event.Emr.StepLogsCount(logs.size))
         }
     }
 

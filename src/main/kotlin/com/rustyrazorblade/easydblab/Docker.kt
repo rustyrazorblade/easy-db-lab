@@ -300,7 +300,7 @@ class Docker(
                         val current = detail.current
                         val total = detail.total
                         if (current != null && total != null) {
-                            eventBus.emit(Event.Message("Pulling: $current / $total"))
+                            eventBus.emit(Event.Docker.ImagePulling(current, total))
                         }
                     }
                     return super.onNext(item)
@@ -380,7 +380,7 @@ class Docker(
 
         if (workingDirectory.isNotEmpty()) {
             val workDirMsg = "Setting working directory inside container to $workingDirectory"
-            eventBus.emit(Event.Message(workDirMsg))
+            eventBus.emit(Event.Docker.ExecutionWorkDir(workDirMsg))
             bufferedHandler.handleMessage(workDirMsg)
             dockerCommandBuilder.withWorkingDir(workingDirectory)
         }
@@ -388,7 +388,7 @@ class Docker(
         val dockerContainer = dockerCommandBuilder.exec()
         val containerId = dockerContainer.id.substring(0, CONTAINER_ID_DISPLAY_LENGTH)
         val startMsg = "Starting $imageTag container ($containerId)"
-        eventBus.emit(Event.Message(startMsg))
+        eventBus.emit(Event.Docker.ExecutionStarting(startMsg))
         bufferedHandler.handleMessage(startMsg)
 
         // Use the new modular components

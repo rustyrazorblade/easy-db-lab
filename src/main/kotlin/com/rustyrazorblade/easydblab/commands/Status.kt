@@ -13,10 +13,6 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
 import com.rustyrazorblade.easydblab.kubernetes.getLocalKubeconfigPath
-import com.rustyrazorblade.easydblab.output.displayClickHouseAccess
-import com.rustyrazorblade.easydblab.output.displayObservabilityAccess
-import com.rustyrazorblade.easydblab.output.displayRegistryAccess
-import com.rustyrazorblade.easydblab.output.displayS3ManagerAccess
 import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupRuleInfo
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
@@ -77,11 +73,7 @@ class Status :
 
     override fun execute() {
         if (!clusterStateManager.exists()) {
-            eventBus.emit(
-                Event.Message(
-                    "Cluster state does not exist yet. Run 'easy-db-lab init' first.",
-                ),
-            )
+            eventBus.emit(Event.Status.NoClusterState)
             return
         }
 
@@ -105,21 +97,20 @@ class Status :
      * Display cluster overview section
      */
     private fun displayClusterSection() {
-        eventBus.emit(Event.Message(""))
-        eventBus.emit(Event.Message("=== CLUSTER STATUS ==="))
-        eventBus.emit(Event.Message("Cluster ID: ${clusterState.clusterId}"))
-        eventBus.emit(Event.Message("Name: ${clusterState.name}"))
-        eventBus.emit(Event.Message("Created: ${clusterState.createdAt.atZone(java.time.ZoneId.systemDefault()).format(DATE_FORMATTER)}"))
-        eventBus.emit(Event.Message("Infrastructure: ${clusterState.infrastructureStatus}"))
+        eventBus.emit(
+            Event.Status.ClusterInfo(
+                clusterId = clusterState.clusterId,
+                name = clusterState.name,
+                createdAt = clusterState.createdAt.atZone(java.time.ZoneId.systemDefault()).format(DATE_FORMATTER),
+                infrastructureStatus = clusterState.infrastructureStatus.toString(),
+            ),
+        )
     }
 
     /**
      * Display nodes section with live instance state from EC2
      */
     private fun displayNodesSection() {
-        eventBus.emit(Event.Message(""))
-        eventBus.emit(Event.Message("=== NODES ==="))
-
         val allInstanceIds = clusterState.getAllInstanceIds()
 
         // Get live instance states from EC2
@@ -137,35 +128,33 @@ class Status :
                 emptyMap()
             }
 
-        displayNodesByType(ServerType.Cassandra, "DATABASE NODES", instanceStates)
-        displayNodesByType(ServerType.Stress, "APP NODES", instanceStates)
-        displayNodesByType(ServerType.Control, "CONTROL NODES", instanceStates)
+        val databaseNodes = buildNodeDetails(ServerType.Cassandra, instanceStates)
+        val appNodes = buildNodeDetails(ServerType.Stress, instanceStates)
+        val controlNodes = buildNodeDetails(ServerType.Control, instanceStates)
+
+        eventBus.emit(
+            Event.Status.NodesSection(
+                databaseNodes = databaseNodes,
+                appNodes = appNodes,
+                controlNodes = controlNodes,
+            ),
+        )
     }
 
-    private fun displayNodesByType(
+    private fun buildNodeDetails(
         serverType: ServerType,
-        header: String,
         instanceStates: Map<String, com.rustyrazorblade.easydblab.providers.aws.InstanceDetails>,
-    ) {
+    ): List<Event.Status.NodeDetail> {
         val hosts = clusterState.hosts[serverType] ?: emptyList()
-        if (hosts.isEmpty()) return
-
-        eventBus.emit(Event.Message(""))
-        eventBus.emit(Event.Message("$header:"))
-
-        hosts.forEach { host ->
+        return hosts.map { host ->
             val state = instanceStates[host.instanceId]?.state ?: "UNKNOWN"
-            eventBus.emit(
-                Event.Message(
-                    "  %-12s %-20s %-16s %-16s %-12s %s".format(
-                        host.alias,
-                        host.instanceId.ifEmpty { "(no id)" },
-                        "${host.publicIp} (public)",
-                        "${host.privateIp} (private)",
-                        host.availabilityZone,
-                        state.uppercase(),
-                    ),
-                ),
+            Event.Status.NodeDetail(
+                alias = host.alias,
+                instanceId = host.instanceId,
+                publicIp = host.publicIp,
+                privateIp = host.privateIp,
+                availabilityZone = host.availabilityZone,
+                state = state,
             )
         }
     }
@@ -174,31 +163,29 @@ class Status :
      * Display networking section
      */
     private fun displayNetworkingSection() {
-        eventBus.emit(Event.Message(""))
-        eventBus.emit(Event.Message("=== NETWORKING ==="))
-
         val infrastructure = clusterState.infrastructure
         if (infrastructure == null) {
-            eventBus.emit(Event.Message("(no infrastructure data)"))
+            eventBus.emit(Event.Status.NoInfrastructureData)
             return
         }
 
-        eventBus.emit(Event.Message("VPC:              ${infrastructure.vpcId}"))
-        eventBus.emit(Event.Message("Internet Gateway: ${infrastructure.internetGatewayId ?: "(none)"}"))
-        eventBus.emit(Event.Message("Subnets:          ${infrastructure.subnetIds.joinToString(", ")}"))
-        eventBus.emit(Event.Message("Route Tables:     ${infrastructure.routeTableId ?: "(default)"}"))
+        eventBus.emit(
+            Event.Status.NetworkingInfo(
+                vpcId = infrastructure.vpcId,
+                internetGatewayId = infrastructure.internetGatewayId,
+                subnetIds = infrastructure.subnetIds,
+                routeTableId = infrastructure.routeTableId,
+            ),
+        )
     }
 
     /**
      * Display security group rules section
      */
     private fun displaySecurityGroupSection() {
-        eventBus.emit(Event.Message(""))
-        eventBus.emit(Event.Message("=== SECURITY GROUP ==="))
-
         val sgId = clusterState.infrastructure?.securityGroupId
         if (sgId == null) {
-            eventBus.emit(Event.Message("(no security group configured)"))
+            eventBus.emit(Event.Status.NoSecurityGroup)
             return
         }
 
@@ -208,61 +195,36 @@ class Status :
             }.getOrNull()
 
         if (sgDetails == null) {
-            eventBus.emit(Event.Message("Security Group: $sgId (unable to fetch details)"))
+            eventBus.emit(Event.Status.SecurityGroupFetchFailed(sgId))
             return
         }
 
-        eventBus.emit(Event.Message("Security Group: ${sgDetails.securityGroupId} (${sgDetails.name})"))
-
-        eventBus.emit(Event.Message(""))
-        eventBus.emit(Event.Message("Inbound Rules:"))
-        displaySecurityRules(sgDetails.inboundRules)
-
-        eventBus.emit(Event.Message(""))
-        eventBus.emit(Event.Message("Outbound Rules:"))
-        displaySecurityRules(sgDetails.outboundRules)
+        eventBus.emit(
+            Event.Status.SecurityGroupInfo(
+                sgId = sgDetails.securityGroupId,
+                name = sgDetails.name,
+                inboundRules = sgDetails.inboundRules.map { it.toSecurityRuleDetail() },
+                outboundRules = sgDetails.outboundRules.map { it.toSecurityRuleDetail() },
+            ),
+        )
     }
 
-    private fun displaySecurityRules(rules: List<SecurityGroupRuleInfo>) {
-        if (rules.isEmpty()) {
-            eventBus.emit(Event.Message("  (none)"))
-            return
-        }
-
-        rules.forEach { rule ->
-            val portRange =
-                when {
-                    rule.fromPort == null && rule.toPort == null -> "All"
-                    rule.fromPort == rule.toPort -> "${rule.fromPort}"
-                    else -> "${rule.fromPort}-${rule.toPort}"
-                }
-
-            val cidrs = rule.cidrBlocks.joinToString(", ").ifEmpty { "(none)" }
-            val description = rule.description ?: ""
-
-            eventBus.emit(
-                Event.Message(
-                    "  %-6s %-8s %-20s %s".format(
-                        rule.protocol,
-                        portRange,
-                        cidrs,
-                        description,
-                    ),
-                ),
-            )
-        }
-    }
+    private fun SecurityGroupRuleInfo.toSecurityRuleDetail(): Event.Status.SecurityRuleDetail =
+        Event.Status.SecurityRuleDetail(
+            protocol = protocol,
+            fromPort = fromPort,
+            toPort = toPort,
+            cidrBlocks = cidrBlocks,
+            description = description,
+        )
 
     /**
      * Display Spark/EMR cluster section
      */
     private fun displaySparkClusterSection() {
-        eventBus.emit(Event.Message(""))
-        eventBus.emit(Event.Message("=== SPARK CLUSTER ==="))
-
         val emrCluster = clusterState.emrCluster
         if (emrCluster == null) {
-            eventBus.emit(Event.Message("(no Spark cluster configured)"))
+            eventBus.emit(Event.Status.NoSparkCluster)
             return
         }
 
@@ -272,82 +234,79 @@ class Status :
                 emrService.getClusterStatus(emrCluster.clusterId).state
             }.getOrElse { emrCluster.state }
 
-        eventBus.emit(Event.Message("Cluster ID:   ${emrCluster.clusterId}"))
-        eventBus.emit(Event.Message("Name:         ${emrCluster.clusterName}"))
-        eventBus.emit(Event.Message("State:        $liveState"))
-        emrCluster.masterPublicDns?.let {
-            eventBus.emit(Event.Message("Master DNS:   $it"))
-        }
+        eventBus.emit(
+            Event.Status.SparkClusterInfo(
+                clusterId = emrCluster.clusterId,
+                clusterName = emrCluster.clusterName,
+                state = liveState,
+                masterPublicDns = emrCluster.masterPublicDns,
+            ),
+        )
     }
 
     /**
      * Display OpenSearch domain section
      */
     private fun displayOpenSearchSection() {
-        eventBus.emit(Event.Message(""))
-        eventBus.emit(Event.Message("=== OPENSEARCH DOMAIN ==="))
-
         val openSearchDomain = clusterState.openSearchDomain
         if (openSearchDomain == null) {
-            eventBus.emit(Event.Message("(no OpenSearch domain configured)"))
+            eventBus.emit(Event.Status.NoOpenSearchDomain)
             return
         }
 
         // Try to get live status from AWS, fall back to cached state
         val liveState =
             runCatching {
-                openSearchService.describeDomain(openSearchDomain.domainName).state
+                openSearchService.describeDomain(openSearchDomain.domainName).state.toString()
             }.getOrElse { openSearchDomain.state }
 
-        eventBus.emit(Event.Message("Domain Name:  ${openSearchDomain.domainName}"))
-        eventBus.emit(Event.Message("Domain ID:    ${openSearchDomain.domainId}"))
-        eventBus.emit(Event.Message("State:        $liveState"))
-        openSearchDomain.endpoint?.let {
-            eventBus.emit(Event.Message("Endpoint:     https://$it"))
-        }
-        openSearchDomain.dashboardsEndpoint?.let {
-            eventBus.emit(Event.Message("Dashboards:   $it"))
-        }
+        eventBus.emit(
+            Event.Status.OpenSearchInfo(
+                domainName = openSearchDomain.domainName,
+                domainId = openSearchDomain.domainId,
+                state = liveState,
+                endpoint = openSearchDomain.endpoint,
+                dashboardsEndpoint = openSearchDomain.dashboardsEndpoint,
+            ),
+        )
     }
 
     /**
      * Display S3 bucket section
      */
     private fun displayS3BucketSection() {
-        eventBus.emit(Event.Message(""))
-        eventBus.emit(Event.Message("=== S3 BUCKET ==="))
-
         if (clusterState.s3Bucket.isNullOrBlank()) {
-            eventBus.emit(Event.Message("(no S3 bucket configured)"))
+            eventBus.emit(Event.Status.NoS3Bucket)
             return
         }
 
         val s3Path = clusterState.s3Path()
-        eventBus.emit(Event.Message("Bucket:       ${clusterState.s3Bucket}"))
-        eventBus.emit(Event.Message("Fullpath:     ${clusterState.s3Bucket}/${clusterState.clusterPrefix()}"))
-        eventBus.emit(Event.Message("Cassandra:    ${s3Path.cassandra()}"))
-        eventBus.emit(Event.Message("ClickHouse:   ${s3Path.clickhouse()}"))
-        eventBus.emit(Event.Message("Spark:        ${s3Path.spark()}"))
-        eventBus.emit(Event.Message("EMR Logs:     ${s3Path.emrLogs()}"))
+        eventBus.emit(
+            Event.Status.S3BucketInfo(
+                bucket = clusterState.s3Bucket!!,
+                fullPath = "${clusterState.s3Bucket}/${clusterState.clusterPrefix()}",
+                cassandraPath = s3Path.cassandra().toString(),
+                clickhousePath = s3Path.clickhouse().toString(),
+                sparkPath = s3Path.spark().toString(),
+                emrLogsPath = s3Path.emrLogs().toString(),
+            ),
+        )
     }
 
     /**
      * Display Kubernetes pods section
      */
     private fun displayKubernetesSection() {
-        eventBus.emit(Event.Message(""))
-        eventBus.emit(Event.Message("=== KUBERNETES PODS ==="))
-
         val controlHost = clusterState.getControlHost()
         if (controlHost == null) {
-            eventBus.emit(Event.Message("(no control node configured)"))
+            eventBus.emit(Event.Status.KubernetesNoControlNode)
             return
         }
 
         // Check if kubeconfig exists locally
         val kubeconfigPath = getLocalKubeconfigPath(context.workingDirectory.absolutePath)
         if (!File(kubeconfigPath).exists()) {
-            eventBus.emit(Event.Message("(kubeconfig not found - K3s may not be initialized)"))
+            eventBus.emit(Event.Status.KubernetesNoKubeconfig)
             return
         }
 
@@ -356,40 +315,22 @@ class Status :
 
         result.fold(
             onSuccess = { pods ->
-                if (pods.isEmpty()) {
-                    eventBus.emit(Event.Message("(no pods running)"))
-                } else {
-                    eventBus.emit(
-                        Event.Message(
-                            "%-14s %-40s %-8s %-10s %-10s %s".format(
-                                "NAMESPACE",
-                                "NAME",
-                                "READY",
-                                "STATUS",
-                                "RESTARTS",
-                                "AGE",
-                            ),
-                        ),
-                    )
-                    pods.forEach { pod ->
-                        eventBus.emit(
-                            Event.Message(
-                                "%-14s %-40s %-8s %-10s %-10s %s".format(
-                                    pod.namespace,
-                                    pod.name.take(POD_NAME_MAX_LENGTH),
-                                    pod.ready,
-                                    pod.status,
-                                    pod.restarts.toString(),
-                                    formatAge(pod.age),
-                                ),
-                            ),
+                val podDetails =
+                    pods.map { pod ->
+                        Event.Status.PodDetail(
+                            namespace = pod.namespace,
+                            name = pod.name.take(POD_NAME_MAX_LENGTH),
+                            ready = pod.ready,
+                            status = pod.status,
+                            restarts = pod.restarts,
+                            age = formatAge(pod.age),
                         )
                     }
-                }
+                eventBus.emit(Event.Status.KubernetesPodsSection(podDetails))
             },
             onFailure = { e ->
                 log.debug(e) { "Failed to get Kubernetes pods" }
-                eventBus.emit(Event.Message("(unable to connect to K3s: ${e.message})"))
+                eventBus.emit(Event.Status.KubernetesConnectionError(e.message ?: "unknown error"))
             },
         )
     }
@@ -398,12 +339,9 @@ class Status :
      * Display stress jobs section
      */
     private fun displayStressJobsSection() {
-        eventBus.emit(Event.Message(""))
-        eventBus.emit(Event.Message("=== STRESS JOBS ==="))
-
         val controlHost = clusterState.getControlHost()
         if (controlHost == null) {
-            eventBus.emit(Event.Message("(no control node configured)"))
+            eventBus.emit(Event.Status.StressJobsNoControlNode)
             return
         }
 
@@ -415,39 +353,23 @@ class Status :
                 e: Exception,
             ) {
                 log.debug(e) { "Failed to get stress jobs" }
-                eventBus.emit(Event.Message("(unable to list stress jobs: ${e.message})"))
+                eventBus.emit(Event.Status.StressJobsError(e.message ?: "unknown error"))
                 return
             } ?: run {
-                eventBus.emit(Event.Message("(unable to list stress jobs)"))
+                eventBus.emit(Event.Status.StressJobsUnavailable)
                 return
             }
 
-        if (jobs.isEmpty()) {
-            eventBus.emit(Event.Message("(no stress jobs running)"))
-        } else {
-            eventBus.emit(
-                Event.Message(
-                    "%-40s %-12s %-12s %s".format(
-                        "NAME",
-                        "STATUS",
-                        "COMPLETIONS",
-                        "AGE",
-                    ),
-                ),
-            )
-            jobs.forEach { job ->
-                eventBus.emit(
-                    Event.Message(
-                        "%-40s %-12s %-12s %s".format(
-                            job.name.take(POD_NAME_MAX_LENGTH),
-                            job.status,
-                            job.completions,
-                            formatAge(job.age),
-                        ),
-                    ),
+        val jobDetails =
+            jobs.map { job ->
+                Event.Status.StressJobDetail(
+                    name = job.name.take(POD_NAME_MAX_LENGTH),
+                    status = job.status,
+                    completions = job.completions,
+                    age = formatAge(job.age),
                 )
             }
-        }
+        eventBus.emit(Event.Status.StressJobsSection(jobDetails))
     }
 
     /**
@@ -462,7 +384,14 @@ class Status :
             return
         }
 
-        eventBus.displayObservabilityAccess(controlHost.privateIp)
+        eventBus.emit(
+            Event.Provision.ObservabilityAccessInfo(
+                controlHost.privateIp,
+                Constants.K8s.GRAFANA_PORT,
+                Constants.K8s.VICTORIAMETRICS_PORT,
+                Constants.K8s.VICTORIALOGS_PORT,
+            ),
+        )
     }
 
     /**
@@ -489,7 +418,13 @@ class Status :
         status.onSuccess { podStatus ->
             // Only show if there are pods running (status contains pod info)
             if (podStatus.isNotBlank() && !podStatus.contains("No resources found")) {
-                eventBus.displayClickHouseAccess(dbNodeIp)
+                eventBus.emit(
+                    Event.Provision.ClickHouseAccessInfo(
+                        dbNodeIp,
+                        Constants.ClickHouse.HTTP_PORT,
+                        Constants.ClickHouse.NATIVE_PORT,
+                    ),
+                )
             }
         }
     }
@@ -506,7 +441,15 @@ class Status :
             return
         }
 
-        eventBus.displayS3ManagerAccess(controlHost.privateIp, clusterState.s3Path())
+        val s3Path = clusterState.s3Path()
+        eventBus.emit(
+            Event.Provision.S3ManagerAccessInfo(
+                controlHost.privateIp,
+                Constants.K8s.S3MANAGER_PORT,
+                s3Path.bucket,
+                s3Path.getKey(),
+            ),
+        )
     }
 
     /**
@@ -521,19 +464,22 @@ class Status :
             return
         }
 
-        eventBus.displayRegistryAccess(controlHost.privateIp)
+        eventBus.emit(
+            Event.Provision.RegistryAccessInfo(
+                controlHost.privateIp,
+                Constants.K8s.REGISTRY_PORT,
+                Constants.Proxy.DEFAULT_SOCKS5_PORT,
+            ),
+        )
     }
 
     /**
      * Display Cassandra version section
      */
     private fun displayCassandraVersionSection() {
-        eventBus.emit(Event.Message(""))
-        eventBus.emit(Event.Message("=== CASSANDRA VERSION ==="))
-
         val cassandraHosts = clusterState.hosts[ServerType.Cassandra] ?: emptyList()
         if (cassandraHosts.isEmpty()) {
-            eventBus.emit(Event.Message("(no Cassandra nodes configured)"))
+            eventBus.emit(Event.Status.CassandraNoNodes)
             return
         }
 
@@ -541,11 +487,11 @@ class Status :
         val liveVersion = tryGetLiveVersion(cassandraHosts)
 
         if (liveVersion != null) {
-            eventBus.emit(Event.Message("Version: $liveVersion (all nodes)"))
+            eventBus.emit(Event.Status.CassandraVersionLive(liveVersion))
         } else {
             // Fall back to cached version
             val cachedVersion = clusterState.default.version.ifEmpty { "unknown" }
-            eventBus.emit(Event.Message("Version: $cachedVersion (cached - nodes unavailable)"))
+            eventBus.emit(Event.Status.CassandraVersionCached(cachedVersion))
         }
     }
 

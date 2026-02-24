@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.configuration
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
-import com.github.ajalt.mordant.TermColors
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.events.Event
@@ -65,66 +64,18 @@ data class User(
             exception: SdkServiceException,
             operation: String,
         ) {
-            with(TermColors()) {
-                eventBus.emit(
-                    Event.Error(
-                        """
-                        |
-                        |========================================
-                        |AWS PERMISSION ERROR
-                        |========================================
-                        |
-                        |Operation: $operation
-                        |Error: ${exception.message}
-                        |
-                        |To fix this issue, add the following IAM policies to your AWS user.
-                        |You need to create THREE separate inline policies:
-                        |
-                        """.trimMargin(),
-                    ),
-                )
+            eventBus.emit(
+                Event.Setup.AwsPermissionError(operation, exception.message ?: ""),
+            )
 
-                val policies = getRequiredIAMPolicies("ACCOUNT_ID")
-                policies.forEachIndexed { index, policy ->
-                    eventBus.emit(
-                        Event.Message(
-                            """
-                            |${green("========================================")}
-                            |${green("Policy ${index + 1}: ${policy.name}")}
-                            |${green("========================================")}
-                            |
-                            |${policy.body}
-                            |
-                            """.trimMargin(),
-                        ),
-                    )
-                }
-
+            val policies = getRequiredIAMPolicies("ACCOUNT_ID")
+            policies.forEachIndexed { index, policy ->
                 eventBus.emit(
-                    Event.Message(
-                        """
-                        |========================================
-                        |
-                        |RECOMMENDED: Create managed policies and attach to a group
-                        |  • No size limits (inline policies limited to 5,120 bytes total)
-                        |  • Required for EMR/Spark cluster functionality
-                        |  • Reusable across multiple users
-                        |
-                        |To apply these policies:
-                        |  1. Go to AWS IAM Console (https://console.aws.amazon.com/iam/)
-                        |  2. Create IAM group (e.g., "EasyDBLabUsers")
-                        |  3. Create three managed policies:
-                        |     - Policies → Create Policy → JSON tab
-                        |     - Paste policy content and name: EasyDBLabEC2, EasyDBLabIAM, EasyDBLabEMR
-                        |  4. Attach policies to your group
-                        |  5. Add your IAM user to the group
-                        |
-                        |========================================
-                        |
-                        """.trimMargin(),
-                    ),
+                    Event.Setup.AwsPermissionPolicyDisplay(index, policy.name, policy.body),
                 )
             }
+
+            eventBus.emit(Event.Setup.AwsPermissionPolicyFooter)
         }
 
         /**
@@ -141,7 +92,7 @@ data class User(
             ec2Client: Ec2Client,
             eventBus: EventBus,
         ): AwsKeyName {
-            eventBus.emit(Event.Message("Generating AWS key pair and SSH credentials..."))
+            eventBus.emit(Event.Setup.GeneratingKeyPairAndSsh("Generating AWS key pair and SSH credentials..."))
 
             try {
                 val keyName = "easy-db-lab-${UUID.randomUUID()}"

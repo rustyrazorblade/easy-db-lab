@@ -74,6 +74,7 @@ See [data-model.md](../data-model.md) for complete field listings per event type
 2. **Forward compatibility**: Ignore unknown fields. New event types may be added in future versions.
 3. **Deserialization**: Use the `event.type` field as the polymorphic discriminator for typed deserialization.
 4. **Missing fields**: Domain-specific fields may be null if context was unavailable at emission time.
+5. **No message field**: Events do NOT contain a `message`, `text`, or `displayString` field. All event data is in structured, typed fields. Consumers use the domain-specific fields directly (e.g., `host`, `jobName`, `count`) rather than extracting a pre-rendered string.
 
 ## AsyncAPI Spec Skeleton
 

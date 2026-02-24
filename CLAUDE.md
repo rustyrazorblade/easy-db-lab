@@ -1,6 +1,6 @@
 - This is a command line tool.  The user interacts by reading the output.  Do not suggest replacing print statements with logging, because it breaks the UX.
-- **Services** should use `eventBus.emit(Event.Domain.Type(...))` for user-facing output. Events are defined as sealed data classes in `events/Event.kt`. See [`events/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/events/CLAUDE.md).
-- **Commands** that have been migrated use `eventBus.emit()`. Commands not yet migrated still use `outputHandler.handleMessage()`. Both are available in `PicoBaseCommand`.
+- **All user-facing output** uses `eventBus.emit(Event.Domain.Type(...))` with domain-specific typed events. Events are defined as sealed data classes in `events/Event.kt` across 28 domain interfaces. See [`events/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/events/CLAUDE.md).
+- **Do NOT use `Event.Message` or `Event.Error`** — these generic types exist only for test convenience. All production output must use domain-specific typed events with structured data fields.
 - Do not add logging frameworks to command classes unless there is a specific internal debugging need separate from user output.
 - When logging is needed, use: `import io.github.oshai.kotlinlogging.KotlinLogging` and create a logger with `private val log = KotlinLogging.logger {}`
 

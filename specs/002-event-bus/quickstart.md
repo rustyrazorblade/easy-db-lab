@@ -50,8 +50,23 @@ Events appear on the channel as JSON envelopes:
 ## For Developers Adding New Events
 
 1. Add a new data class in the appropriate sealed sub-interface in `events/Event.kt`
-2. Implement `toDisplayString()` to return the human-readable console text
-3. Emit the event via `eventBus.emit(Event.YourDomain.YourEvent(...))`
-4. The event automatically flows to all registered listeners (console, MCP, Redis)
-5. Serialization is handled by kotlinx.serialization — just add `@Serializable`
-6. `timestamp` and `commandName` are injected automatically — never pass them manually
+2. Constructor fields must be **structured data only** (strings, ints, lists) — never pre-formatted display text
+3. Implement `toDisplayString()` to construct the human-readable console text from the data fields
+4. For events with no meaningful data, use `data object` instead of `data class`
+5. Emit the event via `eventBus.emit(Event.YourDomain.YourEvent(...))`
+6. The event automatically flows to all registered listeners (console, MCP, Redis)
+7. Serialization is handled by kotlinx.serialization — just add `@Serializable`
+8. `timestamp` and `commandName` are injected automatically — never pass them manually
+
+**Example:**
+```kotlin
+// GOOD — data fields only, display constructed internally
+data class JobStarted(val jobName: String, val image: String, val promPort: Int) : Stress {
+    override fun toDisplayString(): String = "Stress job started: $jobName (image: $image, port: $promPort)"
+}
+
+// BAD — passthrough message string
+data class JobStarted(val message: String) : Stress {
+    override fun toDisplayString(): String = message  // violates data-only rule
+}
+```

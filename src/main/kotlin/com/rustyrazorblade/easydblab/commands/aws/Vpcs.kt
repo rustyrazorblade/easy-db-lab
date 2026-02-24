@@ -24,7 +24,7 @@ class Vpcs : PicoBaseCommand() {
         val vpcIds = vpcService.findVpcsByTag(Constants.Vpc.TAG_KEY, Constants.Vpc.TAG_VALUE)
 
         if (vpcIds.isEmpty()) {
-            eventBus.emit(Event.Message("No easy-db-lab VPCs found"))
+            eventBus.emit(Event.Command.NoVpcsFound)
             return
         }
 
@@ -32,7 +32,7 @@ class Vpcs : PicoBaseCommand() {
             val tags = vpcService.getVpcTags(vpcId)
             val name = tags["Name"] ?: "(unnamed)"
             val clusterId = tags["ClusterId"] ?: "(no cluster id)"
-            eventBus.emit(Event.Message("$name $vpcId $clusterId"))
+            eventBus.emit(Event.Command.VpcListItem(name, vpcId, clusterId))
         }
     }
 }

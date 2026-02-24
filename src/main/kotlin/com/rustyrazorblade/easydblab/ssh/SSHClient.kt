@@ -71,16 +71,16 @@ class SSHClient(
 
             // Create connection for this host
             if (!secret) {
-                eventBus.emit(Event.Message("Executing remote command: $command"))
+                eventBus.emit(Event.Ssh.ExecutingCommand(command))
             } else {
-                eventBus.emit(Event.Message("Executing remote command: [hidden]"))
+                eventBus.emit(Event.Ssh.ExecutingHiddenCommand)
             }
 
             val stderrStream = ByteArrayOutputStream()
             val result = session.executeRemoteCommand(command, stderrStream, Charset.defaultCharset())
 
             if (output) {
-                eventBus.emit(Event.Message(result))
+                eventBus.emit(Event.Ssh.CommandOutput(result))
             }
 
             return@synchronized Response(result, stderrStream.toString())
@@ -98,7 +98,7 @@ class SSHClient(
             require(local.toFile().exists()) { "Local file does not exist: ${local.toAbsolutePath()}" }
             require(local.toFile().isFile) { "Local path is not a file: ${local.toAbsolutePath()}" }
 
-            eventBus.emit(Event.Message("Uploading file ${local.toAbsolutePath()} to $remoteAddress:$remote"))
+            eventBus.emit(Event.Ssh.UploadingFile(local.toAbsolutePath().toString(), remoteAddress, remote))
             getScpClient().upload(local, remote)
         }
 

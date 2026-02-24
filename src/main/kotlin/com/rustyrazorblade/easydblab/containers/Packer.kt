@@ -106,7 +106,7 @@ class Packer(
         require(directory.isNotBlank()) { "Directory cannot be blank" }
 
         if (!File(localPackerPath).exists()) {
-            eventBus.emit(Event.Error("packer directory not found: $localPackerPath"))
+            eventBus.emit(Event.Docker.PackerDirectoryNotFound(localPackerPath))
             exitProcess(1)
         }
 

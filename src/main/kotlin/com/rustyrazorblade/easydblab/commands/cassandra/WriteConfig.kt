@@ -36,13 +36,8 @@ class WriteConfig : PicoBaseCommand() {
 
     override fun execute() {
         // create the cassandra.yaml patch file
-        eventBus.emit(Event.Message("Writing new configuration file to $file."))
-        eventBus.emit(
-            Event.Message(
-                "It can be applied to the lab via easy-db-lab update-config " +
-                    "(or automatically when calling use-cassandra)",
-            ),
-        )
+        eventBus.emit(Event.Cassandra.WriteConfigDone(file))
+        eventBus.emit(Event.Cassandra.WriteConfigHint)
 
         val data =
             object {

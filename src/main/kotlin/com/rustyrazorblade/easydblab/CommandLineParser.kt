@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab
 
-import com.github.ajalt.mordant.TermColors
 import com.rustyrazorblade.easydblab.commands.BuildBaseImage
 import com.rustyrazorblade.easydblab.commands.BuildCassandraImage
 import com.rustyrazorblade.easydblab.commands.BuildImage
@@ -157,19 +156,7 @@ class CommandLineParser : KoinComponent {
         if (isHelpRequested(input)) {
             val userConfigProvider: UserConfigProvider by inject()
             if (!userConfigProvider.isSetup()) {
-                with(TermColors()) {
-                    eventBus.emit(
-                        Event.Message(
-                            yellow(
-                                """
-
-                                Profile not configured. Please run 'easy-db-lab setup-profile' to configure your environment.
-
-                                """.trimIndent(),
-                            ),
-                        ),
-                    )
-                }
+                eventBus.emit(Event.Command.ProfileNotConfigured)
             }
         }
 

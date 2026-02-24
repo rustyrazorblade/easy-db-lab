@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.commands.tailscale
 
-import com.github.ajalt.mordant.TermColors
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
@@ -32,11 +31,7 @@ class TailscaleStatus : PicoBaseCommand() {
         // Get control host
         val controlHost = clusterState.getControlHost()
         if (controlHost == null) {
-            with(TermColors()) {
-                eventBus.emit(
-                    Event.Error(red("No control node found. Ensure your cluster is running with 'easy-db-lab up'.")),
-                )
-            }
+            eventBus.emit(Event.Tailscale.NoControlNode)
             return
         }
 
@@ -48,8 +43,8 @@ class TailscaleStatus : PicoBaseCommand() {
             tailscaleService.isConnected(host).getOrElse { false }
 
         if (!isConnected) {
-            eventBus.emit(Event.Message("Tailscale is not running on ${controlHost.alias}."))
-            eventBus.emit(Event.Message("Run 'easy-db-lab tailscale start' to connect."))
+            eventBus.emit(Event.Tailscale.NotRunning(controlHost.alias))
+            eventBus.emit(Event.Tailscale.RunInstructions)
             return
         }
 
@@ -57,14 +52,9 @@ class TailscaleStatus : PicoBaseCommand() {
         tailscaleService
             .getStatus(host)
             .onSuccess { status ->
-                eventBus.emit(Event.Message("Tailscale status on ${controlHost.alias}:"))
-                eventBus.emit(Event.Message(status))
+                eventBus.emit(Event.Tailscale.StatusInfo(controlHost.alias, status))
             }.onFailure { error ->
-                with(TermColors()) {
-                    eventBus.emit(
-                        Event.Error(red("Failed to get Tailscale status: ${error.message}")),
-                    )
-                }
+                eventBus.emit(Event.Tailscale.StatusFailed(error.message ?: "unknown error"))
             }
     }
 }

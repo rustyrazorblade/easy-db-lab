@@ -54,7 +54,7 @@ class StressList : PicoBaseCommand() {
         val args = mutableListOf("list")
         args.addAll(stressArgs)
 
-        eventBus.emit(Event.Message("Running cassandra-easy-stress list..."))
+        eventBus.emit(Event.Stress.CommandRunning("list"))
 
         val output =
             stressJobService
@@ -64,7 +64,7 @@ class StressList : PicoBaseCommand() {
                 }
 
         if (output.isNotEmpty()) {
-            eventBus.emit(Event.Message(output))
+            eventBus.emit(Event.Stress.CommandOutput(output))
         }
     }
 }

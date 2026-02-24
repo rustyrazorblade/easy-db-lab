@@ -11,6 +11,12 @@
 
 - Q: What metadata should events include beyond type, message, and timestamp? → A: Command name, node targets, timestamp. No cluster name (endpoint is cluster-specific). Duration fully descoped — use OTel spans for timing.
 
+### Session 2026-02-24
+
+- Q: Should event constructors carry display message strings? → A: No. Event constructors carry ONLY structured domain data fields. The `toDisplayString()` method constructs the human-readable message internally from those fields. Pre-formatted text is never passed as a constructor parameter. This ensures Redis/MCP consumers receive queryable structured data, not opaque strings.
+- Q: What about the existing ~455 Event.Message/Event.Error generic calls? → A: All must be replaced with domain-specific typed events carrying structured data fields. Event.Message and Event.Error remain defined for test convenience only — zero production usage after migration.
+- Q: What about existing typed events that use passthrough `message: String` fields (e.g., AwsSetup.Starting, Provision.ProvisioningComplete)? → A: These violate the data-only-constructors rule and must be refactored to carry structured data instead of passthrough strings.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Backward Compatible CLI Output (Priority: P1)
@@ -73,7 +79,7 @@ An operator wants external systems (dashboards, alerting tools, log aggregators)
 
 ### Functional Requirements
 
-- **FR-001**: System MUST emit structured events containing: event type, human-readable message, timestamp, and command name (when available). Individual event types MAY include domain-specific context such as node targets, resource identifiers, and elapsed time where applicable
+- **FR-001**: System MUST emit structured events containing: event type, timestamp, and command name (when available). Event constructors MUST carry only structured domain data fields (not pre-formatted display strings). The `toDisplayString()` method constructs human-readable output internally from the data fields. Individual event types carry domain-specific context such as node targets, resource identifiers, and counts as typed fields
 - **FR-002**: System MUST preserve existing console output behavior when no external destinations are configured
 - **FR-003**: System MUST support multiple simultaneous output destinations (console, MCP, Redis) via fan-out
 - **FR-004**: System MUST allow Redis pub/sub destination to be configured via environment variable
@@ -85,7 +91,7 @@ An operator wants external systems (dashboards, alerting tools, log aggregators)
 
 ### Key Entities
 
-- **Event**: A structured occurrence in the system with: type, message content, timestamp, and command name (when available). Individual event types carry domain-specific context (node targets, resource identifiers, elapsed time) where applicable. Has both human-readable and machine-serializable representations. Does not include cluster name (endpoint is cluster-specific).
+- **Event**: A structured occurrence in the system with: type, domain-specific data fields, timestamp, and command name (when available). Event constructors carry ONLY structured data (strings, ints, lists, enums) — never pre-formatted display text. `toDisplayString()` constructs human-readable output from the data fields. Has both human-readable (console) and machine-serializable (JSON) representations. Does not include cluster name (endpoint is cluster-specific).
 - **Event Type**: Each event has a type derived from its sealed class name (e.g., `Cassandra.Starting`, `K3s.ClusterStarted`, `Backup.VictoriaMetricsComplete`). Types are organized by domain (`Cassandra.*`, `K3s.*`, `Emr.*`, etc.), enabling consumers to filter by domain prefix or match on specific event types.
 - **Output Destination**: A subscriber to the event stream that receives and processes events (console, MCP connection, Redis channel).
 - **Event Bus**: Central component that receives events and distributes them to all registered output destinations.
@@ -100,6 +106,8 @@ An operator wants external systems (dashboards, alerting tools, log aggregators)
 - **SC-004**: Adding a new output destination requires no changes to event-emitting code
 - **SC-005**: Events can be parsed by external systems without knowledge of internal implementation details
 - **SC-006**: MCP clients receive all events that were previously sent as strings, plus additional metadata
+- **SC-007**: Zero production usage of `Event.Message` or `Event.Error` generic types — all call sites use domain-specific typed events with structured data fields
+- **SC-008**: No event type uses a passthrough `message: String` or `text: String` constructor field where `toDisplayString()` simply returns that field — all events carry structured data and construct display output internally
 
 ## Assumptions
 

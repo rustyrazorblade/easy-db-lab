@@ -28,10 +28,6 @@ class AWSResourceSetupService(
         private const val MSG_REPAIR_WARNING = "Warning: IAM role configuration incomplete or invalid. Will attempt to repair."
         private const val MSG_SETUP_START = "Setting up AWS resources (IAM roles, instance profiles)..."
         private const val MSG_SETUP_COMPLETE = "✓ AWS resources setup complete and validated"
-        private const val MSG_EC2_ROLE_READY = "✓ IAM role and instance profile ready:"
-        private const val MSG_EMR_SERVICE_READY = "✓ EMR service role ready:"
-        private const val MSG_EMR_EC2_READY = "✓ EMR EC2 role and instance profile ready:"
-
         // Error messages
         private const val ERR_CREDENTIAL_VALIDATION =
             "AWS credential validation failed. Please check your AWS credentials and permissions."
@@ -240,27 +236,15 @@ class AWSResourceSetupService(
         val policies = AWSPolicy.UserIAM.loadAll("ACCOUNT_ID")
         policies.forEachIndexed { index, policy ->
             eventBus.emit(
-                Event.Message(
-                    """
-                    |========================================
-                    |Policy ${index + 1}: ${policy.name}
-                    |========================================
-                    |
-                    |${policy.body}
-                    |
-                    """.trimMargin(),
+                Event.AwsSetup.PolicyDisplay(
+                    index = index + 1,
+                    name = policy.name,
+                    body = policy.body,
                 ),
             )
         }
 
-        eventBus.emit(
-            Event.Message(
-                """
-                |========================================
-                |
-                """.trimMargin(),
-            ),
-        )
+        eventBus.emit(Event.AwsSetup.PolicySeparator)
     }
 
     /**
@@ -290,60 +274,21 @@ class AWSResourceSetupService(
             try {
                 aws.getAccountId() ?: error("Account ID is null")
             } catch (e: Exception) {
-                eventBus.emit(
-                    Event.Message(
-                        """
-                        |NOTE: Replace ACCOUNT_ID in the policies below with your AWS account ID.
-                        |You can find your account ID in the error message above (the 12-digit number in the ARN).
-                        |
-                        """.trimMargin(),
-                    ),
-                )
+                eventBus.emit(Event.AwsSetup.AccountIdNote)
                 "ACCOUNT_ID"
             }
 
         val policies = AWSPolicy.UserIAM.loadAll(accountId)
         policies.forEachIndexed { index, policy ->
             eventBus.emit(
-                Event.Message(
-                    """
-                    |========================================
-                    |Policy ${index + 1}: ${policy.name}
-                    |========================================
-                    |
-                    |${policy.body}
-                    |
-                    """.trimMargin(),
+                Event.AwsSetup.PolicyDisplay(
+                    index = index + 1,
+                    name = policy.name,
+                    body = policy.body,
                 ),
             )
         }
 
-        eventBus.emit(
-            Event.Message(
-                """
-                |========================================
-                |
-                |RECOMMENDED: Create managed policies and attach to a group
-                |  • No size limits (inline policies limited to 5,120 bytes total)
-                |  • Required for EMR/Spark cluster functionality
-                |  • Reusable across multiple users
-                |
-                |To apply these policies:
-                |  1. Go to AWS IAM Console (https://console.aws.amazon.com/iam/)
-                |  2. Create IAM group (e.g., "EasyDBLabUsers")
-                |  3. Create three managed policies:
-                |     - Policies → Create Policy → JSON tab
-                |     - Paste policy content and name: EasyDBLabEC2, EasyDBLabIAM, EasyDBLabEMR
-                |  4. Attach policies to your group
-                |  5. Add your IAM user to the group
-                |
-                |ALTERNATIVE (single user): Attach as inline policies to your user
-                |  WARNING: May hit 5,120 byte limit with all three policies
-                |
-                |========================================
-                |
-                """.trimMargin(),
-            ),
-        )
+        eventBus.emit(Event.AwsSetup.PolicyRecommendation)
     }
 }

@@ -22,9 +22,8 @@ class ListVersions : PicoBaseCommand() {
     override fun execute() {
         clusterState.getHosts(ServerType.Cassandra).first().let {
             val response = remoteOps.executeRemotely(it, "ls /usr/local/cassandra", output = false)
-            response.text.split("\n").filter { line -> line != "current" }.forEach { line ->
-                eventBus.emit(Event.Message(line))
-            }
+            val versions = response.text.split("\n").filter { line -> line != "current" }
+            eventBus.emit(Event.Cassandra.VersionList(versions))
         }
     }
 }

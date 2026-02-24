@@ -104,17 +104,17 @@ class GrafanaUpdateConfig : PicoBaseCommand() {
         controlNode: ClusterHost,
         resources: List<HasMetadata>,
     ) {
-        eventBus.emit(Event.Message("Applying $label resources..."))
+        eventBus.emit(Event.Grafana.LabelResourcesApplying(label))
         for (resource in resources) {
             k8sService.applyResource(controlNode, resource).getOrElse { exception ->
                 error("Failed to apply $label ${resource.kind}/${resource.metadata?.name}: ${exception.message}")
             }
         }
-        eventBus.emit(Event.Message("$label resources applied successfully"))
+        eventBus.emit(Event.Grafana.LabelResourcesApplied(label))
     }
 
     private fun applyPyroscopeResources(controlNode: ClusterHost) {
-        eventBus.emit(Event.Message("Preparing Pyroscope data directory..."))
+        eventBus.emit(Event.Grafana.PyroscopeDirectoryPreparing)
         remoteOps.executeRemotely(
             controlNode.toHost(),
             "sudo mkdir -p /mnt/db1/pyroscope && " +

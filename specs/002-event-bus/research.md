@@ -67,9 +67,9 @@ Each command pushes its name onto the stack on entry and pops on exit. When comm
 
 ## R-006: Serialization for Wire Format
 
-**Decision**: Use `kotlinx.serialization` polymorphic serialization. The sealed class hierarchy is serialized with a `type` discriminator field containing the class name (e.g., `"type": "Cassandra.Starting"`). The `message` field contains `toDisplayString()` output for consumers that just want text.
+**Decision**: Use `kotlinx.serialization` polymorphic serialization. The sealed class hierarchy is serialized with a `type` discriminator field containing the class name (e.g., `"type": "Cassandra.Starting"`). Only domain-specific data fields are serialized — there is no `message` or `displayString` field in the wire format. The `toDisplayString()` method is Kotlin-only, used for console rendering; it is never serialized.
 
-**Rationale**: Matches the project's mandatory serialization framework. Polymorphic serialization handles sealed hierarchies natively. Consumers can deserialize to specific types or just read the `type` + `message` fields.
+**Rationale**: Matches the project's mandatory serialization framework. Polymorphic serialization handles sealed hierarchies natively. Consumers deserialize to specific types and use the structured data fields directly. This gives Redis/MCP consumers queryable, machine-parseable data rather than opaque text strings.
 
 **Alternatives considered**:
 - Custom serializer — unnecessary, kotlinx handles sealed classes natively.

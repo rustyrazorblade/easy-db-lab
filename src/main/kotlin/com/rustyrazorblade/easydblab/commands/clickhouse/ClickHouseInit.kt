@@ -52,7 +52,7 @@ class ClickHouseInit : PicoBaseCommand() {
         clusterStateManager.save(state)
 
         eventBus.emit(
-            Event.Message(
+            Event.ClickHouse.ConfigSaved(
                 """
                 ClickHouse configuration saved.
                   Replicas per shard: $replicasPerShard

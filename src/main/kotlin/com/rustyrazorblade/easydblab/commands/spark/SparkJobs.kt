@@ -47,8 +47,7 @@ class SparkJobs : PicoBaseCommand() {
                     error(error.message ?: "Failed to validate EMR cluster")
                 }
 
-        eventBus.emit(Event.Message("Listing jobs for cluster: ${clusterInfo.clusterId}"))
-        eventBus.emit(Event.Message(""))
+        eventBus.emit(Event.Emr.ListingJobs(clusterInfo.clusterId))
 
         // Get job list
         val jobs =
@@ -59,12 +58,12 @@ class SparkJobs : PicoBaseCommand() {
                 }
 
         if (jobs.isEmpty()) {
-            eventBus.emit(Event.Message("No jobs found on cluster."))
+            eventBus.emit(Event.Emr.NoJobsFound)
             return
         }
 
         // Display jobs in a formatted table
-        eventBus.emit(Event.Message(formatJobsTable(jobs)))
+        eventBus.emit(Event.Emr.JobsTable(formatJobsTable(jobs)))
     }
 
     /**

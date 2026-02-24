@@ -199,12 +199,12 @@ class McpServer(
                         toolRegistry.executeTool(request.name, request.arguments)
                         log.info { "Completed background execution of tool: ${request.name}" }
                         eventBus.emit(
-                            Event.Message("Background execution of tool '${request.name}' complete."),
+                            Event.Mcp.BackgroundToolComplete(request.name),
                         )
                     } catch (e: RuntimeException) {
                         log.error(e) { "Error in background execution of tool ${request.name}" }
                         eventBus.emit(
-                            Event.Error("Background execution of tool '${request.name}' failed: ${e.message}"),
+                            Event.Mcp.BackgroundToolFailed(request.name, e.message ?: ""),
                         )
                     } finally {
                         executionSemaphore.release()
@@ -480,14 +480,7 @@ class McpServer(
         onStarted(actualPort)
 
         eventBus.emit(
-            Event.Message(
-                """
-                Starting MCP server on port $actualPort...
-
-                Server is now available at: http://$bind:$actualPort/sse
-                Swagger UI available at:    http://$bind:$actualPort/swagger
-                """.trimIndent(),
-            ),
+            Event.Mcp.ServerReady(actualPort, bind),
         )
 
         // Wait for shutdown

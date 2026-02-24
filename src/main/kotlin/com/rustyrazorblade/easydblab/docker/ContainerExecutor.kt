@@ -54,16 +54,16 @@ class ContainerExecutor(
                 .decorateRunnable(retry) {
                     dockerClient.startContainer(containerId)
                 }.run()
-            eventBus.emit(Event.Message("Starting container $containerId"))
+            eventBus.emit(Event.Docker.ContainerStarting(containerId))
         } catch (e: com.github.dockerjava.api.exception.DockerException) {
             val errorMsg = "Docker error starting container: $containerId"
             log.error(e) { errorMsg }
-            eventBus.emit(Event.Error("Error starting container: ${e.message}"))
+            eventBus.emit(Event.Docker.ContainerStartError(e.message ?: ""))
             throw DockerException("Failed to start container $containerId", e)
         } catch (e: IOException) {
             val errorMsg = "IO error starting container: $containerId"
             log.error(e) { errorMsg }
-            eventBus.emit(Event.Error("Error starting container: ${e.message}"))
+            eventBus.emit(Event.Docker.ContainerStartError(e.message ?: ""))
             throw DockerException("IO error starting container $containerId", e)
         }
 
@@ -117,10 +117,10 @@ class ContainerExecutor(
                 }.run()
         } catch (e: DockerException) {
             log.error(e) { "Docker error while removing container $containerId" }
-            eventBus.emit(Event.Error("Failed to remove container: ${e.message}"))
+            eventBus.emit(Event.Docker.ContainerRemoveError(e.message ?: ""))
         } catch (e: RuntimeException) {
             log.error(e) { "Runtime error while removing container $containerId" }
-            eventBus.emit(Event.Error("Failed to remove container: ${e.message}"))
+            eventBus.emit(Event.Docker.ContainerRemoveError(e.message ?: ""))
         }
     }
 }
@@ -159,7 +159,7 @@ class ContainerIOManager(
             setupStdinRedirection()
         }
 
-        eventBus.emit(Event.Message("Attaching to running container"))
+        eventBus.emit(Event.Docker.ContainerAttaching)
 
         val frameCallback =
             object : ResultCallback.Adapter<Frame>() {
@@ -173,7 +173,7 @@ class ContainerIOManager(
 
                 override fun onError(throwable: Throwable) {
                     log.error(throwable) { "Container attachment error" }
-                    eventBus.emit(Event.Error("Container attachment error"))
+                    eventBus.emit(Event.Docker.ContainerAttachError)
                     super.onError(throwable)
                 }
             }
@@ -261,7 +261,7 @@ class ContainerStateMonitor : KoinComponent {
         framesRead: Int,
     ) {
         val message = buildReturnMessage(containerState, framesRead)
-        eventBus.emit(Event.Message(message))
+        eventBus.emit(Event.Docker.ContainerOutput(message))
         log.info { message }
     }
 }

@@ -33,7 +33,7 @@ class LogsLs : PicoBaseCommand() {
         val files = objectStore.listFiles(clusterState.s3Path().victoriaLogs(), recursive = true)
 
         if (files.isEmpty()) {
-            eventBus.emit(Event.Message("No VictoriaLogs backups found."))
+            eventBus.emit(Event.Logs.BackupListEmpty)
             return
         }
 
@@ -45,17 +45,12 @@ class LogsLs : PicoBaseCommand() {
                 relativePath.substringBefore("/")
             }
 
-        eventBus.emit(Event.Message("VictoriaLogs backups:"))
-        eventBus.emit(Event.Message(""))
-        eventBus.emit(Event.Message("%-30s  %10s  %15s".format("Timestamp", "Files", "Total Size")))
-        eventBus.emit(Event.Message("-".repeat(TABLE_SEPARATOR_LENGTH)))
-
-        for ((timestamp, groupFiles) in grouped.toSortedMap()) {
-            val totalSize = groupFiles.sumOf { it.size }
-            eventBus.emit(
-                Event.Message("%-30s  %10d  %15s".format(timestamp, groupFiles.size, formatSize(totalSize))),
-            )
-        }
+        val entries =
+            grouped.toSortedMap().map { (timestamp, groupFiles) ->
+                val totalSize = groupFiles.sumOf { it.size }
+                Event.Logs.BackupEntry(timestamp, groupFiles.size, formatSize(totalSize))
+            }
+        eventBus.emit(Event.Logs.BackupList(entries))
     }
 
     private fun formatSize(bytes: Long): String {
@@ -66,7 +61,6 @@ class LogsLs : PicoBaseCommand() {
     }
 
     companion object {
-        private const val TABLE_SEPARATOR_LENGTH = 59
         private const val BYTES_PER_KB = 1024L
         private const val BYTES_PER_MB = 1024L * 1024
         private const val BYTES_PER_GB = 1024L * 1024 * 1024

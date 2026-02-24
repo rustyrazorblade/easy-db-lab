@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.commands.cassandra
 
-import com.github.ajalt.mordant.TermColors
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
@@ -46,27 +45,25 @@ class Start : PicoBaseCommand() {
     var hosts = HostsMixin()
 
     override fun execute() {
-        with(TermColors()) {
-            hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList) { host ->
-                val h = host.toHost()
-                eventBus.emit(Event.Cassandra.Starting(h.alias))
-                // start() defaults to wait=true, which includes waiting for UP/NORMAL
-                cassandraService.start(h).getOrThrow()
-            }
+        hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList) { host ->
+            val h = host.toHost()
+            eventBus.emit(Event.Cassandra.Starting(h.alias))
+            // start() defaults to wait=true, which includes waiting for UP/NORMAL
+            cassandraService.start(h).getOrThrow()
+        }
 
-            // Start cassandra-sidecar on Cassandra nodes
-            hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList, parallel = true) { host ->
-                sidecarService
-                    .start(host.toHost())
-                    .onFailure { e ->
-                        eventBus.emit(Event.Error("Warning: Failed to start cassandra-sidecar on ${host.alias}: ${e.message}"))
-                    }
-            }
+        // Start cassandra-sidecar on Cassandra nodes
+        hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList, parallel = true) { host ->
+            sidecarService
+                .start(host.toHost())
+                .onFailure { e ->
+                    eventBus.emit(Event.Cassandra.SidecarStartFailed(host.alias, "${e.message}"))
+                }
         }
 
         // Start axon-agent on Cassandra nodes if configured
         if (userConfig.axonOpsOrg.isNotBlank() && userConfig.axonOpsKey.isNotBlank()) {
-            eventBus.emit(Event.Message("Starting axon-agent on Cassandra nodes..."))
+            eventBus.emit(Event.Cassandra.AxonAgentStarting)
             hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, "", parallel = true) { host ->
                 remoteOps.executeRemotely(host.toHost(), "sudo systemctl start axon-agent")
             }
@@ -75,17 +72,7 @@ class Start : PicoBaseCommand() {
         // Inform user about AxonOps Workbench configuration if it exists
         val axonOpsWorkbenchFile = File("axonops-workbench.json")
         if (axonOpsWorkbenchFile.exists()) {
-            eventBus.emit(
-                Event.Message(
-                    """
-                    |
-                    |AxonOps Workbench configuration available:
-                    |To import into AxonOps Workbench, run:
-                    |  /path/to/axonops-workbench -v --import-workspace=axonops-workbench.json
-                    |
-                    """.trimMargin(),
-                ),
-            )
+            eventBus.emit(Event.Cassandra.AxonOpsWorkbenchInfo(userConfig.axonOpsOrg))
         }
     }
 }

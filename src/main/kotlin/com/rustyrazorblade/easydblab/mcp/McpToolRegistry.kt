@@ -119,13 +119,13 @@ open class McpToolRegistry : KoinComponent {
         action: () -> Unit,
     ): ToolResult =
         try {
-            eventBus.emit(Event.Message("Starting execution of tool: $name"))
+            eventBus.emit(Event.Mcp.ToolExecutionStarting(name))
             action()
-            eventBus.emit(Event.Message("Tool '$name' completed successfully"))
+            eventBus.emit(Event.Mcp.ToolExecutionComplete(name))
             ToolResult(content = listOf("Tool executed successfully"))
         } catch (e: Exception) {
             log.error(e) { "Error executing command $name" }
-            eventBus.emit(Event.Error("Tool '$name' failed: ${e.message}"))
+            eventBus.emit(Event.Mcp.ToolExecutionFailed(name, e.message ?: ""))
             ToolResult(content = listOf("Error executing command: ${e.message}"), isError = true)
         }
 

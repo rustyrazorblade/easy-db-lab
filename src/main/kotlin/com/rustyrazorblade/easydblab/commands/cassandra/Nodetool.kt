@@ -40,17 +40,15 @@ class Nodetool : PicoBaseCommand() {
 
     override fun execute() {
         if (args.isEmpty()) {
-            eventBus.emit(Event.Message("Usage: easy-db-lab cassandra nt [--hosts host1,host2] <nodetool-command>"))
-            eventBus.emit(Event.Message("Example: easy-db-lab cassandra nt status"))
+            eventBus.emit(Event.Cassandra.NodetoolUsage)
             return
         }
 
         val command = args.joinToString(" ")
 
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList) { host ->
-            eventBus.emit(Event.Message("=== ${host.alias} ==="))
             val result = remoteOps.executeRemotely(host.toHost(), "/usr/local/cassandra/current/bin/nodetool $command")
-            eventBus.emit(Event.Message(result.text))
+            eventBus.emit(Event.Cassandra.NodetoolOutput(host.alias, result.text))
         }
     }
 }

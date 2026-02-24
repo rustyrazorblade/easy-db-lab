@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test
 class EventSerializationTest {
     private val domainEvents: List<Event> =
         listOf(
+            // Original 18 domain interfaces
             Event.Cassandra.Starting("node0"),
             Event.K3s.ClusterStarting,
             Event.K8s.ManifestsApplying,
@@ -24,6 +25,32 @@ class EventSerializationTest {
             Event.Service.Starting("cassandra", "node0"),
             Event.Provision.IamUpdating,
             Event.Command.ExecutionError("failed"),
+            // New domain interfaces added during Event.Message/Event.Error migration
+            Event.Status.ClusterInfo(
+                clusterId = "test-123",
+                name = "test-cluster",
+                createdAt = "2026-02-23",
+                infrastructureStatus = "READY",
+            ),
+            Event.Status.NoClusterState,
+            Event.Teardown.Starting,
+            Event.Teardown.PreparingVpc("vpc-12345"),
+            Event.Ami.PruningStarting("easy-db-lab-*", "cassandra", 3),
+            Event.Ami.NoAmisToDelete,
+            Event.ClickHouse.Deploying(2, 2, 4),
+            Event.ClickHouse.CreatingPvs,
+            Event.Docker.ContainerStarting("abc123"),
+            Event.Docker.ContainerStartError("timeout"),
+            Event.Mcp.ToolExecutionStarting("get_status"),
+            Event.Mcp.ToolExecutionFailed("get_status", "not found"),
+            Event.Logs.QueryInfo("cassandra", "1h", 100),
+            Event.Logs.NoLogsFound,
+            Event.Metrics.BackupComplete("s3://bucket/metrics"),
+            Event.Metrics.NoControlNode,
+            Event.Setup.ProfileAlreadyConfigured("default"),
+            Event.Setup.ValidatingCredentials,
+            Event.Ssh.ExecutingCommand("ls -la"),
+            Event.Ssh.UploadingFile("/tmp/file", "10.0.1.5", "/opt/file"),
         )
 
     @Test

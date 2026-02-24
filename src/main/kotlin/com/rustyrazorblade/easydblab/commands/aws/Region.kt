@@ -36,6 +36,6 @@ class Region :
         val region =
             clusterState.initConfig?.region
                 ?: error("No region configured. Run 'easy-db-lab init' first.")
-        eventBus.emit(Event.Message(region))
+        eventBus.emit(Event.Command.RegionName(region))
     }
 }

@@ -40,14 +40,14 @@ class UploadAuthorizedKeys : PicoBaseCommand() {
     override fun execute() {
         val path = Paths.get(localDir)
         if (!path.exists()) {
-            eventBus.emit(Event.Message("$localDir does not exist"))
+            eventBus.emit(Event.Command.UploadKeysNotFound(localDir))
             exitProcess(1)
         }
 
         val files =
             File(localDir).listFiles(FileFilter { it.name.endsWith(".pub") })
                 ?: error("Failed to list files in $localDir")
-        eventBus.emit(Event.Message("Files: ${files.map { it.name }}"))
+        eventBus.emit(Event.Command.UploadKeysFiles(files.map { it.name }.toString()))
 
         // collect all the keys into a single file then upload
         val keys = files.joinToString("\n") { it.readText().trim() }
@@ -58,8 +58,8 @@ class UploadAuthorizedKeys : PicoBaseCommand() {
             it.write("\n")
         }
 
-        eventBus.emit(Event.Message("Uploading the following keys:"))
-        eventBus.emit(Event.Message(keys))
+        eventBus.emit(Event.Command.UploadKeysStarting)
+        eventBus.emit(Event.Command.UploadKeysBody(keys))
 
         val upload = doUpload(authorizedKeysExtraFile)
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList) { upload(it.toHost()) }

@@ -37,6 +37,6 @@ class S3Bucket :
         if (bucket.isNullOrBlank()) {
             error("No S3 bucket configured. Run 'easy-db-lab up' first.")
         }
-        eventBus.emit(Event.Message(bucket))
+        eventBus.emit(Event.Command.S3BucketName(bucket))
     }
 }

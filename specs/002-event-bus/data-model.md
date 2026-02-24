@@ -10,6 +10,33 @@ The root of the event hierarchy. Events are **pure domain data** — they carry 
 
 Every concrete event implements `toDisplayString(): String` returning the human-readable console output.
 
+### Design Rule: Data-Only Constructors
+
+Event constructors MUST carry only structured domain data fields — never pre-formatted display strings. The `toDisplayString()` method constructs human-readable output internally from those data fields.
+
+**Good** — structured data in constructor, display logic in method:
+```kotlin
+data class JobStarted(val jobName: String, val image: String, val promPort: Int) : Stress {
+    override fun toDisplayString(): String = "Stress job started: $jobName (image: $image, port: $promPort)"
+}
+```
+
+**Bad** — passthrough string in constructor:
+```kotlin
+data class JobStarted(val message: String) : Stress {
+    override fun toDisplayString(): String = message  // violates data-only rule
+}
+```
+
+This ensures Redis/MCP consumers receive queryable structured JSON like `{"jobName": "kv-1", "image": "...", "promPort": 9501}` rather than an opaque message string.
+
+For events with no meaningful data fields, use `data object`:
+```kotlin
+data object CredentialsValidating : Setup {
+    override fun toDisplayString(): String = "Validating AWS credentials..."
+}
+```
+
 ### EventContext
 
 Ambient context stored in a stack-based `ThreadLocal`. Automatically managed by the command execution layer.
@@ -152,8 +179,8 @@ Thread-safe addition/removal of listeners. Dispatches synchronously (Redis liste
 | SparkJobWaiting | — | "Waiting for job completion..." |
 | SparkJobStateUpdate | state: String | "Job state: $state" |
 | SparkJobCompleted | — | "Job completed successfully" |
-| SparkStepDetails | details: String | Step details display |
-| SparkStepError | error: String | Step error message |
+| SparkStepDetails | stepId: String, name: String, state: String, creationTime: String | Step details display |
+| SparkStepError | stepId: String, error: String | Step error message |
 | SparkLogHeader | — | "=== Step Logs ===" |
 | SparkLogLine | line: String | Individual log line |
 | SparkLogCount | count: Int | "Found $count log entries." |
@@ -164,7 +191,7 @@ Thread-safe addition/removal of listeners. Dispatches synchronously (Redis liste
 | SparkLogDownloadComplete | logType: String | "Downloaded: $logType" |
 | SparkLogDownloadUnavailable | logType: String | "Could not download $logType..." |
 | SparkLogDownloadFailed | error: String | "Could not download logs: $error" |
-| SparkDebugInstructions | commands: String | Manual debug command instructions |
+| SparkDebugInstructions | clusterId: String, stepId: String | Manual debug command instructions |
 | SparkStderrHeader | lineCount: Int | "=== stderr (last $lineCount lines) ===" |
 | SparkStderrLine | line: String | Individual stderr line |
 | SparkStderrFooter | — | "=== end stderr ===" |
@@ -180,7 +207,7 @@ Thread-safe addition/removal of listeners. Dispatches synchronously (Redis liste
 | Initiated | domainName: String | "OpenSearch domain initiated: $domainName" |
 | Waiting | — | "Waiting for OpenSearch domain to become active..." |
 | Ready | — | "OpenSearch domain is ready" |
-| WaitProgress | message: String, elapsedMinutes: Long | "$message... ($elapsedMinutes minutes elapsed)" |
+| WaitProgress | domainName: String, currentStatus: String, elapsedMinutes: Long | "$currentStatus... ($elapsedMinutes minutes elapsed)" |
 | Deleting | domainName: String | "Deleting OpenSearch domain: $domainName..." |
 | DeleteWaiting | domainName: String | "Waiting for OpenSearch domain $domainName to be deleted..." |
 | Deleted | domainName: String | "OpenSearch domain $domainName deleted" |
@@ -300,17 +327,17 @@ Thread-safe addition/removal of listeners. Dispatches synchronously (Redis liste
 
 | Event | Key Fields | Current Message Pattern |
 |-------|-----------|------------------------|
-| Starting | — | Setup start message |
-| RepairWarning | errorMessage: String | Validation failure warning |
+| Starting | resourceType: String | "Setting up AWS $resourceType..." |
+| RepairWarning | resource: String, error: String | Validation failure warning for specific resource |
 | CredentialError | error: String | Credential validation failure |
 | Ec2RoleReady | roleName: String | "EC2 role ready: $roleName" |
 | EmrServiceRoleReady | roleName: String | "EMR service role ready: $roleName" |
 | EmrEc2RoleReady | roleName: String | "EMR EC2 role ready: $roleName" |
-| IamPermissionError | error: String | IAM permissions error |
-| IamValidationError | error: String | IAM validation error |
-| IamUnexpectedError | error: String | Unexpected IAM error |
-| ValidationFailed | error: String | Validation failure |
-| Complete | — | Setup complete message |
+| IamPermissionError | operation: String, error: String | IAM permissions error for specific operation |
+| IamValidationError | resource: String, error: String | IAM validation error for specific resource |
+| IamUnexpectedError | operation: String, error: String | Unexpected IAM error during specific operation |
+| ValidationFailed | resource: String, error: String | Validation failure for specific resource |
+| Complete | rolesConfigured: Int | "AWS setup complete: $rolesConfigured roles configured" |
 
 ### Event.Stress — Stress Testing Operations
 
@@ -340,11 +367,11 @@ Thread-safe addition/removal of listeners. Dispatches synchronously (Redis liste
 | InfrastructureFailure | resource: String, error: String | "  - $resource: $error" |
 | ClusterStateUpdated | hostCount: Int | "Cluster state updated: $hostCount hosts tracked" |
 | InstancesDiscovered | cassandra: Int, stress: Int, control: Int | "Discovered existing instances: ..." |
-| ProvisioningComplete | — | Completion message |
-| ProvisioningInstructions | message: String | Instructions for the user |
+| ProvisioningComplete | clusterName: String, nodeCount: Int | "Cluster $clusterName provisioned: $nodeCount nodes" |
+| ProvisioningInstructions | clusterName: String, sshCommand: String, grafanaUrl: String | Post-provisioning access instructions |
 | SshWaiting | — | "Waiting for SSH to come up.." |
 | SshRetrying | attempt: Int | "SSH still not up yet, waiting... (attempt $attempt)" |
-| NodeSetupInstructions | message: String | Setup instructions |
+| NodeSetupInstructions | nodeCount: Int, controlNodeIp: String | Setup instructions for nodes |
 | AxonOpsSetup | org: String | "Setting up axonops for $org" |
 | TailscaleStarting | — | "Starting Tailscale VPN..." |
 | TailscaleWarning | error: String | "Warning: Failed to start Tailscale: $error" |
@@ -363,10 +390,10 @@ Thread-safe addition/removal of listeners. Dispatches synchronously (Redis liste
 
 | Event | Key Fields | Current Message Pattern |
 |-------|-----------|------------------------|
-| ExecutionError | error: String | Command execution error |
+| ExecutionError | commandName: String, error: String | Command execution error |
 | RetryInstruction | — | "You can now run the command again." |
 | DockerNotAvailable | — | "Docker is not available or not running." |
-| DockerSetupInstruction | instruction: String | Docker setup instructions |
+| DockerSetupInstruction | platform: String | Docker setup instructions for specific platform |
 | SshKeyMissing | path: String | "SSH key not found at $path" |
 
 ## Serialization Wire Format
@@ -387,7 +414,7 @@ The `EventEnvelope` is serialized to JSON. The envelope provides metadata; the n
 - `timestamp` and `commandName` come from the envelope (injected by EventBus)
 - `type` is the polymorphic class discriminator for the event
 - Domain-specific fields are nested under `event`
-- `toDisplayString()` output is NOT serialized — consumers reconstruct display text or use structured fields
+- `toDisplayString()` output is NOT serialized — it is a Kotlin-side rendering method for console display only. Consumers use the structured data fields directly or reconstruct display text from them. There is no `message`, `text`, or `displayString` field in the wire format
 
 ## State Transitions
 

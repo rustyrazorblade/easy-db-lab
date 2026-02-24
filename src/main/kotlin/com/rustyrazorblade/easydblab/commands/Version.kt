@@ -21,6 +21,6 @@ class Version :
     private val eventBus: EventBus by inject()
 
     override fun execute() {
-        eventBus.emit(Event.Message(context.version.toString()))
+        eventBus.emit(Event.Command.VersionOutput(context.version.toString()))
     }
 }

@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.commands
 
 import com.fasterxml.jackson.annotation.JsonIgnore
-import com.github.ajalt.mordant.TermColors
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
@@ -207,12 +206,12 @@ class Init : PicoBaseCommand() {
 
         val clusterState = prepareEnvironment()
 
-        eventBus.emit(Event.Message("Initializing directory"))
+        eventBus.emit(Event.Setup.InitializingDirectory)
 
         // Only set VPC ID if user explicitly provided one via --vpc
         // Otherwise, VPC will be created during 'up'
         if (existingVpcId != null) {
-            eventBus.emit(Event.Message("Using existing VPC: $existingVpcId"))
+            eventBus.emit(Event.Setup.ExistingVpc(existingVpcId!!))
             clusterState.vpcId = existingVpcId
             clusterStateManager.save(clusterState)
         }
@@ -222,17 +221,15 @@ class Init : PicoBaseCommand() {
         displayCompletionMessage(clusterState)
 
         if (start) {
-            eventBus.emit(Event.Message("Provisioning instances"))
+            eventBus.emit(Event.Setup.ProvisioningInstances)
             // Schedule Up to run after Init's full lifecycle completes
             commandExecutor.schedule { Up() }
         } else {
-            with(TermColors()) {
-                eventBus.emit(
-                    Event.Message(
-                        "Next you'll want to run " + green("easy-db-lab up") + " to start your instances.",
-                    ),
-                )
-            }
+            eventBus.emit(
+                Event.Setup.InitNextSteps(
+                    "Next you'll want to run easy-db-lab up to start your instances.",
+                ),
+            )
         }
     }
 
@@ -272,14 +269,14 @@ class Init : PicoBaseCommand() {
                             "or run 'easy-db-lab clean' first.",
                     )
                 }
-            eventBus.emit(Event.Message(message))
+            eventBus.emit(Event.Setup.InitError(message))
             exitProcess(1)
         }
     }
 
     private fun prepareEnvironment(): ClusterState {
         if (clean) {
-            eventBus.emit(Event.Message("Cleaning existing configuration..."))
+            eventBus.emit(Event.Setup.CleaningExistingConfig)
             // Execute Clean immediately with full lifecycle
             commandExecutor.execute { Clean() }
         }
@@ -295,10 +292,10 @@ class Init : PicoBaseCommand() {
     }
 
     private fun extractResourceFiles() {
-        eventBus.emit(Event.Message("Writing setup_instance.sh"))
+        eventBus.emit(Event.Setup.WritingSetupScript)
         extractResourceFile("setup_instance.sh", "setup_instance.sh")
 
-        eventBus.emit(Event.Message("Creating cassandra directory and writing sidecar config"))
+        eventBus.emit(Event.Setup.CreatingCassandraDir)
         File("cassandra").mkdirs()
         extractResourceFile("cassandra-sidecar.yaml", "cassandra/cassandra-sidecar.yaml")
     }
@@ -316,7 +313,7 @@ class Init : PicoBaseCommand() {
     private fun displayCompletionMessage(clusterState: ClusterState) {
         val initConfig = clusterState.initConfig ?: return
         eventBus.emit(
-            Event.Message(
+            Event.Setup.WorkspaceInitialized(
                 "Your workspace has been initialized with ${initConfig.cassandraInstances} Cassandra instances " +
                     "(${initConfig.instanceType}) and ${initConfig.stressInstances} stress instances " +
                     "in ${initConfig.region}",

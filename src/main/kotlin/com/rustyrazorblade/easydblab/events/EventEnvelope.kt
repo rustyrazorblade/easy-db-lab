@@ -34,8 +34,7 @@ data class EventEnvelope(
                 encodeDefaults = true
             }
 
-        fun toJson(envelope: EventEnvelope): String =
-            json.encodeToString(serializer(), envelope).replace(TYPE_PREFIX, "")
+        fun toJson(envelope: EventEnvelope): String = json.encodeToString(serializer(), envelope).replace(TYPE_PREFIX, "")
 
         fun fromJson(jsonString: String): EventEnvelope {
             val tree = json.parseToJsonElement(jsonString).jsonObject

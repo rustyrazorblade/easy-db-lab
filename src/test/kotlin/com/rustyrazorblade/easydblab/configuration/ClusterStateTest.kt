@@ -681,6 +681,48 @@ class ClusterStateTest {
     }
 
     @Test
+    fun `dataBucketName should return correct bucket name`() {
+        val state =
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+                clusterId = "abc-123-def",
+            )
+
+        assertThat(state.dataBucketName()).isEqualTo("easy-db-lab-data-abc-123-def")
+    }
+
+    @Test
+    fun `dataBucket should default to empty string`() {
+        val state =
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+            )
+
+        assertThat(state.dataBucket).isEmpty()
+    }
+
+    @Test
+    fun `dataBucket should be saved and loaded`(
+        @TempDir tempDir: File,
+    ) {
+        val stateFile = File(tempDir, "state.json")
+        val manager = ClusterStateManager(stateFile)
+
+        val state =
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+                dataBucket = "easy-db-lab-data-test-id",
+            )
+        manager.save(state)
+
+        val loadedState = manager.load()
+        assertThat(loadedState.dataBucket).isEqualTo("easy-db-lab-data-test-id")
+    }
+
+    @Test
     fun `s3Path extension function should throw when s3Bucket not configured`() {
         val state =
             ClusterState(

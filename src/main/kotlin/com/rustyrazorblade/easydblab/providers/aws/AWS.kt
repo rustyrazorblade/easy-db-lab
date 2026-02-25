@@ -20,6 +20,7 @@ import software.amazon.awssdk.services.s3.model.BucketAlreadyOwnedByYouException
 import software.amazon.awssdk.services.s3.model.BucketLifecycleConfiguration
 import software.amazon.awssdk.services.s3.model.CreateBucketRequest
 import software.amazon.awssdk.services.s3.model.DeleteBucketMetricsConfigurationRequest
+import software.amazon.awssdk.services.s3.model.DeleteBucketRequest
 import software.amazon.awssdk.services.s3.model.ExpirationStatus
 import software.amazon.awssdk.services.s3.model.GetBucketLifecycleConfigurationRequest
 import software.amazon.awssdk.services.s3.model.GetBucketTaggingRequest
@@ -540,6 +541,100 @@ class AWS(
 
         log.info { "No bucket found with tag $tagKey=$tagValue" }
         return null
+    }
+
+    /**
+     * Finds all S3 buckets with the data bucket prefix and the easy_cass_lab tag.
+     *
+     * @return List of data bucket names
+     */
+    fun findDataBuckets(): List<String> {
+        val buckets = s3Client.listBuckets().buckets()
+        val dataBuckets =
+            buckets.filter { it.name().startsWith(Constants.S3.DATA_BUCKET_PREFIX) }
+
+        return dataBuckets.mapNotNull { bucket ->
+            try {
+                val taggingRequest =
+                    GetBucketTaggingRequest
+                        .builder()
+                        .bucket(bucket.name())
+                        .build()
+
+                val taggingResponse = s3Client.getBucketTagging(taggingRequest)
+                val hasTag =
+                    taggingResponse.tagSet().any {
+                        it.key() == Constants.Vpc.TAG_KEY && it.value() == Constants.Vpc.TAG_VALUE
+                    }
+
+                if (hasTag) bucket.name() else null
+            } catch (e: S3Exception) {
+                log.debug { "Could not get tags for bucket ${bucket.name()}: ${e.message}" }
+                null
+            }
+        }
+    }
+
+    /**
+     * Deletes an S3 bucket. Fails gracefully if the bucket is non-empty.
+     *
+     * @param bucketName The bucket to delete
+     * @return true if deleted, false if non-empty or other non-fatal error
+     */
+    fun deleteS3Bucket(bucketName: String): Boolean =
+        try {
+            val request =
+                DeleteBucketRequest
+                    .builder()
+                    .bucket(bucketName)
+                    .build()
+            s3Client.deleteBucket(request)
+            log.info { "Deleted S3 bucket: $bucketName" }
+            true
+        } catch (e: S3Exception) {
+            log.warn { "Could not delete bucket $bucketName: ${e.message}" }
+            false
+        }
+
+    /**
+     * Sets an S3 lifecycle expiration rule on an entire bucket (no prefix filter).
+     * Replaces any existing lifecycle rules on the bucket.
+     *
+     * @param bucketName The S3 bucket
+     * @param days Number of days before expiration
+     */
+    fun setFullBucketLifecycleExpiration(
+        bucketName: String,
+        days: Int,
+    ) {
+        val rule =
+            LifecycleRule
+                .builder()
+                .id("expire-all-objects")
+                .filter(LifecycleRuleFilter.builder().prefix("").build())
+                .expiration(LifecycleExpiration.builder().days(days).build())
+                .status(ExpirationStatus.ENABLED)
+                .build()
+
+        val config =
+            BucketLifecycleConfiguration
+                .builder()
+                .rules(listOf(rule))
+                .build()
+
+        val retryConfig = RetryUtil.createAwsRetryConfig<Unit>()
+        val retry = Retry.of("s3-set-full-bucket-lifecycle", retryConfig)
+        Retry
+            .decorateRunnable(retry) {
+                s3Client.putBucketLifecycleConfiguration(
+                    PutBucketLifecycleConfigurationRequest
+                        .builder()
+                        .bucket(bucketName)
+                        .lifecycleConfiguration(config)
+                        .build(),
+                )
+            }.run()
+        log.info { "Set lifecycle expiration on entire bucket: $bucketName, days: $days" }
     }
 
     /**

@@ -143,14 +143,14 @@ class Up : PicoBaseCommand() {
     }
 
     /**
-     * Configures the account-level S3 bucket for this cluster.
+     * Configures the account-level S3 bucket and per-cluster data bucket.
      * Uses the bucket name from the user profile (set during setup-profile).
-     * Applies bucket policy for IAM role access and enables CloudWatch metrics
-     * scoped to this cluster's prefix.
+     * Applies bucket policy for IAM role access.
+     * Creates a per-cluster data bucket for ClickHouse data and CloudWatch metrics.
      */
     private fun configureAccountS3Bucket() {
-        if (!workingState.s3Bucket.isNullOrBlank()) {
-            log.info { "S3 bucket already configured: ${workingState.s3Bucket}" }
+        if (!workingState.s3Bucket.isNullOrBlank() && workingState.dataBucket.isNotBlank()) {
+            log.info { "S3 buckets already configured: account=${workingState.s3Bucket}, data=${workingState.dataBucket}" }
             return
         }
 
@@ -164,14 +164,31 @@ class Up : PicoBaseCommand() {
         // Apply bucket policy for IAM role access (idempotent)
         s3BucketService.putBucketPolicy(accountBucket)
 
-        // Enable CloudWatch metrics scoped to this cluster's prefix
-        val clusterPrefix = workingState.clusterPrefix()
-        s3BucketService.enableBucketRequestMetrics(accountBucket, clusterPrefix, workingState.metricsConfigId())
-        eventBus.emit(Event.S3.MetricsEnabled(clusterPrefix))
-
         workingState.s3Bucket = accountBucket
+
+        // Create per-cluster data bucket
+        val dataBucketName = workingState.dataBucketName()
+        eventBus.emit(Event.S3.DataBucketCreating(dataBucketName))
+        s3BucketService.createBucket(dataBucketName)
+        s3BucketService.putBucketPolicy(dataBucketName)
+        s3BucketService.tagBucket(
+            dataBucketName,
+            mapOf(
+                Constants.Vpc.TAG_KEY to Constants.Vpc.TAG_VALUE,
+                "cluster_id" to workingState.clusterId,
+                "cluster_name" to workingState.name,
+            ),
+        )
+        eventBus.emit(Event.S3.DataBucketCreated(dataBucketName))
+
+        // Enable CloudWatch metrics on the data bucket (not account bucket)
+        s3BucketService.enableBucketRequestMetrics(dataBucketName, null, workingState.metricsConfigId())
+        eventBus.emit(Event.S3.MetricsEnabled(dataBucketName))
+
+        workingState.dataBucket = dataBucketName
         clusterStateManager.save(workingState)
 
+        val clusterPrefix = workingState.clusterPrefix()
         eventBus.emit(Event.S3.BucketConfigured(accountBucket, clusterPrefix))
     }
 

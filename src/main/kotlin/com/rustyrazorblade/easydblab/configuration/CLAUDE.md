@@ -40,6 +40,7 @@ Central state data class persisted as `state.json`. Key fields:
 - `emrCluster: EMRClusterState?` — optional EMR/Spark state
 - `openSearchDomain: OpenSearchClusterState?` — optional OpenSearch state
 - `s3Bucket: String?` — account-level S3 bucket
+- `dataBucket: String` — per-cluster data bucket (`easy-db-lab-data-{clusterId}`) for ClickHouse data and CloudWatch metrics
 - `backupHashes: Map<String, String>` — SHA-256 hashes of backed-up files
 - `infrastructureStatus: InfrastructureStatus` — UP, DOWN, or UNKNOWN
 
@@ -47,6 +48,7 @@ Key methods:
 - `getControlHost()` — first control node (convenience)
 - `clusterPrefix()` — returns `"clusters/{name}-{clusterId}"`
 - `metricsConfigId()` — returns `"edl-{name}-{clusterId}"` (truncated to 32 chars)
+- `dataBucketName()` — returns `"easy-db-lab-data-{clusterId}"`
 - `s3Path()` — extension function returning `ClusterS3Path` for this cluster
 
 ### ClusterHost
@@ -130,7 +132,7 @@ Factory methods: `from(clusterState)`, `root(bucket)`, `fromKey(bucket, key)`
 Handles `__KEY__` placeholder substitution in K8s manifests, YAML configs, etc. Uses `__` delimiters (not `${}`) to avoid conflicts with Grafana template syntax.
 
 **Context variables** (built from cluster state):
-- `BUCKET_NAME`, `AWS_REGION`, `CLUSTER_NAME`, `CONTROL_NODE_IP`
+- `BUCKET_NAME` (resolves to `dataBucket` when set, falls back to `s3Bucket`), `AWS_REGION`, `CLUSTER_NAME`, `CONTROL_NODE_IP`
 - `METRICS_FILTER_ID`, `CLUSTER_S3_PREFIX`
 
 **Key methods:**

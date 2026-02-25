@@ -137,10 +137,11 @@ class EventSerializationTest {
 
     @Test
     fun `fromJson decodes short type names`() {
-        val json = """
+        val json =
+            """
             |{"event":{"type":"Ssh.ExecutingCommand","command":"ls -la"},
             |"timestamp":"2026-02-23T10:15:30.123Z","commandName":null}
-        """.trimMargin().replace("\n", "")
+            """.trimMargin().replace("\n", "")
 
         val envelope = EventEnvelope.fromJson(json)
 

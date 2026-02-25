@@ -169,13 +169,17 @@ class ClickHouseStart : PicoBaseCommand() {
     }
 
     private fun setupS3Secret(controlNode: ClusterHost): String {
-        val s3Path = ClusterS3Path.from(clusterState)
-        val endpointUrl = s3Path.clickhouse().toEndpointUrl(userConfig.region)
+        val dataBucket = clusterState.dataBucket
+        require(dataBucket.isNotBlank()) {
+            "Data bucket not configured. Run 'easy-db-lab up' first."
+        }
+        val s3Path = ClusterS3Path.root(dataBucket).resolve("clickhouse")
+        val endpointUrl = s3Path.toEndpointUrl(userConfig.region)
         log.info { "Creating S3 ConfigMap for s3_main storage policy" }
         k8sService
             .createClickHouseS3ConfigMap(controlNode, Constants.ClickHouse.NAMESPACE, endpointUrl)
             .getOrThrow()
-        return s3Path.bucket
+        return dataBucket
     }
 
     private fun applyManifestsAndConfigureCluster(

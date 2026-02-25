@@ -190,6 +190,8 @@ data class ClusterState(
     var infrastructure: InfrastructureState? = null,
     // S3 bucket for this environment (account-level bucket from User.s3Bucket)
     var s3Bucket: String? = null,
+    // Per-cluster data bucket for ClickHouse data and CloudWatch metrics
+    var dataBucket: String = "",
     // SQS queue URL for log ingestion (receives S3 notifications for EMR logs)
     var sqsQueueUrl: String? = null,
     // SQS queue ARN for log ingestion (used for S3 bucket notification policy)
@@ -308,6 +310,11 @@ data class ClusterState(
      * Truncated to MAX_METRICS_CONFIG_ID_LENGTH to satisfy S3 API limits.
      */
     fun metricsConfigId(): String = "edl-$name-$clusterId".take(Constants.S3.MAX_METRICS_CONFIG_ID_LENGTH)
+
+    /**
+     * Returns the per-cluster data bucket name: "easy-db-lab-data-{clusterId}"
+     */
+    fun dataBucketName(): String = "${Constants.S3.DATA_BUCKET_PREFIX}$clusterId"
 
     /**
      * Validate if the current hosts match the stored hosts

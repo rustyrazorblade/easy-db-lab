@@ -60,6 +60,7 @@ class TemplateServiceTest : BaseKoinTest() {
         region: String = "us-east-1",
         clusterName: String = "test-cluster",
         controlHost: ClusterHost? = testControlHost,
+        dataBucket: String = "",
     ) {
         val state =
             ClusterState(
@@ -72,6 +73,7 @@ class TemplateServiceTest : BaseKoinTest() {
                         mutableMapOf()
                     },
                 s3Bucket = bucketName,
+                dataBucket = dataBucket,
                 initConfig = InitConfig(region = region, name = clusterName),
             )
         whenever(mockClusterStateManager.load()).thenReturn(state)
@@ -98,6 +100,26 @@ class TemplateServiceTest : BaseKoinTest() {
         val variables = service.buildContextVariables()
 
         assertThat(variables).containsEntry("BUCKET_NAME", "")
+    }
+
+    @Test
+    fun `buildContextVariables uses dataBucket for BUCKET_NAME when set`() {
+        setupClusterState(dataBucket = "easy-db-lab-data-test-id")
+
+        val service = createService()
+        val variables = service.buildContextVariables()
+
+        assertThat(variables).containsEntry("BUCKET_NAME", "easy-db-lab-data-test-id")
+    }
+
+    @Test
+    fun `buildContextVariables falls back to s3Bucket when dataBucket is blank`() {
+        setupClusterState(bucketName = "my-account-bucket", dataBucket = "")
+
+        val service = createService()
+        val variables = service.buildContextVariables()
+
+        assertThat(variables).containsEntry("BUCKET_NAME", "my-account-bucket")
     }
 
     @Test

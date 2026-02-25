@@ -1897,6 +1897,47 @@ sealed interface Event {
         ) : S3 {
             override fun toDisplayString(): String = "Using account S3 bucket: $bucket"
         }
+
+        @Serializable
+        @SerialName("S3.DataBucketCreating")
+        data class DataBucketCreating(
+            val bucket: String,
+        ) : S3 {
+            override fun toDisplayString(): String = "Creating per-cluster data bucket: $bucket"
+        }
+
+        @Serializable
+        @SerialName("S3.DataBucketCreated")
+        data class DataBucketCreated(
+            val bucket: String,
+        ) : S3 {
+            override fun toDisplayString(): String = "Data bucket created: $bucket"
+        }
+
+        @Serializable
+        @SerialName("S3.DataBucketExpiring")
+        data class DataBucketExpiring(
+            val bucket: String,
+            val days: Int,
+        ) : S3 {
+            override fun toDisplayString(): String = "Data bucket $bucket marked for expiration in $days day(s)"
+        }
+
+        @Serializable
+        @SerialName("S3.DataBucketDeleting")
+        data class DataBucketDeleting(
+            val bucket: String,
+        ) : S3 {
+            override fun toDisplayString(): String = "Deleting data bucket: $bucket"
+        }
+
+        @Serializable
+        @SerialName("S3.DataBucketDeleted")
+        data class DataBucketDeleted(
+            val bucket: String,
+        ) : S3 {
+            override fun toDisplayString(): String = "Data bucket deleted: $bucket"
+        }
     }
 
     // =========================================================================

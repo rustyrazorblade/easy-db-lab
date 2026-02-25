@@ -30,7 +30,7 @@ class TemplateService(
         val region = state.initConfig?.region ?: user.region
         val controlHost = state.getControlHost()
         return mapOf(
-            "BUCKET_NAME" to (state.s3Bucket ?: ""),
+            "BUCKET_NAME" to state.dataBucket.ifBlank { state.s3Bucket ?: "" },
             "AWS_REGION" to region,
             "CLUSTER_NAME" to (state.initConfig?.name ?: "cluster"),
             "CONTROL_NODE_IP" to (controlHost?.privateIp ?: ""),

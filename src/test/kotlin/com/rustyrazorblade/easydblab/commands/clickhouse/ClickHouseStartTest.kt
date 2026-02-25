@@ -60,6 +60,7 @@ class ClickHouseStartTest : BaseKoinTest() {
             name = "test-cluster",
             versions = mutableMapOf(),
             s3Bucket = s3Bucket,
+            dataBucket = "easy-db-lab-data-test-id",
             initConfig = InitConfig(region = "us-west-2"),
             hosts =
                 mapOf(

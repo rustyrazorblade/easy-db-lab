@@ -218,7 +218,14 @@ class Down : PicoBaseCommand() {
             return TeardownResult.Companion.failure("Teardown cancelled by user")
         }
 
-        return teardownService.teardownAllTagged(dryRun = false, includePackerVpc = teardownPacker)
+        val result = teardownService.teardownAllTagged(dryRun = false, includePackerVpc = teardownPacker)
+
+        // Also handle all data buckets when tearing down all resources
+        if (result.success) {
+            teardownAllDataBuckets()
+        }
+
+        return result
     }
 
     /**
@@ -344,10 +351,13 @@ class Down : PicoBaseCommand() {
                 // Delete SQS queue if it exists
                 deleteSqsQueue(clusterState.sqsQueueUrl)
 
-                // Set lifecycle expiration rule on cluster prefix
+                // Set lifecycle expiration rule on cluster prefix in account bucket
                 setClusterLifecycleRule(clusterState)
 
-                // Disable S3 request metrics for this cluster
+                // Set lifecycle expiration on the data bucket
+                setDataBucketLifecycleExpiration(clusterState)
+
+                // Disable S3 request metrics on the data bucket
                 disableS3RequestMetrics(clusterState)
 
                 clusterState.markInfrastructureDown()
@@ -428,23 +438,74 @@ class Down : PicoBaseCommand() {
     }
 
     /**
-     * Disables S3 request metrics to stop CloudWatch billing.
-     * The bucket itself is preserved for data retention.
+     * Disables S3 request metrics on the data bucket to stop CloudWatch billing.
      */
     @Suppress("TooGenericExceptionCaught")
     private fun disableS3RequestMetrics(clusterState: ClusterState) {
-        val bucketName = clusterState.s3Bucket
-        if (bucketName.isNullOrBlank()) {
-            log.debug { "No S3 bucket to disable metrics for" }
+        val dataBucket = clusterState.dataBucket
+        if (dataBucket.isBlank()) {
+            log.debug { "No data bucket to disable metrics for" }
             return
         }
 
         try {
             val configId = clusterState.metricsConfigId()
-            s3BucketService.disableBucketRequestMetrics(bucketName, configId)
+            s3BucketService.disableBucketRequestMetrics(dataBucket, configId)
             eventBus.emit(Event.S3.RequestMetricsDisabled(clusterState.name))
         } catch (e: Exception) {
-            log.warn(e) { "Failed to disable S3 request metrics: $bucketName" }
+            log.warn(e) { "Failed to disable S3 request metrics: $dataBucket" }
+        }
+    }
+
+    /**
+     * Sets lifecycle expiration on the per-cluster data bucket.
+     * Marks all objects in the bucket for expiration after retentionDays.
+     */
+    @Suppress("TooGenericExceptionCaught")
+    private fun setDataBucketLifecycleExpiration(clusterState: ClusterState) {
+        val dataBucket = clusterState.dataBucket
+        if (dataBucket.isBlank()) {
+            log.debug { "No data bucket configured, skipping lifecycle expiration" }
+            return
+        }
+
+        try {
+            s3BucketService.setFullBucketLifecycleExpiration(dataBucket, retentionDays)
+            eventBus.emit(Event.S3.DataBucketExpiring(dataBucket, retentionDays))
+        } catch (e: Exception) {
+            log.warn(e) { "Failed to set lifecycle expiration on data bucket: $dataBucket" }
+        }
+    }
+
+    /**
+     * Finds all data buckets and sets lifecycle expiration on each, then attempts deletion.
+     * Called during --all teardown.
+     */
+    @Suppress("TooGenericExceptionCaught")
+    private fun teardownAllDataBuckets() {
+        try {
+            val dataBuckets = s3BucketService.findDataBuckets()
+            if (dataBuckets.isEmpty()) {
+                log.debug { "No data buckets found" }
+                return
+            }
+
+            for (bucket in dataBuckets) {
+                try {
+                    s3BucketService.setFullBucketLifecycleExpiration(bucket, retentionDays)
+                    eventBus.emit(Event.S3.DataBucketExpiring(bucket, retentionDays))
+
+                    // Attempt to delete the bucket (succeeds only if empty)
+                    eventBus.emit(Event.S3.DataBucketDeleting(bucket))
+                    if (s3BucketService.deleteEmptyBucket(bucket)) {
+                        eventBus.emit(Event.S3.DataBucketDeleted(bucket))
+                    }
+                } catch (e: Exception) {
+                    log.warn(e) { "Failed to handle data bucket: $bucket" }
+                }
+            }
+        } catch (e: Exception) {
+            log.warn(e) { "Failed to discover data buckets" }
         }
     }
 }

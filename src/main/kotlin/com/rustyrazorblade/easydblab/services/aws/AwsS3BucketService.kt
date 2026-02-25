@@ -69,4 +69,22 @@ class AwsS3BucketService(
      * Attaches an inline S3 access policy to an IAM role.
      */
     fun attachS3Policy(roleName: String) = aws.attachS3Policy(roleName)
+
+    /**
+     * Finds all per-cluster data buckets (easy-db-lab-data-*) tagged with easy_cass_lab.
+     */
+    fun findDataBuckets(): List<String> = aws.findDataBuckets()
+
+    /**
+     * Deletes an S3 bucket. Returns true if deleted, false if non-empty or error.
+     */
+    fun deleteEmptyBucket(bucketName: String): Boolean = aws.deleteS3Bucket(bucketName)
+
+    /**
+     * Sets a lifecycle expiration rule on an entire bucket (no prefix filter).
+     */
+    fun setFullBucketLifecycleExpiration(
+        bucketName: String,
+        days: Int,
+    ) = aws.setFullBucketLifecycleExpiration(bucketName, days)
 }

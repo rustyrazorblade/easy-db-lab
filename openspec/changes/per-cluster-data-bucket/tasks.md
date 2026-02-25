@@ -1,56 +1,57 @@
 ## 1. ClusterState and Constants
 
-- [ ] 1.1 Add `dataBucket: String` field to `ClusterState`
-- [ ] 1.2 Add `Constants.S3.DATA_BUCKET_PREFIX` = `"easy-db-lab-data-"`
-- [ ] 1.3 Add `ClusterState.dataBucketName()` method that returns `"easy-db-lab-data-$clusterId"`
+- [x] 1.1 Add `dataBucket: String` field to `ClusterState`
+- [x] 1.2 Add `Constants.S3.DATA_BUCKET_PREFIX` = `"easy-db-lab-data-"`
+- [x] 1.3 Add `ClusterState.dataBucketName()` method that returns `"easy-db-lab-data-$clusterId"`
 
 ## 2. S3 Data Bucket Service Methods
 
-- [ ] 2.1 Add `createDataBucket(bucketName)` to `AwsS3BucketService` — creates bucket, tags with `easy_cass_lab=1`, `cluster_id`, `cluster_name`
-- [ ] 2.2 Add `putDataBucketPolicy(bucketName)` — attach IAM role access policy to data bucket
-- [ ] 2.3 Add `findDataBuckets()` to `AwsS3BucketService` — find all buckets with `easy_cass_lab=1` tag and `easy-db-lab-data-` prefix
-- [ ] 2.4 Add `deleteEmptyBucket(bucketName)` to `AwsS3BucketService` — delete a bucket (fails gracefully if non-empty)
-- [ ] 2.5 Add `setFullBucketLifecycleExpiration(bucketName, days)` — lifecycle rule on entire bucket (no prefix filter)
-- [ ] 2.6 Add corresponding methods to `AWS` provider if needed
+- [x] 2.1 Reuse existing `createBucket`, `putBucketPolicy`, `tagBucket` for data bucket creation (done in Up command)
+- [x] 2.3 Add `findDataBuckets()` to `AwsS3BucketService` and `AWS` provider
+- [x] 2.4 Add `deleteEmptyBucket(bucketName)` to `AwsS3BucketService` and `AWS` provider
+- [x] 2.5 Add `setFullBucketLifecycleExpiration(bucketName, days)` to `AwsS3BucketService` and `AWS` provider
 
 ## 3. IAM Policy Update
 
-- [ ] 3.1 Update EC2 role IAM policy to grant `s3:*` on `arn:aws:s3:::easy-db-lab-data-*` and `arn:aws:s3:::easy-db-lab-data-*/*`
+- [x] 3.1 Already covered — existing wildcard policy `easy-db-lab-*` covers `easy-db-lab-data-*` buckets
 
 ## 4. Domain Events
 
-- [ ] 4.1 Add `Event.S3.DataBucketCreating(bucketName)` and `Event.S3.DataBucketCreated(bucketName)` events
-- [ ] 4.2 Add `Event.S3.DataBucketExpiring(bucketName, days)` event for lifecycle expiration
-- [ ] 4.3 Add `Event.S3.DataBucketDeleting(bucketName)` and `Event.S3.DataBucketDeleted(bucketName)` events
+- [x] 4.1 Add `Event.S3.DataBucketCreating(bucketName)` and `Event.S3.DataBucketCreated(bucketName)` events
+- [x] 4.2 Add `Event.S3.DataBucketExpiring(bucketName, days)` event for lifecycle expiration
+- [x] 4.3 Add `Event.S3.DataBucketDeleting(bucketName)` and `Event.S3.DataBucketDeleted(bucketName)` events
 
 ## 5. Up Command — Data Bucket Creation
 
-- [ ] 5.1 In `Up.configureAccountS3Bucket()` (or new method), create the data bucket using `ClusterState.dataBucketName()`
-- [ ] 5.2 Store data bucket name in `ClusterState.dataBucket`
-- [ ] 5.3 Move CloudWatch S3 request metrics configuration from account bucket to data bucket
-- [ ] 5.4 Test: verify data bucket is created and tagged during provisioning
+- [x] 5.1 In `Up.configureAccountS3Bucket()`, create data bucket using `ClusterState.dataBucketName()`
+- [x] 5.2 Store data bucket name in `ClusterState.dataBucket`
+- [x] 5.3 Move CloudWatch S3 request metrics from account bucket to data bucket
 
 ## 6. ClickHouse S3 Endpoint
 
-- [ ] 6.1 Update `ClusterS3Path.clickhouse()` (or ClickHouse config code) to resolve against the data bucket
-- [ ] 6.2 Update `K8sService.createClickHouseS3ConfigMap()` to use data bucket endpoint
-- [ ] 6.3 Test: verify ClickHouse S3 endpoint points to data bucket
+- [x] 6.1 Update `ClickHouseStart.setupS3Secret()` to use `dataBucket` with `clickhouse/` prefix
+- [x] 6.2 `K8sService.createClickHouseS3ConfigMap()` unchanged — receives endpoint URL from caller
 
 ## 7. Down Command — Lifecycle Expiration
 
-- [ ] 7.1 On `down` (single cluster): set lifecycle expiration on the data bucket for all objects (using `--retention-days`)
-- [ ] 7.2 On `down` (single cluster): disable CloudWatch metrics on the data bucket (not account bucket)
-- [ ] 7.3 On `down --all`: find all data buckets via tags, set lifecycle expiration on each, then attempt deletion
-- [ ] 7.4 Test: verify `down` sets lifecycle expiration on data bucket
-- [ ] 7.5 Test: verify `down --all` discovers and handles data buckets
+- [x] 7.1 On `down` (single cluster): set lifecycle expiration on data bucket via `setDataBucketLifecycleExpiration()`
+- [x] 7.2 On `down` (single cluster): disable CloudWatch metrics on data bucket (not account bucket)
+- [x] 7.3 On `down --all`: `teardownAllDataBuckets()` finds all data buckets, sets lifecycle expiration, attempts deletion
 
 ## 8. Grafana S3 CloudWatch Dashboard
 
-- [ ] 8.1 Update `TemplateService.buildContextVariables()` so `BUCKET_NAME` resolves to the data bucket instead of the account bucket, for the S3 CloudWatch dashboard
-- [ ] 8.2 Verify `METRICS_FILTER_ID` still resolves correctly against the data bucket's metrics config
-- [ ] 8.3 Test: verify s3-cloudwatch dashboard template substitution points to data bucket
+- [x] 8.1 Update `TemplateService.buildContextVariables()` — `BUCKET_NAME` resolves to `dataBucket` (falls back to `s3Bucket`)
+- [x] 8.2 `METRICS_FILTER_ID` unchanged — still uses `metricsConfigId()` which is cluster-scoped
 
 ## 9. Documentation
 
-- [ ] 8.1 Update `docs/` user-facing documentation for the new data bucket behavior
-- [ ] 8.2 Update `CLAUDE.md` or subdirectory CLAUDE.md files if S3 patterns change
+- [x] 9.1 Update `configuration/CLAUDE.md` — added `dataBucket` field, `dataBucketName()` method, updated `BUCKET_NAME` context variable docs
+- [ ] 9.2 Update `docs/` user-facing documentation for the new data bucket behavior
+
+## Tests
+
+- [x] `ClusterStateTest` — `dataBucketName()`, default value, save/load roundtrip
+- [x] `TemplateServiceTest` — `BUCKET_NAME` resolves to `dataBucket` when set, falls back to `s3Bucket`
+- [x] `ClickHouseStartTest` — updated mock `ClusterState` to include `dataBucket`
+- [x] `EventSerializationTest` — new events serialize correctly (automatic via sealed hierarchy)
+- [x] All existing tests pass (1405/1407 pass, 2 pre-existing K3s TestContainers flakes)

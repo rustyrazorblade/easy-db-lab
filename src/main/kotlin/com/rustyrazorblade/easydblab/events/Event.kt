@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.events
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
@@ -35,6 +36,7 @@ sealed interface Event {
 
     /** A simple message event for use in tests and as a transitional type during migration. */
     @Serializable
+    @SerialName("Message")
     data class Message(
         val text: String,
     ) : Event {
@@ -43,6 +45,7 @@ sealed interface Event {
 
     /** A simple error event for use in tests and as a transitional type during migration. */
     @Serializable
+    @SerialName("Error")
     data class Error(
         val text: String,
         val detail: String? = null,
@@ -59,6 +62,7 @@ sealed interface Event {
     @Serializable
     sealed interface Cassandra : Event {
         @Serializable
+        @SerialName("Cassandra.Starting")
         data class Starting(
             val host: String,
         ) : Cassandra {
@@ -66,6 +70,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Cassandra.StartedWaitingReady")
         data class StartedWaitingReady(
             val host: String,
         ) : Cassandra {
@@ -73,6 +78,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Cassandra.Restarting")
         data class Restarting(
             val host: String,
         ) : Cassandra {
@@ -80,6 +86,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Cassandra.WaitingReady")
         data class WaitingReady(
             val host: String,
         ) : Cassandra {
@@ -87,16 +94,19 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Cassandra.StoppingAllNodes")
         data object StoppingAllNodes : Cassandra {
             override fun toDisplayString(): String = "Stopping cassandra service on all nodes."
         }
 
         @Serializable
+        @SerialName("Cassandra.SidecarStopping")
         data object SidecarStopping : Cassandra {
             override fun toDisplayString(): String = "Stopping cassandra-sidecar on Cassandra nodes..."
         }
 
         @Serializable
+        @SerialName("Cassandra.SidecarStopFailed")
         data class SidecarStopFailed(
             val host: String,
             val error: String,
@@ -107,21 +117,25 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Cassandra.SidecarStopped")
         data object SidecarStopped : Cassandra {
             override fun toDisplayString(): String = "cassandra-sidecar shutdown completed on Cassandra nodes"
         }
 
         @Serializable
+        @SerialName("Cassandra.RestartingAllNodes")
         data object RestartingAllNodes : Cassandra {
             override fun toDisplayString(): String = "Restarting cassandra service on all nodes."
         }
 
         @Serializable
+        @SerialName("Cassandra.SidecarRestarting")
         data object SidecarRestarting : Cassandra {
             override fun toDisplayString(): String = "Restarting cassandra-sidecar on Cassandra nodes..."
         }
 
         @Serializable
+        @SerialName("Cassandra.SidecarRestartFailed")
         data class SidecarRestartFailed(
             val host: String,
             val error: String,
@@ -132,11 +146,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Cassandra.SidecarRestarted")
         data object SidecarRestarted : Cassandra {
             override fun toDisplayString(): String = "cassandra-sidecar restart completed on Cassandra nodes"
         }
 
         @Serializable
+        @SerialName("Cassandra.SidecarStartFailed")
         data class SidecarStartFailed(
             val host: String,
             val error: String,
@@ -147,11 +163,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Cassandra.AxonAgentStarting")
         data object AxonAgentStarting : Cassandra {
             override fun toDisplayString(): String = "Starting axon-agent on Cassandra nodes..."
         }
 
         @Serializable
+        @SerialName("Cassandra.AxonOpsWorkbenchInfo")
         data class AxonOpsWorkbenchInfo(
             val orgId: String,
         ) : Cassandra {
@@ -166,6 +184,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Cassandra.ClusterStateNotFound")
         data object ClusterStateNotFound : Cassandra {
             override fun toDisplayString(): String =
                 "cluster state not found. Please run easy-db-lab up first to establish IP addresses for seed listing."
@@ -174,6 +193,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Cassandra.UsingVersion")
         data class UsingVersion(
             val version: String,
             val hostCount: Int,
@@ -183,6 +203,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Cassandra.ConfigUpdateHint")
         data class ConfigUpdateHint(
             val version: String,
         ) : Cassandra {
@@ -192,6 +213,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Cassandra.ConfigFileUploading")
         data class ConfigFileUploading(
             val file: String,
             val host: String,
@@ -200,6 +222,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Cassandra.ConfigPatching")
         data class ConfigPatching(
             val host: String,
         ) : Cassandra {
@@ -207,6 +230,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Cassandra.PatchStderr")
         data class PatchStderr(
             val stderr: String,
         ) : Cassandra {
@@ -216,6 +240,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Cassandra.PatchOutput")
         data class PatchOutput(
             val output: String,
         ) : Cassandra {
@@ -223,6 +248,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Cassandra.TempDirCreated")
         data class TempDirCreated(
             val tempDir: String,
             val host: String,
@@ -231,6 +257,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Cassandra.ConfigFilesUploading")
         data class ConfigFilesUploading(
             val tempDir: String,
         ) : Cassandra {
@@ -238,6 +265,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Cassandra.ConfigFilesCopying")
         data class ConfigFilesCopying(
             val host: String,
             val confDir: String,
@@ -246,6 +274,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Cassandra.ConfigUpdated")
         data class ConfigUpdated(
             val host: String,
         ) : Cassandra {
@@ -253,6 +282,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Cassandra.SidecarConfigUpdated")
         data class SidecarConfigUpdated(
             val host: String,
         ) : Cassandra {
@@ -260,6 +290,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Cassandra.WriteConfigDone")
         data class WriteConfigDone(
             val file: String,
         ) : Cassandra {
@@ -267,12 +298,14 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Cassandra.WriteConfigHint")
         data object WriteConfigHint : Cassandra {
             override fun toDisplayString(): String =
                 "It can be applied to the lab via easy-db-lab update-config (or automatically when calling use-cassandra)"
         }
 
         @Serializable
+        @SerialName("Cassandra.NodetoolUsage")
         data object NodetoolUsage : Cassandra {
             override fun toDisplayString(): String =
                 "Usage: easy-db-lab cassandra nt [--hosts host1,host2] <nodetool-command>\n" +
@@ -280,6 +313,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Cassandra.NodetoolOutput")
         data class NodetoolOutput(
             val host: String,
             val output: String,
@@ -288,6 +322,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Cassandra.VersionList")
         data class VersionList(
             val versions: List<String>,
         ) : Cassandra {
@@ -295,6 +330,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Cassandra.CqlFileNotFound")
         data class CqlFileNotFound(
             val path: String,
         ) : Cassandra {
@@ -304,6 +340,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Cassandra.CqlUsage")
         data object CqlUsage : Cassandra {
             override fun toDisplayString(): String =
                 """
@@ -317,6 +354,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Cassandra.CqlQueryOutput")
         data class CqlQueryOutput(
             val output: String,
         ) : Cassandra {
@@ -324,11 +362,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Cassandra.CqlDdlOk")
         data object CqlDdlOk : Cassandra {
             override fun toDisplayString(): String = "OK"
         }
 
         @Serializable
+        @SerialName("Cassandra.CqlQueryError")
         data class CqlQueryError(
             val error: String,
         ) : Cassandra {
@@ -345,11 +385,13 @@ sealed interface Event {
     @Serializable
     sealed interface K3s : Event {
         @Serializable
+        @SerialName("K3s.ClusterStarting")
         data object ClusterStarting : K3s {
             override fun toDisplayString(): String = "Starting K3s cluster..."
         }
 
         @Serializable
+        @SerialName("K3s.ServerStarting")
         data class ServerStarting(
             val controlHost: String,
         ) : K3s {
@@ -357,6 +399,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("K3s.ServerStartFailed")
         data class ServerStartFailed(
             val error: String,
         ) : K3s {
@@ -366,6 +409,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("K3s.NodeTokenFailed")
         data class NodeTokenFailed(
             val error: String,
         ) : K3s {
@@ -375,6 +419,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("K3s.KubeconfigFailed")
         data class KubeconfigFailed(
             val error: String,
         ) : K3s {
@@ -384,6 +429,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("K3s.KubeconfigWritten")
         data class KubeconfigWritten(
             val path: String,
         ) : K3s {
@@ -391,16 +437,19 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("K3s.KubeconfigInstruction")
         data object KubeconfigInstruction : K3s {
             override fun toDisplayString(): String = "Use 'source env.sh' to configure kubectl for cluster access"
         }
 
         @Serializable
+        @SerialName("K3s.ClusterStarted")
         data object ClusterStarted : K3s {
             override fun toDisplayString(): String = "K3s cluster started successfully"
         }
 
         @Serializable
+        @SerialName("K3s.AgentConfiguring")
         data class AgentConfiguring(
             val host: String,
             val labels: String,
@@ -409,6 +458,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("K3s.AgentConfigFailed")
         data class AgentConfigFailed(
             val host: String,
             val error: String,
@@ -419,6 +469,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("K3s.AgentStartFailed")
         data class AgentStartFailed(
             val host: String,
             val error: String,
@@ -436,16 +487,19 @@ sealed interface Event {
     @Serializable
     sealed interface K8s : Event {
         @Serializable
+        @SerialName("K8s.ManifestsApplying")
         data object ManifestsApplying : K8s {
             override fun toDisplayString(): String = "Applying K8s manifests..."
         }
 
         @Serializable
+        @SerialName("K8s.ManifestsApplied")
         data object ManifestsApplied : K8s {
             override fun toDisplayString(): String = "K8s manifests applied successfully"
         }
 
         @Serializable
+        @SerialName("K8s.ManifestApplied")
         data class ManifestApplied(
             val resourcePath: String,
         ) : K8s {
@@ -453,6 +507,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("K8s.NamespaceDeleting")
         data class NamespaceDeleting(
             val namespace: String,
         ) : K8s {
@@ -460,6 +515,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("K8s.NamespaceDeleted")
         data class NamespaceDeleted(
             val namespace: String,
         ) : K8s {
@@ -467,6 +523,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("K8s.PodsWaiting")
         data class PodsWaiting(
             val namespace: String,
         ) : K8s {
@@ -474,6 +531,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("K8s.PodsReady")
         data class PodsReady(
             val namespace: String,
         ) : K8s {
@@ -481,26 +539,31 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("K8s.ObservabilityPodsWaiting")
         data object ObservabilityPodsWaiting : K8s {
             override fun toDisplayString(): String = "Waiting for observability pods to be ready..."
         }
 
         @Serializable
+        @SerialName("K8s.ObservabilityPodsReady")
         data object ObservabilityPodsReady : K8s {
             override fun toDisplayString(): String = "All observability pods are ready"
         }
 
         @Serializable
+        @SerialName("K8s.ObservabilityNamespaceDeleting")
         data object ObservabilityNamespaceDeleting : K8s {
             override fun toDisplayString(): String = "Deleting observability namespace..."
         }
 
         @Serializable
+        @SerialName("K8s.ObservabilityNamespaceDeleted")
         data object ObservabilityNamespaceDeleted : K8s {
             override fun toDisplayString(): String = "Observability namespace deleted"
         }
 
         @Serializable
+        @SerialName("K8s.ResourcesDeleting")
         data class ResourcesDeleting(
             val labelKey: String,
         ) : K8s {
@@ -508,11 +571,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("K8s.ResourcesDeleted")
         data object ResourcesDeleted : K8s {
             override fun toDisplayString(): String = "Resources deleted successfully"
         }
 
         @Serializable
+        @SerialName("K8s.ConfigMapCreated")
         data class ConfigMapCreated(
             val name: String,
         ) : K8s {
@@ -520,6 +585,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("K8s.ConfigMapDeleted")
         data class ConfigMapDeleted(
             val name: String,
         ) : K8s {
@@ -527,11 +593,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("K8s.ClickHouseS3ConfigMapCreated")
         data object ClickHouseS3ConfigMapCreated : K8s {
             override fun toDisplayString(): String = "Created ClickHouse S3 ConfigMap"
         }
 
         @Serializable
+        @SerialName("K8s.StatefulSetScaled")
         data class StatefulSetScaled(
             val name: String,
             val replicas: Int,
@@ -540,6 +608,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("K8s.JobDeleted")
         data class JobDeleted(
             val jobName: String,
         ) : K8s {
@@ -547,6 +616,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("K8s.LocalPvsCreated")
         data class LocalPvsCreated(
             val count: Int,
             val dbName: String,
@@ -555,6 +625,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("K8s.StorageClassCreated")
         data object StorageClassCreated : K8s {
             override fun toDisplayString(): String = "Created local-storage StorageClass"
         }
@@ -567,6 +638,7 @@ sealed interface Event {
     @Serializable
     sealed interface Infra : Event {
         @Serializable
+        @SerialName("Infra.VpcCreating")
         data class VpcCreating(
             val name: String,
         ) : Infra {
@@ -574,6 +646,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Infra.VpcCreated")
         data class VpcCreated(
             val vpcId: String,
         ) : Infra {
@@ -581,6 +654,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Infra.VpcUsing")
         data class VpcUsing(
             val name: String,
         ) : Infra {
@@ -588,6 +662,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Infra.VpcDeleting")
         data class VpcDeleting(
             val vpcId: String,
         ) : Infra {
@@ -595,6 +670,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Infra.VpcDeleted")
         data class VpcDeleted(
             val vpcId: String,
         ) : Infra {
@@ -602,6 +678,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Infra.SubnetCreating")
         data class SubnetCreating(
             val name: String,
         ) : Infra {
@@ -609,6 +686,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Infra.SubnetUsing")
         data class SubnetUsing(
             val name: String,
         ) : Infra {
@@ -616,6 +694,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Infra.InternetGatewayCreating")
         data class InternetGatewayCreating(
             val name: String,
         ) : Infra {
@@ -623,6 +702,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Infra.InternetGatewayUsing")
         data class InternetGatewayUsing(
             val name: String,
         ) : Infra {
@@ -630,11 +710,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Infra.InternetGatewayDetaching")
         data object InternetGatewayDetaching : Infra {
             override fun toDisplayString(): String = "Detaching internet gateway..."
         }
 
         @Serializable
+        @SerialName("Infra.InternetGatewayDeleting")
         data class InternetGatewayDeleting(
             val igwId: String,
         ) : Infra {
@@ -642,6 +724,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Infra.SecurityGroupCreating")
         data class SecurityGroupCreating(
             val name: String,
         ) : Infra {
@@ -649,6 +732,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Infra.SecurityGroupUsing")
         data class SecurityGroupUsing(
             val name: String,
         ) : Infra {
@@ -656,6 +740,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Infra.SecurityGroupRuleConfigured")
         data class SecurityGroupRuleConfigured(
             val portDesc: String,
         ) : Infra {
@@ -663,6 +748,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Infra.SecurityGroupRulesRevoking")
         data class SecurityGroupRulesRevoking(
             val count: Int,
         ) : Infra {
@@ -670,6 +756,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Infra.SecurityGroupDeleting")
         data class SecurityGroupDeleting(
             val sgId: String,
         ) : Infra {
@@ -677,11 +764,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Infra.RoutingConfigured")
         data object RoutingConfigured : Infra {
             override fun toDisplayString(): String = "Configured routing to internet gateway"
         }
 
         @Serializable
+        @SerialName("Infra.NatGatewayDeleting")
         data class NatGatewayDeleting(
             val natId: String,
         ) : Infra {
@@ -689,16 +778,19 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Infra.NatGatewaysWaiting")
         data object NatGatewaysWaiting : Infra {
             override fun toDisplayString(): String = "Waiting for NAT gateways to be deleted..."
         }
 
         @Serializable
+        @SerialName("Infra.NatGatewaysDeleted")
         data object NatGatewaysDeleted : Infra {
             override fun toDisplayString(): String = "All NAT gateways deleted"
         }
 
         @Serializable
+        @SerialName("Infra.RouteTableDeleting")
         data class RouteTableDeleting(
             val rtId: String,
         ) : Infra {
@@ -706,6 +798,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Infra.SubnetDeleting")
         data class SubnetDeleting(
             val subnetId: String,
         ) : Infra {
@@ -713,6 +806,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Infra.NetworkInterfacesClearing")
         data class NetworkInterfacesClearing(
             val count: Int,
         ) : Infra {
@@ -720,11 +814,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Infra.NetworkInterfacesCleared")
         data object NetworkInterfacesCleared : Infra {
             override fun toDisplayString(): String = "All network interfaces cleared"
         }
 
         @Serializable
+        @SerialName("Infra.InfrastructureEnsuring")
         data class InfrastructureEnsuring(
             val vpcName: String,
         ) : Infra {
@@ -732,6 +828,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Infra.InfrastructureReady")
         data class InfrastructureReady(
             val vpcName: String,
         ) : Infra {
@@ -739,6 +836,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Infra.VpcNetworkingSetup")
         data class VpcNetworkingSetup(
             val clusterName: String,
         ) : Infra {
@@ -746,6 +844,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Infra.VpcNetworkingReady")
         data class VpcNetworkingReady(
             val clusterName: String,
         ) : Infra {
@@ -753,6 +852,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Infra.ResourceDiscovering")
         data class ResourceDiscovering(
             val vpcId: String,
         ) : Infra {
@@ -760,6 +860,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Infra.VpcTeardownSearching")
         data class VpcTeardownSearching(
             val tagKey: String,
             val tagValue: String,
@@ -768,6 +869,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Infra.VpcTeardownNoneFound")
         data class VpcTeardownNoneFound(
             val tagKey: String,
             val tagValue: String,
@@ -776,6 +878,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Infra.VpcTeardownFound")
         data class VpcTeardownFound(
             val count: Int,
         ) : Infra {
@@ -783,6 +886,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Infra.PackerVpcSkipping")
         data class PackerVpcSkipping(
             val vpcId: String,
         ) : Infra {
@@ -790,11 +894,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Infra.PackerVpcSearching")
         data object PackerVpcSearching : Infra {
             override fun toDisplayString(): String = "Finding packer infrastructure VPC..."
         }
 
         @Serializable
+        @SerialName("Infra.PackerVpcNotFound")
         data class PackerVpcNotFound(
             val name: String,
         ) : Infra {
@@ -802,6 +908,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Infra.VpcTeardownStarting")
         data class VpcTeardownStarting(
             val vpcId: String,
             val vpcName: String?,
@@ -810,6 +917,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Infra.OpenSearchDomainsDeleting")
         data class OpenSearchDomainsDeleting(
             val count: Int,
         ) : Infra {
@@ -817,6 +925,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Infra.OpenSearchDomainStillDeleting")
         data class OpenSearchDomainStillDeleting(
             val domainName: String,
         ) : Infra {
@@ -828,6 +937,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Infra.NetworkInterfacesStillActive")
         data object NetworkInterfacesStillActive : Infra {
             override fun toDisplayString(): String =
                 "Warning: Some network interfaces are still active. " +
@@ -844,6 +954,7 @@ sealed interface Event {
     @Serializable
     sealed interface Ec2 : Event {
         @Serializable
+        @SerialName("Ec2.InstancesCreating")
         data class InstancesCreating(
             val count: Int,
             val serverType: String,
@@ -852,6 +963,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Ec2.InstancesCreated")
         data class InstancesCreated(
             val count: Int,
             val serverType: String,
@@ -860,6 +972,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Ec2.InstancesTerminating")
         data class InstancesTerminating(
             val count: Int,
         ) : Ec2 {
@@ -867,36 +980,43 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Ec2.InstancesTerminateWaiting")
         data object InstancesTerminateWaiting : Ec2 {
             override fun toDisplayString(): String = "Waiting for instances to terminate..."
         }
 
         @Serializable
+        @SerialName("Ec2.InstancesTerminated")
         data object InstancesTerminated : Ec2 {
             override fun toDisplayString(): String = "All instances terminated"
         }
 
         @Serializable
+        @SerialName("Ec2.InstancesStartWaiting")
         data object InstancesStartWaiting : Ec2 {
             override fun toDisplayString(): String = "Waiting for instances to start..."
         }
 
         @Serializable
+        @SerialName("Ec2.InstancesRunning")
         data object InstancesRunning : Ec2 {
             override fun toDisplayString(): String = "All instances running"
         }
 
         @Serializable
+        @SerialName("Ec2.StatusCheckWaiting")
         data object StatusCheckWaiting : Ec2 {
             override fun toDisplayString(): String = "Waiting for instance status checks to pass..."
         }
 
         @Serializable
+        @SerialName("Ec2.StatusCheckPassed")
         data object StatusCheckPassed : Ec2 {
             override fun toDisplayString(): String = "Instance status checks passed"
         }
 
         @Serializable
+        @SerialName("Ec2.ExistingInstancesFound")
         data class ExistingInstancesFound(
             val serverType: String,
             val count: Int,
@@ -912,6 +1032,7 @@ sealed interface Event {
     @Serializable
     sealed interface Emr : Event {
         @Serializable
+        @SerialName("Emr.ClusterCreating")
         data class ClusterCreating(
             val clusterName: String,
         ) : Emr {
@@ -919,6 +1040,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Emr.ClusterInitiated")
         data class ClusterInitiated(
             val clusterId: String,
         ) : Emr {
@@ -926,16 +1048,19 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Emr.ClusterWaiting")
         data object ClusterWaiting : Emr {
             override fun toDisplayString(): String = "Waiting for EMR cluster to start..."
         }
 
         @Serializable
+        @SerialName("Emr.ClusterReady")
         data object ClusterReady : Emr {
             override fun toDisplayString(): String = "EMR cluster is ready"
         }
 
         @Serializable
+        @SerialName("Emr.ClusterTerminating")
         data class ClusterTerminating(
             val clusterId: String,
         ) : Emr {
@@ -943,16 +1068,19 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Emr.ClusterTerminateWaiting")
         data object ClusterTerminateWaiting : Emr {
             override fun toDisplayString(): String = "Waiting for EMR cluster to terminate..."
         }
 
         @Serializable
+        @SerialName("Emr.ClusterTerminated")
         data object ClusterTerminated : Emr {
             override fun toDisplayString(): String = "EMR cluster terminated"
         }
 
         @Serializable
+        @SerialName("Emr.ClustersTerminating")
         data class ClustersTerminating(
             val count: Int,
         ) : Emr {
@@ -960,26 +1088,31 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Emr.ClustersTerminateWaiting")
         data object ClustersTerminateWaiting : Emr {
             override fun toDisplayString(): String = "Waiting for EMR clusters to terminate..."
         }
 
         @Serializable
+        @SerialName("Emr.ClustersTerminated")
         data object ClustersTerminated : Emr {
             override fun toDisplayString(): String = "All EMR clusters terminated"
         }
 
         @Serializable
+        @SerialName("Emr.ClusterAlreadyExists")
         data object ClusterAlreadyExists : Emr {
             override fun toDisplayString(): String = "EMR cluster already exists, skipping creation"
         }
 
         @Serializable
+        @SerialName("Emr.SparkJobWaiting")
         data object SparkJobWaiting : Emr {
             override fun toDisplayString(): String = "Waiting for job completion..."
         }
 
         @Serializable
+        @SerialName("Emr.SparkJobStateUpdate")
         data class SparkJobStateUpdate(
             val state: String,
         ) : Emr {
@@ -987,11 +1120,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Emr.SparkJobCompleted")
         data object SparkJobCompleted : Emr {
             override fun toDisplayString(): String = "Job completed successfully"
         }
 
         @Serializable
+        @SerialName("Emr.SparkStepDetails")
         data class SparkStepDetails(
             val stepId: String,
             val name: String,
@@ -1036,6 +1171,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Emr.SparkStepError")
         data class SparkStepError(
             val error: String,
         ) : Emr {
@@ -1045,11 +1181,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Emr.SparkLogHeader")
         data object SparkLogHeader : Emr {
             override fun toDisplayString(): String = "\n=== Step Logs ==="
         }
 
         @Serializable
+        @SerialName("Emr.SparkLogLine")
         data class SparkLogLine(
             val line: String,
         ) : Emr {
@@ -1057,6 +1195,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Emr.SparkLogCount")
         data class SparkLogCount(
             val count: Int,
         ) : Emr {
@@ -1064,6 +1203,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Emr.SparkLogError")
         data class SparkLogError(
             val error: String,
         ) : Emr {
@@ -1073,6 +1213,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Emr.SparkLogInstruction")
         data class SparkLogInstruction(
             val stepId: String,
         ) : Emr {
@@ -1080,6 +1221,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Emr.SparkLogDownloadStart")
         data class SparkLogDownloadStart(
             val path: String,
         ) : Emr {
@@ -1087,6 +1229,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Emr.SparkLogDownloadSaveTo")
         data class SparkLogDownloadSaveTo(
             val localPath: String,
         ) : Emr {
@@ -1094,6 +1237,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Emr.SparkLogDownloadComplete")
         data class SparkLogDownloadComplete(
             val logType: String,
         ) : Emr {
@@ -1101,6 +1245,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Emr.SparkLogDownloadUnavailable")
         data class SparkLogDownloadUnavailable(
             val logType: String,
         ) : Emr {
@@ -1108,6 +1253,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Emr.SparkLogDownloadFailed")
         data class SparkLogDownloadFailed(
             val error: String,
         ) : Emr {
@@ -1117,6 +1263,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Emr.SparkDebugInstructions")
         data class SparkDebugInstructions(
             val commands: String,
         ) : Emr {
@@ -1124,6 +1271,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Emr.SparkStderrHeader")
         data class SparkStderrHeader(
             val lineCount: Int,
         ) : Emr {
@@ -1131,6 +1279,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Emr.SparkStderrLine")
         data class SparkStderrLine(
             val line: String,
         ) : Emr {
@@ -1138,11 +1287,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Emr.SparkStderrFooter")
         data object SparkStderrFooter : Emr {
             override fun toDisplayString(): String = "=== end stderr ===\n"
         }
 
         @Serializable
+        @SerialName("Emr.EmrLogsDownloading")
         data class EmrLogsDownloading(
             val path: String,
         ) : Emr {
@@ -1150,6 +1301,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Emr.EmrLogsSaveTo")
         data class EmrLogsSaveTo(
             val localDir: String,
         ) : Emr {
@@ -1157,6 +1309,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Emr.StepLogsDownloading")
         data class StepLogsDownloading(
             val localDir: String,
         ) : Emr {
@@ -1164,16 +1317,19 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Emr.ClusterWaitingNote")
         data object ClusterWaitingNote : Emr {
             override fun toDisplayString(): String = "Waiting for EMR cluster to start (this may take 10-15 minutes)..."
         }
 
         @Serializable
+        @SerialName("Emr.SparkClusterCreating")
         data object SparkClusterCreating : Emr {
             override fun toDisplayString(): String = "Creating EMR Spark cluster..."
         }
 
         @Serializable
+        @SerialName("Emr.SparkNoLogsInstruction")
         data class SparkNoLogsInstruction(
             val stepId: String,
         ) : Emr {
@@ -1181,16 +1337,19 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Emr.SparkLogQueryFailed")
         data object SparkLogQueryFailed : Emr {
             override fun toDisplayString(): String = "Could not query logs automatically."
         }
 
         @Serializable
+        @SerialName("Emr.DownloadingStepLogsHeader")
         data object DownloadingStepLogsHeader : Emr {
             override fun toDisplayString(): String = "\n=== Downloading Step Logs ==="
         }
 
         @Serializable
+        @SerialName("Emr.UsingS3Jar")
         data class UsingS3Jar(
             val jarPath: String,
         ) : Emr {
@@ -1198,6 +1357,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Emr.JobSubmitted")
         data class JobSubmitted(
             val stepId: String,
             val clusterId: String,
@@ -1206,6 +1366,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Emr.JobSubmittedCheckStatus")
         data class JobSubmittedCheckStatus(
             val stepId: String,
         ) : Emr {
@@ -1213,6 +1374,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Emr.ClusterProvisioned")
         data class ClusterProvisioned(
             val clusterId: String,
         ) : Emr {
@@ -1220,6 +1382,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Emr.MasterDns")
         data class MasterDns(
             val dns: String,
         ) : Emr {
@@ -1227,6 +1390,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Emr.ListingJobs")
         data class ListingJobs(
             val clusterId: String,
         ) : Emr {
@@ -1234,11 +1398,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Emr.NoJobsFound")
         data object NoJobsFound : Emr {
             override fun toDisplayString(): String = "No jobs found on cluster."
         }
 
         @Serializable
+        @SerialName("Emr.JobsTable")
         data class JobsTable(
             val table: String,
         ) : Emr {
@@ -1246,6 +1412,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Emr.StepStatusInfo")
         data class StepStatusInfo(
             val info: String,
         ) : Emr {
@@ -1253,6 +1420,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Emr.StepHints")
         data class StepHints(
             val hints: String,
         ) : Emr {
@@ -1260,6 +1428,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Emr.QueryingStepLogs")
         data class QueryingStepLogs(
             val stepId: String,
         ) : Emr {
@@ -1267,6 +1436,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Emr.StepQueryFailed")
         data class StepQueryFailed(
             val error: String,
         ) : Emr {
@@ -1276,6 +1446,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Emr.StepQueryTips")
         data class StepQueryTips(
             val tips: String,
         ) : Emr {
@@ -1283,6 +1454,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Emr.StepNoLogsFound")
         data class StepNoLogsFound(
             val stepId: String,
         ) : Emr {
@@ -1297,6 +1469,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Emr.StepLogsOutput")
         data class StepLogsOutput(
             val logs: String,
         ) : Emr {
@@ -1304,6 +1477,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Emr.StepLogsCount")
         data class StepLogsCount(
             val count: Int,
         ) : Emr {
@@ -1311,6 +1485,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Emr.StepFailedHint")
         data class StepFailedHint(
             val stepId: String,
         ) : Emr {
@@ -1333,6 +1508,7 @@ sealed interface Event {
     @Serializable
     sealed interface OpenSearch : Event {
         @Serializable
+        @SerialName("OpenSearch.Creating")
         data class Creating(
             val domainName: String,
         ) : OpenSearch {
@@ -1340,6 +1516,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("OpenSearch.Initiated")
         data class Initiated(
             val domainName: String,
         ) : OpenSearch {
@@ -1347,16 +1524,19 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("OpenSearch.Waiting")
         data object Waiting : OpenSearch {
             override fun toDisplayString(): String = "Waiting for OpenSearch domain to become active..."
         }
 
         @Serializable
+        @SerialName("OpenSearch.Ready")
         data object Ready : OpenSearch {
             override fun toDisplayString(): String = "OpenSearch domain is ready"
         }
 
         @Serializable
+        @SerialName("OpenSearch.WaitProgress")
         data class WaitProgress(
             val message: String,
             val elapsedMinutes: Long,
@@ -1365,6 +1545,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("OpenSearch.Deleting")
         data class Deleting(
             val domainName: String,
         ) : OpenSearch {
@@ -1372,6 +1553,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("OpenSearch.DeleteWaiting")
         data class DeleteWaiting(
             val domainName: String,
         ) : OpenSearch {
@@ -1379,6 +1561,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("OpenSearch.Deleted")
         data class Deleted(
             val domainName: String,
         ) : OpenSearch {
@@ -1386,21 +1569,25 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("OpenSearch.NotConfigured")
         data object NotConfigured : OpenSearch {
             override fun toDisplayString(): String = "No OpenSearch domain configured for this cluster."
         }
 
         @Serializable
+        @SerialName("OpenSearch.UseStartHint")
         data object UseStartHint : OpenSearch {
             override fun toDisplayString(): String = "Use 'opensearch start' to create one."
         }
 
         @Serializable
+        @SerialName("OpenSearch.WaitingForActive")
         data object WaitingForActive : OpenSearch {
             override fun toDisplayString(): String = "Waiting for OpenSearch domain to become active (this may take 10-30 minutes)..."
         }
 
         @Serializable
+        @SerialName("OpenSearch.WaitingForDeleted")
         data class WaitingForDeleted(
             val domainName: String,
         ) : OpenSearch {
@@ -1409,31 +1596,37 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("OpenSearch.ServiceLinkedRoleEnsuring")
         data object ServiceLinkedRoleEnsuring : OpenSearch {
             override fun toDisplayString(): String = "Ensuring OpenSearch service-linked role exists..."
         }
 
         @Serializable
+        @SerialName("OpenSearch.CreateStarted")
         data object CreateStarted : OpenSearch {
             override fun toDisplayString(): String = "OpenSearch domain creation started."
         }
 
         @Serializable
+        @SerialName("OpenSearch.CreateTimingNote")
         data object CreateTimingNote : OpenSearch {
             override fun toDisplayString(): String = "This typically takes 10-30 minutes to complete."
         }
 
         @Serializable
+        @SerialName("OpenSearch.CreateStatusCheckHint")
         data object CreateStatusCheckHint : OpenSearch {
             override fun toDisplayString(): String = "Use 'opensearch status' to check when the endpoint is available."
         }
 
         @Serializable
+        @SerialName("OpenSearch.DomainCreatedSuccessfully")
         data object DomainCreatedSuccessfully : OpenSearch {
             override fun toDisplayString(): String = "OpenSearch domain created successfully!"
         }
 
         @Serializable
+        @SerialName("OpenSearch.AccessInfo")
         data class AccessInfo(
             val endpoint: String,
             val dashboardsEndpoint: String?,
@@ -1449,6 +1642,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("OpenSearch.EndpointOnly")
         data class EndpointOnly(
             val endpoint: String,
         ) : OpenSearch {
@@ -1456,6 +1650,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("OpenSearch.DomainStatus")
         data class DomainStatus(
             val domainName: String,
             val domainId: String?,
@@ -1483,6 +1678,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("OpenSearch.DomainNotExists")
         data class DomainNotExists(
             val domainName: String,
         ) : OpenSearch {
@@ -1490,11 +1686,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("OpenSearch.ClearingState")
         data object ClearingState : OpenSearch {
             override fun toDisplayString(): String = "Clearing local state."
         }
 
         @Serializable
+        @SerialName("OpenSearch.FetchWarning")
         data class FetchWarning(
             val error: String,
         ) : OpenSearch {
@@ -1502,6 +1700,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("OpenSearch.CachedState")
         data class CachedState(
             val domainName: String,
             val state: String?,
@@ -1517,6 +1716,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("OpenSearch.StopConfirmation")
         data class StopConfirmation(
             val domainName: String,
         ) : OpenSearch {
@@ -1524,11 +1724,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("OpenSearch.StopConfirmRequired")
         data object StopConfirmRequired : OpenSearch {
             override fun toDisplayString(): String = "Use --force to confirm deletion."
         }
 
         @Serializable
+        @SerialName("OpenSearch.DeletionInitiated")
         data class DeletionInitiated(
             val domainName: String,
         ) : OpenSearch {
@@ -1536,11 +1738,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("OpenSearch.DeletionNote")
         data object DeletionNote : OpenSearch {
             override fun toDisplayString(): String = "Note: Domain deletion may take several minutes to complete."
         }
 
         @Serializable
+        @SerialName("OpenSearch.WaitingForDeletion")
         data class WaitingForDeletion(
             val domainName: String,
         ) : OpenSearch {
@@ -1556,6 +1760,7 @@ sealed interface Event {
     @Serializable
     sealed interface S3 : Event {
         @Serializable
+        @SerialName("S3.Uploading")
         data class Uploading(
             val fileName: String,
             val remotePath: String,
@@ -1564,6 +1769,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("S3.UploadComplete")
         data class UploadComplete(
             val remotePath: String,
         ) : S3 {
@@ -1571,6 +1777,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("S3.Downloading")
         data class Downloading(
             val remotePath: String,
             val localPath: String,
@@ -1579,6 +1786,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("S3.DownloadComplete")
         data class DownloadComplete(
             val localPath: String,
         ) : S3 {
@@ -1586,6 +1794,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("S3.Deleting")
         data class Deleting(
             val remotePath: String,
         ) : S3 {
@@ -1593,6 +1802,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("S3.Deleted")
         data class Deleted(
             val remotePath: String,
         ) : S3 {
@@ -1600,6 +1810,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("S3.DirectoryDownloadFound")
         data class DirectoryDownloadFound(
             val count: Int,
         ) : S3 {
@@ -1607,6 +1818,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("S3.DirectoryDownloadComplete")
         data class DirectoryDownloadComplete(
             val count: Int,
             val localDir: String,
@@ -1615,6 +1827,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("S3.DirectoryUploadFound")
         data class DirectoryUploadFound(
             val count: Int,
             val remotePath: String,
@@ -1623,6 +1836,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("S3.DirectoryUploadComplete")
         data class DirectoryUploadComplete(
             val count: Int,
             val remotePath: String,
@@ -1631,16 +1845,19 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("S3.NotificationsConfiguring")
         data object NotificationsConfiguring : S3 {
             override fun toDisplayString(): String = "Configuring S3 bucket notifications for EMR logs..."
         }
 
         @Serializable
+        @SerialName("S3.NotificationsConfigured")
         data object NotificationsConfigured : S3 {
             override fun toDisplayString(): String = "S3 bucket notifications configured for EMR logs"
         }
 
         @Serializable
+        @SerialName("S3.BucketConfigured")
         data class BucketConfigured(
             val bucket: String,
             val prefix: String,
@@ -1649,6 +1866,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("S3.MetricsEnabled")
         data class MetricsEnabled(
             val prefix: String,
         ) : S3 {
@@ -1656,6 +1874,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("S3.LifecycleRuleSet")
         data class LifecycleRuleSet(
             val prefix: String,
             val retentionDays: Int,
@@ -1664,6 +1883,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("S3.RequestMetricsDisabled")
         data class RequestMetricsDisabled(
             val clusterName: String,
         ) : S3 {
@@ -1671,6 +1891,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("S3.BucketUsing")
         data class BucketUsing(
             val bucket: String,
         ) : S3 {
@@ -1685,6 +1906,7 @@ sealed interface Event {
     @Serializable
     sealed interface Sqs : Event {
         @Serializable
+        @SerialName("Sqs.QueueCreating")
         data class QueueCreating(
             val queueName: String,
         ) : Sqs {
@@ -1692,6 +1914,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Sqs.QueueCreated")
         data class QueueCreated(
             val queueUrl: String,
         ) : Sqs {
@@ -1699,6 +1922,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Sqs.QueueDeleting")
         data class QueueDeleting(
             val queueUrl: String,
         ) : Sqs {
@@ -1706,11 +1930,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Sqs.QueueDeleted")
         data object QueueDeleted : Sqs {
             override fun toDisplayString(): String = "SQS queue deleted"
         }
 
         @Serializable
+        @SerialName("Sqs.QueueConfigured")
         data class QueueConfigured(
             val queueUrl: String,
         ) : Sqs {
@@ -1725,11 +1951,13 @@ sealed interface Event {
     @Serializable
     sealed interface Grafana : Event {
         @Serializable
+        @SerialName("Grafana.DatasourcesCreating")
         data object DatasourcesCreating : Grafana {
             override fun toDisplayString(): String = "Creating Grafana datasources ConfigMap..."
         }
 
         @Serializable
+        @SerialName("Grafana.ResourcesApplying")
         data class ResourcesApplying(
             val count: Int,
         ) : Grafana {
@@ -1737,6 +1965,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Grafana.ResourceApplying")
         data class ResourceApplying(
             val kind: String,
             val name: String,
@@ -1745,11 +1974,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Grafana.ResourcesApplied")
         data object ResourcesApplied : Grafana {
             override fun toDisplayString(): String = "All Grafana resources applied successfully!"
         }
 
         @Serializable
+        @SerialName("Grafana.LabelResourcesApplying")
         data class LabelResourcesApplying(
             val label: String,
         ) : Grafana {
@@ -1757,6 +1988,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Grafana.LabelResourcesApplied")
         data class LabelResourcesApplied(
             val label: String,
         ) : Grafana {
@@ -1764,6 +1996,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Grafana.PyroscopeDirectoryPreparing")
         data object PyroscopeDirectoryPreparing : Grafana {
             override fun toDisplayString(): String = "Preparing Pyroscope data directory..."
         }
@@ -1776,6 +2009,7 @@ sealed interface Event {
     @Serializable
     sealed interface Backup : Event {
         @Serializable
+        @SerialName("Backup.VictoriaMetricsStarting")
         data class VictoriaMetricsStarting(
             val s3Path: String,
         ) : Backup {
@@ -1783,6 +2017,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Backup.VictoriaMetricsJobStarted")
         data class VictoriaMetricsJobStarted(
             val jobName: String,
         ) : Backup {
@@ -1790,6 +2025,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Backup.VictoriaMetricsComplete")
         data class VictoriaMetricsComplete(
             val s3Path: String,
         ) : Backup {
@@ -1797,6 +2033,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Backup.VictoriaLogsStarting")
         data class VictoriaLogsStarting(
             val s3Path: String,
         ) : Backup {
@@ -1804,6 +2041,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Backup.VictoriaLogsJobStarted")
         data class VictoriaLogsJobStarted(
             val jobName: String,
         ) : Backup {
@@ -1811,6 +2049,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Backup.VictoriaLogsComplete")
         data class VictoriaLogsComplete(
             val s3Path: String,
         ) : Backup {
@@ -1818,11 +2057,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Backup.Waiting")
         data object Waiting : Backup {
             override fun toDisplayString(): String = "Waiting for backup to complete..."
         }
 
         @Serializable
+        @SerialName("Backup.ConfigBackedUp")
         data class ConfigBackedUp(
             val displayName: String,
             val s3Path: String,
@@ -1831,6 +2072,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Backup.ConfigRestored")
         data class ConfigRestored(
             val displayName: String,
             val s3Path: String,
@@ -1839,6 +2081,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Backup.KubeconfigBackedUp")
         data class KubeconfigBackedUp(
             val s3Path: String,
         ) : Backup {
@@ -1846,6 +2089,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Backup.KubeconfigRestored")
         data class KubeconfigRestored(
             val s3Path: String,
         ) : Backup {
@@ -1853,6 +2097,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Backup.K8sManifestsBackedUp")
         data class K8sManifestsBackedUp(
             val s3Path: String,
         ) : Backup {
@@ -1860,6 +2105,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Backup.K8sManifestsRestored")
         data class K8sManifestsRestored(
             val s3Path: String,
         ) : Backup {
@@ -1867,6 +2113,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Backup.CassandraPatchBackedUp")
         data class CassandraPatchBackedUp(
             val s3Path: String,
         ) : Backup {
@@ -1874,6 +2121,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Backup.CassandraPatchRestored")
         data class CassandraPatchRestored(
             val s3Path: String,
         ) : Backup {
@@ -1881,6 +2129,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Backup.ClusterLookup")
         data class ClusterLookup(
             val vpcId: String,
         ) : Backup {
@@ -1888,6 +2137,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Backup.ClusterFound")
         data class ClusterFound(
             val clusterName: String,
             val s3Bucket: String,
@@ -1896,11 +2146,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Backup.RestoreStarting")
         data object RestoreStarting : Backup {
             override fun toDisplayString(): String = "Restoring cluster configuration from S3..."
         }
 
         @Serializable
+        @SerialName("Backup.RestoreComplete")
         data class RestoreComplete(
             val items: List<String>,
         ) : Backup {
@@ -1908,11 +2160,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Backup.RestoreEmpty")
         data object RestoreEmpty : Backup {
             override fun toDisplayString(): String = "No configuration files found in S3 to restore"
         }
 
         @Serializable
+        @SerialName("Backup.StateRestored")
         data class StateRestored(
             val clusterName: String,
             val clusterId: String,
@@ -1922,6 +2176,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Backup.IncrementalBackupComplete")
         data class IncrementalBackupComplete(
             val filesUploaded: Int,
         ) : Backup {
@@ -1929,6 +2184,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Backup.IncrementalBackupFailed")
         data class IncrementalBackupFailed(
             val error: String,
         ) : Backup {
@@ -1945,6 +2201,7 @@ sealed interface Event {
     @Serializable
     sealed interface Registry : Event {
         @Serializable
+        @SerialName("Registry.CertGenerating")
         data class CertGenerating(
             val controlHost: String,
         ) : Registry {
@@ -1952,11 +2209,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Registry.CertUploaded")
         data object CertUploaded : Registry {
             override fun toDisplayString(): String = "Uploaded registry certificate to S3"
         }
 
         @Serializable
+        @SerialName("Registry.TlsConfiguring")
         data class TlsConfiguring(
             val host: String,
         ) : Registry {
@@ -1964,6 +2223,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Registry.TlsConfigured")
         data object TlsConfigured : Registry {
             override fun toDisplayString(): String = "Registry TLS configured on all nodes"
         }
@@ -1976,6 +2236,7 @@ sealed interface Event {
     @Serializable
     sealed interface Tailscale : Event {
         @Serializable
+        @SerialName("Tailscale.DaemonStarting")
         data class DaemonStarting(
             val host: String,
         ) : Tailscale {
@@ -1983,6 +2244,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Tailscale.Authenticating")
         data class Authenticating(
             val host: String,
         ) : Tailscale {
@@ -1990,6 +2252,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Tailscale.Connected")
         data class Connected(
             val host: String,
         ) : Tailscale {
@@ -1997,6 +2260,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Tailscale.Stopping")
         data class Stopping(
             val host: String,
         ) : Tailscale {
@@ -2004,6 +2268,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Tailscale.Stopped")
         data class Stopped(
             val host: String,
         ) : Tailscale {
@@ -2011,6 +2276,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Tailscale.NoControlNode")
         data object NoControlNode : Tailscale {
             override fun toDisplayString(): String = "No control node found. Ensure your cluster is running with 'easy-db-lab up'."
 
@@ -2018,6 +2284,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Tailscale.CredentialMissing")
         data class CredentialMissing(
             val instructions: String,
         ) : Tailscale {
@@ -2027,6 +2294,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Tailscale.AlreadyConnected")
         data class AlreadyConnected(
             val alias: String,
         ) : Tailscale {
@@ -2034,6 +2302,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Tailscale.CurrentStatusOutput")
         data class CurrentStatusOutput(
             val status: String,
         ) : Tailscale {
@@ -2041,11 +2310,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Tailscale.GeneratingAuthKey")
         data object GeneratingAuthKey : Tailscale {
             override fun toDisplayString(): String = "Generating Tailscale auth key..."
         }
 
         @Serializable
+        @SerialName("Tailscale.StartFailed")
         data class StartFailed(
             val error: String,
         ) : Tailscale {
@@ -2055,6 +2326,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Tailscale.TagConfigWarning")
         data class TagConfigWarning(
             val tag: String,
         ) : Tailscale {
@@ -2076,11 +2348,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Tailscale.StartedSuccessfully")
         data object StartedSuccessfully : Tailscale {
             override fun toDisplayString(): String = "\nTailscale started successfully!"
         }
 
         @Serializable
+        @SerialName("Tailscale.AccessDetails")
         data class AccessDetails(
             val controlNodeIp: String,
             val tailscaleIp: String,
@@ -2096,11 +2370,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Tailscale.CurrentStatusLabel")
         data object CurrentStatusLabel : Tailscale {
             override fun toDisplayString(): String = "\nCurrent status:"
         }
 
         @Serializable
+        @SerialName("Tailscale.NotRunning")
         data class NotRunning(
             val alias: String,
         ) : Tailscale {
@@ -2108,6 +2384,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Tailscale.AuthKeyDeleted")
         data class AuthKeyDeleted(
             val keyId: String,
         ) : Tailscale {
@@ -2115,11 +2392,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Tailscale.StoppedSuccessfully")
         data object StoppedSuccessfully : Tailscale {
             override fun toDisplayString(): String = "Tailscale stopped successfully."
         }
 
         @Serializable
+        @SerialName("Tailscale.StopFailed")
         data class StopFailed(
             val error: String,
         ) : Tailscale {
@@ -2129,11 +2408,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Tailscale.RunInstructions")
         data object RunInstructions : Tailscale {
             override fun toDisplayString(): String = "Run 'easy-db-lab tailscale start' to connect."
         }
 
         @Serializable
+        @SerialName("Tailscale.StatusInfo")
         data class StatusInfo(
             val alias: String,
             val status: String,
@@ -2142,6 +2423,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Tailscale.StatusFailed")
         data class StatusFailed(
             val error: String,
         ) : Tailscale {
@@ -2151,6 +2433,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Tailscale.ConnectionDetails")
         data class ConnectionDetails(
             val alias: String,
             val cidr: String,
@@ -2177,11 +2460,13 @@ sealed interface Event {
     @Serializable
     sealed interface AwsSetup : Event {
         @Serializable
+        @SerialName("AwsSetup.Starting")
         data object Starting : AwsSetup {
             override fun toDisplayString(): String = "Setting up AWS resources (IAM roles, instance profiles)..."
         }
 
         @Serializable
+        @SerialName("AwsSetup.RepairWarning")
         data class RepairWarning(
             val validationError: String,
         ) : AwsSetup {
@@ -2192,6 +2477,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("AwsSetup.CredentialValidationFailed")
         data object CredentialValidationFailed : AwsSetup {
             override fun toDisplayString(): String = "AWS credential validation failed. Please check your AWS credentials and permissions."
 
@@ -2199,6 +2485,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("AwsSetup.AuthenticationError")
         data class AuthenticationError(
             val exceptionMessage: String,
         ) : AwsSetup {
@@ -2236,6 +2523,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("AwsSetup.Ec2RoleReady")
         data class Ec2RoleReady(
             val roleName: String,
         ) : AwsSetup {
@@ -2243,6 +2531,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("AwsSetup.EmrServiceRoleReady")
         data class EmrServiceRoleReady(
             val roleName: String,
         ) : AwsSetup {
@@ -2250,6 +2539,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("AwsSetup.EmrEc2RoleReady")
         data class EmrEc2RoleReady(
             val roleName: String,
         ) : AwsSetup {
@@ -2257,6 +2547,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("AwsSetup.IamPermissionError")
         data class IamPermissionError(
             val error: String,
         ) : AwsSetup {
@@ -2266,6 +2557,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("AwsSetup.IamValidationError")
         data class IamValidationError(
             val error: String,
         ) : AwsSetup {
@@ -2275,6 +2567,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("AwsSetup.IamUnexpectedError")
         data class IamUnexpectedError(
             val error: String,
         ) : AwsSetup {
@@ -2284,6 +2577,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("AwsSetup.ValidationFailed")
         data class ValidationFailed(
             val error: String,
         ) : AwsSetup {
@@ -2293,11 +2587,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("AwsSetup.Complete")
         data object Complete : AwsSetup {
             override fun toDisplayString(): String = "✓ AWS resources setup complete and validated"
         }
 
         @Serializable
+        @SerialName("AwsSetup.PolicyDisplay")
         data class PolicyDisplay(
             val index: Int,
             val name: String,
@@ -2315,6 +2611,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("AwsSetup.PolicySeparator")
         data object PolicySeparator : AwsSetup {
             override fun toDisplayString(): String =
                 """
@@ -2324,6 +2621,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("AwsSetup.AccountIdNote")
         data object AccountIdNote : AwsSetup {
             override fun toDisplayString(): String =
                 """
@@ -2334,6 +2632,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("AwsSetup.PolicyRecommendation")
         data object PolicyRecommendation : AwsSetup {
             @Suppress("MaxLineLength")
             override fun toDisplayString(): String =
@@ -2367,6 +2666,7 @@ sealed interface Event {
     @Serializable
     sealed interface Stress : Event {
         @Serializable
+        @SerialName("Stress.JobStarting")
         data class JobStarting(
             val jobName: String,
         ) : Stress {
@@ -2374,6 +2674,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Stress.PodStatus")
         data class PodStatus(
             val podName: String,
             val status: String,
@@ -2382,6 +2683,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Stress.JobStarted")
         data class JobStarted(
             val jobName: String,
             val image: String,
@@ -2407,11 +2709,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Stress.NoJobsFound")
         data object NoJobsFound : Stress {
             override fun toDisplayString(): String = "No stress jobs found."
         }
 
         @Serializable
+        @SerialName("Stress.JobStatusRow")
         data class JobStatusRow(
             val name: String,
             val status: String,
@@ -2420,6 +2724,7 @@ sealed interface Event {
         )
 
         @Serializable
+        @SerialName("Stress.JobStatusList")
         data class JobStatusList(
             val jobs: List<JobStatusRow>,
         ) : Stress {
@@ -2433,12 +2738,14 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Stress.JobSummary")
         data class JobSummary(
             val name: String,
             val status: String,
         )
 
         @Serializable
+        @SerialName("Stress.JobsToDelete")
         data class JobsToDelete(
             val jobs: List<JobSummary>,
         ) : Stress {
@@ -2452,11 +2759,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Stress.DeleteConfirmRequired")
         data object DeleteConfirmRequired : Stress {
             override fun toDisplayString(): String = "\nUse --force to confirm deletion."
         }
 
         @Serializable
+        @SerialName("Stress.BulkDeleted")
         data class BulkDeleted(
             val count: Int,
         ) : Stress {
@@ -2464,6 +2773,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Stress.SingleDeleted")
         data class SingleDeleted(
             val name: String,
         ) : Stress {
@@ -2471,6 +2781,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Stress.PodLogHeader")
         data class PodLogHeader(
             val podName: String,
             val podStatus: String,
@@ -2479,6 +2790,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Stress.PodLogFailed")
         data class PodLogFailed(
             val podName: String,
             val error: String,
@@ -2489,11 +2801,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Stress.PodLogsEmpty")
         data object PodLogsEmpty : Stress {
             override fun toDisplayString(): String = "(no logs available yet)"
         }
 
         @Serializable
+        @SerialName("Stress.PodLogOutput")
         data class PodLogOutput(
             val logs: String,
         ) : Stress {
@@ -2501,6 +2815,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Stress.CommandRunning")
         data class CommandRunning(
             val commandName: String,
         ) : Stress {
@@ -2508,6 +2823,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Stress.CommandOutput")
         data class CommandOutput(
             val output: String,
         ) : Stress {
@@ -2515,6 +2831,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Stress.PodLogSeparator")
         data object PodLogSeparator : Stress {
             override fun toDisplayString(): String = ""
         }
@@ -2527,6 +2844,7 @@ sealed interface Event {
     @Serializable
     sealed interface Service : Event {
         @Serializable
+        @SerialName("Service.Starting")
         data class Starting(
             val serviceName: String,
             val host: String,
@@ -2535,6 +2853,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Service.Stopping")
         data class Stopping(
             val serviceName: String,
             val host: String,
@@ -2543,6 +2862,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Service.Restarting")
         data class Restarting(
             val serviceName: String,
             val host: String,
@@ -2558,16 +2878,19 @@ sealed interface Event {
     @Serializable
     sealed interface Provision : Event {
         @Serializable
+        @SerialName("Provision.IamUpdating")
         data object IamUpdating : Provision {
             override fun toDisplayString(): String = "Ensuring IAM policies are up to date..."
         }
 
         @Serializable
+        @SerialName("Provision.InfrastructureStarting")
         data object InfrastructureStarting : Provision {
             override fun toDisplayString(): String = "Provisioning infrastructure..."
         }
 
         @Serializable
+        @SerialName("Provision.EmrReady")
         data class EmrReady(
             val masterDns: String,
         ) : Provision {
@@ -2575,6 +2898,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Provision.OpenSearchReady")
         data class OpenSearchReady(
             val endpoint: String,
         ) : Provision {
@@ -2582,6 +2906,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Provision.OpenSearchDashboards")
         data class OpenSearchDashboards(
             val url: String,
         ) : Provision {
@@ -2589,6 +2914,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Provision.InfrastructureFailureHeader")
         data object InfrastructureFailureHeader : Provision {
             override fun toDisplayString(): String = "\nInfrastructure creation had failures:"
 
@@ -2596,6 +2922,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Provision.InfrastructureFailure")
         data class InfrastructureFailure(
             val resource: String,
             val error: String,
@@ -2606,6 +2933,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Provision.ClusterStateUpdated")
         data class ClusterStateUpdated(
             val hostCount: Int,
         ) : Provision {
@@ -2613,6 +2941,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Provision.InstancesDiscovered")
         data class InstancesDiscovered(
             val cassandra: Int,
             val stress: Int,
@@ -2622,6 +2951,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Provision.ProvisioningComplete")
         data object ProvisioningComplete : Provision {
             override fun toDisplayString(): String =
                 "Instances have been provisioned.\n\n" +
@@ -2630,28 +2960,33 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Provision.WritingSshConfig")
         data object WritingSshConfig : Provision {
             override fun toDisplayString(): String = "Writing ssh config file to sshConfig."
         }
 
         @Serializable
+        @SerialName("Provision.SourceEnvInstruction")
         data object SourceEnvInstruction : Provision {
             override fun toDisplayString(): String =
                 "The following alias will allow you to easily work with the cluster:\n\nsource env.sh\n"
         }
 
         @Serializable
+        @SerialName("Provision.CassandraPatchInstruction")
         data object CassandraPatchInstruction : Provision {
             override fun toDisplayString(): String =
                 "You can edit cassandra.patch.yaml with any changes you'd like to see merge in into the remote cassandra.yaml file."
         }
 
         @Serializable
+        @SerialName("Provision.SshWaiting")
         data object SshWaiting : Provision {
             override fun toDisplayString(): String = "Waiting for SSH to come up.."
         }
 
         @Serializable
+        @SerialName("Provision.SshRetrying")
         data class SshRetrying(
             val attempt: Int,
         ) : Provision {
@@ -2659,12 +2994,14 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Provision.SkippingNodeSetup")
         data object SkippingNodeSetup : Provision {
             override fun toDisplayString(): String =
                 "Skipping node setup.  You will need to run easy-db-lab setup-instance to complete setup"
         }
 
         @Serializable
+        @SerialName("Provision.AxonOpsSetup")
         data class AxonOpsSetup(
             val org: String,
         ) : Provision {
@@ -2672,11 +3009,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Provision.TailscaleStarting")
         data object TailscaleStarting : Provision {
             override fun toDisplayString(): String = "Starting Tailscale VPN..."
         }
 
         @Serializable
+        @SerialName("Provision.TailscaleWarning")
         data class TailscaleWarning(
             val error: String,
         ) : Provision {
@@ -2686,11 +3025,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Provision.TailscaleManualInstruction")
         data object TailscaleManualInstruction : Provision {
             override fun toDisplayString(): String = "You can manually start it later with: easy-db-lab tailscale start"
         }
 
         @Serializable
+        @SerialName("Provision.NoControlNodes")
         data object NoControlNodes : Provision {
             override fun toDisplayString(): String = "No control nodes found, skipping K3s setup"
 
@@ -2698,6 +3039,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Provision.NodeLabeling")
         data class NodeLabeling(
             val count: Int,
         ) : Provision {
@@ -2705,21 +3047,25 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Provision.NodeLabelingComplete")
         data object NodeLabelingComplete : Provision {
             override fun toDisplayString(): String = "Node labeling complete"
         }
 
         @Serializable
+        @SerialName("Provision.LogPipelineValidating")
         data object LogPipelineValidating : Provision {
             override fun toDisplayString(): String = "Validating log ingestion pipeline..."
         }
 
         @Serializable
+        @SerialName("Provision.LogPipelineValid")
         data object LogPipelineValid : Provision {
             override fun toDisplayString(): String = "✓ S3 → SQS notifications configured correctly"
         }
 
         @Serializable
+        @SerialName("Provision.VpcCreating")
         data class VpcCreating(
             val clusterName: String,
         ) : Provision {
@@ -2727,6 +3073,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Provision.VpcCreated")
         data class VpcCreated(
             val vpcId: String,
         ) : Provision {
@@ -2734,11 +3081,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Provision.OpenSearchCreating")
         data object OpenSearchCreating : Provision {
             override fun toDisplayString(): String = "Creating OpenSearch domain..."
         }
 
         @Serializable
+        @SerialName("Provision.AxonOpsConfigWritten")
         data class AxonOpsConfigWritten(
             val configFile: String,
         ) : Provision {
@@ -2746,6 +3095,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Provision.AxonOpsWorkbenchConfigWritten")
         data class AxonOpsWorkbenchConfigWritten(
             val configFile: String,
         ) : Provision {
@@ -2753,6 +3103,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Provision.ObservabilityAccessInfo")
         data class ObservabilityAccessInfo(
             val controlNodeIp: String,
             val grafanaPort: Int,
@@ -2771,6 +3122,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Provision.ClickHouseAccessInfo")
         data class ClickHouseAccessInfo(
             val dbNodeIp: String,
             val httpPort: Int,
@@ -2787,6 +3139,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Provision.S3ManagerAccessInfo")
         data class S3ManagerAccessInfo(
             val controlNodeIp: String,
             val s3ManagerPort: Int,
@@ -2802,6 +3155,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Provision.S3ManagerClickHouseAccessInfo")
         data class S3ManagerClickHouseAccessInfo(
             val controlNodeIp: String,
             val s3ManagerPort: Int,
@@ -2817,6 +3171,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Provision.RegistryAccessInfo")
         data class RegistryAccessInfo(
             val controlNodeIp: String,
             val registryPort: Int,
@@ -2857,6 +3212,7 @@ sealed interface Event {
     @Serializable
     sealed interface Command : Event {
         @Serializable
+        @SerialName("Command.ExecutionError")
         data class ExecutionError(
             val error: String,
         ) : Command {
@@ -2866,11 +3222,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Command.RetryInstruction")
         data object RetryInstruction : Command {
             override fun toDisplayString(): String = "\nYou can now run the command again."
         }
 
         @Serializable
+        @SerialName("Command.DockerNotAvailable")
         data object DockerNotAvailable : Command {
             override fun toDisplayString(): String = "Error: Docker is not available or not running."
 
@@ -2878,6 +3236,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Command.DockerSetupInstruction")
         data class DockerSetupInstruction(
             val instruction: String,
         ) : Command {
@@ -2887,6 +3246,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Command.SshKeyMissing")
         data class SshKeyMissing(
             val path: String,
         ) : Command {
@@ -2896,6 +3256,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Command.EmptyCommand")
         data object EmptyCommand : Command {
             override fun toDisplayString(): String = "Command cannot be empty"
 
@@ -2903,6 +3264,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Command.NoHostsFound")
         data class NoHostsFound(
             val serverType: String,
         ) : Command {
@@ -2910,6 +3272,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Command.HostExecHeader")
         data class HostExecHeader(
             val host: String,
         ) : Command {
@@ -2917,6 +3280,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Command.HostExecOutput")
         data class HostExecOutput(
             val output: String,
         ) : Command {
@@ -2924,6 +3288,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Command.HostExecStderr")
         data class HostExecStderr(
             val stderr: String,
         ) : Command {
@@ -2931,6 +3296,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Command.HostExecError")
         data class HostExecError(
             val host: String,
             val error: String,
@@ -2939,6 +3305,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Command.ReplStartError")
         data class ReplStartError(
             val error: String,
         ) : Command {
@@ -2948,6 +3315,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Command.ReplWelcome")
         data object ReplWelcome : Command {
             override fun toDisplayString(): String =
                 "easy-db-lab interactive shell. Type 'help' for commands, TAB for completion.\n" +
@@ -2955,6 +3323,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Command.IpAddress")
         data class IpAddress(
             val ip: String,
         ) : Command {
@@ -2962,6 +3331,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Command.RegionName")
         data class RegionName(
             val region: String,
         ) : Command {
@@ -2969,6 +3339,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Command.CommandDescription")
         data class CommandDescription(
             val name: String,
             val description: String,
@@ -2978,6 +3349,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Command.CommandOptionHelp")
         data class CommandOptionHelp(
             val names: String,
             val paramLabel: String,
@@ -2992,6 +3364,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Command.CommandPositionalHelp")
         data class CommandPositionalHelp(
             val paramLabel: String,
             val isRequired: Boolean,
@@ -3005,6 +3378,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Command.S3BucketName")
         data class S3BucketName(
             val bucket: String,
         ) : Command {
@@ -3012,6 +3386,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Command.HostsCsvOutput")
         data class HostsCsvOutput(
             val csv: String,
         ) : Command {
@@ -3019,11 +3394,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Command.HostsNoClusterState")
         data object HostsNoClusterState : Command {
             override fun toDisplayString(): String = "Cluster state does not exist yet, most likely easy-db-lab up has not been run."
         }
 
         @Serializable
+        @SerialName("Command.VersionOutput")
         data class VersionOutput(
             val version: String,
         ) : Command {
@@ -3031,11 +3408,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Command.ArtifactsNotEmpty")
         data object ArtifactsNotEmpty : Command {
             override fun toDisplayString(): String = "Not deleting artifacts directory, it contains artifacts."
         }
 
         @Serializable
+        @SerialName("Command.VpcListItem")
         data class VpcListItem(
             val name: String,
             val vpcId: String,
@@ -3045,11 +3424,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Command.NoVpcsFound")
         data object NoVpcsFound : Command {
             override fun toDisplayString(): String = "No easy-db-lab VPCs found"
         }
 
         @Serializable
+        @SerialName("Command.UploadKeysNotFound")
         data class UploadKeysNotFound(
             val localDir: String,
         ) : Command {
@@ -3057,6 +3438,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Command.UploadKeysFiles")
         data class UploadKeysFiles(
             val files: String,
         ) : Command {
@@ -3064,11 +3446,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Command.UploadKeysStarting")
         data object UploadKeysStarting : Command {
             override fun toDisplayString(): String = "Uploading the following keys:"
         }
 
         @Serializable
+        @SerialName("Command.UploadKeysBody")
         data class UploadKeysBody(
             val keys: String,
         ) : Command {
@@ -3076,6 +3460,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Command.IamPoliciesNotFound")
         data class IamPoliciesNotFound(
             val policyName: String,
         ) : Command {
@@ -3083,6 +3468,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Command.IamPolicyHeader")
         data class IamPolicyHeader(
             val name: String,
         ) : Command {
@@ -3090,6 +3476,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Command.IamPolicyBody")
         data class IamPolicyBody(
             val body: String,
         ) : Command {
@@ -3097,6 +3484,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Command.IamPoliciesCredentialError")
         data object IamPoliciesCredentialError : Command {
             override fun toDisplayString(): String = "Failed to get AWS account ID. Please run 'easy-db-lab init' to set up credentials."
 
@@ -3104,6 +3492,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Command.McpConfigSaved")
         data class McpConfigSaved(
             val path: String,
         ) : Command {
@@ -3111,6 +3500,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Command.ProfileNotConfigured")
         data object ProfileNotConfigured : Command {
             override fun toDisplayString(): String =
                 "\nProfile not configured. Please run 'easy-db-lab setup-profile' to configure your environment.\n"
@@ -3124,11 +3514,13 @@ sealed interface Event {
     @Serializable
     sealed interface Status : Event {
         @Serializable
+        @SerialName("Status.NoClusterState")
         data object NoClusterState : Status {
             override fun toDisplayString(): String = "Cluster state does not exist yet. Run 'easy-db-lab init' first."
         }
 
         @Serializable
+        @SerialName("Status.ClusterInfo")
         data class ClusterInfo(
             val clusterId: String,
             val name: String,
@@ -3147,6 +3539,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Status.NodeDetail")
         data class NodeDetail(
             val alias: String,
             val instanceId: String,
@@ -3157,6 +3550,7 @@ sealed interface Event {
         )
 
         @Serializable
+        @SerialName("Status.NodesSection")
         data class NodesSection(
             val databaseNodes: List<NodeDetail>,
             val appNodes: List<NodeDetail>,
@@ -3194,6 +3588,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Status.NetworkingInfo")
         data class NetworkingInfo(
             val vpcId: String,
             val internetGatewayId: String?,
@@ -3212,11 +3607,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Status.NoInfrastructureData")
         data object NoInfrastructureData : Status {
             override fun toDisplayString(): String = "\n=== NETWORKING ===\n(no infrastructure data)"
         }
 
         @Serializable
+        @SerialName("Status.SecurityRuleDetail")
         data class SecurityRuleDetail(
             val protocol: String,
             val fromPort: Int?,
@@ -3226,6 +3623,7 @@ sealed interface Event {
         )
 
         @Serializable
+        @SerialName("Status.SecurityGroupInfo")
         data class SecurityGroupInfo(
             val sgId: String,
             val name: String,
@@ -3265,11 +3663,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Status.NoSecurityGroup")
         data object NoSecurityGroup : Status {
             override fun toDisplayString(): String = "\n=== SECURITY GROUP ===\n(no security group configured)"
         }
 
         @Serializable
+        @SerialName("Status.SecurityGroupFetchFailed")
         data class SecurityGroupFetchFailed(
             val sgId: String,
         ) : Status {
@@ -3277,6 +3677,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Status.SparkClusterInfo")
         data class SparkClusterInfo(
             val clusterId: String,
             val clusterName: String,
@@ -3297,11 +3698,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Status.NoSparkCluster")
         data object NoSparkCluster : Status {
             override fun toDisplayString(): String = "\n=== SPARK CLUSTER ===\n(no Spark cluster configured)"
         }
 
         @Serializable
+        @SerialName("Status.OpenSearchInfo")
         data class OpenSearchInfo(
             val domainName: String,
             val domainId: String?,
@@ -3322,11 +3725,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Status.NoOpenSearchDomain")
         data object NoOpenSearchDomain : Status {
             override fun toDisplayString(): String = "\n=== OPENSEARCH DOMAIN ===\n(no OpenSearch domain configured)"
         }
 
         @Serializable
+        @SerialName("Status.S3BucketInfo")
         data class S3BucketInfo(
             val bucket: String,
             val fullPath: String,
@@ -3349,11 +3754,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Status.NoS3Bucket")
         data object NoS3Bucket : Status {
             override fun toDisplayString(): String = "\n=== S3 BUCKET ===\n(no S3 bucket configured)"
         }
 
         @Serializable
+        @SerialName("Status.PodDetail")
         data class PodDetail(
             val namespace: String,
             val name: String,
@@ -3364,6 +3771,7 @@ sealed interface Event {
         )
 
         @Serializable
+        @SerialName("Status.KubernetesPodsSection")
         data class KubernetesPodsSection(
             val pods: List<PodDetail>,
         ) : Status {
@@ -3401,16 +3809,19 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Status.KubernetesNoControlNode")
         data object KubernetesNoControlNode : Status {
             override fun toDisplayString(): String = "\n=== KUBERNETES PODS ===\n(no control node configured)"
         }
 
         @Serializable
+        @SerialName("Status.KubernetesNoKubeconfig")
         data object KubernetesNoKubeconfig : Status {
             override fun toDisplayString(): String = "\n=== KUBERNETES PODS ===\n(kubeconfig not found - K3s may not be initialized)"
         }
 
         @Serializable
+        @SerialName("Status.KubernetesConnectionError")
         data class KubernetesConnectionError(
             val error: String,
         ) : Status {
@@ -3418,6 +3829,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Status.StressJobDetail")
         data class StressJobDetail(
             val name: String,
             val status: String,
@@ -3426,6 +3838,7 @@ sealed interface Event {
         )
 
         @Serializable
+        @SerialName("Status.StressJobsSection")
         data class StressJobsSection(
             val jobs: List<StressJobDetail>,
         ) : Status {
@@ -3445,11 +3858,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Status.StressJobsNoControlNode")
         data object StressJobsNoControlNode : Status {
             override fun toDisplayString(): String = "\n=== STRESS JOBS ===\n(no control node configured)"
         }
 
         @Serializable
+        @SerialName("Status.StressJobsError")
         data class StressJobsError(
             val error: String,
         ) : Status {
@@ -3457,11 +3872,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Status.StressJobsUnavailable")
         data object StressJobsUnavailable : Status {
             override fun toDisplayString(): String = "\n=== STRESS JOBS ===\n(unable to list stress jobs)"
         }
 
         @Serializable
+        @SerialName("Status.CassandraVersionLive")
         data class CassandraVersionLive(
             val version: String,
         ) : Status {
@@ -3469,6 +3886,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Status.CassandraVersionCached")
         data class CassandraVersionCached(
             val version: String,
         ) : Status {
@@ -3476,6 +3894,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Status.CassandraNoNodes")
         data object CassandraNoNodes : Status {
             override fun toDisplayString(): String = "\n=== CASSANDRA VERSION ===\n(no Cassandra nodes configured)"
         }
@@ -3488,16 +3907,19 @@ sealed interface Event {
     @Serializable
     sealed interface Teardown : Event {
         @Serializable
+        @SerialName("Teardown.Starting")
         data object Starting : Teardown {
             override fun toDisplayString(): String = "Crushing dreams, terminating instances."
         }
 
         @Serializable
+        @SerialName("Teardown.NoClusterState")
         data object NoClusterState : Teardown {
             override fun toDisplayString(): String = "No cluster state found. Use --all to find tagged VPCs or specify a VPC ID."
         }
 
         @Serializable
+        @SerialName("Teardown.NoVpcId")
         data class NoVpcId(
             val clusterName: String,
         ) : Teardown {
@@ -3507,6 +3929,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Teardown.PreparingVpc")
         data class PreparingVpc(
             val vpcId: String,
         ) : Teardown {
@@ -3514,11 +3937,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Teardown.NoResourcesFound")
         data object NoResourcesFound : Teardown {
             override fun toDisplayString(): String = "No resources found in VPC"
         }
 
         @Serializable
+        @SerialName("Teardown.DryRunPreview")
         data class DryRunPreview(
             val summary: String,
         ) : Teardown {
@@ -3526,6 +3951,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Teardown.ConfirmationPrompt")
         data class ConfirmationPrompt(
             val summary: String,
         ) : Teardown {
@@ -3535,16 +3961,19 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Teardown.CancelledByUser")
         data object CancelledByUser : Teardown {
             override fun toDisplayString(): String = "Teardown cancelled by user"
         }
 
         @Serializable
+        @SerialName("Teardown.CompletedSuccessfully")
         data object CompletedSuccessfully : Teardown {
             override fun toDisplayString(): String = "\nTeardown completed successfully"
         }
 
         @Serializable
+        @SerialName("Teardown.CompletedWithErrors")
         data class CompletedWithErrors(
             val errors: List<String>,
         ) : Teardown {
@@ -3558,26 +3987,31 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Teardown.FindingTaggedVpcs")
         data object FindingTaggedVpcs : Teardown {
             override fun toDisplayString(): String = "Finding all VPCs tagged with easy_cass_lab..."
         }
 
         @Serializable
+        @SerialName("Teardown.NoTaggedVpcsFound")
         data object NoTaggedVpcsFound : Teardown {
             override fun toDisplayString(): String = "No tagged VPCs found to tear down"
         }
 
         @Serializable
+        @SerialName("Teardown.FindingPackerVpc")
         data object FindingPackerVpc : Teardown {
             override fun toDisplayString(): String = "Finding packer infrastructure VPC..."
         }
 
         @Serializable
+        @SerialName("Teardown.NoPackerVpcFound")
         data object NoPackerVpcFound : Teardown {
             override fun toDisplayString(): String = "No packer VPC found"
         }
 
         @Serializable
+        @SerialName("Teardown.Socks5ProxyStopped")
         data class Socks5ProxyStopped(
             val pid: Int,
         ) : Teardown {
@@ -3585,6 +4019,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Teardown.ClusterStateMarkedDown")
         data object ClusterStateMarkedDown : Teardown {
             override fun toDisplayString(): String = "Cluster state updated: infrastructure marked as DOWN"
         }
@@ -3597,6 +4032,7 @@ sealed interface Event {
     @Serializable
     sealed interface Ami : Event {
         @Serializable
+        @SerialName("Ami.PruningStarting")
         data class PruningStarting(
             val pattern: String,
             val typeFilter: String?,
@@ -3611,11 +4047,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Ami.NoAmisToDelete")
         data object NoAmisToDelete : Ami {
             override fun toDisplayString(): String = "No AMIs to delete"
         }
 
         @Serializable
+        @SerialName("Ami.AmiSummary")
         data class AmiSummary(
             val id: String,
             val name: String,
@@ -3624,6 +4062,7 @@ sealed interface Event {
         )
 
         @Serializable
+        @SerialName("Ami.KeptAmis")
         data class KeptAmis(
             val amis: List<AmiSummary>,
         ) : Ami {
@@ -3637,6 +4076,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Ami.AmiDeleteCandidate")
         data class AmiDeleteCandidate(
             val id: String,
             val name: String,
@@ -3648,6 +4088,7 @@ sealed interface Event {
         )
 
         @Serializable
+        @SerialName("Ami.DryRunPreview")
         data class DryRunPreview(
             val amis: List<AmiDeleteCandidate>,
         ) : Ami {
@@ -3666,6 +4107,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Ami.DeletionStarting")
         data class DeletionStarting(
             val count: Int,
         ) : Ami {
@@ -3673,6 +4115,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Ami.AmiDetails")
         data class AmiDetails(
             val id: String,
             val name: String,
@@ -3700,11 +4143,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Ami.Deleted")
         data object Deleted : Ami {
             override fun toDisplayString(): String = "  ✓ Deleted"
         }
 
         @Serializable
+        @SerialName("Ami.DeleteFailed")
         data class DeleteFailed(
             val error: String,
         ) : Ami {
@@ -3712,11 +4157,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Ami.Skipped")
         data object Skipped : Ami {
             override fun toDisplayString(): String = "  - Skipped"
         }
 
         @Serializable
+        @SerialName("Ami.PruningSummary")
         data class PruningSummary(
             val deleted: Int,
             val skipped: Int,
@@ -3733,6 +4180,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Ami.MultipleAmisFound")
         data class MultipleAmisFound(
             val count: Int,
             val selectedId: String,
@@ -3743,6 +4191,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Ami.AmiNotFoundDetail")
         data class AmiNotFoundDetail(
             val pattern: String,
             val architecture: String,
@@ -3777,6 +4226,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Ami.Separator")
         data object Separator : Ami {
             override fun toDisplayString(): String = ""
         }
@@ -3789,6 +4239,7 @@ sealed interface Event {
     @Serializable
     sealed interface ClickHouse : Event {
         @Serializable
+        @SerialName("ClickHouse.Deploying")
         data class Deploying(
             val shardCount: Int,
             val replicasPerShard: Int,
@@ -3799,16 +4250,19 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("ClickHouse.CreatingPvs")
         data object CreatingPvs : ClickHouse {
             override fun toDisplayString(): String = "Creating Local PersistentVolumes for ClickHouse..."
         }
 
         @Serializable
+        @SerialName("ClickHouse.WaitingPodsReady")
         data object WaitingPodsReady : ClickHouse {
             override fun toDisplayString(): String = "Waiting for ClickHouse pods to be ready (this may take a few minutes)..."
         }
 
         @Serializable
+        @SerialName("ClickHouse.DeploySuccess")
         data class DeploySuccess(
             val bucket: String,
             val s3CacheSize: String,
@@ -3848,6 +4302,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("ClickHouse.StatusOutput")
         data class StatusOutput(
             val status: String,
         ) : ClickHouse {
@@ -3855,22 +4310,26 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("ClickHouse.StopConfirmRequired")
         data object StopConfirmRequired : ClickHouse {
             override fun toDisplayString(): String =
                 "This will delete the ClickHouse cluster and all its data.\nUse --force to confirm deletion."
         }
 
         @Serializable
+        @SerialName("ClickHouse.Stopping")
         data object Stopping : ClickHouse {
             override fun toDisplayString(): String = "Stopping ClickHouse cluster..."
         }
 
         @Serializable
+        @SerialName("ClickHouse.Stopped")
         data object Stopped : ClickHouse {
             override fun toDisplayString(): String = "ClickHouse cluster stopped and removed successfully."
         }
 
         @Serializable
+        @SerialName("ClickHouse.ConfigSaved")
         data class ConfigSaved(
             val replicasPerShard: Int,
             val s3CacheSize: String,
@@ -3893,6 +4352,7 @@ sealed interface Event {
     @Serializable
     sealed interface Docker : Event {
         @Serializable
+        @SerialName("Docker.ContainerStarting")
         data class ContainerStarting(
             val containerId: String,
         ) : Docker {
@@ -3900,6 +4360,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Docker.ContainerStartError")
         data class ContainerStartError(
             val error: String,
         ) : Docker {
@@ -3909,11 +4370,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Docker.ContainerAttaching")
         data object ContainerAttaching : Docker {
             override fun toDisplayString(): String = "Attaching to running container"
         }
 
         @Serializable
+        @SerialName("Docker.ContainerAttachError")
         data object ContainerAttachError : Docker {
             override fun toDisplayString(): String = "Container attachment error"
 
@@ -3921,6 +4384,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Docker.ContainerRemoveError")
         data class ContainerRemoveError(
             val error: String,
         ) : Docker {
@@ -3930,6 +4394,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Docker.ContainerOutput")
         data class ContainerOutput(
             val message: String,
         ) : Docker {
@@ -3937,6 +4402,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Docker.ImagePulling")
         data class ImagePulling(
             val current: Long,
             val total: Long,
@@ -3945,6 +4411,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Docker.ExecutionWorkDir")
         data class ExecutionWorkDir(
             val workingDirectory: String,
         ) : Docker {
@@ -3952,6 +4419,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Docker.ExecutionStarting")
         data class ExecutionStarting(
             val imageTag: String,
             val containerId: String,
@@ -3960,6 +4428,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Docker.PackerDirectoryNotFound")
         data class PackerDirectoryNotFound(
             val path: String,
         ) : Docker {
@@ -3976,6 +4445,7 @@ sealed interface Event {
     @Serializable
     sealed interface Mcp : Event {
         @Serializable
+        @SerialName("Mcp.ToolExecutionStarting")
         data class ToolExecutionStarting(
             val toolName: String,
         ) : Mcp {
@@ -3983,6 +4453,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Mcp.ToolExecutionComplete")
         data class ToolExecutionComplete(
             val toolName: String,
         ) : Mcp {
@@ -3990,6 +4461,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Mcp.ToolExecutionFailed")
         data class ToolExecutionFailed(
             val toolName: String,
             val error: String,
@@ -4000,6 +4472,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Mcp.ServerStarting")
         data class ServerStarting(
             val port: Int,
         ) : Mcp {
@@ -4007,6 +4480,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Mcp.BackgroundToolComplete")
         data class BackgroundToolComplete(
             val toolName: String,
         ) : Mcp {
@@ -4014,6 +4488,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Mcp.BackgroundToolFailed")
         data class BackgroundToolFailed(
             val toolName: String,
             val error: String,
@@ -4024,6 +4499,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Mcp.ServerReady")
         data class ServerReady(
             val port: Int,
             val bind: String,
@@ -4045,6 +4521,7 @@ sealed interface Event {
     @Serializable
     sealed interface Logs : Event {
         @Serializable
+        @SerialName("Logs.QueryInfo")
         data class QueryInfo(
             val query: String,
             val timeRange: String,
@@ -4054,6 +4531,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Logs.QueryFailed")
         data class QueryFailed(
             val error: String,
         ) : Logs {
@@ -4063,6 +4541,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Logs.QueryTips")
         data class QueryTips(
             val tips: String,
         ) : Logs {
@@ -4070,11 +4549,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Logs.NoLogsFound")
         data object NoLogsFound : Logs {
             override fun toDisplayString(): String = "No logs found matching the query."
         }
 
         @Serializable
+        @SerialName("Logs.QueryResults")
         data class QueryResults(
             val logs: List<String>,
         ) : Logs {
@@ -4082,6 +4563,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Logs.NoControlNode")
         data object NoControlNode : Logs {
             override fun toDisplayString(): String = "No control node found. Please ensure the cluster is running."
 
@@ -4089,6 +4571,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Logs.BackupComplete")
         data class BackupComplete(
             val s3Path: String,
         ) : Logs {
@@ -4096,6 +4579,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Logs.BackupFailed")
         data class BackupFailed(
             val error: String,
         ) : Logs {
@@ -4105,6 +4589,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Logs.ImportStarting")
         data class ImportStarting(
             val target: String,
         ) : Logs {
@@ -4112,6 +4597,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Logs.ImportComplete")
         data class ImportComplete(
             val bytesTransferred: Long,
         ) : Logs {
@@ -4119,6 +4605,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Logs.ImportFailed")
         data class ImportFailed(
             val error: String,
         ) : Logs {
@@ -4128,11 +4615,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Logs.BackupListEmpty")
         data object BackupListEmpty : Logs {
             override fun toDisplayString(): String = "No VictoriaLogs backups found."
         }
 
         @Serializable
+        @SerialName("Logs.BackupEntry")
         data class BackupEntry(
             val timestamp: String,
             val fileCount: Int,
@@ -4140,6 +4629,7 @@ sealed interface Event {
         )
 
         @Serializable
+        @SerialName("Logs.BackupList")
         data class BackupList(
             val entries: List<BackupEntry>,
         ) : Logs {
@@ -4163,6 +4653,7 @@ sealed interface Event {
     @Serializable
     sealed interface Metrics : Event {
         @Serializable
+        @SerialName("Metrics.NoControlNode")
         data object NoControlNode : Metrics {
             override fun toDisplayString(): String = "No control node found. Please ensure the cluster is running."
 
@@ -4170,6 +4661,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Metrics.BackupComplete")
         data class BackupComplete(
             val s3Path: String,
         ) : Metrics {
@@ -4177,6 +4669,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Metrics.BackupFailed")
         data class BackupFailed(
             val error: String,
         ) : Metrics {
@@ -4186,6 +4679,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Metrics.ImportStarting")
         data class ImportStarting(
             val target: String,
         ) : Metrics {
@@ -4193,6 +4687,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Metrics.ImportComplete")
         data class ImportComplete(
             val bytesTransferred: Long,
         ) : Metrics {
@@ -4200,6 +4695,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Metrics.ImportFailed")
         data class ImportFailed(
             val error: String,
         ) : Metrics {
@@ -4209,11 +4705,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Metrics.BackupListEmpty")
         data object BackupListEmpty : Metrics {
             override fun toDisplayString(): String = "No VictoriaMetrics backups found."
         }
 
         @Serializable
+        @SerialName("Metrics.BackupEntry")
         data class BackupEntry(
             val timestamp: String,
             val fileCount: Int,
@@ -4221,6 +4719,7 @@ sealed interface Event {
         )
 
         @Serializable
+        @SerialName("Metrics.BackupList")
         data class BackupList(
             val entries: List<BackupEntry>,
         ) : Metrics {
@@ -4244,6 +4743,7 @@ sealed interface Event {
     @Serializable
     sealed interface Setup : Event {
         @Serializable
+        @SerialName("Setup.ProfileAlreadyConfigured")
         data class ProfileAlreadyConfigured(
             val profileName: String,
         ) : Setup {
@@ -4251,21 +4751,25 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Setup.UpdatePrompt")
         data object UpdatePrompt : Setup {
             override fun toDisplayString(): String = "Press Enter to keep existing value, or type a new value to update.\n"
         }
 
         @Serializable
+        @SerialName("Setup.ConfigurationUpdated")
         data object ConfigurationUpdated : Setup {
             override fun toDisplayString(): String = "\nConfiguration updated!"
         }
 
         @Serializable
+        @SerialName("Setup.CredentialsSaved")
         data object CredentialsSaved : Setup {
             override fun toDisplayString(): String = "Credentials saved"
         }
 
         @Serializable
+        @SerialName("Setup.CredentialValidationRetry")
         data class CredentialValidationRetry(
             val attempt: Int,
             val maxAttempts: Int,
@@ -4275,51 +4779,61 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Setup.EmailPromptInfo")
         data object EmailPromptInfo : Setup {
             override fun toDisplayString(): String = "Your email will be added to AWS resource tags to identify the owner."
         }
 
         @Serializable
+        @SerialName("Setup.ValidatingCredentials")
         data object ValidatingCredentials : Setup {
             override fun toDisplayString(): String = "Validating AWS credentials..."
         }
 
         @Serializable
+        @SerialName("Setup.CredentialsValidSuccess")
         data object CredentialsValidSuccess : Setup {
             override fun toDisplayString(): String = "AWS credentials validated successfully"
         }
 
         @Serializable
+        @SerialName("Setup.CredentialsValidFailed")
         data object CredentialsValidFailed : Setup {
             override fun toDisplayString(): String = "\nAWS credentials are invalid. Please check your credentials.\n"
         }
 
         @Serializable
+        @SerialName("Setup.GeneratingKeyPair")
         data object GeneratingKeyPair : Setup {
             override fun toDisplayString(): String = "Generating AWS key pair..."
         }
 
         @Serializable
+        @SerialName("Setup.KeyPairSaved")
         data object KeyPairSaved : Setup {
             override fun toDisplayString(): String = "Key pair saved"
         }
 
         @Serializable
+        @SerialName("Setup.IamRolesConfiguring")
         data object IamRolesConfiguring : Setup {
             override fun toDisplayString(): String = "Ensuring IAM roles are configured..."
         }
 
         @Serializable
+        @SerialName("Setup.IamRolesValidated")
         data object IamRolesValidated : Setup {
             override fun toDisplayString(): String = "IAM resources validated"
         }
 
         @Serializable
+        @SerialName("Setup.S3BucketCreating")
         data object S3BucketCreating : Setup {
             override fun toDisplayString(): String = "Creating S3 bucket for shared resources..."
         }
 
         @Serializable
+        @SerialName("Setup.S3BucketCreated")
         data class S3BucketCreated(
             val bucketName: String,
         ) : Setup {
@@ -4327,21 +4841,25 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Setup.PackerVpcCreating")
         data object PackerVpcCreating : Setup {
             override fun toDisplayString(): String = "Creating Packer VPC infrastructure..."
         }
 
         @Serializable
+        @SerialName("Setup.PackerVpcReady")
         data object PackerVpcReady : Setup {
             override fun toDisplayString(): String = "Packer VPC infrastructure ready"
         }
 
         @Serializable
+        @SerialName("Setup.CheckingAmi")
         data object CheckingAmi : Setup {
             override fun toDisplayString(): String = "Checking for required AMI..."
         }
 
         @Serializable
+        @SerialName("Setup.AmiFound")
         data class AmiFound(
             val archType: String,
         ) : Setup {
@@ -4349,6 +4867,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Setup.AmiNotFound")
         data class AmiNotFound(
             val archType: String,
         ) : Setup {
@@ -4364,11 +4883,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Setup.AmiSkipped")
         data object AmiSkipped : Setup {
             override fun toDisplayString(): String = "Setup cancelled. Run 'easy-db-lab build-image' to build the AMI later."
         }
 
         @Serializable
+        @SerialName("Setup.AmiBuildStarting")
         data class AmiBuildStarting(
             val archType: String,
         ) : Setup {
@@ -4376,11 +4897,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Setup.AmiBuildSuccess")
         data object AmiBuildSuccess : Setup {
             override fun toDisplayString(): String = "AMI build completed successfully"
         }
 
         @Serializable
+        @SerialName("Setup.AmiBuildFailed")
         data class AmiBuildFailed(
             val error: String,
             val archType: String,
@@ -4398,11 +4921,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Setup.SetupComplete")
         data object SetupComplete : Setup {
             override fun toDisplayString(): String = "\nAccount setup complete!"
         }
 
         @Serializable
+        @SerialName("Setup.WelcomeMessage")
         data class WelcomeMessage(
             val profileName: String,
         ) : Setup {
@@ -4442,11 +4967,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Setup.ConfigurationSaved")
         data object ConfigurationSaved : Setup {
             override fun toDisplayString(): String = "Configuration saved"
         }
 
         @Serializable
+        @SerialName("Setup.TailscaleSetupInstructions")
         data class TailscaleSetupInstructions(
             val defaultTag: String,
         ) : Setup {
@@ -4470,11 +4997,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Setup.AxonOpsConfigHeader")
         data object AxonOpsConfigHeader : Setup {
             override fun toDisplayString(): String = "--- AxonOps Configuration ---"
         }
 
         @Serializable
+        @SerialName("Setup.TailscaleConfigHeader")
         data class TailscaleConfigHeader(
             val defaultTag: String,
         ) : Setup {
@@ -4495,11 +5024,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Setup.ConfigSectionSaved")
         data object ConfigSectionSaved : Setup {
             override fun toDisplayString(): String = "\nConfiguration saved"
         }
 
         @Serializable
+        @SerialName("Setup.IamPoliciesHeader")
         data object IamPoliciesHeader : Setup {
             override fun toDisplayString(): String =
                 """
@@ -4520,6 +5051,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Setup.IamPolicyDisplay")
         data class IamPolicyDisplay(
             val index: Int,
             val name: String,
@@ -4537,6 +5069,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Setup.IamPoliciesFooter")
         data object IamPoliciesFooter : Setup {
             override fun toDisplayString(): String =
                 """
@@ -4570,21 +5103,25 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Setup.InitializingDirectory")
         data object InitializingDirectory : Setup {
             override fun toDisplayString(): String = "Initializing directory"
         }
 
         @Serializable
+        @SerialName("Setup.ProvisioningInstances")
         data object ProvisioningInstances : Setup {
             override fun toDisplayString(): String = "Provisioning instances"
         }
 
         @Serializable
+        @SerialName("Setup.InitNextSteps")
         data object InitNextSteps : Setup {
             override fun toDisplayString(): String = "Next you'll want to run easy-db-lab up to start your instances."
         }
 
         @Serializable
+        @SerialName("Setup.InitError")
         data class InitError(
             val existingFiles: List<String>,
         ) : Setup {
@@ -4601,21 +5138,25 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Setup.CleaningExistingConfig")
         data object CleaningExistingConfig : Setup {
             override fun toDisplayString(): String = "Cleaning existing configuration..."
         }
 
         @Serializable
+        @SerialName("Setup.WritingSetupScript")
         data object WritingSetupScript : Setup {
             override fun toDisplayString(): String = "Writing setup_instance.sh"
         }
 
         @Serializable
+        @SerialName("Setup.CreatingCassandraDir")
         data object CreatingCassandraDir : Setup {
             override fun toDisplayString(): String = "Creating cassandra directory and writing sidecar config"
         }
 
         @Serializable
+        @SerialName("Setup.WorkspaceInitialized")
         data class WorkspaceInitialized(
             val cassandraInstances: Int,
             val instanceType: String,
@@ -4629,11 +5170,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Setup.AwsConfigured")
         data object AwsConfigured : Setup {
             override fun toDisplayString(): String = "✓ AWS infrastructure configured successfully"
         }
 
         @Serializable
+        @SerialName("Setup.AxonOpsConfiguring")
         data class AxonOpsConfiguring(
             val host: String,
         ) : Setup {
@@ -4641,6 +5184,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Setup.AxonOpsMissingArgs")
         data object AxonOpsMissingArgs : Setup {
             override fun toDisplayString(): String = "--org and --key are required"
 
@@ -4648,6 +5192,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Setup.ExistingVpc")
         data class ExistingVpc(
             val vpcId: String,
         ) : Setup {
@@ -4655,11 +5200,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Setup.GeneratingKeyPairAndSsh")
         data object GeneratingKeyPairAndSsh : Setup {
             override fun toDisplayString(): String = "Generating AWS key pair and SSH credentials..."
         }
 
         @Serializable
+        @SerialName("Setup.AwsPermissionError")
         data class AwsPermissionError(
             val operation: String,
             val error: String,
@@ -4683,6 +5230,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Setup.AwsPermissionPolicyDisplay")
         data class AwsPermissionPolicyDisplay(
             val index: Int,
             val name: String,
@@ -4700,6 +5248,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Setup.AwsPermissionPolicyFooter")
         data object AwsPermissionPolicyFooter : Setup {
             override fun toDisplayString(): String =
                 """
@@ -4732,6 +5281,7 @@ sealed interface Event {
     @Serializable
     sealed interface Ssh : Event {
         @Serializable
+        @SerialName("Ssh.ExecutingCommand")
         data class ExecutingCommand(
             val command: String,
         ) : Ssh {
@@ -4739,11 +5289,13 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Ssh.ExecutingHiddenCommand")
         data object ExecutingHiddenCommand : Ssh {
             override fun toDisplayString(): String = "Executing remote command: [hidden]"
         }
 
         @Serializable
+        @SerialName("Ssh.CommandOutput")
         data class CommandOutput(
             val output: String,
         ) : Ssh {
@@ -4751,6 +5303,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Ssh.UploadingFile")
         data class UploadingFile(
             val localPath: String,
             val remoteAddress: String,
@@ -4760,6 +5313,7 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Ssh.UploadingDirectory")
         data class UploadingDirectory(
             val localDir: String,
             val remoteDir: String,

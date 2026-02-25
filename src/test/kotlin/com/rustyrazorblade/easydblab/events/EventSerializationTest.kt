@@ -121,6 +121,34 @@ class EventSerializationTest {
     }
 
     @Test
+    fun `toJson encodes short type names without package prefix`() {
+        val envelope =
+            EventEnvelope(
+                event = Event.Ssh.ExecutingCommand("ls -la"),
+                timestamp = "2026-02-23T10:15:30.123Z",
+                commandName = "exec",
+            )
+
+        val json = EventEnvelope.toJson(envelope)
+
+        assertThat(json).contains("\"type\":\"Ssh.ExecutingCommand\"")
+        assertThat(json).doesNotContain("com.rustyrazorblade")
+    }
+
+    @Test
+    fun `fromJson decodes short type names`() {
+        val json = """
+            |{"event":{"type":"Ssh.ExecutingCommand","command":"ls -la"},
+            |"timestamp":"2026-02-23T10:15:30.123Z","commandName":null}
+        """.trimMargin().replace("\n", "")
+
+        val envelope = EventEnvelope.fromJson(json)
+
+        assertThat(envelope.event).isInstanceOf(Event.Ssh.ExecutingCommand::class.java)
+        assertThat((envelope.event as Event.Ssh.ExecutingCommand).command).isEqualTo("ls -la")
+    }
+
+    @Test
     fun `error event round-trips through JSON`() {
         val original =
             EventEnvelope(

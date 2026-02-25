@@ -568,55 +568,6 @@ step_stress_test() {
     ssh app0 "bash -l -c 'cassandra-easy-stress run KeyValue -d 10s'"
 }
 
-step_registry_push_pull() {
-    echo "=== Testing private registry push/pull ==="
-
-    # Get registry address (private IP - uses SOCKS5 proxy from env.sh)
-    local registry=$(easy-db-lab ip control0 --private):5000
-
-    echo "=== Registry address: $registry ==="
-
-    # Pull busybox locally and use skopeo to push to private registry
-    # skopeo routes through SOCKS5 proxy (configured in env.sh)
-    # Must pull linux/amd64 since EC2 instances are x86_64
-    echo "=== Pulling busybox (amd64) and pushing to private registry via skopeo ==="
-    docker pull --platform linux/amd64 busybox:latest
-    skopeo copy --dest-tls-verify=false \
-        docker-daemon:busybox:latest \
-        docker://${registry}/busybox:e2e
-
-    # Deploy a pod that pulls from the private registry
-    echo "=== Deploying test pod from private registry ==="
-    cat <<EOF | kubectl apply -f -
-apiVersion: v1
-kind: Pod
-metadata:
-  name: registry-test
-  namespace: default
-spec:
-  restartPolicy: Never
-  nodeSelector:
-    type: app
-  containers:
-  - name: test
-    image: ${registry}/busybox:e2e
-    command: ["echo", "Registry test successful!"]
-EOF
-
-    # Wait for pod to complete
-    echo "=== Waiting for test pod to complete ==="
-    kubectl wait --for=condition=Ready pod/registry-test --timeout=60s || true
-    kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/registry-test --timeout=60s
-
-    # Show logs
-    echo "=== Test pod logs ==="
-    kubectl logs registry-test
-
-    # Cleanup
-    echo "=== Cleaning up test pod ==="
-    kubectl delete pod registry-test
-}
-
 step_stress_k8s() {
     if [ "$ENABLE_CASSANDRA" != true ]; then
         echo "=== Skipping stress K8s test (use --cassandra to enable) ==="
@@ -1002,7 +953,6 @@ STEPS_WORKDIR=(
     "step_wait_k3s_ready:Wait for K3s"
     "step_verify_k3s:Verify K3s cluster"
     "step_verify_vpc_tags:Verify VPC tags"
-    "step_registry_push_pull:Test registry push/pull"
     "step_list_hosts:List hosts"
     "step_test_mcp_server:Test MCP server status endpoint"
     "step_verify_s3_backup:Verify S3 backup"

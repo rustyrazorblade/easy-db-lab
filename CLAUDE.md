@@ -288,11 +288,11 @@ All observability K8s resources are built programmatically using Fabric8 manifes
 
 ### Grafana Dashboards
 
-Grafana runs on port 3000. All Grafana K8s resources (ConfigMaps, Deployment) are built programmatically using Fabric8 in `GrafanaManifestBuilder`. Dashboard JSON lives in standalone resource files under `configuration/grafana/dashboards/` with `__KEY__` template variable substitution (`__CLUSTER_NAME__`, `__BUCKET_NAME__`, `__METRICS_FILTER_ID__`). The `GrafanaDashboard` enum is the single source of truth for dashboard metadata — adding a new dashboard requires only a new enum entry and a JSON file.
+Grafana runs on port 3000. All Grafana K8s resources (ConfigMaps, Deployment) are built programmatically using Fabric8 in `GrafanaManifestBuilder`. Dashboard JSON files live in the top-level `dashboards/` directory at the repository root. They are pure standard Grafana JSON — no `__KEY__` template placeholders, no substitution step. Dashboard files are included on the classpath via Gradle's `resources.srcDirs("dashboards")` in `build.gradle.kts`. The `GrafanaDashboard` enum is the single source of truth for dashboard metadata — adding a new dashboard requires only a new enum entry and a JSON file in `dashboards/`. All dashboards include a multi-select `cluster` template variable for cross-cluster comparison.
 
 Kotlin code: `configuration/grafana/GrafanaDashboard.kt` (registry), `configuration/grafana/GrafanaManifestBuilder.kt` (Fabric8 builder), `configuration/grafana/GrafanaDatasourceConfig.kt`, `commands/grafana/`, `services/GrafanaDashboardService.kt`.
 
-Datasources: VictoriaMetrics (Prometheus), VictoriaLogs, ClickHouse, Tempo, CloudWatch, Pyroscope.
+Datasources: VictoriaMetrics (Prometheus), VictoriaLogs, ClickHouse, Tempo, Pyroscope.
 
 Current dashboards: System Overview, AWS CloudWatch (S3/EBS/EC2), EMR, OpenSearch, Stress, ClickHouse metrics, ClickHouse logs, Profiling, Cassandra Condensed, Cassandra Overview.
 
@@ -330,6 +330,8 @@ Detailed patterns live in package-level CLAUDE.md files:
 ## Active Technologies
 - Kotlin (JVM 21, Temurin) + PicoCLI, Koin (DI), kotlinx.serialization, Lettuce (new — Redis client), Ktor (MCP server) (002-event-bus)
 - N/A (Redis is pub/sub only, not storage) (002-event-bus)
+- Kotlin (JVM 21, Temurin) + Fabric8 (K8s manifests), kotlinx.serialization, Gradle (build), OTel Collector Contrib (CloudWatch receiver) (003-dashboard-upgrade)
+- N/A (dashboard JSON files on classpath, metrics in VictoriaMetrics) (003-dashboard-upgrade)
 
 ## Recent Changes
 - 002-event-bus: Added Kotlin (JVM 21, Temurin) + PicoCLI, Koin (DI), kotlinx.serialization, Lettuce (new — Redis client), Ktor (MCP server)

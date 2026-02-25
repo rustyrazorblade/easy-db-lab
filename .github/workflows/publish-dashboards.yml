@@ -1,0 +1,22 @@
+name: Publish Dashboards
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  publish-dashboards:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Package dashboards
+        run: zip -j dashboards.zip dashboards/*.json
+
+      - name: Attach to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dashboards.zip

@@ -380,7 +380,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "ClickHouseMetrics_VersionInteger{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+          "expr": "ClickHouseMetrics_VersionInteger{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
           "format": "table",
           "instant": true,
           "interval": "",
@@ -394,7 +394,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "ClickHouseMetrics_Revision{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+          "expr": "ClickHouseMetrics_Revision{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
           "format": "table",
           "hide": false,
           "instant": true,
@@ -409,7 +409,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "ClickHouseAsyncMetrics_NumberOfTables{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+          "expr": "ClickHouseAsyncMetrics_NumberOfTables{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
           "format": "table",
           "hide": false,
           "instant": true,
@@ -424,7 +424,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "ClickHouseAsyncMetrics_Uptime{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+          "expr": "ClickHouseAsyncMetrics_Uptime{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
           "format": "table",
           "hide": false,
           "instant": true,
@@ -439,7 +439,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "ClickHouseAsyncMetrics_NumberOfDatabases{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+          "expr": "ClickHouseAsyncMetrics_NumberOfDatabases{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
           "format": "table",
           "hide": false,
           "instant": true,
@@ -454,7 +454,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "ClickHouseMetrics_ReadonlyReplica{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+          "expr": "ClickHouseMetrics_ReadonlyReplica{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
           "format": "table",
           "hide": false,
           "instant": true,
@@ -469,7 +469,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "ClickHouseMetrics_KafkaConsumers{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+          "expr": "ClickHouseMetrics_KafkaConsumers{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
           "format": "table",
           "hide": false,
           "instant": true,
@@ -484,7 +484,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "(ClickHouseAsyncMetrics_OSMemoryTotal{cluster=\"$Cluster\",  instance=~\"($Instance):9363\"}\n-\nClickHouseAsyncMetrics_OSMemoryFreePlusCached{cluster=\"$Cluster\", instance=~\"($Instance):9363\"})\n/ ClickHouseAsyncMetrics_OSMemoryTotal{cluster=\"$Cluster\", instance=~\"($Instance):9363\"} * 100",
+          "expr": "(ClickHouseAsyncMetrics_OSMemoryTotal{cluster=\"$cluster\",  instance=~\"($Instance):9363\"}\n-\nClickHouseAsyncMetrics_OSMemoryFreePlusCached{cluster=\"$cluster\", instance=~\"($Instance):9363\"})\n/ ClickHouseAsyncMetrics_OSMemoryTotal{cluster=\"$cluster\", instance=~\"($Instance):9363\"} * 100",
           "format": "table",
           "hide": false,
           "instant": true,
@@ -499,7 +499,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "(1 - ClickHouseAsyncMetrics_OSIdleTimeNormalized{cluster=\"$Cluster\",  instance=~\"($Instance):9363\"}) * 100 ",
+          "expr": "(1 - ClickHouseAsyncMetrics_OSIdleTimeNormalized{cluster=\"$cluster\",  instance=~\"($Instance):9363\"}) * 100 ",
           "format": "table",
           "hide": false,
           "instant": true,
@@ -514,7 +514,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "ClickHouseAsyncMetrics_OSUptime{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+          "expr": "ClickHouseAsyncMetrics_OSUptime{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
           "format": "table",
           "hide": false,
           "instant": true,
@@ -880,7 +880,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "  label_replace(\n    {__name__=~\"ClickHouseAsyncMetrics_DiskAvailable_.*\", cluster=\"$Cluster\", instance=~\"($Instance):9363\"},\n    \"disk\", \"$1\", \"__name__\", \"ClickHouseAsyncMetrics_DiskAvailable_(.*)\"\n  )",
+          "expr": "  label_replace(\n    {__name__=~\"ClickHouseAsyncMetrics_DiskAvailable_.*\", cluster=\"$cluster\", instance=~\"($Instance):9363\"},\n    \"disk\", \"$1\", \"__name__\", \"ClickHouseAsyncMetrics_DiskAvailable_(.*)\"\n  )",
           "format": "table",
           "hide": false,
           "instant": true,
@@ -895,7 +895,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "  label_replace(\n    {__name__=~\"ClickHouseAsyncMetrics_DiskUsed_.*\", cluster=\"$Cluster\", instance=~\"($Instance):9363\"},\n    \"disk\", \"$1\", \"__name__\", \"ClickHouseAsyncMetrics_DiskUsed_(.*)\"\n  )",
+          "expr": "  label_replace(\n    {__name__=~\"ClickHouseAsyncMetrics_DiskUsed_.*\", cluster=\"$cluster\", instance=~\"($Instance):9363\"},\n    \"disk\", \"$1\", \"__name__\", \"ClickHouseAsyncMetrics_DiskUsed_(.*)\"\n  )",
           "format": "table",
           "hide": false,
           "instant": true,
@@ -910,7 +910,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "  label_replace(\n    {__name__=~\"ClickHouseAsyncMetrics_DiskTotal_.*\", cluster=\"$Cluster\", instance=~\"($Instance):9363\"},\n    \"disk\", \"$1\", \"__name__\", \"ClickHouseAsyncMetrics_DiskTotal_(.*)\"\n  )",
+          "expr": "  label_replace(\n    {__name__=~\"ClickHouseAsyncMetrics_DiskTotal_.*\", cluster=\"$cluster\", instance=~\"($Instance):9363\"},\n    \"disk\", \"$1\", \"__name__\", \"ClickHouseAsyncMetrics_DiskTotal_(.*)\"\n  )",
           "format": "table",
           "hide": false,
           "instant": true,
@@ -925,7 +925,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "  label_replace(\n    {__name__=~\"ClickHouseAsyncMetrics_DiskUnreserved_.*\", cluster=\"$Cluster\", instance=~\"($Instance):9363\"},\n    \"disk\", \"$1\", \"__name__\", \"ClickHouseAsyncMetrics_DiskUnreserved_(.*)\"\n  )",
+          "expr": "  label_replace(\n    {__name__=~\"ClickHouseAsyncMetrics_DiskUnreserved_.*\", cluster=\"$cluster\", instance=~\"($Instance):9363\"},\n    \"disk\", \"$1\", \"__name__\", \"ClickHouseAsyncMetrics_DiskUnreserved_(.*)\"\n  )",
           "format": "table",
           "hide": false,
           "instant": true,
@@ -940,7 +940,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "(\n  label_replace(\n    {__name__=~\"ClickHouseAsyncMetrics_DiskTotal_.*\", cluster=\"$Cluster\", instance=~\"($Instance):9363\"},\n    \"disk\", \"$1\", \"__name__\", \"ClickHouseAsyncMetrics_DiskTotal_(.*)\"\n  )\n  -\n  label_replace(\n    {__name__=~\"ClickHouseAsyncMetrics_DiskAvailable_.*\", cluster=\"$Cluster\", instance=~\"($Instance):9363\"},\n    \"disk\", \"$1\", \"__name__\", \"ClickHouseAsyncMetrics_DiskAvailable_(.*)\"\n  )\n)\n/\nlabel_replace(\n  {__name__=~\"ClickHouseAsyncMetrics_DiskTotal_.*\", cluster=\"$Cluster\", instance=~\"($Instance):9363\"},\n  \"disk\", \"$1\", \"__name__\", \"ClickHouseAsyncMetrics_DiskTotal_(.*)\"\n)\n* 100\n",
+          "expr": "(\n  label_replace(\n    {__name__=~\"ClickHouseAsyncMetrics_DiskTotal_.*\", cluster=\"$cluster\", instance=~\"($Instance):9363\"},\n    \"disk\", \"$1\", \"__name__\", \"ClickHouseAsyncMetrics_DiskTotal_(.*)\"\n  )\n  -\n  label_replace(\n    {__name__=~\"ClickHouseAsyncMetrics_DiskAvailable_.*\", cluster=\"$cluster\", instance=~\"($Instance):9363\"},\n    \"disk\", \"$1\", \"__name__\", \"ClickHouseAsyncMetrics_DiskAvailable_(.*)\"\n  )\n)\n/\nlabel_replace(\n  {__name__=~\"ClickHouseAsyncMetrics_DiskTotal_.*\", cluster=\"$cluster\", instance=~\"($Instance):9363\"},\n  \"disk\", \"$1\", \"__name__\", \"ClickHouseAsyncMetrics_DiskTotal_(.*)\"\n)\n* 100\n",
           "format": "table",
           "hide": false,
           "instant": true,
@@ -1130,7 +1130,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "  label_replace(\n    {__name__=~\"ClickHouseAsyncMetrics_DiskUsed_.*\", cluster=\"$Cluster\", instance=~\"($Instance):9363\"},\n    \"disk\", \"$1\", \"__name__\", \"ClickHouseAsyncMetrics_DiskUsed_(.*)\"\n  ) \n  - \n  label_replace(\n    {__name__=~\"ClickHouseAsyncMetrics_DiskUsed_.*\", cluster=\"$Cluster\", instance=~\"($Instance):9363\"} offset 10m,\n    \"disk\", \"$1\", \"__name__\", \"ClickHouseAsyncMetrics_DiskUsed_(.*)\"\n  )\n",
+          "expr": "  label_replace(\n    {__name__=~\"ClickHouseAsyncMetrics_DiskUsed_.*\", cluster=\"$cluster\", instance=~\"($Instance):9363\"},\n    \"disk\", \"$1\", \"__name__\", \"ClickHouseAsyncMetrics_DiskUsed_(.*)\"\n  ) \n  - \n  label_replace(\n    {__name__=~\"ClickHouseAsyncMetrics_DiskUsed_.*\", cluster=\"$cluster\", instance=~\"($Instance):9363\"} offset 10m,\n    \"disk\", \"$1\", \"__name__\", \"ClickHouseAsyncMetrics_DiskUsed_(.*)\"\n  )\n",
           "interval": "",
           "legendFormat": "{{instance}}-{{disk}}",
           "range": true,
@@ -1229,7 +1229,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "ClickHouseMetrics_MemoryTracking{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+          "expr": "ClickHouseMetrics_MemoryTracking{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
           "interval": "",
           "legendFormat": "{{instance}}",
           "range": true,
@@ -1328,7 +1328,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "ClickHouseAsyncMetrics_OSMemoryAvailable{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+          "expr": "ClickHouseAsyncMetrics_OSMemoryAvailable{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
           "interval": "",
           "legendFormat": "{{instance}}",
           "range": true,
@@ -1427,7 +1427,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "ClickHouseAsyncMetrics_OSMemoryTotal{cluster=\"$Cluster\", cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+          "expr": "ClickHouseAsyncMetrics_OSMemoryTotal{cluster=\"$cluster\", cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
           "interval": "",
           "legendFormat": "{{instance}}",
           "range": true,
@@ -1526,7 +1526,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "ClickHouseAsyncMetrics_OSMemoryBuffers{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+          "expr": "ClickHouseAsyncMetrics_OSMemoryBuffers{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
           "interval": "",
           "legendFormat": "{{instance}}",
           "range": true,
@@ -1724,7 +1724,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "ClickHouseAsyncMetrics_OSIdleTimeNormalized{cluster=\"$Cluster\",  instance=~\"($Instance):9363\"} * 100",
+          "expr": "ClickHouseAsyncMetrics_OSIdleTimeNormalized{cluster=\"$cluster\",  instance=~\"($Instance):9363\"} * 100",
           "interval": "",
           "legendFormat": "{{instance}}",
           "range": true,
@@ -1824,7 +1824,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "ClickHouseAsyncMetrics_OSIOWaitTimeNormalized{cluster=\"$Cluster\",  instance=~\"($Instance):9363\"} * 100",
+          "expr": "ClickHouseAsyncMetrics_OSIOWaitTimeNormalized{cluster=\"$cluster\",  instance=~\"($Instance):9363\"} * 100",
           "interval": "",
           "legendFormat": "{{instance}}",
           "range": true,
@@ -1921,7 +1921,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (instance) ({__name__=~\"ClickHouseAsyncMetrics_NetworkSendBytes_.*\", cluster=\"$Cluster\", instance=~\"($Instance):9363\"})",
+          "expr": "sum by (instance) ({__name__=~\"ClickHouseAsyncMetrics_NetworkSendBytes_.*\", cluster=\"$cluster\", instance=~\"($Instance):9363\"})",
           "legendFormat": "{{instance}}",
           "refId": "A"
         }
@@ -2016,7 +2016,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (instance) ({__name__=~\"ClickHouseAsyncMetrics_NetworkReceiveBytes_.*\", cluster=\"$Cluster\", instance=~\"($Instance):9363\"})",
+          "expr": "sum by (instance) ({__name__=~\"ClickHouseAsyncMetrics_NetworkReceiveBytes_.*\", cluster=\"$cluster\", instance=~\"($Instance):9363\"})",
           "legendFormat": "{{instance}}",
           "refId": "A"
         }
@@ -2113,7 +2113,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "ClickHouseAsyncMetrics_OSUserTimeNormalized{cluster=\"$Cluster\",  instance=~\"($Instance):9363\"} * 100",
+          "expr": "ClickHouseAsyncMetrics_OSUserTimeNormalized{cluster=\"$cluster\",  instance=~\"($Instance):9363\"} * 100",
           "interval": "",
           "legendFormat": "{{instance}}",
           "range": true,
@@ -2212,7 +2212,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "  label_replace(\n    {__name__=~\"ClickHouseAsyncMetrics_DiskUnreserved_.*\", cluster=\"$Cluster\", instance=~\"($Instance):9363\"},\n    \"disk\", \"$1\", \"__name__\", \"ClickHouseAsyncMetrics_DiskUnreserved_(.*)\"\n  )",
+          "expr": "  label_replace(\n    {__name__=~\"ClickHouseAsyncMetrics_DiskUnreserved_.*\", cluster=\"$cluster\", instance=~\"($Instance):9363\"},\n    \"disk\", \"$1\", \"__name__\", \"ClickHouseAsyncMetrics_DiskUnreserved_(.*)\"\n  )",
           "interval": "",
           "legendFormat": "{{instance}}-{{disk}}",
           "range": true,
@@ -2311,7 +2311,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "  label_replace(\n    {__name__=~\"ClickHouseAsyncMetrics_DiskUsed_.*\", cluster=\"$Cluster\", instance=~\"($Instance):9363\"},\n    \"disk\", \"$1\", \"__name__\", \"ClickHouseAsyncMetrics_DiskUsed_(.*)\"\n  )",
+          "expr": "  label_replace(\n    {__name__=~\"ClickHouseAsyncMetrics_DiskUsed_.*\", cluster=\"$cluster\", instance=~\"($Instance):9363\"},\n    \"disk\", \"$1\", \"__name__\", \"ClickHouseAsyncMetrics_DiskUsed_(.*)\"\n  )",
           "interval": "",
           "legendFormat": "{{instance}}-{{disk}}",
           "range": true,
@@ -2410,7 +2410,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "  label_replace(\n    {__name__=~\"ClickHouseAsyncMetrics_DiskAvailable_.*\", cluster=\"$Cluster\", instance=~\"($Instance):9363\"},\n    \"disk\", \"$1\", \"__name__\", \"ClickHouseAsyncMetrics_DiskAvailable_(.*)\"\n  )",
+          "expr": "  label_replace(\n    {__name__=~\"ClickHouseAsyncMetrics_DiskAvailable_.*\", cluster=\"$cluster\", instance=~\"($Instance):9363\"},\n    \"disk\", \"$1\", \"__name__\", \"ClickHouseAsyncMetrics_DiskAvailable_(.*)\"\n  )",
           "interval": "",
           "legendFormat": "{{instance}}-{{disk}}",
           "range": true,
@@ -2509,7 +2509,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "ClickHouseAsyncMetrics_OSMemoryCached{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+          "expr": "ClickHouseAsyncMetrics_OSMemoryCached{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
           "interval": "",
           "legendFormat": "{{instance}}",
           "range": true,
@@ -2608,7 +2608,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "ClickHouseAsyncMetrics_OSMemoryFreeWithoutCached{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+          "expr": "ClickHouseAsyncMetrics_OSMemoryFreeWithoutCached{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
           "interval": "",
           "legendFormat": "{{instance}}",
           "range": true,
@@ -2707,7 +2707,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "ClickHouseAsyncMetrics_OSMemoryFreePlusCached{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+          "expr": "ClickHouseAsyncMetrics_OSMemoryFreePlusCached{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
           "interval": "",
           "legendFormat": "{{instance}}",
           "range": true,
@@ -2806,7 +2806,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "ClickHouseAsyncMetrics_OSSystemTimeNormalized{cluster=\"$Cluster\",  instance=~\"($Instance):9363\"} * 100",
+          "expr": "ClickHouseAsyncMetrics_OSSystemTimeNormalized{cluster=\"$cluster\",  instance=~\"($Instance):9363\"} * 100",
           "interval": "",
           "legendFormat": "{{instance}}",
           "range": true,
@@ -3103,7 +3103,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "ClickHouseMetrics_TCPConnection{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+          "expr": "ClickHouseMetrics_TCPConnection{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
           "interval": "",
           "legendFormat": "{{instance}}",
           "range": true,
@@ -3202,7 +3202,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "ClickHouseMetrics_HTTPConnection{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+          "expr": "ClickHouseMetrics_HTTPConnection{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
           "interval": "",
           "legendFormat": "{{instance}}",
           "range": true,
@@ -3301,7 +3301,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "ClickHouseAsyncMetrics_OSOpenFiles{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+          "expr": "ClickHouseAsyncMetrics_OSOpenFiles{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
           "interval": "",
           "legendFormat": "{{instance}}",
           "range": true,
@@ -3399,7 +3399,7 @@
             "uid": "${datasource}"
           },
           "exemplar": false,
-          "expr": "max_over_time( (irate(ClickHouseProfileEvents_SlowRead_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+          "expr": "max_over_time( (irate(ClickHouseProfileEvents_SlowRead_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
           "interval": "",
           "legendFormat": "peaks - {{instance}}",
           "refId": "A"
@@ -3410,7 +3410,7 @@
             "uid": "${datasource}"
           },
           "exemplar": false,
-          "expr": "rate(ClickHouseProfileEvents_SlowRead_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+          "expr": "rate(ClickHouseProfileEvents_SlowRead_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
           "hide": false,
           "interval": "",
           "legendFormat": "{{instance}}",
@@ -3508,7 +3508,7 @@
             "uid": "${datasource}"
           },
           "exemplar": false,
-          "expr": "max_over_time( (irate(ClickHouseProfileEvents_ReadBackoff_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+          "expr": "max_over_time( (irate(ClickHouseProfileEvents_ReadBackoff_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
           "interval": "",
           "legendFormat": "peaks - {{instance}}",
           "refId": "A"
@@ -3519,7 +3519,7 @@
             "uid": "${datasource}"
           },
           "exemplar": false,
-          "expr": "rate(ClickHouseProfileEvents_ReadBackoff_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+          "expr": "rate(ClickHouseProfileEvents_ReadBackoff_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
           "hide": false,
           "interval": "",
           "legendFormat": "{{instance}}",
@@ -3618,7 +3618,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "ClickHouseErrorMetric_ACCESS_STORAGE_READONLY{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+          "expr": "ClickHouseErrorMetric_ACCESS_STORAGE_READONLY{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
           "hide": false,
           "interval": "",
           "legendFormat": "{{instance}}",
@@ -3718,7 +3718,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "ClickHouseAsyncMetrics_TotalRowsOfMergeTreeTables{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+          "expr": "ClickHouseAsyncMetrics_TotalRowsOfMergeTreeTables{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
           "hide": false,
           "interval": "",
           "legendFormat": "{{instance}}",
@@ -3818,7 +3818,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "ClickHouseAsyncMetrics_TotalPartsOfMergeTreeTables{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+          "expr": "ClickHouseAsyncMetrics_TotalPartsOfMergeTreeTables{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
           "hide": false,
           "interval": "",
           "legendFormat": "{{instance}}",
@@ -3918,7 +3918,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "ClickHouseAsyncMetrics_TotalBytesOfMergeTreeTables{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+          "expr": "ClickHouseAsyncMetrics_TotalBytesOfMergeTreeTables{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
           "hide": false,
           "interval": "",
           "legendFormat": "{{instance}}",
@@ -4031,7 +4031,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_Query_total{cluster=\"$Cluster\",instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] )",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_Query_total{cluster=\"$cluster\",instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] )",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -4045,7 +4045,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_Query_total{cluster=\"$Cluster\",instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_Query_total{cluster=\"$cluster\",instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": true,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -4059,7 +4059,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "ClickHouseProfileEvents_Query_total{cluster=\"$Cluster\",instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseProfileEvents_Query_total{cluster=\"$cluster\",instance=~\"($Instance):9363\"}",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -4073,7 +4073,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "increase(ClickHouseProfileEvents_Query_total{cluster=\"$Cluster\",instance=~\"($Instance):9363\"}[2m])/120",
+              "expr": "increase(ClickHouseProfileEvents_Query_total{cluster=\"$cluster\",instance=~\"($Instance):9363\"}[2m])/120",
               "hide": false,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -4172,7 +4172,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_SelectQuery_total{cluster=\"$Cluster\",instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] )",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_SelectQuery_total{cluster=\"$cluster\",instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] )",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -4186,7 +4186,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_SelectQuery_total{cluster=\"$Cluster\",instance=~\"($Instance):9363\"}[2m])",
+              "expr": "rate(ClickHouseProfileEvents_SelectQuery_total{cluster=\"$cluster\",instance=~\"($Instance):9363\"}[2m])",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -4284,7 +4284,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_InsertQuery_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_InsertQuery_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -4297,7 +4297,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_InsertQuery_total{cluster=\"$Cluster\",instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_InsertQuery_total{cluster=\"$cluster\",instance=~\"($Instance):9363\"}[$__rate_interval])",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -4410,7 +4410,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_FailedSelectQuery_total{cluster=\"$Cluster\",instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_FailedSelectQuery_total{cluster=\"$cluster\",instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -4508,7 +4508,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_FailedQuery_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_FailedQuery_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -4521,7 +4521,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_FailedQuery_total{cluster=\"$Cluster\",instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_FailedQuery_total{cluster=\"$cluster\",instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -4620,7 +4620,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_QueryMemoryLimitExceeded_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_QueryMemoryLimitExceeded_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -4718,7 +4718,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseMetrics_QueryPreempted{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseMetrics_QueryPreempted{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -4731,7 +4731,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "ClickHouseMetrics_QueryPreempted{cluster=\"$Cluster\",instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_QueryPreempted{cluster=\"$cluster\",instance=~\"($Instance):9363\"}",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -4829,7 +4829,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_FailedInsertQuery_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_FailedInsertQuery_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -4842,7 +4842,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_FailedInsertQuery_total{cluster=\"$Cluster\",instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_FailedInsertQuery_total{cluster=\"$cluster\",instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -4941,7 +4941,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "increase(ClickHouseProfileEvents_QueryTimeMicroseconds_total{cluster=\"$Cluster\",instance=~\"($Instance):9363\"}[$__rate_interval]) / increase(ClickHouseProfileEvents_Query_total{cluster=\"$Cluster\",instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "increase(ClickHouseProfileEvents_QueryTimeMicroseconds_total{cluster=\"$cluster\",instance=~\"($Instance):9363\"}[$__rate_interval]) / increase(ClickHouseProfileEvents_Query_total{cluster=\"$cluster\",instance=~\"($Instance):9363\"}[$__rate_interval])",
               "interval": "",
               "legendFormat": "{{instance}}",
               "range": true,
@@ -5039,7 +5039,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "increase(ClickHouseProfileEvents_SelectQueryTimeMicroseconds_total{cluster=\"$Cluster\",instance=~\"($Instance):9363\"}[$__rate_interval]) / increase(ClickHouseProfileEvents_SelectQuery_total{cluster=\"$Cluster\",instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "increase(ClickHouseProfileEvents_SelectQueryTimeMicroseconds_total{cluster=\"$cluster\",instance=~\"($Instance):9363\"}[$__rate_interval]) / increase(ClickHouseProfileEvents_SelectQuery_total{cluster=\"$cluster\",instance=~\"($Instance):9363\"}[$__rate_interval])",
               "interval": "",
               "legendFormat": "{{instance}}",
               "range": true,
@@ -5137,7 +5137,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "increase(ClickHouseProfileEvents_InsertQueryTimeMicroseconds_total{cluster=\"$Cluster\",instance=~\"($Instance):9363\"}[$__rate_interval]) / increase(ClickHouseProfileEvents_InsertQuery_total{cluster=\"$Cluster\",instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "increase(ClickHouseProfileEvents_InsertQueryTimeMicroseconds_total{cluster=\"$cluster\",instance=~\"($Instance):9363\"}[$__rate_interval]) / increase(ClickHouseProfileEvents_InsertQuery_total{cluster=\"$cluster\",instance=~\"($Instance):9363\"}[$__rate_interval])",
               "interval": "",
               "legendFormat": "{{instance}}",
               "range": true,
@@ -5261,7 +5261,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_InsertedRows_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_InsertedRows_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -5274,7 +5274,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_InsertedRows_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_InsertedRows_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -5372,7 +5372,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_InsertedBytes_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_InsertedBytes_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
               "refId": "A"
@@ -5384,7 +5384,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_InsertedBytes_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_InsertedBytes_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -5482,7 +5482,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_DelayedInserts_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_DelayedInserts_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -5495,7 +5495,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_DelayedInserts_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_DelayedInserts_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -5593,7 +5593,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_RejectedInserts_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_RejectedInserts_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -5605,7 +5605,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_RejectedInserts_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_RejectedInserts_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -5702,7 +5702,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "increase(ClickHouseProfileEvents_DelayedInsertsMilliseconds_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) / increase(ClickHouseProfileEvents_DelayedInserts_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "increase(ClickHouseProfileEvents_DelayedInsertsMilliseconds_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) / increase(ClickHouseProfileEvents_DelayedInserts_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -5826,7 +5826,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_SelectedParts_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_SelectedParts_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -5924,7 +5924,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_SelectedParts_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_SelectedParts_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
               "refId": "A"
@@ -5936,7 +5936,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_SelectedPartsTotal_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_SelectedPartsTotal_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -6034,7 +6034,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_SelectedMarks_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_SelectedMarks_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -6047,7 +6047,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_SelectedMarks_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_SelectedMarks_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -6145,7 +6145,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_SelectedRanges_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_SelectedRanges_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
               "refId": "A"
@@ -6157,7 +6157,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_SelectedRanges_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_SelectedRanges_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -6255,7 +6255,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_SelectedBytes_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_SelectedBytes_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -6267,7 +6267,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_SelectedBytes_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_SelectedBytes_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -6364,7 +6364,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_SelectedRows_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_SelectedRows_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
               "refId": "A"
@@ -6375,7 +6375,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_SelectedRows_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_SelectedRows_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -6500,7 +6500,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_Merge_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_Merge_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -6514,7 +6514,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_Merge_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_Merge_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -6613,7 +6613,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_Merge_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_Merge_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -6627,7 +6627,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "ClickHouseMetrics_Merge{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_Merge{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -6726,7 +6726,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_Merge_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_Merge_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -6740,7 +6740,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "ClickHouseMetrics_MergesMutationsMemoryTracking{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_MergesMutationsMemoryTracking{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -6839,7 +6839,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_MergedUncompressedBytes_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_MergedUncompressedBytes_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -6853,7 +6853,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_MergedUncompressedBytes_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_MergedUncompressedBytes_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -6952,7 +6952,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_MergedUncompressedBytes_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_MergedUncompressedBytes_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -6966,7 +6966,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_MergedRows_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_MergedRows_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -7065,7 +7065,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_MergedUncompressedBytes_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_MergedUncompressedBytes_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -7079,7 +7079,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_MergedColumns_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_MergedColumns_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -7178,7 +7178,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_MergedUncompressedBytes_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_MergedUncompressedBytes_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -7192,7 +7192,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_MergedIntoCompactParts_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_MergedIntoCompactParts_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -7291,7 +7291,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_MergedColumns_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_MergedColumns_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -7390,7 +7390,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "increase(ClickHouseProfileEvents_MergeTotalMilliseconds_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) / increase(ClickHouseProfileEvents_Merge_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "increase(ClickHouseProfileEvents_MergeTotalMilliseconds_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) / increase(ClickHouseProfileEvents_Merge_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -7404,7 +7404,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "increase(ClickHouseProfileEvents_Merge_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "increase(ClickHouseProfileEvents_Merge_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "hide": true,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -7503,7 +7503,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_MergedUncompressedBytes_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_MergedUncompressedBytes_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -7517,7 +7517,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_MergedIntoWideParts_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_MergedIntoWideParts_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -7616,7 +7616,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_MergeTotalMilliseconds_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_MergeTotalMilliseconds_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -7715,7 +7715,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_MergeTreeDataWriterUncompressedBytes_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_MergeTreeDataWriterUncompressedBytes_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -7729,7 +7729,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_MergeTreeDataWriterUncompressedBytes_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_MergeTreeDataWriterUncompressedBytes_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -7828,7 +7828,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_MergeTreeDataWriterBlocks_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_MergeTreeDataWriterBlocks_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -7842,7 +7842,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_MergeTreeDataWriterBlocks_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_MergeTreeDataWriterBlocks_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -7941,7 +7941,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "ClickHouseMetrics_DiskSpaceReservedForMerge{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_DiskSpaceReservedForMerge{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "range": true,
@@ -8039,7 +8039,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_MergeTreeDataWriterRows_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_MergeTreeDataWriterRows_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -8053,7 +8053,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_MergeTreeDataWriterRows_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_MergeTreeDataWriterRows_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -8152,7 +8152,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_MergeTreeDataWriterCompressedBytes_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_MergeTreeDataWriterCompressedBytes_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
               "range": true,
@@ -8165,7 +8165,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_MergeTreeDataWriterCompressedBytes_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_MergeTreeDataWriterCompressedBytes_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -8287,7 +8287,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "increase(ClickHouseProfileEvents_MutationTotalMilliseconds_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "increase(ClickHouseProfileEvents_MutationTotalMilliseconds_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -8301,7 +8301,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_MutationTotalMilliseconds_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_MutationTotalMilliseconds_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "hide": true,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -8400,7 +8400,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "increase(ClickHouseProfileEvents_MutationExecuteMilliseconds_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "increase(ClickHouseProfileEvents_MutationExecuteMilliseconds_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -8499,7 +8499,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_MergedUncompressedBytes_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_MergedUncompressedBytes_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -8513,7 +8513,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_MutatedRows_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_MutatedRows_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -8612,7 +8612,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_MutatedUncompressedBytes_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_MutatedUncompressedBytes_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -8626,7 +8626,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_MutatedUncompressedBytes_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_MutatedUncompressedBytes_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -8725,7 +8725,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_MutatedColumns_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_MutatedColumns_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -8739,7 +8739,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_MutationSomePartColumns_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_MutationSomePartColumns_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -8838,7 +8838,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_MutationAllPartColumns_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_MutationAllPartColumns_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -8852,7 +8852,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_MutationAllPartColumns_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_MutationAllPartColumns_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -8951,7 +8951,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_MutationUntouchedParts_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_MutationUntouchedParts_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -8965,7 +8965,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_MutationUntouchedParts_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_MutationUntouchedParts_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -9064,7 +9064,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_MutationTotalParts_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_MutationTotalParts_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -9078,7 +9078,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_MutationTotalParts_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_MutationTotalParts_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -9177,7 +9177,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_RejectedMutations_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_RejectedMutations_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
               "range": true,
@@ -9190,7 +9190,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_RejectedMutations_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_RejectedMutations_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -9307,7 +9307,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "ClickHouseMetrics_BackgroundCommonPoolTask{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_BackgroundCommonPoolTask{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "range": true,
@@ -9405,7 +9405,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "ClickHouseMetrics_BackgroundCommonPoolSize{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_BackgroundCommonPoolSize{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "range": true,
@@ -9503,7 +9503,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "ClickHouseMetrics_BackgroundMovePoolTask{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_BackgroundMovePoolTask{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "range": true,
@@ -9601,7 +9601,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "ClickHouseMetrics_BackgroundMovePoolSize{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_BackgroundMovePoolSize{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "range": true,
@@ -9699,7 +9699,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "ClickHouseMetrics_BackgroundBufferFlushSchedulePoolTask{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_BackgroundBufferFlushSchedulePoolTask{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "range": true,
@@ -9797,7 +9797,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "ClickHouseMetrics_BackgroundBufferFlushSchedulePoolSize{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_BackgroundBufferFlushSchedulePoolSize{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "range": true,
@@ -9895,7 +9895,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "ClickHouseMetrics_BackgroundMergesAndMutationsPoolTask{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_BackgroundMergesAndMutationsPoolTask{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "range": true,
@@ -9993,7 +9993,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "ClickHouseMetrics_BackgroundMergesAndMutationsPoolSize{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_BackgroundMergesAndMutationsPoolSize{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "range": true,
@@ -10091,7 +10091,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "ClickHouseMetrics_BackgroundMessageBrokerSchedulePoolTask{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_BackgroundMessageBrokerSchedulePoolTask{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "range": true,
@@ -10189,7 +10189,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "ClickHouseMetrics_BackgroundMessageBrokerSchedulePoolSize{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_BackgroundMessageBrokerSchedulePoolSize{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "range": true,
@@ -10287,7 +10287,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "ClickHouseMetrics_BackgroundFetchesPoolTask{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_BackgroundFetchesPoolTask{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "range": true,
@@ -10385,7 +10385,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "ClickHouseMetrics_BackgroundFetchesPoolSize{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_BackgroundFetchesPoolSize{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "range": true,
@@ -10483,7 +10483,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "ClickHouseMetrics_BackgroundSchedulePoolTask{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_BackgroundSchedulePoolTask{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "range": true,
@@ -10581,7 +10581,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "ClickHouseMetrics_BackgroundSchedulePoolSize{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_BackgroundSchedulePoolSize{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "range": true,
@@ -10679,7 +10679,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "ClickHouseMetrics_BackgroundDistributedSchedulePoolTask{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_BackgroundDistributedSchedulePoolTask{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "range": true,
@@ -10777,7 +10777,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "ClickHouseMetrics_BackgroundDistributedSchedulePoolSize{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_BackgroundDistributedSchedulePoolSize{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "range": true,
@@ -10898,7 +10898,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "ClickHouseMetrics_BackupsIOThreads{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_BackupsIOThreads{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "range": true,
@@ -10996,7 +10996,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "ClickHouseMetrics_BackupsIOThreadsActive{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_BackupsIOThreadsActive{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "range": true,
@@ -11094,7 +11094,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "ClickHouseMetrics_BackupsThreads{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_BackupsThreads{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "range": true,
@@ -11192,7 +11192,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "ClickHouseMetrics_RestoreThreads{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_RestoreThreads{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "range": true,
@@ -11290,7 +11290,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "ClickHouseMetrics_RestoreThreadsActive{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_RestoreThreadsActive{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "range": true,
@@ -11388,7 +11388,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "ClickHouseMetrics_BackupsThreadsActive{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_BackupsThreadsActive{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "range": true,
@@ -11504,7 +11504,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_Seek_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_Seek_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -11518,7 +11518,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_Seek_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_Seek_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -11617,7 +11617,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_Seek_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_Seek_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -11631,7 +11631,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "ClickHouseMetrics_Read{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_Read{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -11730,7 +11730,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ReadBufferFromFileDescriptorRead_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ReadBufferFromFileDescriptorRead_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
               "range": true,
@@ -11743,7 +11743,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_ReadBufferFromFileDescriptorRead_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_ReadBufferFromFileDescriptorRead_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -11841,7 +11841,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_FileOpen_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_FileOpen_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -11854,7 +11854,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_FileOpen_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_FileOpen_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -11953,7 +11953,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ReadBufferFromFileDescriptorReadFailed_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ReadBufferFromFileDescriptorReadFailed_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -11967,7 +11967,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_ReadBufferFromFileDescriptorReadFailed_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_ReadBufferFromFileDescriptorReadFailed_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -12065,7 +12065,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_WriteBufferFromFileDescriptorWrite_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_WriteBufferFromFileDescriptorWrite_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -12077,7 +12077,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_WriteBufferFromFileDescriptorWrite_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_WriteBufferFromFileDescriptorWrite_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -12175,7 +12175,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ReadBufferFromFileDescriptorReadBytes_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ReadBufferFromFileDescriptorReadBytes_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -12189,7 +12189,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_ReadBufferFromFileDescriptorReadBytes_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_ReadBufferFromFileDescriptorReadBytes_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -12288,7 +12288,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_WriteBufferFromFileDescriptorWriteFailed_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_WriteBufferFromFileDescriptorWriteFailed_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -12302,7 +12302,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_WriteBufferFromFileDescriptorWriteFailed_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_WriteBufferFromFileDescriptorWriteFailed_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -12400,7 +12400,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ReadCompressedBytes_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ReadCompressedBytes_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -12413,7 +12413,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_ReadCompressedBytes_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_ReadCompressedBytes_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -12511,7 +12511,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_WriteBufferFromFileDescriptorWriteBytes_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_WriteBufferFromFileDescriptorWriteBytes_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -12523,7 +12523,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_WriteBufferFromFileDescriptorWriteBytes_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_WriteBufferFromFileDescriptorWriteBytes_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -12620,7 +12620,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_CompressedReadBufferBlocks_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_CompressedReadBufferBlocks_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -12633,7 +12633,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_CompressedReadBufferBlocks_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_CompressedReadBufferBlocks_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -12731,7 +12731,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_CompressedReadBufferBytes_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_CompressedReadBufferBytes_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -12744,7 +12744,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_CompressedReadBufferBytes_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_CompressedReadBufferBytes_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -12843,7 +12843,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_NetworkSendBytes_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_NetworkSendBytes_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -12942,7 +12942,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_NetworkReceiveBytes_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_NetworkReceiveBytes_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -13068,7 +13068,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "ClickHouseMetrics_ReadonlyReplica{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_ReadonlyReplica{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "range": true,
@@ -13165,7 +13165,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ReplicatedPartFailedFetches_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ReplicatedPartFailedFetches_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -13177,7 +13177,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_ReplicatedPartFailedFetches_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_ReplicatedPartFailedFetches_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -13275,7 +13275,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ReplicatedPartFetches_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ReplicatedPartFetches_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -13289,7 +13289,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_ReplicatedPartFetches_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_ReplicatedPartFetches_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -13387,7 +13387,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ReplicatedPartFetchesOfMerged_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ReplicatedPartFetchesOfMerged_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -13400,7 +13400,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_ReplicatedPartFetchesOfMerged_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_ReplicatedPartFetchesOfMerged_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -13498,7 +13498,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ReplicatedPartMerges_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ReplicatedPartMerges_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -13510,7 +13510,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_ReplicatedPartMerges_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_ReplicatedPartMerges_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -13607,7 +13607,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ReplicatedDataLoss_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ReplicatedDataLoss_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -13620,7 +13620,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_ReplicatedDataLoss_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_ReplicatedDataLoss_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -13745,7 +13745,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_UncompressedCacheHits_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_UncompressedCacheHits_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
               "refId": "A"
@@ -13756,7 +13756,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_UncompressedCacheHits_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_UncompressedCacheHits_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -13853,7 +13853,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_UncompressedCacheMisses_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_UncompressedCacheMisses_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
               "refId": "A"
@@ -13864,7 +13864,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_UncompressedCacheMisses_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_UncompressedCacheMisses_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -13961,7 +13961,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_MarkCacheHits_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_MarkCacheHits_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -13973,7 +13973,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_MarkCacheHits_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_MarkCacheHits_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -14070,7 +14070,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_MarkCacheMisses_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_MarkCacheMisses_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
               "refId": "A"
@@ -14081,7 +14081,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_MarkCacheMisses_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_MarkCacheMisses_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -14206,7 +14206,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "ClickHouseMetrics_PartsTemporary{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_PartsTemporary{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "range": true,
@@ -14304,7 +14304,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "ClickHouseMetrics_PartsPreActive{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_PartsPreActive{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "range": true,
@@ -14402,7 +14402,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "ClickHouseMetrics_PartsCommitted{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_PartsCommitted{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "range": true,
@@ -14500,7 +14500,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "ClickHouseMetrics_PartsOutdated{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_PartsOutdated{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "range": true,
@@ -14598,7 +14598,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "ClickHouseMetrics_PartsDeleting{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_PartsDeleting{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "range": true,
@@ -14696,7 +14696,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "ClickHouseMetrics_PartsDeleteOnDestroy{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_PartsDeleteOnDestroy{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "range": true,
@@ -14890,7 +14890,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "ClickHouseMetrics_PartsCompact{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_PartsCompact{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "range": true,
@@ -15015,7 +15015,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "ClickHouseMetrics_DistributedSend{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_DistributedSend{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "range": true,
@@ -15113,7 +15113,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "ClickHouseMetrics_DistributedFilesToInsert{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_DistributedFilesToInsert{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "range": true,
@@ -15210,7 +15210,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_DistributedDelayedInserts_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_DistributedDelayedInserts_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -15223,7 +15223,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_DistributedDelayedInserts_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_DistributedDelayedInserts_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -15321,7 +15321,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_DistributedRejectedInserts_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_DistributedRejectedInserts_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -15333,7 +15333,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_DistributedRejectedInserts_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_DistributedRejectedInserts_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -15430,7 +15430,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "increase(ClickHouseProfileEvents_DistributedDelayedInsertsMilliseconds_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) / increase(ClickHouseProfileEvents_DistributedDelayedInserts_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "increase(ClickHouseProfileEvents_DistributedDelayedInsertsMilliseconds_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) / increase(ClickHouseProfileEvents_DistributedDelayedInserts_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -15526,7 +15526,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_DistributedConnectionFailTry_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_DistributedConnectionFailTry_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -15538,7 +15538,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_DistributedConnectionFailTry_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_DistributedConnectionFailTry_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -15635,7 +15635,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_DistributedConnectionFailAtAll_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_DistributedConnectionFailAtAll_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
               "refId": "A"
@@ -15646,7 +15646,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_DistributedConnectionFailAtAll_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_DistributedConnectionFailAtAll_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -15743,7 +15743,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_DistributedSyncInsertionTimeoutExceeded_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_DistributedSyncInsertionTimeoutExceeded_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
               "refId": "A"
@@ -15754,7 +15754,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_DistributedSyncInsertionTimeoutExceeded_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_DistributedSyncInsertionTimeoutExceeded_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -15878,7 +15878,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_S3ReadRequestsCount_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_S3ReadRequestsCount_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -15974,7 +15974,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_S3WriteRequestsCount_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_S3WriteRequestsCount_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -16070,7 +16070,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_S3ReadRequestsErrors_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_S3ReadRequestsErrors_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -16166,7 +16166,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_S3WriteRequestsErrors_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_S3WriteRequestsErrors_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -16262,7 +16262,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_S3ReadRequestsThrottling_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_S3ReadRequestsThrottling_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -16358,7 +16358,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_S3WriteRequestsThrottling_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_S3WriteRequestsThrottling_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -16454,7 +16454,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_S3ReadMicroseconds_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_S3ReadMicroseconds_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -16550,7 +16550,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_S3WriteMicroseconds_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_S3WriteMicroseconds_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -16646,7 +16646,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_DiskS3GetObject_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_DiskS3GetObject_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -16742,7 +16742,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_DiskS3PutObject_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_DiskS3PutObject_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -16838,7 +16838,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_DiskS3ListObjects_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_DiskS3ListObjects_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -16934,7 +16934,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_DiskS3HeadObject_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_DiskS3HeadObject_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -17030,7 +17030,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_DiskS3DeleteObjects_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_DiskS3DeleteObjects_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -17126,7 +17126,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_DiskS3CopyObject_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_DiskS3CopyObject_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -17222,7 +17222,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "histogram_quantile(0.5, rate(ClickHouseHistogramMetrics_disk_s3_connect_microseconds_bucket{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.5, rate(ClickHouseHistogramMetrics_disk_s3_connect_microseconds_bucket{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]))",
               "interval": "",
               "legendFormat": "p50 - {{instance}}",
               "refId": "A"
@@ -17233,7 +17233,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "histogram_quantile(0.95, rate(ClickHouseHistogramMetrics_disk_s3_connect_microseconds_bucket{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.95, rate(ClickHouseHistogramMetrics_disk_s3_connect_microseconds_bucket{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]))",
               "interval": "",
               "legendFormat": "p95 - {{instance}}",
               "refId": "B"
@@ -17244,7 +17244,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "histogram_quantile(0.99, rate(ClickHouseHistogramMetrics_disk_s3_connect_microseconds_bucket{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.99, rate(ClickHouseHistogramMetrics_disk_s3_connect_microseconds_bucket{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]))",
               "interval": "",
               "legendFormat": "p99 - {{instance}}",
               "refId": "C"
@@ -17340,7 +17340,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "histogram_quantile(0.5, rate(ClickHouseHistogramMetrics_disk_s3_first_byte_microseconds_bucket{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.5, rate(ClickHouseHistogramMetrics_disk_s3_first_byte_microseconds_bucket{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]))",
               "interval": "",
               "legendFormat": "p50 - {{instance}}",
               "refId": "A"
@@ -17351,7 +17351,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "histogram_quantile(0.95, rate(ClickHouseHistogramMetrics_disk_s3_first_byte_microseconds_bucket{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.95, rate(ClickHouseHistogramMetrics_disk_s3_first_byte_microseconds_bucket{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]))",
               "interval": "",
               "legendFormat": "p95 - {{instance}}",
               "refId": "B"
@@ -17362,7 +17362,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "histogram_quantile(0.99, rate(ClickHouseHistogramMetrics_disk_s3_first_byte_microseconds_bucket{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.99, rate(ClickHouseHistogramMetrics_disk_s3_first_byte_microseconds_bucket{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]))",
               "interval": "",
               "legendFormat": "p99 - {{instance}}",
               "refId": "C"
@@ -17458,7 +17458,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "histogram_quantile(0.5, rate(ClickHouseHistogramMetrics_s3_connect_microseconds_bucket{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.5, rate(ClickHouseHistogramMetrics_s3_connect_microseconds_bucket{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]))",
               "interval": "",
               "legendFormat": "p50 - {{instance}}",
               "refId": "A"
@@ -17469,7 +17469,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "histogram_quantile(0.95, rate(ClickHouseHistogramMetrics_s3_connect_microseconds_bucket{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.95, rate(ClickHouseHistogramMetrics_s3_connect_microseconds_bucket{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]))",
               "interval": "",
               "legendFormat": "p95 - {{instance}}",
               "refId": "B"
@@ -17480,7 +17480,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "histogram_quantile(0.99, rate(ClickHouseHistogramMetrics_s3_connect_microseconds_bucket{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.99, rate(ClickHouseHistogramMetrics_s3_connect_microseconds_bucket{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]))",
               "interval": "",
               "legendFormat": "p99 - {{instance}}",
               "refId": "C"
@@ -17576,7 +17576,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "histogram_quantile(0.5, rate(ClickHouseHistogramMetrics_s3_first_byte_microseconds_bucket{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.5, rate(ClickHouseHistogramMetrics_s3_first_byte_microseconds_bucket{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]))",
               "interval": "",
               "legendFormat": "p50 - {{instance}}",
               "refId": "A"
@@ -17587,7 +17587,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "histogram_quantile(0.95, rate(ClickHouseHistogramMetrics_s3_first_byte_microseconds_bucket{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.95, rate(ClickHouseHistogramMetrics_s3_first_byte_microseconds_bucket{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]))",
               "interval": "",
               "legendFormat": "p95 - {{instance}}",
               "refId": "B"
@@ -17598,7 +17598,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "histogram_quantile(0.99, rate(ClickHouseHistogramMetrics_s3_first_byte_microseconds_bucket{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.99, rate(ClickHouseHistogramMetrics_s3_first_byte_microseconds_bucket{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]))",
               "interval": "",
               "legendFormat": "p99 - {{instance}}",
               "refId": "C"
@@ -17712,7 +17712,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_ReplicasMaxAbsoluteDelay{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseAsyncMetrics_ReplicasMaxAbsoluteDelay{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -17808,7 +17808,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_ReplicasMaxRelativeDelay{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseAsyncMetrics_ReplicasMaxRelativeDelay{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -17904,7 +17904,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_ReplicasMaxQueueSize{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseAsyncMetrics_ReplicasMaxQueueSize{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -18000,7 +18000,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_ReplicasSumQueueSize{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseAsyncMetrics_ReplicasSumQueueSize{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -18096,7 +18096,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_ReplicasMaxInsertsInQueue{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseAsyncMetrics_ReplicasMaxInsertsInQueue{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -18192,7 +18192,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_ReplicasSumInsertsInQueue{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseAsyncMetrics_ReplicasSumInsertsInQueue{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -18288,7 +18288,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_ReplicasMaxMergesInQueue{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseAsyncMetrics_ReplicasMaxMergesInQueue{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -18384,7 +18384,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_ReplicasSumMergesInQueue{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseAsyncMetrics_ReplicasSumMergesInQueue{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -18498,7 +18498,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseMetrics_FilesystemCacheSize{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_FilesystemCacheSize{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "Size - {{instance}}",
               "refId": "A"
@@ -18509,7 +18509,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseMetrics_FilesystemCacheSizeLimit{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_FilesystemCacheSizeLimit{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "Limit - {{instance}}",
               "refId": "B"
@@ -18605,7 +18605,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseMetrics_FilesystemCacheElements{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_FilesystemCacheElements{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -18701,7 +18701,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseMetrics_FilesystemCacheKeys{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_FilesystemCacheKeys{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -18797,7 +18797,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_FilesystemCacheEvictedBytes_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_FilesystemCacheEvictedBytes_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -18893,7 +18893,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_FilesystemCacheEvictedFileSegments_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_FilesystemCacheEvictedFileSegments_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -18989,7 +18989,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_CachedReadBufferCacheHit_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_CachedReadBufferCacheHit_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "interval": "",
               "legendFormat": "Hits - {{instance}}",
               "refId": "A"
@@ -19000,7 +19000,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_CachedReadBufferCacheMiss_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_CachedReadBufferCacheMiss_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "interval": "",
               "legendFormat": "Misses - {{instance}}",
               "refId": "B"
@@ -19096,7 +19096,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_CachedReadBufferReadFromCacheBytes_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_CachedReadBufferReadFromCacheBytes_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -19192,7 +19192,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_CachedReadBufferReadFromSourceBytes_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_CachedReadBufferReadFromSourceBytes_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -19306,7 +19306,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_PSICPUSome10{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseAsyncMetrics_PSICPUSome10{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -19402,7 +19402,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_PSICPUFull10{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseAsyncMetrics_PSICPUFull10{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -19498,7 +19498,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_PSIIOSome10{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseAsyncMetrics_PSIIOSome10{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -19594,7 +19594,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_PSIIOFull10{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseAsyncMetrics_PSIIOFull10{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -19690,7 +19690,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_PSIMemorySome10{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseAsyncMetrics_PSIMemorySome10{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -19786,7 +19786,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_PSIMemoryFull10{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseAsyncMetrics_PSIMemoryFull10{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -19900,7 +19900,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "{__name__=~\"ClickHouseAsyncMetrics_BlockReadOps_.*\", cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "{__name__=~\"ClickHouseAsyncMetrics_BlockReadOps_.*\", cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{__name__}} - {{instance}}",
               "refId": "A"
@@ -19996,7 +19996,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "{__name__=~\"ClickHouseAsyncMetrics_BlockWriteOps_.*\", cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "{__name__=~\"ClickHouseAsyncMetrics_BlockWriteOps_.*\", cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{__name__}} - {{instance}}",
               "refId": "A"
@@ -20092,7 +20092,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "{__name__=~\"ClickHouseAsyncMetrics_BlockReadBytes_.*\", cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "{__name__=~\"ClickHouseAsyncMetrics_BlockReadBytes_.*\", cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{__name__}} - {{instance}}",
               "refId": "A"
@@ -20188,7 +20188,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "{__name__=~\"ClickHouseAsyncMetrics_BlockWriteBytes_.*\", cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "{__name__=~\"ClickHouseAsyncMetrics_BlockWriteBytes_.*\", cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{__name__}} - {{instance}}",
               "refId": "A"
@@ -20284,7 +20284,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "{__name__=~\"ClickHouseAsyncMetrics_BlockQueueTime_.*\", cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "{__name__=~\"ClickHouseAsyncMetrics_BlockQueueTime_.*\", cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{__name__}} - {{instance}}",
               "refId": "A"
@@ -20398,7 +20398,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_jemalloc.active{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseAsyncMetrics_jemalloc.active{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -20494,7 +20494,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_jemalloc.allocated{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseAsyncMetrics_jemalloc.allocated{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -20590,7 +20590,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_jemalloc.resident{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseAsyncMetrics_jemalloc.resident{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -20686,7 +20686,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_jemalloc.mapped{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseAsyncMetrics_jemalloc.mapped{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -20782,7 +20782,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_jemalloc.retained{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseAsyncMetrics_jemalloc.retained{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -20878,7 +20878,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_jemalloc.metadata{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseAsyncMetrics_jemalloc.metadata{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -20992,7 +20992,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_TCPCount_ESTABLISHED{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseAsyncMetrics_TCPCount_ESTABLISHED{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "ESTABLISHED - {{instance}}",
               "refId": "A"
@@ -21003,7 +21003,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_TCPCount_LISTEN{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseAsyncMetrics_TCPCount_LISTEN{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "LISTEN - {{instance}}",
               "refId": "B"
@@ -21014,7 +21014,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_TCPCount_TIME_WAIT{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseAsyncMetrics_TCPCount_TIME_WAIT{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "TIME_WAIT - {{instance}}",
               "refId": "C"
@@ -21025,7 +21025,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_TCPCount_CLOSE_WAIT{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseAsyncMetrics_TCPCount_CLOSE_WAIT{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "CLOSE_WAIT - {{instance}}",
               "refId": "D"
@@ -21036,7 +21036,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_TCPCount_FIN_WAIT1{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseAsyncMetrics_TCPCount_FIN_WAIT1{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "FIN_WAIT1 - {{instance}}",
               "refId": "E"
@@ -21132,7 +21132,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_NetworkTCPReceiveQueue{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseAsyncMetrics_NetworkTCPReceiveQueue{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "RcvQueue - {{instance}}",
               "refId": "A"
@@ -21143,7 +21143,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_NetworkTCPTransmitQueue{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseAsyncMetrics_NetworkTCPTransmitQueue{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "SndQueue - {{instance}}",
               "refId": "B"
@@ -21239,7 +21239,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "{__name__=~\"ClickHouseAsyncMetrics_Network(Receive|Send)(Errors|Drop)_ens3\", cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "{__name__=~\"ClickHouseAsyncMetrics_Network(Receive|Send)(Errors|Drop)_ens3\", cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{__name__}} - {{instance}}",
               "refId": "A"
@@ -21353,7 +21353,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseMetrics_QueryCacheBytes{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_QueryCacheBytes{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -21449,7 +21449,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseMetrics_QueryCacheEntries{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_QueryCacheEntries{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -21545,7 +21545,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_QueryCacheHits_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_QueryCacheHits_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "interval": "",
               "legendFormat": "Hits - {{instance}}",
               "refId": "A"
@@ -21556,7 +21556,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_QueryCacheMisses_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_QueryCacheMisses_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "interval": "",
               "legendFormat": "Misses - {{instance}}",
               "refId": "B"
@@ -21670,7 +21670,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_LogError_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_LogError_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "interval": "",
               "legendFormat": "Error - {{instance}}",
               "refId": "A"
@@ -21681,7 +21681,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_LogWarning_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_LogWarning_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "interval": "",
               "legendFormat": "Warning - {{instance}}",
               "refId": "B"
@@ -21692,7 +21692,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_LogInfo_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_LogInfo_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "interval": "",
               "legendFormat": "Info - {{instance}}",
               "refId": "C"
@@ -21703,7 +21703,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_LogDebug_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_LogDebug_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "interval": "",
               "legendFormat": "Debug - {{instance}}",
               "refId": "D"
@@ -21714,7 +21714,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_LogTrace_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_LogTrace_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "interval": "",
               "legendFormat": "Trace - {{instance}}",
               "refId": "E"
@@ -21828,7 +21828,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_LongestRunningMerge{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseAsyncMetrics_LongestRunningMerge{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -21924,7 +21924,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_MaxPartCountForPartition{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseAsyncMetrics_MaxPartCountForPartition{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -22020,7 +22020,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_OSProcessesRunning{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseAsyncMetrics_OSProcessesRunning{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -22116,7 +22116,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_OSProcessesBlocked{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseAsyncMetrics_OSProcessesBlocked{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -22212,7 +22212,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_OSContextSwitches{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseAsyncMetrics_OSContextSwitches{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -22308,7 +22308,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_OSInterrupts{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseAsyncMetrics_OSInterrupts{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -22422,7 +22422,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseMetrics_MarkCacheBytes{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_MarkCacheBytes{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "Bytes - {{instance}}",
               "refId": "A"
@@ -22433,7 +22433,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseMetrics_MarkCacheFiles{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_MarkCacheFiles{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "Files - {{instance}}",
               "refId": "B"
@@ -22529,7 +22529,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseMetrics_IndexMarkCacheBytes{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_IndexMarkCacheBytes{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "Bytes - {{instance}}",
               "refId": "A"
@@ -22540,7 +22540,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseMetrics_IndexMarkCacheFiles{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_IndexMarkCacheFiles{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "Files - {{instance}}",
               "refId": "B"
@@ -22636,7 +22636,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseMetrics_PrimaryIndexCacheBytes{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_PrimaryIndexCacheBytes{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "Bytes - {{instance}}",
               "refId": "A"
@@ -22647,7 +22647,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseMetrics_PrimaryIndexCacheFiles{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_PrimaryIndexCacheFiles{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "Files - {{instance}}",
               "refId": "B"
@@ -22743,7 +22743,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseMetrics_UncompressedCacheBytes{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_UncompressedCacheBytes{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "Bytes - {{instance}}",
               "refId": "A"
@@ -22754,7 +22754,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseMetrics_UncompressedCacheCells{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_UncompressedCacheCells{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "Cells - {{instance}}",
               "refId": "B"
@@ -22868,7 +22868,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseMetrics_AsynchronousInsertQueueSize{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_AsynchronousInsertQueueSize{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "Queue Size - {{instance}}",
               "refId": "A"
@@ -22879,7 +22879,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseMetrics_AsynchronousInsertQueueBytes{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_AsynchronousInsertQueueBytes{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "Queue Bytes - {{instance}}",
               "refId": "B"
@@ -22975,7 +22975,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_AsyncInsertQuery_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_AsyncInsertQuery_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "interval": "",
               "legendFormat": "Queries - {{instance}}",
               "refId": "A"
@@ -22986,7 +22986,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_AsyncInsertRows_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_AsyncInsertRows_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "interval": "",
               "legendFormat": "Rows - {{instance}}",
               "refId": "B"
@@ -23082,7 +23082,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_AsyncInsertBytes_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_AsyncInsertBytes_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval])",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -23178,7 +23178,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseMetrics_PendingAsyncInsert{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_PendingAsyncInsert{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -23292,7 +23292,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_MemoryResident{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseAsyncMetrics_MemoryResident{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -23388,7 +23388,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_MemoryVirtual{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseAsyncMetrics_MemoryVirtual{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -23484,7 +23484,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_QueriesMemoryUsage{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseAsyncMetrics_QueriesMemoryUsage{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -23580,7 +23580,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_QueriesPeakMemoryUsage{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseAsyncMetrics_QueriesPeakMemoryUsage{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -23676,7 +23676,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseMetrics_TrackedMemory{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_TrackedMemory{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -23790,7 +23790,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseMetrics_GlobalThread{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_GlobalThread{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "Total - {{instance}}",
               "refId": "A"
@@ -23801,7 +23801,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseMetrics_GlobalThreadActive{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_GlobalThreadActive{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "Active - {{instance}}",
               "refId": "B"
@@ -23812,7 +23812,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseMetrics_GlobalThreadScheduled{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_GlobalThreadScheduled{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "Scheduled - {{instance}}",
               "refId": "C"
@@ -23908,7 +23908,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseMetrics_QueryPipelineExecutorThreads{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_QueryPipelineExecutorThreads{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "Total - {{instance}}",
               "refId": "A"
@@ -23919,7 +23919,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseMetrics_QueryPipelineExecutorThreadsActive{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_QueryPipelineExecutorThreadsActive{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "Active - {{instance}}",
               "refId": "B"
@@ -23930,7 +23930,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseMetrics_QueryPipelineExecutorThreadsScheduled{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_QueryPipelineExecutorThreadsScheduled{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "Scheduled - {{instance}}",
               "refId": "C"
@@ -24026,7 +24026,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseMetrics_IOThreads{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_IOThreads{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "Total - {{instance}}",
               "refId": "A"
@@ -24037,7 +24037,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseMetrics_IOThreadsActive{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_IOThreadsActive{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "Active - {{instance}}",
               "refId": "B"
@@ -24048,7 +24048,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseMetrics_IOThreadsScheduled{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_IOThreadsScheduled{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "Scheduled - {{instance}}",
               "refId": "C"
@@ -24144,7 +24144,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseMetrics_MergeTreeBackgroundExecutorThreads{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_MergeTreeBackgroundExecutorThreads{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "Total - {{instance}}",
               "refId": "A"
@@ -24155,7 +24155,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseMetrics_MergeTreeBackgroundExecutorThreadsActive{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_MergeTreeBackgroundExecutorThreadsActive{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "Active - {{instance}}",
               "refId": "B"
@@ -24166,7 +24166,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseMetrics_MergeTreeBackgroundExecutorThreadsScheduled{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}",
+              "expr": "ClickHouseMetrics_MergeTreeBackgroundExecutorThreadsScheduled{cluster=\"$cluster\", instance=~\"($Instance):9363\"}",
               "interval": "",
               "legendFormat": "Scheduled - {{instance}}",
               "refId": "C"
@@ -24281,7 +24281,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ZooKeeperInit_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ZooKeeperInit_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -24294,7 +24294,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_ZooKeeperInit_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_ZooKeeperInit_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -24391,7 +24391,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ZooKeeperTransactions_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ZooKeeperTransactions_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
               "refId": "A"
@@ -24403,7 +24403,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_ZooKeeperTransactions_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_ZooKeeperTransactions_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -24501,7 +24501,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ZooKeeperList_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ZooKeeperList_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
               "refId": "A"
@@ -24512,7 +24512,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_ZooKeeperList_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_ZooKeeperList_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -24609,7 +24609,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ZooKeeperCreate_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ZooKeeperCreate_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
               "refId": "A"
@@ -24620,7 +24620,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_ZooKeeperCreate_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_ZooKeeperCreate_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -24717,7 +24717,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ZooKeeperRemove_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ZooKeeperRemove_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
               "refId": "A"
@@ -24728,7 +24728,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_ZooKeeperRemove_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_ZooKeeperRemove_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -24825,7 +24825,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ZooKeeperExists_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ZooKeeperExists_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
               "refId": "A"
@@ -24836,7 +24836,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_ZooKeeperExists_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_ZooKeeperExists_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -24933,7 +24933,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ZooKeeperGet_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ZooKeeperGet_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -24946,7 +24946,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_ZooKeeperGet_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_ZooKeeperGet_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -25044,7 +25044,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ZooKeeperSet_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ZooKeeperSet_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -25056,7 +25056,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_ZooKeeperSet_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_ZooKeeperSet_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -25153,7 +25153,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ZooKeeperMulti_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ZooKeeperMulti_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -25165,7 +25165,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_ZooKeeperMulti_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_ZooKeeperMulti_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -25262,7 +25262,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ZooKeeperCheck_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ZooKeeperCheck_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
               "refId": "A"
@@ -25273,7 +25273,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_ZooKeeperCheck_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_ZooKeeperCheck_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -25370,7 +25370,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ZooKeeperClose_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ZooKeeperClose_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -25382,7 +25382,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_ZooKeeperClose_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_ZooKeeperClose_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -25479,7 +25479,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ZooKeeperWatchResponse_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ZooKeeperWatchResponse_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -25491,7 +25491,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_ZooKeeperWatchResponse_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_ZooKeeperWatchResponse_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -25588,7 +25588,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ZooKeeperUserExceptions_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ZooKeeperUserExceptions_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
               "refId": "A"
@@ -25599,7 +25599,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_ZooKeeperUserExceptions_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_ZooKeeperUserExceptions_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -25696,7 +25696,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ZooKeeperHardwareExceptions_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ZooKeeperHardwareExceptions_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
               "refId": "A"
@@ -25707,7 +25707,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_ZooKeeperHardwareExceptions_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_ZooKeeperHardwareExceptions_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -25804,7 +25804,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ZooKeeperBytesReceived_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ZooKeeperBytesReceived_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
               "refId": "A"
@@ -25815,7 +25815,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_ZooKeeperBytesReceived_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_ZooKeeperBytesReceived_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -25912,7 +25912,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ZooKeeperBytesSent_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_ZooKeeperBytesSent_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
               "refId": "A"
@@ -25923,7 +25923,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_ZooKeeperBytesSent_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_ZooKeeperBytesSent_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -26408,7 +26408,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_CannotRemoveEphemeralNode_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_CannotRemoveEphemeralNode_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -26421,7 +26421,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_CannotRemoveEphemeralNode_total{cluster=\"$Cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
+              "expr": "rate(ClickHouseProfileEvents_CannotRemoveEphemeralNode_total{cluster=\"$cluster\", instance=~\"($Instance):9363\"}[$__rate_interval]) ",
               "hide": false,
               "interval": "",
               "legendFormat": "{{instance}}",
@@ -29343,17 +29343,22 @@
         "type": "datasource"
       },
       {
-        "current": {},
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": ["All"],
+          "value": ["$__all"]
+        },
         "datasource": {
           "type": "prometheus",
           "uid": "${datasource}"
         },
         "definition": "label_values(ClickHouseAsyncMetrics_Uptime, cluster)",
         "hide": 0,
-        "includeAll": false,
+        "includeAll": true,
         "label": "Cluster",
-        "multi": false,
-        "name": "Cluster",
+        "multi": true,
+        "name": "cluster",
         "options": [],
         "query": {
           "query": "label_values(ClickHouseAsyncMetrics_Uptime, cluster)",
@@ -29371,7 +29376,7 @@
           "type": "prometheus",
           "uid": "${datasource}"
         },
-        "definition": "label_values(ClickHouseAsyncMetrics_Uptime{cluster=\"$Cluster\"}, instance)",
+        "definition": "label_values(ClickHouseAsyncMetrics_Uptime{cluster=\"$cluster\"}, instance)",
         "hide": 0,
         "includeAll": true,
         "label": "Instance",
@@ -29379,7 +29384,7 @@
         "name": "Instance",
         "options": [],
         "query": {
-          "query": "label_values(ClickHouseAsyncMetrics_Uptime{cluster=\"$Cluster\"}, instance)",
+          "query": "label_values(ClickHouseAsyncMetrics_Uptime{cluster=\"$cluster\"}, instance)",
           "refId": "StandardVariableQuery"
         },
         "refresh": 1,
@@ -29476,7 +29481,7 @@
     ]
   },
   "timezone": "",
-  "title": "__CLUSTER_NAME__ - ClickHouse and Keeper Comprehensive Dashboard",
+  "title": "ClickHouse and Keeper Comprehensive Dashboard",
   "uid": "clickhouse-overview",
   "version": 1,
   "weekStart": ""

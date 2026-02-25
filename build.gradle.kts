@@ -153,7 +153,7 @@ kotlin {
 sourceSets {
     val main by getting {
         java.srcDirs("src/main/kotlin")
-        resources.srcDirs("build/aws")
+        resources.srcDirs("build/aws", "dashboards")
     }
     val test by getting {
         java.srcDirs("src/test/kotlin")

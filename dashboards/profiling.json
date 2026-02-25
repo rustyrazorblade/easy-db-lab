@@ -129,6 +129,36 @@
   "templating": {
     "list": [
       {
+        "current": {
+          "text": "default",
+          "value": "default"
+        },
+        "hide": 0,
+        "includeAll": false,
+        "label": "Prometheus",
+        "multi": false,
+        "name": "prometheus_datasource",
+        "options": [],
+        "query": "prometheus",
+        "queryValue": "",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "allValue": ".*",
+        "current": {"selected": true, "text": ["All"], "value": ["$__all"]},
+        "datasource": {"type": "prometheus", "uid": "${prometheus_datasource}"},
+        "includeAll": true,
+        "label": "Cluster",
+        "multi": true,
+        "name": "cluster",
+        "query": "label_values(up, cluster)",
+        "refresh": 2,
+        "type": "query"
+      },
+      {
         "current": {},
         "datasource": {
           "type": "grafana-pyroscope-datasource",
@@ -186,7 +216,7 @@
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "__CLUSTER_NAME__ - Profiling",
+  "title": "Profiling",
   "uid": "profiling",
   "version": 1,
   "weekStart": ""

@@ -162,10 +162,10 @@ val result = template.substitute(mapOf("EXTRA" to "value"))  // extra vars overr
 
 All Grafana K8s resources are built programmatically using Fabric8:
 
-- **`GrafanaDashboard`** — enum registry of all dashboards. Single source of truth for dashboard metadata (configMapName, volumeName, mountPath, resourcePath, optional flag). Adding a new dashboard = add an enum entry + drop a JSON file.
-- **`GrafanaManifestBuilder`** — builds all Grafana K8s resources (provisioning ConfigMap, dashboard ConfigMaps, Deployment) as typed Fabric8 objects. Uses `TemplateService` for `__KEY__` variable substitution in dashboard JSON.
+- **`GrafanaDashboard`** — enum registry of all dashboards. Single source of truth for dashboard metadata (configMapName, volumeName, mountPath, resourcePath, optional flag). Adding a new dashboard = add an enum entry + drop a JSON file in `dashboards/` at repo root.
+- **`GrafanaManifestBuilder`** — builds all Grafana K8s resources (provisioning ConfigMap, dashboard ConfigMaps, Deployment) as typed Fabric8 objects. Dashboard JSON is loaded directly from classpath (no template substitution). Uses `TemplateService` only for provisioning config.
 - **`GrafanaDatasourceConfig`** — datasource provisioning YAML generation.
-- **Dashboard JSON files** — stored in `resources/.../configuration/grafana/dashboards/*.json`. Raw JSON with `__KEY__` template placeholders.
+- **Dashboard JSON files** — stored in top-level `dashboards/` directory at the repository root. Pure standard Grafana JSON with no `__KEY__` placeholders. All dashboards include a multi-select `cluster` template variable. Included on the classpath via Gradle `resources.srcDirs("dashboards")`.
 
 ## Pyroscope Subpackage (`pyroscope/`)
 
@@ -198,7 +198,7 @@ See `spec/PYROSCOPE.md` for full architecture details and debugging steps.
 
 ## OTel Subpackage (`otel/`)
 
-- **`OtelManifestBuilder`** — builds OTel Collector ConfigMap + DaemonSet. Runs on all nodes, collects host metrics, Prometheus scrapes, file-based logs, and OTLP. Config uses OTel runtime env expansion (`${env:HOSTNAME}`), not `__KEY__` templates.
+- **`OtelManifestBuilder`** — builds OTel Collector ConfigMap + DaemonSet. Runs on all nodes, collects host metrics, Prometheus scrapes, AWS CloudWatch metrics (S3/EBS/EC2 via `awscloudwatch` receiver), file-based logs, and OTLP. Config uses OTel runtime env expansion (`${env:HOSTNAME}`, `${env:AWS_REGION}`), not `__KEY__` templates.
 - **Config resource** — `otel-collector-config.yaml` stored in `resources/.../configuration/otel/`.
 
 ## ebpf_exporter Subpackage (`ebpfexporter/`)

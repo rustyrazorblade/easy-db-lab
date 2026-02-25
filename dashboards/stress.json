@@ -66,7 +66,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "rate(mutations_count{job=\"cassandra-easy-stress\"}[1m])",
+          "expr": "rate(mutations_count{job=\"cassandra-easy-stress\", cluster=~\"$cluster\"}[1m])",
           "legendFormat": "{{job_name}}",
           "refId": "A"
         }
@@ -124,7 +124,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "rate(selects_count{job=\"cassandra-easy-stress\"}[1m])",
+          "expr": "rate(selects_count{job=\"cassandra-easy-stress\", cluster=~\"$cluster\"}[1m])",
           "legendFormat": "{{job_name}}",
           "refId": "A"
         }
@@ -189,7 +189,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "mutations{job=\"cassandra-easy-stress\", quantile=\"${quantile}\"}",
+          "expr": "mutations{job=\"cassandra-easy-stress\", quantile=\"${quantile}\", cluster=~\"$cluster\"}",
           "legendFormat": "{{job_name}}",
           "refId": "A"
         }
@@ -247,7 +247,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "selects{job=\"cassandra-easy-stress\", quantile=\"${quantile}\"}",
+          "expr": "selects{job=\"cassandra-easy-stress\", quantile=\"${quantile}\", cluster=~\"$cluster\"}",
           "legendFormat": "{{job_name}}",
           "refId": "A"
         }
@@ -305,7 +305,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "deletions{job=\"cassandra-easy-stress\", quantile=\"${quantile}\"}",
+          "expr": "deletions{job=\"cassandra-easy-stress\", quantile=\"${quantile}\", cluster=~\"$cluster\"}",
           "legendFormat": "{{job_name}}",
           "refId": "A"
         }
@@ -363,7 +363,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "rate(mutations_sum{job=\"cassandra-easy-stress\"}[1m]) / rate(mutations_count{job=\"cassandra-easy-stress\"}[1m])",
+          "expr": "rate(mutations_sum{job=\"cassandra-easy-stress\", cluster=~\"$cluster\"}[1m]) / rate(mutations_count{job=\"cassandra-easy-stress\", cluster=~\"$cluster\"}[1m])",
           "legendFormat": "{{job_name}}",
           "refId": "A"
         }
@@ -428,7 +428,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "rate(errors_total{job=\"cassandra-easy-stress\"}[1m])",
+          "expr": "rate(errors_total{job=\"cassandra-easy-stress\", cluster=~\"$cluster\"}[1m])",
           "legendFormat": "{{job_name}}",
           "refId": "A"
         }
@@ -486,7 +486,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "errors_total{job=\"cassandra-easy-stress\"}",
+          "expr": "errors_total{job=\"cassandra-easy-stress\", cluster=~\"$cluster\"}",
           "legendFormat": "{{job_name}}",
           "refId": "A"
         }
@@ -521,6 +521,18 @@
         "type": "datasource"
       },
       {
+        "allValue": ".*",
+        "current": {"selected": true, "text": ["All"], "value": ["$__all"]},
+        "datasource": {"type": "prometheus", "uid": "${datasource}"},
+        "includeAll": true,
+        "label": "Cluster",
+        "multi": true,
+        "name": "cluster",
+        "query": "label_values(up, cluster)",
+        "refresh": 2,
+        "type": "query"
+      },
+      {
         "current": {
           "selected": true,
           "text": "p99",
@@ -551,7 +563,7 @@
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "__CLUSTER_NAME__ - Stress Overview",
+  "title": "Stress Overview",
   "uid": "stress-overview",
   "version": 1
 }

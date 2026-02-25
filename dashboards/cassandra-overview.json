@@ -1480,13 +1480,13 @@
         "type": "datasource"
       },
       {
-        "allValue": null,
-        "current": {},
+        "allValue": ".*",
+        "current": {"selected": true, "text": ["All"], "value": ["$__all"]},
         "datasource": { "type": "prometheus", "uid": "${datasource}" },
         "hide": 0,
-        "includeAll": false,
+        "includeAll": true,
         "label": "Cluster",
-        "multi": false,
+        "multi": true,
         "name": "cluster",
         "options": [],
         "query": "label_values(up{job=\"cassandra-maac\"}, cluster)",

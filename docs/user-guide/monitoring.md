@@ -4,14 +4,22 @@
 
 Grafana is deployed automatically as part of the observability stack (`k8 apply`). It is accessible on port 3000 of the control node.
 
+### Multi-Cluster Support
+
+All dashboards include a **Cluster** dropdown at the top that supports multi-select. You can:
+
+- Select one or more clusters to compare metrics side by side
+- Select **All** to view data from every cluster at once
+- The cluster list is auto-populated from your metrics data
+
 ### Cluster Identification
 
 When running multiple environments side by side, Grafana displays the cluster name in several places to help you identify which environment you're looking at:
 
 - **Browser tab** - Shows the cluster name instead of "Grafana"
-- **Dashboard titles** - Each dashboard title is prefixed with the cluster name
 - **Sidebar org name** - The organization name in the sidebar shows the cluster name
 - **Home dashboard** - The System Overview dashboard is set as the home page instead of the default Grafana welcome page
+- **Cluster dropdown** - Every dashboard has a multi-select cluster variable for filtering
 
 ### System Dashboard
 
@@ -42,12 +50,14 @@ Use the dropdowns at the top to select S3 bucket, EC2 instances, and EBS volumes
 
 **How it works:**
 
+- The OpenTelemetry collector's `awscloudwatch` receiver polls CloudWatch API every 5 minutes for S3, EBS, and EC2 metrics
+- Metrics are exported to VictoriaMetrics and queried via PromQL
 - S3 request metrics are automatically enabled for the cluster's prefix in the account S3 bucket during `easy-db-lab up`
 - EBS and EC2 metrics are published automatically by AWS for all instances and volumes
-- Grafana queries CloudWatch using the EC2 instance's IAM role (no credentials needed)
+- Authentication uses the EC2 instance's IAM role (no credentials needed)
 - During `easy-db-lab down`, the S3 metrics configuration is automatically removed to stop CloudWatch billing
 
-**Note:** S3 request metrics take approximately 15 minutes to appear in CloudWatch after being enabled. EBS and EC2 metrics are available immediately.
+**Note:** S3 request metrics take approximately 15 minutes to appear in CloudWatch after being enabled. EBS and EC2 metrics are available immediately. CloudWatch metrics are polled every 5 minutes.
 
 ### EMR Overview
 

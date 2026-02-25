@@ -15,7 +15,8 @@ import io.fabric8.kubernetes.api.model.apps.DaemonSetBuilder
  *
  * Creates a DaemonSet that runs on all nodes with hostNetwork, collecting
  * host metrics, Prometheus scrapes (ClickHouse, Vector, Beyla, ebpf_exporter),
- * file-based logs, and OTLP. Exports to VictoriaMetrics, VictoriaLogs, and Tempo.
+ * AWS CloudWatch metrics (S3, EBS, EC2), file-based logs, and OTLP.
+ * Exports to VictoriaMetrics, VictoriaLogs, and Tempo.
  *
  * Config uses OTel runtime env expansion (`${env:HOSTNAME}`, `${env:CLUSTER_NAME}`),
  * not `__KEY__` template substitution.
@@ -137,6 +138,15 @@ class OtelManifestBuilder(
             .withNewConfigMapKeyRef()
             .withName("cluster-config")
             .withKey("cluster_name")
+            .endConfigMapKeyRef()
+            .endValueFrom()
+            .endEnv()
+            .addNewEnv()
+            .withName("AWS_REGION")
+            .withNewValueFrom()
+            .withNewConfigMapKeyRef()
+            .withName("cluster-config")
+            .withKey("aws_region")
             .endConfigMapKeyRef()
             .endValueFrom()
             .endEnv()

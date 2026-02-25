@@ -23,7 +23,7 @@
     },
     {
       "datasource": {
-        "type": "cloudwatch",
+        "type": "prometheus",
         "uid": "${datasource}"
       },
       "fieldConfig": {
@@ -71,13 +71,20 @@
               }
             ]
           },
-          "unit": "bytes"
+          "unit": "Bps"
         },
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "BytesDownloaded" },
+            "matcher": { "id": "byFrameRefID", "options": "A" },
             "properties": [
-              { "id": "custom.transform", "value": "negative-Y" }
+              { "id": "custom.transform", "value": "negative-Y" },
+              { "id": "displayName", "value": "Bytes Downloaded" }
+            ]
+          },
+          {
+            "matcher": { "id": "byFrameRefID", "options": "B" },
+            "properties": [
+              { "id": "displayName", "value": "Bytes Uploaded" }
             ]
           }
         ]
@@ -104,45 +111,21 @@
       "targets": [
         {
           "datasource": {
-            "type": "cloudwatch",
+            "type": "prometheus",
             "uid": "${datasource}"
           },
-          "dimensions": {
-            "BucketName": ["__BUCKET_NAME__"],
-            "FilterId": ["__METRICS_FILTER_ID__"]
-          },
-          "expression": "",
-          "id": "",
-          "matchExact": true,
-          "metricEditorMode": 0,
-          "metricName": "BytesDownloaded",
-          "metricQueryType": 0,
-          "namespace": "AWS/S3",
-          "period": "300",
-          "refId": "A",
-          "region": "default",
-          "statistic": "Sum"
+          "expr": "sum(rate(aws_s3_bytes_downloaded{cluster=~\"$cluster\"}[5m])) by (bucket_name)",
+          "legendFormat": "{{bucket_name}} - Downloaded",
+          "refId": "A"
         },
         {
           "datasource": {
-            "type": "cloudwatch",
+            "type": "prometheus",
             "uid": "${datasource}"
           },
-          "dimensions": {
-            "BucketName": ["__BUCKET_NAME__"],
-            "FilterId": ["__METRICS_FILTER_ID__"]
-          },
-          "expression": "",
-          "id": "",
-          "matchExact": true,
-          "metricEditorMode": 0,
-          "metricName": "BytesUploaded",
-          "metricQueryType": 0,
-          "namespace": "AWS/S3",
-          "period": "300",
-          "refId": "B",
-          "region": "default",
-          "statistic": "Sum"
+          "expr": "sum(rate(aws_s3_bytes_uploaded{cluster=~\"$cluster\"}[5m])) by (bucket_name)",
+          "legendFormat": "{{bucket_name}} - Uploaded",
+          "refId": "B"
         }
       ],
       "title": "Bytes Uploaded / Downloaded",
@@ -162,7 +145,7 @@
     },
     {
       "datasource": {
-        "type": "cloudwatch",
+        "type": "prometheus",
         "uid": "${datasource}"
       },
       "fieldConfig": {
@@ -210,14 +193,110 @@
               }
             ]
           },
-          "unit": "short"
+          "unit": "reqps"
         },
         "overrides": []
       },
       "gridPos": {
         "h": 8,
-        "w": 24,
+        "w": 12,
         "x": 0,
+        "y": 10
+      },
+      "id": 5,
+      "options": {
+        "legend": {
+          "calcs": ["mean", "max"],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(rate(aws_s3_get_requests{cluster=~\"$cluster\"}[5m])) by (bucket_name)",
+          "legendFormat": "{{bucket_name}} - GET",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(rate(aws_s3_put_requests{cluster=~\"$cluster\"}[5m])) by (bucket_name)",
+          "legendFormat": "{{bucket_name}} - PUT",
+          "refId": "B"
+        }
+      ],
+      "title": "GET / PUT Requests",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
         "y": 10
       },
       "id": 6,
@@ -236,48 +315,15 @@
       "targets": [
         {
           "datasource": {
-            "type": "cloudwatch",
+            "type": "prometheus",
             "uid": "${datasource}"
           },
-          "dimensions": {
-            "BucketName": ["__BUCKET_NAME__"],
-            "FilterId": ["__METRICS_FILTER_ID__"]
-          },
-          "expression": "",
-          "id": "",
-          "matchExact": true,
-          "metricEditorMode": 0,
-          "metricName": "GetRequests",
-          "metricQueryType": 0,
-          "namespace": "AWS/S3",
-          "period": "300",
-          "refId": "A",
-          "region": "default",
-          "statistic": "Sum"
-        },
-        {
-          "datasource": {
-            "type": "cloudwatch",
-            "uid": "${datasource}"
-          },
-          "dimensions": {
-            "BucketName": ["__BUCKET_NAME__"],
-            "FilterId": ["__METRICS_FILTER_ID__"]
-          },
-          "expression": "",
-          "id": "",
-          "matchExact": true,
-          "metricEditorMode": 0,
-          "metricName": "PutRequests",
-          "metricQueryType": 0,
-          "namespace": "AWS/S3",
-          "period": "300",
-          "refId": "B",
-          "region": "default",
-          "statistic": "Sum"
+          "expr": "sum(rate(aws_s3_all_requests{cluster=~\"$cluster\"}[5m])) by (bucket_name)",
+          "legendFormat": "{{bucket_name}} - All Requests",
+          "refId": "A"
         }
       ],
-      "title": "GET / PUT Requests",
+      "title": "All Requests",
       "type": "timeseries"
     },
     {
@@ -294,7 +340,7 @@
     },
     {
       "datasource": {
-        "type": "cloudwatch",
+        "type": "prometheus",
         "uid": "${datasource}"
       },
       "fieldConfig": {
@@ -368,24 +414,12 @@
       "targets": [
         {
           "datasource": {
-            "type": "cloudwatch",
+            "type": "prometheus",
             "uid": "${datasource}"
           },
-          "dimensions": {
-            "BucketName": ["__BUCKET_NAME__"],
-            "FilterId": ["__METRICS_FILTER_ID__"]
-          },
-          "expression": "",
-          "id": "",
-          "matchExact": true,
-          "metricEditorMode": 0,
-          "metricName": "FirstByteLatency",
-          "metricQueryType": 0,
-          "namespace": "AWS/S3",
-          "period": "300",
-          "refId": "A",
-          "region": "default",
-          "statistic": "p99"
+          "expr": "max(aws_s3_first_byte_latency{cluster=~\"$cluster\"}) by (bucket_name)",
+          "legendFormat": "{{bucket_name}}",
+          "refId": "A"
         }
       ],
       "title": "First Byte Latency (p99)",
@@ -393,7 +427,7 @@
     },
     {
       "datasource": {
-        "type": "cloudwatch",
+        "type": "prometheus",
         "uid": "${datasource}"
       },
       "fieldConfig": {
@@ -467,24 +501,12 @@
       "targets": [
         {
           "datasource": {
-            "type": "cloudwatch",
+            "type": "prometheus",
             "uid": "${datasource}"
           },
-          "dimensions": {
-            "BucketName": ["__BUCKET_NAME__"],
-            "FilterId": ["__METRICS_FILTER_ID__"]
-          },
-          "expression": "",
-          "id": "",
-          "matchExact": true,
-          "metricEditorMode": 0,
-          "metricName": "TotalRequestLatency",
-          "metricQueryType": 0,
-          "namespace": "AWS/S3",
-          "period": "300",
-          "refId": "A",
-          "region": "default",
-          "statistic": "p99"
+          "expr": "max(aws_s3_total_request_latency{cluster=~\"$cluster\"}) by (bucket_name)",
+          "legendFormat": "{{bucket_name}}",
+          "refId": "A"
         }
       ],
       "title": "Total Request Latency (p99)",
@@ -504,7 +526,7 @@
     },
     {
       "datasource": {
-        "type": "cloudwatch",
+        "type": "prometheus",
         "uid": "${datasource}"
       },
       "fieldConfig": {
@@ -552,13 +574,20 @@
               }
             ]
           },
-          "unit": "short"
+          "unit": "iops"
         },
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "VolumeReadOps" },
+            "matcher": { "id": "byFrameRefID", "options": "A" },
             "properties": [
-              { "id": "custom.transform", "value": "negative-Y" }
+              { "id": "custom.transform", "value": "negative-Y" },
+              { "id": "displayName", "value": "Read IOPS" }
+            ]
+          },
+          {
+            "matcher": { "id": "byFrameRefID", "options": "B" },
+            "properties": [
+              { "id": "displayName", "value": "Write IOPS" }
             ]
           }
         ]
@@ -585,43 +614,21 @@
       "targets": [
         {
           "datasource": {
-            "type": "cloudwatch",
+            "type": "prometheus",
             "uid": "${datasource}"
           },
-          "dimensions": {
-            "VolumeId": ["$volume"]
-          },
-          "expression": "",
-          "id": "",
-          "matchExact": false,
-          "metricEditorMode": 0,
-          "metricName": "VolumeReadOps",
-          "metricQueryType": 0,
-          "namespace": "AWS/EBS",
-          "period": "300",
-          "refId": "A",
-          "region": "default",
-          "statistic": "Sum"
+          "expr": "sum(rate(aws_ebs_volume_read_ops{cluster=~\"$cluster\", volume_id=~\"$volume\"}[5m])) by (volume_id)",
+          "legendFormat": "{{volume_id}} - Read",
+          "refId": "A"
         },
         {
           "datasource": {
-            "type": "cloudwatch",
+            "type": "prometheus",
             "uid": "${datasource}"
           },
-          "dimensions": {
-            "VolumeId": ["$volume"]
-          },
-          "expression": "",
-          "id": "",
-          "matchExact": false,
-          "metricEditorMode": 0,
-          "metricName": "VolumeWriteOps",
-          "metricQueryType": 0,
-          "namespace": "AWS/EBS",
-          "period": "300",
-          "refId": "B",
-          "region": "default",
-          "statistic": "Sum"
+          "expr": "sum(rate(aws_ebs_volume_write_ops{cluster=~\"$cluster\", volume_id=~\"$volume\"}[5m])) by (volume_id)",
+          "legendFormat": "{{volume_id}} - Write",
+          "refId": "B"
         }
       ],
       "title": "EBS IOPS (Read/Write)",
@@ -629,7 +636,7 @@
     },
     {
       "datasource": {
-        "type": "cloudwatch",
+        "type": "prometheus",
         "uid": "${datasource}"
       },
       "fieldConfig": {
@@ -677,13 +684,20 @@
               }
             ]
           },
-          "unit": "bytes"
+          "unit": "Bps"
         },
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "VolumeReadBytes" },
+            "matcher": { "id": "byFrameRefID", "options": "A" },
             "properties": [
-              { "id": "custom.transform", "value": "negative-Y" }
+              { "id": "custom.transform", "value": "negative-Y" },
+              { "id": "displayName", "value": "Read Throughput" }
+            ]
+          },
+          {
+            "matcher": { "id": "byFrameRefID", "options": "B" },
+            "properties": [
+              { "id": "displayName", "value": "Write Throughput" }
             ]
           }
         ]
@@ -710,43 +724,21 @@
       "targets": [
         {
           "datasource": {
-            "type": "cloudwatch",
+            "type": "prometheus",
             "uid": "${datasource}"
           },
-          "dimensions": {
-            "VolumeId": ["$volume"]
-          },
-          "expression": "",
-          "id": "",
-          "matchExact": false,
-          "metricEditorMode": 0,
-          "metricName": "VolumeReadBytes",
-          "metricQueryType": 0,
-          "namespace": "AWS/EBS",
-          "period": "300",
-          "refId": "A",
-          "region": "default",
-          "statistic": "Sum"
+          "expr": "sum(rate(aws_ebs_volume_read_bytes{cluster=~\"$cluster\", volume_id=~\"$volume\"}[5m])) by (volume_id)",
+          "legendFormat": "{{volume_id}} - Read",
+          "refId": "A"
         },
         {
           "datasource": {
-            "type": "cloudwatch",
+            "type": "prometheus",
             "uid": "${datasource}"
           },
-          "dimensions": {
-            "VolumeId": ["$volume"]
-          },
-          "expression": "",
-          "id": "",
-          "matchExact": false,
-          "metricEditorMode": 0,
-          "metricName": "VolumeWriteBytes",
-          "metricQueryType": 0,
-          "namespace": "AWS/EBS",
-          "period": "300",
-          "refId": "B",
-          "region": "default",
-          "statistic": "Sum"
+          "expr": "sum(rate(aws_ebs_volume_write_bytes{cluster=~\"$cluster\", volume_id=~\"$volume\"}[5m])) by (volume_id)",
+          "legendFormat": "{{volume_id}} - Write",
+          "refId": "B"
         }
       ],
       "title": "EBS Throughput (Read/Write)",
@@ -754,7 +746,7 @@
     },
     {
       "datasource": {
-        "type": "cloudwatch",
+        "type": "prometheus",
         "uid": "${datasource}"
       },
       "fieldConfig": {
@@ -828,23 +820,12 @@
       "targets": [
         {
           "datasource": {
-            "type": "cloudwatch",
+            "type": "prometheus",
             "uid": "${datasource}"
           },
-          "dimensions": {
-            "VolumeId": ["$volume"]
-          },
-          "expression": "",
-          "id": "",
-          "matchExact": false,
-          "metricEditorMode": 0,
-          "metricName": "VolumeQueueLength",
-          "metricQueryType": 0,
-          "namespace": "AWS/EBS",
-          "period": "300",
-          "refId": "A",
-          "region": "default",
-          "statistic": "Average"
+          "expr": "avg(aws_ebs_volume_queue_length{cluster=~\"$cluster\", volume_id=~\"$volume\"}) by (volume_id)",
+          "legendFormat": "{{volume_id}}",
+          "refId": "A"
         }
       ],
       "title": "EBS Queue Length",
@@ -852,7 +833,7 @@
     },
     {
       "datasource": {
-        "type": "cloudwatch",
+        "type": "prometheus",
         "uid": "${datasource}"
       },
       "fieldConfig": {
@@ -926,23 +907,12 @@
       "targets": [
         {
           "datasource": {
-            "type": "cloudwatch",
+            "type": "prometheus",
             "uid": "${datasource}"
           },
-          "dimensions": {
-            "VolumeId": ["$volume"]
-          },
-          "expression": "",
-          "id": "",
-          "matchExact": false,
-          "metricEditorMode": 0,
-          "metricName": "BurstBalance",
-          "metricQueryType": 0,
-          "namespace": "AWS/EBS",
-          "period": "300",
-          "refId": "A",
-          "region": "default",
-          "statistic": "Average"
+          "expr": "avg(aws_ebs_burst_balance{cluster=~\"$cluster\", volume_id=~\"$volume\"}) by (volume_id)",
+          "legendFormat": "{{volume_id}}",
+          "refId": "A"
         }
       ],
       "title": "EBS Burst Balance",
@@ -962,7 +932,7 @@
     },
     {
       "datasource": {
-        "type": "cloudwatch",
+        "type": "prometheus",
         "uid": "${datasource}"
       },
       "fieldConfig": {
@@ -1040,43 +1010,21 @@
       "targets": [
         {
           "datasource": {
-            "type": "cloudwatch",
+            "type": "prometheus",
             "uid": "${datasource}"
           },
-          "dimensions": {
-            "InstanceId": ["$instance"]
-          },
-          "expression": "",
-          "id": "",
-          "matchExact": false,
-          "metricEditorMode": 0,
-          "metricName": "StatusCheckFailed_Instance",
-          "metricQueryType": 0,
-          "namespace": "AWS/EC2",
-          "period": "300",
-          "refId": "A",
-          "region": "default",
-          "statistic": "Maximum"
+          "expr": "max(aws_ec2_status_check_failed_instance{cluster=~\"$cluster\", instance_id=~\"$instance\"}) by (instance_id)",
+          "legendFormat": "{{instance_id}} - Instance Check",
+          "refId": "A"
         },
         {
           "datasource": {
-            "type": "cloudwatch",
+            "type": "prometheus",
             "uid": "${datasource}"
           },
-          "dimensions": {
-            "InstanceId": ["$instance"]
-          },
-          "expression": "",
-          "id": "",
-          "matchExact": false,
-          "metricEditorMode": 0,
-          "metricName": "StatusCheckFailed_System",
-          "metricQueryType": 0,
-          "namespace": "AWS/EC2",
-          "period": "300",
-          "refId": "B",
-          "region": "default",
-          "statistic": "Maximum"
+          "expr": "max(aws_ec2_status_check_failed_system{cluster=~\"$cluster\", instance_id=~\"$instance\"}) by (instance_id)",
+          "legendFormat": "{{instance_id}} - System Check",
+          "refId": "B"
         }
       ],
       "title": "Status Check Failures",
@@ -1096,7 +1044,7 @@
     },
     {
       "datasource": {
-        "type": "cloudwatch",
+        "type": "prometheus",
         "uid": "${datasource}"
       },
       "fieldConfig": {
@@ -1170,24 +1118,12 @@
       "targets": [
         {
           "datasource": {
-            "type": "cloudwatch",
+            "type": "prometheus",
             "uid": "${datasource}"
           },
-          "dimensions": {
-            "BucketName": ["__BUCKET_NAME__"],
-            "StorageType": ["StandardStorage"]
-          },
-          "expression": "",
-          "id": "",
-          "matchExact": true,
-          "metricEditorMode": 0,
-          "metricName": "BucketSizeBytes",
-          "metricQueryType": 0,
-          "namespace": "AWS/S3",
-          "period": "86400",
-          "refId": "A",
-          "region": "default",
-          "statistic": "Average"
+          "expr": "avg(aws_s3_bucket_size_bytes{cluster=~\"$cluster\", storage_type=\"StandardStorage\"}) by (bucket_name)",
+          "legendFormat": "{{bucket_name}}",
+          "refId": "A"
         }
       ],
       "title": "Bucket Size",
@@ -1195,7 +1131,7 @@
     },
     {
       "datasource": {
-        "type": "cloudwatch",
+        "type": "prometheus",
         "uid": "${datasource}"
       },
       "fieldConfig": {
@@ -1269,24 +1205,12 @@
       "targets": [
         {
           "datasource": {
-            "type": "cloudwatch",
+            "type": "prometheus",
             "uid": "${datasource}"
           },
-          "dimensions": {
-            "BucketName": ["__BUCKET_NAME__"],
-            "StorageType": ["AllStorageTypes"]
-          },
-          "expression": "",
-          "id": "",
-          "matchExact": true,
-          "metricEditorMode": 0,
-          "metricName": "NumberOfObjects",
-          "metricQueryType": 0,
-          "namespace": "AWS/S3",
-          "period": "86400",
-          "refId": "A",
-          "region": "default",
-          "statistic": "Average"
+          "expr": "avg(aws_s3_number_of_objects{cluster=~\"$cluster\", storage_type=\"AllStorageTypes\"}) by (bucket_name)",
+          "legendFormat": "{{bucket_name}}",
+          "refId": "A"
         }
       ],
       "title": "Number of Objects",
@@ -1300,17 +1224,14 @@
   "templating": {
     "list": [
       {
-        "current": {
-          "text": "CloudWatch",
-          "value": "CloudWatch"
-        },
+        "current": {},
         "hide": 0,
         "includeAll": false,
         "label": "Data Source",
         "multi": false,
         "name": "datasource",
         "options": [],
-        "query": "cloudwatch",
+        "query": "prometheus",
         "queryValue": "",
         "refresh": 1,
         "regex": "",
@@ -1320,26 +1241,18 @@
       {
         "current": {},
         "datasource": {
-          "type": "cloudwatch",
+          "type": "prometheus",
           "uid": "${datasource}"
         },
-        "definition": "",
+        "definition": "label_values(up, cluster)",
         "hide": 0,
         "includeAll": true,
-        "label": "EC2 Instance",
+        "label": "Cluster",
         "multi": true,
-        "name": "instance",
+        "name": "cluster",
         "options": [],
-        "query": {
-          "dimensionKey": "InstanceId",
-          "metricName": "CPUUtilization",
-          "namespace": "AWS/EC2",
-          "queryType": "dimensionValues",
-          "refId": "CloudWatchVariableQueryEditor-VariableQuery",
-          "region": "default",
-          "statistic": "Average"
-        },
-        "refresh": 1,
+        "query": "label_values(up, cluster)",
+        "refresh": 2,
         "regex": "",
         "skipUrlSync": false,
         "sort": 1,
@@ -1348,26 +1261,38 @@
       {
         "current": {},
         "datasource": {
-          "type": "cloudwatch",
+          "type": "prometheus",
           "uid": "${datasource}"
         },
-        "definition": "",
+        "definition": "label_values(aws_ec2_status_check_failed_instance{cluster=~\"$cluster\"}, instance_id)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "EC2 Instance",
+        "multi": true,
+        "name": "instance",
+        "options": [],
+        "query": "label_values(aws_ec2_status_check_failed_instance{cluster=~\"$cluster\"}, instance_id)",
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "definition": "label_values(aws_ebs_volume_read_ops{cluster=~\"$cluster\"}, volume_id)",
         "hide": 0,
         "includeAll": true,
         "label": "EBS Volume",
         "multi": true,
         "name": "volume",
         "options": [],
-        "query": {
-          "dimensionKey": "VolumeId",
-          "metricName": "VolumeReadOps",
-          "namespace": "AWS/EBS",
-          "queryType": "dimensionValues",
-          "refId": "CloudWatchVariableQueryEditor-VariableQuery",
-          "region": "default",
-          "statistic": "Average"
-        },
-        "refresh": 1,
+        "query": "label_values(aws_ebs_volume_read_ops{cluster=~\"$cluster\"}, volume_id)",
+        "refresh": 2,
         "regex": "",
         "skipUrlSync": false,
         "sort": 1,
@@ -1381,7 +1306,7 @@
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "__CLUSTER_NAME__ - AWS CloudWatch Overview",
+  "title": "AWS CloudWatch Overview",
   "uid": "aws-cloudwatch-overview",
   "version": 1,
   "weekStart": ""

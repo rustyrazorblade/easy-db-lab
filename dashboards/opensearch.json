@@ -738,6 +738,18 @@
         "type": "datasource"
       },
       {
+        "allValue": ".*",
+        "current": {"selected": true, "text": ["All"], "value": ["$__all"]},
+        "datasource": {"type": "prometheus", "uid": "${datasource}"},
+        "includeAll": true,
+        "label": "Cluster",
+        "multi": true,
+        "name": "cluster",
+        "query": "label_values(up, cluster)",
+        "refresh": 2,
+        "type": "query"
+      },
+      {
         "current": {},
         "datasource": {
           "type": "cloudwatch",
@@ -773,7 +785,7 @@
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "__CLUSTER_NAME__ - OpenSearch Overview",
+  "title": "OpenSearch Overview",
   "uid": "opensearch-overview",
   "version": 1,
   "weekStart": ""

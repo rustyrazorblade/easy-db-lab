@@ -15,8 +15,8 @@ import org.mockito.kotlin.whenever
 /**
  * Tests for GrafanaManifestBuilder.
  *
- * Uses real TemplateService (never mocked per project convention) to verify
- * dashboard JSON loading and template variable substitution.
+ * Uses real TemplateService (never mocked per project convention) for provisioning
+ * config. Dashboard JSON is loaded directly from classpath (no substitution).
  */
 class GrafanaManifestBuilderTest : BaseKoinTest() {
     private lateinit var builder: GrafanaManifestBuilder
@@ -65,13 +65,16 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
     }
 
     @Test
-    fun `buildDashboardConfigMap substitutes template variables`() {
-        val configMap = builder.buildDashboardConfigMap(GrafanaDashboard.SYSTEM)
-        val json = configMap.data[GrafanaDashboard.SYSTEM.jsonFileName]!!
+    fun `buildDashboardConfigMap loads raw JSON without template substitution`() {
+        GrafanaDashboard.entries.forEach { dashboard ->
+            val configMap = builder.buildDashboardConfigMap(dashboard)
+            val json = configMap.data[dashboard.jsonFileName]!!
 
-        // Template variables should be substituted - no remaining __KEY__ placeholders
-        assertThat(json).doesNotContain("__CLUSTER_NAME__")
-        assertThat(json).doesNotContain("__BUCKET_NAME__")
+            // Dashboards are pure standard Grafana JSON - no __KEY__ placeholders allowed
+            assertThat(json)
+                .describedAs("Dashboard ${dashboard.name} should have no __KEY__ placeholders")
+                .doesNotContainPattern("__[A-Z_]+__")
+        }
     }
 
     @Test

@@ -122,6 +122,44 @@
   "templating": {
     "list": [
       {
+        "current": {
+          "selected": true,
+          "text": "VictoriaMetrics",
+          "value": "VictoriaMetrics"
+        },
+        "hide": 0,
+        "includeAll": false,
+        "label": "DataSource",
+        "multi": false,
+        "name": "datasource",
+        "options": [],
+        "query": "prometheus",
+        "queryValue": "",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": ["All"],
+          "value": ["$__all"]
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "includeAll": true,
+        "label": "Cluster",
+        "multi": true,
+        "name": "cluster",
+        "query": "label_values(up, cluster)",
+        "refresh": 2,
+        "type": "query"
+      },
+      {
         "datasource": {
           "type": "victoriametrics-logs-datasource",
           "uid": "victorialogs"
@@ -139,7 +177,7 @@
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "__CLUSTER_NAME__ - ClickHouse Logs",
+  "title": "ClickHouse Logs",
   "uid": "clickhouse-logs",
   "version": 1,
   "weekStart": ""

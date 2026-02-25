@@ -74,6 +74,64 @@ receivers:
               replacement: '${env:HOSTNAME}:9000'
             - target_label: cluster
               replacement: '${env:CLUSTER_NAME}'
+  awscloudwatch:
+    region: ${env:AWS_REGION}
+    poll_interval: 300s
+    logs:
+      groups:
+        named: []
+    metrics:
+      named:
+        - namespace: AWS/S3
+          period: 5m
+          aws_aggregation: Sum
+          metrics:
+            - name: BytesUploaded
+              statistics: [Sum]
+            - name: BytesDownloaded
+              statistics: [Sum]
+            - name: AllRequests
+              statistics: [Sum]
+            - name: GetRequests
+              statistics: [Sum]
+            - name: PutRequests
+              statistics: [Sum]
+            - name: FirstByteLatency
+              statistics: [p99]
+            - name: TotalRequestLatency
+              statistics: [p99]
+            - name: BucketSizeBytes
+              statistics: [Average]
+            - name: NumberOfObjects
+              statistics: [Average]
+        - namespace: AWS/EBS
+          period: 5m
+          aws_aggregation: Sum
+          metrics:
+            - name: VolumeReadOps
+              statistics: [Sum]
+            - name: VolumeWriteOps
+              statistics: [Sum]
+            - name: VolumeReadBytes
+              statistics: [Sum]
+            - name: VolumeWriteBytes
+              statistics: [Sum]
+            - name: VolumeQueueLength
+              statistics: [Average]
+            - name: BurstBalance
+              statistics: [Average]
+        - namespace: AWS/EC2
+          period: 5m
+          aws_aggregation: Average
+          metrics:
+            - name: StatusCheckFailed
+              statistics: [Maximum]
+            - name: CPUUtilization
+              statistics: [Average]
+            - name: NetworkIn
+              statistics: [Sum]
+            - name: NetworkOut
+              statistics: [Sum]
   filelog/clickhouse-server:
     include:
       - /mnt/db1/clickhouse/logs/*.log
@@ -141,7 +199,7 @@ service:
   extensions: [health_check]
   pipelines:
     metrics:
-      receivers: [otlp, hostmetrics, prometheus]
+      receivers: [otlp, hostmetrics, prometheus, awscloudwatch]
       processors: [memory_limiter, resourcedetection, batch]
       exporters: [prometheusremotewrite]
     logs:

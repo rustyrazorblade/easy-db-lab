@@ -1,0 +1,43 @@
+schema: spec-driven
+
+context: |
+  # easy-db-lab
+  CLI tool for provisioning and managing database lab environments in AWS.
+
+  ## Tech Stack
+  - Language: Kotlin (JVM 21, Temurin)
+  - CLI Framework: PicoCLI
+  - Dependency Injection: Koin
+  - Serialization: kotlinx.serialization (Jackson is deprecated)
+  - Retry Logic: resilience4j via RetryUtil factory methods
+  - Testing: JUnit 5 + AssertJ + BaseKoinTest + TestContainers
+  - Kubernetes: Fabric8 manifest builders (no YAML string construction)
+  - Redis Client: Lettuce (async, non-blocking)
+  - MCP Server: Ktor + SSE
+  - Logging: io.github.oshai.kotlinlogging.KotlinLogging (internal only)
+
+  ## Architecture
+  Commands (PicoCLI) → Services → External Systems (K8s, AWS, Filesystem)
+  All user-facing output via eventBus.emit() with domain-specific typed events.
+
+  ## Domain
+  AWS-based database lab provisioning targeting Cassandra, ClickHouse, and OpenSearch.
+  Full observability stack (metrics, logs, traces, profiling) on every cluster.
+
+rules:
+  spec:
+    - Requirements use GIVEN/WHEN/THEN scenarios
+    - Keep specs behavioral — describe WHAT, not HOW
+    - Do not include implementation details (file paths, class names)
+    - Use the same terminology the codebase uses
+  tasks:
+    - Tests must pass in CI, local, and devcontainer environments
+    - Use AssertJ assertions, not JUnit assertions
+    - Tests extend BaseKoinTest for Koin DI
+    - No mock-echo tests — every test must verify real logic
+    - Never mock TemplateService
+  proposal:
+    - Iterate with the user — ask questions, don't assume
+    - Do not add features not explicitly requested
+    - Include testing and documentation updates in scope
+    - Never disable functionality as a solution

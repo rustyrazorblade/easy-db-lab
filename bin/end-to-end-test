@@ -668,6 +668,9 @@ step_clickhouse_start() {
         echo "=== Skipping ClickHouse deployment (use --clickhouse to enable) ==="
         return 0
     fi
+    echo "=== Initializing ClickHouse configuration ==="
+    easy-db-lab clickhouse init
+
     echo "=== Deploying ClickHouse cluster ==="
     easy-db-lab clickhouse start
 

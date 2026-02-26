@@ -147,7 +147,8 @@ is-tailscale-connected() {
   ts_status=$(tailscale status --json 2>/dev/null)
 
   # Check if BackendState is "Running"
-  [ -n "$ts_status" ] && echo "$ts_status" | grep -q '"BackendState":.*"Running"'
+  # Use <<< to avoid broken pipe from grep -q closing the pipe early on large JSON
+  [ -n "$ts_status" ] && grep -q '"BackendState":.*"Running"' <<< "$ts_status"
 }
 
 # Proxy wrapper for commands that need to access internal network (10.x.x.x)

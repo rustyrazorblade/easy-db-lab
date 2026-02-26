@@ -670,7 +670,13 @@ step_spark_status() {
     easy-db-lab spark jobs
 
     echo "=== Checking Spark job status (automatically downloads logs) ==="
-    easy-db-lab spark status
+    local status_output
+    status_output=$(easy-db-lab spark status 2>&1)
+    echo "$status_output"
+    if echo "$status_output" | grep -q "State: FAILED"; then
+        echo "ERROR: Spark job is in FAILED state"
+        return 1
+    fi
 
     echo "=== Downloading all EMR logs (standalone command) ==="
     easy-db-lab spark logs

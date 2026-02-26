@@ -1,6 +1,8 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.providers.aws.EMRClusterConfig
 import com.rustyrazorblade.easydblab.providers.aws.EMRClusterResult
 import com.rustyrazorblade.easydblab.services.aws.EMRService
@@ -19,14 +21,32 @@ import org.mockito.kotlin.whenever
  */
 internal class EMRProvisioningServiceTest {
     private lateinit var mockEmrService: EMRService
+    private lateinit var mockObjectStore: ObjectStore
     private lateinit var service: DefaultEMRProvisioningService
 
     @BeforeEach
     fun setUp() {
         mockEmrService = mock()
+        mockObjectStore = mock()
+        val mockClusterStateManager = mock<ClusterStateManager>()
+        whenever(mockClusterStateManager.load()).thenReturn(
+            ClusterState(name = "test", versions = mutableMapOf()),
+        )
+        val testUser =
+            User(
+                region = "us-west-2",
+                email = "test@example.com",
+                keyName = "",
+                awsProfile = "",
+                awsAccessKey = "",
+                awsSecret = "",
+            )
+        val templateService = TemplateService(mockClusterStateManager, testUser)
         service =
             DefaultEMRProvisioningService(
                 mockEmrService,
+                mockObjectStore,
+                templateService,
                 com.rustyrazorblade.easydblab.events
                     .EventBus(),
             )
@@ -129,6 +149,9 @@ internal class EMRProvisioningServiceTest {
         assertThat(config.additionalSecurityGroups).containsExactly("sg-456")
         assertThat(config.tags).containsEntry("env", "test")
         assertThat(config.logUri).isEqualTo("s3://easy-db-lab-test-bucket/clusters/test-cluster-test-id/spark/emr-logs")
+        assertThat(config.bootstrapActions).hasSize(1)
+        assertThat(config.bootstrapActions.first().name).isEqualTo("Install OTel Java Agent")
+        assertThat(config.bootstrapActions.first().scriptS3Path).contains("bootstrap-otel.sh")
     }
 
     @Test

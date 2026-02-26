@@ -34,6 +34,20 @@ data class EMRClusterConfig(
     val applications: List<String> = listOf("Spark"),
     val additionalSecurityGroups: List<String> = emptyList(),
     val tags: Map<String, String>,
+    val bootstrapActions: List<BootstrapAction> = emptyList(),
+)
+
+/**
+ * A bootstrap action to run on EMR cluster nodes during startup.
+ *
+ * @property name Display name for the bootstrap action
+ * @property scriptS3Path S3 URI of the shell script to execute (e.g., "s3://bucket/path/script.sh")
+ * @property args Optional arguments to pass to the script
+ */
+data class BootstrapAction(
+    val name: String,
+    val scriptS3Path: String,
+    val args: List<String> = emptyList(),
 )
 
 /**

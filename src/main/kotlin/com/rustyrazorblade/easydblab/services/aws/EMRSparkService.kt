@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services.aws
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.EMRClusterInfo
+import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.s3Path
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -72,11 +73,15 @@ class EMRSparkService(
         runCatching {
             val stepName = jobName ?: mainClass.split(".").last()
 
+            // Enrich spark conf and env vars with OTel Java agent configuration
+            val otelSparkConf = buildOtelSparkConf(sparkConf)
+            val otelEnvVars = buildOtelEnvVars(envVars, stepName)
+
             val hadoopJarStep =
                 HadoopJarStepConfig
                     .builder()
                     .jar(Constants.EMR.COMMAND_RUNNER_JAR)
-                    .args(buildSparkSubmitArgs(jarPath, mainClass, jobArgs, sparkConf, envVars))
+                    .args(buildSparkSubmitArgs(jarPath, mainClass, jobArgs, otelSparkConf, otelEnvVars))
                     .build()
 
             val stepConfig =
@@ -203,8 +208,12 @@ class EMRSparkService(
         try {
             Thread.sleep(Constants.EMR.LOG_INGESTION_WAIT_MS)
 
+            // Query using OTel Java agent log attributes (service.name) instead of defunct step_id tag
+            // The Java agent tags logs with service.name=spark-<job-name>
+            val query = """service.name:~"spark-.*""""
+
             victoriaLogsService
-                .query(query = "step_id:$stepId", timeRange = "1h", limit = Constants.EMR.MAX_LOG_LINES)
+                .query(query = query, timeRange = "1h", limit = Constants.EMR.MAX_LOG_LINES)
                 .onSuccess { logs ->
                     if (logs.isEmpty()) {
                         eventBus.emit(Event.Emr.SparkNoLogsInstruction(stepId))
@@ -564,6 +573,50 @@ class EMRSparkService(
                 gzipInput.copyTo(output)
             }
         }
+    }
+
+    /**
+     * Enriches spark conf with OTel Java agent JVM flags.
+     * The agent auto-instruments Log4j2 for log collection and provides JVM metrics/traces.
+     */
+    private fun buildOtelSparkConf(sparkConf: Map<String, String>): Map<String, String> {
+        val agentFlag = "-javaagent:${Constants.OtelJavaAgent.INSTALL_PATH}"
+        val enriched = sparkConf.toMutableMap()
+
+        val existingDriverOpts = enriched["spark.driver.extraJavaOptions"] ?: ""
+        enriched["spark.driver.extraJavaOptions"] = "$existingDriverOpts $agentFlag".trim()
+
+        val existingExecutorOpts = enriched["spark.executor.extraJavaOptions"] ?: ""
+        enriched["spark.executor.extraJavaOptions"] = "$existingExecutorOpts $agentFlag".trim()
+
+        return enriched
+    }
+
+    /**
+     * Enriches env vars with OTel exporter configuration targeting the control node's OTel Collector.
+     */
+    private fun buildOtelEnvVars(
+        envVars: Map<String, String>,
+        jobName: String,
+    ): Map<String, String> {
+        val controlIp =
+            clusterStateManager
+                .load()
+                .hosts[ServerType.Control]
+                ?.firstOrNull()
+                ?.privateIp
+                ?: error("No control node found in cluster state for OTel configuration")
+
+        val otelVars =
+            mapOf(
+                "OTEL_LOGS_EXPORTER" to "otlp",
+                "OTEL_METRICS_EXPORTER" to "otlp",
+                "OTEL_TRACES_EXPORTER" to "otlp",
+                "OTEL_EXPORTER_OTLP_ENDPOINT" to "http://$controlIp:${Constants.K8s.OTEL_GRPC_PORT}",
+                "OTEL_SERVICE_NAME" to "spark-$jobName",
+            )
+
+        return otelVars + envVars
     }
 
     /**

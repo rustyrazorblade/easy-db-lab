@@ -17,7 +17,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -70,50 +70,29 @@
       },
       "targets": [
         {
-          "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
-          "dimensions": { "DomainName": ["$domain"] },
-          "matchExact": false,
-          "metricEditorMode": 0,
-          "metricName": "ClusterStatus.green",
-          "metricQueryType": 0,
-          "namespace": "AWS/ES",
-          "period": "300",
-          "refId": "A",
-          "region": "default",
-          "statistic": "Maximum"
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "aws_es_cluster_status_green_maximum{dimension_DomainName=\"$domain\"}",
+          "legendFormat": "ClusterStatus.green",
+          "refId": "A"
         },
         {
-          "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
-          "dimensions": { "DomainName": ["$domain"] },
-          "matchExact": false,
-          "metricEditorMode": 0,
-          "metricName": "ClusterStatus.yellow",
-          "metricQueryType": 0,
-          "namespace": "AWS/ES",
-          "period": "300",
-          "refId": "B",
-          "region": "default",
-          "statistic": "Maximum"
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "aws_es_cluster_status_yellow_maximum{dimension_DomainName=\"$domain\"}",
+          "legendFormat": "ClusterStatus.yellow",
+          "refId": "B"
         },
         {
-          "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
-          "dimensions": { "DomainName": ["$domain"] },
-          "matchExact": false,
-          "metricEditorMode": 0,
-          "metricName": "ClusterStatus.red",
-          "metricQueryType": 0,
-          "namespace": "AWS/ES",
-          "period": "300",
-          "refId": "C",
-          "region": "default",
-          "statistic": "Maximum"
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "aws_es_cluster_status_red_maximum{dimension_DomainName=\"$domain\"}",
+          "legendFormat": "ClusterStatus.red",
+          "refId": "C"
         }
       ],
       "title": "Cluster Status",
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -153,17 +132,10 @@
       },
       "targets": [
         {
-          "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
-          "dimensions": { "DomainName": ["$domain"] },
-          "matchExact": false,
-          "metricEditorMode": 0,
-          "metricName": "FreeStorageSpace",
-          "metricQueryType": 0,
-          "namespace": "AWS/ES",
-          "period": "300",
-          "refId": "A",
-          "region": "default",
-          "statistic": "Minimum"
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "aws_es_free_storage_space_minimum{dimension_DomainName=\"$domain\"}",
+          "legendFormat": "FreeStorageSpace",
+          "refId": "A"
         }
       ],
       "title": "Free Storage Space",
@@ -177,7 +149,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -217,24 +189,17 @@
       },
       "targets": [
         {
-          "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
-          "dimensions": { "DomainName": ["$domain"] },
-          "matchExact": false,
-          "metricEditorMode": 0,
-          "metricName": "CPUUtilization",
-          "metricQueryType": 0,
-          "namespace": "AWS/ES",
-          "period": "300",
-          "refId": "A",
-          "region": "default",
-          "statistic": "Average"
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "aws_es_cpuutilization_average{dimension_DomainName=\"$domain\"}",
+          "legendFormat": "CPUUtilization",
+          "refId": "A"
         }
       ],
       "title": "CPU Utilization",
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -274,17 +239,10 @@
       },
       "targets": [
         {
-          "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
-          "dimensions": { "DomainName": ["$domain"] },
-          "matchExact": false,
-          "metricEditorMode": 0,
-          "metricName": "JVMMemoryPressure",
-          "metricQueryType": 0,
-          "namespace": "AWS/ES",
-          "period": "300",
-          "refId": "A",
-          "region": "default",
-          "statistic": "Maximum"
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "aws_es_jvmmemory_pressure_maximum{dimension_DomainName=\"$domain\"}",
+          "legendFormat": "JVMMemoryPressure",
+          "refId": "A"
         }
       ],
       "title": "JVM Memory Pressure",
@@ -298,7 +256,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -338,24 +296,17 @@
       },
       "targets": [
         {
-          "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
-          "dimensions": { "DomainName": ["$domain"] },
-          "matchExact": false,
-          "metricEditorMode": 0,
-          "metricName": "SearchLatency",
-          "metricQueryType": 0,
-          "namespace": "AWS/ES",
-          "period": "300",
-          "refId": "A",
-          "region": "default",
-          "statistic": "p99"
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "aws_es_search_latency_p99{dimension_DomainName=\"$domain\"}",
+          "legendFormat": "SearchLatency p99",
+          "refId": "A"
         }
       ],
       "title": "Search Latency (p99)",
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -395,17 +346,10 @@
       },
       "targets": [
         {
-          "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
-          "dimensions": { "DomainName": ["$domain"] },
-          "matchExact": false,
-          "metricEditorMode": 0,
-          "metricName": "SearchRate",
-          "metricQueryType": 0,
-          "namespace": "AWS/ES",
-          "period": "300",
-          "refId": "A",
-          "region": "default",
-          "statistic": "Sum"
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "aws_es_search_rate_sum{dimension_DomainName=\"$domain\"}",
+          "legendFormat": "SearchRate",
+          "refId": "A"
         }
       ],
       "title": "Search Rate",
@@ -419,7 +363,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -459,24 +403,17 @@
       },
       "targets": [
         {
-          "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
-          "dimensions": { "DomainName": ["$domain"] },
-          "matchExact": false,
-          "metricEditorMode": 0,
-          "metricName": "IndexingLatency",
-          "metricQueryType": 0,
-          "namespace": "AWS/ES",
-          "period": "300",
-          "refId": "A",
-          "region": "default",
-          "statistic": "p99"
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "aws_es_indexing_latency_p99{dimension_DomainName=\"$domain\"}",
+          "legendFormat": "IndexingLatency p99",
+          "refId": "A"
         }
       ],
       "title": "Indexing Latency (p99)",
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -516,17 +453,10 @@
       },
       "targets": [
         {
-          "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
-          "dimensions": { "DomainName": ["$domain"] },
-          "matchExact": false,
-          "metricEditorMode": 0,
-          "metricName": "IndexingRate",
-          "metricQueryType": 0,
-          "namespace": "AWS/ES",
-          "period": "300",
-          "refId": "A",
-          "region": "default",
-          "statistic": "Sum"
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "aws_es_indexing_rate_sum{dimension_DomainName=\"$domain\"}",
+          "legendFormat": "IndexingRate",
+          "refId": "A"
         }
       ],
       "title": "Indexing Rate",
@@ -540,7 +470,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -593,56 +523,28 @@
       },
       "targets": [
         {
-          "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
-          "dimensions": { "DomainName": ["$domain"] },
-          "matchExact": false,
-          "metricEditorMode": 0,
-          "metricName": "2xx",
-          "metricQueryType": 0,
-          "namespace": "AWS/ES",
-          "period": "300",
-          "refId": "A",
-          "region": "default",
-          "statistic": "Sum"
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "aws_es_2xx_sum{dimension_DomainName=\"$domain\"}",
+          "legendFormat": "2xx",
+          "refId": "A"
         },
         {
-          "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
-          "dimensions": { "DomainName": ["$domain"] },
-          "matchExact": false,
-          "metricEditorMode": 0,
-          "metricName": "3xx",
-          "metricQueryType": 0,
-          "namespace": "AWS/ES",
-          "period": "300",
-          "refId": "B",
-          "region": "default",
-          "statistic": "Sum"
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "aws_es_3xx_sum{dimension_DomainName=\"$domain\"}",
+          "legendFormat": "3xx",
+          "refId": "B"
         },
         {
-          "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
-          "dimensions": { "DomainName": ["$domain"] },
-          "matchExact": false,
-          "metricEditorMode": 0,
-          "metricName": "4xx",
-          "metricQueryType": 0,
-          "namespace": "AWS/ES",
-          "period": "300",
-          "refId": "C",
-          "region": "default",
-          "statistic": "Sum"
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "aws_es_4xx_sum{dimension_DomainName=\"$domain\"}",
+          "legendFormat": "4xx",
+          "refId": "C"
         },
         {
-          "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
-          "dimensions": { "DomainName": ["$domain"] },
-          "matchExact": false,
-          "metricEditorMode": 0,
-          "metricName": "5xx",
-          "metricQueryType": 0,
-          "namespace": "AWS/ES",
-          "period": "300",
-          "refId": "D",
-          "region": "default",
-          "statistic": "Sum"
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "aws_es_5xx_sum{dimension_DomainName=\"$domain\"}",
+          "legendFormat": "5xx",
+          "refId": "D"
         }
       ],
       "title": "HTTP Response Codes",
@@ -656,7 +558,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -696,17 +598,10 @@
       },
       "targets": [
         {
-          "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
-          "dimensions": { "DomainName": ["$domain"] },
-          "matchExact": false,
-          "metricEditorMode": 0,
-          "metricName": "ClusterUsedSpace",
-          "metricQueryType": 0,
-          "namespace": "AWS/ES",
-          "period": "300",
-          "refId": "A",
-          "region": "default",
-          "statistic": "Maximum"
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "aws_es_cluster_used_space_maximum{dimension_DomainName=\"$domain\"}",
+          "legendFormat": "ClusterUsedSpace",
+          "refId": "A"
         }
       ],
       "title": "Cluster Used Space",
@@ -716,50 +611,24 @@
   "refresh": "5m",
   "schemaVersion": 38,
   "style": "dark",
-  "tags": ["opensearch", "aws", "cloudwatch"],
+  "tags": ["opensearch", "aws", "yace"],
   "templating": {
     "list": [
       {
-        "current": {
-          "text": "CloudWatch",
-          "value": "CloudWatch"
-        },
-        "hide": 0,
-        "includeAll": false,
-        "label": "Data Source",
-        "multi": false,
-        "name": "datasource",
-        "options": [],
-        "query": "cloudwatch",
-        "queryValue": "",
-        "refresh": 1,
-        "regex": "",
-        "skipUrlSync": false,
-        "type": "datasource"
-      },
-      {
         "current": {},
         "datasource": {
-          "type": "cloudwatch",
-          "uid": "${datasource}"
+          "type": "prometheus",
+          "uid": "VictoriaMetrics"
         },
-        "definition": "",
+        "definition": "label_values(aws_es_cluster_status_green_maximum, dimension_DomainName)",
         "hide": 0,
         "includeAll": false,
         "label": "Domain",
         "multi": false,
         "name": "domain",
         "options": [],
-        "query": {
-          "dimensionKey": "DomainName",
-          "metricName": "ClusterStatus.green",
-          "namespace": "AWS/ES",
-          "queryType": "dimensionValues",
-          "refId": "CloudWatchVariableQueryEditor-VariableQuery",
-          "region": "default",
-          "statistic": "Average"
-        },
-        "refresh": 1,
+        "query": "label_values(aws_es_cluster_status_green_maximum, dimension_DomainName)",
+        "refresh": 2,
         "regex": "",
         "skipUrlSync": false,
         "sort": 1,

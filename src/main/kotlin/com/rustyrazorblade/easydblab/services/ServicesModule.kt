@@ -14,6 +14,7 @@ import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuil
 import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.victoria.VictoriaManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.yace.YaceManifestBuilder
 import com.rustyrazorblade.easydblab.driver.CqlSessionFactory
 import com.rustyrazorblade.easydblab.driver.DefaultCqlSessionFactory
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -63,6 +64,7 @@ val servicesModule =
         factoryOf(::S3ManagerManifestBuilder)
         factoryOf(::TempoManifestBuilder)
         factoryOf(::VictoriaManifestBuilder)
+        factoryOf(::YaceManifestBuilder)
         factoryOf(::DefaultGrafanaDashboardService) bind GrafanaDashboardService::class
         factoryOf(::TemplateService)
         factory<VictoriaBackupService> { DefaultVictoriaBackupService(get(), get()) }
@@ -78,6 +80,8 @@ val servicesModule =
         single<EMRProvisioningService> {
             DefaultEMRProvisioningService(
                 get<EMRService>(),
+                get<ObjectStore>(),
+                get<TemplateService>(),
                 get<EventBus>(),
             )
         }

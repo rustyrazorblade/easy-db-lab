@@ -54,10 +54,9 @@ Defined in the `GrafanaDashboard` enum:
 | VictoriaLogs | `victoriametrics-logs-datasource` | `victorialogs` | 9428 |
 | ClickHouse | `grafana-clickhouse-datasource` | (auto) | 9000 |
 | Tempo | `tempo` | `tempo` | 3200 |
-| CloudWatch | `cloudwatch` | `cloudwatch` | N/A |
 | Pyroscope | `grafana-pyroscope-datasource` | `pyroscope` | 4040 |
 
-Datasources are created at runtime by `GrafanaDatasourceConfig.create(region)` and applied as a ConfigMap by `GrafanaDashboardService`.
+Datasources are created at runtime by `GrafanaDatasourceConfig.create()` and applied as a ConfigMap by `GrafanaDashboardService`.
 
 ---
 

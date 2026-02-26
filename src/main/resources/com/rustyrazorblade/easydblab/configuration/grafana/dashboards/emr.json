@@ -17,7 +17,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -57,63 +57,35 @@
       },
       "targets": [
         {
-          "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
-          "dimensions": { "JobFlowId": ["$jobflowid"] },
-          "matchExact": true,
-          "metricEditorMode": 0,
-          "metricName": "CoreNodesRunning",
-          "metricQueryType": 0,
-          "namespace": "AWS/ElasticMapReduce",
-          "period": "300",
-          "refId": "A",
-          "region": "default",
-          "statistic": "Average"
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "aws_elasticmapreduce_core_nodes_running_average{dimension_JobFlowId=~\"$jobflowid\"}",
+          "legendFormat": "CoreNodesRunning",
+          "refId": "A"
         },
         {
-          "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
-          "dimensions": { "JobFlowId": ["$jobflowid"] },
-          "matchExact": true,
-          "metricEditorMode": 0,
-          "metricName": "CoreNodesPending",
-          "metricQueryType": 0,
-          "namespace": "AWS/ElasticMapReduce",
-          "period": "300",
-          "refId": "B",
-          "region": "default",
-          "statistic": "Average"
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "aws_elasticmapreduce_core_nodes_pending_average{dimension_JobFlowId=~\"$jobflowid\"}",
+          "legendFormat": "CoreNodesPending",
+          "refId": "B"
         },
         {
-          "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
-          "dimensions": { "JobFlowId": ["$jobflowid"] },
-          "matchExact": true,
-          "metricEditorMode": 0,
-          "metricName": "TaskNodesRunning",
-          "metricQueryType": 0,
-          "namespace": "AWS/ElasticMapReduce",
-          "period": "300",
-          "refId": "C",
-          "region": "default",
-          "statistic": "Average"
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "aws_elasticmapreduce_task_nodes_running_average{dimension_JobFlowId=~\"$jobflowid\"}",
+          "legendFormat": "TaskNodesRunning",
+          "refId": "C"
         },
         {
-          "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
-          "dimensions": { "JobFlowId": ["$jobflowid"] },
-          "matchExact": true,
-          "metricEditorMode": 0,
-          "metricName": "TaskNodesPending",
-          "metricQueryType": 0,
-          "namespace": "AWS/ElasticMapReduce",
-          "period": "300",
-          "refId": "D",
-          "region": "default",
-          "statistic": "Average"
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "aws_elasticmapreduce_task_nodes_pending_average{dimension_JobFlowId=~\"$jobflowid\"}",
+          "legendFormat": "TaskNodesPending",
+          "refId": "D"
         }
       ],
       "title": "Node Counts",
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -153,17 +125,10 @@
       },
       "targets": [
         {
-          "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
-          "dimensions": { "JobFlowId": ["$jobflowid"] },
-          "matchExact": true,
-          "metricEditorMode": 0,
-          "metricName": "HDFSUtilization",
-          "metricQueryType": 0,
-          "namespace": "AWS/ElasticMapReduce",
-          "period": "300",
-          "refId": "A",
-          "region": "default",
-          "statistic": "Average"
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "aws_elasticmapreduce_hdfs_utilization_average{dimension_JobFlowId=~\"$jobflowid\"}",
+          "legendFormat": "HDFSUtilization",
+          "refId": "A"
         }
       ],
       "title": "HDFS Utilization",
@@ -177,7 +142,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -224,30 +189,16 @@
       },
       "targets": [
         {
-          "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
-          "dimensions": { "JobFlowId": ["$jobflowid"] },
-          "matchExact": true,
-          "metricEditorMode": 0,
-          "metricName": "HDFSBytesRead",
-          "metricQueryType": 0,
-          "namespace": "AWS/ElasticMapReduce",
-          "period": "300",
-          "refId": "A",
-          "region": "default",
-          "statistic": "Sum"
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "aws_elasticmapreduce_hdfs_bytes_read_sum{dimension_JobFlowId=~\"$jobflowid\"}",
+          "legendFormat": "HDFSBytesRead",
+          "refId": "A"
         },
         {
-          "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
-          "dimensions": { "JobFlowId": ["$jobflowid"] },
-          "matchExact": true,
-          "metricEditorMode": 0,
-          "metricName": "HDFSBytesWritten",
-          "metricQueryType": 0,
-          "namespace": "AWS/ElasticMapReduce",
-          "period": "300",
-          "refId": "B",
-          "region": "default",
-          "statistic": "Sum"
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "aws_elasticmapreduce_hdfs_bytes_written_sum{dimension_JobFlowId=~\"$jobflowid\"}",
+          "legendFormat": "HDFSBytesWritten",
+          "refId": "B"
         }
       ],
       "title": "HDFS Bytes Read / Written",
@@ -261,7 +212,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -301,37 +252,23 @@
       },
       "targets": [
         {
-          "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
-          "dimensions": { "JobFlowId": ["$jobflowid"] },
-          "matchExact": true,
-          "metricEditorMode": 0,
-          "metricName": "AppsRunning",
-          "metricQueryType": 0,
-          "namespace": "AWS/ElasticMapReduce",
-          "period": "300",
-          "refId": "A",
-          "region": "default",
-          "statistic": "Average"
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "aws_elasticmapreduce_apps_running_average{dimension_JobFlowId=~\"$jobflowid\"}",
+          "legendFormat": "AppsRunning",
+          "refId": "A"
         },
         {
-          "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
-          "dimensions": { "JobFlowId": ["$jobflowid"] },
-          "matchExact": true,
-          "metricEditorMode": 0,
-          "metricName": "AppsPending",
-          "metricQueryType": 0,
-          "namespace": "AWS/ElasticMapReduce",
-          "period": "300",
-          "refId": "B",
-          "region": "default",
-          "statistic": "Average"
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "aws_elasticmapreduce_apps_pending_average{dimension_JobFlowId=~\"$jobflowid\"}",
+          "legendFormat": "AppsPending",
+          "refId": "B"
         }
       ],
       "title": "Apps Running / Pending",
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -371,30 +308,16 @@
       },
       "targets": [
         {
-          "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
-          "dimensions": { "JobFlowId": ["$jobflowid"] },
-          "matchExact": true,
-          "metricEditorMode": 0,
-          "metricName": "AppsCompleted",
-          "metricQueryType": 0,
-          "namespace": "AWS/ElasticMapReduce",
-          "period": "300",
-          "refId": "A",
-          "region": "default",
-          "statistic": "Sum"
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "aws_elasticmapreduce_apps_completed_sum{dimension_JobFlowId=~\"$jobflowid\"}",
+          "legendFormat": "AppsCompleted",
+          "refId": "A"
         },
         {
-          "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
-          "dimensions": { "JobFlowId": ["$jobflowid"] },
-          "matchExact": true,
-          "metricEditorMode": 0,
-          "metricName": "AppsFailed",
-          "metricQueryType": 0,
-          "namespace": "AWS/ElasticMapReduce",
-          "period": "300",
-          "refId": "B",
-          "region": "default",
-          "statistic": "Sum"
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "aws_elasticmapreduce_apps_failed_sum{dimension_JobFlowId=~\"$jobflowid\"}",
+          "legendFormat": "AppsFailed",
+          "refId": "B"
         }
       ],
       "title": "Apps Completed / Failed",
@@ -408,7 +331,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -448,37 +371,23 @@
       },
       "targets": [
         {
-          "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
-          "dimensions": { "JobFlowId": ["$jobflowid"] },
-          "matchExact": true,
-          "metricEditorMode": 0,
-          "metricName": "MemoryAllocatedMB",
-          "metricQueryType": 0,
-          "namespace": "AWS/ElasticMapReduce",
-          "period": "300",
-          "refId": "A",
-          "region": "default",
-          "statistic": "Average"
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "aws_elasticmapreduce_memory_allocated_mb_average{dimension_JobFlowId=~\"$jobflowid\"}",
+          "legendFormat": "MemoryAllocatedMB",
+          "refId": "A"
         },
         {
-          "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
-          "dimensions": { "JobFlowId": ["$jobflowid"] },
-          "matchExact": true,
-          "metricEditorMode": 0,
-          "metricName": "MemoryAvailableMB",
-          "metricQueryType": 0,
-          "namespace": "AWS/ElasticMapReduce",
-          "period": "300",
-          "refId": "B",
-          "region": "default",
-          "statistic": "Average"
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "aws_elasticmapreduce_memory_available_mb_average{dimension_JobFlowId=~\"$jobflowid\"}",
+          "legendFormat": "MemoryAvailableMB",
+          "refId": "B"
         }
       ],
       "title": "YARN Memory",
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -518,30 +427,16 @@
       },
       "targets": [
         {
-          "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
-          "dimensions": { "JobFlowId": ["$jobflowid"] },
-          "matchExact": true,
-          "metricEditorMode": 0,
-          "metricName": "ContainerAllocated",
-          "metricQueryType": 0,
-          "namespace": "AWS/ElasticMapReduce",
-          "period": "300",
-          "refId": "A",
-          "region": "default",
-          "statistic": "Average"
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "aws_elasticmapreduce_container_allocated_average{dimension_JobFlowId=~\"$jobflowid\"}",
+          "legendFormat": "ContainerAllocated",
+          "refId": "A"
         },
         {
-          "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
-          "dimensions": { "JobFlowId": ["$jobflowid"] },
-          "matchExact": true,
-          "metricEditorMode": 0,
-          "metricName": "ContainerPending",
-          "metricQueryType": 0,
-          "namespace": "AWS/ElasticMapReduce",
-          "period": "300",
-          "refId": "B",
-          "region": "default",
-          "statistic": "Average"
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "aws_elasticmapreduce_container_pending_average{dimension_JobFlowId=~\"$jobflowid\"}",
+          "legendFormat": "ContainerPending",
+          "refId": "B"
         }
       ],
       "title": "YARN Containers",
@@ -555,7 +450,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -602,30 +497,16 @@
       },
       "targets": [
         {
-          "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
-          "dimensions": { "JobFlowId": ["$jobflowid"] },
-          "matchExact": true,
-          "metricEditorMode": 0,
-          "metricName": "S3BytesRead",
-          "metricQueryType": 0,
-          "namespace": "AWS/ElasticMapReduce",
-          "period": "300",
-          "refId": "A",
-          "region": "default",
-          "statistic": "Sum"
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "aws_elasticmapreduce_s3_bytes_read_sum{dimension_JobFlowId=~\"$jobflowid\"}",
+          "legendFormat": "S3BytesRead",
+          "refId": "A"
         },
         {
-          "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
-          "dimensions": { "JobFlowId": ["$jobflowid"] },
-          "matchExact": true,
-          "metricEditorMode": 0,
-          "metricName": "S3BytesWritten",
-          "metricQueryType": 0,
-          "namespace": "AWS/ElasticMapReduce",
-          "period": "300",
-          "refId": "B",
-          "region": "default",
-          "statistic": "Sum"
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "aws_elasticmapreduce_s3_bytes_written_sum{dimension_JobFlowId=~\"$jobflowid\"}",
+          "legendFormat": "S3BytesWritten",
+          "refId": "B"
         }
       ],
       "title": "S3 Bytes Read / Written",
@@ -635,21 +516,22 @@
   "refresh": "5m",
   "schemaVersion": 38,
   "style": "dark",
-  "tags": ["emr", "aws", "cloudwatch"],
+  "tags": ["emr", "aws", "yace"],
   "templating": {
     "list": [
       {
         "current": {
-          "text": "CloudWatch",
-          "value": "CloudWatch"
+          "selected": true,
+          "text": "VictoriaMetrics",
+          "value": "VictoriaMetrics"
         },
         "hide": 0,
         "includeAll": false,
-        "label": "Data Source",
+        "label": "Datasource",
         "multi": false,
         "name": "datasource",
         "options": [],
-        "query": "cloudwatch",
+        "query": "prometheus",
         "queryValue": "",
         "refresh": 1,
         "regex": "",
@@ -659,26 +541,22 @@
       {
         "current": {},
         "datasource": {
-          "type": "cloudwatch",
+          "type": "prometheus",
           "uid": "${datasource}"
         },
-        "definition": "",
+        "definition": "label_values(aws_elasticmapreduce_core_nodes_running_average, dimension_JobFlowId)",
         "hide": 0,
-        "includeAll": false,
+        "includeAll": true,
         "label": "EMR Cluster",
-        "multi": false,
+        "multi": true,
         "name": "jobflowid",
         "options": [],
         "query": {
-          "dimensionKey": "JobFlowId",
-          "metricName": "CoreNodesRunning",
-          "namespace": "AWS/ElasticMapReduce",
-          "queryType": "dimensionValues",
-          "refId": "CloudWatchVariableQueryEditor-VariableQuery",
-          "region": "default",
-          "statistic": "Average"
+          "qryType": 1,
+          "query": "label_values(aws_elasticmapreduce_core_nodes_running_average, dimension_JobFlowId)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
-        "refresh": 1,
+        "refresh": 2,
         "regex": "",
         "skipUrlSync": false,
         "sort": 1,

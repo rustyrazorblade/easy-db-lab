@@ -54,6 +54,16 @@ receivers:
               replacement: '${env:HOSTNAME}:9000'
             - target_label: cluster
               replacement: '${env:CLUSTER_NAME}'
+        - job_name: 'yace'
+          scrape_interval: 300s
+          scrape_timeout: 60s
+          static_configs:
+            - targets: ['localhost:5001']
+          relabel_configs:
+            - target_label: instance
+              replacement: '${env:HOSTNAME}:5001'
+            - target_label: cluster
+              replacement: '${env:CLUSTER_NAME}'
   filelog/system:
     include:
       - /var/log/**/*.log

@@ -91,7 +91,7 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
                 com.rustyrazorblade.easydblab.events
                     .EventBus(),
             )
-        val result = service.createDatasourcesConfigMap(testControlHost, "us-east-1")
+        val result = service.createDatasourcesConfigMap(testControlHost)
 
         assertThat(result.isSuccess).isTrue()
         verify(mockK8sService).createConfigMap(
@@ -119,7 +119,7 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
                 com.rustyrazorblade.easydblab.events
                     .EventBus(),
             )
-        val result = service.uploadDashboards(testControlHost, "us-west-2")
+        val result = service.uploadDashboards(testControlHost)
 
         assertThat(result.isSuccess).isTrue()
 
@@ -142,7 +142,7 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
                 com.rustyrazorblade.easydblab.events
                     .EventBus(),
             )
-        val result = service.uploadDashboards(testControlHost, "us-west-2")
+        val result = service.uploadDashboards(testControlHost)
 
         assertThat(result.isFailure).isTrue()
         assertThat(result.exceptionOrNull()?.message).contains("Failed to create Grafana datasources ConfigMap")
@@ -164,7 +164,7 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
                 com.rustyrazorblade.easydblab.events
                     .EventBus(),
             )
-        val result = service.uploadDashboards(testControlHost, "us-west-2")
+        val result = service.uploadDashboards(testControlHost)
 
         assertThat(result.isFailure).isTrue()
         assertThat(result.exceptionOrNull()?.message).contains("Failed to apply")

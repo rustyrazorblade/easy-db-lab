@@ -133,6 +133,17 @@ interface ObjectStore {
     ): UploadDirectoryResult
 
     /**
+     * Uploads string content to cloud storage.
+     *
+     * @param content The string content to upload
+     * @param remotePath The target cloud storage path
+     */
+    fun uploadContent(
+        content: String,
+        remotePath: ClusterS3Path,
+    )
+
+    /**
      * Checks if any files exist under a cloud storage prefix.
      *
      * @param remotePath The cloud storage path prefix to check

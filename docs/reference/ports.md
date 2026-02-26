@@ -20,6 +20,7 @@ This page documents the ports used by easy-db-lab and the services it provisions
 | 8428 | VictoriaMetrics (metrics storage) |
 | 9428 | VictoriaLogs (log storage) |
 | 3200 | Tempo (trace storage) |
+| 5001 | YACE CloudWatch exporter (Prometheus) |
 
 ## Cassandra Agent Ports
 

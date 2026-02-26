@@ -13,6 +13,7 @@ import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuil
 import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.victoria.VictoriaManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.yace.YaceManifestBuilder
 import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
 import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.TemplateService
@@ -81,6 +82,7 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
                 single { VictoriaManifestBuilder() }
                 single { RegistryManifestBuilder() }
                 single { S3ManagerManifestBuilder(get()) }
+                single { YaceManifestBuilder(get()) }
             },
         )
 
@@ -123,14 +125,14 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
         whenever(mockK8sService.applyResource(any(), any<HasMetadata>())).thenReturn(Result.success(Unit))
-        whenever(mockDashboardService.uploadDashboards(any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockDashboardService.uploadDashboards(any())).thenReturn(Result.success(Unit))
 
         val command = GrafanaUpdateConfig()
         command.execute()
 
         // Verify Fabric8 resources were applied (all builders produce multiple resources)
         verify(mockK8sService, atLeastOnce()).applyResource(any(), any<HasMetadata>())
-        verify(mockDashboardService).uploadDashboards(any(), any())
+        verify(mockDashboardService).uploadDashboards(any())
     }
 
     @Test
@@ -170,7 +172,7 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
         whenever(mockK8sService.applyResource(any(), any<HasMetadata>())).thenReturn(Result.success(Unit))
-        whenever(mockDashboardService.uploadDashboards(any(), any()))
+        whenever(mockDashboardService.uploadDashboards(any()))
             .thenReturn(Result.failure(RuntimeException("Upload failed")))
 
         val command = GrafanaUpdateConfig()

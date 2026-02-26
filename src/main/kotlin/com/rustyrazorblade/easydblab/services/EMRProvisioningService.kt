@@ -1,12 +1,16 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.EMRClusterState
+import com.rustyrazorblade.easydblab.configuration.emr.OtelBootstrapResource
 import com.rustyrazorblade.easydblab.configuration.s3Path
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.providers.aws.BootstrapAction
 import com.rustyrazorblade.easydblab.providers.aws.EMRClusterConfig
 import com.rustyrazorblade.easydblab.services.aws.EMRService
+import io.github.oshai.kotlinlogging.KotlinLogging
 
 /**
  * Service for provisioning EMR clusters for Spark workloads.
@@ -50,8 +54,12 @@ interface EMRProvisioningService {
  */
 class DefaultEMRProvisioningService(
     private val emrService: EMRService,
+    private val objectStore: ObjectStore,
+    private val templateService: TemplateService,
     private val eventBus: EventBus,
 ) : EMRProvisioningService {
+    private val log = KotlinLogging.logger {}
+
     override fun provisionEmrCluster(
         clusterName: String,
         masterInstanceType: String,
@@ -65,10 +73,13 @@ class DefaultEMRProvisioningService(
     ): EMRClusterState {
         eventBus.emit(Event.Emr.SparkClusterCreating)
 
+        val s3Path = clusterState.s3Path()
+        val bootstrapAction = uploadOtelBootstrapScript(s3Path)
+
         val emrConfig =
             EMRClusterConfig(
                 clusterName = "$clusterName-spark",
-                logUri = clusterState.s3Path().emrLogs().toString(),
+                logUri = s3Path.emrLogs().toString(),
                 subnetId = subnetId,
                 ec2KeyName = keyName,
                 masterInstanceType = masterInstanceType,
@@ -76,6 +87,7 @@ class DefaultEMRProvisioningService(
                 coreInstanceCount = workerCount,
                 additionalSecurityGroups = listOf(securityGroupId),
                 tags = tags,
+                bootstrapActions = listOf(bootstrapAction),
             )
 
         val result = emrService.createCluster(emrConfig)
@@ -86,6 +98,26 @@ class DefaultEMRProvisioningService(
             clusterName = readyResult.clusterName,
             masterPublicDns = readyResult.masterPublicDns,
             state = readyResult.state,
+        )
+    }
+
+    /**
+     * Uploads the OTel bootstrap script to S3 and returns a BootstrapAction for it.
+     */
+    private fun uploadOtelBootstrapScript(s3Path: com.rustyrazorblade.easydblab.configuration.ClusterS3Path): BootstrapAction {
+        val scriptContent =
+            templateService
+                .fromResource(OtelBootstrapResource::class.java, "bootstrap-otel.sh")
+                .substitute(mapOf("OTEL_AGENT_DOWNLOAD_URL" to Constants.OtelJavaAgent.DOWNLOAD_URL))
+
+        val scriptS3Path = s3Path.spark().resolve("bootstrap-otel.sh")
+
+        log.info { "Uploading OTel bootstrap script to $scriptS3Path" }
+        objectStore.uploadContent(scriptContent, scriptS3Path)
+
+        return BootstrapAction(
+            name = "Install OTel Java Agent",
+            scriptS3Path = scriptS3Path.toString(),
         )
     }
 }

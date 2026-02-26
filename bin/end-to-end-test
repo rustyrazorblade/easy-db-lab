@@ -269,8 +269,11 @@ step_test_mcp_server() {
         sleep 2
     fi
 
-    # Start the MCP server in the background on a fixed port
-    easy-db-lab server --port $server_port &
+    # Start the MCP server in the background on a fixed port.
+    # Redirect output to a log file so the server process doesn't hold
+    # the tee pipe open after this step returns.
+    local server_log=$(mktemp /tmp/e2e-mcp-server-XXXXXX)
+    easy-db-lab server --port $server_port > "$server_log" 2>&1 &
     local server_pid=$!
     echo "$server_pid" > .mcp-server.pid
     local server_url="http://127.0.0.1:${server_port}"
@@ -342,10 +345,11 @@ step_test_mcp_server() {
         return 1
     fi
 
-    # Clean up
+    # Clean up — kill process group to catch any children
     echo "=== Stopping MCP server ==="
     kill -9 "$server_pid" 2>/dev/null || true
-    rm -f .mcp.json .mcp-server.pid
+    wait "$server_pid" 2>/dev/null || true
+    rm -f .mcp.json .mcp-server.pid "$server_log"
 
     echo "=== MCP server /status test passed ==="
 }
@@ -993,6 +997,8 @@ step_test_metrics_backup() {
         aws s3 ls "s3://${s3_fullpath}/victoriametrics/" | head -5
     else
         echo "ERROR: VictoriaMetrics backup not found in S3"
+        echo "Contents of s3://${s3_fullpath}/:"
+        aws s3 ls "s3://${s3_fullpath}/" 2>/dev/null || echo "(listing failed)"
         return 1
     fi
 
@@ -1015,6 +1021,8 @@ step_test_logs_backup() {
         aws s3 ls "s3://${s3_fullpath}/victorialogs/" | head -5
     else
         echo "ERROR: VictoriaLogs backup not found in S3"
+        echo "Contents of s3://${s3_fullpath}/:"
+        aws s3 ls "s3://${s3_fullpath}/" 2>/dev/null || echo "(listing failed)"
         return 1
     fi
 
@@ -1178,8 +1186,23 @@ run_from_step() {
                 tail -100 "$STEP_LOG"
                 echo ""
                 echo "--- Diagnostics ---"
-                echo ">> kubectl get pods -A:"
-                kubectl get pods -A 2>/dev/null || echo "(kubectl not available)"
+                echo ">> Pods NOT Running/Completed:"
+                kubectl get pods -A 2>/dev/null | awk 'NR==1 || ($4 != "Running" && $4 != "Completed")' || echo "(kubectl not available)"
+                echo ""
+                echo ">> CrashLoopBackOff pod logs (last 20 lines each):"
+                local crash_pods
+                crash_pods=$(kubectl get pods -A --no-headers 2>/dev/null | awk '$4 == "CrashLoopBackOff" {print $1 ":" $2}' || true)
+                if [ -n "$crash_pods" ]; then
+                    for pod_entry in $crash_pods; do
+                        local ns="${pod_entry%%:*}"
+                        local pod="${pod_entry#*:}"
+                        echo ">>> $ns/$pod:"
+                        kubectl logs -n "$ns" "$pod" --tail=20 2>/dev/null || echo "(logs unavailable)"
+                        echo ""
+                    done
+                else
+                    echo "(none)"
+                fi
                 echo ""
                 echo ">> kubectl get events --sort-by=.lastTimestamp (last 20):"
                 kubectl get events --sort-by=.lastTimestamp 2>/dev/null | tail -20 || echo "(kubectl not available)"

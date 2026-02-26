@@ -50,7 +50,8 @@ export AWS_PROFILE=sandbox-admin
 CURRENT_STEP=0
 CURRENT_STEP_NAME=""
 STEP_LOG=$(mktemp /tmp/e2e-step-XXXXXX)
-FAILURE_LOG=$(mktemp /tmp/e2e-failures-XXXXXX.log)
+# mktemp requires XXXXXX at the very end of the template — no suffix allowed
+FAILURE_LOG=$(mktemp /tmp/e2e-failures-XXXXXX)
 FAILURE_COUNT=0
 SPARK_JOB_RAN=false
 

@@ -337,9 +337,9 @@ jib {
         image = "eclipse-temurin:21-jre"
     }
     to {
-        image = "ghcr.io/rustyrazorblade/easy-db-lab"
-        // Allow workflow to control tags via -Djib.to.tags
-        tags = (System.getProperty("jib.to.tags") ?: "latest").split(",").toSet()
+        val imageTag = System.getProperty("jib.to.image.tag") ?: "latest"
+        image = "ghcr.io/rustyrazorblade/easy-db-lab:$imageTag"
+        tags = System.getProperty("jib.to.tags")?.split(",")?.toSet() ?: emptySet()
         auth {
             username = System.getenv("GITHUB_ACTOR") ?: ""
             password = System.getenv("GITHUB_TOKEN") ?: ""

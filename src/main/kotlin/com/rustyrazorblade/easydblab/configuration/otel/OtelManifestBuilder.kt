@@ -15,7 +15,7 @@ import io.fabric8.kubernetes.api.model.apps.DaemonSetBuilder
  *
  * Creates a DaemonSet that runs on all nodes with hostNetwork, collecting
  * host metrics, Prometheus scrapes (ClickHouse, Beyla, ebpf_exporter, MAAC),
- * file-based logs (system, Cassandra, ClickHouse), journald, and OTLP.
+ * file-based logs (system, Cassandra, ClickHouse), and OTLP.
  * Exports to VictoriaMetrics, VictoriaLogs, and Tempo.
  *
  * Config uses OTel runtime env expansion (`${env:HOSTNAME}`, `${env:CLUSTER_NAME}`),
@@ -73,7 +73,7 @@ class OtelManifestBuilder(
      *
      * Runs on all nodes with hostNetwork, privileged mode.
      * Mounts log directories as hostPath volumes for system, Cassandra, ClickHouse,
-     * and journald log collection.
+     * log collection.
      */
     @Suppress("LongMethod")
     fun buildDaemonSet() =
@@ -160,16 +160,6 @@ class OtelManifestBuilder(
                     .withReadOnly(true)
                     .build(),
                 VolumeMountBuilder()
-                    .withName("journal")
-                    .withMountPath("/run/log/journal")
-                    .withReadOnly(true)
-                    .build(),
-                VolumeMountBuilder()
-                    .withName("machine-id")
-                    .withMountPath("/etc/machine-id")
-                    .withReadOnly(true)
-                    .build(),
-                VolumeMountBuilder()
                     .withName("clickhouse-server-logs")
                     .withMountPath("/mnt/db1/clickhouse/logs")
                     .withReadOnly(true)
@@ -217,22 +207,6 @@ class OtelManifestBuilder(
                 HostPathVolumeSourceBuilder()
                     .withPath("/mnt/db1/cassandra/logs")
                     .withType("DirectoryOrCreate")
-                    .build(),
-            ).endVolume()
-            .addNewVolume()
-            .withName("journal")
-            .withHostPath(
-                HostPathVolumeSourceBuilder()
-                    .withPath("/run/log/journal")
-                    .withType("DirectoryOrCreate")
-                    .build(),
-            ).endVolume()
-            .addNewVolume()
-            .withName("machine-id")
-            .withHostPath(
-                HostPathVolumeSourceBuilder()
-                    .withPath("/etc/machine-id")
-                    .withType("File")
                     .build(),
             ).endVolume()
             .addNewVolume()

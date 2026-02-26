@@ -60,7 +60,6 @@ ENABLE_CASSANDRA=false
 ENABLE_CLICKHOUSE=false
 ENABLE_OPENSEARCH=false
 USE_EBS=false
-EXIT_OK=false
 LIST_STEPS=false
 BREAKPOINTS=""
 START_STEP=""
@@ -1276,18 +1275,11 @@ export PROJECT_ROOT TEST_WORKDIR
 cleanup() {
     local exit_code=$?
 
-    # Success case - no failures and EXIT_OK
-    if [ "$EXIT_OK" = true ] && [ "$FAILURE_COUNT" -eq 0 ]; then
-        rm -f "$STEP_LOG" "$FAILURE_LOG"
-        echo ""
-        echo "=== All tests passed successfully ==="
-        exit 0
-    fi
-
-    # Failure case - print failure log and prompt for teardown
     echo ""
     echo "=========================================="
-    if [ "$FAILURE_COUNT" -gt 0 ]; then
+    if [ "$FAILURE_COUNT" -eq 0 ]; then
+        echo "=== All tests passed successfully ==="
+    elif [ "$FAILURE_COUNT" -gt 0 ]; then
         echo "=== $FAILURE_COUNT step(s) FAILED ==="
     else
         echo "=== Script exited unexpectedly ==="
@@ -1324,7 +1316,6 @@ cleanup() {
     done
 
     rm -f "$STEP_LOG" "$FAILURE_LOG"
-    exit 1
 }
 trap cleanup EXIT
 
@@ -1335,7 +1326,7 @@ trap cleanup EXIT
 # Handle --list-steps flag
 if [ "$LIST_STEPS" = true ]; then
     list_steps
-    EXIT_OK=true
+    trap - EXIT
     exit 0
 fi
 
@@ -1355,9 +1346,4 @@ if [ -n "$START_STEP" ]; then
 fi
 run_from_step $FIRST_STEP $LAST_STEP
 
-if [ "$FAILURE_COUNT" -eq 0 ]; then
-    # All steps passed — run teardown directly
-    step_teardown
-    EXIT_OK=true
-fi
-# If FAILURE_COUNT > 0, cleanup trap will print failure log and prompt for teardown
+# cleanup trap handles teardown prompt in all cases

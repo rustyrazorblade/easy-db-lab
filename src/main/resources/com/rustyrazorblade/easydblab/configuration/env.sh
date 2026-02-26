@@ -392,7 +392,7 @@ clickhouse-client() {
 clickhouse-query() {
   local query="${1:-$(cat)}"
   local control_ip=$(easy-db-lab ip db0 --private)
-  with-proxy curl -s -u "default:default" "http://${control_ip}:8123/" -d "$query"
+  curl -s -u "default:default" "http://${control_ip}:8123/" -d "$query"
 }
 
 # Conditionally start SOCKS5 proxy based on Tailscale status

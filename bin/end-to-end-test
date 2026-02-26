@@ -17,6 +17,7 @@ export AWS_PROFILE=sandbox-admin
 # Track current step for resume functionality
 CURRENT_STEP=0
 CURRENT_STEP_NAME=""
+STEP_LOG=$(mktemp /tmp/e2e-step-XXXXXX)
 
 # Parse command line arguments (must be before cleanup trap setup)
 WAIT_BEFORE_TEARDOWN=false
@@ -927,6 +928,7 @@ step_teardown() {
         rm -f .mcp-server.pid
     fi
     rm -f .s3-fullpath
+    rm -f "$STEP_LOG"
 
     echo "=== Tearing down cluster ==="
     easy-db-lab down --yes
@@ -1037,26 +1039,38 @@ run_from_step() {
 
         # Determine which directory to run in and execute step
         # Disable errexit temporarily for controlled error handling
+        local result
+        local setup_kubectl_index=$((PROJECT_ROOT_STEP_COUNT + 2))  # step_setup_kubectl position
         set +e
         if [ $i -lt $PROJECT_ROOT_STEP_COUNT ]; then
             pushd "$PROJECT_ROOT" > /dev/null
-            $step_func
-            local result=$?
+            $step_func 2>&1 | tee "$STEP_LOG"
+            result=${PIPESTATUS[0]}
             popd > /dev/null
         else
             pushd "$TEST_WORKDIR" > /dev/null
             # Only source env.sh for steps after step_setup_kubectl (index 5)
             # Earlier steps either don't need it or source it themselves
-            local setup_kubectl_index=$((PROJECT_ROOT_STEP_COUNT + 2))  # step_setup_kubectl position
             if [ $i -gt $setup_kubectl_index ] && [ -f env.sh ]; then
                 source env.sh
             fi
-            $step_func
-            local result=$?
+            $step_func 2>&1 | tee "$STEP_LOG"
+            result=${PIPESTATUS[0]}
             popd > /dev/null
         fi
         set -e
-        if [ $result -ne 0 ]; then return 1; fi
+        if [ $result -ne 0 ]; then
+            echo ""
+            echo "=========================================="
+            echo "FAILED: Step $((i+1)) - $step_name (exit code: $result)"
+            echo "=========================================="
+            echo "Last 30 lines of output:"
+            echo "------------------------------------------"
+            tail -30 "$STEP_LOG"
+            echo "------------------------------------------"
+            echo "Full log: $STEP_LOG"
+            return 1
+        fi
     done
 
     return 0
@@ -1074,6 +1088,7 @@ cleanup() {
 
     # Success case - exit cleanly
     if [ "$EXIT_OK" = true ]; then
+        rm -f "$STEP_LOG"
         echo ""
         echo "=== All tests passed successfully ==="
         exit 0
@@ -1085,6 +1100,14 @@ cleanup() {
             echo "=== Test work directory: $TEST_WORKDIR ==="
             if [ -n "$CURRENT_STEP_NAME" ]; then
                 echo "Failed at step $((CURRENT_STEP+1)): $CURRENT_STEP_NAME"
+            fi
+            if [ -f "$STEP_LOG" ]; then
+                echo ""
+                echo "Last 30 lines of output:"
+                echo "------------------------------------------"
+                tail -30 "$STEP_LOG"
+                echo "------------------------------------------"
+                echo "Full log: $STEP_LOG"
             fi
             echo ""
             echo "What would you like to do?"

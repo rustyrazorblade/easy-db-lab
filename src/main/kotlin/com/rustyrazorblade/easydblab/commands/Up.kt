@@ -159,14 +159,13 @@ class Up : PicoBaseCommand() {
             "No S3 bucket configured in profile. Run 'easy-db-lab setup-profile' first."
         }
 
+        // Configure account-level bucket
         eventBus.emit(Event.S3.BucketUsing(accountBucket))
-
-        // Apply bucket policy for IAM role access (idempotent)
         s3BucketService.putBucketPolicy(accountBucket)
-
         workingState.s3Bucket = accountBucket
+        eventBus.emit(Event.S3.BucketConfigured(accountBucket, workingState.clusterPrefix()))
 
-        // Service handles create + policy + tag + metrics + events
+        // Configure per-cluster data bucket
         s3BucketService.configureDataBucket(
             bucketName = workingState.dataBucketName(),
             clusterId = workingState.clusterId,
@@ -176,9 +175,6 @@ class Up : PicoBaseCommand() {
 
         workingState.dataBucket = workingState.dataBucketName()
         clusterStateManager.save(workingState)
-
-        val clusterPrefix = workingState.clusterPrefix()
-        eventBus.emit(Event.S3.BucketConfigured(accountBucket, clusterPrefix))
     }
 
     /**

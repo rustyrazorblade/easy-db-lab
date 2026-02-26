@@ -1941,51 +1941,6 @@ sealed interface Event {
     }
 
     // =========================================================================
-    // Event.Sqs — SQS queue operations
-    // =========================================================================
-
-    @Serializable
-    sealed interface Sqs : Event {
-        @Serializable
-        @SerialName("Sqs.QueueCreating")
-        data class QueueCreating(
-            val queueName: String,
-        ) : Sqs {
-            override fun toDisplayString(): String = "Creating SQS queue: $queueName"
-        }
-
-        @Serializable
-        @SerialName("Sqs.QueueCreated")
-        data class QueueCreated(
-            val queueUrl: String,
-        ) : Sqs {
-            override fun toDisplayString(): String = "SQS queue created: $queueUrl"
-        }
-
-        @Serializable
-        @SerialName("Sqs.QueueDeleting")
-        data class QueueDeleting(
-            val queueUrl: String,
-        ) : Sqs {
-            override fun toDisplayString(): String = "Deleting SQS queue: $queueUrl"
-        }
-
-        @Serializable
-        @SerialName("Sqs.QueueDeleted")
-        data object QueueDeleted : Sqs {
-            override fun toDisplayString(): String = "SQS queue deleted"
-        }
-
-        @Serializable
-        @SerialName("Sqs.QueueConfigured")
-        data class QueueConfigured(
-            val queueUrl: String,
-        ) : Sqs {
-            override fun toDisplayString(): String = "SQS queue configured for log ingestion: $queueUrl"
-        }
-    }
-
-    // =========================================================================
     // Event.Grafana — Grafana dashboard operations
     // =========================================================================
 
@@ -3091,18 +3046,6 @@ sealed interface Event {
         @SerialName("Provision.NodeLabelingComplete")
         data object NodeLabelingComplete : Provision {
             override fun toDisplayString(): String = "Node labeling complete"
-        }
-
-        @Serializable
-        @SerialName("Provision.LogPipelineValidating")
-        data object LogPipelineValidating : Provision {
-            override fun toDisplayString(): String = "Validating log ingestion pipeline..."
-        }
-
-        @Serializable
-        @SerialName("Provision.LogPipelineValid")
-        data object LogPipelineValid : Provision {
-            override fun toDisplayString(): String = "✓ S3 → SQS notifications configured correctly"
         }
 
         @Serializable

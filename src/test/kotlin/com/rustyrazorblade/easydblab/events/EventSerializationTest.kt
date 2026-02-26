@@ -15,7 +15,6 @@ class EventSerializationTest {
             Event.Emr.ClusterCreating("test-cluster"),
             Event.OpenSearch.Creating("test-domain"),
             Event.S3.Uploading("file.txt", "s3://bucket/file.txt"),
-            Event.Sqs.QueueCreating("test-queue"),
             Event.Grafana.DatasourcesCreating,
             Event.Backup.VictoriaMetricsStarting("s3://backup"),
             Event.Registry.CertGenerating("control0"),

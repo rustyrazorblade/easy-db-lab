@@ -17,7 +17,7 @@ import picocli.CommandLine.Option
  * - ClickHouse logs (/mnt/db1/clickhouse/logs/)
  * - systemd/journald (cassandra.service, docker.service, etc.)
  * - System logs (/var/log/)
- * - EMR/Spark logs (from S3 via SQS notifications)
+ * - EMR/Spark logs
  *
  * Examples:
  * ```

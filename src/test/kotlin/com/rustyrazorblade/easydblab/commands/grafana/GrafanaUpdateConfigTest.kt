@@ -12,7 +12,6 @@ import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBu
 import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.vector.VectorManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.victoria.VictoriaManifestBuilder
 import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
 import com.rustyrazorblade.easydblab.services.K8sService
@@ -79,7 +78,6 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
                 single { OtelManifestBuilder(get()) }
                 single { PyroscopeManifestBuilder(get()) }
                 single { TempoManifestBuilder(get()) }
-                single { VectorManifestBuilder(get()) }
                 single { VictoriaManifestBuilder() }
                 single { RegistryManifestBuilder() }
                 single { S3ManagerManifestBuilder(get()) }

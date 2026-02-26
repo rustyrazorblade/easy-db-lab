@@ -14,7 +14,6 @@ import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuil
 import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.toHost
-import com.rustyrazorblade.easydblab.configuration.vector.VectorManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.victoria.VictoriaManifestBuilder
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
@@ -35,7 +34,6 @@ import picocli.CommandLine.Command
  * - OTel collector DaemonSet (metrics, logs, traces collection)
  * - VictoriaMetrics + VictoriaLogs (metrics and log storage)
  * - Tempo (trace storage with S3 backend)
- * - Vector (node log collection + S3/EMR log ingestion)
  * - Beyla (L7 network eBPF metrics)
  * - ebpf_exporter (TCP, block I/O, VFS eBPF metrics)
  * - Pyroscope (continuous profiling server + eBPF agent)
@@ -57,7 +55,6 @@ class GrafanaUpdateConfig : PicoBaseCommand() {
     private val ebpfExporterManifestBuilder: EbpfExporterManifestBuilder by inject()
     private val victoriaManifestBuilder: VictoriaManifestBuilder by inject()
     private val tempoManifestBuilder: TempoManifestBuilder by inject()
-    private val vectorManifestBuilder: VectorManifestBuilder by inject()
     private val registryManifestBuilder: RegistryManifestBuilder by inject()
     private val s3ManagerManifestBuilder: S3ManagerManifestBuilder by inject()
     private val beylaManifestBuilder: BeylaManifestBuilder by inject()
@@ -77,7 +74,7 @@ class GrafanaUpdateConfig : PicoBaseCommand() {
 
         val region = clusterState.initConfig?.region ?: user.region
 
-        // Create runtime ConfigMap with dynamic values needed by Vector and OTel
+        // Create runtime ConfigMap with dynamic values needed by OTel
         createClusterConfigMap(controlNode, region)
 
         // Apply all Fabric8-built observability resources
@@ -85,7 +82,6 @@ class GrafanaUpdateConfig : PicoBaseCommand() {
         applyFabric8Resources("ebpf_exporter", controlNode, ebpfExporterManifestBuilder.buildAllResources())
         applyFabric8Resources("VictoriaMetrics/Logs", controlNode, victoriaManifestBuilder.buildAllResources())
         applyFabric8Resources("Tempo", controlNode, tempoManifestBuilder.buildAllResources())
-        applyFabric8Resources("Vector", controlNode, vectorManifestBuilder.buildAllResources())
         applyFabric8Resources("Registry", controlNode, registryManifestBuilder.buildAllResources())
         applyFabric8Resources("S3 Manager", controlNode, s3ManagerManifestBuilder.buildAllResources())
         applyFabric8Resources("Beyla", controlNode, beylaManifestBuilder.buildAllResources())
@@ -125,34 +121,21 @@ class GrafanaUpdateConfig : PicoBaseCommand() {
     }
 
     /**
-     * Creates the cluster-config ConfigMap with runtime values needed by Vector and OTel.
+     * Creates the cluster-config ConfigMap with runtime values needed by OTel.
      *
      * This ConfigMap provides:
-     * - control_node_ip: IP address for Vector DaemonSet to send logs to Victoria Logs
-     * - aws_region: AWS region for Vector S3 source
-     * - sqs_queue_url: SQS queue URL for EMR log notifications
+     * - control_node_ip: IP address for OTel DaemonSet to send logs to Victoria Logs
+     * - aws_region: AWS region
      * - cluster_name: Cluster name for OTel Prometheus relabel_configs (Grafana dashboard labels)
      */
     private fun createClusterConfigMap(
         controlNode: ClusterHost,
         region: String,
     ) {
-        val sqsQueueUrl = clusterState.sqsQueueUrl
-
-        // Fail fast if Spark is enabled but SQS queue is not configured
-        if (clusterState.initConfig?.sparkEnabled == true && sqsQueueUrl.isNullOrBlank()) {
-            throw IllegalStateException(
-                "SQS queue URL is required when Spark is enabled but was not configured. " +
-                    "The log ingestion pipeline cannot function without it. " +
-                    "Re-run 'easy-db-lab up' to create the SQS queue.",
-            )
-        }
-
         val configData =
             mapOf(
                 "control_node_ip" to controlNode.privateIp,
                 "aws_region" to region,
-                "sqs_queue_url" to (sqsQueueUrl ?: ""),
                 "s3_bucket" to (clusterState.s3Bucket ?: ""),
                 "cluster_name" to (clusterState.initConfig?.name ?: "cluster"),
             )

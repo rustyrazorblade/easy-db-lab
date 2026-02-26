@@ -1,6 +1,6 @@
 # Victoria Logs
 
-Victoria Logs is a centralized log aggregation system that collects logs from all nodes in your easy-db-lab cluster. It provides a unified way to search and analyze logs from Cassandra, ClickHouse, system services, and EMR/Spark jobs.
+Victoria Logs is a centralized log aggregation system that collects logs from all nodes in your easy-db-lab cluster. It provides a unified way to search and analyze logs from Cassandra, ClickHouse, and system services.
 
 ## Architecture
 
@@ -15,18 +15,14 @@ Victoria Logs is a centralized log aggregation system that collects logs from al
                            │
                            ▼
               ┌────────────────────────┐
-              │   Vector (DaemonSet)   │
-              │   file + journald      │
+              │  OTel Collector        │
+              │  (DaemonSet)           │
+              │  filelog + journald    │
               └───────────┬────────────┘
                           │
 ┌─────────────────────────┼─────────────────────────┐
 │   Control Node          │                          │
 ├─────────────────────────┼─────────────────────────┤
-│                         │                          │
-│   ┌─────────────┐       │                          │
-│   │ Vector      │       │                          │
-│   │ (S3 logs)   │───────┤                          │
-│   └─────────────┘       │                          │
 │                         ▼                          │
 │              ┌──────────────────┐                  │
 │              │  Victoria Logs   │                  │
@@ -52,13 +48,11 @@ Victoria Logs runs on the control node as a Kubernetes deployment:
 - **Retention**: 7 days (configurable)
 - **Location**: Control node only (`node-role.kubernetes.io/control-plane`)
 
-### Vector Log Collector
+### OTel Collector
 
-[Vector](https://vector.dev/) collects logs from all sources and forwards them to Victoria Logs.
+The [OpenTelemetry Collector](https://opentelemetry.io/docs/collector/) collects logs from all sources and forwards them to Victoria Logs.
 
-#### Node DaemonSet
-
-Runs on every node (Cassandra, stress, control) to collect:
+The OTel Collector runs as a DaemonSet on every node (Cassandra, stress, control) to collect:
 
 | Source | Path | Description |
 |--------|------|-------------|
@@ -66,16 +60,7 @@ Runs on every node (Cassandra, stress, control) to collect:
 | ClickHouse | `/mnt/db1/clickhouse/logs/*.log` | ClickHouse server logs |
 | ClickHouse Keeper | `/mnt/db1/clickhouse/keeper/logs/*.log` | ClickHouse Keeper logs |
 | System logs | `/var/log/**/*.log` | General system logs |
-| journald | `cassandra.service`, `docker.service`, `k3s.service` | systemd service logs |
-
-#### S3 Log Collector (EMR/Spark)
-
-A separate Vector deployment on the control node ingests EMR logs from S3:
-
-1. EMR writes logs to S3 bucket (`emr-logs/` prefix)
-2. S3 sends event notifications to SQS queue
-3. Vector polls SQS and downloads/processes log files
-4. Logs are forwarded to Victoria Logs
+| journald | `cassandra`, `docker`, `k3s`, `sshd` | systemd service logs |
 
 ## Log Sources
 
@@ -87,7 +72,6 @@ Each log entry is tagged with a `source` field:
 | `clickhouse` | ClickHouse server logs | `host`, `component` (server/keeper) |
 | `systemd` | systemd journal logs | `host`, `unit` |
 | `system` | General /var/log files | `host` |
-| `emr` | EMR/Spark step logs | `emr_cluster_id`, `step_id`, `log_type` |
 
 ## Querying Logs
 
@@ -101,7 +85,6 @@ easy-db-lab logs query
 
 # Filter by source
 easy-db-lab logs query --source cassandra
-easy-db-lab logs query --source emr
 easy-db-lab logs query --source clickhouse
 easy-db-lab logs query --source systemd
 
@@ -168,7 +151,7 @@ source:cassandra AND host:db0
 "OutOfMemory"
 
 # Combine field match with text search
-source:emr AND "Exception"
+source:cassandra AND "Exception"
 
 # Time filter (in addition to --since)
 _time:1h
@@ -178,7 +161,7 @@ For full LogsQL documentation, see the [Victoria Logs documentation](https://doc
 
 ## Deployment
 
-Victoria Logs and Vector are automatically deployed when you run:
+Victoria Logs and the OTel Collector are automatically deployed when you run:
 
 ```bash
 easy-db-lab k8 apply
@@ -186,8 +169,7 @@ easy-db-lab k8 apply
 
 This deploys:
 - Victoria Logs server on the control node
-- Vector DaemonSet on all nodes
-- Vector S3 deployment for EMR logs (if Spark is enabled)
+- OTel Collector DaemonSet on all nodes
 - Grafana datasource configuration
 
 ## Verifying the Setup
@@ -197,8 +179,7 @@ Check that all components are running:
 ```bash
 source env.sh
 kubectl get pods -l app.kubernetes.io/name=victorialogs
-kubectl get pods -l app=vector
-kubectl get pods -l app=vector-s3
+kubectl get pods -l app.kubernetes.io/name=otel-collector
 ```
 
 Test connectivity:
@@ -215,10 +196,10 @@ easy-db-lab logs query --limit 10
 
 ### No logs appearing
 
-1. Verify Vector pods are running:
+1. Verify OTel Collector pods are running:
    ```bash
-   kubectl get pods -l app=vector
-   kubectl logs -l app=vector
+   kubectl get pods -l app.kubernetes.io/name=otel-collector
+   kubectl logs -l app.kubernetes.io/name=otel-collector
    ```
 
 2. Check Victoria Logs is healthy:
@@ -230,21 +211,6 @@ easy-db-lab logs query --limit 10
    ```bash
    kubectl get configmap cluster-config -o yaml
    ```
-
-### EMR logs not appearing
-
-1. Verify the SQS queue was created:
-   ```bash
-   # Check cluster state
-   cat state.json | jq '.sqsQueueUrl'
-   ```
-
-2. Check Vector S3 pod logs:
-   ```bash
-   kubectl logs -l app=vector-s3
-   ```
-
-3. Verify S3 bucket notifications are configured (done during `easy-db-lab up`)
 
 ### Connection errors
 

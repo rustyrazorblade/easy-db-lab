@@ -160,3 +160,4 @@ clusters/
 
 # Claude Code config (mounted in devcontainer)
 .devcontainer/claude/
+.s3-fullpath

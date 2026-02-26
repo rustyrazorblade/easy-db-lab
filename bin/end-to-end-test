@@ -668,6 +668,45 @@ step_spark_status() {
     echo "$status_output"
     if echo "$status_output" | grep -q "State: FAILED"; then
         echo "ERROR: Spark job is in FAILED state"
+
+        echo ""
+        echo "=== EMR Failure Diagnostics ==="
+
+        local cluster_id step_id bucket
+        cluster_id=$(jq -r '.emrCluster.clusterId // empty' state.json 2>/dev/null)
+        if [ -n "$cluster_id" ]; then
+            step_id=$(aws emr list-steps --cluster-id "$cluster_id" \
+                --query 'Steps[0].Id' --output text 2>/dev/null || true)
+
+            echo "--- aws emr describe-step ---"
+            aws emr describe-step --cluster-id "$cluster_id" \
+                --step-id "$step_id" --output json 2>/dev/null || echo "(describe-step failed)"
+
+            echo ""
+            echo "--- EMR Step Stderr (last 100 lines) ---"
+            bucket=$(jq -r '.dataBucket // empty' state.json 2>/dev/null)
+            if [ -n "$bucket" ] && [ -n "$step_id" ]; then
+                aws s3 cp "s3://$bucket/spark/emr-logs/$cluster_id/steps/$step_id/stderr.gz" - 2>/dev/null \
+                    | gunzip 2>/dev/null | tail -100 \
+                    || echo "(stderr not available in S3)"
+
+                echo ""
+                echo "--- EMR Step Stdout (last 50 lines) ---"
+                aws s3 cp "s3://$bucket/spark/emr-logs/$cluster_id/steps/$step_id/stdout.gz" - 2>/dev/null \
+                    | gunzip 2>/dev/null | tail -50 \
+                    || echo "(stdout not available in S3)"
+
+                echo ""
+                echo "--- S3 log files available ---"
+                aws s3 ls "s3://$bucket/spark/emr-logs/$cluster_id/steps/$step_id/" 2>/dev/null \
+                    || echo "(S3 listing failed)"
+            else
+                echo "(bucket or step_id not available)"
+            fi
+        else
+            echo "(EMR cluster ID not found in state.json)"
+        fi
+
         return 1
     fi
 

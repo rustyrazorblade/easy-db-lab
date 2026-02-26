@@ -633,6 +633,17 @@ step_spark_status() {
 
     echo "=== Downloading all EMR logs (standalone command) ==="
     easy-db-lab spark logs
+
+    echo "=== Verifying Spark logs reached VictoriaLogs via OTel ==="
+    local spark_logs=$(ssh control0 "curl -s 'http://localhost:9428/select/logsql/query?query=service.name%3A~%22spark-.*%22&limit=5'")
+    local spark_log_count=$(echo "$spark_logs" | grep -c '^{' || true)
+    if [ "$spark_log_count" -gt 0 ]; then
+        echo "Spark OTel logs found in VictoriaLogs: OK ($spark_log_count entries)"
+    else
+        echo "ERROR: No Spark logs found in VictoriaLogs with service.name:~\"spark-*\""
+        echo "OTel Java agent may not be exporting logs to the control node"
+        return 1
+    fi
 }
 
 step_bulk_writer_direct() {
@@ -812,6 +823,18 @@ step_test_observability() {
         echo "WARNING: No metrics found in VictoriaMetrics yet (may need more time for OTel to send data)"
     fi
 
+    # Check YACE CloudWatch metrics if Spark/EMR is enabled
+    if [ "$ENABLE_SPARK" = true ]; then
+        echo "=== Checking YACE CloudWatch metrics for S3 ==="
+        local s3_metrics=$(ssh control0 "curl -s 'http://localhost:8428/api/v1/label/__name__/values' | jq '[.data[] | select(startswith(\"aws_s3\"))] | length'")
+        echo "S3 CloudWatch metric names via YACE: $s3_metrics"
+        if [ "$s3_metrics" -lt 1 ]; then
+            echo "WARNING: No aws_s3_* metrics found yet - YACE scrapes CloudWatch every 5 minutes"
+        else
+            echo "YACE S3 metrics: OK"
+        fi
+    fi
+
     # Query VictoriaLogs to check it's accepting connections
     echo "=== Testing VictoriaLogs query endpoint ==="
     local vl_query=$(ssh control0 "curl -s -o /dev/null -w '%{http_code}' 'http://localhost:9428/select/logsql/query?query=*'")
@@ -849,11 +872,46 @@ step_test_observability() {
     echo "=== Observability stack test completed ==="
 }
 
+step_test_dashboards() {
+    echo "=== Validating Grafana dashboards ==="
+
+    local dashboards=$(ssh control0 "curl -s 'http://localhost:3000/api/search?type=dash-db' | jq -r '.[].title'")
+    echo "Deployed dashboards:"
+    echo "$dashboards"
+
+    local dashboard_count=$(echo "$dashboards" | wc -l)
+    if [ "$dashboard_count" -lt 1 ]; then
+        echo "ERROR: No dashboards found in Grafana"
+        return 1
+    fi
+    echo "Dashboard count: $dashboard_count"
+
+    # For each dashboard, hit the API to check it loads without errors
+    local uids=$(ssh control0 "curl -s 'http://localhost:3000/api/search?type=dash-db' | jq -r '.[].uid'")
+    local failures=0
+    for uid in $uids; do
+        local status=$(ssh control0 "curl -s -o /dev/null -w '%{http_code}' 'http://localhost:3000/api/dashboards/uid/$uid'")
+        local title=$(ssh control0 "curl -s 'http://localhost:3000/api/dashboards/uid/$uid' | jq -r '.dashboard.title'")
+        if [ "$status" = "200" ]; then
+            echo "  $title: OK"
+        else
+            echo "  $title: FAILED (HTTP $status)"
+            failures=$((failures + 1))
+        fi
+    done
+
+    if [ "$failures" -gt 0 ]; then
+        echo "ERROR: $failures dashboard(s) failed to load"
+        return 1
+    fi
+    echo "=== Dashboard validation completed ==="
+}
+
 step_test_logs_query() {
     echo "=== Testing logs query command ==="
 
     # Query logs using the CLI - this tests the full pipeline:
-    # Vector -> VictoriaLogs -> VictoriaLogsService -> CLI output
+    # OTel Collector -> VictoriaLogs -> VictoriaLogsService -> CLI output
     echo "=== Querying all logs (should have systemd/journald logs) ==="
     local log_output=$(easy-db-lab logs query --since 1h --limit 10 2>&1) || true
     echo "$log_output"
@@ -862,7 +920,7 @@ step_test_logs_query() {
     if echo "$log_output" | grep -q "Found .* log entries"; then
         echo "=== Logs query returned results: OK ==="
     elif echo "$log_output" | grep -q "No logs found"; then
-        echo "WARNING: No logs found yet - Vector may need more time to ingest"
+        echo "WARNING: No logs found yet - OTel Collector may need more time to ingest"
     elif echo "$log_output" | grep -q "Failed to query logs"; then
         echo "ERROR: Logs query failed"
         echo "$log_output"
@@ -979,6 +1037,7 @@ STEPS_WORKDIR=(
     "step_opensearch_test:Test OpenSearch"
     "step_opensearch_stop:Stop OpenSearch"
     "step_test_observability:Test observability stack"
+    "step_test_dashboards:Validate Grafana dashboards"
     "step_test_logs_query:Test logs query command"
     "step_test_metrics_backup:Test VictoriaMetrics backup"
     "step_test_logs_backup:Test VictoriaLogs backup"

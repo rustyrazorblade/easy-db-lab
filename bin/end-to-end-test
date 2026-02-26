@@ -1,4 +1,36 @@
 #!/bin/bash
+#
+# End-to-End Test Runner for easy-db-lab
+#
+# This script provisions a full cluster environment and runs a sequence of
+# validation steps (build, deploy, configure, test, teardown). It is designed
+# for resilience: a single step failure does NOT stop the run.
+#
+# Failure Handling:
+#   - Every step runs regardless of whether earlier steps failed.
+#   - When a step fails, diagnostics are captured (step output, pod status,
+#     K8s events, disk usage) and appended to a temporary failure log.
+#   - A running FAILURE_COUNT tracks how many steps have failed.
+#
+# Teardown Behavior:
+#   - If all steps pass, the script exits cleanly (exit 0).
+#   - If any step failed, the full failure log is printed at the end and the
+#     script prompts for explicit confirmation ("yes") before tearing down
+#     the cluster. This keeps the environment alive for debugging. Press
+#     Ctrl-C to exit without teardown.
+#
+# Flags:
+#   --list-steps, -l   List all steps and exit.
+#   --wait             Run all steps except teardown, then pause for manual
+#                      inspection before running teardown.
+#   --break N[,M,...]  Pause before the given step number(s) for inspection.
+#   --build            Build the packer AMI image before running.
+#   --spark            Enable Spark-related steps.
+#   --cassandra        Enable Cassandra-related steps.
+#   --clickhouse       Enable ClickHouse-related steps.
+#   --opensearch       Enable OpenSearch-related steps.
+#   --ebs              Use EBS volumes.
+#
 
 set -e  # Exit on any error
 
@@ -18,6 +50,9 @@ export AWS_PROFILE=sandbox-admin
 CURRENT_STEP=0
 CURRENT_STEP_NAME=""
 STEP_LOG=$(mktemp /tmp/e2e-step-XXXXXX)
+FAILURE_LOG=$(mktemp /tmp/e2e-failures-XXXXXX.log)
+FAILURE_COUNT=0
+SPARK_JOB_RAN=false
 
 # Parse command line arguments (must be before cleanup trap setup)
 WAIT_BEFORE_TEARDOWN=false
@@ -618,6 +653,7 @@ step_spark_submit() {
       --main-class com.rustyrazorblade.easydblab.spark.KeyValuePrefixCount \
       --args "$(easy-db-lab ip db0 --private)" \
       --wait
+    SPARK_JOB_RAN=true
 }
 
 step_spark_status() {
@@ -634,15 +670,19 @@ step_spark_status() {
     echo "=== Downloading all EMR logs (standalone command) ==="
     easy-db-lab spark logs
 
-    echo "=== Verifying Spark logs reached VictoriaLogs via OTel ==="
-    local spark_logs=$(ssh control0 "curl -s 'http://localhost:9428/select/logsql/query?query=service.name%3A~%22spark-.*%22&limit=5'")
-    local spark_log_count=$(echo "$spark_logs" | grep -c '^{' || true)
-    if [ "$spark_log_count" -gt 0 ]; then
-        echo "Spark OTel logs found in VictoriaLogs: OK ($spark_log_count entries)"
+    if [ "$SPARK_JOB_RAN" = true ]; then
+        echo "=== Verifying Spark logs reached VictoriaLogs via OTel ==="
+        local spark_logs=$(ssh control0 "curl -s 'http://localhost:9428/select/logsql/query?query=service.name%3A~%22spark-.*%22&limit=5'")
+        local spark_log_count=$(echo "$spark_logs" | grep -c '^{' || true)
+        if [ "$spark_log_count" -gt 0 ]; then
+            echo "Spark OTel logs found in VictoriaLogs: OK ($spark_log_count entries)"
+        else
+            echo "ERROR: No Spark logs found in VictoriaLogs with service.name:~\"spark-*\""
+            echo "OTel Java agent may not be exporting logs to the control node"
+            return 1
+        fi
     else
-        echo "ERROR: No Spark logs found in VictoriaLogs with service.name:~\"spark-*\""
-        echo "OTel Java agent may not be exporting logs to the control node"
-        return 1
+        echo "=== Skipping Spark VictoriaLogs check (no Spark job was submitted successfully) ==="
     fi
 }
 
@@ -927,8 +967,8 @@ step_test_logs_query() {
         return 1
     fi
 
-    # If Spark is enabled, check for EMR logs
-    if [ "$ENABLE_SPARK" = true ]; then
+    # If a Spark job ran successfully, check for EMR logs
+    if [ "$SPARK_JOB_RAN" = true ]; then
         echo "=== Querying EMR logs ==="
         easy-db-lab logs query --source emr --since 1h --limit 5 || true
     fi
@@ -1121,16 +1161,33 @@ run_from_step() {
         fi
         set -e
         if [ $result -ne 0 ]; then
+            FAILURE_COUNT=$((FAILURE_COUNT + 1))
             echo ""
             echo "=========================================="
             echo "FAILED: Step $((i+1)) - $step_name (exit code: $result)"
             echo "=========================================="
-            echo "Last 30 lines of output:"
-            echo "------------------------------------------"
-            tail -30 "$STEP_LOG"
-            echo "------------------------------------------"
-            echo "Full log: $STEP_LOG"
-            return 1
+            {
+                echo "============================================================"
+                echo "FAILURE $FAILURE_COUNT: Step $((i+1)) - $step_name"
+                echo "Exit code: $result"
+                echo "Time: $(date)"
+                echo "============================================================"
+                echo ""
+                echo "--- Step Output (last 100 lines) ---"
+                tail -100 "$STEP_LOG"
+                echo ""
+                echo "--- Diagnostics ---"
+                echo ">> kubectl get pods -A:"
+                kubectl get pods -A 2>/dev/null || echo "(kubectl not available)"
+                echo ""
+                echo ">> kubectl get events --sort-by=.lastTimestamp (last 20):"
+                kubectl get events --sort-by=.lastTimestamp 2>/dev/null | tail -20 || echo "(kubectl not available)"
+                echo ""
+                echo ">> df -h:"
+                df -h 2>/dev/null || true
+                echo ""
+            } >> "$FAILURE_LOG"
+            echo ">>> Failure recorded — continuing to next step"
         fi
     done
 
@@ -1147,134 +1204,55 @@ export PROJECT_ROOT TEST_WORKDIR
 cleanup() {
     local exit_code=$?
 
-    # Success case - exit cleanly
-    if [ "$EXIT_OK" = true ]; then
-        rm -f "$STEP_LOG"
+    # Success case - no failures and EXIT_OK
+    if [ "$EXIT_OK" = true ] && [ "$FAILURE_COUNT" -eq 0 ]; then
+        rm -f "$STEP_LOG" "$FAILURE_LOG"
         echo ""
         echo "=== All tests passed successfully ==="
         exit 0
     fi
 
-    if [ "$WAIT_BEFORE_TEARDOWN" != true ]; then
-        while true; do
-            echo ""
-            echo "=== Test work directory: $TEST_WORKDIR ==="
-            if [ -n "$CURRENT_STEP_NAME" ]; then
-                echo "Failed at step $((CURRENT_STEP+1)): $CURRENT_STEP_NAME"
-            fi
-            if [ -f "$STEP_LOG" ]; then
-                echo ""
-                echo "Last 30 lines of output:"
-                echo "------------------------------------------"
-                tail -30 "$STEP_LOG"
-                echo "------------------------------------------"
-                echo "Full log: $STEP_LOG"
-            fi
-            echo ""
-            echo "What would you like to do?"
-            echo "  1) Retry from failed step (resume test)"
-            echo "  2) Start a shell session in the directory"
-            echo "  3) Tear down environment (easy-db-lab down --yes)"
-            echo "  4) Exit"
-            echo ""
-            read -p "Choose [1-4]: " -n 1 -r choice
-            echo
-            case $choice in
-                1)
-                    if [ -n "$CURRENT_STEP" ]; then
-                        echo "=== Resuming from step $((CURRENT_STEP+1)): $CURRENT_STEP_NAME ==="
-                        if run_from_step "$CURRENT_STEP"; then
-                            echo "=== Test completed successfully ==="
-                            exit_code=0
-                            break
-                        else
-                            echo "=== Step failed again ==="
-                        fi
-                    else
-                        echo "No step to retry."
-                    fi
-                    ;;
-                2)
-                    echo "=== Starting shell session in $TEST_WORKDIR ==="
-                    echo "Available commands:"
-                    echo "  easy-db-lab  - Run easy-db-lab commands"
-                    echo "  rebuild      - Rebuild the project (shadowJar + installDist)"
-                    echo "  rerun        - Rebuild and resume from failed step"
-                    echo "Type 'exit' to return to cleanup menu"
-                    echo ""
-                    (
-                        cd "$TEST_WORKDIR"
-
-                        # Create temp zsh config directory
-                        TEMP_ZDOTDIR=$(mktemp -d)
-
-                        # Create custom .zshrc with our functions
-                        cat > "$TEMP_ZDOTDIR/.zshrc" << ZSHRC_EOF
-# Easy DB Lab shell session
-
-# easy-db-lab is available via PATH (set by parent script)
-
-# Rebuild function - runs gradle in project root
-rebuild() {
-    echo "=== Rebuilding project ==="
-    (cd "\$PROJECT_ROOT" && ./gradlew shadowJar installDist)
-    echo "=== Rebuild complete ==="
-}
-
-# Rerun function - rebuild and resume from failed step
-rerun() {
-    echo "=== Rebuilding project ==="
-    (cd "\$PROJECT_ROOT" && ./gradlew shadowJar installDist)
-    if [ \$? -ne 0 ]; then
-        echo "=== Rebuild failed ==="
-        return 1
+    # Failure case - print failure log and prompt for teardown
+    echo ""
+    echo "=========================================="
+    if [ "$FAILURE_COUNT" -gt 0 ]; then
+        echo "=== $FAILURE_COUNT step(s) FAILED ==="
+    else
+        echo "=== Script exited unexpectedly ==="
     fi
-    echo "=== Rebuild complete ==="
-    echo "=== Resuming from step $((CURRENT_STEP+1)): $CURRENT_STEP_NAME ==="
-    echo "NOTE: For full resume with proper environment, exit shell and choose option 1"
-}
+    echo "=========================================="
+    echo "=== Test work directory: $TEST_WORKDIR ==="
 
-# Source env.sh if it exists in current directory
-if [ -f env.sh ]; then
-    source env.sh
-fi
-
-# Source user's real zshrc for comfort (prompt, etc.) but ignore errors
-[ -f ~/.zshrc ] && source ~/.zshrc 2>/dev/null || true
-ZSHRC_EOF
-
-                        # Export variables for the new shell
-                        export PROJECT_ROOT
-                        export ZDOTDIR="$TEMP_ZDOTDIR"
-
-                        # Start zsh with our custom config
-                        exec zsh
-                    )
-                    # Loop back to menu after shell exits
-                    ;;
-                3)
-                    echo "=== Tearing down environment ==="
-                    (
-                        cd "$TEST_WORKDIR"
-                        if [ -f env.sh ]; then
-                            source env.sh
-                        fi
-                        easy-db-lab down --yes
-                    )
-                    echo "=== Environment torn down ==="
-                    # Loop back to menu for directory cleanup
-                    ;;
-                4)
-                    echo "=== Exiting ==="
-                    break
-                    ;;
-                *)
-                    echo "Invalid choice. Please enter 1, 2, 3, or 4."
-                    ;;
-            esac
-        done
+    if [ "$FAILURE_COUNT" -gt 0 ] && [ -f "$FAILURE_LOG" ]; then
+        echo ""
+        echo "=== Full Failure Log ==="
+        cat "$FAILURE_LOG"
     fi
-    exit $exit_code
+
+    echo ""
+    echo "The cluster is still running. You can inspect it from another terminal."
+    echo "Work directory: $TEST_WORKDIR"
+    echo ""
+    while true; do
+        read -p "Type 'yes' to tear down the cluster, or Ctrl-C to keep it running: " confirm
+        if [ "$confirm" = "yes" ]; then
+            echo "=== Tearing down environment ==="
+            (
+                cd "$TEST_WORKDIR"
+                if [ -f env.sh ]; then
+                    source env.sh
+                fi
+                easy-db-lab down --yes
+            )
+            echo "=== Environment torn down ==="
+            break
+        else
+            echo "Please type 'yes' to confirm teardown, or press Ctrl-C to exit and keep the cluster."
+        fi
+    done
+
+    rm -f "$STEP_LOG" "$FAILURE_LOG"
+    exit 1
 }
 trap cleanup EXIT
 
@@ -1298,7 +1276,7 @@ if [ "$WAIT_BEFORE_TEARDOWN" = true ]; then
     # Run all steps except teardown (last step)
     TOTAL_STEPS=${#ALL_STEPS[@]}
     LAST_STEP=$((TOTAL_STEPS - 1))  # Teardown is the last step
-    run_from_step 0 $LAST_STEP || exit 1
+    run_from_step 0 $LAST_STEP
 
     # Prompt user before teardown
     echo ""
@@ -1316,9 +1294,15 @@ if [ "$WAIT_BEFORE_TEARDOWN" = true ]; then
 
     # Now run teardown
     step_teardown
-    EXIT_OK=true
+
+    if [ "$FAILURE_COUNT" -eq 0 ]; then
+        EXIT_OK=true
+    fi
 else
     # Run all steps
     run_from_step 0
-    EXIT_OK=true
+
+    if [ "$FAILURE_COUNT" -eq 0 ]; then
+        EXIT_OK=true
+    fi
 fi

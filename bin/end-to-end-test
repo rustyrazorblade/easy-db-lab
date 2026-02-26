@@ -21,8 +21,6 @@
 #
 # Flags:
 #   --list-steps, -l   List all steps and exit.
-#   --wait             Run all steps except teardown, then pause for manual
-#                      inspection before running teardown.
 #   --break N[,M,...]  Pause before the given step number(s) for inspection.
 #   --build            Build the packer AMI image before running.
 #   --spark            Enable Spark-related steps.
@@ -56,7 +54,6 @@ FAILURE_COUNT=0
 SPARK_JOB_RAN=false
 
 # Parse command line arguments (must be before cleanup trap setup)
-WAIT_BEFORE_TEARDOWN=false
 BUILD_IMAGE=false
 ENABLE_SPARK=false
 ENABLE_CASSANDRA=false
@@ -75,10 +72,6 @@ while [[ $# -gt 0 ]]; do
     --break)
       BREAKPOINTS="$2"
       shift 2
-      ;;
-    --wait)
-      WAIT_BEFORE_TEARDOWN=true
-      shift
       ;;
     --build)
       BUILD_IMAGE=true
@@ -113,7 +106,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     *)
       echo "Unknown option: $1"
-      echo "Usage: $0 [--list-steps|-l] [--break <steps>] [--wait] [--build] [--spark] [--cassandra] [--clickhouse] [--opensearch] [--all] [--ebs]"
+      echo "Usage: $0 [--list-steps|-l] [--break <steps>] [--build] [--spark] [--cassandra] [--clickhouse] [--opensearch] [--all] [--ebs]"
       exit 1
       ;;
   esac
@@ -1047,8 +1040,7 @@ step_teardown() {
 
     echo "=== Tearing down cluster ==="
     easy-db-lab down --yes
-
-    echo "=== End-to-end test completed successfully ==="
+    echo "=== Teardown complete ==="
 }
 
 # ============================================================================
@@ -1301,38 +1293,16 @@ fi
 cd "$TEST_WORKDIR"
 echo "=== Work directory: $(pwd) ==="
 
-# Handle --wait flag for inspection before teardown
-if [ "$WAIT_BEFORE_TEARDOWN" = true ]; then
-    # Run all steps except teardown (last step)
-    TOTAL_STEPS=${#ALL_STEPS[@]}
-    LAST_STEP=$((TOTAL_STEPS - 1))  # Teardown is the last step
-    run_from_step 0 $LAST_STEP
+# Run all steps except teardown (last step).
+# Teardown is handled by the cleanup trap — it prompts for confirmation
+# when there are failures, or runs automatically on clean success.
+TOTAL_STEPS=${#ALL_STEPS[@]}
+LAST_STEP=$((TOTAL_STEPS - 1))  # Teardown is the last step
+run_from_step 0 $LAST_STEP
 
-    # Prompt user before teardown
-    echo ""
-    echo "=== Cluster is ready for inspection ==="
-    echo "The cluster is now running and ready to inspect."
-    echo "Work directory: $TEST_WORKDIR"
-    echo "You can:"
-    echo "  - Run: kubectl get nodes"
-    echo "  - Run: kubectl get pods -A"
-    echo "  - SSH to nodes using the aliases from env.sh"
-    echo "  - Test Cassandra connectivity"
-    echo ""
-    read -p "Press Enter to tear down the cluster and complete the test..."
-    echo ""
-
-    # Now run teardown
+if [ "$FAILURE_COUNT" -eq 0 ]; then
+    # All steps passed — run teardown directly
     step_teardown
-
-    if [ "$FAILURE_COUNT" -eq 0 ]; then
-        EXIT_OK=true
-    fi
-else
-    # Run all steps
-    run_from_step 0
-
-    if [ "$FAILURE_COUNT" -eq 0 ]; then
-        EXIT_OK=true
-    fi
+    EXIT_OK=true
 fi
+# If FAILURE_COUNT > 0, cleanup trap will print failure log and prompt for teardown

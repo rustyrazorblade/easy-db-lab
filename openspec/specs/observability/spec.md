@@ -15,11 +15,22 @@ The system MUST collect metrics from all cluster nodes and store them in a Prome
 
 ### REQ-OB-002: Log Collection and Storage
 
-The system MUST collect logs from all cluster nodes and make them queryable.
+The system MUST collect logs from all cluster nodes using the OpenTelemetry Collector DaemonSet and store them in VictoriaLogs.
+
+The OTel Collector MUST collect the following log sources:
+- ClickHouse server logs from `/mnt/db1/clickhouse/logs/*.log`
+- ClickHouse Keeper logs from `/mnt/db1/clickhouse/keeper/logs/*.log`
+- System logs from `/var/log/**/*.log`, `/var/log/messages`, `/var/log/syslog`
+- Cassandra logs from `/mnt/db1/cassandra/logs/*.log`
+- Systemd journal entries for `cassandra.service`, `docker.service`, `k3s.service`, `sshd.service`
+
+Each log source MUST have a `source` attribute identifying its origin (`system`, `cassandra`, `systemd`). ClickHouse logs retain their existing `database: clickhouse` attribute.
 
 **Scenarios:**
 
-- **GIVEN** a running cluster, **WHEN** services produce logs, **THEN** logs are collected via Vector and stored in VictoriaLogs.
+- **GIVEN** a running cluster, **WHEN** a cluster node writes to `/var/log/syslog`, **THEN** OTel Collector ingests the log entry and forwards it to VictoriaLogs with `source: system`.
+- **GIVEN** a running cluster, **WHEN** Cassandra writes to `/mnt/db1/cassandra/logs/system.log`, **THEN** OTel Collector ingests the log entry and forwards it to VictoriaLogs with `source: cassandra`.
+- **GIVEN** a running cluster, **WHEN** the `cassandra.service` systemd unit emits a journal entry, **THEN** OTel Collector ingests the entry and forwards it to VictoriaLogs with `source: systemd`.
 - **GIVEN** stored logs, **WHEN** the user queries logs, **THEN** matching log entries are returned.
 
 ### REQ-OB-003: Grafana Dashboards

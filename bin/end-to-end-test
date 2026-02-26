@@ -308,8 +308,7 @@ step_test_mcp_server() {
 
     # Clean up
     echo "=== Stopping MCP server ==="
-    kill "$server_pid" 2>/dev/null || true
-    wait "$server_pid" 2>/dev/null || true
+    kill -9 "$server_pid" 2>/dev/null || true
     rm -f .mcp.json .mcp-server.pid
 
     echo "=== MCP server /status test passed ==="

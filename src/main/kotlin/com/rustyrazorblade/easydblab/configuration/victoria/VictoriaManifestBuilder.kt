@@ -18,14 +18,15 @@ class VictoriaManifestBuilder {
         private const val NAMESPACE = "default"
 
         private const val VM_APP_LABEL = "victoriametrics"
-        private const val VM_IMAGE = "victoriametrics/victoria-metrics:latest"
+        private const val VM_IMAGE = "victoriametrics/victoria-metrics:v1.136.0"
         private const val VM_DATA_PATH = "/mnt/db1/victoriametrics"
 
         private const val VL_APP_LABEL = "victorialogs"
-        private const val VL_IMAGE = "victoriametrics/victoria-logs:latest"
+        private const val VL_IMAGE = "victoriametrics/victoria-logs:v1.47.0"
         private const val VL_DATA_PATH = "/mnt/db1/victorialogs"
 
         private const val RETENTION_PERIOD = "7d"
+        private const val MEMORY_ALLOWED_BYTES = "1073741824" // 1 GB
 
         private const val LIVENESS_INITIAL_DELAY = 30
         private const val LIVENESS_PERIOD = 15
@@ -85,6 +86,7 @@ class VictoriaManifestBuilder {
                     "-storageDataPath=/victoria-metrics-data",
                     "-retentionPeriod=$RETENTION_PERIOD",
                     "-httpListenAddr=0.0.0.0:${Constants.K8s.VICTORIAMETRICS_PORT}",
+                    "-memory.allowedBytes=$MEMORY_ALLOWED_BYTES",
                 ),
             healthPath = "/health",
         )
@@ -128,6 +130,7 @@ class VictoriaManifestBuilder {
                     "-storageDataPath=/victoria-logs-data",
                     "-retentionPeriod=$RETENTION_PERIOD",
                     "-httpListenAddr=0.0.0.0:${Constants.K8s.VICTORIALOGS_PORT}",
+                    "-memory.allowedBytes=$MEMORY_ALLOWED_BYTES",
                 ),
             healthPath = "/health",
         )

@@ -210,6 +210,7 @@ object Constants {
         const val OTEL_HEALTH_PORT = 13133
         const val TEMPO_OTLP_GRPC_PORT = 4320
         const val TEMPO_OTLP_HTTP_PORT = 4321
+        const val YACE_PORT = 5001
     }
 
     // OpenSearch configuration
@@ -234,6 +235,22 @@ object Constants {
         const val DEFAULT_S3_CACHE_SIZE = "10Gi"
         const val DEFAULT_S3_CACHE_ON_WRITE = "true"
         const val DEFAULT_REPLICAS_PER_SHARD = 3
+    }
+
+    // YACE (Yet Another CloudWatch Exporter) configuration
+    object Yace {
+        const val IMAGE = "quay.io/prometheuscommunity/yet-another-cloudwatch-exporter:v0.63.0"
+        const val PORT = 5001
+        const val CONFIGMAP_NAME = "yace-config"
+        const val DEPLOYMENT_NAME = "yace"
+    }
+
+    // OTel Java Agent configuration (for EMR Spark JVMs)
+    object OtelJavaAgent {
+        const val VERSION = "2.25.0"
+        const val DOWNLOAD_URL =
+            "https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v$VERSION/opentelemetry-javaagent.jar"
+        const val INSTALL_PATH = "/opt/otel/opentelemetry-javaagent.jar"
     }
 
     // Cassandra stress testing configuration

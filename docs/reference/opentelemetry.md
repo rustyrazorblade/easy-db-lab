@@ -85,6 +85,31 @@ The Prometheus scrape job is named `cassandra-easy-stress`. The following labels
 
 Short-lived stress commands (`list`, `info`, `fields`) do not include the sidecar since they complete quickly and don't produce meaningful metrics.
 
+## Spark JVM Instrumentation
+
+EMR Spark jobs are auto-instrumented with the OpenTelemetry Java Agent (v2.25.0), configured via an EMR bootstrap action. The agent is downloaded to each EMR node and activated through `spark.driver.extraJavaOptions` and `spark.executor.extraJavaOptions`.
+
+The agent sends logs, metrics, and traces via OTLP to the control node's OTel Collector. Each Spark job's telemetry is tagged with `service.name=spark-<job-name>` for easy filtering.
+
+Key configuration:
+- **Agent JAR**: Downloaded by bootstrap action to `/home/hadoop/opentelemetry-javaagent.jar`
+- **Export protocol**: OTLP/gRPC to `http://<control-node-ip>:4317`
+- **Logs exporter**: OTLP (captures JVM log output)
+- **Service name**: `spark-<job-name>` (set per job)
+
+## YACE CloudWatch Scrape
+
+YACE (Yet Another CloudWatch Exporter) runs on the control node and scrapes AWS CloudWatch metrics for services used by the cluster. It uses tag-based auto-discovery with the `easy_cass_lab=1` tag to find relevant resources.
+
+YACE scrapes metrics for:
+- **EMR** — cluster, instance group, and node metrics
+- **S3** — bucket request/byte counts
+- **EBS** — volume read/write ops and latency
+- **EC2** — instance CPU, network, disk
+- **OpenSearch** — domain health, indexing, search metrics
+
+YACE exposes scraped metrics as Prometheus-compatible metrics on port 5001, which are then scraped by the OTel Collector and forwarded to VictoriaMetrics. This replaces the previous CloudWatch datasource in Grafana with a Prometheus-based approach, giving dashboards access to CloudWatch metrics through VictoriaMetrics queries.
+
 ## Configuration
 
 The following environment variables are supported:

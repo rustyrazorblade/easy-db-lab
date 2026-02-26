@@ -272,10 +272,11 @@ The cluster runs a full observability stack on the control node. When modifying 
 All observability K8s resources are built programmatically using Fabric8 manifest builders in `configuration/` subpackages. No raw YAML files remain in the core observability stack.
 
 - **MAAC agent** (port 9000) runs on Cassandra nodes (4.0, 4.1, 5.0). Loaded as a JVM agent, exposes Cassandra internal metrics (`mcac_*` prefix) as a Prometheus endpoint. Installed per-version at `/opt/management-api/{version}/datastax-mgmtapi-agent.jar`. Configured in `packer/cassandra/cassandra.in.sh`. Scraped by OTel collector (`cassandra-maac` job).
-- **OpenTelemetry Collector** (`configuration/otel/OtelManifestBuilder.kt`) runs on all nodes. Collects host metrics, scrapes Prometheus endpoints (ClickHouse, Beyla, ebpf_exporter, MAAC), reads file-based logs (system, Cassandra, ClickHouse), collects journald, and receives OTLP. Exports metrics to VictoriaMetrics, logs to VictoriaLogs, traces to Tempo.
+- **OpenTelemetry Collector** (`configuration/otel/OtelManifestBuilder.kt`) runs on all nodes. Collects host metrics, scrapes Prometheus endpoints (ClickHouse, Beyla, ebpf_exporter, MAAC, YACE), reads file-based logs (system, Cassandra, ClickHouse), collects journald, and receives OTLP. Exports metrics to VictoriaMetrics, logs to VictoriaLogs, traces to Tempo.
 - **Grafana Alloy eBPF profiler** (`configuration/pyroscope/PyroscopeManifestBuilder.kt`) runs on all nodes via Grafana Alloy with `pyroscope.ebpf` component. Collects CPU profiles via eBPF for Cassandra, ClickHouse, and stress jobs. Sends profiles to Pyroscope server.
 - **Beyla** (`configuration/beyla/BeylaManifestBuilder.kt`) runs on all nodes. Provides L7 network RED metrics (Rate/Errors/Duration) for Cassandra and ClickHouse protocols via eBPF. Exposes Prometheus metrics scraped by OTel collector.
 - **ebpf_exporter** (`configuration/ebpfexporter/EbpfExporterManifestBuilder.kt`) runs on all nodes. Provides low-level TCP retransmit, block I/O latency, and VFS latency metrics via eBPF. Exposes Prometheus metrics scraped by OTel collector.
+- **YACE** (`configuration/yace/YaceManifestBuilder.kt`) runs on the control node. Scrapes CloudWatch metrics (EMR, S3, EBS, EC2, OpenSearch) with tag-based auto-discovery. Exposes Prometheus metrics on port 5001, scraped by OTel collector.
 - **Stress job sidecars** (`configuration/cassandra/otel-stress-sidecar-config.yaml`) — long-running stress jobs get an OTel sidecar that scrapes `cassandra-easy-stress:9500` and forwards to the node's DaemonSet collector.
 
 ### Storage Backends (control node)
@@ -291,9 +292,9 @@ Grafana runs on port 3000. All Grafana K8s resources (ConfigMaps, Deployment) ar
 
 Kotlin code: `configuration/grafana/GrafanaDashboard.kt` (registry), `configuration/grafana/GrafanaManifestBuilder.kt` (Fabric8 builder), `configuration/grafana/GrafanaDatasourceConfig.kt`, `commands/grafana/`, `services/GrafanaDashboardService.kt`.
 
-Datasources: VictoriaMetrics (Prometheus), VictoriaLogs, ClickHouse, Tempo, CloudWatch, Pyroscope.
+Datasources: VictoriaMetrics (Prometheus), VictoriaLogs, ClickHouse, Tempo, Pyroscope.
 
-Current dashboards: System Overview, AWS CloudWatch (S3/EBS/EC2), EMR, OpenSearch, Stress, ClickHouse metrics, ClickHouse logs, Profiling, Cassandra Condensed, Cassandra Overview.
+Current dashboards: System Overview, S3 CloudWatch, EMR, OpenSearch, Stress, ClickHouse metrics, ClickHouse logs, Profiling, Cassandra Condensed, Cassandra Overview.
 
 ### CLI Commands
 

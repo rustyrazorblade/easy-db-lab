@@ -1,10 +1,12 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.EMRClusterInfo
 import com.rustyrazorblade.easydblab.configuration.EMRClusterState
+import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.services.aws.EMRSparkService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -12,6 +14,7 @@ import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
@@ -72,12 +75,34 @@ class EMRSparkServiceTest : BaseKoinTest() {
             },
         )
 
+    private val testControlHost =
+        ClusterHost(
+            publicIp = "54.123.45.67",
+            privateIp = "10.0.1.5",
+            alias = "control0",
+            availabilityZone = "us-west-2a",
+            instanceId = "i-test123",
+        )
+
+    private val defaultClusterState =
+        ClusterState(
+            name = "test-cluster",
+            versions = mutableMapOf(),
+            s3Bucket = "test-bucket",
+            hosts =
+                mutableMapOf(
+                    ServerType.Control to listOf(testControlHost),
+                ),
+            emrCluster = validEmrClusterState,
+        )
+
     @BeforeEach
     fun setupMocks() {
         mockEmrClient = mock()
         mockObjectStore = mock()
         mockClusterStateManager = mock()
         mockVictoriaLogsService = mock()
+        whenever(mockClusterStateManager.load()).thenReturn(defaultClusterState)
         sparkService = getKoin().get()
     }
 
@@ -232,6 +257,45 @@ class EMRSparkServiceTest : BaseKoinTest() {
 
         // Then
         assertThat(result.isSuccess).isTrue()
+    }
+
+    // ========== OTel INTEGRATION TESTS ==========
+
+    @Test
+    fun `submitJob should include OTel Java agent flags in spark-submit args`() {
+        // Given
+        val captor = argumentCaptor<AddJobFlowStepsRequest>()
+        val response =
+            AddJobFlowStepsResponse
+                .builder()
+                .stepIds(testStepId)
+                .build()
+
+        whenever(mockEmrClient.addJobFlowSteps(captor.capture())).thenReturn(response)
+
+        // When
+        sparkService.submitJob(testClusterId, testJarPath, testMainClass, listOf(), "test-job")
+
+        // Then
+        val args =
+            captor.firstValue
+                .steps()
+                .first()
+                .hadoopJarStep()
+                .args()
+        val allArgs = args.joinToString(" ")
+
+        // Verify OTel Java agent flags in spark conf
+        assertThat(allArgs).contains("-javaagent:/opt/otel/opentelemetry-javaagent.jar")
+        assertThat(allArgs).contains("spark.driver.extraJavaOptions")
+        assertThat(allArgs).contains("spark.executor.extraJavaOptions")
+
+        // Verify OTel environment variables
+        assertThat(allArgs).contains("OTEL_LOGS_EXPORTER=otlp")
+        assertThat(allArgs).contains("OTEL_METRICS_EXPORTER=otlp")
+        assertThat(allArgs).contains("OTEL_TRACES_EXPORTER=otlp")
+        assertThat(allArgs).contains("OTEL_EXPORTER_OTLP_ENDPOINT=http://10.0.1.5:4317")
+        assertThat(allArgs).contains("OTEL_SERVICE_NAME=spark-test-job")
     }
 
     // ========== GET JOB STATUS TESTS ==========

@@ -14,6 +14,7 @@ import com.rustyrazorblade.easydblab.providers.aws.VpcId
 import io.github.oshai.kotlinlogging.KotlinLogging
 import software.amazon.awssdk.services.emr.EmrClient
 import software.amazon.awssdk.services.emr.model.Application
+import software.amazon.awssdk.services.emr.model.BootstrapActionConfig
 import software.amazon.awssdk.services.emr.model.ClusterState
 import software.amazon.awssdk.services.emr.model.ClusterSummary
 import software.amazon.awssdk.services.emr.model.DescribeClusterRequest
@@ -22,6 +23,7 @@ import software.amazon.awssdk.services.emr.model.InstanceRoleType
 import software.amazon.awssdk.services.emr.model.JobFlowInstancesConfig
 import software.amazon.awssdk.services.emr.model.ListClustersRequest
 import software.amazon.awssdk.services.emr.model.RunJobFlowRequest
+import software.amazon.awssdk.services.emr.model.ScriptBootstrapActionConfig
 import software.amazon.awssdk.services.emr.model.Tag
 import software.amazon.awssdk.services.emr.model.TerminateJobFlowsRequest
 
@@ -137,6 +139,24 @@ class EMRService(
 
         if (config.logUri.isNotEmpty()) {
             requestBuilder.logUri(config.logUri)
+        }
+
+        if (config.bootstrapActions.isNotEmpty()) {
+            val bootstrapConfigs =
+                config.bootstrapActions.map { action ->
+                    BootstrapActionConfig
+                        .builder()
+                        .name(action.name)
+                        .scriptBootstrapAction(
+                            ScriptBootstrapActionConfig
+                                .builder()
+                                .path(action.scriptS3Path)
+                                .args(action.args)
+                                .build(),
+                        ).build()
+                }
+            requestBuilder.bootstrapActions(bootstrapConfigs)
+            log.info { "Adding ${config.bootstrapActions.size} bootstrap actions to EMR cluster" }
         }
 
         val request = requestBuilder.build()

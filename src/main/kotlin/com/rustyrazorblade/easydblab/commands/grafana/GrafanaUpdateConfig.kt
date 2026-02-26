@@ -15,6 +15,7 @@ import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBu
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.toHost
 import com.rustyrazorblade.easydblab.configuration.victoria.VictoriaManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.yace.YaceManifestBuilder
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
 import com.rustyrazorblade.easydblab.services.K8sService
@@ -59,6 +60,7 @@ class GrafanaUpdateConfig : PicoBaseCommand() {
     private val s3ManagerManifestBuilder: S3ManagerManifestBuilder by inject()
     private val beylaManifestBuilder: BeylaManifestBuilder by inject()
     private val pyroscopeManifestBuilder: PyroscopeManifestBuilder by inject()
+    private val yaceManifestBuilder: YaceManifestBuilder by inject()
 
     companion object {
         private const val CLUSTER_CONFIG_NAME = "cluster-config"
@@ -85,12 +87,13 @@ class GrafanaUpdateConfig : PicoBaseCommand() {
         applyFabric8Resources("Registry", controlNode, registryManifestBuilder.buildAllResources())
         applyFabric8Resources("S3 Manager", controlNode, s3ManagerManifestBuilder.buildAllResources())
         applyFabric8Resources("Beyla", controlNode, beylaManifestBuilder.buildAllResources())
+        applyFabric8Resources("YACE", controlNode, yaceManifestBuilder.buildAllResources())
 
         // Apply Pyroscope resources (requires directory setup via SSH first)
         applyPyroscopeResources(controlNode)
 
         // Apply Grafana dashboards
-        dashboardService.uploadDashboards(controlNode, region).getOrElse { exception ->
+        dashboardService.uploadDashboards(controlNode).getOrElse { exception ->
             error("Failed to upload dashboards: ${exception.message}")
         }
     }

@@ -33,10 +33,9 @@ data class GrafanaDatasourceConfig(
         /**
          * Creates the full Grafana datasource configuration with all datasources.
          *
-         * @param region AWS region for the CloudWatch datasource
          * @return Complete datasource config ready for serialization
          */
-        fun create(region: String): GrafanaDatasourceConfig =
+        fun create(): GrafanaDatasourceConfig =
             GrafanaDatasourceConfig(
                 datasources =
                     listOf(
@@ -69,16 +68,6 @@ data class GrafanaDatasourceConfig(
                             type = "tempo",
                             uid = "tempo",
                             url = "http://localhost:3200",
-                        ),
-                        GrafanaDatasource(
-                            name = "CloudWatch",
-                            type = "cloudwatch",
-                            uid = "cloudwatch",
-                            jsonData =
-                                mapOf(
-                                    "defaultRegion" to region,
-                                    "authType" to "default",
-                                ),
                         ),
                         GrafanaDatasource(
                             name = "Pyroscope",

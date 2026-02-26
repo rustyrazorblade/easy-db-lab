@@ -14,28 +14,20 @@ import com.rustyrazorblade.easydblab.events.EventBus
  */
 interface GrafanaDashboardService {
     /**
-     * Creates the grafana-datasources ConfigMap with runtime region.
+     * Creates the grafana-datasources ConfigMap.
      *
      * @param controlHost The control node running K3s
-     * @param region AWS region for CloudWatch datasource
      * @return Result indicating success or failure
      */
-    fun createDatasourcesConfigMap(
-        controlHost: ClusterHost,
-        region: String,
-    ): Result<Unit>
+    fun createDatasourcesConfigMap(controlHost: ClusterHost): Result<Unit>
 
     /**
      * Builds and applies all Grafana resources (dashboards, provisioning, deployment) to K8s.
      *
      * @param controlHost The control node running K3s
-     * @param region AWS region for CloudWatch datasource
      * @return Result indicating success or failure
      */
-    fun uploadDashboards(
-        controlHost: ClusterHost,
-        region: String,
-    ): Result<Unit>
+    fun uploadDashboards(controlHost: ClusterHost): Result<Unit>
 }
 
 /**
@@ -57,11 +49,8 @@ class DefaultGrafanaDashboardService(
         private const val DEFAULT_NAMESPACE = "default"
     }
 
-    override fun createDatasourcesConfigMap(
-        controlHost: ClusterHost,
-        region: String,
-    ): Result<Unit> {
-        val config = GrafanaDatasourceConfig.create(region = region)
+    override fun createDatasourcesConfigMap(controlHost: ClusterHost): Result<Unit> {
+        val config = GrafanaDatasourceConfig.create()
         val yamlContent = config.toYaml()
 
         return k8sService.createConfigMap(
@@ -73,12 +62,9 @@ class DefaultGrafanaDashboardService(
         )
     }
 
-    override fun uploadDashboards(
-        controlHost: ClusterHost,
-        region: String,
-    ): Result<Unit> {
+    override fun uploadDashboards(controlHost: ClusterHost): Result<Unit> {
         eventBus.emit(Event.Grafana.DatasourcesCreating)
-        createDatasourcesConfigMap(controlHost, region).getOrElse { exception ->
+        createDatasourcesConfigMap(controlHost).getOrElse { exception ->
             return Result.failure(
                 IllegalStateException("Failed to create Grafana datasources ConfigMap: ${exception.message}", exception),
             )

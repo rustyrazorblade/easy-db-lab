@@ -309,6 +309,33 @@ class S3ObjectStore(
         return ObjectStore.UploadDirectoryResult(remotePath, filesUploaded, totalBytes)
     }
 
+    override fun uploadContent(
+        content: String,
+        remotePath: ClusterS3Path,
+    ) {
+        val putRequest =
+            PutObjectRequest
+                .builder()
+                .bucket(remotePath.bucket)
+                .key(remotePath.getKey())
+                .contentType("text/plain")
+                .build()
+
+        val retryConfig = RetryUtil.createAwsRetryConfig<Unit>()
+        val retry = Retry.of("s3-upload-content", retryConfig)
+
+        Retry
+            .decorateRunnable(retry) {
+                val bytes = content.toByteArray()
+                s3Client.putObject(
+                    putRequest,
+                    software.amazon.awssdk.core.sync.RequestBody
+                        .fromBytes(bytes),
+                )
+                log.info { "Uploaded content (${bytes.size} bytes) to ${remotePath.toUri()}" }
+            }.run()
+    }
+
     override fun directoryExists(remotePath: ClusterS3Path): Boolean {
         // Use recursive=true to find any files under the prefix
         // With recursive=false, S3's delimiter "/" would roll up nested files

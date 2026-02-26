@@ -17,10 +17,11 @@ This page documents the centralized logging infrastructure in easy-db-lab, inclu
                            ▼
               ┌────────────────────────┐
               │  OTel Collector        │
-              │  (DaemonSet)           │
-              │  filelog + journald    │
-              └───────────┬────────────┘
-                          │
+              │  (DaemonSet)           │      ┌──────────────────┐
+              │  filelog + journald    │◀─────│  EMR Spark JVMs  │
+              │  + OTLP receiver       │ OTLP │  (OTel Java Agent│
+              └───────────┬────────────┘      │   v2.25.0)       │
+                          │                   └──────────────────┘
 ┌─────────────────────────┼─────────────────────────┐
 │   Control Node          │                          │
 ├─────────────────────────┼─────────────────────────┤
@@ -52,6 +53,14 @@ The OpenTelemetry Collector runs on all nodes as a DaemonSet, collecting:
 - **OTLP**: Receives logs from applications via OTLP protocol
 
 Logs are forwarded to Victoria Logs on the control node via the Elasticsearch-compatible sink.
+
+### Spark OTel Java Agent (EMR)
+
+When EMR Spark jobs are running, the Spark driver and executor JVMs are instrumented with the OpenTelemetry Java Agent (v2.25.0) via an EMR bootstrap action. The agent auto-instruments the JVMs and exports logs via OTLP to the control node's OTel Collector.
+
+Logs appear in VictoriaLogs with a `service.name` attribute like `spark-<job-name>`, making it easy to filter logs for specific Spark jobs.
+
+The data flow is: Spark JVM → OTel Java Agent → OTLP → OTel Collector (control node) → VictoriaLogs.
 
 ### Victoria Logs
 

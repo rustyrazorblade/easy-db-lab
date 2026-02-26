@@ -1,0 +1,157 @@
+apiVersion: v1alpha1
+discovery:
+  exportedTagsOnMetrics:
+    AWS/ElasticMapReduce:
+      - Name
+    AWS/S3:
+      - BucketName
+    AWS/EBS:
+      - VolumeId
+    AWS/EC2:
+      - Name
+    AWS/ES:
+      - DomainName
+  jobs:
+    - type: AWS/ElasticMapReduce
+      regions:
+        - __AWS_REGION__
+      period: 300
+      length: 600
+      searchTags:
+        - key: easy_cass_lab
+          value: "1"
+      metrics:
+        - name: CoreNodesRunning
+          statistics: [Average]
+        - name: HDFSUtilization
+          statistics: [Average]
+        - name: AppsRunning
+          statistics: [Average]
+        - name: AppsPending
+          statistics: [Average]
+        - name: MemoryAllocatedMB
+          statistics: [Average]
+        - name: MemoryAvailableMB
+          statistics: [Average]
+        - name: YARNMemoryAvailablePercentage
+          statistics: [Average]
+        - name: S3BytesRead
+          statistics: [Sum]
+        - name: S3BytesWritten
+          statistics: [Sum]
+        - name: ContainerAllocated
+          statistics: [Average]
+        - name: ContainerPending
+          statistics: [Average]
+        - name: IsIdle
+          statistics: [Average]
+        - name: MRActiveNodes
+          statistics: [Average]
+        - name: MultiMasterInstanceGroupIdleCount
+          statistics: [Average]
+        - name: CoreNodesPending
+          statistics: [Average]
+    - type: AWS/S3
+      regions:
+        - __AWS_REGION__
+      period: 300
+      length: 600
+      searchTags:
+        - key: easy_cass_lab
+          value: "1"
+      metrics:
+        - name: BucketSizeBytes
+          statistics: [Average]
+          period: 86400
+          length: 172800
+        - name: NumberOfObjects
+          statistics: [Average]
+          period: 86400
+          length: 172800
+        - name: BytesDownloaded
+          statistics: [Sum]
+        - name: BytesUploaded
+          statistics: [Sum]
+        - name: GetRequests
+          statistics: [Sum, Average]
+        - name: PutRequests
+          statistics: [Sum, Average]
+        - name: FirstByteLatency
+          statistics: [Average, p99]
+        - name: TotalRequestLatency
+          statistics: [Average, p99]
+    - type: AWS/EBS
+      regions:
+        - __AWS_REGION__
+      period: 300
+      length: 600
+      searchTags:
+        - key: easy_cass_lab
+          value: "1"
+      metrics:
+        - name: VolumeReadOps
+          statistics: [Sum]
+        - name: VolumeWriteOps
+          statistics: [Sum]
+        - name: VolumeReadBytes
+          statistics: [Sum]
+        - name: VolumeWriteBytes
+          statistics: [Sum]
+        - name: VolumeTotalReadTime
+          statistics: [Sum]
+        - name: VolumeTotalWriteTime
+          statistics: [Sum]
+        - name: VolumeQueueLength
+          statistics: [Average]
+        - name: BurstBalance
+          statistics: [Average]
+    - type: AWS/EC2
+      regions:
+        - __AWS_REGION__
+      period: 300
+      length: 600
+      searchTags:
+        - key: easy_cass_lab
+          value: "1"
+      metrics:
+        - name: CPUUtilization
+          statistics: [Average]
+        - name: NetworkIn
+          statistics: [Sum]
+        - name: NetworkOut
+          statistics: [Sum]
+        - name: DiskReadOps
+          statistics: [Sum]
+        - name: DiskWriteOps
+          statistics: [Sum]
+    - type: AWS/ES
+      regions:
+        - __AWS_REGION__
+      period: 300
+      length: 600
+      searchTags:
+        - key: easy_cass_lab
+          value: "1"
+      metrics:
+        - name: ClusterStatus.green
+          statistics: [Maximum]
+        - name: ClusterStatus.yellow
+          statistics: [Maximum]
+        - name: ClusterStatus.red
+          statistics: [Maximum]
+        - name: CPUUtilization
+          statistics: [Average]
+        - name: JVMMemoryPressure
+          statistics: [Maximum]
+        - name: FreeStorageSpace
+          statistics: [Minimum]
+        - name: SearchLatency
+          statistics: [Average]
+        - name: SearchRate
+          statistics: [Average]
+        - name: IndexingLatency
+          statistics: [Average]
+        - name: IndexingRate
+          statistics: [Average]
+        - name: Nodes
+          statistics: [Average]

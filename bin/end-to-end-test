@@ -63,6 +63,7 @@ USE_EBS=false
 EXIT_OK=false
 LIST_STEPS=false
 BREAKPOINTS=""
+START_STEP=""
 while [[ $# -gt 0 ]]; do
   case $1 in
     --list-steps|-l)
@@ -79,6 +80,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     --spark)
       ENABLE_SPARK=true
+      ENABLE_CASSANDRA=true
       shift
       ;;
     --cassandra)
@@ -104,9 +106,13 @@ while [[ $# -gt 0 ]]; do
       USE_EBS=true
       shift
       ;;
+    --start-step)
+      START_STEP="$2"
+      shift 2
+      ;;
     *)
       echo "Unknown option: $1"
-      echo "Usage: $0 [--list-steps|-l] [--break <steps>] [--build] [--spark] [--cassandra] [--clickhouse] [--opensearch] [--all] [--ebs]"
+      echo "Usage: $0 [--list-steps|-l] [--break <steps>] [--start-step <N>] [--build] [--spark] [--cassandra] [--clickhouse] [--opensearch] [--all] [--ebs]"
       exit 1
       ;;
   esac
@@ -400,6 +406,9 @@ step_setup_cassandra() {
 
     echo "=== Updating configuration ==="
     easy-db-lab cassandra update-config
+
+    echo "=== Starting Cassandra ==="
+    easy-db-lab cassandra start
 }
 
 step_verify_cassandra_backup() {
@@ -672,33 +681,35 @@ step_spark_status() {
         echo ""
         echo "=== EMR Failure Diagnostics ==="
 
-        local cluster_id step_id bucket
-        cluster_id=$(jq -r '.emrCluster.clusterId // empty' state.json 2>/dev/null)
-        if [ -n "$cluster_id" ]; then
-            step_id=$(aws emr list-steps --cluster-id "$cluster_id" \
+        local emr_cluster_id step_id bucket cluster_prefix
+        emr_cluster_id=$(jq -r '.emrCluster.clusterId // empty' state.json 2>/dev/null)
+        if [ -n "$emr_cluster_id" ]; then
+            step_id=$(aws emr list-steps --cluster-id "$emr_cluster_id" \
                 --query 'Steps[0].Id' --output text 2>/dev/null || true)
 
             echo "--- aws emr describe-step ---"
-            aws emr describe-step --cluster-id "$cluster_id" \
+            aws emr describe-step --cluster-id "$emr_cluster_id" \
                 --step-id "$step_id" --output json 2>/dev/null || echo "(describe-step failed)"
 
             echo ""
             echo "--- EMR Step Stderr (last 100 lines) ---"
-            bucket=$(jq -r '.dataBucket // empty' state.json 2>/dev/null)
+            bucket=$(jq -r '.s3Bucket // empty' state.json 2>/dev/null)
+            cluster_prefix=$(jq -r '"clusters/\(.name)-\(.clusterId)"' state.json 2>/dev/null)
             if [ -n "$bucket" ] && [ -n "$step_id" ]; then
-                aws s3 cp "s3://$bucket/spark/emr-logs/$cluster_id/steps/$step_id/stderr.gz" - 2>/dev/null \
+                local log_base="s3://$bucket/$cluster_prefix/spark/emr-logs/$emr_cluster_id/steps/$step_id"
+                aws s3 cp "$log_base/stderr.gz" - 2>/dev/null \
                     | gunzip 2>/dev/null | tail -100 \
                     || echo "(stderr not available in S3)"
 
                 echo ""
                 echo "--- EMR Step Stdout (last 50 lines) ---"
-                aws s3 cp "s3://$bucket/spark/emr-logs/$cluster_id/steps/$step_id/stdout.gz" - 2>/dev/null \
+                aws s3 cp "$log_base/stdout.gz" - 2>/dev/null \
                     | gunzip 2>/dev/null | tail -50 \
                     || echo "(stdout not available in S3)"
 
                 echo ""
                 echo "--- S3 log files available ---"
-                aws s3 ls "s3://$bucket/spark/emr-logs/$cluster_id/steps/$step_id/" 2>/dev/null \
+                aws s3 ls "$log_base/" 2>/dev/null \
                     || echo "(S3 listing failed)"
             else
                 echo "(bucket or step_id not available)"
@@ -1107,7 +1118,6 @@ STEPS_WORKDIR=(
     "step_setup_cassandra:Setup Cassandra"
     "step_verify_cassandra_backup:Verify Cassandra backup"
     "step_verify_restore:Verify restore from VPC"
-    "step_cassandra_start_stop:Cassandra start/stop cycle"
     "step_test_ssh_nodetool:Test SSH and nodetool"
     "step_check_sidecar:Check Sidecar"
     "step_test_exec:Test exec command"
@@ -1116,6 +1126,7 @@ STEPS_WORKDIR=(
     "step_spark_submit:Submit Spark job"
     "step_spark_status:Check Spark status"
     "step_bulk_writer_direct:Test bulk writer (direct)"
+    "step_cassandra_start_stop:Cassandra start/stop cycle"
     "step_clickhouse_start:Start ClickHouse"
     "step_clickhouse_test:Test ClickHouse"
     "step_clickhouse_stop:Stop ClickHouse"
@@ -1337,7 +1348,12 @@ echo "=== Work directory: $(pwd) ==="
 # when there are failures, or runs automatically on clean success.
 TOTAL_STEPS=${#ALL_STEPS[@]}
 LAST_STEP=$((TOTAL_STEPS - 1))  # Teardown is the last step
-run_from_step 0 $LAST_STEP
+# --start-step is 1-based (matches --list-steps output), convert to 0-based index
+FIRST_STEP=0
+if [ -n "$START_STEP" ]; then
+    FIRST_STEP=$((START_STEP - 1))
+fi
+run_from_step $FIRST_STEP $LAST_STEP
 
 if [ "$FAILURE_COUNT" -eq 0 ]; then
     # All steps passed — run teardown directly

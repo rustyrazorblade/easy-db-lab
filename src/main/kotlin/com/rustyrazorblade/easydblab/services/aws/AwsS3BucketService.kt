@@ -1,6 +1,19 @@
 package com.rustyrazorblade.easydblab.services.aws
 
+import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.AWS
+import org.koin.core.component.KoinComponent
+import org.koin.core.component.inject
+
+/**
+ * Return value from [AwsS3BucketService.configureDataBucket].
+ */
+data class DataBucketConfig(
+    val bucketName: String,
+    val metricsConfigId: String,
+)
 
 /**
  * Service for S3 bucket administration operations.
@@ -11,7 +24,9 @@ import com.rustyrazorblade.easydblab.providers.aws.AWS
  */
 class AwsS3BucketService(
     private val aws: AWS,
-) {
+) : KoinComponent {
+    private val eventBus: EventBus by inject()
+
     /**
      * Creates an S3 bucket with the specified name.
      * Idempotent - will succeed even if bucket already exists and is owned by you.
@@ -87,4 +102,48 @@ class AwsS3BucketService(
         bucketName: String,
         days: Int,
     ) = aws.setFullBucketLifecycleExpiration(bucketName, days)
+
+    /**
+     * Creates and fully configures a per-cluster data bucket.
+     *
+     * Orchestrates: bucket creation, policy application, tagging,
+     * and CloudWatch request metrics enablement.
+     */
+    fun configureDataBucket(
+        bucketName: String,
+        clusterId: String,
+        clusterName: String,
+        metricsConfigId: String,
+    ): DataBucketConfig {
+        eventBus.emit(Event.S3.DataBucketCreating(bucketName))
+        createBucket(bucketName)
+        putBucketPolicy(bucketName)
+        tagBucket(
+            bucketName,
+            mapOf(
+                Constants.Vpc.TAG_KEY to Constants.Vpc.TAG_VALUE,
+                "cluster_id" to clusterId,
+                "cluster_name" to clusterName,
+            ),
+        )
+        eventBus.emit(Event.S3.DataBucketCreated(bucketName))
+
+        enableBucketRequestMetrics(bucketName, null, metricsConfigId)
+        eventBus.emit(Event.S3.MetricsEnabled(bucketName))
+
+        return DataBucketConfig(bucketName, metricsConfigId)
+    }
+
+    /**
+     * Tears down a per-cluster data bucket by disabling metrics and setting lifecycle expiration.
+     */
+    fun teardownDataBucket(
+        bucketName: String,
+        metricsConfigId: String,
+        retentionDays: Int,
+    ) {
+        disableBucketRequestMetrics(bucketName, metricsConfigId)
+        setFullBucketLifecycleExpiration(bucketName, retentionDays)
+        eventBus.emit(Event.S3.DataBucketExpiring(bucketName, retentionDays))
+    }
 }

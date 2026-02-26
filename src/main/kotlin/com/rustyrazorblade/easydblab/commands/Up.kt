@@ -166,26 +166,15 @@ class Up : PicoBaseCommand() {
 
         workingState.s3Bucket = accountBucket
 
-        // Create per-cluster data bucket
-        val dataBucketName = workingState.dataBucketName()
-        eventBus.emit(Event.S3.DataBucketCreating(dataBucketName))
-        s3BucketService.createBucket(dataBucketName)
-        s3BucketService.putBucketPolicy(dataBucketName)
-        s3BucketService.tagBucket(
-            dataBucketName,
-            mapOf(
-                Constants.Vpc.TAG_KEY to Constants.Vpc.TAG_VALUE,
-                "cluster_id" to workingState.clusterId,
-                "cluster_name" to workingState.name,
-            ),
+        // Service handles create + policy + tag + metrics + events
+        s3BucketService.configureDataBucket(
+            bucketName = workingState.dataBucketName(),
+            clusterId = workingState.clusterId,
+            clusterName = workingState.name,
+            metricsConfigId = workingState.metricsConfigId(),
         )
-        eventBus.emit(Event.S3.DataBucketCreated(dataBucketName))
 
-        // Enable CloudWatch metrics on the data bucket (not account bucket)
-        s3BucketService.enableBucketRequestMetrics(dataBucketName, null, workingState.metricsConfigId())
-        eventBus.emit(Event.S3.MetricsEnabled(dataBucketName))
-
-        workingState.dataBucket = dataBucketName
+        workingState.dataBucket = workingState.dataBucketName()
         clusterStateManager.save(workingState)
 
         val clusterPrefix = workingState.clusterPrefix()

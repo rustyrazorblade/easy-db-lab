@@ -1,87 +1,139 @@
 package com.rustyrazorblade.easydblab.services.aws
 
-import com.rustyrazorblade.easydblab.providers.aws.AWS
+import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.koin.core.module.Module
+import org.koin.dsl.module
+import org.koin.test.get
+import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import software.amazon.awssdk.services.s3.S3Client
+import software.amazon.awssdk.services.s3.model.CreateBucketRequest
+import software.amazon.awssdk.services.s3.model.DeleteBucketMetricsConfigurationRequest
+import software.amazon.awssdk.services.s3.model.PutBucketLifecycleConfigurationRequest
+import software.amazon.awssdk.services.s3.model.PutBucketMetricsConfigurationRequest
+import software.amazon.awssdk.services.s3.model.PutBucketPolicyRequest
+import software.amazon.awssdk.services.s3.model.PutBucketTaggingRequest
 
 /**
- * Tests for [AwsS3BucketService] verifying delegation to [AWS].
+ * Tests for [AwsS3BucketService].
+ *
+ * Extends BaseKoinTest to get mocked AWS infrastructure from Koin.
+ * The S3Client is mocked to prevent real AWS API calls.
  */
-class AwsS3BucketServiceTest {
-    private lateinit var mockAws: AWS
+class AwsS3BucketServiceTest : BaseKoinTest() {
+    private lateinit var mockS3Client: S3Client
     private lateinit var service: AwsS3BucketService
+    private lateinit var eventBus: EventBus
+
+    override fun additionalTestModules(): List<Module> =
+        listOf(
+            module {
+                // Replace the default S3Client mock with our custom one
+                single {
+                    mock<S3Client>().also {
+                        mockS3Client = it
+                        // Set up default behavior to prevent null returns
+                        whenever(it.createBucket(any<CreateBucketRequest>())).thenReturn(null)
+                        whenever(it.putBucketPolicy(any<PutBucketPolicyRequest>())).thenReturn(null)
+                        whenever(it.putBucketTagging(any<PutBucketTaggingRequest>())).thenReturn(null)
+                        whenever(it.putBucketMetricsConfiguration(any<PutBucketMetricsConfigurationRequest>()))
+                            .thenReturn(null)
+                        whenever(it.deleteBucketMetricsConfiguration(any<DeleteBucketMetricsConfigurationRequest>()))
+                            .thenReturn(null)
+                        whenever(it.putBucketLifecycleConfiguration(any<PutBucketLifecycleConfigurationRequest>()))
+                            .thenReturn(null)
+                    }
+                }
+            },
+        )
 
     @BeforeEach
     fun setup() {
-        mockAws = mock()
-        service = AwsS3BucketService(mockAws)
+        service = get()
+        eventBus = get()
     }
 
     @Test
-    fun `createBucket delegates to aws`() {
-        whenever(mockAws.createS3Bucket("my-bucket")).thenReturn("my-bucket")
+    fun `configureDataBucket creates bucket with policy tags and metrics`() {
+        val result =
+            service.configureDataBucket(
+                bucketName = "data-bucket",
+                clusterId = "cluster-123",
+                clusterName = "my-cluster",
+                metricsConfigId = "metrics-id",
+            )
 
-        val result = service.createBucket("my-bucket")
+        assertThat(result.bucketName).isEqualTo("data-bucket")
+        assertThat(result.metricsConfigId).isEqualTo("metrics-id")
 
-        assertThat(result).isEqualTo("my-bucket")
-        verify(mockAws).createS3Bucket("my-bucket")
+        // Verify S3 operations were called
+        verify(mockS3Client).createBucket(any<CreateBucketRequest>())
+        verify(mockS3Client).putBucketPolicy(any<PutBucketPolicyRequest>())
+        verify(mockS3Client).putBucketTagging(any<PutBucketTaggingRequest>())
+        verify(mockS3Client).putBucketMetricsConfiguration(any<PutBucketMetricsConfigurationRequest>())
     }
 
     @Test
-    fun `putBucketPolicy delegates to aws`() {
-        service.putBucketPolicy("my-bucket")
+    fun `configureDataBucket emits correct events`() {
+        val emitted = mutableListOf<Event>()
+        eventBus.addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    emitted.add(envelope.event)
+                }
 
-        verify(mockAws).putS3BucketPolicy("my-bucket")
+                override fun close() {}
+            },
+        )
+
+        service.configureDataBucket(
+            bucketName = "data-bucket",
+            clusterId = "cluster-123",
+            clusterName = "my-cluster",
+            metricsConfigId = "metrics-id",
+        )
+
+        assertThat(emitted).containsExactly(
+            Event.S3.DataBucketCreating("data-bucket"),
+            Event.S3.DataBucketCreated("data-bucket"),
+            Event.S3.MetricsEnabled("data-bucket"),
+        )
     }
 
     @Test
-    fun `tagBucket delegates to aws`() {
-        val tags = mapOf("key" to "value")
+    fun `teardownDataBucket disables metrics and sets lifecycle`() {
+        service.teardownDataBucket("data-bucket", "metrics-id", 7)
 
-        service.tagBucket("my-bucket", tags)
-
-        verify(mockAws).tagS3Bucket("my-bucket", tags)
+        verify(mockS3Client).deleteBucketMetricsConfiguration(any<DeleteBucketMetricsConfigurationRequest>())
+        verify(mockS3Client).putBucketLifecycleConfiguration(any<PutBucketLifecycleConfigurationRequest>())
     }
 
     @Test
-    fun `enableBucketRequestMetrics delegates to aws`() {
-        service.enableBucketRequestMetrics("my-bucket", "prefix/", "config-id")
+    fun `teardownDataBucket emits expiring event`() {
+        val emitted = mutableListOf<Event>()
+        eventBus.addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    emitted.add(envelope.event)
+                }
 
-        verify(mockAws).enableBucketRequestMetrics("my-bucket", "prefix/", "config-id")
-    }
+                override fun close() {}
+            },
+        )
 
-    @Test
-    fun `disableBucketRequestMetrics delegates to aws`() {
-        service.disableBucketRequestMetrics("my-bucket", "config-id")
+        service.teardownDataBucket("data-bucket", "metrics-id", 3)
 
-        verify(mockAws).disableBucketRequestMetrics("my-bucket", "config-id")
-    }
-
-    @Test
-    fun `setLifecycleExpirationRule delegates to aws`() {
-        service.setLifecycleExpirationRule("my-bucket", "prefix/", 7)
-
-        verify(mockAws).setLifecycleExpirationRule("my-bucket", "prefix/", 7)
-    }
-
-    @Test
-    fun `findBucketByTag delegates to aws`() {
-        whenever(mockAws.findS3BucketByTag("key", "value")).thenReturn("found-bucket")
-
-        val result = service.findBucketByTag("key", "value")
-
-        assertThat(result).isEqualTo("found-bucket")
-        verify(mockAws).findS3BucketByTag("key", "value")
-    }
-
-    @Test
-    fun `attachS3Policy delegates to aws`() {
-        service.attachS3Policy("my-role")
-
-        verify(mockAws).attachS3Policy("my-role")
+        assertThat(emitted).containsExactly(
+            Event.S3.DataBucketExpiring("data-bucket", 3),
+        )
     }
 }

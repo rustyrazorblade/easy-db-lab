@@ -14,8 +14,9 @@ import io.fabric8.kubernetes.api.model.apps.DaemonSetBuilder
  * Builds all OpenTelemetry Collector K8s resources as typed Fabric8 objects.
  *
  * Creates a DaemonSet that runs on all nodes with hostNetwork, collecting
- * host metrics, Prometheus scrapes (ClickHouse, Vector, Beyla, ebpf_exporter),
- * file-based logs, and OTLP. Exports to VictoriaMetrics, VictoriaLogs, and Tempo.
+ * host metrics, Prometheus scrapes (ClickHouse, Beyla, ebpf_exporter, MAAC),
+ * file-based logs (system, Cassandra, ClickHouse), journald, and OTLP.
+ * Exports to VictoriaMetrics, VictoriaLogs, and Tempo.
  *
  * Config uses OTel runtime env expansion (`${env:HOSTNAME}`, `${env:CLUSTER_NAME}`),
  * not `__KEY__` template substitution.
@@ -71,7 +72,8 @@ class OtelManifestBuilder(
      * Builds the OTel Collector DaemonSet.
      *
      * Runs on all nodes with hostNetwork, privileged mode.
-     * Mounts ClickHouse log directories as hostPath volumes (DirectoryOrCreate).
+     * Mounts log directories as hostPath volumes for system, Cassandra, ClickHouse,
+     * and journald log collection.
      */
     @Suppress("LongMethod")
     fun buildDaemonSet() =
@@ -148,6 +150,26 @@ class OtelManifestBuilder(
                     .withReadOnly(true)
                     .build(),
                 VolumeMountBuilder()
+                    .withName("var-log")
+                    .withMountPath("/var/log")
+                    .withReadOnly(true)
+                    .build(),
+                VolumeMountBuilder()
+                    .withName("cassandra-logs")
+                    .withMountPath("/mnt/db1/cassandra/logs")
+                    .withReadOnly(true)
+                    .build(),
+                VolumeMountBuilder()
+                    .withName("journal")
+                    .withMountPath("/run/log/journal")
+                    .withReadOnly(true)
+                    .build(),
+                VolumeMountBuilder()
+                    .withName("machine-id")
+                    .withMountPath("/etc/machine-id")
+                    .withReadOnly(true)
+                    .build(),
+                VolumeMountBuilder()
                     .withName("clickhouse-server-logs")
                     .withMountPath("/mnt/db1/clickhouse/logs")
                     .withReadOnly(true)
@@ -179,6 +201,38 @@ class OtelManifestBuilder(
             .withConfigMap(
                 ConfigMapVolumeSourceBuilder()
                     .withName(CONFIGMAP_NAME)
+                    .build(),
+            ).endVolume()
+            .addNewVolume()
+            .withName("var-log")
+            .withHostPath(
+                HostPathVolumeSourceBuilder()
+                    .withPath("/var/log")
+                    .withType("DirectoryOrCreate")
+                    .build(),
+            ).endVolume()
+            .addNewVolume()
+            .withName("cassandra-logs")
+            .withHostPath(
+                HostPathVolumeSourceBuilder()
+                    .withPath("/mnt/db1/cassandra/logs")
+                    .withType("DirectoryOrCreate")
+                    .build(),
+            ).endVolume()
+            .addNewVolume()
+            .withName("journal")
+            .withHostPath(
+                HostPathVolumeSourceBuilder()
+                    .withPath("/run/log/journal")
+                    .withType("DirectoryOrCreate")
+                    .build(),
+            ).endVolume()
+            .addNewVolume()
+            .withName("machine-id")
+            .withHostPath(
+                HostPathVolumeSourceBuilder()
+                    .withPath("/etc/machine-id")
+                    .withType("File")
                     .build(),
             ).endVolume()
             .addNewVolume()

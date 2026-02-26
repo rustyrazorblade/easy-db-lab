@@ -129,7 +129,6 @@ awssdk-emr = { module = "software.amazon.awssdk:emr", version.ref = "awssdk" }
 awssdk-s3 = { module = "software.amazon.awssdk:s3", version.ref = "awssdk" }
 awssdk-sts = { module = "software.amazon.awssdk:sts", version.ref = "awssdk" }
 awssdk-opensearch = { module = "software.amazon.awssdk:opensearch", version.ref = "awssdk" }
-awssdk-sqs = { module = "software.amazon.awssdk:sqs", version.ref = "awssdk" }
 
 # Docker
 docker-java = { module = "com.github.docker-java:docker-java", version.ref = "docker-java" }
@@ -204,7 +203,7 @@ koin = ["koin-core"]
 koin-test = ["koin-test", "koin-test-junit5"]
 
 # AWS SDK bundle
-awssdk = ["awssdk-ec2", "awssdk-iam", "awssdk-emr", "awssdk-s3", "awssdk-sts", "awssdk-opensearch", "awssdk-sqs"]
+awssdk = ["awssdk-ec2", "awssdk-iam", "awssdk-emr", "awssdk-s3", "awssdk-sts", "awssdk-opensearch"]
 
 # Docker bundle
 docker = ["docker-java", "docker-java-transport-httpclient5"]

@@ -35,7 +35,6 @@ This page documents the ports used by easy-db-lab and the services it provisions
 | 4318 | OTel Collector HTTP |
 | 9400 | Beyla eBPF metrics (Prometheus) |
 | 9435 | ebpf_exporter metrics (Prometheus) |
-| 9598 | Vector node metrics (Prometheus) |
 
 ## MCP Server
 

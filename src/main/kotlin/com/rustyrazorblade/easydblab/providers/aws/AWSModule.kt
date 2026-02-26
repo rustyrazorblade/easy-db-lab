@@ -12,7 +12,6 @@ import com.rustyrazorblade.easydblab.services.aws.AMIResolver
 import com.rustyrazorblade.easydblab.services.aws.AMIService
 import com.rustyrazorblade.easydblab.services.aws.AMIValidator
 import com.rustyrazorblade.easydblab.services.aws.AWSResourceSetupService
-import com.rustyrazorblade.easydblab.services.aws.AWSSQSService
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import com.rustyrazorblade.easydblab.services.aws.DefaultAMIResolver
@@ -24,7 +23,6 @@ import com.rustyrazorblade.easydblab.services.aws.EMRSparkService
 import com.rustyrazorblade.easydblab.services.aws.InstanceSpecFactory
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
 import com.rustyrazorblade.easydblab.services.aws.S3ObjectStore
-import com.rustyrazorblade.easydblab.services.aws.SQSService
 import io.opentelemetry.instrumentation.awssdk.v2_2.AwsSdkTelemetry
 import org.koin.dsl.module
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
@@ -38,7 +36,6 @@ import software.amazon.awssdk.services.emr.EmrClient
 import software.amazon.awssdk.services.iam.IamClient
 import software.amazon.awssdk.services.opensearch.OpenSearchClient
 import software.amazon.awssdk.services.s3.S3Client
-import software.amazon.awssdk.services.sqs.SqsClient
 import software.amazon.awssdk.services.sts.StsClient
 
 /**
@@ -73,8 +70,6 @@ private fun createClientOverrideConfig(telemetryProvider: TelemetryProvider): Cl
  * - AwsInfrastructureService: VPC infrastructure creation and teardown orchestration
  * - SparkService: Spark job lifecycle management for EMR clusters
  * - ObjectStore: Cloud-agnostic object storage interface (S3 implementation)
- * - SqsClient: AWS SQS client for message queue operations
- * - SQSService: SQS queue management for log ingestion
  *
  * Note: AWSCredentialsManager is no longer registered here - it's created directly by
  * Packer classes that need it, since they already have Context.
@@ -152,16 +147,6 @@ val awsModule =
         single {
             val overrideConfig = createClientOverrideConfig(get<TelemetryProvider>())
             OpenSearchClient
-                .builder()
-                .region(get<Region>())
-                .credentialsProvider(get<AwsCredentialsProvider>())
-                .overrideConfiguration(overrideConfig)
-                .build()
-        }
-
-        single {
-            val overrideConfig = createClientOverrideConfig(get<TelemetryProvider>())
-            SqsClient
                 .builder()
                 .region(get<Region>())
                 .credentialsProvider(get<AwsCredentialsProvider>())
@@ -267,12 +252,4 @@ val awsModule =
 
         // Provide InstanceSpecFactory as singleton
         single<InstanceSpecFactory> { DefaultInstanceSpecFactory() }
-
-        // Provide SQSService as singleton
-        single<SQSService> {
-            AWSSQSService(
-                get<SqsClient>(),
-                get<EventBus>(),
-            )
-        }
     }

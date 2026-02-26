@@ -18,7 +18,6 @@ services/aws/
 ├── EMRService.kt              # EMR cluster management (find, terminate, wait)
 ├── EMRSparkService.kt         # Spark job execution (implements SparkService)
 ├── OpenSearchService.kt       # OpenSearch domain management
-├── SQSService.kt              # SQS queue management
 ├── S3ObjectStore.kt           # S3 object operations (implements ObjectStore)
 └── InstanceSpecFactory.kt     # Instance spec creation
 ```
@@ -59,7 +58,7 @@ Key conventions:
 - Internal logging via `KotlinLogging`
 - Retry logic via `RetryUtil` from `providers.aws` (never custom loops)
 - Fail fast — let exceptions propagate
-- Use `Result<T>` for expected failures (SQS, ObjectStore)
+- Use `Result<T>` for expected failures (ObjectStore)
 - Idempotent where possible (find-or-create pattern)
 
 ## Service Consolidation Design

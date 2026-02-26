@@ -36,7 +36,6 @@ Events are organized by domain as sealed sub-interfaces of `Event`:
 - `Event.Emr.*` — EMR/Spark operations
 - `Event.OpenSearch.*` — OpenSearch domain management
 - `Event.S3.*` — S3 object store operations
-- `Event.Sqs.*` — SQS queue operations
 - `Event.Grafana.*` — Grafana dashboard deployment
 - `Event.Backup.*` — Backup/restore operations
 - `Event.Registry.*` — Container registry operations

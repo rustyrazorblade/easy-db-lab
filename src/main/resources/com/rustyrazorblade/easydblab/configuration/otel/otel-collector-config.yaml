@@ -27,26 +27,6 @@ receivers:
               replacement: '${env:HOSTNAME}:9363'
             - target_label: cluster
               replacement: '${env:CLUSTER_NAME}'
-        - job_name: 'vector-node'
-          scrape_interval: 15s
-          static_configs:
-            - targets: ['localhost:9598']
-          # Vector node DaemonSet runs on all nodes
-          relabel_configs:
-            - target_label: instance
-              replacement: '${env:HOSTNAME}:9598'
-            - target_label: cluster
-              replacement: '${env:CLUSTER_NAME}'
-        - job_name: 'vector-s3'
-          scrape_interval: 15s
-          static_configs:
-            - targets: ['localhost:9599']
-          # Vector S3 only runs on master node, will fail gracefully on other nodes
-          relabel_configs:
-            - target_label: instance
-              replacement: '${env:HOSTNAME}:9599'
-            - target_label: cluster
-              replacement: '${env:CLUSTER_NAME}'
         - job_name: 'beyla'
           scrape_interval: 15s
           static_configs:
@@ -74,6 +54,38 @@ receivers:
               replacement: '${env:HOSTNAME}:9000'
             - target_label: cluster
               replacement: '${env:CLUSTER_NAME}'
+  filelog/system:
+    include:
+      - /var/log/**/*.log
+      - /var/log/messages
+      - /var/log/syslog
+    exclude:
+      - /var/log/**/*.gz
+      - /var/log/**/*.old
+    start_at: end
+    include_file_path: true
+    include_file_name: true
+    attributes:
+      source: system
+  filelog/cassandra:
+    include:
+      - /mnt/db1/cassandra/logs/*.log
+    exclude:
+      - /mnt/db1/cassandra/logs/*.gz
+    start_at: end
+    include_file_path: true
+    include_file_name: true
+    attributes:
+      source: cassandra
+  journald:
+    units:
+      - cassandra
+      - docker
+      - k3s
+      - sshd
+    priority: info
+    attributes:
+      source: systemd
   filelog/clickhouse-server:
     include:
       - /mnt/db1/clickhouse/logs/*.log
@@ -145,7 +157,7 @@ service:
       processors: [memory_limiter, resourcedetection, batch]
       exporters: [prometheusremotewrite]
     logs:
-      receivers: [otlp, filelog/clickhouse-server, filelog/clickhouse-keeper]
+      receivers: [otlp, filelog/system, filelog/cassandra, journald, filelog/clickhouse-server, filelog/clickhouse-keeper]
       processors: [memory_limiter, resourcedetection, batch]
       exporters: [otlphttp/victorialogs]
     traces:

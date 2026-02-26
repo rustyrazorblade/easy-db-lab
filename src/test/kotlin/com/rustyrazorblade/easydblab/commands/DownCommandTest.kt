@@ -12,7 +12,6 @@ import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredResources
 import com.rustyrazorblade.easydblab.providers.aws.TeardownResult
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
-import com.rustyrazorblade.easydblab.services.aws.SQSService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
@@ -27,7 +26,6 @@ import org.mockito.kotlin.whenever
 
 class DownCommandTest : BaseKoinTest() {
     private lateinit var mockTeardownService: AwsInfrastructureService
-    private lateinit var mockSqsService: SQSService
     private lateinit var mockClusterStateManager: ClusterStateManager
     private lateinit var outputHandler: BufferedOutputHandler
 
@@ -74,7 +72,6 @@ class DownCommandTest : BaseKoinTest() {
         listOf(
             module {
                 single<AwsInfrastructureService> { mockTeardownService }
-                single<SQSService> { mockSqsService }
                 single<ClusterStateManager> { mockClusterStateManager }
             },
         )
@@ -82,7 +79,6 @@ class DownCommandTest : BaseKoinTest() {
     @BeforeEach
     fun setupMocks() {
         mockTeardownService = mock()
-        mockSqsService = mock()
         mockClusterStateManager = mock()
         outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
 

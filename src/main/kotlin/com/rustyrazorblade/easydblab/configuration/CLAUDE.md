@@ -200,7 +200,7 @@ See `spec/PYROSCOPE.md` for full architecture details and debugging steps.
 
 ## OTel Subpackage (`otel/`)
 
-- **`OtelManifestBuilder`** — builds OTel Collector ConfigMap + DaemonSet. Runs on all nodes, collects host metrics, Prometheus scrapes, file-based logs, and OTLP. Config uses OTel runtime env expansion (`${env:HOSTNAME}`), not `__KEY__` templates.
+- **`OtelManifestBuilder`** — builds OTel Collector ConfigMap + DaemonSet. Runs on all nodes, collects host metrics, Prometheus scrapes, file-based logs (system, Cassandra, ClickHouse), journald, and OTLP. Config uses OTel runtime env expansion (`${env:HOSTNAME}`), not `__KEY__` templates.
 - **Config resource** — `otel-collector-config.yaml` stored in `resources/.../configuration/otel/`.
 
 ## ebpf_exporter Subpackage (`ebpfexporter/`)
@@ -215,11 +215,6 @@ See `spec/PYROSCOPE.md` for full architecture details and debugging steps.
 
 - **`TempoManifestBuilder`** — builds Tempo ConfigMap + Service + Deployment. Runs on control plane with S3 backend for trace storage. Config uses Tempo runtime env expansion (`${S3_BUCKET}`, `${AWS_REGION}`).
 - **Config resource** — `tempo.yaml` stored in `resources/.../configuration/tempo/`.
-
-## Vector Subpackage (`vector/`)
-
-- **`VectorManifestBuilder`** — builds two Vector deployments: node DaemonSet (all nodes, system/db log collection) and S3 Deployment (control plane, EMR log ingestion via SQS). Config uses Vector runtime env expansion.
-- **Config resources** — `vector-node.yaml` and `vector-s3.yaml` stored in `resources/.../configuration/vector/`.
 
 ## Registry Subpackage (`registry/`)
 

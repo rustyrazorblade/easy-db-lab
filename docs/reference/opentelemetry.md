@@ -50,7 +50,6 @@ When OTel is enabled, AWS SDK calls are automatically instrumented using the Ope
 - EMR operations
 - STS operations
 - OpenSearch operations
-- SQS operations
 
 ## Resource Attributes
 

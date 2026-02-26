@@ -14,7 +14,6 @@ import com.rustyrazorblade.easydblab.providers.aws.TeardownResult
 import com.rustyrazorblade.easydblab.services.TailscaleService
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
-import com.rustyrazorblade.easydblab.services.aws.SQSService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
 import picocli.CommandLine
@@ -81,7 +80,6 @@ class Down : PicoBaseCommand() {
     var retentionDays: Int = 1
 
     private val teardownService: AwsInfrastructureService by inject()
-    private val sqsService: SQSService by inject()
     private val s3BucketService: AwsS3BucketService by inject()
     private val tailscaleService: TailscaleService by inject()
     private val user: User by inject()
@@ -348,9 +346,6 @@ class Down : PicoBaseCommand() {
                 // Delete Tailscale auth key if it exists
                 deleteTailscaleAuthKey(clusterState)
 
-                // Delete SQS queue if it exists
-                deleteSqsQueue(clusterState.sqsQueueUrl)
-
                 // Set lifecycle expiration rule on cluster prefix in account bucket
                 setClusterLifecycleRule(clusterState)
 
@@ -362,7 +357,6 @@ class Down : PicoBaseCommand() {
                 clusterState.updateEmrCluster(null)
                 clusterState.updateOpenSearchDomain(null)
                 clusterState.updateInfrastructure(null)
-                clusterState.updateSqsQueue(null, null)
                 clusterState.updateTailscaleAuthKeyId(null)
                 clusterStateManager.save(clusterState)
                 eventBus.emit(Event.Teardown.ClusterStateMarkedDown)
@@ -396,20 +390,6 @@ class Down : PicoBaseCommand() {
             eventBus.emit(Event.Tailscale.AuthKeyDeleted(keyId))
         } catch (e: Exception) {
             log.warn(e) { "Failed to delete Tailscale auth key: $keyId" }
-        }
-    }
-
-    /**
-     * Deletes the SQS queue for log ingestion if it exists.
-     */
-    private fun deleteSqsQueue(queueUrl: String?) {
-        if (queueUrl.isNullOrBlank()) {
-            log.debug { "No SQS queue to delete" }
-            return
-        }
-
-        sqsService.deleteLogIngestQueue(queueUrl).onFailure { error ->
-            log.warn(error) { "Failed to delete SQS queue: $queueUrl" }
         }
     }
 

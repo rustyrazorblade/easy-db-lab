@@ -15,7 +15,6 @@ import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBu
 import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.vector.VectorManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.victoria.VictoriaManifestBuilder
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
@@ -76,7 +75,6 @@ class K8sServiceIntegrationTest {
         private val EXPECTED_RUNNING_DAEMONSETS =
             setOf(
                 "otel-collector",
-                "vector",
             )
 
         @Container
@@ -135,7 +133,6 @@ class K8sServiceIntegrationTest {
                 .endMetadata()
                 .addToData("control_node_ip", "10.0.0.1")
                 .addToData("aws_region", "us-west-2")
-                .addToData("sqs_queue_url", "")
                 .addToData("s3_bucket", "test-bucket")
                 .addToData("cluster_name", "test")
                 .build()
@@ -210,10 +207,6 @@ class K8sServiceIntegrationTest {
         k3s.execInContainer("mkdir", "-p", "/mnt/db1/pyroscope")
         k3s.execInContainer("chown", "-R", "10001:10001", "/mnt/db1/pyroscope")
 
-        // Vector state directories
-        k3s.execInContainer("mkdir", "-p", "/var/lib/vector")
-        k3s.execInContainer("mkdir", "-p", "/var/lib/vector-s3")
-
         // Database log directory for OTel
         k3s.execInContainer("mkdir", "-p", "/mnt/db1")
     }
@@ -262,18 +255,6 @@ class K8sServiceIntegrationTest {
         assertConfigMapExists("tempo-config", "tempo.yaml")
         assertServiceExists("tempo")
         assertDeploymentExists("tempo")
-    }
-
-    @Test
-    @Order(14)
-    fun `should apply Vector resources`() {
-        val resources = VectorManifestBuilder(templateService).buildAllResources()
-        applyAndVerify(resources)
-
-        assertConfigMapExists("vector-node-config", "vector.yaml")
-        assertDaemonSetExists("vector")
-        assertConfigMapExists("vector-s3-config", "vector.yaml")
-        assertDeploymentExists("vector-s3")
     }
 
     @Test
@@ -668,7 +649,6 @@ class K8sServiceIntegrationTest {
             EbpfExporterManifestBuilder().buildAllResources() +
             VictoriaManifestBuilder().buildAllResources() +
             TempoManifestBuilder(templateService).buildAllResources() +
-            VectorManifestBuilder(templateService).buildAllResources() +
             RegistryManifestBuilder().buildAllResources() +
             S3ManagerManifestBuilder(templateService).buildAllResources() +
             BeylaManifestBuilder(templateService).buildAllResources() +

@@ -133,8 +133,7 @@ sealed class AWSPolicy {
      */
     sealed class Inline : AWSPolicy() {
         /**
-         * S3 and SQS access policy granting full S3 access to all easy-db-lab buckets
-         * and SQS read access for log ingestion queues.
+         * S3 access policy granting full S3 access to all easy-db-lab buckets.
          * Uses wildcard pattern to support per-environment buckets.
          * Attached to IAM roles to allow EC2 instances to access cluster data.
          * Also includes s3:ListAllMyBuckets for S3Manager web UI.
@@ -159,19 +158,6 @@ sealed class AWSPolicy {
                                             "arn:aws:s3:::easy-db-lab-*/*",
                                         ),
                                     ),
-                            ),
-                            IamPolicyStatement(
-                                effect = "Allow",
-                                action =
-                                    IamPolicyAction.multiple(
-                                        listOf(
-                                            "sqs:ReceiveMessage",
-                                            "sqs:DeleteMessage",
-                                            "sqs:GetQueueAttributes",
-                                            "sqs:GetQueueUrl",
-                                        ),
-                                    ),
-                                resource = IamPolicyResource.single("arn:aws:sqs:*:*:easy-db-lab-*"),
                             ),
                             IamPolicyStatement(
                                 effect = "Allow",

@@ -13,7 +13,7 @@ import picocli.CommandLine.Option
 /**
  * Query EMR/Spark logs from Victoria Logs.
  *
- * Logs are collected from S3 by Vector and stored in Victoria Logs on the control node.
+ * Logs are stored in Victoria Logs on the control node.
  * This command queries Victoria Logs to display step logs.
  *
  * Usage:

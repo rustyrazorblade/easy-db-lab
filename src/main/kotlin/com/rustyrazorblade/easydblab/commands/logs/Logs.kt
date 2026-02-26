@@ -12,9 +12,9 @@ import picocli.CommandLine.Spec
  * - ClickHouse logs (/mnt/db1/clickhouse/logs/)
  * - systemd/journald (cassandra.service, docker.service, etc.)
  * - System logs (/var/log/)
- * - EMR/Spark logs (from S3 via SQS notifications)
+ * - EMR/Spark logs
  *
- * Logs are collected by Vector and stored in Victoria Logs on the control node.
+ * Logs are collected by OTel and stored in Victoria Logs on the control node.
  *
  * Available sub-commands:
  * - query: Query logs from Victoria Logs

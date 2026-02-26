@@ -49,15 +49,16 @@ jobs:
         run: |
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
             VERSION=${GITHUB_REF#refs/tags/v}
-            echo "tags=$VERSION,v$VERSION" >> $GITHUB_OUTPUT
+            echo "image_tag=$VERSION" >> $GITHUB_OUTPUT
+            echo "tags=v$VERSION" >> $GITHUB_OUTPUT
             echo "first_tag=$VERSION" >> $GITHUB_OUTPUT
           elif [[ "${{ github.event.workflow_run.head_branch }}" == "main" ]]; then
-            echo "tags=latest" >> $GITHUB_OUTPUT
+            echo "image_tag=latest" >> $GITHUB_OUTPUT
             echo "first_tag=latest" >> $GITHUB_OUTPUT
           else
             BRANCH="${{ github.event.workflow_run.head_branch }}"
             TAG=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g' | cut -c1-128)
-            echo "tags=$TAG" >> $GITHUB_OUTPUT
+            echo "image_tag=$TAG" >> $GITHUB_OUTPUT
             echo "first_tag=$TAG" >> $GITHUB_OUTPUT
           fi
 
@@ -66,8 +67,10 @@ jobs:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          TAGS="${{ steps.tags.outputs.tags }}"
           ./gradlew jib --no-daemon \
-            -Djib.to.tags=${{ steps.tags.outputs.tags }}
+            -Djib.to.image.tag=${{ steps.tags.outputs.image_tag }} \
+            ${TAGS:+-Djib.to.tags=$TAGS}
 
       - name: Test container
         run: |

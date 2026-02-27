@@ -890,6 +890,39 @@ step_opensearch_stop() {
     easy-db-lab opensearch stop --force
 }
 
+step_generate_s3_traffic() {
+    echo "=== Generating S3 traffic for CloudWatch metrics ==="
+
+    local data_bucket
+    data_bucket=$(jq -r '.dataBucket // empty' state.json 2>/dev/null)
+    if [ -z "$data_bucket" ]; then
+        echo "ERROR: dataBucket not found in state.json"
+        return 1
+    fi
+    echo "Data bucket: $data_bucket"
+
+    # Generate a 5MB test file and upload/download it
+    local test_file
+    test_file=$(mktemp /tmp/e2e-s3-traffic-XXXXXX)
+    dd if=/dev/urandom of="$test_file" bs=1M count=5 2>/dev/null
+
+    echo "--- Uploading test file ---"
+    aws s3 cp "$test_file" "s3://$data_bucket/test-traffic/file.bin" --quiet
+    echo "  Uploaded 5MB file"
+
+    echo "--- Downloading test file ---"
+    aws s3 cp "s3://$data_bucket/test-traffic/file.bin" /dev/null --quiet
+    echo "  Downloaded 5MB file"
+
+    echo "--- Listing bucket ---"
+    aws s3 ls "s3://$data_bucket/test-traffic/"
+
+    rm -f "$test_file"
+
+    echo "=== S3 traffic generated (5MB up, 5MB down) ==="
+    echo "CloudWatch metrics should appear within 5-10 minutes"
+}
+
 step_test_observability() {
     echo "=== Testing VictoriaMetrics and VictoriaLogs ==="
 
@@ -1135,6 +1168,7 @@ STEPS_WORKDIR=(
     "step_opensearch_start:Start OpenSearch"
     "step_opensearch_test:Test OpenSearch"
     "step_opensearch_stop:Stop OpenSearch"
+    "step_generate_s3_traffic:Generate S3 traffic for metrics"
     "step_test_observability:Test observability stack"
     "step_test_dashboards:Validate Grafana dashboards"
     "step_test_logs_query:Test logs query command"

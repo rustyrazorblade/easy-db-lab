@@ -1499,6 +1499,53 @@ sealed interface Event {
                 |  easy-db-lab spark logs --step-id $stepId
                 """.trimMargin()
         }
+
+        @Serializable
+        @SerialName("Emr.BootstrapFailureDiagnosing")
+        data object BootstrapFailureDiagnosing : Emr {
+            override fun toDisplayString(): String = "Fetching bootstrap action logs..."
+        }
+
+        @Serializable
+        @SerialName("Emr.BootstrapFailureLog")
+        data class BootstrapFailureLog(
+            val content: String,
+        ) : Emr {
+            override fun toDisplayString(): String =
+                """
+                |=== Bootstrap Action Stderr ===
+                |$content
+                """.trimMargin()
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        @SerialName("Emr.BootstrapFailureLogUnavailable")
+        data class BootstrapFailureLogUnavailable(
+            val reason: String,
+        ) : Emr {
+            override fun toDisplayString(): String = "Could not retrieve bootstrap logs: $reason"
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        @SerialName("Emr.BootstrapFailureDebugInstructions")
+        data class BootstrapFailureDebugInstructions(
+            val clusterId: String,
+            val emrLogsPath: String,
+        ) : Emr {
+            override fun toDisplayString(): String =
+                """
+                |To manually retrieve bootstrap logs, run:
+                |  # List master instance ID:
+                |  aws emr list-instances --cluster-id $clusterId --instance-group-types MASTER
+                |
+                |  # Download bootstrap stderr (replace <INSTANCE_ID>):
+                |  aws s3 cp $emrLogsPath/$clusterId/node/<INSTANCE_ID>/bootstrap-actions/1/stderr.gz - | gunzip
+                """.trimMargin()
+        }
     }
 
     // =========================================================================

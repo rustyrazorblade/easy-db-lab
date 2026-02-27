@@ -20,9 +20,11 @@ import software.amazon.awssdk.services.emr.model.ClusterSummary
 import software.amazon.awssdk.services.emr.model.Configuration
 import software.amazon.awssdk.services.emr.model.DescribeClusterRequest
 import software.amazon.awssdk.services.emr.model.InstanceGroupConfig
+import software.amazon.awssdk.services.emr.model.InstanceGroupType
 import software.amazon.awssdk.services.emr.model.InstanceRoleType
 import software.amazon.awssdk.services.emr.model.JobFlowInstancesConfig
 import software.amazon.awssdk.services.emr.model.ListClustersRequest
+import software.amazon.awssdk.services.emr.model.ListInstancesRequest
 import software.amazon.awssdk.services.emr.model.RunJobFlowRequest
 import software.amazon.awssdk.services.emr.model.ScriptBootstrapActionConfig
 import software.amazon.awssdk.services.emr.model.Tag
@@ -479,6 +481,29 @@ class EMRService(
         }
 
         throw AwsTimeoutException("Timeout waiting for EMR clusters to terminate after ${timeoutMs}ms")
+    }
+
+    /**
+     * Lists instance IDs for an EMR cluster, filtered by instance group type.
+     *
+     * @param clusterId The cluster ID to list instances for
+     * @param instanceGroupType The instance group type to filter by (default: MASTER)
+     * @return List of EC2 instance IDs matching the filter
+     */
+    fun listInstances(
+        clusterId: ClusterId,
+        instanceGroupType: InstanceGroupType = InstanceGroupType.MASTER,
+    ): List<String> {
+        val request =
+            ListInstancesRequest
+                .builder()
+                .clusterId(clusterId)
+                .instanceGroupTypes(instanceGroupType)
+                .build()
+
+        val response = RetryUtil.withAwsRetry("list-instances") { emrClient.listInstances(request) }
+
+        return response.instances().mapNotNull { it.ec2InstanceId() }
     }
 
     // ==================== Private Helpers ====================

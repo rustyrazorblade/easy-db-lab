@@ -5,6 +5,10 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.providers.aws.EMRClusterConfig
 import com.rustyrazorblade.easydblab.providers.aws.EMRClusterResult
 import com.rustyrazorblade.easydblab.services.aws.EMRService
@@ -14,9 +18,11 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import software.amazon.awssdk.services.emr.model.InstanceGroupType
 
 /**
  * Tests for EMRProvisioningService verifying correct EMR cluster creation.
@@ -24,6 +30,8 @@ import org.mockito.kotlin.whenever
 internal class EMRProvisioningServiceTest {
     private lateinit var mockEmrService: EMRService
     private lateinit var mockObjectStore: ObjectStore
+    private lateinit var eventBus: EventBus
+    private lateinit var capturedEvents: MutableList<Event>
     private lateinit var service: DefaultEMRProvisioningService
 
     companion object {
@@ -41,6 +49,17 @@ internal class EMRProvisioningServiceTest {
     fun setUp() {
         mockEmrService = mock()
         mockObjectStore = mock()
+        capturedEvents = mutableListOf()
+        eventBus = EventBus()
+        eventBus.addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    capturedEvents.add(envelope.event)
+                }
+
+                override fun close() {}
+            },
+        )
         val mockClusterStateManager = mock<ClusterStateManager>()
         whenever(mockClusterStateManager.load()).thenReturn(
             ClusterState(
@@ -64,8 +83,7 @@ internal class EMRProvisioningServiceTest {
                 mockEmrService,
                 mockObjectStore,
                 templateService,
-                com.rustyrazorblade.easydblab.events
-                    .EventBus(),
+                eventBus,
             )
     }
 
@@ -262,12 +280,13 @@ internal class EMRProvisioningServiceTest {
     }
 
     @Test
-    fun `provisionEmrCluster should propagate errors from waitForClusterReady`() {
+    fun `provisionEmrCluster should emit diagnostics and re-throw when waitForClusterReady fails`() {
         val clusterState =
             ClusterState(
                 name = "test-cluster",
                 versions = mutableMapOf(),
                 s3Bucket = "easy-db-lab-test-bucket",
+                clusterId = "test-id",
                 hosts = mapOf(ServerType.Control to listOf(testControlHost)),
             )
 
@@ -282,6 +301,9 @@ internal class EMRProvisioningServiceTest {
         whenever(mockEmrService.createCluster(any())).thenReturn(createResult)
         whenever(mockEmrService.waitForClusterReady("j-FAIL"))
             .thenThrow(IllegalStateException("Cluster failed: TERMINATED_WITH_ERRORS"))
+        // listInstances throws to trigger the fallback path
+        whenever(mockEmrService.listInstances(eq("j-FAIL"), any()))
+            .thenThrow(RuntimeException("Cluster already terminated"))
 
         assertThatThrownBy {
             service.provisionEmrCluster(
@@ -297,5 +319,106 @@ internal class EMRProvisioningServiceTest {
             )
         }.isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("TERMINATED_WITH_ERRORS")
+
+        // Verify diagnostics were attempted
+        verify(mockEmrService).listInstances(eq("j-FAIL"), eq(InstanceGroupType.MASTER))
+
+        // Verify diagnostic events were emitted
+        assertThat(capturedEvents).anyMatch { it is Event.Emr.BootstrapFailureDiagnosing }
+        assertThat(capturedEvents).anyMatch { it is Event.Emr.BootstrapFailureLogUnavailable }
+        assertThat(capturedEvents).anyMatch { it is Event.Emr.BootstrapFailureDebugInstructions }
+    }
+
+    @Test
+    fun `diagnostics should emit unavailable when no master instances found`() {
+        val clusterState =
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+                s3Bucket = "easy-db-lab-test-bucket",
+                clusterId = "test-id",
+                hosts = mapOf(ServerType.Control to listOf(testControlHost)),
+            )
+
+        val createResult =
+            EMRClusterResult(
+                clusterId = "j-NOMASTER",
+                clusterName = "test-spark",
+                masterPublicDns = null,
+                state = "STARTING",
+            )
+
+        whenever(mockEmrService.createCluster(any())).thenReturn(createResult)
+        whenever(mockEmrService.waitForClusterReady("j-NOMASTER"))
+            .thenThrow(IllegalStateException("Cluster failed"))
+        whenever(mockEmrService.listInstances(eq("j-NOMASTER"), any()))
+            .thenReturn(emptyList())
+
+        assertThatThrownBy {
+            service.provisionEmrCluster(
+                clusterName = "test",
+                masterInstanceType = "m5.xlarge",
+                workerInstanceType = "m5.xlarge",
+                workerCount = 3,
+                subnetId = "subnet-123",
+                securityGroupId = "sg-456",
+                keyName = "my-key",
+                clusterState = clusterState,
+                tags = emptyMap(),
+            )
+        }.isInstanceOf(IllegalStateException::class.java)
+
+        val unavailableEvents = capturedEvents.filterIsInstance<Event.Emr.BootstrapFailureLogUnavailable>()
+        assertThat(unavailableEvents).hasSize(1)
+        assertThat(unavailableEvents.first().reason).isEqualTo("No master instance found")
+
+        // Should also emit debug instructions as fallback
+        assertThat(capturedEvents).anyMatch { it is Event.Emr.BootstrapFailureDebugInstructions }
+    }
+
+    @Test
+    fun `debug instructions should contain cluster ID and S3 path`() {
+        val clusterState =
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+                s3Bucket = "easy-db-lab-test-bucket",
+                clusterId = "test-id",
+                hosts = mapOf(ServerType.Control to listOf(testControlHost)),
+            )
+
+        val createResult =
+            EMRClusterResult(
+                clusterId = "j-DIAG",
+                clusterName = "test-spark",
+                masterPublicDns = null,
+                state = "STARTING",
+            )
+
+        whenever(mockEmrService.createCluster(any())).thenReturn(createResult)
+        whenever(mockEmrService.waitForClusterReady("j-DIAG"))
+            .thenThrow(IllegalStateException("Cluster failed"))
+        whenever(mockEmrService.listInstances(eq("j-DIAG"), any()))
+            .thenReturn(emptyList())
+
+        assertThatThrownBy {
+            service.provisionEmrCluster(
+                clusterName = "test",
+                masterInstanceType = "m5.xlarge",
+                workerInstanceType = "m5.xlarge",
+                workerCount = 3,
+                subnetId = "subnet-123",
+                securityGroupId = "sg-456",
+                keyName = "my-key",
+                clusterState = clusterState,
+                tags = emptyMap(),
+            )
+        }.isInstanceOf(IllegalStateException::class.java)
+
+        val debugEvents = capturedEvents.filterIsInstance<Event.Emr.BootstrapFailureDebugInstructions>()
+        assertThat(debugEvents).hasSize(1)
+        assertThat(debugEvents.first().clusterId).isEqualTo("j-DIAG")
+        assertThat(debugEvents.first().emrLogsPath)
+            .isEqualTo("s3://easy-db-lab-test-bucket/clusters/test-cluster-test-id/spark/emr-logs")
     }
 }

@@ -14,6 +14,11 @@ import com.rustyrazorblade.easydblab.providers.aws.EMRClusterConfig
 import com.rustyrazorblade.easydblab.providers.aws.EMRConfiguration
 import com.rustyrazorblade.easydblab.services.aws.EMRService
 import io.github.oshai.kotlinlogging.KotlinLogging
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.util.zip.GZIPInputStream
+import kotlin.io.path.createTempFile
+import kotlin.io.path.inputStream
 
 /**
  * Service for provisioning EMR clusters for Spark workloads.
@@ -97,13 +102,78 @@ class DefaultEMRProvisioningService(
             )
 
         val result = emrService.createCluster(emrConfig)
-        val readyResult = emrService.waitForClusterReady(result.clusterId)
+
+        val readyResult =
+            try {
+                emrService.waitForClusterReady(result.clusterId)
+            } catch (e: IllegalStateException) {
+                emitBootstrapFailureDiagnostics(result.clusterId, s3Path)
+                throw e
+            }
 
         return EMRClusterState(
             clusterId = readyResult.clusterId,
             clusterName = readyResult.clusterName,
             masterPublicDns = readyResult.masterPublicDns,
             state = readyResult.state,
+        )
+    }
+
+    /**
+     * Fetches and emits bootstrap action stderr logs when an EMR cluster fails to start.
+     * Falls back to emitting manual debug instructions if logs cannot be retrieved.
+     */
+    @Suppress("TooGenericExceptionCaught")
+    private fun emitBootstrapFailureDiagnostics(
+        clusterId: String,
+        s3Path: ClusterS3Path,
+    ) {
+        eventBus.emit(Event.Emr.BootstrapFailureDiagnosing)
+
+        try {
+            val masterInstances = emrService.listInstances(clusterId)
+            if (masterInstances.isEmpty()) {
+                eventBus.emit(Event.Emr.BootstrapFailureLogUnavailable("No master instance found"))
+                emitDebugInstructions(clusterId, s3Path)
+                return
+            }
+
+            val instanceId = masterInstances.first()
+            val stderrPath =
+                s3Path
+                    .emrLogs()
+                    .resolve(clusterId)
+                    .resolve("node/$instanceId/bootstrap-actions/1/stderr.gz")
+
+            val tempFile = createTempFile("bootstrap-stderr", ".gz")
+            objectStore.downloadFile(stderrPath, tempFile, showProgress = false)
+
+            val content =
+                GZIPInputStream(tempFile.inputStream()).use { gzStream ->
+                    BufferedReader(InputStreamReader(gzStream)).readText()
+                }
+
+            eventBus.emit(Event.Emr.BootstrapFailureLog(content))
+        } catch (e: Exception) {
+            log.debug(e) { "Failed to retrieve bootstrap logs for cluster $clusterId" }
+            eventBus.emit(
+                Event.Emr.BootstrapFailureLogUnavailable(
+                    e.message ?: "Unknown error",
+                ),
+            )
+            emitDebugInstructions(clusterId, s3Path)
+        }
+    }
+
+    private fun emitDebugInstructions(
+        clusterId: String,
+        s3Path: ClusterS3Path,
+    ) {
+        eventBus.emit(
+            Event.Emr.BootstrapFailureDebugInstructions(
+                clusterId = clusterId,
+                emrLogsPath = s3Path.emrLogs().toString(),
+            ),
         )
     }
 

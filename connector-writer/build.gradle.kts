@@ -34,7 +34,7 @@ dependencies {
     // JNR libraries required by the Cassandra Java Driver for native operations
     // The java-driver-core-shaded doesn't bundle these, so we need to add them explicitly
     implementation("com.github.jnr:jnr-posix:3.1.15")
-    implementation("com.github.jnr:jnr-ffi:2.2.11")
+    implementation("com.github.jnr:jnr-ffi:2.2.18")
 }
 
 application {

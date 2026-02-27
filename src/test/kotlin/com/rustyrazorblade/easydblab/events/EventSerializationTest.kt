@@ -50,6 +50,8 @@ class EventSerializationTest {
             Event.Setup.ValidatingCredentials,
             Event.Ssh.ExecutingCommand("ls -la"),
             Event.Ssh.UploadingFile("/tmp/file", "10.0.1.5", "/opt/file"),
+            Event.Grafana.WorkloadsRestarting,
+            Event.Grafana.WorkloadRestarted("Deployment", "grafana"),
         )
 
     @Test

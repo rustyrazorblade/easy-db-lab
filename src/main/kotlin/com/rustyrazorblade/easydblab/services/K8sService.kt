@@ -376,6 +376,34 @@ interface K8sService {
      * @return Result indicating success or failure
      */
     fun ensureLocalStorageClass(controlHost: ClusterHost): Result<Unit>
+
+    /**
+     * Performs a rolling restart of a Deployment.
+     *
+     * @param controlHost The control node running the K3s server
+     * @param name The name of the Deployment to restart
+     * @param namespace The namespace containing the Deployment
+     * @return Result indicating success or failure
+     */
+    fun rolloutRestartDeployment(
+        controlHost: ClusterHost,
+        name: String,
+        namespace: String = "default",
+    ): Result<Unit>
+
+    /**
+     * Performs a rolling restart of a DaemonSet.
+     *
+     * @param controlHost The control node running the K3s server
+     * @param name The name of the DaemonSet to restart
+     * @param namespace The namespace containing the DaemonSet
+     * @return Result indicating success or failure
+     */
+    fun rolloutRestartDaemonSet(
+        controlHost: ClusterHost,
+        name: String,
+        namespace: String = "default",
+    ): Result<Unit>
 }
 
 /**
@@ -1449,4 +1477,55 @@ class DefaultK8sService(
             }
         }
     }
+
+    override fun rolloutRestartDeployment(
+        controlHost: ClusterHost,
+        name: String,
+        namespace: String,
+    ): Result<Unit> =
+        runCatching {
+            log.info { "Rolling restart Deployment/$name in namespace $namespace" }
+            createClient(controlHost).use { client ->
+                client
+                    .apps()
+                    .deployments()
+                    .inNamespace(namespace)
+                    .withName(name)
+                    .rolling()
+                    .restart()
+            }
+            log.info { "Rolling restart initiated for Deployment/$name" }
+        }
+
+    override fun rolloutRestartDaemonSet(
+        controlHost: ClusterHost,
+        name: String,
+        namespace: String,
+    ): Result<Unit> =
+        runCatching {
+            log.info { "Rolling restart DaemonSet/$name in namespace $namespace" }
+            createClient(controlHost).use { client ->
+                client
+                    .apps()
+                    .daemonSets()
+                    .inNamespace(namespace)
+                    .withName(name)
+                    .edit { ds ->
+                        val annotations =
+                            ds.spec
+                                ?.template
+                                ?.metadata
+                                ?.annotations
+                                ?.toMutableMap()
+                                ?: mutableMapOf()
+                        annotations["kubectl.kubernetes.io/restartedAt"] = Instant.now().toString()
+                        ds.spec
+                            ?.template
+                            ?.metadata
+                            ?.annotations = annotations
+                        ds
+                    }
+            }
+            log.info { "Rolling restart initiated for DaemonSet/$name" }
+        }
 }

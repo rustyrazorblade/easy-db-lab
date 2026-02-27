@@ -2043,6 +2043,21 @@ sealed interface Event {
         data object PyroscopeDirectoryPreparing : Grafana {
             override fun toDisplayString(): String = "Preparing Pyroscope data directory..."
         }
+
+        @Serializable
+        @SerialName("Grafana.WorkloadsRestarting")
+        data object WorkloadsRestarting : Grafana {
+            override fun toDisplayString(): String = "Restarting observability workloads to pick up new configs..."
+        }
+
+        @Serializable
+        @SerialName("Grafana.WorkloadRestarted")
+        data class WorkloadRestarted(
+            val kind: String,
+            val name: String,
+        ) : Grafana {
+            override fun toDisplayString(): String = "Restarted $kind/$name"
+        }
     }
 
     // =========================================================================

@@ -428,6 +428,63 @@ class K8sServiceIntegrationTest {
     }
 
     // -----------------------------------------------------------------------
+    // Phase 3b: Rollout restart
+    // -----------------------------------------------------------------------
+
+    @Test
+    @Order(35)
+    fun `should rollout restart a deployment without error`() {
+        // registry is a simple deployment that should be running at this point
+        val result =
+            runCatching {
+                client
+                    .apps()
+                    .deployments()
+                    .inNamespace(DEFAULT_NAMESPACE)
+                    .withName("registry")
+                    .rolling()
+                    .restart()
+            }
+        assertThat(result.isSuccess)
+            .withFailMessage("Rollout restart of Deployment/registry failed: ${result.exceptionOrNull()?.message}")
+            .isTrue()
+    }
+
+    @Test
+    @Order(36)
+    fun `should rollout restart a daemonset without error`() {
+        val result =
+            runCatching {
+                client
+                    .apps()
+                    .daemonSets()
+                    .inNamespace(DEFAULT_NAMESPACE)
+                    .withName("otel-collector")
+                    .edit { ds ->
+                        val annotations =
+                            ds.spec
+                                ?.template
+                                ?.metadata
+                                ?.annotations
+                                ?.toMutableMap()
+                                ?: mutableMapOf()
+                        annotations["kubectl.kubernetes.io/restartedAt"] =
+                            java.time.Instant
+                                .now()
+                                .toString()
+                        ds.spec
+                            ?.template
+                            ?.metadata
+                            ?.annotations = annotations
+                        ds
+                    }
+            }
+        assertThat(result.isSuccess)
+            .withFailMessage("Rollout restart of DaemonSet/otel-collector failed: ${result.exceptionOrNull()?.message}")
+            .isTrue()
+    }
+
+    // -----------------------------------------------------------------------
     // Phase 4: Image pull, resource limits, and structural checks
     // -----------------------------------------------------------------------
 

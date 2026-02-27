@@ -40,6 +40,7 @@
 - [Ports](reference/ports.md)
 - [Log Infrastructure](reference/log-infrastructure.md)
 - [OpenTelemetry](reference/opentelemetry.md)
+- [Pyroscope Configuration](reference/pyroscope-configuration.md)
 
 # Development
 

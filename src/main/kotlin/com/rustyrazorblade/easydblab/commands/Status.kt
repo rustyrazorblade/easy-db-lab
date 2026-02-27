@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.ServerType
@@ -280,15 +281,15 @@ class Status :
             return
         }
 
-        val s3Path = clusterState.s3Path()
+        val dataPath = ClusterS3Path(clusterState.dataBucket)
         eventBus.emit(
             Event.Status.S3BucketInfo(
                 bucket = clusterState.s3Bucket!!,
                 fullPath = "${clusterState.s3Bucket}/${clusterState.clusterPrefix()}",
-                cassandraPath = s3Path.cassandra().toString(),
-                clickhousePath = s3Path.clickhouse().toString(),
-                sparkPath = s3Path.spark().toString(),
-                emrLogsPath = s3Path.emrLogs().toString(),
+                cassandraPath = dataPath.cassandra().toString(),
+                clickhousePath = dataPath.clickhouse().toString(),
+                sparkPath = dataPath.spark().toString(),
+                emrLogsPath = dataPath.emrLogs().toString(),
             ),
         )
     }

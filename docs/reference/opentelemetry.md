@@ -87,26 +87,30 @@ Short-lived stress commands (`list`, `info`, `fields`) do not include the sideca
 
 ## Spark JVM Instrumentation
 
-EMR Spark jobs are auto-instrumented with the OpenTelemetry Java Agent (v2.25.0), configured via an EMR bootstrap action. The agent is downloaded to each EMR node and activated through `spark.driver.extraJavaOptions` and `spark.executor.extraJavaOptions`.
+EMR Spark jobs are auto-instrumented with the OpenTelemetry Java Agent (v2.25.0) and Pyroscope Java Agent (v2.3.0), both installed via an EMR bootstrap action. The OTel agent is activated through `spark.driver.extraJavaOptions` and `spark.executor.extraJavaOptions`.
 
-The agent sends logs, metrics, and traces via OTLP to the control node's OTel Collector. Each Spark job's telemetry is tagged with `service.name=spark-<job-name>` for easy filtering.
+Each EMR node also runs an OTel Collector as a systemd service, collecting host metrics (CPU, memory, disk, network) and receiving OTLP from the Java agents. The collector forwards all telemetry to the control node's OTel Collector via OTLP gRPC.
 
 Key configuration:
-- **Agent JAR**: Downloaded by bootstrap action to `/home/hadoop/opentelemetry-javaagent.jar`
-- **Export protocol**: OTLP/gRPC to `http://<control-node-ip>:4317`
+- **OTel Agent JAR**: Downloaded by bootstrap action to `/opt/otel/opentelemetry-javaagent.jar`
+- **Pyroscope Agent JAR**: Downloaded by bootstrap action to `/opt/pyroscope/pyroscope.jar`
+- **OTel Collector**: Installed at `/opt/otel/otelcol-contrib`, runs as `otel-collector.service`
+- **Export protocol**: OTLP/gRPC to `localhost:4317` (local collector), which forwards to control node
 - **Logs exporter**: OTLP (captures JVM log output)
 - **Service name**: `spark-<job-name>` (set per job)
+- **Profiling**: CPU, allocation (512k threshold), lock (10ms threshold) profiles in JFR format sent to Pyroscope server
 
 ## YACE CloudWatch Scrape
 
 YACE (Yet Another CloudWatch Exporter) runs on the control node and scrapes AWS CloudWatch metrics for services used by the cluster. It uses tag-based auto-discovery with the `easy_cass_lab=1` tag to find relevant resources.
 
 YACE scrapes metrics for:
-- **EMR** — cluster, instance group, and node metrics
 - **S3** — bucket request/byte counts
 - **EBS** — volume read/write ops and latency
 - **EC2** — instance CPU, network, disk
 - **OpenSearch** — domain health, indexing, search metrics
+
+EMR metrics are collected directly via OTel Collectors on Spark nodes (see Spark JVM Instrumentation above).
 
 YACE exposes scraped metrics as Prometheus-compatible metrics on port 5001, which are then scraped by the OTel Collector and forwarded to VictoriaMetrics. This replaces the previous CloudWatch datasource in Grafana with a Prometheus-based approach, giving dashboards access to CloudWatch metrics through VictoriaMetrics queries.
 

@@ -150,6 +150,7 @@ When Spark is enabled, easy-db-lab provisions:
 - **EMR Cluster**: Managed Spark cluster with master and worker nodes
 - **S3 Integration**: Logs stored at `s3://<bucket>/spark/emr-logs/`
 - **IAM Roles**: Service and job flow roles for EMR operations
+- **Observability**: Each EMR node runs an OTel Collector (host metrics, OTLP forwarding), OTel Java Agent (auto-instrumentation for logs/metrics/traces), and Pyroscope Java Agent (continuous CPU/allocation/lock profiling). All telemetry flows to the control node's observability stack.
 
 ### Timeouts and Polling
 

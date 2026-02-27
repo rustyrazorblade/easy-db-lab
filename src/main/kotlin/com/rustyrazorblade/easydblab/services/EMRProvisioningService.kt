@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.EMRClusterState
 import com.rustyrazorblade.easydblab.configuration.emr.OtelBootstrapResource
@@ -103,12 +104,31 @@ class DefaultEMRProvisioningService(
 
     /**
      * Uploads the OTel bootstrap script to S3 and returns a BootstrapAction for it.
+     * The bootstrap script installs:
+     * - OTel Java agent (for Spark JVM instrumentation)
+     * - OTel Collector (systemd service for host metrics and OTLP forwarding)
+     * - Pyroscope Java agent (for continuous profiling)
+     *
+     * The control node IP is resolved at upload time by TemplateService
+     * (via __CONTROL_NODE_IP__ in the collector config).
      */
-    private fun uploadOtelBootstrapScript(s3Path: com.rustyrazorblade.easydblab.configuration.ClusterS3Path): BootstrapAction {
+    private fun uploadOtelBootstrapScript(s3Path: ClusterS3Path): BootstrapAction {
+        val collectorConfig =
+            templateService
+                .fromResource(OtelBootstrapResource::class.java, "otel-collector-config.yaml")
+                .substitute()
+
         val scriptContent =
             templateService
                 .fromResource(OtelBootstrapResource::class.java, "bootstrap-otel.sh")
-                .substitute(mapOf("OTEL_AGENT_DOWNLOAD_URL" to Constants.OtelJavaAgent.DOWNLOAD_URL))
+                .substitute(
+                    mapOf(
+                        "OTEL_AGENT_DOWNLOAD_URL" to Constants.OtelJavaAgent.DOWNLOAD_URL,
+                        "OTEL_COLLECTOR_DOWNLOAD_URL" to Constants.OtelCollector.DOWNLOAD_URL,
+                        "PYROSCOPE_AGENT_DOWNLOAD_URL" to Constants.PyroscopeJavaAgent.DOWNLOAD_URL,
+                        "OTEL_COLLECTOR_CONFIG" to collectorConfig,
+                    ),
+                )
 
         val scriptS3Path = s3Path.spark().resolve("bootstrap-otel.sh")
 
@@ -116,7 +136,7 @@ class DefaultEMRProvisioningService(
         objectStore.uploadContent(scriptContent, scriptS3Path)
 
         return BootstrapAction(
-            name = "Install OTel Java Agent",
+            name = "Install OTel and Pyroscope Agents",
             scriptS3Path = scriptS3Path.toString(),
         )
     }

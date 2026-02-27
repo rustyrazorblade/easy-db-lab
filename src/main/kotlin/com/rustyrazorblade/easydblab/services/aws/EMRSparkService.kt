@@ -73,8 +73,8 @@ class EMRSparkService(
         runCatching {
             val stepName = jobName ?: mainClass.split(".").last()
 
-            // Enrich spark conf and env vars with OTel Java agent configuration
-            val otelSparkConf = buildOtelSparkConf(sparkConf)
+            // Enrich spark conf and env vars with OTel Java agent and Pyroscope configuration
+            val otelSparkConf = buildOtelSparkConf(sparkConf, stepName)
             val otelEnvVars = buildOtelEnvVars(envVars, stepName)
 
             val hadoopJarStep =
@@ -576,27 +576,12 @@ class EMRSparkService(
     }
 
     /**
-     * Enriches spark conf with OTel Java agent JVM flags.
-     * The agent auto-instruments Log4j2 for log collection and provides JVM metrics/traces.
+     * Enriches spark conf with OTel Java agent and Pyroscope Java agent JVM flags.
+     * The OTel agent auto-instruments Log4j2 for log collection and provides JVM metrics/traces.
+     * The Pyroscope agent collects CPU, allocation, and lock profiles.
      */
-    private fun buildOtelSparkConf(sparkConf: Map<String, String>): Map<String, String> {
-        val agentFlag = "-javaagent:${Constants.OtelJavaAgent.INSTALL_PATH}"
-        val enriched = sparkConf.toMutableMap()
-
-        val existingDriverOpts = enriched["spark.driver.extraJavaOptions"] ?: ""
-        enriched["spark.driver.extraJavaOptions"] = "$existingDriverOpts $agentFlag".trim()
-
-        val existingExecutorOpts = enriched["spark.executor.extraJavaOptions"] ?: ""
-        enriched["spark.executor.extraJavaOptions"] = "$existingExecutorOpts $agentFlag".trim()
-
-        return enriched
-    }
-
-    /**
-     * Enriches env vars with OTel exporter configuration targeting the control node's OTel Collector.
-     */
-    private fun buildOtelEnvVars(
-        envVars: Map<String, String>,
+    private fun buildOtelSparkConf(
+        sparkConf: Map<String, String>,
         jobName: String,
     ): Map<String, String> {
         val controlIp =
@@ -605,14 +590,46 @@ class EMRSparkService(
                 .hosts[ServerType.Control]
                 ?.firstOrNull()
                 ?.privateIp
-                ?: error("No control node found in cluster state for OTel configuration")
+                ?: error("No control node found in cluster state for Pyroscope configuration")
 
+        val otelAgentFlag = "-javaagent:${Constants.OtelJavaAgent.INSTALL_PATH}"
+        val pyroscopeFlags =
+            listOf(
+                "-javaagent:${Constants.PyroscopeJavaAgent.INSTALL_PATH}",
+                "-Dpyroscope.application.name=spark-$jobName",
+                "-Dpyroscope.server.address=http://$controlIp:${Constants.K8s.PYROSCOPE_PORT}",
+                "-Dpyroscope.format=jfr",
+                "-Dpyroscope.profiler.event=cpu",
+                "-Dpyroscope.profiler.alloc=512k",
+                "-Dpyroscope.profiler.lock=10ms",
+            )
+        val allFlags = "$otelAgentFlag ${pyroscopeFlags.joinToString(" ")}"
+
+        val enriched = sparkConf.toMutableMap()
+
+        val existingDriverOpts = enriched["spark.driver.extraJavaOptions"] ?: ""
+        enriched["spark.driver.extraJavaOptions"] = "$existingDriverOpts $allFlags".trim()
+
+        val existingExecutorOpts = enriched["spark.executor.extraJavaOptions"] ?: ""
+        enriched["spark.executor.extraJavaOptions"] = "$existingExecutorOpts $allFlags".trim()
+
+        return enriched
+    }
+
+    /**
+     * Enriches env vars with OTel exporter configuration.
+     * The endpoint is NOT set — the Java agent defaults to localhost:4317 where the
+     * local OTel Collector (installed via bootstrap action) receives and forwards telemetry.
+     */
+    private fun buildOtelEnvVars(
+        envVars: Map<String, String>,
+        jobName: String,
+    ): Map<String, String> {
         val otelVars =
             mapOf(
                 "OTEL_LOGS_EXPORTER" to "otlp",
                 "OTEL_METRICS_EXPORTER" to "otlp",
                 "OTEL_TRACES_EXPORTER" to "otlp",
-                "OTEL_EXPORTER_OTLP_ENDPOINT" to "http://$controlIp:${Constants.K8s.OTEL_GRPC_PORT}",
                 "OTEL_SERVICE_NAME" to "spark-$jobName",
             )
 

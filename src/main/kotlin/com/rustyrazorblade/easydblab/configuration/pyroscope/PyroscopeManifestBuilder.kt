@@ -6,7 +6,6 @@ import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.Container
 import io.fabric8.kubernetes.api.model.ContainerBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
-import io.fabric8.kubernetes.api.model.HostPathVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.SecurityContextBuilder
 import io.fabric8.kubernetes.api.model.ServiceBuilder
 import io.fabric8.kubernetes.api.model.VolumeMountBuilder
@@ -35,7 +34,6 @@ class PyroscopeManifestBuilder(
 
         @Suppress("MagicNumber")
         const val PYROSCOPE_UID = 10001L
-        private const val DATA_PATH = "/mnt/db1/pyroscope"
         private const val SERVER_LIVENESS_INITIAL_DELAY = 30
         private const val SERVER_LIVENESS_PERIOD = 15
         private const val SERVER_READINESS_INITIAL_DELAY = 5
@@ -108,8 +106,7 @@ class PyroscopeManifestBuilder(
      * Builds the Pyroscope server Deployment.
      *
      * Runs on the control plane node with hostNetwork enabled.
-     * Data is stored on a hostPath volume at /mnt/db1/pyroscope.
-     * The directory permissions must be set via SSH before applying.
+     * Data is stored in S3 (configured via S3_BUCKET and AWS_REGION env vars).
      */
     fun buildServerDeployment() =
         DeploymentBuilder()
@@ -148,14 +145,6 @@ class PyroscopeManifestBuilder(
                     .withName(SERVER_CONFIGMAP_NAME)
                     .build(),
             ).endVolume()
-            .addNewVolume()
-            .withName("data")
-            .withHostPath(
-                HostPathVolumeSourceBuilder()
-                    .withPath(DATA_PATH)
-                    .withType("DirectoryOrCreate")
-                    .build(),
-            ).endVolume()
             .endSpec()
             .endTemplate()
             .endSpec()
@@ -171,13 +160,27 @@ class PyroscopeManifestBuilder(
             .withHostPort(SERVER_PORT)
             .withProtocol("TCP")
             .endPort()
+            .addNewEnv()
+            .withName("S3_BUCKET")
+            .withNewValueFrom()
+            .withNewConfigMapKeyRef()
+            .withName("cluster-config")
+            .withKey("data_bucket")
+            .endConfigMapKeyRef()
+            .endValueFrom()
+            .endEnv()
+            .addNewEnv()
+            .withName("AWS_REGION")
+            .withNewValueFrom()
+            .withNewConfigMapKeyRef()
+            .withName("cluster-config")
+            .withKey("aws_region")
+            .endConfigMapKeyRef()
+            .endValueFrom()
+            .endEnv()
             .addNewVolumeMount()
             .withName("config")
             .withMountPath("/etc/pyroscope")
-            .endVolumeMount()
-            .addNewVolumeMount()
-            .withName("data")
-            .withMountPath("/data")
             .endVolumeMount()
             .withNewLivenessProbe()
             .withNewHttpGet()

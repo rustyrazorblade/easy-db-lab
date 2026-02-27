@@ -204,10 +204,6 @@ class K8sServiceIntegrationTest {
                 "-out /opt/registry/certs/registry.crt -days 1 -nodes -subj '/CN=registry'",
         )
 
-        // Pyroscope data dir needs correct ownership (UID 10001)
-        k3s.execInContainer("mkdir", "-p", "/mnt/db1/pyroscope")
-        k3s.execInContainer("chown", "-R", "10001:10001", "/mnt/db1/pyroscope")
-
         // Data directories for Victoria (images run as non-root, need write access)
         k3s.execInContainer("mkdir", "-p", "/mnt/db1/victoriametrics")
         k3s.execInContainer("chmod", "777", "/mnt/db1/victoriametrics")

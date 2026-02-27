@@ -173,8 +173,8 @@ All Grafana K8s resources are built programmatically using Fabric8:
 
 All Pyroscope K8s resources are built programmatically using Fabric8:
 
-- **`PyroscopeManifestBuilder`** — builds all Pyroscope K8s resources (server ConfigMap, Service, Deployment, eBPF ConfigMap, eBPF DaemonSet) as typed Fabric8 objects. The server runs on the control plane with a hostPath volume at `/mnt/db1/pyroscope`. Directory permissions are set via SSH in `GrafanaUpdateConfig` before deploying (no init container).
-- **Config resources** — `config.yaml` (Pyroscope server config) and `config.alloy` (Grafana Alloy eBPF config) stored in `resources/.../configuration/pyroscope/`.
+- **`PyroscopeManifestBuilder`** — builds all Pyroscope K8s resources (server ConfigMap, Service, Deployment, eBPF ConfigMap, eBPF DaemonSet) as typed Fabric8 objects. The server runs on the control plane with S3 backend storage (configured via `S3_BUCKET` and `AWS_REGION` env vars from cluster-config ConfigMap, matching Tempo's pattern). Data is stored at `s3://<data-bucket>/pyroscope/`.
+- **Config resources** — `config.yaml` (Pyroscope server config with S3 backend) and `config.alloy` (Grafana Alloy eBPF config) stored in `resources/.../configuration/pyroscope/`.
 
 ### Profiling Architecture
 
@@ -183,6 +183,7 @@ Three independent profiling mechanisms run simultaneously:
 1. **Grafana Alloy eBPF DaemonSet** (all nodes) — `pyroscope.ebpf` component collects `process_cpu` profiles only (eBPF limitation). Image: `grafana/alloy:v1.13.1`. Labels: `hostname`, `cluster` from env vars. Also profiles ClickHouse (CPU only, since it's C++).
 2. **Pyroscope Java Agent (Cassandra)** — `/usr/local/pyroscope/pyroscope.jar` (v2.3.0, installed by packer). Collects `cpu`, `alloc`, `lock`, `wall` profiles via JFR/async-profiler. Activated only when `PYROSCOPE_SERVER_ADDRESS` env var is set AND agent JAR exists. The profiler event is configurable via `PYROSCOPE_PROFILER_EVENT` env var (default: `cpu`, alternative: `wall`).
 3. **Pyroscope Java Agent (Stress Jobs)** — Same agent JAR mounted into stress K8s Jobs via hostPath volume from `/usr/local/pyroscope`. Configured via `JAVA_TOOL_OPTIONS` env var in `StressJobService.buildJob()`. Collects `cpu`, `alloc`, `lock` profiles.
+4. **Pyroscope Java Agent (Spark/EMR)** — `/opt/pyroscope/pyroscope.jar` (installed by EMR bootstrap action). Added to Spark driver and executor via `extraJavaOptions` in `EMRSparkService.buildOtelSparkConf()`. Collects `cpu`, `alloc` (512k threshold), `lock` (10ms threshold) profiles in JFR format. Service name: `spark-<job-name>`. Sends to Pyroscope server at `http://<control-ip>:4040`.
 
 ### Activation Flow
 
@@ -226,6 +227,6 @@ See `spec/PYROSCOPE.md` for full architecture details and debugging steps.
 
 ## YACE Subpackage (`yace/`)
 
-- **`YaceManifestBuilder`** — builds YACE (Yet Another CloudWatch Exporter) ConfigMap + Deployment. Runs on control plane, scrapes AWS CloudWatch metrics for EMR, S3, EBS, EC2, and OpenSearch services. Exposes Prometheus metrics on port 5001, scraped by OTel collector.
+- **`YaceManifestBuilder`** — builds YACE (Yet Another CloudWatch Exporter) ConfigMap + Deployment. Runs on control plane, scrapes AWS CloudWatch metrics for S3, EBS, EC2, and OpenSearch services. Exposes Prometheus metrics on port 5001, scraped by OTel collector. (EMR metrics removed — replaced by direct OTel collection on Spark nodes.)
 - **Config resource** — `yace-config.yaml` stored in `resources/.../configuration/yace/` with `__AWS_REGION__` template variable for region substitution.
 - **Auto-discovery** — uses tag-based auto-discovery with the `easy_cass_lab=1` tag to find cluster resources in CloudWatch.

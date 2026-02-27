@@ -1,7 +1,9 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.providers.aws.EMRClusterConfig
 import com.rustyrazorblade.easydblab.providers.aws.EMRClusterResult
@@ -24,13 +26,28 @@ internal class EMRProvisioningServiceTest {
     private lateinit var mockObjectStore: ObjectStore
     private lateinit var service: DefaultEMRProvisioningService
 
+    companion object {
+        private val testControlHost =
+            ClusterHost(
+                publicIp = "54.1.2.3",
+                privateIp = "10.0.1.5",
+                alias = "control0",
+                availabilityZone = "us-west-2a",
+                instanceId = "i-control",
+            )
+    }
+
     @BeforeEach
     fun setUp() {
         mockEmrService = mock()
         mockObjectStore = mock()
         val mockClusterStateManager = mock<ClusterStateManager>()
         whenever(mockClusterStateManager.load()).thenReturn(
-            ClusterState(name = "test", versions = mutableMapOf()),
+            ClusterState(
+                name = "test",
+                versions = mutableMapOf(),
+                hosts = mapOf(ServerType.Control to listOf(testControlHost)),
+            ),
         )
         val testUser =
             User(
@@ -59,6 +76,7 @@ internal class EMRProvisioningServiceTest {
                 name = "test-cluster",
                 versions = mutableMapOf(),
                 s3Bucket = "easy-db-lab-test-bucket",
+                hosts = mapOf(ServerType.Control to listOf(testControlHost)),
             )
 
         val createResult =
@@ -106,6 +124,7 @@ internal class EMRProvisioningServiceTest {
                 versions = mutableMapOf(),
                 s3Bucket = "easy-db-lab-test-bucket",
                 clusterId = "test-id",
+                hosts = mapOf(ServerType.Control to listOf(testControlHost)),
             )
 
         val createResult =
@@ -150,7 +169,7 @@ internal class EMRProvisioningServiceTest {
         assertThat(config.tags).containsEntry("env", "test")
         assertThat(config.logUri).isEqualTo("s3://easy-db-lab-test-bucket/clusters/test-cluster-test-id/spark/emr-logs")
         assertThat(config.bootstrapActions).hasSize(1)
-        assertThat(config.bootstrapActions.first().name).isEqualTo("Install OTel Java Agent")
+        assertThat(config.bootstrapActions.first().name).isEqualTo("Install OTel and Pyroscope Agents")
         assertThat(config.bootstrapActions.first().scriptS3Path).contains("bootstrap-otel.sh")
     }
 
@@ -161,6 +180,7 @@ internal class EMRProvisioningServiceTest {
                 name = "test-cluster",
                 versions = mutableMapOf(),
                 s3Bucket = "easy-db-lab-test-bucket",
+                hosts = mapOf(ServerType.Control to listOf(testControlHost)),
             )
 
         val createResult =
@@ -204,6 +224,7 @@ internal class EMRProvisioningServiceTest {
                 name = "test-cluster",
                 versions = mutableMapOf(),
                 s3Bucket = "easy-db-lab-test-bucket",
+                hosts = mapOf(ServerType.Control to listOf(testControlHost)),
             )
 
         whenever(mockEmrService.createCluster(any()))
@@ -232,6 +253,7 @@ internal class EMRProvisioningServiceTest {
                 name = "test-cluster",
                 versions = mutableMapOf(),
                 s3Bucket = "easy-db-lab-test-bucket",
+                hosts = mapOf(ServerType.Control to listOf(testControlHost)),
             )
 
         val createResult =

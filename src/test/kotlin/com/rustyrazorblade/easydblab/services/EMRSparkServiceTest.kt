@@ -262,7 +262,7 @@ class EMRSparkServiceTest : BaseKoinTest() {
     // ========== OTel INTEGRATION TESTS ==========
 
     @Test
-    fun `submitJob should include OTel Java agent flags in spark-submit args`() {
+    fun `submitJob should include OTel and Pyroscope agent flags in spark-submit args`() {
         // Given
         val captor = argumentCaptor<AddJobFlowStepsRequest>()
         val response =
@@ -290,10 +290,17 @@ class EMRSparkServiceTest : BaseKoinTest() {
         assertThat(allArgs).contains("spark.driver.extraJavaOptions")
         assertThat(allArgs).contains("spark.executor.extraJavaOptions")
 
-        // Verify OTel environment variables are set for driver, executor, and app master
-        assertThat(allArgs).contains("spark.driverEnv.OTEL_EXPORTER_OTLP_ENDPOINT=http://10.0.1.5:4317")
-        assertThat(allArgs).contains("spark.executorEnv.OTEL_EXPORTER_OTLP_ENDPOINT=http://10.0.1.5:4317")
-        assertThat(allArgs).contains("spark.yarn.appMasterEnv.OTEL_EXPORTER_OTLP_ENDPOINT=http://10.0.1.5:4317")
+        // Verify Pyroscope Java agent flags in spark conf
+        assertThat(allArgs).contains("-javaagent:/opt/pyroscope/pyroscope.jar")
+        assertThat(allArgs).contains("-Dpyroscope.application.name=spark-test-job")
+        assertThat(allArgs).contains("-Dpyroscope.server.address=http://10.0.1.5:4040")
+        assertThat(allArgs).contains("-Dpyroscope.format=jfr")
+        assertThat(allArgs).contains("-Dpyroscope.profiler.event=cpu")
+        assertThat(allArgs).contains("-Dpyroscope.profiler.alloc=512k")
+        assertThat(allArgs).contains("-Dpyroscope.profiler.lock=10ms")
+
+        // Verify OTel environment variables — endpoint is NOT set (defaults to localhost:4317)
+        assertThat(allArgs).doesNotContain("OTEL_EXPORTER_OTLP_ENDPOINT")
         assertThat(allArgs).contains("spark.driverEnv.OTEL_SERVICE_NAME=spark-test-job")
         assertThat(allArgs).contains("OTEL_LOGS_EXPORTER=otlp")
         assertThat(allArgs).contains("OTEL_METRICS_EXPORTER=otlp")

@@ -167,6 +167,8 @@ sealed class AWSPolicy {
                                             "cloudwatch:*",
                                             "logs:*",
                                             "ec2:*",
+                                            "iam:ListAccountAliases",
+                                            "tag:GetResources",
                                             "oam:ListSinks",
                                             "oam:ListAttachedLinks",
                                         ),

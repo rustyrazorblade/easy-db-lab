@@ -599,7 +599,7 @@
           "type": "prometheus",
           "uid": "${datasource}"
         },
-        "definition": "label_values(system_cpu_time_seconds_total, host_name)",
+        "definition": "label_values(system_cpu_time_seconds_total{node_role="spark"}, host_name)",
         "hide": 0,
         "includeAll": true,
         "label": "Hostname",
@@ -608,7 +608,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(system_cpu_time_seconds_total, host_name)",
+          "query": "label_values(system_cpu_time_seconds_total{node_role="spark"}, host_name)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 2,

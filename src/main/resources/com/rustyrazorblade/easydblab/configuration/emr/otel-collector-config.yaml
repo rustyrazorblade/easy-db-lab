@@ -27,6 +27,11 @@ processors:
       resource_attributes:
         host.name:
           enabled: true
+  resource/role:
+    attributes:
+      - key: node_role
+        value: spark
+        action: upsert
 
 exporters:
   otlp/control:
@@ -43,13 +48,13 @@ service:
   pipelines:
     metrics:
       receivers: [otlp, hostmetrics]
-      processors: [resourcedetection, batch]
+      processors: [resourcedetection, resource/role, batch]
       exporters: [otlp/control]
     logs:
       receivers: [otlp]
-      processors: [resourcedetection, batch]
+      processors: [resourcedetection, resource/role, batch]
       exporters: [otlp/control]
     traces:
       receivers: [otlp]
-      processors: [resourcedetection, batch]
+      processors: [resourcedetection, resource/role, batch]
       exporters: [otlp/control]

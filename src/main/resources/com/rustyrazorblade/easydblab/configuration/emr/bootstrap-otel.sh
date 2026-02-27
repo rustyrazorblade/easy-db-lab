@@ -44,7 +44,7 @@ echo "OTel Collector installed successfully"
 
 # --- OTel Collector Config ---
 echo "Writing OTel Collector config to $COLLECTOR_CONFIG"
-sudo cat > "$COLLECTOR_CONFIG" << 'CONFIGEOF'
+sudo tee "$COLLECTOR_CONFIG" > /dev/null << 'CONFIGEOF'
 __OTEL_COLLECTOR_CONFIG__
 CONFIGEOF
 # Note: __CONTROL_NODE_IP__ is resolved at upload time by TemplateService
@@ -52,7 +52,7 @@ echo "OTel Collector config written"
 
 # --- OTel Collector systemd service ---
 echo "Creating otel-collector systemd service"
-sudo cat > /etc/systemd/system/otel-collector.service << 'SERVICEEOF'
+sudo tee /etc/systemd/system/otel-collector.service > /dev/null << 'SERVICEEOF'
 [Unit]
 Description=OpenTelemetry Collector
 After=network-online.target

@@ -136,9 +136,9 @@
         },
         "definition": "label_values(hostname)",
         "hide": 0,
-        "includeAll": true,
+        "includeAll": false,
         "label": "Hostname",
-        "multi": true,
+        "multi": false,
         "name": "hostname",
         "options": [],
         "query": {

@@ -41,6 +41,7 @@
 - [Log Infrastructure](reference/log-infrastructure.md)
 - [OpenTelemetry](reference/opentelemetry.md)
 - [Pyroscope Configuration](reference/pyroscope-configuration.md)
+- [Spark Debugging](reference/spark-debugging.md)
 
 # Development
 

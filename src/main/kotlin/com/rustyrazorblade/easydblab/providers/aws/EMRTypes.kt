@@ -60,7 +60,8 @@ data class BootstrapAction(
  */
 data class EMRConfiguration(
     val classification: String,
-    val properties: Map<String, String>,
+    val properties: Map<String, String> = emptyMap(),
+    val configurations: List<EMRConfiguration> = emptyList(),
 )
 
 /**

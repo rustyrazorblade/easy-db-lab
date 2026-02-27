@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.exceptions.AwsTimeoutException
 import com.rustyrazorblade.easydblab.providers.aws.ClusterId
 import com.rustyrazorblade.easydblab.providers.aws.EMRClusterConfig
 import com.rustyrazorblade.easydblab.providers.aws.EMRClusterResult
+import com.rustyrazorblade.easydblab.providers.aws.EMRConfiguration
 import com.rustyrazorblade.easydblab.providers.aws.EMRClusterStates
 import com.rustyrazorblade.easydblab.providers.aws.EMRClusterStatus
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
@@ -29,6 +30,19 @@ import software.amazon.awssdk.services.emr.model.RunJobFlowRequest
 import software.amazon.awssdk.services.emr.model.ScriptBootstrapActionConfig
 import software.amazon.awssdk.services.emr.model.Tag
 import software.amazon.awssdk.services.emr.model.TerminateJobFlowsRequest
+
+/** Recursively converts an EMRConfiguration to the AWS SDK Configuration type. */
+private fun EMRConfiguration.toAwsConfiguration(): Configuration {
+    val builder =
+        Configuration
+            .builder()
+            .classification(classification)
+            .properties(properties)
+    if (configurations.isNotEmpty()) {
+        builder.configurations(configurations.map { it.toAwsConfiguration() })
+    }
+    return builder.build()
+}
 
 /**
  * Service for managing the full lifecycle of EMR clusters.
@@ -163,14 +177,7 @@ class EMRService(
         }
 
         if (config.configurations.isNotEmpty()) {
-            val emrConfigurations =
-                config.configurations.map { emrConfig ->
-                    Configuration
-                        .builder()
-                        .classification(emrConfig.classification)
-                        .properties(emrConfig.properties)
-                        .build()
-                }
+            val emrConfigurations = config.configurations.map { it.toAwsConfiguration() }
             requestBuilder.configurations(emrConfigurations)
             log.info { "Adding ${config.configurations.size} configurations to EMR cluster" }
         }

@@ -4,7 +4,7 @@ plugins {
     id("com.gradleup.shadow")
 }
 
-val sparkVersion = "3.5.7"
+val sparkVersion = "3.5.8"
 val scalaVersion = "2.12"
 
 java {

@@ -46,10 +46,6 @@ class PyroscopeManifestBuilder(
         private const val ALLOY_PORT = 12345
     }
 
-    private val controlNodeIp: String =
-        templateService.buildContextVariables()["CONTROL_NODE_IP"]
-            ?: error("CONTROL_NODE_IP not available in template context")
-
     /**
      * Builds all Pyroscope K8s resources in apply order.
      *
@@ -248,19 +244,6 @@ class PyroscopeManifestBuilder(
             .withFieldPath("spec.nodeName")
             .endFieldRef()
             .endValueFrom()
-            .endEnv()
-            .addNewEnv()
-            .withName("CLUSTER_NAME")
-            .withNewValueFrom()
-            .withNewConfigMapKeyRef()
-            .withName("cluster-config")
-            .withKey("cluster_name")
-            .endConfigMapKeyRef()
-            .endValueFrom()
-            .endEnv()
-            .addNewEnv()
-            .withName("PYROSCOPE_URL")
-            .withValue("http://$controlNodeIp:$SERVER_PORT")
             .endEnv()
             .withSecurityContext(
                 SecurityContextBuilder()

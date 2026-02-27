@@ -9,11 +9,11 @@ discovery.relabel "ebpf_targets" {
 
   rule {
     target_label = "hostname"
-    replacement   = env("HOSTNAME")
+    replacement   = sys.env("HOSTNAME")
   }
   rule {
     target_label = "cluster"
-    replacement   = env("CLUSTER_NAME")
+    replacement   = "__CLUSTER_NAME__"
   }
 }
 
@@ -31,7 +31,7 @@ pyroscope.ebpf "instance" {
 // Send profiles to Pyroscope server on the control node
 pyroscope.write "endpoint" {
   endpoint {
-    url = env("PYROSCOPE_URL")
+    url = "http://__CONTROL_NODE_IP__:4040"
   }
 }
 

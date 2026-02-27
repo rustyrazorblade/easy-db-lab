@@ -55,8 +55,8 @@ receivers:
             - target_label: cluster
               replacement: '${env:CLUSTER_NAME}'
         - job_name: 'yace'
-          scrape_interval: 300s
-          scrape_timeout: 60s
+          scrape_interval: 5s
+          scrape_timeout: 5s
           static_configs:
             - targets: ['localhost:5001']
           relabel_configs:

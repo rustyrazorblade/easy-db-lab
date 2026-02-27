@@ -107,8 +107,8 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "aws_s3_bytes_downloaded_sum{dimension_BucketName=\"__BUCKET_NAME__\", dimension_FilterId=\"__METRICS_FILTER_ID__\"}",
-          "legendFormat": "BytesDownloaded",
+          "expr": "aws_s3_bytes_downloaded_sum{dimension_BucketName=~\"$bucket\"}",
+          "legendFormat": "BytesDownloaded {{dimension_BucketName}}",
           "refId": "A"
         },
         {
@@ -116,8 +116,8 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "aws_s3_bytes_uploaded_sum{dimension_BucketName=\"__BUCKET_NAME__\", dimension_FilterId=\"__METRICS_FILTER_ID__\"}",
-          "legendFormat": "BytesUploaded",
+          "expr": "aws_s3_bytes_uploaded_sum{dimension_BucketName=~\"$bucket\"}",
+          "legendFormat": "BytesUploaded {{dimension_BucketName}}",
           "refId": "B"
         }
       ],
@@ -215,8 +215,8 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "aws_s3_get_requests_sum{dimension_BucketName=\"__BUCKET_NAME__\", dimension_FilterId=\"__METRICS_FILTER_ID__\"}",
-          "legendFormat": "GetRequests",
+          "expr": "aws_s3_get_requests_sum{dimension_BucketName=~\"$bucket\"}",
+          "legendFormat": "GetRequests {{dimension_BucketName}}",
           "refId": "A"
         },
         {
@@ -224,8 +224,8 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "aws_s3_put_requests_sum{dimension_BucketName=\"__BUCKET_NAME__\", dimension_FilterId=\"__METRICS_FILTER_ID__\"}",
-          "legendFormat": "PutRequests",
+          "expr": "aws_s3_put_requests_sum{dimension_BucketName=~\"$bucket\"}",
+          "legendFormat": "PutRequests {{dimension_BucketName}}",
           "refId": "B"
         }
       ],
@@ -323,8 +323,8 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "aws_s3_first_byte_latency_p99{dimension_BucketName=\"__BUCKET_NAME__\", dimension_FilterId=\"__METRICS_FILTER_ID__\"}",
-          "legendFormat": "FirstByteLatency p99",
+          "expr": "aws_s3_first_byte_latency_p99{dimension_BucketName=~\"$bucket\"}",
+          "legendFormat": "FirstByteLatency p99 {{dimension_BucketName}}",
           "refId": "A"
         }
       ],
@@ -410,8 +410,8 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "aws_s3_total_request_latency_p99{dimension_BucketName=\"__BUCKET_NAME__\", dimension_FilterId=\"__METRICS_FILTER_ID__\"}",
-          "legendFormat": "TotalRequestLatency p99",
+          "expr": "aws_s3_total_request_latency_p99{dimension_BucketName=~\"$bucket\"}",
+          "legendFormat": "TotalRequestLatency p99 {{dimension_BucketName}}",
           "refId": "A"
         }
       ],
@@ -1013,8 +1013,8 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "aws_s3_bucket_size_bytes_average{dimension_BucketName=\"__BUCKET_NAME__\", dimension_StorageType=\"StandardStorage\"}",
-          "legendFormat": "BucketSize",
+          "expr": "aws_s3_bucket_size_bytes_average{dimension_BucketName=~\"$bucket\", dimension_StorageType=\"StandardStorage\"}",
+          "legendFormat": "BucketSize {{dimension_BucketName}}",
           "refId": "A"
         }
       ],
@@ -1100,8 +1100,8 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "aws_s3_number_of_objects_average{dimension_BucketName=\"__BUCKET_NAME__\", dimension_StorageType=\"AllStorageTypes\"}",
-          "legendFormat": "NumberOfObjects",
+          "expr": "aws_s3_number_of_objects_average{dimension_BucketName=~\"$bucket\", dimension_StorageType=\"AllStorageTypes\"}",
+          "legendFormat": "NumberOfObjects {{dimension_BucketName}}",
           "refId": "A"
         }
       ],
@@ -1133,6 +1133,30 @@
         "regex": "",
         "skipUrlSync": false,
         "type": "datasource"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "definition": "label_values(aws_s3_info, name)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "S3 Bucket",
+        "multi": true,
+        "name": "bucket",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(aws_s3_info, name)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "/arn:aws:s3:::(.+)/",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
       },
       {
         "current": {},

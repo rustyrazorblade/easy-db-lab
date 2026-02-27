@@ -171,6 +171,21 @@ internal class EMRProvisioningServiceTest {
         assertThat(config.bootstrapActions).hasSize(1)
         assertThat(config.bootstrapActions.first().name).isEqualTo("Install OTel and Pyroscope Agents")
         assertThat(config.bootstrapActions.first().scriptS3Path).contains("bootstrap-otel.sh")
+
+        // Verify spark-defaults classification is included
+        assertThat(config.configurations).hasSize(1)
+        val sparkDefaults = config.configurations.first()
+        assertThat(sparkDefaults.classification).isEqualTo("spark-defaults")
+        assertThat(sparkDefaults.properties["spark.driver.extraJavaOptions"])
+            .contains("-javaagent:/opt/otel/opentelemetry-javaagent.jar")
+            .contains("-javaagent:/opt/pyroscope/pyroscope.jar")
+            .contains("-Dpyroscope.server.address=http://10.0.1.5:4040")
+        assertThat(sparkDefaults.properties["spark.executor.extraJavaOptions"])
+            .contains("-javaagent:/opt/otel/opentelemetry-javaagent.jar")
+            .contains("-javaagent:/opt/pyroscope/pyroscope.jar")
+        assertThat(sparkDefaults.properties["spark.driverEnv.OTEL_SERVICE_NAME"]).isEqualTo("spark")
+        assertThat(sparkDefaults.properties["spark.executorEnv.OTEL_LOGS_EXPORTER"]).isEqualTo("otlp")
+        assertThat(sparkDefaults.properties["spark.yarn.appMasterEnv.OTEL_TRACES_EXPORTER"]).isEqualTo("otlp")
     }
 
     @Test

@@ -262,7 +262,7 @@ class EMRSparkServiceTest : BaseKoinTest() {
     // ========== OTel INTEGRATION TESTS ==========
 
     @Test
-    fun `submitJob should include OTel and Pyroscope agent flags in spark-submit args`() {
+    fun `submitJob should include per-job name overrides in spark-submit args`() {
         // Given
         val captor = argumentCaptor<AddJobFlowStepsRequest>()
         val response =
@@ -285,26 +285,26 @@ class EMRSparkServiceTest : BaseKoinTest() {
                 .args()
         val allArgs = args.joinToString(" ")
 
-        // Verify OTel Java agent flags in spark conf
-        assertThat(allArgs).contains("-javaagent:/opt/otel/opentelemetry-javaagent.jar")
+        // Verify per-job Pyroscope application name override
+        assertThat(allArgs).contains("-Dpyroscope.application.name=spark-test-job")
         assertThat(allArgs).contains("spark.driver.extraJavaOptions")
         assertThat(allArgs).contains("spark.executor.extraJavaOptions")
 
-        // Verify Pyroscope Java agent flags in spark conf
-        assertThat(allArgs).contains("-javaagent:/opt/pyroscope/pyroscope.jar")
-        assertThat(allArgs).contains("-Dpyroscope.application.name=spark-test-job")
-        assertThat(allArgs).contains("-Dpyroscope.server.address=http://10.0.1.5:4040")
-        assertThat(allArgs).contains("-Dpyroscope.format=jfr")
-        assertThat(allArgs).contains("-Dpyroscope.profiler.event=cpu")
-        assertThat(allArgs).contains("-Dpyroscope.profiler.alloc=512k")
-        assertThat(allArgs).contains("-Dpyroscope.profiler.lock=10ms")
-
-        // Verify OTel environment variables — endpoint is NOT set (defaults to localhost:4317)
-        assertThat(allArgs).doesNotContain("OTEL_EXPORTER_OTLP_ENDPOINT")
+        // Verify per-job OTel service name override
         assertThat(allArgs).contains("spark.driverEnv.OTEL_SERVICE_NAME=spark-test-job")
-        assertThat(allArgs).contains("OTEL_LOGS_EXPORTER=otlp")
-        assertThat(allArgs).contains("OTEL_METRICS_EXPORTER=otlp")
-        assertThat(allArgs).contains("OTEL_TRACES_EXPORTER=otlp")
+        assertThat(allArgs).contains("spark.executorEnv.OTEL_SERVICE_NAME=spark-test-job")
+
+        // Agent flags should NOT be in per-job submission (they come from spark-defaults)
+        assertThat(allArgs).doesNotContain("-javaagent:/opt/otel/opentelemetry-javaagent.jar")
+        assertThat(allArgs).doesNotContain("-javaagent:/opt/pyroscope/pyroscope.jar")
+
+        // Exporter config should NOT be in per-job submission (comes from spark-defaults)
+        assertThat(allArgs).doesNotContain("OTEL_LOGS_EXPORTER")
+        assertThat(allArgs).doesNotContain("OTEL_METRICS_EXPORTER")
+        assertThat(allArgs).doesNotContain("OTEL_TRACES_EXPORTER")
+
+        // Endpoint should still NOT be set
+        assertThat(allArgs).doesNotContain("OTEL_EXPORTER_OTLP_ENDPOINT")
     }
 
     // ========== GET JOB STATUS TESTS ==========

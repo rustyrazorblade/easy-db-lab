@@ -17,6 +17,7 @@ import software.amazon.awssdk.services.emr.model.Application
 import software.amazon.awssdk.services.emr.model.BootstrapActionConfig
 import software.amazon.awssdk.services.emr.model.ClusterState
 import software.amazon.awssdk.services.emr.model.ClusterSummary
+import software.amazon.awssdk.services.emr.model.Configuration
 import software.amazon.awssdk.services.emr.model.DescribeClusterRequest
 import software.amazon.awssdk.services.emr.model.InstanceGroupConfig
 import software.amazon.awssdk.services.emr.model.InstanceRoleType
@@ -157,6 +158,19 @@ class EMRService(
                 }
             requestBuilder.bootstrapActions(bootstrapConfigs)
             log.info { "Adding ${config.bootstrapActions.size} bootstrap actions to EMR cluster" }
+        }
+
+        if (config.configurations.isNotEmpty()) {
+            val emrConfigurations =
+                config.configurations.map { emrConfig ->
+                    Configuration
+                        .builder()
+                        .classification(emrConfig.classification)
+                        .properties(emrConfig.properties)
+                        .build()
+                }
+            requestBuilder.configurations(emrConfigurations)
+            log.info { "Adding ${config.configurations.size} configurations to EMR cluster" }
         }
 
         val request = requestBuilder.build()

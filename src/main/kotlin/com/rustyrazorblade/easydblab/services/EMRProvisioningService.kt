@@ -4,12 +4,14 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.EMRClusterState
+import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.emr.OtelBootstrapResource
 import com.rustyrazorblade.easydblab.configuration.s3Path
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.BootstrapAction
 import com.rustyrazorblade.easydblab.providers.aws.EMRClusterConfig
+import com.rustyrazorblade.easydblab.providers.aws.EMRConfiguration
 import com.rustyrazorblade.easydblab.services.aws.EMRService
 import io.github.oshai.kotlinlogging.KotlinLogging
 
@@ -77,6 +79,8 @@ class DefaultEMRProvisioningService(
         val s3Path = clusterState.s3Path()
         val bootstrapAction = uploadOtelBootstrapScript(s3Path)
 
+        val sparkDefaults = buildSparkDefaultsConfiguration(clusterState)
+
         val emrConfig =
             EMRClusterConfig(
                 clusterName = "$clusterName-spark",
@@ -89,6 +93,7 @@ class DefaultEMRProvisioningService(
                 additionalSecurityGroups = listOf(securityGroupId),
                 tags = tags,
                 bootstrapActions = listOf(bootstrapAction),
+                configurations = listOf(sparkDefaults),
             )
 
         val result = emrService.createCluster(emrConfig)
@@ -99,6 +104,57 @@ class DefaultEMRProvisioningService(
             clusterName = readyResult.clusterName,
             masterPublicDns = readyResult.masterPublicDns,
             state = readyResult.state,
+        )
+    }
+
+    /**
+     * Builds a spark-defaults EMR classification that activates the OTel and Pyroscope
+     * Java agents for all Spark JVMs (driver, executor, YARN app master) cluster-wide.
+     * The agents are installed by the bootstrap action; this classification activates them.
+     */
+    private fun buildSparkDefaultsConfiguration(clusterState: ClusterState): EMRConfiguration {
+        val controlIp =
+            clusterState.hosts[ServerType.Control]
+                ?.firstOrNull()
+                ?.privateIp
+                ?: error("No control node found in cluster state for spark-defaults configuration")
+
+        val otelAgentFlag = "-javaagent:${Constants.OtelJavaAgent.INSTALL_PATH}"
+        val pyroscopeFlags =
+            listOf(
+                "-javaagent:${Constants.PyroscopeJavaAgent.INSTALL_PATH}",
+                "-Dpyroscope.application.name=spark",
+                "-Dpyroscope.server.address=http://$controlIp:${Constants.K8s.PYROSCOPE_PORT}",
+                "-Dpyroscope.format=jfr",
+                "-Dpyroscope.profiler.event=cpu",
+                "-Dpyroscope.profiler.alloc=512k",
+                "-Dpyroscope.profiler.lock=10ms",
+            )
+        val extraJavaOptions = "$otelAgentFlag ${pyroscopeFlags.joinToString(" ")}"
+
+        val otelEnvVars =
+            mapOf(
+                "OTEL_LOGS_EXPORTER" to "otlp",
+                "OTEL_METRICS_EXPORTER" to "otlp",
+                "OTEL_TRACES_EXPORTER" to "otlp",
+                "OTEL_SERVICE_NAME" to "spark",
+            )
+
+        val properties =
+            mutableMapOf(
+                "spark.driver.extraJavaOptions" to extraJavaOptions,
+                "spark.executor.extraJavaOptions" to extraJavaOptions,
+            )
+
+        for ((key, value) in otelEnvVars) {
+            properties["spark.driverEnv.$key"] = value
+            properties["spark.executorEnv.$key"] = value
+            properties["spark.yarn.appMasterEnv.$key"] = value
+        }
+
+        return EMRConfiguration(
+            classification = "spark-defaults",
+            properties = properties,
         )
     }
 

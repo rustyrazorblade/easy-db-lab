@@ -15,8 +15,8 @@ discovery:
     - type: AWS/ElasticMapReduce
       regions:
         - __AWS_REGION__
-      period: 300
-      length: 600
+      period: 60
+      length: 120
       searchTags:
         - key: easy_cass_lab
           value: "1"
@@ -54,8 +54,8 @@ discovery:
     - type: AWS/S3
       regions:
         - __AWS_REGION__
-      period: 300
-      length: 600
+      period: 60
+      length: 120
       searchTags:
         - key: easy_cass_lab
           value: "1"
@@ -83,8 +83,8 @@ discovery:
     - type: AWS/EBS
       regions:
         - __AWS_REGION__
-      period: 300
-      length: 600
+      period: 60
+      length: 120
       searchTags:
         - key: easy_cass_lab
           value: "1"
@@ -108,8 +108,8 @@ discovery:
     - type: AWS/EC2
       regions:
         - __AWS_REGION__
-      period: 300
-      length: 600
+      period: 60
+      length: 120
       searchTags:
         - key: easy_cass_lab
           value: "1"
@@ -127,8 +127,8 @@ discovery:
     - type: AWS/ES
       regions:
         - __AWS_REGION__
-      period: 300
-      length: 600
+      period: 60
+      length: 120
       searchTags:
         - key: easy_cass_lab
           value: "1"

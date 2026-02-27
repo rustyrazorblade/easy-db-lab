@@ -102,7 +102,7 @@ The eBPF profiler runs as a privileged Grafana Alloy DaemonSet (`pyroscope-ebpf`
 
 ### Pyroscope Server
 
-The Pyroscope server runs on the control node with data stored in S3 (`s3://<data-bucket>/pyroscope/`). Configuration is in the `pyroscope-config` ConfigMap.
+The Pyroscope server runs on the control node with data stored in S3 (`s3://<account-bucket>/clusters/<name>-<id>/pyroscope/`). Configuration is in the `pyroscope-config` ConfigMap.
 
 ## Data Flow
 

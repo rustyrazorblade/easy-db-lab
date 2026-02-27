@@ -285,7 +285,7 @@ All observability K8s resources are built programmatically using Fabric8 manifes
 - **VictoriaMetrics** (port 8428, 7-day retention) — Prometheus-compatible metrics store. K8s: `configuration/victoria/VictoriaManifestBuilder.kt`. Services: `VictoriaStreamService`, `VictoriaBackupService`.
 - **VictoriaLogs** (port 9428, 7-day retention) — log store with Elasticsearch-compatible sink. K8s: `configuration/victoria/VictoriaManifestBuilder.kt`. Services: `VictoriaLogsService`, `VictoriaStreamService`, `VictoriaBackupService`.
 - **Tempo** (port 3200) — trace store. K8s: `configuration/tempo/TempoManifestBuilder.kt`.
-- **Pyroscope** (port 4040) — continuous profiling store with S3 backend (`s3://<data-bucket>/pyroscope/`). K8s: `configuration/pyroscope/PyroscopeManifestBuilder.kt`. Receives profiles from Java agent (Cassandra, Spark), eBPF agent (all nodes), and stress jobs.
+- **Pyroscope** (port 4040) — continuous profiling store with S3 backend (`s3://<account-bucket>/clusters/<name>-<id>/pyroscope/`). K8s: `configuration/pyroscope/PyroscopeManifestBuilder.kt`. Receives profiles from Java agent (Cassandra, Spark), eBPF agent (all nodes), and stress jobs.
 
 ### Grafana Dashboards
 

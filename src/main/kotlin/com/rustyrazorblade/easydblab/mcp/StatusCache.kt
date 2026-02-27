@@ -362,7 +362,6 @@ class StatusCache(
     private fun buildS3Info(state: ClusterState): S3Info? {
         if (state.s3Bucket.isNullOrBlank()) return null
         val s3Path = state.s3Path()
-        val dataBucket = state.dataBucketName()
         return S3Info(
             bucket = state.s3Bucket!!,
             fullpath = "${state.s3Bucket}/${state.clusterPrefix()}",
@@ -372,8 +371,8 @@ class StatusCache(
                     clickhouse = s3Path.clickhouse().toString(),
                     spark = s3Path.spark().toString(),
                     emrLogs = s3Path.emrLogs().toString(),
-                    tempo = "s3://$dataBucket/tempo/",
-                    pyroscope = "s3://$dataBucket/pyroscope/",
+                    tempo = s3Path.tempo().toString(),
+                    pyroscope = s3Path.pyroscope().toString(),
                 ),
         )
     }

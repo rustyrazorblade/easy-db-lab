@@ -140,6 +140,7 @@ class GrafanaUpdateConfig : PicoBaseCommand() {
                 "control_node_ip" to controlNode.privateIp,
                 "aws_region" to region,
                 "s3_bucket" to (clusterState.s3Bucket ?: ""),
+                "cluster_s3_prefix" to clusterState.clusterPrefix(),
                 "cluster_name" to (clusterState.initConfig?.name ?: "cluster"),
             )
 

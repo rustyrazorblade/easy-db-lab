@@ -51,6 +51,18 @@ discovery:
           statistics: [Average]
         - name: CoreNodesPending
           statistics: [Average]
+        - name: TaskNodesRunning
+          statistics: [Average]
+        - name: TaskNodesPending
+          statistics: [Average]
+        - name: HDFSBytesRead
+          statistics: [Sum]
+        - name: HDFSBytesWritten
+          statistics: [Sum]
+        - name: AppsCompleted
+          statistics: [Sum]
+        - name: AppsFailed
+          statistics: [Sum]
     - type: AWS/S3
       regions:
         - __AWS_REGION__

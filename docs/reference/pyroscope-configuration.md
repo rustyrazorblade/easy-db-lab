@@ -80,8 +80,9 @@ storage:
     [insecure: <boolean> | default = false]
     [signature_version: <string> | default = "v4"]
     [bucket_lookup_type: <string> | default = "auto"]
-    # Use AWS SDK default auth (env vars, config files, IMDS)
-    [native_aws_auth_enabled: <boolean> | default = false]
+    # NOTE: native_aws_auth_enabled exists on main but NOT in v1.18.0.
+    # In v1.18.0, leave access_key_id/secret_access_key empty to use
+    # the default AWS SDK credential chain (env vars, IMDS).
     sse:
       [type: <string> | default = ""]           # SSE-KMS or SSE-S3
       [kms_key_id: <string> | default = ""]
@@ -232,8 +233,9 @@ embedded_grafana:
 ## Relevant to Our Deployment
 
 Our Pyroscope deployment (`configuration/pyroscope/PyroscopeManifestBuilder.kt`) uses:
-- **S3 backend** with `native_aws_auth_enabled: true` (IAM role via instance metadata)
+- **S3 backend** — IAM role auth via IMDS (no explicit credentials; v1.18.0 lacks `native_aws_auth_enabled`, SDK defaults to credential chain)
 - **Single-binary mode** (`target: all`)
 - **Port 4040** for HTTP API
-- **Local data path** at `/data` (mounted from host `/mnt/db1/pyroscope`)
+- **Flat storage prefix** — `pyroscope.{name}-{id}` (Pyroscope rejects `/` in `storage.prefix`)
+- Config values substituted at build time via TemplateService (`__KEY__` placeholders)
 - Profiles received from: Java agent (Cassandra, Spark), eBPF agent (all nodes), stress jobs

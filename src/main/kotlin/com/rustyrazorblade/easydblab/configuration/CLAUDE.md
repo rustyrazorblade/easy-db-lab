@@ -173,8 +173,8 @@ All Grafana K8s resources are built programmatically using Fabric8:
 
 All Pyroscope K8s resources are built programmatically using Fabric8:
 
-- **`PyroscopeManifestBuilder`** — builds all Pyroscope K8s resources (server ConfigMap, Service, Deployment, eBPF ConfigMap, eBPF DaemonSet) as typed Fabric8 objects. The server runs on the control plane with S3 backend storage (configured via `S3_BUCKET` and `AWS_REGION` env vars from cluster-config ConfigMap, matching Tempo's pattern). Data is stored at `s3://<account-bucket>/clusters/<name>-<id>/pyroscope/`.
-- **Config resources** — `config.yaml` (Pyroscope server config with S3 backend) and `config.alloy` (Grafana Alloy eBPF config) stored in `resources/.../configuration/pyroscope/`.
+- **`PyroscopeManifestBuilder`** — builds all Pyroscope K8s resources (server ConfigMap, Service, Deployment, eBPF ConfigMap, eBPF DaemonSet) as typed Fabric8 objects. The server runs on the control plane with S3 backend storage. Config values (`__BUCKET_NAME__`, `__AWS_REGION__`, `__PYROSCOPE_STORAGE_PREFIX__`) are substituted at build time via TemplateService — NOT runtime env var expansion. **Important:** Pyroscope's `storage.prefix` rejects forward slashes, so the prefix is flat (`pyroscope.{name}-{id}`). S3 auth uses the default AWS SDK credential chain (IMDS/instance role) — v1.18.0 lacks `native_aws_auth_enabled`.
+- **Config resources** — `config.yaml` (Pyroscope server config with S3 backend, `__KEY__` placeholders) and `config.alloy` (Grafana Alloy eBPF config) stored in `resources/.../configuration/pyroscope/`.
 
 ### Profiling Architecture
 

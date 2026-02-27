@@ -46,6 +46,10 @@ class PyroscopeManifestBuilder(
         private const val ALLOY_PORT = 12345
     }
 
+    private val controlNodeIp: String =
+        templateService.buildContextVariables()["CONTROL_NODE_IP"]
+            ?: error("CONTROL_NODE_IP not available in template context")
+
     /**
      * Builds all Pyroscope K8s resources in apply order.
      *
@@ -106,7 +110,7 @@ class PyroscopeManifestBuilder(
      * Builds the Pyroscope server Deployment.
      *
      * Runs on the control plane node with hostNetwork enabled.
-     * Data is stored in S3 (configured via S3_BUCKET and AWS_REGION env vars).
+     * Data is stored in S3 (configured at build time via TemplateService).
      */
     fun buildServerDeployment() =
         DeploymentBuilder()
@@ -160,33 +164,6 @@ class PyroscopeManifestBuilder(
             .withHostPort(SERVER_PORT)
             .withProtocol("TCP")
             .endPort()
-            .addNewEnv()
-            .withName("S3_BUCKET")
-            .withNewValueFrom()
-            .withNewConfigMapKeyRef()
-            .withName("cluster-config")
-            .withKey("s3_bucket")
-            .endConfigMapKeyRef()
-            .endValueFrom()
-            .endEnv()
-            .addNewEnv()
-            .withName("CLUSTER_S3_PREFIX")
-            .withNewValueFrom()
-            .withNewConfigMapKeyRef()
-            .withName("cluster-config")
-            .withKey("cluster_s3_prefix")
-            .endConfigMapKeyRef()
-            .endValueFrom()
-            .endEnv()
-            .addNewEnv()
-            .withName("AWS_REGION")
-            .withNewValueFrom()
-            .withNewConfigMapKeyRef()
-            .withName("cluster-config")
-            .withKey("aws_region")
-            .endConfigMapKeyRef()
-            .endValueFrom()
-            .endEnv()
             .addNewVolumeMount()
             .withName("config")
             .withMountPath("/etc/pyroscope")
@@ -283,7 +260,7 @@ class PyroscopeManifestBuilder(
             .endEnv()
             .addNewEnv()
             .withName("PYROSCOPE_URL")
-            .withValue("http://pyroscope.default.svc.cluster.local:$SERVER_PORT")
+            .withValue("http://$controlNodeIp:$SERVER_PORT")
             .endEnv()
             .withSecurityContext(
                 SecurityContextBuilder()

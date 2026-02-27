@@ -1333,6 +1333,10 @@ if [ "$LIST_STEPS" = true ]; then
     exit 0
 fi
 
+# Always build before running any steps — ensures the binary matches the source
+echo "=== Building project ==="
+(cd "$PROJECT_ROOT" && ./gradlew shadowJar installDist)
+
 # Change to work directory
 cd "$TEST_WORKDIR"
 echo "=== Work directory: $(pwd) ==="

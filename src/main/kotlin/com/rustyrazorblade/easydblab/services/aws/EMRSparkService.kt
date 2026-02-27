@@ -645,8 +645,10 @@ class EMRSparkService(
             args.add("$key=$value")
         }
 
-        // Add environment variables (to both executor and app master)
+        // Add environment variables (to driver, executor, and app master)
         envVars.forEach { (key, value) ->
+            args.add("--conf")
+            args.add("spark.driverEnv.$key=$value")
             args.add("--conf")
             args.add("spark.executorEnv.$key=$value")
             args.add("--conf")

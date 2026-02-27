@@ -671,11 +671,12 @@ step_spark_status() {
     easy-db-lab spark jobs
 
     echo "=== Checking Spark job status (automatically downloads logs) ==="
-    local status_output
+    local status_output spark_failed=false
     status_output=$(easy-db-lab spark status 2>&1)
     echo "$status_output"
     if echo "$status_output" | grep -q "State: FAILED"; then
         echo "ERROR: Spark job is in FAILED state"
+        spark_failed=true
 
         echo ""
         echo "=== EMR Failure Diagnostics ==="
@@ -716,8 +717,6 @@ step_spark_status() {
         else
             echo "(EMR cluster ID not found in state.json)"
         fi
-
-        return 1
     fi
 
     echo "=== Downloading all EMR logs (standalone command) ==="
@@ -732,10 +731,14 @@ step_spark_status() {
         else
             echo "ERROR: No Spark logs found in VictoriaLogs with service.name:~\"spark-*\""
             echo "OTel Java agent may not be exporting logs to the control node"
-            return 1
+            spark_failed=true
         fi
     else
         echo "=== Skipping Spark VictoriaLogs check (no Spark job was submitted successfully) ==="
+    fi
+
+    if [ "$spark_failed" = true ]; then
+        return 1
     fi
 }
 

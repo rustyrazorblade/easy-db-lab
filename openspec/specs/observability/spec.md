@@ -12,6 +12,9 @@ The system MUST collect metrics from all cluster nodes and store them in a Prome
 
 - **GIVEN** a running cluster, **WHEN** databases and services produce metrics, **THEN** metrics are collected via OpenTelemetry and stored in VictoriaMetrics.
 - **GIVEN** stored metrics, **WHEN** retention period expires, **THEN** old metrics are automatically purged (default 7-day retention).
+- **GIVEN** YACE is deployed and AWS resources are active, **WHEN** CloudWatch metrics are scraped, **THEN** metrics from EMR, S3, EBS, EC2, and OpenSearch namespaces are collected by OTel Collector and stored in VictoriaMetrics with `aws_` prefix.
+- **GIVEN** stored CloudWatch-sourced metrics, **WHEN** the user backs up VictoriaMetrics and tears down infrastructure, **THEN** all CloudWatch-sourced metrics are included in the backup and queryable after restore.
+- **GIVEN** YACE is running on the control node, **WHEN** OTel Collector is active, **THEN** OTel Collector's Prometheus receiver scrapes YACE's metrics endpoint via a `yace` scrape job.
 
 ### REQ-OB-002: Log Collection and Storage
 
@@ -32,6 +35,9 @@ Each log source MUST have a `source` attribute identifying its origin (`system`,
 - **GIVEN** a running cluster, **WHEN** Cassandra writes to `/mnt/db1/cassandra/logs/system.log`, **THEN** OTel Collector ingests the log entry and forwards it to VictoriaLogs with `source: cassandra`.
 - **GIVEN** a running cluster, **WHEN** the `cassandra.service` systemd unit emits a journal entry, **THEN** OTel Collector ingests the entry and forwards it to VictoriaLogs with `source: systemd`.
 - **GIVEN** stored logs, **WHEN** the user queries logs, **THEN** matching log entries are returned.
+- **GIVEN** a Spark job running with the OTel Java agent attached, **WHEN** Spark driver and executor produce logs, **THEN** logs are sent via OTLP to the control node's OTel Collector and stored in VictoriaLogs.
+- **GIVEN** Spark logs stored in VictoriaLogs, **WHEN** the user queries for Spark logs, **THEN** logs are filterable by `service.name` matching `spark-<job-name>`.
+- **GIVEN** `EMRSparkService.queryVictoriaLogs()` is called, **WHEN** querying Spark logs, **THEN** the query uses OTel Java agent log attributes (`service.name`, time range) instead of the defunct `step_id` tag.
 
 ### REQ-OB-003: Grafana Dashboards
 

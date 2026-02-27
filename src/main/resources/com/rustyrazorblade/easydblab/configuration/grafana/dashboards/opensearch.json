@@ -642,7 +642,7 @@
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "__CLUSTER_NAME__ - OpenSearch Overview",
+  "title": "OpenSearch Overview",
   "uid": "opensearch-overview",
   "version": 1,
   "weekStart": ""

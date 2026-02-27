@@ -155,15 +155,25 @@ extensions:
 service:
   extensions: [health_check]
   pipelines:
-    metrics:
-      receivers: [otlp, hostmetrics, prometheus]
+    # Local metrics — resourcedetection stamps host.name for this node
+    metrics/local:
+      receivers: [hostmetrics, prometheus]
       processors: [memory_limiter, resourcedetection, batch]
       exporters: [prometheusremotewrite]
-    logs:
-      receivers: [otlp, filelog/system, filelog/cassandra, filelog/clickhouse-server, filelog/clickhouse-keeper]
+    # Remote metrics via OTLP (e.g., Spark nodes) — already have host.name and node_role
+    metrics/otlp:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [prometheusremotewrite]
+    logs/local:
+      receivers: [filelog/system, filelog/cassandra, filelog/clickhouse-server, filelog/clickhouse-keeper]
       processors: [memory_limiter, resourcedetection, batch]
+      exporters: [otlphttp/victorialogs]
+    logs/otlp:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
       exporters: [otlphttp/victorialogs]
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, resourcedetection, batch]
+      processors: [memory_limiter, batch]
       exporters: [otlp/tempo]

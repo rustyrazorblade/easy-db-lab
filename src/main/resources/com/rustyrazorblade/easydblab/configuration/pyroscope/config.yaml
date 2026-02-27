@@ -1,10 +1,10 @@
 storage:
   backend: s3
+  prefix: ${CLUSTER_S3_PREFIX}/pyroscope/
   s3:
     bucket_name: ${S3_BUCKET}
     endpoint: s3.${AWS_REGION}.amazonaws.com
     region: ${AWS_REGION}
-    prefix: ${CLUSTER_S3_PREFIX}/pyroscope/
 
 self_profiling:
   disable_push: true

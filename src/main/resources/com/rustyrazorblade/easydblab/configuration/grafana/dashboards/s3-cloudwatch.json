@@ -1206,7 +1206,7 @@
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "__CLUSTER_NAME__ - AWS CloudWatch Overview",
+  "title": "AWS CloudWatch Overview",
   "uid": "aws-cloudwatch-overview",
   "version": 1,
   "weekStart": ""

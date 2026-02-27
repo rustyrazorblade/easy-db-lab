@@ -58,7 +58,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "100 - (avg by(host_name) (rate(system_cpu_time_seconds_total{state=\"idle\", host_name=~\"$hostname\"}[1m])) * 100)",
+          "expr": "100 - (avg by(host_name) (rate(system_cpu_time_seconds_total{state=\"idle\", node_role=\"spark\", host_name=~\"$hostname\"}[1m])) * 100)",
           "legendFormat": "{{host_name}}",
           "refId": "A"
         }
@@ -108,13 +108,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "system_memory_usage_bytes{state=\"used\", host_name=~\"$hostname\"}",
+          "expr": "system_memory_usage_bytes{state=\"used\", node_role=\"spark\", host_name=~\"$hostname\"}",
           "legendFormat": "{{host_name}} used",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "system_memory_usage_bytes{state=\"cached\", host_name=~\"$hostname\"}",
+          "expr": "system_memory_usage_bytes{state=\"cached\", node_role=\"spark\", host_name=~\"$hostname\"}",
           "legendFormat": "{{host_name}} cached",
           "refId": "B"
         }
@@ -171,13 +171,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "rate(system_disk_io_bytes_total{direction=\"read\", host_name=~\"$hostname\"}[1m])",
+          "expr": "rate(system_disk_io_bytes_total{direction=\"read\", node_role=\"spark\", host_name=~\"$hostname\"}[1m])",
           "legendFormat": "{{host_name}} read",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "rate(system_disk_io_bytes_total{direction=\"write\", host_name=~\"$hostname\"}[1m])",
+          "expr": "rate(system_disk_io_bytes_total{direction=\"write\", node_role=\"spark\", host_name=~\"$hostname\"}[1m])",
           "legendFormat": "{{host_name}} write",
           "refId": "B"
         }
@@ -234,13 +234,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "rate(system_network_io_bytes_total{direction=\"receive\", host_name=~\"$hostname\"}[1m])",
+          "expr": "rate(system_network_io_bytes_total{direction=\"receive\", node_role=\"spark\", host_name=~\"$hostname\"}[1m])",
           "legendFormat": "{{host_name}} receive",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "rate(system_network_io_bytes_total{direction=\"transmit\", host_name=~\"$hostname\"}[1m])",
+          "expr": "rate(system_network_io_bytes_total{direction=\"transmit\", node_role=\"spark\", host_name=~\"$hostname\"}[1m])",
           "legendFormat": "{{host_name}} transmit",
           "refId": "B"
         }
@@ -290,13 +290,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "system_cpu_load_average_1m{host_name=~\"$hostname\"}",
+          "expr": "system_cpu_load_average_1m{node_role=\"spark\", host_name=~\"$hostname\"}",
           "legendFormat": "{{host_name}} 1m",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "system_cpu_load_average_5m{host_name=~\"$hostname\"}",
+          "expr": "system_cpu_load_average_5m{node_role=\"spark\", host_name=~\"$hostname\"}",
           "legendFormat": "{{host_name}} 5m",
           "refId": "B"
         }
@@ -346,7 +346,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "100 * system_filesystem_usage_bytes{state=\"used\", host_name=~\"$hostname\", mountpoint=\"/\"} / (system_filesystem_usage_bytes{state=\"used\", host_name=~\"$hostname\", mountpoint=\"/\"} + system_filesystem_usage_bytes{state=\"free\", host_name=~\"$hostname\", mountpoint=\"/\"})",
+          "expr": "100 * system_filesystem_usage_bytes{state=\"used\", node_role=\"spark\", host_name=~\"$hostname\", mountpoint=\"/\"} / (system_filesystem_usage_bytes{state=\"used\", node_role=\"spark\", host_name=~\"$hostname\", mountpoint=\"/\"} + system_filesystem_usage_bytes{state=\"free\", node_role=\"spark\", host_name=~\"$hostname\", mountpoint=\"/\"})",
           "legendFormat": "{{host_name}} /",
           "refId": "A"
         }
@@ -403,13 +403,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "jvm_memory_used_bytes{type=\"heap\", host_name=~\"$hostname\"}",
+          "expr": "jvm_memory_used_bytes{type=\"heap\", node_role=\"spark\", host_name=~\"$hostname\"}",
           "legendFormat": "{{host_name}} {{pool}} used",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "jvm_memory_committed_bytes{type=\"heap\", host_name=~\"$hostname\"}",
+          "expr": "jvm_memory_committed_bytes{type=\"heap\", node_role=\"spark\", host_name=~\"$hostname\"}",
           "legendFormat": "{{host_name}} {{pool}} committed",
           "refId": "B"
         }
@@ -459,7 +459,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "rate(jvm_gc_duration_seconds_sum{host_name=~\"$hostname\"}[1m])",
+          "expr": "rate(jvm_gc_duration_seconds_sum{node_role=\"spark\", host_name=~\"$hostname\"}[1m])",
           "legendFormat": "{{host_name}} {{gc}} duration",
           "refId": "A"
         }
@@ -509,7 +509,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "jvm_thread_count{host_name=~\"$hostname\"}",
+          "expr": "jvm_thread_count{node_role=\"spark\", host_name=~\"$hostname\"}",
           "legendFormat": "{{host_name}} threads",
           "refId": "A"
         }
@@ -559,7 +559,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "jvm_class_loaded_count{host_name=~\"$hostname\"}",
+          "expr": "jvm_class_loaded_count{node_role=\"spark\", host_name=~\"$hostname\"}",
           "legendFormat": "{{host_name}} loaded",
           "refId": "A"
         }
@@ -625,7 +625,7 @@
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "__CLUSTER_NAME__ - EMR Overview",
+  "title": "EMR Overview",
   "uid": "emr-overview",
   "version": 1,
   "weekStart": ""

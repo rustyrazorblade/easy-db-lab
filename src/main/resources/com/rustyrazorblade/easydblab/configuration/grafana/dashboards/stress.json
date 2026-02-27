@@ -551,7 +551,7 @@
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "__CLUSTER_NAME__ - Stress Overview",
+  "title": "Stress Overview",
   "uid": "stress-overview",
   "version": 1
 }

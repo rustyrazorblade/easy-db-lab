@@ -29476,7 +29476,7 @@
     ]
   },
   "timezone": "",
-  "title": "__CLUSTER_NAME__ - ClickHouse and Keeper Comprehensive Dashboard",
+  "title": "ClickHouse and Keeper Comprehensive Dashboard",
   "uid": "clickhouse-overview",
   "version": 1,
   "weekStart": ""

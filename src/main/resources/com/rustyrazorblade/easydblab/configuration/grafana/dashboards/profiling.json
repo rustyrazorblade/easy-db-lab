@@ -186,7 +186,7 @@
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "__CLUSTER_NAME__ - Profiling",
+  "title": "Profiling",
   "uid": "profiling",
   "version": 1,
   "weekStart": ""

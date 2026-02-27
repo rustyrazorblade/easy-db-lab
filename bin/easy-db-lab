@@ -11,6 +11,10 @@ EASY_DB_LAB_USER_DATA=~/.easy-db-lab/
 
 VERSION=$(grep '^version' "${APP_HOME}/gradle.properties" | cut -d '=' -f2)
 
+if [ "${EASY_DB_LAB_REBUILD}" = "1" ]; then
+    "${APP_HOME}/gradlew" -p "${APP_HOME}" shadowJar installDist
+fi
+
 JAR="${APP_HOME}/build/libs/easy-db-lab-${VERSION}-all.jar"
 
 # Start OTel collector

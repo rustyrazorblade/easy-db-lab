@@ -575,28 +575,18 @@ class EMRSparkService(
     }
 
     /**
-     * Overrides the Pyroscope application name for per-job attribution.
-     * Agent loading and base config come from spark-defaults classification at cluster level.
+     * Returns sparkConf as-is. We no longer override extraJavaOptions at submission time
+     * because it replaces the spark-defaults.conf value (which contains -javaagent flags).
+     * Per-job Pyroscope app name is set via PYROSCOPE_APPLICATION_NAME env var instead.
      */
     private fun buildOtelSparkConf(
         sparkConf: Map<String, String>,
-        jobName: String,
-    ): Map<String, String> {
-        val enriched = sparkConf.toMutableMap()
-        val appNameOverride = "-Dpyroscope.application.name=spark-$jobName"
-
-        val existingDriverOpts = enriched["spark.driver.extraJavaOptions"] ?: ""
-        enriched["spark.driver.extraJavaOptions"] = "$existingDriverOpts $appNameOverride".trim()
-
-        val existingExecutorOpts = enriched["spark.executor.extraJavaOptions"] ?: ""
-        enriched["spark.executor.extraJavaOptions"] = "$existingExecutorOpts $appNameOverride".trim()
-
-        return enriched
-    }
+        @Suppress("unused") jobName: String,
+    ): Map<String, String> = sparkConf
 
     /**
-     * Overrides the OTel service name for per-job attribution.
-     * Exporter config comes from spark-defaults classification at cluster level.
+     * Overrides the OTel service name and Pyroscope application name for per-job attribution.
+     * Exporter config and -javaagent flags come from spark-defaults classification at cluster level.
      */
     private fun buildOtelEnvVars(
         envVars: Map<String, String>,
@@ -605,6 +595,7 @@ class EMRSparkService(
         val otelVars =
             mapOf(
                 "OTEL_SERVICE_NAME" to "spark-$jobName",
+                "PYROSCOPE_APPLICATION_NAME" to "spark-$jobName",
             )
 
         return otelVars + envVars

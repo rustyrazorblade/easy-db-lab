@@ -333,7 +333,7 @@
             "mode": "absolute",
             "steps": [{ "color": "green", "value": null }]
           },
-          "unit": "percent"
+          "unit": "none"
         },
         "overrides": []
       },
@@ -346,7 +346,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "100 * system_filesystem_usage_bytes{state=\"used\", node_role=\"spark\", host_name=~\"$hostname\", mountpoint=\"/\"} / (system_filesystem_usage_bytes{state=\"used\", node_role=\"spark\", host_name=~\"$hostname\", mountpoint=\"/\"} + system_filesystem_usage_bytes{state=\"free\", node_role=\"spark\", host_name=~\"$hostname\", mountpoint=\"/\"})",
+          "expr": "system_filesystem_usage_bytes{state=\"used\", node_role=\"spark\", mountpoint=\"/\"} / on(host_name) system_filesystem_usage_bytes{state=\"free\", node_role=\"spark\", mountpoint=\"/\"}",
           "legendFormat": "{{host_name}} /",
           "refId": "A"
         }
@@ -403,14 +403,14 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "jvm_memory_used_bytes{type=\"heap\", node_role=\"spark\", host_name=~\"$hostname\"}",
-          "legendFormat": "{{host_name}} {{pool}} used",
+          "expr": "jvm_memory_used_bytes{jvm_memory_type=\"heap\", node_role=\"spark\", host_name=~\"$hostname\"}",
+          "legendFormat": "{{host_name}} {{jvm_memory_pool_name}} used",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "jvm_memory_committed_bytes{type=\"heap\", node_role=\"spark\", host_name=~\"$hostname\"}",
-          "legendFormat": "{{host_name}} {{pool}} committed",
+          "expr": "jvm_memory_committed_bytes{jvm_memory_type=\"heap\", node_role=\"spark\", host_name=~\"$hostname\"}",
+          "legendFormat": "{{host_name}} {{jvm_memory_pool_name}} committed",
           "refId": "B"
         }
       ],
@@ -460,7 +460,7 @@
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
           "expr": "rate(jvm_gc_duration_seconds_sum{node_role=\"spark\", host_name=~\"$hostname\"}[1m])",
-          "legendFormat": "{{host_name}} {{gc}} duration",
+          "legendFormat": "{{host_name}} {{jvm_gc_name}} duration",
           "refId": "A"
         }
       ],
@@ -559,7 +559,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "jvm_class_loaded_count{node_role=\"spark\", host_name=~\"$hostname\"}",
+          "expr": "jvm_class_count{node_role=\"spark\", host_name=~\"$hostname\"}",
           "legendFormat": "{{host_name}} loaded",
           "refId": "A"
         }

@@ -24,6 +24,8 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
+import org.mockito.kotlin.argThat
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
@@ -343,6 +345,48 @@ class ClusterProvisioningServiceTest {
         }
 
         @Test
+        fun `should wait for EC2 instances before starting EMR provisioning`() {
+            val controlSpec =
+                InstanceSpec(
+                    serverType = ServerType.Control,
+                    configuredCount = 1,
+                    existingCount = 0,
+                    instanceType = "m5.large",
+                    ebsConfig = null,
+                )
+            val instanceConfig = createInstanceConfig(specs = listOf(controlSpec))
+            val initConfig = createInitConfig(sparkEnabled = true, controlInstances = 1)
+            val clusterState = createClusterState()
+            val servicesConfig = createServicesConfig(initConfig, clusterState)
+
+            setupMockInstanceCreation()
+            setupMockEmrCreation()
+
+            service.provisionAll(
+                instanceConfig = instanceConfig,
+                servicesConfig = servicesConfig,
+                existingHosts = emptyMap(),
+                onHostsCreated = { serverType, hosts ->
+                    clusterState.hosts = clusterState.hosts + (serverType to hosts)
+                },
+                onEmrCreated = { },
+                onOpenSearchCreated = { },
+            )
+
+            verify(emrProvisioningService).provisionEmrCluster(
+                clusterName = eq("test-cluster"),
+                masterInstanceType = any(),
+                workerInstanceType = any(),
+                workerCount = any(),
+                subnetId = any(),
+                securityGroupId = any(),
+                keyName = any(),
+                clusterState = argThat { hosts[ServerType.Control]?.isNotEmpty() == true },
+                tags = any(),
+            )
+        }
+
+        @Test
         fun `should not create EMR when spark is disabled`() {
             val specs =
                 listOf(
@@ -471,13 +515,16 @@ class ClusterProvisioningServiceTest {
             userConfig = createUserConfig(),
         )
 
-    private fun createServicesConfig(initConfig: InitConfig): OptionalServicesConfig =
+    private fun createServicesConfig(
+        initConfig: InitConfig,
+        clusterState: ClusterState = createClusterState(),
+    ): OptionalServicesConfig =
         OptionalServicesConfig(
             initConfig = initConfig,
             subnetId = "subnet-1",
             securityGroupId = "sg-12345",
             tags = mapOf("ClusterId" to "test-cluster"),
-            clusterState = createClusterState(),
+            clusterState = clusterState,
         )
 
     private fun createUserConfig(): User =
@@ -493,6 +540,7 @@ class ClusterProvisioningServiceTest {
     private fun createInitConfig(
         sparkEnabled: Boolean = false,
         opensearchEnabled: Boolean = false,
+        controlInstances: Int = 0,
     ): InitConfig =
         InitConfig(
             cassandraInstances = 1,
@@ -505,7 +553,7 @@ class ClusterProvisioningServiceTest {
             ebsSize = 100,
             ebsIops = 0,
             ebsThroughput = 0,
-            controlInstances = 0,
+            controlInstances = controlInstances,
             controlInstanceType = "m5.large",
             sparkEnabled = sparkEnabled,
             sparkMasterInstanceType = "m5.xlarge",

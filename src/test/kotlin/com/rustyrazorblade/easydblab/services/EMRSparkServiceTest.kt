@@ -285,10 +285,14 @@ class EMRSparkServiceTest : BaseKoinTest() {
                 .args()
         val allArgs = args.joinToString(" ")
 
-        // Verify per-job Pyroscope application name override
-        assertThat(allArgs).contains("-Dpyroscope.application.name=spark-test-job")
-        assertThat(allArgs).contains("spark.driver.extraJavaOptions")
-        assertThat(allArgs).contains("spark.executor.extraJavaOptions")
+        // Verify per-job Pyroscope application name override (via env var, not Java system property)
+        assertThat(allArgs).contains("spark.driverEnv.PYROSCOPE_APPLICATION_NAME=spark-test-job")
+        assertThat(allArgs).contains("spark.executorEnv.PYROSCOPE_APPLICATION_NAME=spark-test-job")
+        assertThat(allArgs).contains("spark.yarn.appMasterEnv.PYROSCOPE_APPLICATION_NAME=spark-test-job")
+
+        // Per-job submission must NOT override extraJavaOptions (would replace spark-defaults -javaagent flags)
+        assertThat(allArgs).doesNotContain("spark.driver.extraJavaOptions")
+        assertThat(allArgs).doesNotContain("spark.executor.extraJavaOptions")
 
         // Verify per-job OTel service name override
         assertThat(allArgs).contains("spark.driverEnv.OTEL_SERVICE_NAME=spark-test-job")

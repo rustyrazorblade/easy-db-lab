@@ -190,9 +190,9 @@ internal class EMRProvisioningServiceTest {
         assertThat(config.bootstrapActions.first().name).isEqualTo("Install OTel and Pyroscope Agents")
         assertThat(config.bootstrapActions.first().scriptS3Path).contains("bootstrap-otel.sh")
 
-        // Verify spark-defaults classification is included
-        assertThat(config.configurations).hasSize(1)
-        val sparkDefaults = config.configurations.first()
+        // Verify spark-defaults and spark-env classifications are included
+        assertThat(config.configurations).hasSize(2)
+        val sparkDefaults = config.configurations.first { it.classification == "spark-defaults" }
         assertThat(sparkDefaults.classification).isEqualTo("spark-defaults")
         assertThat(sparkDefaults.properties["spark.driver.extraJavaOptions"])
             .contains("-javaagent:/opt/otel/opentelemetry-javaagent.jar")
@@ -204,6 +204,13 @@ internal class EMRProvisioningServiceTest {
         assertThat(sparkDefaults.properties["spark.driverEnv.OTEL_SERVICE_NAME"]).isEqualTo("spark")
         assertThat(sparkDefaults.properties["spark.executorEnv.OTEL_LOGS_EXPORTER"]).isEqualTo("otlp")
         assertThat(sparkDefaults.properties["spark.yarn.appMasterEnv.OTEL_TRACES_EXPORTER"]).isEqualTo("otlp")
+
+        // Verify spark-env classification for Pyroscope hostname labeling
+        val sparkEnv = config.configurations.first { it.classification == "spark-env" }
+        assertThat(sparkEnv.configurations).hasSize(1)
+        val exportConfig = sparkEnv.configurations.first()
+        assertThat(exportConfig.classification).isEqualTo("export")
+        assertThat(exportConfig.properties).containsKey("PYROSCOPE_LABELS")
     }
 
     @Test

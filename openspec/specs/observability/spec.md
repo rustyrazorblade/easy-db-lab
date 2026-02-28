@@ -31,7 +31,12 @@ The system MUST support continuous profiling for cluster workloads including Spa
 
 ### Requirement: Grafana Dashboards
 
-The system MUST provide pre-configured Grafana dashboards for all supported databases and infrastructure.
+The system MUST provide pre-configured Grafana dashboards for all supported databases and infrastructure. Dashboard titles MUST use simple descriptive names without cluster name prefixes.
+
+#### Scenario: Dashboard titles use descriptive names
+
+- **WHEN** the user views the Grafana dashboard list
+- **THEN** each dashboard title is a simple descriptive name (e.g., "System Overview", "EMR Overview", "Profiling") without any cluster name prefix
 
 #### Scenario: EMR dashboard shows OTel host metrics
 
@@ -42,6 +47,12 @@ The system MUST provide pre-configured Grafana dashboards for all supported data
 
 - **WHEN** the user views the EMR dashboard in Grafana
 - **THEN** the dashboard displays JVM heap usage, GC activity, and thread metrics from the OTel Java agent on Spark driver/executors
+
+#### Scenario: System Overview dashboard hostname filter includes all node types
+
+- **WHEN** the user views the System Overview dashboard in Grafana
+- **THEN** the hostname filter SHALL list hosts from all node types: db, app, control, and spark
+- **AND** the service filter SHALL list all node_role values present in metrics
 
 ## ADDED Requirements
 

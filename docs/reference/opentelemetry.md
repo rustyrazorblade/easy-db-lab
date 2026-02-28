@@ -58,6 +58,21 @@ Traces include the following resource attributes:
 - `service.version`: Application version
 - `host.name`: Local hostname
 
+## Node Role Labeling
+
+The OTel Collector on cluster nodes uses the `k8sattributes` processor to read the K8s node label `type` and set it as the `node_role` resource attribute. This label is used by Grafana dashboards (e.g., System Overview) for hostname and service filtering.
+
+| Node Type | K8s Label | `node_role` Value | Source |
+|-----------|-----------|-------------------|--------|
+| Cassandra | `type=db` | `db` | K3s agent config |
+| Stress | `type=app` | `app` | K3s agent config |
+| Control | `type=control` | `control` | `Up` command node labeling |
+| Spark/EMR | N/A | `spark` | EMR OTel Collector `resource/role` processor |
+
+The `k8sattributes` processor runs in the `metrics/local` and `logs/local` pipelines only. Remote metrics arriving via OTLP (e.g., from Spark nodes) already carry `node_role` and are not modified.
+
+The processor requires RBAC access to the K8s API. The OTel Collector DaemonSet runs with a dedicated ServiceAccount (`otel-collector`) that has read-only access to pods and nodes.
+
 ## Metrics
 
 The following metrics are exported:

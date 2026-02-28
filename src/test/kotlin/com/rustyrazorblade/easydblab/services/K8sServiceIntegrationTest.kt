@@ -225,6 +225,9 @@ class K8sServiceIntegrationTest {
         val resources = OtelManifestBuilder(templateService).buildAllResources()
         applyAndVerify(resources)
 
+        assertServiceAccountExists("otel-collector")
+        assertClusterRoleExists("otel-collector")
+        assertClusterRoleBindingExists("otel-collector")
         assertConfigMapExists("otel-collector-config", "otel-collector-config.yaml")
         assertDaemonSetExists("otel-collector")
     }
@@ -610,6 +613,36 @@ class K8sServiceIntegrationTest {
                 .withName(name)
                 .get()
         assertThat(ds).withFailMessage("DaemonSet '$name' not found").isNotNull
+    }
+
+    private fun assertServiceAccountExists(name: String) {
+        val sa =
+            client
+                .serviceAccounts()
+                .inNamespace(DEFAULT_NAMESPACE)
+                .withName(name)
+                .get()
+        assertThat(sa).withFailMessage("ServiceAccount '$name' not found").isNotNull
+    }
+
+    private fun assertClusterRoleExists(name: String) {
+        val cr =
+            client
+                .rbac()
+                .clusterRoles()
+                .withName(name)
+                .get()
+        assertThat(cr).withFailMessage("ClusterRole '$name' not found").isNotNull
+    }
+
+    private fun assertClusterRoleBindingExists(name: String) {
+        val crb =
+            client
+                .rbac()
+                .clusterRoleBindings()
+                .withName(name)
+                .get()
+        assertThat(crb).withFailMessage("ClusterRoleBinding '$name' not found").isNotNull
     }
 
     /**

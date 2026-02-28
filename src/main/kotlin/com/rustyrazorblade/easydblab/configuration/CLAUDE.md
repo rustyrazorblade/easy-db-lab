@@ -201,7 +201,7 @@ See `spec/PYROSCOPE.md` for full architecture details and debugging steps.
 
 ## OTel Subpackage (`otel/`)
 
-- **`OtelManifestBuilder`** — builds OTel Collector ConfigMap + DaemonSet. Runs on all nodes, collects host metrics, Prometheus scrapes, file-based logs (system, Cassandra, ClickHouse), journald, and OTLP. Config uses OTel runtime env expansion (`${env:HOSTNAME}`), not `__KEY__` templates.
+- **`OtelManifestBuilder`** — builds OTel Collector ServiceAccount, ClusterRole, ClusterRoleBinding, ConfigMap, and DaemonSet. Runs on all nodes, collects host metrics, Prometheus scrapes, file-based logs (system, Cassandra, ClickHouse), journald, and OTLP. Uses `k8sattributes` processor to derive `node_role` from K8s node label `type` (db, app, control). RBAC grants read-only access to pods and nodes. Config uses OTel runtime env expansion (`${env:HOSTNAME}`), not `__KEY__` templates.
 - **Config resource** — `otel-collector-config.yaml` stored in `resources/.../configuration/otel/`.
 
 ## ebpf_exporter Subpackage (`ebpfexporter/`)

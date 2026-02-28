@@ -524,15 +524,22 @@ class Up : PicoBaseCommand() {
     }
 
     /**
-     * Labels db nodes with ordinal values for StatefulSet pod-to-node pinning.
+     * Labels db nodes with ordinal values for StatefulSet pod-to-node pinning,
+     * and labels the control node with type=control for OTel k8sattributes processor.
      *
      * This enables databases (ClickHouse, Kafka, etc.) to guarantee that pod X runs on node X
      * by using Local PersistentVolumes with node affinity.
      */
     private fun labelDbNodesWithOrdinals(controlHost: ClusterHost) {
         val dbHosts = workingState.hosts[ServerType.Cassandra] ?: emptyList()
+
+        // Label control node with type=control (db and app nodes get this via K3s agent config)
+        k8sService.labelNode(controlHost, controlHost.alias, mapOf("type" to "control")).getOrElse { exception ->
+            log.warn(exception) { "Failed to label control node ${controlHost.alias} with type=control" }
+        }
+
         if (dbHosts.isEmpty()) {
-            log.warn { "No db nodes found, skipping node labeling" }
+            log.warn { "No db nodes found, skipping db node labeling" }
             return
         }
 

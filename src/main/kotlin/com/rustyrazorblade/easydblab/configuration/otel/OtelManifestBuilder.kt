@@ -7,8 +7,11 @@ import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.HostPathVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.SecurityContextBuilder
+import io.fabric8.kubernetes.api.model.ServiceAccountBuilder
 import io.fabric8.kubernetes.api.model.VolumeMountBuilder
 import io.fabric8.kubernetes.api.model.apps.DaemonSetBuilder
+import io.fabric8.kubernetes.api.model.rbac.ClusterRoleBindingBuilder
+import io.fabric8.kubernetes.api.model.rbac.ClusterRoleBuilder
 
 /**
  * Builds all OpenTelemetry Collector K8s resources as typed Fabric8 objects.
@@ -32,6 +35,8 @@ class OtelManifestBuilder(
         private const val CONFIGMAP_NAME = "otel-collector-config"
         private const val CONFIG_DATA_KEY = "otel-collector-config.yaml"
         private const val IMAGE = "otel/opentelemetry-collector-contrib:latest"
+        private const val SERVICE_ACCOUNT_NAME = "otel-collector"
+        private const val CLUSTER_ROLE_NAME = "otel-collector"
         private const val LIVENESS_INITIAL_DELAY = 10
         private const val LIVENESS_PERIOD = 30
         private const val READINESS_INITIAL_DELAY = 5
@@ -41,13 +46,67 @@ class OtelManifestBuilder(
     /**
      * Builds all OTel Collector K8s resources in apply order.
      *
-     * @return List of: ConfigMap, DaemonSet
+     * @return List of: ServiceAccount, ClusterRole, ClusterRoleBinding, ConfigMap, DaemonSet
      */
     fun buildAllResources(): List<HasMetadata> =
         listOf(
+            buildServiceAccount(),
+            buildClusterRole(),
+            buildClusterRoleBinding(),
             buildConfigMap(),
             buildDaemonSet(),
         )
+
+    /**
+     * Builds the ServiceAccount for OTel Collector pods.
+     * Required by k8sattributes processor for K8s API access.
+     */
+    fun buildServiceAccount() =
+        ServiceAccountBuilder()
+            .withNewMetadata()
+            .withName(SERVICE_ACCOUNT_NAME)
+            .withNamespace(NAMESPACE)
+            .addToLabels("app.kubernetes.io/name", APP_LABEL)
+            .endMetadata()
+            .build()
+
+    /**
+     * Builds the ClusterRole granting read access to pods and nodes.
+     * Required by k8sattributes processor to extract node labels as resource attributes.
+     */
+    fun buildClusterRole() =
+        ClusterRoleBuilder()
+            .withNewMetadata()
+            .withName(CLUSTER_ROLE_NAME)
+            .addToLabels("app.kubernetes.io/name", APP_LABEL)
+            .endMetadata()
+            .addNewRule()
+            .withApiGroups("")
+            .withResources("pods", "nodes")
+            .withVerbs("get", "watch", "list")
+            .endRule()
+            .build()
+
+    /**
+     * Builds the ClusterRoleBinding linking the ServiceAccount to the ClusterRole.
+     */
+    fun buildClusterRoleBinding() =
+        ClusterRoleBindingBuilder()
+            .withNewMetadata()
+            .withName(CLUSTER_ROLE_NAME)
+            .addToLabels("app.kubernetes.io/name", APP_LABEL)
+            .endMetadata()
+            .withNewRoleRef()
+            .withApiGroup("rbac.authorization.k8s.io")
+            .withKind("ClusterRole")
+            .withName(CLUSTER_ROLE_NAME)
+            .endRoleRef()
+            .addNewSubject()
+            .withKind("ServiceAccount")
+            .withName(SERVICE_ACCOUNT_NAME)
+            .withNamespace(NAMESPACE)
+            .endSubject()
+            .build()
 
     /**
      * Builds the OTel Collector ConfigMap containing the collector config.
@@ -92,6 +151,7 @@ class OtelManifestBuilder(
             .addToLabels("app.kubernetes.io/name", APP_LABEL)
             .endMetadata()
             .withNewSpec()
+            .withServiceAccountName(SERVICE_ACCOUNT_NAME)
             .withHostNetwork(true)
             .withDnsPolicy("ClusterFirstWithHostNet")
             .addNewToleration()

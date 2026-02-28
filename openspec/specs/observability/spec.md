@@ -15,6 +15,13 @@ The system MUST collect metrics from all cluster nodes and store them in a Prome
 - **WHEN** OTel Collector is active on the control node
 - **THEN** OTel Collector's Prometheus receiver scrapes YACE's metrics endpoint via a `yace` scrape job
 
+#### Scenario: Tool runner logs shipped to VictoriaLogs
+
+- **WHEN** the OTel Collector DaemonSet is running on a node
+- **THEN** a `filelog/tools` receiver SHALL watch `/var/log/easydblab/tools/*.log`
+- **AND** log entries SHALL include the attribute `source: tool-runner`
+- **AND** logs SHALL be shipped to VictoriaLogs via the `logs/local` pipeline
+
 ### Requirement: Continuous Profiling
 
 The system MUST support continuous profiling for cluster workloads including Spark.

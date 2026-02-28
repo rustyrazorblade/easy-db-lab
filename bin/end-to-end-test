@@ -752,11 +752,17 @@ step_bulk_writer_direct() {
         return 0
     fi
 
+    echo "=== Starting inotifywait to monitor sidecar import directory ==="
+    easy-db-lab exec run --bg --name watch-imports -t cassandra -- inotifywait -m -r /mnt/db1/cassandra/import
+
     echo "=== Submitting bulk writer (direct mode) to EMR ==="
     "$PROJECT_ROOT/bin/submit-direct-bulk-writer" 10000 4 100 1
 
     echo "=== Verifying bulk write results ==="
     easy-db-lab cassandra cql "SELECT COUNT(*) FROM bulk_test.data"
+
+    echo "=== Stopping inotifywait ==="
+    easy-db-lab exec stop watch-imports -t cassandra
 }
 
 step_clickhouse_start() {

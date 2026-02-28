@@ -18,6 +18,9 @@ sudo DEBIAN_FRONTEND=noninteractive apt update
 
 sudo DEBIAN_FRONTEND=noninteractive apt install -y wget sysstat unzip ripgrep ant ant-optional tree zfsutils-linux nicstat inotify-tools
 
+# Create directory for exec tool logs (shipped to VictoriaLogs by OTel filelog/tools receiver)
+sudo mkdir -p /var/log/easydblab/tools
+
 cpu_arch=$(uname -m)
 # Set ARCH based on the CPU architecture
 if [[ "$cpu_arch" == "x86_64" ]]; then

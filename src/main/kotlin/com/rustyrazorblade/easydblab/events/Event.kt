@@ -3351,6 +3351,46 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Command.ToolStarted")
+        data class ToolStarted(
+            val host: String,
+            val unitName: String,
+            val command: String,
+        ) : Command {
+            override fun toDisplayString(): String = "=== $host === Started $unitName ($command)"
+        }
+
+        @Serializable
+        @SerialName("Command.ToolStopped")
+        data class ToolStopped(
+            val host: String,
+            val unitName: String,
+        ) : Command {
+            override fun toDisplayString(): String = "=== $host === Stopped $unitName"
+        }
+
+        @Serializable
+        @SerialName("Command.ToolList")
+        data class ToolList(
+            val host: String,
+            val units: String,
+        ) : Command {
+            override fun toDisplayString(): String = "=== $host ===\n$units"
+        }
+
+        @Serializable
+        @SerialName("Command.ToolStopError")
+        data class ToolStopError(
+            val host: String,
+            val unitName: String,
+            val error: String,
+        ) : Command {
+            override fun toDisplayString(): String = "=== $host === Failed to stop $unitName: $error"
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
         @SerialName("Command.ReplStartError")
         data class ReplStartError(
             val error: String,

@@ -127,6 +127,18 @@ Key configuration:
 - **Profiling**: CPU, allocation (512k threshold), lock (10ms threshold) profiles sent to Pyroscope server
 - **Activation**: Gated on `/etc/default/cassandra-sidecar` — the systemd `EnvironmentFile=-` directive makes it optional, so the sidecar starts normally without instrumentation if the file doesn't exist
 
+## Tool Runner Log Collection
+
+Commands run via `exec run` are executed through `systemd-run`, which captures stdout and stderr to log files under `/var/log/easydblab/tools/`. The OTel Collector's `filelog/tools` receiver watches this directory and ships log entries to VictoriaLogs with the attribute `source: tool-runner`.
+
+This provides automatic log capture for ad-hoc debugging tools (e.g., `inotifywait`, `tcpdump`, `strace`) run during investigations. Logs are queryable in VictoriaLogs and preserved in S3 backups via `logs backup`.
+
+Key details:
+- **Log directory**: `/var/log/easydblab/tools/`
+- **Source attribute**: `tool-runner` (for filtering in VictoriaLogs queries)
+- **Foreground commands**: Output displayed after completion, also logged to file
+- **Background commands** (`--bg`): Output logged to file only, tool runs as a systemd transient unit
+
 ## YACE CloudWatch Scrape
 
 YACE (Yet Another CloudWatch Exporter) runs on the control node and scrapes AWS CloudWatch metrics for services used by the cluster. It uses tag-based auto-discovery with the `easy_cass_lab=1` tag to find relevant resources.

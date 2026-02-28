@@ -237,14 +237,16 @@ class DefaultEMRProvisioningService(
     private fun buildSparkEnvConfiguration(): EMRConfiguration =
         EMRConfiguration(
             classification = "spark-env",
-            configurations = listOf(
-                EMRConfiguration(
-                    classification = "export",
-                    properties = mapOf(
-                        "PYROSCOPE_LABELS" to "hostname=\$(hostname -s)",
+            configurations =
+                listOf(
+                    EMRConfiguration(
+                        classification = "export",
+                        properties =
+                            mapOf(
+                                "PYROSCOPE_LABELS" to "hostname=\$(hostname -s)",
+                            ),
                     ),
                 ),
-            ),
         )
 
     /**

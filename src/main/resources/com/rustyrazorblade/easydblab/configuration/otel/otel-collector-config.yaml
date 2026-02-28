@@ -72,11 +72,20 @@ receivers:
     exclude:
       - /var/log/**/*.gz
       - /var/log/**/*.old
+      - /var/log/easydblab/tools/*.log
     start_at: end
     include_file_path: true
     include_file_name: true
     attributes:
       source: system
+  filelog/tools:
+    include:
+      - /var/log/easydblab/tools/*.log
+    start_at: beginning
+    include_file_path: true
+    include_file_name: true
+    attributes:
+      source: tool-runner
   filelog/cassandra:
     include:
       - /mnt/db1/cassandra/logs/*.log
@@ -176,7 +185,7 @@ service:
       processors: [memory_limiter, batch]
       exporters: [prometheusremotewrite]
     logs/local:
-      receivers: [filelog/system, filelog/cassandra, filelog/clickhouse-server, filelog/clickhouse-keeper]
+      receivers: [filelog/system, filelog/tools, filelog/cassandra, filelog/clickhouse-server, filelog/clickhouse-keeper]
       processors: [memory_limiter, resourcedetection, k8sattributes, batch]
       exporters: [otlphttp/victorialogs]
     logs/otlp:

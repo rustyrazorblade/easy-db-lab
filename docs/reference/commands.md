@@ -330,15 +330,48 @@ easy-db-lab cassandra stress info <workload>
 
 ### exec
 
-Execute a shell command on remote hosts.
+Execute commands on remote hosts via `systemd-run`. All output is captured to `/var/log/easydblab/tools/` and shipped to VictoriaLogs automatically.
+
+#### exec run
+
+Run a command on remote hosts (foreground by default).
 
 ```bash
-easy-db-lab exec <command> [options]
+# Foreground (blocks until complete, shows output)
+easy-db-lab exec run -t cassandra -- ls /mnt/db1
+
+# Background (returns immediately, tool keeps running)
+easy-db-lab exec run --bg -t cassandra -- inotifywait -m /mnt/db1/data
+
+# Background with custom name
+easy-db-lab exec run --bg --name watch-imports -t cassandra -- inotifywait -m /mnt/db1/data
 ```
 
 | Option | Description |
 |--------|-------------|
+| `-t, --type` | Server type: cassandra, stress, control (default: cassandra) |
+| `--bg` | Run in background (returns immediately) |
+| `--name` | Name for the systemd unit (auto-derived if not provided) |
 | `--hosts` | Filter to specific hosts |
+| `-p` | Execute in parallel across hosts |
+
+#### exec list
+
+List running background tools on remote hosts.
+
+```bash
+easy-db-lab exec list
+easy-db-lab exec list -t cassandra
+```
+
+#### exec stop
+
+Stop a named background tool.
+
+```bash
+easy-db-lab exec stop watch-imports
+easy-db-lab exec stop watch-imports -t cassandra
+```
 
 ### ip
 

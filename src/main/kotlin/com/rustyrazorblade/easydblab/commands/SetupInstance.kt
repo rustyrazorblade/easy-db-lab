@@ -80,6 +80,42 @@ class SetupInstance : PicoBaseCommand() {
             }
         }
 
+        fun setupSidecarSystemdEnv(
+            host: Host,
+            controlNodeIp: String,
+            clusterName: String,
+        ) {
+            val pyroscopeAddress = "http://$controlNodeIp:${Constants.K8s.PYROSCOPE_PORT}"
+            val baseOpts =
+                "-Dsidecar.config=file:///etc/cassandra-sidecar/cassandra-sidecar.yaml " +
+                    "-Dsidecar.logdir=/mnt/db1/cassandra/logs/sidecar"
+            val agentOpts =
+                "-javaagent:/usr/local/otel/opentelemetry-javaagent.jar " +
+                    "-javaagent:/usr/local/pyroscope/pyroscope.jar " +
+                    "-Dpyroscope.application.name=cassandra-sidecar " +
+                    "-Dpyroscope.server.address=$pyroscopeAddress " +
+                    "-Dpyroscope.labels=hostname:${host.alias},cluster:$clusterName " +
+                    "-Dpyroscope.profiler.event=cpu,alloc,lock " +
+                    "-Dpyroscope.profiler.alloc=512k " +
+                    "-Dpyroscope.profiler.lock=10ms"
+
+            val envFile = java.io.File.createTempFile("cassandra-sidecar", ".env")
+            try {
+                envFile.bufferedWriter().use { writer ->
+                    writer.write("JAVA_OPTS=$baseOpts $agentOpts")
+                    writer.newLine()
+                    writer.write("OTEL_SERVICE_NAME=cassandra-sidecar")
+                    writer.newLine()
+                    writer.write("OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317")
+                    writer.newLine()
+                }
+                remoteOps.upload(host, envFile.toPath(), "cassandra-sidecar.env")
+                remoteOps.executeRemotely(host, "sudo mv cassandra-sidecar.env /etc/default/cassandra-sidecar").text
+            } finally {
+                envFile.delete()
+            }
+        }
+
         // Get datacenter once from the first stress instance (all instances are in the same DC)
         val stressHosts = clusterState.getHosts(ServerType.Stress)
         val datacenter =
@@ -110,6 +146,7 @@ class SetupInstance : PicoBaseCommand() {
             val h = host.toHost()
             setup(h)
             setupCassandraSystemdEnv(h, controlNodeIp, clusterName)
+            setupSidecarSystemdEnv(h, controlNodeIp, clusterName)
             remoteOps.executeRemotely(h, "sudo hostnamectl set-hostname ${h.alias}").text
             remoteOps.upload(h, Path.of("setup_instance.sh"), "setup_instance.sh")
             remoteOps.executeRemotely(h, "sudo bash setup_instance.sh").text

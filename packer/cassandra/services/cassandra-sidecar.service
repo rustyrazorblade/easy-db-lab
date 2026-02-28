@@ -3,6 +3,7 @@ Description=Apache Cassandra Sidecar
 
 [Service]
 Environment="JAVA_OPTS=-Dsidecar.config=file:///etc/cassandra-sidecar/cassandra-sidecar.yaml -Dsidecar.logdir=/mnt/db1/cassandra/logs/sidecar"
+EnvironmentFile=-/etc/default/cassandra-sidecar
 ExecStart=/usr/local/cassandra-sidecar/bin/cassandra-sidecar
 User=cassandra
 

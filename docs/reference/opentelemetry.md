@@ -115,6 +115,18 @@ Key configuration:
 - **Service name**: `spark-<job-name>` (set per job)
 - **Profiling**: CPU, allocation (512k threshold), lock (10ms threshold) profiles in JFR format sent to Pyroscope server
 
+## Cassandra Sidecar Instrumentation
+
+The Cassandra Sidecar process is instrumented with the OpenTelemetry Java Agent and Pyroscope Java Agent, matching the pattern used for Cassandra itself. Both agents are loaded via `-javaagent` flags set in `/etc/default/cassandra-sidecar`, which is written by the `setup-instances` command.
+
+Key configuration:
+- **OTel Agent JAR**: Installed by Packer to `/usr/local/otel/opentelemetry-javaagent.jar`
+- **Pyroscope Agent JAR**: Installed by Packer to `/usr/local/pyroscope/pyroscope.jar`
+- **Service name**: `cassandra-sidecar` (both OTel and Pyroscope)
+- **Export endpoint**: `localhost:4317` (local OTel Collector DaemonSet)
+- **Profiling**: CPU, allocation (512k threshold), lock (10ms threshold) profiles sent to Pyroscope server
+- **Activation**: Gated on `/etc/default/cassandra-sidecar` — the systemd `EnvironmentFile=-` directive makes it optional, so the sidecar starts normally without instrumentation if the file doesn't exist
+
 ## YACE CloudWatch Scrape
 
 YACE (Yet Another CloudWatch Exporter) runs on the control node and scrapes AWS CloudWatch metrics for services used by the cluster. It uses tag-based auto-discovery with the `easy_cass_lab=1` tag to find relevant resources.

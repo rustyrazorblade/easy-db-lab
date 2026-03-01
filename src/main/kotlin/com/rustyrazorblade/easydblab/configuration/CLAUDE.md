@@ -201,8 +201,9 @@ See `spec/PYROSCOPE.md` for full architecture details and debugging steps.
 
 ## OTel Subpackage (`otel/`)
 
-- **`OtelManifestBuilder`** — builds OTel Collector ServiceAccount, ClusterRole, ClusterRoleBinding, ConfigMap, and DaemonSet. Runs on all nodes, collects host metrics, Prometheus scrapes, file-based logs (system, Cassandra, ClickHouse), journald, and OTLP. Uses `k8sattributes` processor to derive `node_role` from K8s node label `type` (db, app, control). RBAC grants read-only access to pods and nodes. Config uses OTel runtime env expansion (`${env:HOSTNAME}`), not `__KEY__` templates.
-- **Config resource** — `otel-collector-config.yaml` stored in `resources/.../configuration/otel/`.
+- **`OtelManifestBuilder`** — builds the main OTel Collector ServiceAccount, ClusterRole, ClusterRoleBinding, ConfigMap, and DaemonSet. Runs on all nodes, collects host metrics, Prometheus scrapes, file-based logs (system, Cassandra, ClickHouse), and OTLP. Uses `k8sattributes` processor to derive `node_role` from K8s node label `type` (db, app, control). RBAC grants read-only access to pods and nodes. Config uses OTel runtime env expansion (`${env:HOSTNAME}`), not `__KEY__` templates.
+- **`JournaldOtelManifestBuilder`** — builds a dedicated OTel Collector DaemonSet (`otel-journald`) for systemd journal collection, isolated from the main collector. Uses chroot mode (`root_path: /host`) with host `/` mounted read-only to execute the host's `journalctl` binary. Filters to `edl-exec-*` units. Forwards logs via OTLP to the main collector on `localhost:4317`. Health check on port 13134. No ServiceAccount/RBAC needed (doesn't access K8s API).
+- **Config resources** — `otel-collector-config.yaml` (main collector) and `otel-journald-config.yaml` (journald collector) stored in `resources/.../configuration/otel/`.
 
 ## ebpf_exporter Subpackage (`ebpfexporter/`)
 

@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuilder
@@ -76,6 +77,7 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
                 // Real manifest builders
                 single { BeylaManifestBuilder(get()) }
                 single { EbpfExporterManifestBuilder() }
+                single { JournaldOtelManifestBuilder(get()) }
                 single { OtelManifestBuilder(get()) }
                 single { PyroscopeManifestBuilder(get()) }
                 single { TempoManifestBuilder(get()) }

@@ -330,7 +330,7 @@ easy-db-lab cassandra stress info <workload>
 
 ### exec
 
-Execute commands on remote hosts via `systemd-run`. All output is captured to `/var/log/easydblab/tools/` and shipped to VictoriaLogs automatically.
+Execute commands on remote hosts via `systemd-run`. Tool output is captured by the systemd journal and shipped to VictoriaLogs via a dedicated journald OTel collector, with accurate timestamps for cross-service log correlation.
 
 #### exec run
 

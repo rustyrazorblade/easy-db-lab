@@ -1,0 +1,35 @@
+receivers:
+  journald:
+    root_path: /host
+    journalctl_path: /usr/bin/journalctl
+    start_at: end
+    grep: "edl-exec-"
+    priority: info
+    all: true
+
+processors:
+  batch:
+    timeout: 10s
+    send_batch_size: 1024
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 128
+    spike_limit_mib: 32
+
+exporters:
+  otlp:
+    endpoint: localhost:4317
+    tls:
+      insecure: true
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13134
+
+service:
+  extensions: [health_check]
+  pipelines:
+    logs:
+      receivers: [journald]
+      processors: [memory_limiter, batch]
+      exporters: [otlp]

@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.clickhouse.ClickHouseManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuilder
@@ -58,6 +59,7 @@ val servicesModule =
         factoryOf(::BeylaManifestBuilder)
         factoryOf(::EbpfExporterManifestBuilder)
         factoryOf(::GrafanaManifestBuilder)
+        factoryOf(::JournaldOtelManifestBuilder)
         factoryOf(::OtelManifestBuilder)
         factoryOf(::PyroscopeManifestBuilder)
         factoryOf(::RegistryManifestBuilder)

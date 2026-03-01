@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuilder
@@ -53,6 +54,7 @@ class GrafanaUpdateConfig : PicoBaseCommand() {
     private val user: User by inject()
     private val k8sService: K8sService by inject()
     private val otelManifestBuilder: OtelManifestBuilder by inject()
+    private val journaldOtelManifestBuilder: JournaldOtelManifestBuilder by inject()
     private val ebpfExporterManifestBuilder: EbpfExporterManifestBuilder by inject()
     private val victoriaManifestBuilder: VictoriaManifestBuilder by inject()
     private val tempoManifestBuilder: TempoManifestBuilder by inject()
@@ -81,6 +83,7 @@ class GrafanaUpdateConfig : PicoBaseCommand() {
 
         // Apply all Fabric8-built observability resources
         applyFabric8Resources("OTel Collector", controlNode, otelManifestBuilder.buildAllResources())
+        applyFabric8Resources("OTel Journald", controlNode, journaldOtelManifestBuilder.buildAllResources())
         applyFabric8Resources("ebpf_exporter", controlNode, ebpfExporterManifestBuilder.buildAllResources())
         applyFabric8Resources("VictoriaMetrics/Logs", controlNode, victoriaManifestBuilder.buildAllResources())
         applyFabric8Resources("Tempo", controlNode, tempoManifestBuilder.buildAllResources())
@@ -105,7 +108,7 @@ class GrafanaUpdateConfig : PicoBaseCommand() {
         eventBus.emit(Event.Grafana.WorkloadsRestarting)
 
         val deployments = listOf("victoria-metrics", "victoria-logs", "tempo", "pyroscope", "grafana")
-        val daemonSets = listOf("otel-collector", "beyla", "ebpf-exporter", "pyroscope-ebpf")
+        val daemonSets = listOf("otel-collector", "otel-journald", "beyla", "ebpf-exporter", "pyroscope-ebpf")
 
         for (name in deployments) {
             k8sService

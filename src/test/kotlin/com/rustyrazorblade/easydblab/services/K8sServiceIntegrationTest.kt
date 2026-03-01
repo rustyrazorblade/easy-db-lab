@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.configuration.clickhouse.ClickHouseManifest
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboard
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuilder
@@ -230,6 +231,16 @@ class K8sServiceIntegrationTest {
         assertClusterRoleBindingExists("otel-collector")
         assertConfigMapExists("otel-collector-config", "otel-collector-config.yaml")
         assertDaemonSetExists("otel-collector")
+    }
+
+    @Test
+    @Order(14)
+    fun `should apply OTel Journald resources`() {
+        val resources = JournaldOtelManifestBuilder(templateService).buildAllResources()
+        applyAndVerify(resources)
+
+        assertConfigMapExists("otel-journald-config", "otel-journald-config.yaml")
+        assertDaemonSetExists("otel-journald")
     }
 
     @Test
@@ -723,7 +734,8 @@ class K8sServiceIntegrationTest {
     }
 
     private fun collectAllResources(): List<HasMetadata> =
-        OtelManifestBuilder(templateService).buildAllResources() +
+        JournaldOtelManifestBuilder(templateService).buildAllResources() +
+            OtelManifestBuilder(templateService).buildAllResources() +
             EbpfExporterManifestBuilder().buildAllResources() +
             VictoriaManifestBuilder().buildAllResources() +
             TempoManifestBuilder(templateService).buildAllResources() +

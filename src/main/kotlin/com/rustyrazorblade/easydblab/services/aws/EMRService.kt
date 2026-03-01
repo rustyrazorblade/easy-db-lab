@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.providers.aws.EMRClusterConfig
 import com.rustyrazorblade.easydblab.providers.aws.EMRClusterResult
 import com.rustyrazorblade.easydblab.providers.aws.EMRClusterStates
 import com.rustyrazorblade.easydblab.providers.aws.EMRClusterStatus
+import com.rustyrazorblade.easydblab.providers.aws.EMRConfiguration
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import com.rustyrazorblade.easydblab.providers.aws.SubnetId
 import com.rustyrazorblade.easydblab.providers.aws.VpcId
@@ -17,15 +18,31 @@ import software.amazon.awssdk.services.emr.model.Application
 import software.amazon.awssdk.services.emr.model.BootstrapActionConfig
 import software.amazon.awssdk.services.emr.model.ClusterState
 import software.amazon.awssdk.services.emr.model.ClusterSummary
+import software.amazon.awssdk.services.emr.model.Configuration
 import software.amazon.awssdk.services.emr.model.DescribeClusterRequest
 import software.amazon.awssdk.services.emr.model.InstanceGroupConfig
+import software.amazon.awssdk.services.emr.model.InstanceGroupType
 import software.amazon.awssdk.services.emr.model.InstanceRoleType
 import software.amazon.awssdk.services.emr.model.JobFlowInstancesConfig
 import software.amazon.awssdk.services.emr.model.ListClustersRequest
+import software.amazon.awssdk.services.emr.model.ListInstancesRequest
 import software.amazon.awssdk.services.emr.model.RunJobFlowRequest
 import software.amazon.awssdk.services.emr.model.ScriptBootstrapActionConfig
 import software.amazon.awssdk.services.emr.model.Tag
 import software.amazon.awssdk.services.emr.model.TerminateJobFlowsRequest
+
+/** Recursively converts an EMRConfiguration to the AWS SDK Configuration type. */
+private fun EMRConfiguration.toAwsConfiguration(): Configuration {
+    val builder =
+        Configuration
+            .builder()
+            .classification(classification)
+            .properties(properties)
+    if (configurations.isNotEmpty()) {
+        builder.configurations(configurations.map { it.toAwsConfiguration() })
+    }
+    return builder.build()
+}
 
 /**
  * Service for managing the full lifecycle of EMR clusters.
@@ -157,6 +174,12 @@ class EMRService(
                 }
             requestBuilder.bootstrapActions(bootstrapConfigs)
             log.info { "Adding ${config.bootstrapActions.size} bootstrap actions to EMR cluster" }
+        }
+
+        if (config.configurations.isNotEmpty()) {
+            val emrConfigurations = config.configurations.map { it.toAwsConfiguration() }
+            requestBuilder.configurations(emrConfigurations)
+            log.info { "Adding ${config.configurations.size} configurations to EMR cluster" }
         }
 
         val request = requestBuilder.build()
@@ -465,6 +488,29 @@ class EMRService(
         }
 
         throw AwsTimeoutException("Timeout waiting for EMR clusters to terminate after ${timeoutMs}ms")
+    }
+
+    /**
+     * Lists instance IDs for an EMR cluster, filtered by instance group type.
+     *
+     * @param clusterId The cluster ID to list instances for
+     * @param instanceGroupType The instance group type to filter by (default: MASTER)
+     * @return List of EC2 instance IDs matching the filter
+     */
+    fun listInstances(
+        clusterId: ClusterId,
+        instanceGroupType: InstanceGroupType = InstanceGroupType.MASTER,
+    ): List<String> {
+        val request =
+            ListInstancesRequest
+                .builder()
+                .clusterId(clusterId)
+                .instanceGroupTypes(instanceGroupType)
+                .build()
+
+        val response = RetryUtil.withAwsRetry("list-instances") { emrClient.listInstances(request) }
+
+        return response.instances().mapNotNull { it.ec2InstanceId() }
     }
 
     // ==================== Private Helpers ====================

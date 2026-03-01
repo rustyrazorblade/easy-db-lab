@@ -46,7 +46,7 @@ storage:
       bucket: ${S3_BUCKET}
       endpoint: s3.${AWS_REGION}.amazonaws.com
       region: ${AWS_REGION}
-      prefix: tempo/
+      prefix: ${CLUSTER_S3_PREFIX}/tempo/
 
 overrides:
   defaults:

@@ -102,6 +102,8 @@ data class S3Paths(
     val clickhouse: String,
     val spark: String,
     val emrLogs: String,
+    val tempo: String,
+    val pyroscope: String,
 )
 
 @Serializable

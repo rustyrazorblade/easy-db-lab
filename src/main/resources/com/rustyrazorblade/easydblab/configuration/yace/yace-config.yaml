@@ -1,8 +1,6 @@
 apiVersion: v1alpha1
 discovery:
   exportedTagsOnMetrics:
-    AWS/ElasticMapReduce:
-      - Name
     AWS/S3:
       - BucketName
     AWS/EBS:
@@ -12,57 +10,6 @@ discovery:
     AWS/ES:
       - DomainName
   jobs:
-    - type: AWS/ElasticMapReduce
-      regions:
-        - __AWS_REGION__
-      period: 60
-      length: 120
-      searchTags:
-        - key: easy_cass_lab
-          value: "1"
-      metrics:
-        - name: CoreNodesRunning
-          statistics: [Average]
-        - name: HDFSUtilization
-          statistics: [Average]
-        - name: AppsRunning
-          statistics: [Average]
-        - name: AppsPending
-          statistics: [Average]
-        - name: MemoryAllocatedMB
-          statistics: [Average]
-        - name: MemoryAvailableMB
-          statistics: [Average]
-        - name: YARNMemoryAvailablePercentage
-          statistics: [Average]
-        - name: S3BytesRead
-          statistics: [Sum]
-        - name: S3BytesWritten
-          statistics: [Sum]
-        - name: ContainerAllocated
-          statistics: [Average]
-        - name: ContainerPending
-          statistics: [Average]
-        - name: IsIdle
-          statistics: [Average]
-        - name: MRActiveNodes
-          statistics: [Average]
-        - name: MultiMasterInstanceGroupIdleCount
-          statistics: [Average]
-        - name: CoreNodesPending
-          statistics: [Average]
-        - name: TaskNodesRunning
-          statistics: [Average]
-        - name: TaskNodesPending
-          statistics: [Average]
-        - name: HDFSBytesRead
-          statistics: [Sum]
-        - name: HDFSBytesWritten
-          statistics: [Sum]
-        - name: AppsCompleted
-          statistics: [Sum]
-        - name: AppsFailed
-          statistics: [Sum]
     - type: AWS/S3
       regions:
         - __AWS_REGION__

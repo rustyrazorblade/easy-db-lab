@@ -173,6 +173,11 @@ build {
     script = "install/install_pyroscope_agent.sh"
   }
 
+  # install OpenTelemetry Java agent for sidecar instrumentation
+  provisioner "shell" {
+    script = "install/install_otel_agent.sh"
+  }
+
   # install MAAC (Management API for Apache Cassandra) metrics agent
   provisioner "shell" {
     script = "install/install_maac.sh"

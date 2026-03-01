@@ -101,4 +101,12 @@ enum class GrafanaDashboard(
         resourcePath = "dashboards/cassandra-overview.json",
         optional = true,
     ),
+    LOG_INVESTIGATION(
+        configMapName = "grafana-dashboard-log-investigation",
+        volumeName = "dashboard-log-investigation",
+        mountPath = "/var/lib/grafana/dashboards/log-investigation",
+        jsonFileName = "log-investigation.json",
+        resourcePath = "dashboards/log-investigation.json",
+        optional = true,
+    ),
 }

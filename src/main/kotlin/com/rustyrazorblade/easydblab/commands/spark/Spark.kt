@@ -13,6 +13,7 @@ import picocli.CommandLine.Spec
  *
  * Available sub-commands:
  * - init: Provision a Spark EMR cluster on an existing environment
+ * - down: Terminate the Spark EMR cluster
  * - submit: Submit a Spark job to the EMR cluster
  * - status: Check the status of a Spark job (defaults to most recent)
  * - jobs: List recent Spark jobs on the cluster
@@ -24,6 +25,7 @@ import picocli.CommandLine.Spec
     mixinStandardHelpOptions = true,
     subcommands = [
         SparkInit::class,
+        SparkDown::class,
         SparkSubmit::class,
         SparkStatus::class,
         SparkJobs::class,

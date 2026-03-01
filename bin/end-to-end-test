@@ -591,13 +591,13 @@ step_check_sidecar() {
 
 step_test_exec() {
     echo "=== Testing exec command (sequential) ==="
-    easy-db-lab exec -t cassandra hostname
+    easy-db-lab exec run -t cassandra -- hostname
 
     echo "=== Testing exec command (parallel) ==="
-    easy-db-lab exec -t cassandra -p uptime
+    easy-db-lab exec run -t cassandra -p -- uptime
 
     echo "=== Testing exec command (with host filter) ==="
-    easy-db-lab exec -t cassandra --hosts db0,db1 date
+    easy-db-lab exec run -t cassandra --hosts db0,db1 -- date
 }
 
 step_stress_test() {
@@ -752,21 +752,17 @@ step_bulk_writer_direct() {
         return 0
     fi
 
-    echo "=== Creating bulk writer test table ==="
-    easy-db-lab cassandra cql "CREATE KEYSPACE IF NOT EXISTS bulk_test WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}"
-    easy-db-lab cassandra cql "CREATE TABLE IF NOT EXISTS bulk_test.data (id bigint PRIMARY KEY, course blob, marks bigint)"
+    echo "=== Starting inotifywait to monitor sidecar import directory ==="
+    easy-db-lab exec run --bg --name watch-imports -t cassandra -- inotifywait -m -r /mnt/db1/cassandra/import
 
     echo "=== Submitting bulk writer (direct mode) to EMR ==="
-    local sidecar_hosts=$(easy-db-lab hosts --type cassandra --private | tr '\n' ',' | sed 's/,$//')
-
-    easy-db-lab spark submit \
-      --jar "$PROJECT_ROOT/bulk-writer/build/libs/bulk-writer.jar" \
-      --main-class com.rustyrazorblade.easydblab.spark.DirectBulkWriter \
-      --args "$sidecar_hosts" bulk_test data datacenter1 10000 4 \
-      --wait
+    "$PROJECT_ROOT/bin/submit-direct-bulk-writer" 10000 4 100 1
 
     echo "=== Verifying bulk write results ==="
     easy-db-lab cassandra cql "SELECT COUNT(*) FROM bulk_test.data"
+
+    echo "=== Stopping inotifywait ==="
+    easy-db-lab exec stop watch-imports -t cassandra
 }
 
 step_clickhouse_start() {

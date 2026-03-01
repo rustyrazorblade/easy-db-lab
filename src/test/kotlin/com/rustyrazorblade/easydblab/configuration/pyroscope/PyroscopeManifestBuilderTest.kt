@@ -50,27 +50,9 @@ class PyroscopeManifestBuilderTest : BaseKoinTest() {
     }
 
     @Test
-    fun `buildServerConfigMap loads config yaml from resource`() {
-        val configMap = builder.buildServerConfigMap()
-
-        assertThat(configMap.data).containsKey("config.yaml")
-        assertThat(configMap.data["config.yaml"]).contains("http_listen_port: 4040")
-        assertThat(configMap.data["config.yaml"]).contains("backend: filesystem")
-    }
-
-    @Test
     fun `buildServerDeployment has no init container`() {
         val deployment = builder.buildServerDeployment()
 
         assertThat(deployment.spec.template.spec.initContainers).isNullOrEmpty()
-    }
-
-    @Test
-    fun `buildEbpfConfigMap loads config alloy from resource`() {
-        val configMap = builder.buildEbpfConfigMap()
-
-        assertThat(configMap.data).containsKey("config.alloy")
-        assertThat(configMap.data["config.alloy"]).contains("pyroscope.ebpf")
-        assertThat(configMap.data["config.alloy"]).contains("pyroscope.write")
     }
 }

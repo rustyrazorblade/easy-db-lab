@@ -72,11 +72,20 @@ receivers:
     exclude:
       - /var/log/**/*.gz
       - /var/log/**/*.old
+      - /var/log/easydblab/tools/*.log
     start_at: end
     include_file_path: true
     include_file_name: true
     attributes:
       source: system
+  filelog/tools:
+    include:
+      - /var/log/easydblab/tools/*.log
+    start_at: beginning
+    include_file_path: true
+    include_file_name: true
+    attributes:
+      source: tool-runner
   filelog/cassandra:
     include:
       - /mnt/db1/cassandra/logs/*.log
@@ -131,6 +140,16 @@ processors:
       resource_attributes:
         host.name:
           enabled: true
+  # Extract node_role from K8s node label "type" (db, app) set during K3s agent join
+  k8sattributes:
+    passthrough: false
+    extract:
+      metadata:
+        - k8s.node.name
+      labels:
+        - tag_name: node_role
+          key: type
+          from: node
 
 exporters:
   prometheusremotewrite:
@@ -155,15 +174,25 @@ extensions:
 service:
   extensions: [health_check]
   pipelines:
-    metrics:
-      receivers: [otlp, hostmetrics, prometheus]
-      processors: [memory_limiter, resourcedetection, batch]
+    # Local metrics — resourcedetection stamps host.name, k8sattributes adds node_role from node label
+    metrics/local:
+      receivers: [hostmetrics, prometheus]
+      processors: [memory_limiter, resourcedetection, k8sattributes, batch]
       exporters: [prometheusremotewrite]
-    logs:
-      receivers: [otlp, filelog/system, filelog/cassandra, filelog/clickhouse-server, filelog/clickhouse-keeper]
-      processors: [memory_limiter, resourcedetection, batch]
+    # Remote metrics via OTLP (e.g., Spark nodes) — already have host.name and node_role
+    metrics/otlp:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [prometheusremotewrite]
+    logs/local:
+      receivers: [filelog/system, filelog/tools, filelog/cassandra, filelog/clickhouse-server, filelog/clickhouse-keeper]
+      processors: [memory_limiter, resourcedetection, k8sattributes, batch]
+      exporters: [otlphttp/victorialogs]
+    logs/otlp:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
       exporters: [otlphttp/victorialogs]
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, resourcedetection, batch]
+      processors: [memory_limiter, batch]
       exporters: [otlp/tempo]

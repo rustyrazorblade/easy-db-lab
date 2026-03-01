@@ -51,17 +51,25 @@ Use the dropdowns at the top to select S3 bucket, EC2 instances, and EBS volumes
 
 ### EMR Overview
 
-Shows EMR cluster metrics via CloudWatch. Available when an EMR cluster is provisioned.
+Shows Spark/EMR node metrics via OpenTelemetry. Available when an EMR cluster is provisioned. Each EMR node runs an OTel Collector that collects host metrics and receives JVM telemetry from the OTel and Pyroscope Java agents.
 
-**Metrics displayed:**
+**Host Metrics:**
 
-- **Cluster Status:** CoreNodesRunning, CoreNodesPending, TaskNodesRunning, TaskNodesPending, HDFSUtilization
-- **HDFS I/O:** HDFSBytesRead, HDFSBytesWritten (mirrored chart)
-- **Applications:** AppsRunning, AppsPending, AppsCompleted, AppsFailed
-- **Resources:** YARN MemoryAllocatedMB, MemoryAvailableMB, ContainerAllocated, ContainerPending
-- **S3 I/O:** S3BytesRead, S3BytesWritten (mirrored chart)
+- **CPU Usage:** Per-node CPU utilization percentage
+- **Memory Usage:** Used and cached memory per node
+- **Disk I/O:** Read/write throughput per node (mirrored chart)
+- **Network I/O:** Receive/transmit throughput per node (mirrored chart)
+- **Load Average:** 1m and 5m load per node
+- **Filesystem Usage:** Root filesystem utilization percentage
 
-Use the `EMR Cluster` dropdown to select which cluster (JobFlowId) to view.
+**Spark JVM Metrics:**
+
+- **JVM Heap Memory:** Used and committed heap per node/pool
+- **GC Duration Rate:** Garbage collection duration rate per collector
+- **JVM Threads:** Thread count per node
+- **JVM Classes Loaded:** Class count per node
+
+Use the `Hostname` dropdown to filter by specific EMR nodes.
 
 ### OpenSearch Overview
 

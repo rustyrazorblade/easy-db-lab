@@ -7,7 +7,6 @@ import com.rustyrazorblade.easydblab.commands.Clean
 import com.rustyrazorblade.easydblab.commands.ConfigureAWS
 import com.rustyrazorblade.easydblab.commands.ConfigureAxonOps
 import com.rustyrazorblade.easydblab.commands.Down
-import com.rustyrazorblade.easydblab.commands.Exec
 import com.rustyrazorblade.easydblab.commands.Hosts
 import com.rustyrazorblade.easydblab.commands.Init
 import com.rustyrazorblade.easydblab.commands.Ip
@@ -41,6 +40,9 @@ import com.rustyrazorblade.easydblab.commands.clickhouse.ClickHouseInit
 import com.rustyrazorblade.easydblab.commands.clickhouse.ClickHouseStart
 import com.rustyrazorblade.easydblab.commands.clickhouse.ClickHouseStatus
 import com.rustyrazorblade.easydblab.commands.clickhouse.ClickHouseStop
+import com.rustyrazorblade.easydblab.commands.exec.ExecList
+import com.rustyrazorblade.easydblab.commands.exec.ExecRun
+import com.rustyrazorblade.easydblab.commands.exec.ExecStop
 import com.rustyrazorblade.easydblab.commands.grafana.GrafanaUpdateConfig
 import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearchStart
 import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearchStatus
@@ -64,7 +66,9 @@ val commandsModule =
         factory { Clean() }
         factory { ConfigureAWS() }
         factory { ConfigureAxonOps() }
-        factory { Exec() }
+        factory { ExecRun() }
+        factory { ExecList() }
+        factory { ExecStop() }
         factory { Hosts() }
         factory { Init() }
         factory { Ip() }

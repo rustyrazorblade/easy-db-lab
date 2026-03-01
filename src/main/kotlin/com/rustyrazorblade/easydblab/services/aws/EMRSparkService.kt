@@ -3,7 +3,6 @@ package com.rustyrazorblade.easydblab.services.aws
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.EMRClusterInfo
-import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.s3Path
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -73,8 +72,8 @@ class EMRSparkService(
         runCatching {
             val stepName = jobName ?: mainClass.split(".").last()
 
-            // Enrich spark conf and env vars with OTel Java agent configuration
-            val otelSparkConf = buildOtelSparkConf(sparkConf)
+            // Enrich spark conf and env vars with OTel Java agent and Pyroscope configuration
+            val otelSparkConf = buildOtelSparkConf(sparkConf, stepName)
             val otelEnvVars = buildOtelEnvVars(envVars, stepName)
 
             val hadoopJarStep =
@@ -576,44 +575,27 @@ class EMRSparkService(
     }
 
     /**
-     * Enriches spark conf with OTel Java agent JVM flags.
-     * The agent auto-instruments Log4j2 for log collection and provides JVM metrics/traces.
+     * Returns sparkConf as-is. We no longer override extraJavaOptions at submission time
+     * because it replaces the spark-defaults.conf value (which contains -javaagent flags).
+     * Per-job Pyroscope app name is set via PYROSCOPE_APPLICATION_NAME env var instead.
      */
-    private fun buildOtelSparkConf(sparkConf: Map<String, String>): Map<String, String> {
-        val agentFlag = "-javaagent:${Constants.OtelJavaAgent.INSTALL_PATH}"
-        val enriched = sparkConf.toMutableMap()
-
-        val existingDriverOpts = enriched["spark.driver.extraJavaOptions"] ?: ""
-        enriched["spark.driver.extraJavaOptions"] = "$existingDriverOpts $agentFlag".trim()
-
-        val existingExecutorOpts = enriched["spark.executor.extraJavaOptions"] ?: ""
-        enriched["spark.executor.extraJavaOptions"] = "$existingExecutorOpts $agentFlag".trim()
-
-        return enriched
-    }
+    private fun buildOtelSparkConf(
+        sparkConf: Map<String, String>,
+        @Suppress("unused") jobName: String,
+    ): Map<String, String> = sparkConf
 
     /**
-     * Enriches env vars with OTel exporter configuration targeting the control node's OTel Collector.
+     * Overrides the OTel service name and Pyroscope application name for per-job attribution.
+     * Exporter config and -javaagent flags come from spark-defaults classification at cluster level.
      */
     private fun buildOtelEnvVars(
         envVars: Map<String, String>,
         jobName: String,
     ): Map<String, String> {
-        val controlIp =
-            clusterStateManager
-                .load()
-                .hosts[ServerType.Control]
-                ?.firstOrNull()
-                ?.privateIp
-                ?: error("No control node found in cluster state for OTel configuration")
-
         val otelVars =
             mapOf(
-                "OTEL_LOGS_EXPORTER" to "otlp",
-                "OTEL_METRICS_EXPORTER" to "otlp",
-                "OTEL_TRACES_EXPORTER" to "otlp",
-                "OTEL_EXPORTER_OTLP_ENDPOINT" to "http://$controlIp:${Constants.K8s.OTEL_GRPC_PORT}",
                 "OTEL_SERVICE_NAME" to "spark-$jobName",
+                "PYROSCOPE_APPLICATION_NAME" to "spark-$jobName",
             )
 
         return otelVars + envVars

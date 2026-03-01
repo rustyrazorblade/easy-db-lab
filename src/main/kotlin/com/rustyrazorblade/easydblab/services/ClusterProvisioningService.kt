@@ -18,6 +18,7 @@ import com.rustyrazorblade.easydblab.services.aws.OpenSearchDomainConfig
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CountDownLatch
 import kotlin.concurrent.thread
 
 /**
@@ -197,7 +198,10 @@ class DefaultClusterProvisioningService(
         var emrCluster: EMRClusterState? = null
         var openSearchDomain: OpenSearchClusterState? = null
 
-        val allThreads = mutableListOf<Thread>()
+        // Latch so EMR thread waits for EC2 instances (needs control node IP)
+        val instancesReady = CountDownLatch(1)
+
+        val serviceThreads = mutableListOf<Thread>()
 
         // Log messages for existing instances
         instanceConfig.specs
@@ -207,10 +211,10 @@ class DefaultClusterProvisioningService(
             }
 
         // Instance creation threads
-        instanceConfig.specs
-            .filter { it.neededCount > 0 }
-            .forEach { spec ->
-                allThreads.add(
+        val instanceThreads =
+            instanceConfig.specs
+                .filter { it.neededCount > 0 }
+                .map { spec ->
                     thread(start = true, name = "create-${spec.serverType.name}") {
                         try {
                             val hosts =
@@ -231,18 +235,26 @@ class DefaultClusterProvisioningService(
                             log.error(e) { "Failed to create ${spec.serverType.name} instances" }
                             threadErrors["${spec.serverType.name} instances"] = e
                         }
-                    },
-                )
-            }
+                    }
+                }
 
-        // EMR thread
+        // Coordinator thread: waits for all EC2 instances, then signals EMR
+        serviceThreads.add(
+            thread(start = true, name = "instance-coordinator") {
+                instanceThreads.forEach { it.join() }
+                instancesReady.countDown()
+            },
+        )
+
+        // EMR thread — waits for instances before proceeding
         if (servicesConfig.initConfig.sparkEnabled) {
             if (servicesConfig.clusterState.emrCluster != null) {
                 eventBus.emit(Event.Emr.ClusterAlreadyExists)
             } else {
-                allThreads.add(
+                serviceThreads.add(
                     thread(start = true, name = "create-EMR") {
                         try {
+                            instancesReady.await()
                             val cluster =
                                 emrProvisioningService.provisionEmrCluster(
                                     clusterName = servicesConfig.initConfig.name,
@@ -268,9 +280,9 @@ class DefaultClusterProvisioningService(
             }
         }
 
-        // OpenSearch thread
+        // OpenSearch thread — runs independently (no dependency on control node)
         if (servicesConfig.initConfig.opensearchEnabled) {
-            allThreads.add(
+            serviceThreads.add(
                 thread(start = true, name = "create-OpenSearch") {
                     try {
                         val domain =
@@ -292,8 +304,8 @@ class DefaultClusterProvisioningService(
             )
         }
 
-        // Wait for all threads
-        allThreads.forEach { it.join() }
+        // Wait for coordinator, EMR, and OpenSearch threads
+        serviceThreads.forEach { it.join() }
 
         return ProvisioningResult(
             hosts = allHosts.toMap(),

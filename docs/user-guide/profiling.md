@@ -8,6 +8,7 @@ Profiling data is collected from multiple sources and sent to the Pyroscope serv
 
 - **Pyroscope Java agent (Cassandra)** — Runs as a `-javaagent` inside the Cassandra JVM. Uses async-profiler to collect CPU, allocation, lock contention, and wall-clock profiles with full method-level resolution.
 - **Pyroscope Java agent (Stress jobs)** — Runs as a `-javaagent` inside cassandra-easy-stress K8s Jobs. Collects the same profile types as Cassandra (CPU, allocation, lock). The agent JAR is mounted from the host via a hostPath volume.
+- **Pyroscope Java agent (Spark/EMR)** — Runs as a `-javaagent` on Spark driver and executor JVMs. Installed via EMR bootstrap action to `/opt/pyroscope/pyroscope.jar`. Collects CPU, allocation (512k threshold), and lock (10ms threshold) profiles in JFR format. Profiles appear under `service_name=spark-<job-name>`.
 - **Grafana Alloy eBPF profiler** — Runs as a DaemonSet on all nodes via [Grafana Alloy](https://grafana.com/docs/alloy/latest/). Profiles all processes (Cassandra, ClickHouse, stress jobs) at the system level using eBPF. Provides CPU flame graphs including kernel stack frames.
 
 ## Accessing Profiles
@@ -101,7 +102,7 @@ The eBPF profiler runs as a privileged Grafana Alloy DaemonSet (`pyroscope-ebpf`
 
 ### Pyroscope Server
 
-The Pyroscope server runs on the control node with data stored at `/mnt/db1/pyroscope`. Configuration is in the `pyroscope-config` ConfigMap.
+The Pyroscope server runs on the control node with data stored in S3 (`s3://<account-bucket>/clusters/<name>-<id>/pyroscope/`). Configuration is in the `pyroscope-config` ConfigMap.
 
 ## Data Flow
 
@@ -110,9 +111,12 @@ Cassandra JVM ──(Java agent)──────► Pyroscope Server (:4040)
                                          ▲
 Stress Jobs ──(Java agent)──────────────┘
                                          ▲
+Spark JVMs ──(Java agent)──────────────┘
+                                         ▲
 All Processes ──(eBPF agent)────────────┘
                                          │
                                          ▼
+                                    S3 storage
                                   Grafana (:3000)
                              Pyroscope datasource
                             + Profiling dashboard

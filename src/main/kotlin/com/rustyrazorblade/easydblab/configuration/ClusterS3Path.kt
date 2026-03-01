@@ -47,6 +47,7 @@ data class ClusterS3Path(
         private const val ENVIRONMENT_FILE = "environment.sh"
         private const val SETUP_INSTANCE_FILE = "setup_instance.sh"
         private const val TEMPO_DIR = "tempo"
+        private const val PYROSCOPE_DIR = "pyroscope"
         private const val VICTORIA_METRICS_DIR = "victoriametrics"
         private const val VICTORIA_LOGS_DIR = "victorialogs"
 
@@ -242,6 +243,13 @@ data class ClusterS3Path(
      * @return Path: s3://bucket/tempo
      */
     fun tempo(): ClusterS3Path = resolve(TEMPO_DIR)
+
+    /**
+     * Path for Pyroscope profile storage.
+     *
+     * @return Path: s3://bucket/pyroscope
+     */
+    fun pyroscope(): ClusterS3Path = resolve(PYROSCOPE_DIR)
 
     /**
      * Path for K3s kubeconfig file.

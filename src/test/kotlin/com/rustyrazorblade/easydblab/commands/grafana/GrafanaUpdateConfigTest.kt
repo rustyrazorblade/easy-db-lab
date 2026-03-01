@@ -126,6 +126,8 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
         whenever(mockK8sService.applyResource(any(), any<HasMetadata>())).thenReturn(Result.success(Unit))
         whenever(mockDashboardService.uploadDashboards(any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.rolloutRestartDeployment(any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.rolloutRestartDaemonSet(any(), any(), any())).thenReturn(Result.success(Unit))
 
         val command = GrafanaUpdateConfig()
         command.execute()
@@ -133,6 +135,10 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
         // Verify Fabric8 resources were applied (all builders produce multiple resources)
         verify(mockK8sService, atLeastOnce()).applyResource(any(), any<HasMetadata>())
         verify(mockDashboardService).uploadDashboards(any())
+
+        // Verify observability workloads were restarted
+        verify(mockK8sService, atLeastOnce()).rolloutRestartDeployment(any(), any(), any())
+        verify(mockK8sService, atLeastOnce()).rolloutRestartDaemonSet(any(), any(), any())
     }
 
     @Test

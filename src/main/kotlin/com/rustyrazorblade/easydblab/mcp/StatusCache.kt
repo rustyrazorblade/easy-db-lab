@@ -371,6 +371,8 @@ class StatusCache(
                     clickhouse = s3Path.clickhouse().toString(),
                     spark = s3Path.spark().toString(),
                     emrLogs = s3Path.emrLogs().toString(),
+                    tempo = s3Path.tempo().toString(),
+                    pyroscope = s3Path.pyroscope().toString(),
                 ),
         )
     }

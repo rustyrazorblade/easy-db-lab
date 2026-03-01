@@ -19,6 +19,7 @@ import com.rustyrazorblade.easydblab.Constants
  * @property additionalSecurityGroups Additional security groups to attach to EMR instances
  *                                    (needed for EMR to access other EC2 instances like Cassandra)
  * @property tags Tags to apply to the cluster
+ * @property configurations EMR configurations/classifications (e.g., spark-defaults, spark-env)
  */
 data class EMRClusterConfig(
     val clusterName: String,
@@ -35,6 +36,7 @@ data class EMRClusterConfig(
     val additionalSecurityGroups: List<String> = emptyList(),
     val tags: Map<String, String>,
     val bootstrapActions: List<BootstrapAction> = emptyList(),
+    val configurations: List<EMRConfiguration> = emptyList(),
 )
 
 /**
@@ -48,6 +50,18 @@ data class BootstrapAction(
     val name: String,
     val scriptS3Path: String,
     val args: List<String> = emptyList(),
+)
+
+/**
+ * An EMR classification configuration (e.g., spark-defaults, spark-env).
+ *
+ * @property classification The classification name (e.g., "spark-defaults")
+ * @property properties Key-value configuration properties
+ */
+data class EMRConfiguration(
+    val classification: String,
+    val properties: Map<String, String> = emptyMap(),
+    val configurations: List<EMRConfiguration> = emptyList(),
 )
 
 /**

@@ -36,12 +36,23 @@ class TemplateService(
             "CONTROL_NODE_IP" to (controlHost?.privateIp ?: ""),
             "METRICS_FILTER_ID" to buildMetricsFilterId(state),
             "CLUSTER_S3_PREFIX" to buildClusterPrefix(state),
+            "PYROSCOPE_STORAGE_PREFIX" to buildPyroscopeStoragePrefix(state),
         )
     }
 
     private fun buildMetricsFilterId(state: ClusterState): String = state.metricsConfigId()
 
     private fun buildClusterPrefix(state: ClusterState): String = state.clusterPrefix()
+
+    /**
+     * Builds a flat storage prefix for Pyroscope (no forward slashes allowed).
+     * Converts "clusters/name-id" to "pyroscope.name-id".
+     */
+    private fun buildPyroscopeStoragePrefix(state: ClusterState): String {
+        val name = state.initConfig?.name ?: "cluster"
+        val id = state.clusterId
+        return "pyroscope.$name-$id"
+    }
 
     /**
      * Creates a [Template] from a string.

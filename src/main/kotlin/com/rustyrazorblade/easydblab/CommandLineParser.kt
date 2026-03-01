@@ -8,7 +8,6 @@ import com.rustyrazorblade.easydblab.commands.Commands
 import com.rustyrazorblade.easydblab.commands.ConfigureAWS
 import com.rustyrazorblade.easydblab.commands.ConfigureAxonOps
 import com.rustyrazorblade.easydblab.commands.Down
-import com.rustyrazorblade.easydblab.commands.Exec
 import com.rustyrazorblade.easydblab.commands.Hosts
 import com.rustyrazorblade.easydblab.commands.Init
 import com.rustyrazorblade.easydblab.commands.Ip
@@ -26,6 +25,7 @@ import com.rustyrazorblade.easydblab.commands.Version
 import com.rustyrazorblade.easydblab.commands.aws.Aws
 import com.rustyrazorblade.easydblab.commands.cassandra.Cassandra
 import com.rustyrazorblade.easydblab.commands.clickhouse.ClickHouse
+import com.rustyrazorblade.easydblab.commands.exec.Exec
 import com.rustyrazorblade.easydblab.commands.grafana.Grafana
 import com.rustyrazorblade.easydblab.commands.logs.Logs
 import com.rustyrazorblade.easydblab.commands.metrics.Metrics

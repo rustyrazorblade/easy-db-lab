@@ -135,6 +135,7 @@ class K8sServiceIntegrationTest {
                 .addToData("control_node_ip", "10.0.0.1")
                 .addToData("aws_region", "us-west-2")
                 .addToData("s3_bucket", "test-bucket")
+                .addToData("cluster_s3_prefix", "clusters/test-test123")
                 .addToData("cluster_name", "test")
                 .build()
         client.resource(clusterConfig).forceConflicts().serverSideApply()
@@ -204,10 +205,6 @@ class K8sServiceIntegrationTest {
                 "-out /opt/registry/certs/registry.crt -days 1 -nodes -subj '/CN=registry'",
         )
 
-        // Pyroscope data dir needs correct ownership (UID 10001)
-        k3s.execInContainer("mkdir", "-p", "/mnt/db1/pyroscope")
-        k3s.execInContainer("chown", "-R", "10001:10001", "/mnt/db1/pyroscope")
-
         // Data directories for Victoria (images run as non-root, need write access)
         k3s.execInContainer("mkdir", "-p", "/mnt/db1/victoriametrics")
         k3s.execInContainer("chmod", "777", "/mnt/db1/victoriametrics")
@@ -228,6 +225,9 @@ class K8sServiceIntegrationTest {
         val resources = OtelManifestBuilder(templateService).buildAllResources()
         applyAndVerify(resources)
 
+        assertServiceAccountExists("otel-collector")
+        assertClusterRoleExists("otel-collector")
+        assertClusterRoleBindingExists("otel-collector")
         assertConfigMapExists("otel-collector-config", "otel-collector-config.yaml")
         assertDaemonSetExists("otel-collector")
     }
@@ -431,6 +431,63 @@ class K8sServiceIntegrationTest {
     }
 
     // -----------------------------------------------------------------------
+    // Phase 3b: Rollout restart
+    // -----------------------------------------------------------------------
+
+    @Test
+    @Order(35)
+    fun `should rollout restart a deployment without error`() {
+        // registry is a simple deployment that should be running at this point
+        val result =
+            runCatching {
+                client
+                    .apps()
+                    .deployments()
+                    .inNamespace(DEFAULT_NAMESPACE)
+                    .withName("registry")
+                    .rolling()
+                    .restart()
+            }
+        assertThat(result.isSuccess)
+            .withFailMessage("Rollout restart of Deployment/registry failed: ${result.exceptionOrNull()?.message}")
+            .isTrue()
+    }
+
+    @Test
+    @Order(36)
+    fun `should rollout restart a daemonset without error`() {
+        val result =
+            runCatching {
+                client
+                    .apps()
+                    .daemonSets()
+                    .inNamespace(DEFAULT_NAMESPACE)
+                    .withName("otel-collector")
+                    .edit { ds ->
+                        val annotations =
+                            ds.spec
+                                ?.template
+                                ?.metadata
+                                ?.annotations
+                                ?.toMutableMap()
+                                ?: mutableMapOf()
+                        annotations["kubectl.kubernetes.io/restartedAt"] =
+                            java.time.Instant
+                                .now()
+                                .toString()
+                        ds.spec
+                            ?.template
+                            ?.metadata
+                            ?.annotations = annotations
+                        ds
+                    }
+            }
+        assertThat(result.isSuccess)
+            .withFailMessage("Rollout restart of DaemonSet/otel-collector failed: ${result.exceptionOrNull()?.message}")
+            .isTrue()
+    }
+
+    // -----------------------------------------------------------------------
     // Phase 4: Image pull, resource limits, and structural checks
     // -----------------------------------------------------------------------
 
@@ -556,6 +613,36 @@ class K8sServiceIntegrationTest {
                 .withName(name)
                 .get()
         assertThat(ds).withFailMessage("DaemonSet '$name' not found").isNotNull
+    }
+
+    private fun assertServiceAccountExists(name: String) {
+        val sa =
+            client
+                .serviceAccounts()
+                .inNamespace(DEFAULT_NAMESPACE)
+                .withName(name)
+                .get()
+        assertThat(sa).withFailMessage("ServiceAccount '$name' not found").isNotNull
+    }
+
+    private fun assertClusterRoleExists(name: String) {
+        val cr =
+            client
+                .rbac()
+                .clusterRoles()
+                .withName(name)
+                .get()
+        assertThat(cr).withFailMessage("ClusterRole '$name' not found").isNotNull
+    }
+
+    private fun assertClusterRoleBindingExists(name: String) {
+        val crb =
+            client
+                .rbac()
+                .clusterRoleBindings()
+                .withName(name)
+                .get()
+        assertThat(crb).withFailMessage("ClusterRoleBinding '$name' not found").isNotNull
     }
 
     /**

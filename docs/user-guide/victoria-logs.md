@@ -129,7 +129,37 @@ with-proxy curl "http://control0:9428/select/logsql/query?query=source:cassandra
 
 ### Using Grafana
 
-Victoria Logs is configured as a datasource in Grafana:
+Victoria Logs is configured as a datasource in Grafana. You can use it in two ways:
+
+#### Log Investigation Dashboard
+
+The **Log Investigation** dashboard is designed for interactive log analysis during investigations. Access it at Grafana → Dashboards → Log Investigation.
+
+**Filter variables** (dropdowns at the top):
+
+| Filter | Options | Description |
+|--------|---------|-------------|
+| Node Role | All, db, app, control | Filter by server type |
+| Source | All, cassandra, clickhouse, system, tool-runner | Filter by log source |
+| Level | All, Error, Warning, Info, Debug | Filter by log severity |
+| Search | (text input) | Free-text search across log messages |
+| Filters | (ad-hoc) | Add arbitrary field:value filters (e.g., `host = db0`) |
+
+**Panels:**
+
+- **Log Volume** — time-series bar chart showing log count over time, broken down by source. Helps identify spikes and anomalies at a glance.
+- **Logs** — scrollable log viewer with timestamps, source labels, and expandable log details. Click any log entry to see all available fields.
+
+**Tips:**
+
+- Use the **ad-hoc Filters** variable to filter by `host`, `unit`, `component`, or any other field without needing a dedicated dropdown.
+- The dashboard auto-refreshes every 10 seconds by default. Adjust or disable via the refresh picker in the top-right corner.
+- Combine multiple filters to narrow down — e.g., set Node Role to `db`, Source to `cassandra`, Level to `Error` to see only Cassandra errors on database nodes.
+- To search for exec job logs, set Source to `tool-runner` and use the Search box for the job name.
+
+#### Explore Mode
+
+For ad-hoc queries beyond what the dashboard provides:
 
 1. Access Grafana at `http://control0:3000` (via SOCKS proxy)
 2. Navigate to Explore

@@ -17,7 +17,7 @@ echo "Installing fio from apt..."
 
 # Install fio from Ubuntu repository
 sudo DEBIAN_FRONTEND=noninteractive apt update
-sudo DEBIAN_FRONTEND=noninteractive apt install -y fio
+sudo DEBIAN_FRONTEND=noninteractive apt install -y fio fatrace
 
 # Verify installation
 echo "Verifying fio installation..."

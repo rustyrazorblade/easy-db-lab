@@ -88,7 +88,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "100 - (avg by(host_name) (rate(system_cpu_time_seconds_total{state=\"idle\"}[1m])) * 100)",
+          "expr": "100 - (avg by(host_name) (rate(system_cpu_time_seconds_total{state=\"idle\", host_name=~\"$hostname\"}[1m])) * 100)",
           "legendFormat": "{{host_name}}",
           "refId": "A"
         }
@@ -175,7 +175,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "system_memory_usage_bytes{state=\"used\"}",
+          "expr": "system_memory_usage_bytes{state=\"used\", host_name=~\"$hostname\"}",
           "legendFormat": "{{host_name}}",
           "refId": "A"
         }
@@ -262,7 +262,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "rate(system_disk_io_bytes_total{direction=\"read\"}[1m])",
+          "expr": "rate(system_disk_io_bytes_total{direction=\"read\", host_name=~\"$hostname\"}[1m])",
           "legendFormat": "{{host_name}} read",
           "refId": "A"
         },
@@ -271,7 +271,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "rate(system_disk_io_bytes_total{direction=\"write\"}[1m])",
+          "expr": "rate(system_disk_io_bytes_total{direction=\"write\", host_name=~\"$hostname\"}[1m])",
           "legendFormat": "{{host_name}} write",
           "refId": "B"
         }
@@ -358,7 +358,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "rate(system_network_io_bytes_total{direction=\"receive\"}[1m])",
+          "expr": "rate(system_network_io_bytes_total{direction=\"receive\", host_name=~\"$hostname\"}[1m])",
           "legendFormat": "{{host_name}} rx",
           "refId": "A"
         },
@@ -367,7 +367,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "rate(system_network_io_bytes_total{direction=\"transmit\"}[1m])",
+          "expr": "rate(system_network_io_bytes_total{direction=\"transmit\", host_name=~\"$hostname\"}[1m])",
           "legendFormat": "{{host_name}} tx",
           "refId": "B"
         }
@@ -454,7 +454,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "system_cpu_load_average_1m",
+          "expr": "system_cpu_load_average_1m{host_name=~\"$hostname\"}",
           "legendFormat": "{{host_name}} 1m",
           "refId": "A"
         },
@@ -463,7 +463,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "system_cpu_load_average_5m",
+          "expr": "system_cpu_load_average_5m{host_name=~\"$hostname\"}",
           "legendFormat": "{{host_name}} 5m",
           "refId": "B"
         },
@@ -472,7 +472,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "system_cpu_load_average_15m",
+          "expr": "system_cpu_load_average_15m{host_name=~\"$hostname\"}",
           "legendFormat": "{{host_name}} 15m",
           "refId": "C"
         }
@@ -559,7 +559,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "system_memory_usage_bytes{state=\"used\"}",
+          "expr": "system_memory_usage_bytes{state=\"used\", host_name=~\"$hostname\"}",
           "legendFormat": "{{host_name}} used",
           "refId": "A"
         },
@@ -568,7 +568,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "system_memory_usage_bytes{state=\"buffered\"}",
+          "expr": "system_memory_usage_bytes{state=\"buffered\", host_name=~\"$hostname\"}",
           "legendFormat": "{{host_name}} buffered",
           "refId": "B"
         },
@@ -577,7 +577,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "system_memory_usage_bytes{state=\"cached\"}",
+          "expr": "system_memory_usage_bytes{state=\"cached\", host_name=~\"$hostname\"}",
           "legendFormat": "{{host_name}} cached",
           "refId": "C"
         },
@@ -586,7 +586,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "system_memory_usage_bytes{state=\"free\"}",
+          "expr": "system_memory_usage_bytes{state=\"free\", host_name=~\"$hostname\"}",
           "legendFormat": "{{host_name}} free",
           "refId": "D"
         },
@@ -595,7 +595,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "system_memory_usage_bytes{state=\"slab_reclaimable\"}",
+          "expr": "system_memory_usage_bytes{state=\"slab_reclaimable\", host_name=~\"$hostname\"}",
           "legendFormat": "{{host_name}} slab",
           "refId": "E"
         }
@@ -682,7 +682,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "100 * system_filesystem_usage_bytes{state=\"used\",mountpoint=~\"/mnt/.*|/\"} / (system_filesystem_usage_bytes{state=\"used\",mountpoint=~\"/mnt/.*|/\"} + system_filesystem_usage_bytes{state=\"free\",mountpoint=~\"/mnt/.*|/\"})",
+          "expr": "100 * system_filesystem_usage_bytes{state=\"used\", host_name=~\"$hostname\", mountpoint=~\"/mnt/.*|/\"} / (system_filesystem_usage_bytes{state=\"used\", host_name=~\"$hostname\", mountpoint=~\"/mnt/.*|/\"} + system_filesystem_usage_bytes{state=\"free\", host_name=~\"$hostname\", mountpoint=~\"/mnt/.*|/\"})",
           "legendFormat": "{{host_name}} {{mountpoint}}",
           "refId": "A"
         }
@@ -769,7 +769,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "rate(system_disk_operations_total{direction=\"read\"}[1m])",
+          "expr": "rate(system_disk_operations_total{direction=\"read\", host_name=~\"$hostname\"}[1m])",
           "legendFormat": "{{host_name}} read",
           "refId": "A"
         },
@@ -778,7 +778,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "rate(system_disk_operations_total{direction=\"write\"}[1m])",
+          "expr": "rate(system_disk_operations_total{direction=\"write\", host_name=~\"$hostname\"}[1m])",
           "legendFormat": "{{host_name}} write",
           "refId": "B"
         }
@@ -865,7 +865,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "rate(system_network_packets_total{direction=\"receive\"}[1m])",
+          "expr": "rate(system_network_packets_total{direction=\"receive\", host_name=~\"$hostname\"}[1m])",
           "legendFormat": "{{host_name}} rx",
           "refId": "A"
         },
@@ -874,7 +874,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "rate(system_network_packets_total{direction=\"transmit\"}[1m])",
+          "expr": "rate(system_network_packets_total{direction=\"transmit\", host_name=~\"$hostname\"}[1m])",
           "legendFormat": "{{host_name}} tx",
           "refId": "B"
         }
@@ -961,7 +961,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "rate(system_network_errors_total{direction=\"receive\"}[1m])",
+          "expr": "rate(system_network_errors_total{direction=\"receive\", host_name=~\"$hostname\"}[1m])",
           "legendFormat": "{{host_name}} rx errors",
           "refId": "A"
         },
@@ -970,7 +970,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "rate(system_network_errors_total{direction=\"transmit\"}[1m])",
+          "expr": "rate(system_network_errors_total{direction=\"transmit\", host_name=~\"$hostname\"}[1m])",
           "legendFormat": "{{host_name}} tx errors",
           "refId": "B"
         },
@@ -979,7 +979,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "rate(system_network_dropped_total{direction=\"receive\"}[1m])",
+          "expr": "rate(system_network_dropped_total{direction=\"receive\", host_name=~\"$hostname\"}[1m])",
           "legendFormat": "{{host_name}} rx drops",
           "refId": "C"
         },
@@ -988,7 +988,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "rate(system_network_dropped_total{direction=\"transmit\"}[1m])",
+          "expr": "rate(system_network_dropped_total{direction=\"transmit\", host_name=~\"$hostname\"}[1m])",
           "legendFormat": "{{host_name}} tx drops",
           "refId": "D"
         }
@@ -1075,7 +1075,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "system_processes_count{status=\"running\"}",
+          "expr": "system_processes_count{status=\"running\", host_name=~\"$hostname\"}",
           "legendFormat": "{{host_name}} running",
           "refId": "A"
         },
@@ -1084,7 +1084,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "system_processes_count{status=\"blocked\"}",
+          "expr": "system_processes_count{status=\"blocked\", host_name=~\"$hostname\"}",
           "legendFormat": "{{host_name}} blocked",
           "refId": "B"
         }
@@ -1171,7 +1171,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "system_paging_usage_bytes{state=\"used\"}",
+          "expr": "system_paging_usage_bytes{state=\"used\", host_name=~\"$hostname\"}",
           "legendFormat": "{{host_name}} used",
           "refId": "A"
         },
@@ -1180,7 +1180,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "system_paging_usage_bytes{state=\"free\"}",
+          "expr": "system_paging_usage_bytes{state=\"free\", host_name=~\"$hostname\"}",
           "legendFormat": "{{host_name}} free",
           "refId": "B"
         }
@@ -1267,7 +1267,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "rate(system_paging_operations_total{direction=\"page_in\"}[1m])",
+          "expr": "rate(system_paging_operations_total{direction=\"page_in\", host_name=~\"$hostname\"}[1m])",
           "legendFormat": "{{host_name}} page in",
           "refId": "A"
         },
@@ -1276,7 +1276,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "rate(system_paging_operations_total{direction=\"page_out\"}[1m])",
+          "expr": "rate(system_paging_operations_total{direction=\"page_out\", host_name=~\"$hostname\"}[1m])",
           "legendFormat": "{{host_name}} page out",
           "refId": "B"
         }
@@ -1309,6 +1309,54 @@
         "regex": "",
         "skipUrlSync": false,
         "type": "datasource"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "definition": "label_values(system_cpu_time_seconds_total, node_role)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Service",
+        "multi": true,
+        "name": "service",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(system_cpu_time_seconds_total, node_role)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "definition": "label_values(system_cpu_time_seconds_total{node_role=~\"$service\"}, host_name)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Hostname",
+        "multi": true,
+        "name": "hostname",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(system_cpu_time_seconds_total{node_role=~\"$service\"}, host_name)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
       }
     ]
   },
@@ -1318,7 +1366,7 @@
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "__CLUSTER_NAME__ - System Overview",
+  "title": "System Overview",
   "uid": "system-overview",
   "version": 1,
   "weekStart": ""

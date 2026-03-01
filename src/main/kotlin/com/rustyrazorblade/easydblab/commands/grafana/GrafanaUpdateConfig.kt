@@ -96,6 +96,36 @@ class GrafanaUpdateConfig : PicoBaseCommand() {
         dashboardService.uploadDashboards(controlNode).getOrElse { exception ->
             error("Failed to upload dashboards: ${exception.message}")
         }
+
+        // Restart all observability workloads so they pick up new ConfigMaps
+        restartObservabilityWorkloads(controlNode)
+    }
+
+    private fun restartObservabilityWorkloads(controlNode: ClusterHost) {
+        eventBus.emit(Event.Grafana.WorkloadsRestarting)
+
+        val deployments = listOf("victoria-metrics", "victoria-logs", "tempo", "pyroscope", "grafana")
+        val daemonSets = listOf("otel-collector", "beyla", "ebpf-exporter", "pyroscope-ebpf")
+
+        for (name in deployments) {
+            k8sService
+                .rolloutRestartDeployment(controlNode, name)
+                .onSuccess {
+                    eventBus.emit(Event.Grafana.WorkloadRestarted("Deployment", name))
+                }.onFailure { exception ->
+                    log.warn { "Failed to restart Deployment/$name: ${exception.message}" }
+                }
+        }
+
+        for (name in daemonSets) {
+            k8sService
+                .rolloutRestartDaemonSet(controlNode, name)
+                .onSuccess {
+                    eventBus.emit(Event.Grafana.WorkloadRestarted("DaemonSet", name))
+                }.onFailure { exception ->
+                    log.warn { "Failed to restart DaemonSet/$name: ${exception.message}" }
+                }
+        }
     }
 
     private fun applyFabric8Resources(
@@ -140,6 +170,7 @@ class GrafanaUpdateConfig : PicoBaseCommand() {
                 "control_node_ip" to controlNode.privateIp,
                 "aws_region" to region,
                 "s3_bucket" to (clusterState.s3Bucket ?: ""),
+                "cluster_s3_prefix" to clusterState.clusterPrefix(),
                 "cluster_name" to (clusterState.initConfig?.name ?: "cluster"),
             )
 

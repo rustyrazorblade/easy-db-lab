@@ -727,8 +727,9 @@ class AWS(
                 s3Client
                     .getBucketLifecycleConfiguration(
                         GetBucketLifecycleConfigurationRequest.builder().bucket(bucketName).build(),
-                    ).rules()
-                    .filter { it.filter()?.prefix() != prefix }
+                    )?.rules()
+                    ?.filter { it.filter()?.prefix() != prefix }
+                    ?: emptyList()
             } catch (e: S3Exception) {
                 if (e.statusCode() == Constants.HttpStatus.NOT_FOUND) {
                     emptyList()

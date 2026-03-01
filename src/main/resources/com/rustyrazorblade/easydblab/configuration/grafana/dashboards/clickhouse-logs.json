@@ -134,12 +134,12 @@
     ]
   },
   "time": {
-    "from": "now-15m",
+    "from": "now-1h",
     "to": "now"
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "__CLUSTER_NAME__ - ClickHouse Logs",
+  "title": "ClickHouse Logs",
   "uid": "clickhouse-logs",
   "version": 1,
   "weekStart": ""

@@ -637,12 +637,12 @@
     ]
   },
   "time": {
-    "from": "now-6h",
+    "from": "now-1h",
     "to": "now"
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "__CLUSTER_NAME__ - OpenSearch Overview",
+  "title": "OpenSearch Overview",
   "uid": "opensearch-overview",
   "version": 1,
   "weekStart": ""

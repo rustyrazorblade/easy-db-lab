@@ -58,6 +58,21 @@ Traces include the following resource attributes:
 - `service.version`: Application version
 - `host.name`: Local hostname
 
+## Node Role Labeling
+
+The OTel Collector on cluster nodes uses the `k8sattributes` processor to read the K8s node label `type` and set it as the `node_role` resource attribute. This label is used by Grafana dashboards (e.g., System Overview) for hostname and service filtering.
+
+| Node Type | K8s Label | `node_role` Value | Source |
+|-----------|-----------|-------------------|--------|
+| Cassandra | `type=db` | `db` | K3s agent config |
+| Stress | `type=app` | `app` | K3s agent config |
+| Control | `type=control` | `control` | `Up` command node labeling |
+| Spark/EMR | N/A | `spark` | EMR OTel Collector `resource/role` processor |
+
+The `k8sattributes` processor runs in the `metrics/local` and `logs/local` pipelines only. Remote metrics arriving via OTLP (e.g., from Spark nodes) already carry `node_role` and are not modified.
+
+The processor requires RBAC access to the K8s API. The OTel Collector DaemonSet runs with a dedicated ServiceAccount (`otel-collector`) that has read-only access to pods and nodes.
+
 ## Metrics
 
 The following metrics are exported:
@@ -87,26 +102,54 @@ Short-lived stress commands (`list`, `info`, `fields`) do not include the sideca
 
 ## Spark JVM Instrumentation
 
-EMR Spark jobs are auto-instrumented with the OpenTelemetry Java Agent (v2.25.0), configured via an EMR bootstrap action. The agent is downloaded to each EMR node and activated through `spark.driver.extraJavaOptions` and `spark.executor.extraJavaOptions`.
+EMR Spark jobs are auto-instrumented with the OpenTelemetry Java Agent (v2.25.0) and Pyroscope Java Agent (v2.3.0), both installed via an EMR bootstrap action. The OTel agent is activated through `spark.driver.extraJavaOptions` and `spark.executor.extraJavaOptions`.
 
-The agent sends logs, metrics, and traces via OTLP to the control node's OTel Collector. Each Spark job's telemetry is tagged with `service.name=spark-<job-name>` for easy filtering.
+Each EMR node also runs an OTel Collector as a systemd service, collecting host metrics (CPU, memory, disk, network) and receiving OTLP from the Java agents. The collector forwards all telemetry to the control node's OTel Collector via OTLP gRPC.
 
 Key configuration:
-- **Agent JAR**: Downloaded by bootstrap action to `/home/hadoop/opentelemetry-javaagent.jar`
-- **Export protocol**: OTLP/gRPC to `http://<control-node-ip>:4317`
+- **OTel Agent JAR**: Downloaded by bootstrap action to `/opt/otel/opentelemetry-javaagent.jar`
+- **Pyroscope Agent JAR**: Downloaded by bootstrap action to `/opt/pyroscope/pyroscope.jar`
+- **OTel Collector**: Installed at `/opt/otel/otelcol-contrib`, runs as `otel-collector.service`
+- **Export protocol**: OTLP/gRPC to `localhost:4317` (local collector), which forwards to control node
 - **Logs exporter**: OTLP (captures JVM log output)
 - **Service name**: `spark-<job-name>` (set per job)
+- **Profiling**: CPU, allocation (512k threshold), lock (10ms threshold) profiles in JFR format sent to Pyroscope server
+
+## Cassandra Sidecar Instrumentation
+
+The Cassandra Sidecar process is instrumented with the OpenTelemetry Java Agent and Pyroscope Java Agent, matching the pattern used for Cassandra itself. Both agents are loaded via `-javaagent` flags set in `/etc/default/cassandra-sidecar`, which is written by the `setup-instances` command.
+
+Key configuration:
+- **OTel Agent JAR**: Installed by Packer to `/usr/local/otel/opentelemetry-javaagent.jar`
+- **Pyroscope Agent JAR**: Installed by Packer to `/usr/local/pyroscope/pyroscope.jar`
+- **Service name**: `cassandra-sidecar` (both OTel and Pyroscope)
+- **Export endpoint**: `localhost:4317` (local OTel Collector DaemonSet)
+- **Profiling**: CPU, allocation (512k threshold), lock (10ms threshold) profiles sent to Pyroscope server
+- **Activation**: Gated on `/etc/default/cassandra-sidecar` — the systemd `EnvironmentFile=-` directive makes it optional, so the sidecar starts normally without instrumentation if the file doesn't exist
+
+## Tool Runner Log Collection
+
+Commands run via `exec run` are executed through `systemd-run`, which captures stdout and stderr to log files under `/var/log/easydblab/tools/`. The OTel Collector's `filelog/tools` receiver watches this directory and ships log entries to VictoriaLogs with the attribute `source: tool-runner`.
+
+This provides automatic log capture for ad-hoc debugging tools (e.g., `inotifywait`, `tcpdump`, `strace`) run during investigations. Logs are queryable in VictoriaLogs and preserved in S3 backups via `logs backup`.
+
+Key details:
+- **Log directory**: `/var/log/easydblab/tools/`
+- **Source attribute**: `tool-runner` (for filtering in VictoriaLogs queries)
+- **Foreground commands**: Output displayed after completion, also logged to file
+- **Background commands** (`--bg`): Output logged to file only, tool runs as a systemd transient unit
 
 ## YACE CloudWatch Scrape
 
 YACE (Yet Another CloudWatch Exporter) runs on the control node and scrapes AWS CloudWatch metrics for services used by the cluster. It uses tag-based auto-discovery with the `easy_cass_lab=1` tag to find relevant resources.
 
 YACE scrapes metrics for:
-- **EMR** — cluster, instance group, and node metrics
 - **S3** — bucket request/byte counts
 - **EBS** — volume read/write ops and latency
 - **EC2** — instance CPU, network, disk
 - **OpenSearch** — domain health, indexing, search metrics
+
+EMR metrics are collected directly via OTel Collectors on Spark nodes (see Spark JVM Instrumentation above).
 
 YACE exposes scraped metrics as Prometheus-compatible metrics on port 5001, which are then scraped by the OTel Collector and forwarded to VictoriaMetrics. This replaces the previous CloudWatch datasource in Grafana with a Prometheus-based approach, giving dashboards access to CloudWatch metrics through VictoriaMetrics queries.
 

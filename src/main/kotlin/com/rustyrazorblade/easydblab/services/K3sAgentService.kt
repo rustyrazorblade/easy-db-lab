@@ -209,6 +209,7 @@ class DefaultK3sAgentService(
             this::class.java.getResourceAsStream(resourcePath)
                 ?: error("Script not found: $resourcePath")
 
+        val remoteFilename = remotePath.substringAfterLast("/")
         val tempFile = Files.createTempFile("k3s-", "-script.sh")
         try {
             scriptContent.use { input ->
@@ -216,8 +217,8 @@ class DefaultK3sAgentService(
                     input.copyTo(output)
                 }
             }
-            remoteOps.upload(host, tempFile, remotePath)
-            remoteOps.executeRemotely(host, "sudo chmod +x $remotePath", output = false)
+            remoteOps.upload(host, tempFile, remoteFilename)
+            remoteOps.executeRemotely(host, "sudo mv $remoteFilename $remotePath && sudo chmod +x $remotePath", output = false)
         } finally {
             Files.deleteIfExists(tempFile)
         }

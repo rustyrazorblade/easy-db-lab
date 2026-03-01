@@ -1,7 +1,10 @@
 storage:
-  backend: filesystem
-  filesystem:
-    dir: /data
+  backend: s3
+  prefix: __PYROSCOPE_STORAGE_PREFIX__
+  s3:
+    bucket_name: __BUCKET_NAME__
+    endpoint: s3.__AWS_REGION__.amazonaws.com
+    region: __AWS_REGION__
 
 self_profiling:
   disable_push: true

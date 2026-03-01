@@ -210,7 +210,6 @@ object Constants {
         const val OTEL_HEALTH_PORT = 13133
         const val TEMPO_OTLP_GRPC_PORT = 4320
         const val TEMPO_OTLP_HTTP_PORT = 4321
-        const val YACE_PORT = 5001
     }
 
     // OpenSearch configuration
@@ -251,6 +250,24 @@ object Constants {
         const val DOWNLOAD_URL =
             "https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v$VERSION/opentelemetry-javaagent.jar"
         const val INSTALL_PATH = "/opt/otel/opentelemetry-javaagent.jar"
+    }
+
+    // OTel Collector configuration (for EMR Spark nodes)
+    object OtelCollector {
+        const val VERSION = "0.120.0"
+        const val DOWNLOAD_URL =
+            "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v$VERSION/otelcol-contrib_${VERSION}_linux_amd64.tar.gz"
+        const val INSTALL_PATH = "/opt/otel/otelcol-contrib"
+        const val CONFIG_PATH = "/opt/otel/config.yaml"
+        const val SERVICE_NAME = "otel-collector"
+    }
+
+    // Pyroscope Java Agent configuration (for EMR Spark JVMs)
+    object PyroscopeJavaAgent {
+        const val VERSION = "2.3.0"
+        const val DOWNLOAD_URL =
+            "https://github.com/grafana/pyroscope-java/releases/download/v$VERSION/pyroscope.jar"
+        const val INSTALL_PATH = "/opt/pyroscope/pyroscope.jar"
     }
 
     // Cassandra stress testing configuration

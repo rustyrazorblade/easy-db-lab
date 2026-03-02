@@ -71,9 +71,9 @@ class SSHClient(
 
             // Create connection for this host
             if (!secret) {
-                eventBus.emit(Event.Ssh.ExecutingCommand(command))
+                log.debug { "Executing remote command: $command" }
             } else {
-                eventBus.emit(Event.Ssh.ExecutingHiddenCommand)
+                log.debug { "Executing remote command: [hidden]" }
             }
 
             val stderrStream = ByteArrayOutputStream()

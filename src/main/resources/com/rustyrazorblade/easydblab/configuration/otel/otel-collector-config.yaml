@@ -129,10 +129,6 @@ processors:
   batch:
     timeout: 10s
     send_batch_size: 1024
-  memory_limiter:
-    check_interval: 1s
-    limit_mib: 256
-    spike_limit_mib: 64
   resourcedetection:
     detectors: [system]
     system:
@@ -177,22 +173,22 @@ service:
     # Local metrics — resourcedetection stamps host.name, k8sattributes adds node_role from node label
     metrics/local:
       receivers: [hostmetrics, prometheus]
-      processors: [memory_limiter, resourcedetection, k8sattributes, batch]
+      processors: [resourcedetection, k8sattributes, batch]
       exporters: [prometheusremotewrite]
     # Remote metrics via OTLP (e.g., Spark nodes) — already have host.name and node_role
     metrics/otlp:
       receivers: [otlp]
-      processors: [memory_limiter, batch]
+      processors: [batch]
       exporters: [prometheusremotewrite]
     logs/local:
       receivers: [filelog/system, filelog/tools, filelog/cassandra, filelog/clickhouse-server, filelog/clickhouse-keeper]
-      processors: [memory_limiter, resourcedetection, k8sattributes, batch]
+      processors: [resourcedetection, k8sattributes, batch]
       exporters: [otlphttp/victorialogs]
     logs/otlp:
       receivers: [otlp]
-      processors: [memory_limiter, batch]
+      processors: [batch]
       exporters: [otlphttp/victorialogs]
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, batch]
+      processors: [batch]
       exporters: [otlp/tempo]

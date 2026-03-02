@@ -36,33 +36,32 @@ class ExecRunTest {
     }
 
     @Test
-    fun `buildSystemdRunCommand constructs foreground command`() {
+    fun `buildSystemdRunCommand constructs foreground command with journal output`() {
         execRun.background = false
         val result =
             execRun.buildSystemdRunCommand(
                 "edl-exec-test",
-                "/var/log/easydblab/tools/test.log",
                 "ls /mnt/db1",
             )
         assertThat(result).contains("--wait")
         assertThat(result).contains("--unit=edl-exec-test")
-        assertThat(result).contains("StandardOutput=file:/var/log/easydblab/tools/test.log")
-        assertThat(result).contains("StandardError=file:/var/log/easydblab/tools/test.log")
+        assertThat(result).doesNotContain("StandardOutput")
+        assertThat(result).doesNotContain("StandardError")
         assertThat(result).endsWith("-- ls /mnt/db1")
     }
 
     @Test
-    fun `buildSystemdRunCommand constructs background command`() {
+    fun `buildSystemdRunCommand constructs background command with journal output`() {
         execRun.background = true
         val result =
             execRun.buildSystemdRunCommand(
                 "edl-exec-inotifywait",
-                "/var/log/easydblab/tools/inotifywait.log",
                 "inotifywait -m /mnt/db1",
             )
         assertThat(result).doesNotContain("--wait")
         assertThat(result).contains("--unit=edl-exec-inotifywait")
-        assertThat(result).contains("StandardOutput=file:/var/log/easydblab/tools/inotifywait.log")
+        assertThat(result).doesNotContain("StandardOutput")
+        assertThat(result).doesNotContain("StandardError")
         assertThat(result).endsWith("-- inotifywait -m /mnt/db1")
     }
 
@@ -72,7 +71,6 @@ class ExecRunTest {
         val result =
             execRun.buildSystemdRunCommand(
                 "edl-exec-test",
-                "/var/log/easydblab/tools/test.log",
                 "ls",
             )
         assertThat(result).startsWith("sudo systemd-run")

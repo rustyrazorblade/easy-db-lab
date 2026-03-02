@@ -201,8 +201,9 @@ See `spec/PYROSCOPE.md` for full architecture details and debugging steps.
 
 ## OTel Subpackage (`otel/`)
 
-- **`OtelManifestBuilder`** — builds OTel Collector ServiceAccount, ClusterRole, ClusterRoleBinding, ConfigMap, and DaemonSet. Runs on all nodes, collects host metrics, Prometheus scrapes, file-based logs (system, Cassandra, ClickHouse), journald, and OTLP. Uses `k8sattributes` processor to derive `node_role` from K8s node label `type` (db, app, control). RBAC grants read-only access to pods and nodes. Config uses OTel runtime env expansion (`${env:HOSTNAME}`), not `__KEY__` templates.
-- **Config resource** — `otel-collector-config.yaml` stored in `resources/.../configuration/otel/`.
+- **`OtelManifestBuilder`** — builds the main OTel Collector ServiceAccount, ClusterRole, ClusterRoleBinding, ConfigMap, and DaemonSet. Runs on all nodes, collects host metrics, Prometheus scrapes, file-based logs (system, Cassandra, ClickHouse), and OTLP. Uses `k8sattributes` processor to derive `node_role` from K8s node label `type` (db, app, control). RBAC grants read-only access to pods and nodes. Config uses OTel runtime env expansion (`${env:HOSTNAME}`), not `__KEY__` templates.
+- **`JournaldOtelManifestBuilder`** — builds a Fluent Bit DaemonSet (`fluent-bit-journald`) for systemd journal collection, isolated from the main OTel collector. Fluent Bit has a native systemd input plugin with journalctl compiled in, so no external binary is needed. Reads journal files directly from `/var/log/journal` (mounted read-only). Uses a `modify` filter to rename `HOSTNAME` → `host.name` and add `source: journald` for unified search with other log sources. Maps `MESSAGE` to OTLP body (`_msg` in VictoriaLogs) and `PRIORITY` to OTLP severity. Remaining journald fields become OTLP attributes. Forwards logs via OTLP HTTP to the main collector on `localhost:4318`. Health check on port 2020. Security context: `runAsUser: 0` with `DAC_READ_SEARCH` capability. Image: `fluent/fluent-bit:latest`.
+- **Config resources** — `otel-collector-config.yaml` (main collector) and `fluent-bit-journald.yaml` (journald collector) stored in `resources/.../configuration/otel/`.
 
 ## ebpf_exporter Subpackage (`ebpfexporter/`)
 

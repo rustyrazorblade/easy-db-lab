@@ -1,0 +1,33 @@
+service:
+  flush: 5
+  log_level: info
+  http_server: true
+  http_listen: 0.0.0.0
+  http_port: 2020
+
+pipeline:
+  inputs:
+    - name: systemd
+      tag: journald
+      path: /var/log/journal
+      read_from_tail: true
+      strip_underscores: true
+
+  filters:
+    - name: modify
+      match: "*"
+      rename:
+        - HOSTNAME host.name
+      add:
+        - source journald
+
+  outputs:
+    - name: opentelemetry
+      match: "*"
+      host: 127.0.0.1
+      port: 4318
+      logs_uri: /v1/logs
+      tls: off
+      logs_body_key: $MESSAGE
+      logs_severity_number_message_key: $PRIORITY
+      logs_body_key_attributes: true

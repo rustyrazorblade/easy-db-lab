@@ -165,7 +165,7 @@ step_init_cluster() {
         echo "=== EBS volumes enabled (gp3, 256GB) ==="
     fi
     local created_timestamp=$(date +%s)
-    local instance_type="${EASY_DB_LAB_INSTANCE_TYPE:-c5.2xlarge}"
+    local instance_type="${EASY_DB_LAB_INSTANCE_TYPE:-c5d.2xlarge}"
     easy-db-lab init -c 3 -i "$instance_type" test --clean --up -s 1 --tag "created=$created_timestamp" --cidr 10.14.0.0/20 $spark_opts $ebs_opts
 }
 

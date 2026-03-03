@@ -99,12 +99,12 @@ object ClusterConfigWriter {
         writer.appendLine("")
         writer.appendLine("if ! [ -f \$SSH_CONFIG ]; then ")
         writer.appendLine("  echo \"\$SSH_CONFIG does not exist. Setting it up...\"")
-        writer.appendLine("  identity_file=\$EASY_CASS_LAB_SSH_KEY")
+        writer.appendLine("  identity_file=\$EASY_DB_LAB_SSH_KEY")
         writer.appendLine("  if [ -z \$identity_file ]; then")
         writer.appendLine("    echo -n 'Path to Private key: '")
         writer.appendLine("    read -r identity_file")
         writer.appendLine(
-            "    echo \"add \${YELLOW}'export EASY_CASS_LAB_SSH_KEY=\$identity_file'\${NC} " +
+            "    echo \"add \${YELLOW}'export EASY_DB_LAB_SSH_KEY=\$identity_file'\${NC} " +
                 "to .bash_profile, .zsh, or similar\"",
         )
         writer.appendLine("  fi")

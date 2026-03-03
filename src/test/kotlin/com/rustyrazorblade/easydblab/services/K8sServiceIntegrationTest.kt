@@ -239,8 +239,8 @@ class K8sServiceIntegrationTest {
         val resources = JournaldOtelManifestBuilder(templateService).buildAllResources()
         applyAndVerify(resources)
 
-        assertConfigMapExists("otel-journald-config", "otel-journald-config.yaml")
-        assertDaemonSetExists("otel-journald")
+        assertConfigMapExists("fluent-bit-journald-config", "fluent-bit-journald.yaml")
+        assertDaemonSetExists("fluent-bit-journald")
     }
 
     @Test
@@ -413,15 +413,16 @@ class K8sServiceIntegrationTest {
         val problems = mutableListOf<String>()
 
         // ClickHouse Keeper/Server use required pod anti-affinity (one pod per node)
-        // and the K3s test has only 1 node, so 2 of 3 keeper pods will always be Pending
-        val clickHousePodPrefixes = listOf("clickhouse-keeper-", "clickhouse-")
+        // and the K3s test has only 1 node, so 2 of 3 keeper pods will always be Pending.
+        // Fluent Bit journald needs /var/log/journal which doesn't exist in K3s.
+        val pendingExclusions = listOf("clickhouse-keeper-", "clickhouse-", "fluent-bit-journald-")
 
         for (pod in allPods) {
             val podName = pod.metadata?.name ?: "unknown"
             val phase = pod.status?.phase
 
             // Pending means scheduling failed (missing volumes, affinity, etc.)
-            if (phase == "Pending" && clickHousePodPrefixes.none { podName.startsWith(it) }) {
+            if (phase == "Pending" && pendingExclusions.none { podName.startsWith(it) }) {
                 val conditions = pod.status?.conditions?.joinToString { "${it.type}=${it.status}: ${it.message}" }
                 problems.add("$podName is Pending: $conditions")
             }

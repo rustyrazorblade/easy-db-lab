@@ -140,7 +140,7 @@ object Constants {
     // AWS configuration
     object AWS {
         const val DEFAULT_CREDENTIALS_NAME = "awscredentials"
-        const val SSH_KEY_ENV = "EASY_CASS_LAB_SSH_KEY"
+        const val SSH_KEY_ENV = "EASY_DB_LAB_SSH_KEY"
 
         // AMI configuration
         const val AMI_PATTERN_TEMPLATE = "rustyrazorblade/images/easy-db-lab-cassandra-%s-*"

@@ -61,7 +61,7 @@ class ExecRun : PicoBaseCommand() {
     var parallel: Boolean = false
 
     override fun execute() {
-        val commandString = command.joinToString(" ")
+        val commandString = command.joinToString(" ") { it.shellQuote() }
 
         if (commandString.isBlank()) {
             eventBus.emit(Event.Command.EmptyCommand)
@@ -85,10 +85,9 @@ class ExecRun : PicoBaseCommand() {
         commandString: String,
     ) {
         val unitName = deriveUnitName(commandString)
-        val logFile = "/var/log/easydblab/tools/$unitName.log"
         val systemdUnit = "edl-exec-$unitName"
 
-        val systemdRunCmd = buildSystemdRunCommand(systemdUnit, logFile, commandString)
+        val systemdRunCmd = buildSystemdRunCommand(systemdUnit, commandString)
 
         try {
             if (background) {
@@ -96,8 +95,9 @@ class ExecRun : PicoBaseCommand() {
                 eventBus.emit(Event.Command.ToolStarted(host.alias, systemdUnit, commandString))
             } else {
                 remoteOps.executeRemotely(host, systemdRunCmd, output = true, secret = false)
-                // Read and display the log file after foreground execution
-                val logOutput = remoteOps.executeRemotely(host, "cat $logFile 2>/dev/null", output = false, secret = false)
+                // Read output from systemd journal after foreground execution
+                val journalCmd = "sudo journalctl --unit=$systemdUnit --no-pager --output=cat"
+                val logOutput = remoteOps.executeRemotely(host, journalCmd, output = false, secret = false)
                 eventBus.emit(Event.Command.HostExecHeader(host.alias))
                 if (logOutput.text.isNotEmpty()) {
                     eventBus.emit(Event.Command.HostExecOutput(logOutput.text))
@@ -124,15 +124,24 @@ class ExecRun : PicoBaseCommand() {
         return "$toolName-$epoch"
     }
 
+    /**
+     * Shell-quotes a string if it contains characters that need escaping.
+     * Wraps in single quotes with proper escaping of embedded single quotes.
+     */
+    internal fun String.shellQuote(): String {
+        if (isEmpty()) return "''"
+        // If it only contains safe characters, no quoting needed
+        if (matches(Regex("[a-zA-Z0-9_./:=@%+,-]+"))) return this
+        // Wrap in single quotes, escaping any embedded single quotes
+        return "'" + replace("'", "'\\''") + "'"
+    }
+
     internal fun buildSystemdRunCommand(
         unitName: String,
-        logFile: String,
         commandString: String,
     ): String {
         val waitFlag = if (background) "" else " --wait"
         return "sudo systemd-run --unit=$unitName" +
-            " --property=StandardOutput=file:$logFile" +
-            " --property=StandardError=file:$logFile" +
             waitFlag +
             " -- $commandString"
     }

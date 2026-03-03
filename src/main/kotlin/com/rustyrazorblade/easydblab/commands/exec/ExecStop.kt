@@ -41,14 +41,24 @@ class ExecStop : PicoBaseCommand() {
     var serverType: ServerType? = null
 
     override fun execute() {
-        val unitName = "edl-exec-$name"
+        val cleanName = name.removeSuffix(".service").removePrefix("edl-exec-")
+        val unitName = "edl-exec-$cleanName"
         val types = serverType?.let { listOf(it) } ?: listOf(ServerType.Cassandra, ServerType.Stress, ServerType.Control)
 
         for (type in types) {
             hostOperationsService.withHosts(clusterState.hosts, type, hosts.hostList, parallel = true) { host ->
                 val h = host.toHost()
                 try {
-                    remoteOps.executeRemotely(h, "sudo systemctl stop $unitName", output = false, secret = false)
+                    val checkResult =
+                        remoteOps.executeRemotely(
+                            h,
+                            "sudo systemctl is-active $unitName || true",
+                            output = false,
+                            secret = true,
+                        )
+                    if (checkResult.text.trim() != "active") return@withHosts
+
+                    remoteOps.executeRemotely(h, "sudo systemctl stop $unitName", output = false, secret = true)
                     eventBus.emit(Event.Command.ToolStopped(h.alias, unitName))
                 } catch (e: Exception) {
                     eventBus.emit(

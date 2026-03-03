@@ -4302,7 +4302,7 @@ sealed interface Event {
                 |
                 |Alternatively, you can specify a custom AMI with:
                 |  --ami <ami-id>
-                |  or set EASY_CASS_LAB_AMI environment variable
+                |  or set EASY_DB_LAB_AMI environment variable
                 |
                 |========================================
                 |

@@ -63,7 +63,7 @@ Your profile is saved to:
 ```
 
 ```admonish tip
-Use a different profile by setting `EASY_CASS_LAB_PROFILE` environment variable before running setup.
+Use a different profile by setting `EASY_DB_LAB_PROFILE` environment variable before running setup.
 ```
 
 ## Step 2: Getting IAM Policies
@@ -142,10 +142,10 @@ Building an AMI takes approximately 10-15 minutes. Docker must be installed and 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `EASY_DB_LAB_USER_DIR` | Override configuration directory | `~/.easy-db-lab` |
-| `EASY_CASS_LAB_PROFILE` | Use a named profile | `default` |
-| `EASY_CASS_LAB_INSTANCE_TYPE` | Default instance type for `init` | `r3.2xlarge` |
-| `EASY_CASS_LAB_STRESS_INSTANCE_TYPE` | Default stress instance type | `c7i.2xlarge` |
-| `EASY_CASS_LAB_AMI` | Override AMI ID | (auto-detected) |
+| `EASY_DB_LAB_PROFILE` | Use a named profile | `default` |
+| `EASY_DB_LAB_INSTANCE_TYPE` | Default instance type for `init` | `r3.2xlarge` |
+| `EASY_DB_LAB_STRESS_INSTANCE_TYPE` | Default stress instance type | `c7i.2xlarge` |
+| `EASY_DB_LAB_AMI` | Override AMI ID | (auto-detected) |
 
 ## Verify Installation
 

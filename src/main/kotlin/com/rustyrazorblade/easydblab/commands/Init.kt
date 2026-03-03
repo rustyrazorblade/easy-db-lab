@@ -87,15 +87,15 @@ class Init : PicoBaseCommand() {
 
     @Option(
         names = ["--instance", "-i"],
-        description = ["Instance Type. Set EASY_CASS_LAB_INSTANCE_TYPE to set a default."],
+        description = ["Instance Type. Set EASY_DB_LAB_INSTANCE_TYPE to set a default."],
     )
-    var instanceType: String = System.getenv("EASY_CASS_LAB_INSTANCE_TYPE") ?: "r3.2xlarge"
+    var instanceType: String = System.getenv("EASY_DB_LAB_INSTANCE_TYPE") ?: "r3.2xlarge"
 
     @Option(
         names = ["--stress-instance", "-si", "--si"],
-        description = ["Stress Instance Type. Set EASY_CASS_LAB_STRESS_INSTANCE_TYPE to set a default."],
+        description = ["Stress Instance Type. Set EASY_DB_LAB_STRESS_INSTANCE_TYPE to set a default."],
     )
-    var stressInstanceType: String = System.getenv("EASY_CASS_LAB_STRESS_INSTANCE_TYPE") ?: "c7i.2xlarge"
+    var stressInstanceType: String = System.getenv("EASY_DB_LAB_STRESS_INSTANCE_TYPE") ?: "c7i.2xlarge"
 
     @Option(
         names = ["--azs", "--az", "-z"],
@@ -112,9 +112,9 @@ class Init : PicoBaseCommand() {
 
     @Option(
         names = ["--ami"],
-        description = ["AMI. Set EASY_CASS_LAB_AMI to override the default."],
+        description = ["AMI. Set EASY_DB_LAB_AMI to override the default."],
     )
-    var ami: String = System.getenv("EASY_CASS_LAB_AMI") ?: ""
+    var ami: String = System.getenv("EASY_DB_LAB_AMI") ?: ""
 
     @Option(
         names = ["--open"],

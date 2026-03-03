@@ -61,7 +61,7 @@ class ExecRun : PicoBaseCommand() {
     var parallel: Boolean = false
 
     override fun execute() {
-        val commandString = command.joinToString(" ")
+        val commandString = command.joinToString(" ") { it.shellQuote() }
 
         if (commandString.isBlank()) {
             eventBus.emit(Event.Command.EmptyCommand)
@@ -122,6 +122,18 @@ class ExecRun : PicoBaseCommand() {
                 .last()
         val epoch = System.currentTimeMillis() / 1000
         return "$toolName-$epoch"
+    }
+
+    /**
+     * Shell-quotes a string if it contains characters that need escaping.
+     * Wraps in single quotes with proper escaping of embedded single quotes.
+     */
+    internal fun String.shellQuote(): String {
+        if (isEmpty()) return "''"
+        // If it only contains safe characters, no quoting needed
+        if (matches(Regex("[a-zA-Z0-9_./:=@%+,-]+"))) return this
+        // Wrap in single quotes, escaping any embedded single quotes
+        return "'" + replace("'", "'\\''") + "'"
     }
 
     internal fun buildSystemdRunCommand(

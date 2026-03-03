@@ -49,12 +49,13 @@ class ExecStop : PicoBaseCommand() {
             hostOperationsService.withHosts(clusterState.hosts, type, hosts.hostList, parallel = true) { host ->
                 val h = host.toHost()
                 try {
-                    val checkResult = remoteOps.executeRemotely(
-                        h,
-                        "sudo systemctl is-active $unitName || true",
-                        output = false,
-                        secret = true,
-                    )
+                    val checkResult =
+                        remoteOps.executeRemotely(
+                            h,
+                            "sudo systemctl is-active $unitName || true",
+                            output = false,
+                            secret = true,
+                        )
                     if (checkResult.text.trim() != "active") return@withHosts
 
                     remoteOps.executeRemotely(h, "sudo systemctl stop $unitName", output = false, secret = true)

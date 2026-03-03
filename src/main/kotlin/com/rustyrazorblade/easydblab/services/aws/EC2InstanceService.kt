@@ -14,6 +14,7 @@ import com.rustyrazorblade.easydblab.providers.aws.SubnetId
 import io.github.oshai.kotlinlogging.KotlinLogging
 import software.amazon.awssdk.services.ec2.Ec2Client
 import software.amazon.awssdk.services.ec2.model.BlockDeviceMapping
+import software.amazon.awssdk.services.ec2.model.DescribeInstanceTypesRequest
 import software.amazon.awssdk.services.ec2.model.DescribeInstancesRequest
 import software.amazon.awssdk.services.ec2.model.EbsBlockDevice
 import software.amazon.awssdk.services.ec2.model.Filter
@@ -365,6 +366,33 @@ class EC2InstanceService(
                 instance
             }
         }
+    }
+
+    /**
+     * Checks whether the given EC2 instance type has local instance store (NVMe) volumes.
+     *
+     * Uses the DescribeInstanceTypes API to query instance type capabilities.
+     *
+     * @param instanceType EC2 instance type (e.g., "i3.xlarge", "c5.2xlarge")
+     * @return true if the instance type has instance store, false otherwise
+     */
+    fun hasInstanceStore(instanceType: String): Boolean {
+        val request =
+            DescribeInstanceTypesRequest
+                .builder()
+                .instanceTypes(InstanceType.fromValue(instanceType))
+                .build()
+
+        val response =
+            RetryUtil.withAwsRetry("describe-instance-type-$instanceType") {
+                ec2Client.describeInstanceTypes(request)
+            }
+
+        val typeInfo =
+            response.instanceTypes().firstOrNull()
+                ?: error("Instance type $instanceType not found")
+
+        return typeInfo.instanceStorageSupported() == true
     }
 
     /**

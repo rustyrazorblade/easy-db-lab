@@ -43,6 +43,19 @@ easy-db-lab init <cluster-name> [options]
 
 For the complete options list, see the [Tutorial](tutorial.md#init-options) or run `easy-db-lab init --help`.
 
+### Storage Requirements
+
+Cassandra instances need a data disk separate from the root volume. This can come from either:
+
+- **Instance store (local NVMe)** — Instance types with a `d` suffix (e.g., `i3.xlarge`, `m5d.xlarge`, `c5d.2xlarge`) include local NVMe storage.
+- **EBS volumes** — Attach an EBS volume using `--ebs.type` (e.g., `--ebs.type gp3`).
+
+If the selected instance type has no instance store and `--ebs.type` is not specified, `up` will fail with an error. For example, `c5.2xlarge` has no local storage, so you must specify EBS:
+
+```bash
+easy-db-lab init my-cluster --instance c5.2xlarge --ebs.type gp3 --ebs.size 200
+```
+
 ## Launch
 
 The `up` command provisions all AWS infrastructure:

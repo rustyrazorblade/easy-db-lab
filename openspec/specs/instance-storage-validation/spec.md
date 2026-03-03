@@ -1,8 +1,8 @@
-### Requirement: Cassandra instance storage validation at init time
+### Requirement: Database instance storage validation at init time
 
-The system SHALL validate that the Cassandra instance type has adequate storage before provisioning. An instance type MUST either have local instance store (NVMe) or the user MUST specify `--ebs.type` with a value other than `NONE`. If neither condition is met, the system SHALL fail with a clear error message and NOT proceed with instance creation.
+The system SHALL validate that the database instance type has adequate storage before provisioning. An instance type MUST either have local instance store (NVMe) or the user MUST specify `--ebs.type` with a value other than `NONE`. If neither condition is met, the system SHALL fail with a clear error message and NOT proceed with instance creation.
 
-This validation applies only to Cassandra (db) nodes. Stress and control nodes do not require data disks.
+This validation applies only to database (db) nodes. Stress and control nodes do not require data disks.
 
 #### Scenario: Instance type with instance store and no EBS
 

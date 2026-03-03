@@ -284,11 +284,11 @@ class Up : PicoBaseCommand() {
                 instances.map { it.toClusterHost() }
             }
 
-        // Check if Cassandra instance type has local instance store
-        val cassandraHasInstanceStore = ec2InstanceService.hasInstanceStore(initConfig.instanceType)
+        // Check if database instance type has local instance store
+        val dbHasInstanceStore = ec2InstanceService.hasInstanceStore(initConfig.instanceType)
 
         // Create instance specs using factory (validates storage requirements)
-        val instanceSpecs = instanceSpecFactory.createInstanceSpecs(initConfig, existingInstances, cassandraHasInstanceStore)
+        val instanceSpecs = instanceSpecFactory.createInstanceSpecs(initConfig, existingInstances, dbHasInstanceStore)
 
         // Configure provisioning
         val instanceConfig =

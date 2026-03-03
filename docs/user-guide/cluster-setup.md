@@ -45,7 +45,7 @@ For the complete options list, see the [Tutorial](tutorial.md#init-options) or r
 
 ### Storage Requirements
 
-Cassandra instances need a data disk separate from the root volume. This can come from either:
+Database instances need a data disk separate from the root volume. This can come from either:
 
 - **Instance store (local NVMe)** — Instance types with a `d` suffix (e.g., `i3.xlarge`, `m5d.xlarge`, `c5d.2xlarge`) include local NVMe storage.
 - **EBS volumes** — Attach an EBS volume using `--ebs.type` (e.g., `--ebs.type gp3`).

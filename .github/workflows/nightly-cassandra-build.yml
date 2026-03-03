@@ -80,7 +80,7 @@ jobs:
           echo "artifact_size=$FILE_SIZE" >> $GITHUB_OUTPUT
 
       - name: Upload artifact to workflow
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: cassandra-${{ matrix.version }}
           path: ${{ steps.artifact.outputs.artifact_path }}

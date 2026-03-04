@@ -10,7 +10,7 @@ import java.net.URI
  * EventListener that publishes EventEnvelopes to a Redis pub/sub channel.
  *
  * Serializes events to JSON via kotlinx.serialization and publishes non-blocking.
- * Logs warnings on connection failures without crashing the application.
+ * Fails fast on connection errors — if Redis is configured, it must be reachable.
  *
  * URL format: redis://host:port/channel-name
  * If no path is specified, uses the default channel from Constants.
@@ -27,7 +27,7 @@ class RedisEventListener(
 
     private val channel: String
     private val client: RedisClient
-    private var connection: StatefulRedisConnection<String, String>? = null
+    private val connection: StatefulRedisConnection<String, String>
 
     init {
         val uri = URI(redisUrl)
@@ -38,31 +38,18 @@ class RedisEventListener(
         val redisUri = "redis://${uri.host}:$port"
         client = RedisClient.create(redisUri)
 
-        try {
-            connection = client.connect()
-            log.info { "Redis EventListener connected to $redisUri, publishing to channel: $channel" }
-        } catch (e: Exception) {
-            log.warn(e) { "Failed to connect to Redis at $redisUri. Events will not be published." }
-        }
+        connection = client.connect()
+        log.info { "Redis EventListener connected to $redisUri, publishing to channel: $channel" }
     }
 
     override fun onEvent(envelope: EventEnvelope) {
-        val conn = connection ?: return
-        try {
-            val json = EventEnvelope.toJson(envelope)
-            conn.async().publish(channel, json)
-        } catch (e: Exception) {
-            log.warn { "Failed to publish event to Redis: ${e.message}" }
-        }
+        val json = EventEnvelope.toJson(envelope)
+        connection.async().publish(channel, json)
     }
 
     override fun close() {
-        try {
-            connection?.close()
-            client.shutdown()
-            log.info { "Redis EventListener closed" }
-        } catch (e: Exception) {
-            log.warn(e) { "Error closing Redis connection" }
-        }
+        connection.close()
+        client.shutdown()
+        log.info { "Redis EventListener closed" }
     }
 }

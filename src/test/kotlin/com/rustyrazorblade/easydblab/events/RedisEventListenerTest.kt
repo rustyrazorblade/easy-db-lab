@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.events
 import io.lettuce.core.RedisClient
 import io.lettuce.core.pubsub.RedisPubSubAdapter
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
@@ -84,17 +85,10 @@ class RedisEventListenerTest {
     }
 
     @Test
-    fun `gracefully handles unavailable Redis`() {
-        val badListener = RedisEventListener("redis://localhost:19999/test")
-
-        val envelope =
-            EventEnvelope(
-                event = Event.Message("test"),
-                timestamp = "2026-02-23T10:15:30.123Z",
-            )
-        // Should not throw
-        badListener.onEvent(envelope)
-        badListener.close()
+    fun `fails fast when Redis is unavailable`() {
+        assertThatThrownBy {
+            RedisEventListener("redis://localhost:19999/test")
+        }.isInstanceOf(Exception::class.java)
     }
 
     @Test

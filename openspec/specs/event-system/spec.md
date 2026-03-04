@@ -49,8 +49,8 @@ The system MUST support publishing events to a Redis pub/sub channel, configured
 
 - **GIVEN** `EASY_DB_LAB_REDIS_URL` is set (format: `redis://host:port/channel`), **WHEN** the tool starts, **THEN** events are published to the specified Redis channel.
 - **GIVEN** a Redis subscriber listening on the channel, **WHEN** commands run, **THEN** the subscriber receives structured event envelopes as JSON.
-- **GIVEN** Redis is unavailable at startup, **WHEN** the environment variable is set, **THEN** the tool logs a warning and continues operating without Redis.
-- **GIVEN** Redis becomes unavailable during operation, **WHEN** events are emitted, **THEN** the tool continues operating and drops events to Redis without blocking.
+- **GIVEN** Redis is unavailable at startup, **WHEN** the environment variable is set, **THEN** the tool fails fast with a connection error.
+- **GIVEN** Redis becomes unavailable during operation, **WHEN** events are emitted, **THEN** the publish error propagates to the caller.
 
 ### REQ-ES-006: Wire Format Serialization
 
@@ -111,7 +111,7 @@ Every message on the Redis channel (and in MCP structured output) is a JSON `Eve
 
 - All existing CLI commands produce identical user-visible output after migration (100% backward compatibility).
 - External systems can receive events within 100ms of emission when Redis is healthy.
-- System continues operating normally if Redis is unavailable (0% failure rate due to Redis issues).
+- System fails fast at startup if Redis is configured but unavailable.
 - Adding a new output destination requires no changes to event-emitting code.
 - Events can be parsed by external systems without knowledge of internal implementation details.
 - Zero production usage of `Event.Message` or `Event.Error` generic types.

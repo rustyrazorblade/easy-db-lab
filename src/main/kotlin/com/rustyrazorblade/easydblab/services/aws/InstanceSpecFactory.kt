@@ -44,11 +44,14 @@ interface InstanceSpecFactory {
      *
      * @param initConfig The cluster initialization configuration
      * @param existingInstances Map of existing instances by server type
+     * @param dbHasInstanceStore Whether the database instance type has local instance store
      * @return List of instance specifications for Cassandra, Stress, and Control nodes
+     * @throws IllegalArgumentException if database instance type has no instance store and no EBS configured
      */
     fun createInstanceSpecs(
         initConfig: InitConfig,
         existingInstances: Map<ServerType, List<DiscoveredInstance>>,
+        dbHasInstanceStore: Boolean,
     ): List<InstanceSpec>
 
     /**
@@ -67,8 +70,16 @@ class DefaultInstanceSpecFactory : InstanceSpecFactory {
     override fun createInstanceSpecs(
         initConfig: InitConfig,
         existingInstances: Map<ServerType, List<DiscoveredInstance>>,
+        dbHasInstanceStore: Boolean,
     ): List<InstanceSpec> {
         val ebsConfig = createEbsConfig(initConfig)
+
+        if (!dbHasInstanceStore && ebsConfig == null) {
+            throw IllegalArgumentException(
+                "Instance type ${initConfig.instanceType} has no local instance store. " +
+                    "You must specify --ebs.type (e.g., --ebs.type gp3) to attach an EBS volume for data storage.",
+            )
+        }
 
         val existingCassandraCount = existingInstances[ServerType.Cassandra]?.size ?: 0
         val existingStressCount = existingInstances[ServerType.Stress]?.size ?: 0

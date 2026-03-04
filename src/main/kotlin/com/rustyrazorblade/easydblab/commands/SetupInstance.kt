@@ -95,7 +95,7 @@ class SetupInstance : PicoBaseCommand() {
                     "-Dpyroscope.application.name=cassandra-sidecar " +
                     "-Dpyroscope.server.address=$pyroscopeAddress " +
                     "-Dpyroscope.labels=hostname:${host.alias},cluster:$clusterName " +
-                    "-Dpyroscope.profiler.event=cpu,alloc,lock " +
+                    "-Dpyroscope.profiler.event=cpu " +
                     "-Dpyroscope.profiler.alloc=512k " +
                     "-Dpyroscope.profiler.lock=10ms"
 

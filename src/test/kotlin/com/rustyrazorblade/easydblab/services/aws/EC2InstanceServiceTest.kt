@@ -12,11 +12,15 @@ import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import software.amazon.awssdk.services.ec2.Ec2Client
+import software.amazon.awssdk.services.ec2.model.DescribeInstanceTypesRequest
+import software.amazon.awssdk.services.ec2.model.DescribeInstanceTypesResponse
 import software.amazon.awssdk.services.ec2.model.DescribeInstancesRequest
 import software.amazon.awssdk.services.ec2.model.DescribeInstancesResponse
 import software.amazon.awssdk.services.ec2.model.Instance
 import software.amazon.awssdk.services.ec2.model.InstanceState
 import software.amazon.awssdk.services.ec2.model.InstanceStateName
+import software.amazon.awssdk.services.ec2.model.InstanceStorageInfo
+import software.amazon.awssdk.services.ec2.model.InstanceTypeInfo
 import software.amazon.awssdk.services.ec2.model.Placement
 import software.amazon.awssdk.services.ec2.model.Reservation
 import software.amazon.awssdk.services.ec2.model.RunInstancesRequest
@@ -387,6 +391,47 @@ internal class EC2InstanceServiceTest {
         ).describeInstanceStatus(
             any<software.amazon.awssdk.services.ec2.model.DescribeInstanceStatusRequest>(),
         )
+    }
+
+    @Test
+    fun `hasInstanceStore should return true for instance type with instance store`() {
+        val typeInfo =
+            InstanceTypeInfo
+                .builder()
+                .instanceType("i3.xlarge")
+                .instanceStorageSupported(true)
+                .instanceStorageInfo(InstanceStorageInfo.builder().totalSizeInGB(950L).build())
+                .build()
+
+        val response =
+            DescribeInstanceTypesResponse
+                .builder()
+                .instanceTypes(typeInfo)
+                .build()
+
+        whenever(mockEc2Client.describeInstanceTypes(any<DescribeInstanceTypesRequest>())).thenReturn(response)
+
+        assertThat(ec2InstanceService.hasInstanceStore("i3.xlarge")).isTrue()
+    }
+
+    @Test
+    fun `hasInstanceStore should return false for instance type without instance store`() {
+        val typeInfo =
+            InstanceTypeInfo
+                .builder()
+                .instanceType("c5.2xlarge")
+                .instanceStorageSupported(false)
+                .build()
+
+        val response =
+            DescribeInstanceTypesResponse
+                .builder()
+                .instanceTypes(typeInfo)
+                .build()
+
+        whenever(mockEc2Client.describeInstanceTypes(any<DescribeInstanceTypesRequest>())).thenReturn(response)
+
+        assertThat(ec2InstanceService.hasInstanceStore("c5.2xlarge")).isFalse()
     }
 
     private fun createInstance(

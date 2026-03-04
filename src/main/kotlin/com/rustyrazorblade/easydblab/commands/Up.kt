@@ -284,8 +284,11 @@ class Up : PicoBaseCommand() {
                 instances.map { it.toClusterHost() }
             }
 
-        // Create instance specs using factory
-        val instanceSpecs = instanceSpecFactory.createInstanceSpecs(initConfig, existingInstances)
+        // Check if database instance type has local instance store
+        val dbHasInstanceStore = ec2InstanceService.hasInstanceStore(initConfig.instanceType)
+
+        // Create instance specs using factory (validates storage requirements)
+        val instanceSpecs = instanceSpecFactory.createInstanceSpecs(initConfig, existingInstances, dbHasInstanceStore)
 
         // Configure provisioning
         val instanceConfig =

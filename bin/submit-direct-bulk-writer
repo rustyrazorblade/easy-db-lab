@@ -15,7 +15,7 @@ export AWS_PAGER=""
 ROW_COUNT="${1:-1000}"
 PARALLELISM="${2:-4}"
 PARTITION_COUNT="${3:-100}"
-REPLICATION_FACTOR="${4:-1}"
+REPLICATION_FACTOR="${4:-3}"
 
 echo "=== Building bulk-writer JAR ==="
 (cd "$PROJECT_ROOT" && ./gradlew :bulk-writer:shadowJar -q)
@@ -62,6 +62,7 @@ easy-db-lab spark submit \
     --conf "spark.easydblab.parallelism=$PARALLELISM" \
     --conf "spark.easydblab.partitionCount=$PARTITION_COUNT" \
     --conf "spark.easydblab.replicationFactor=$REPLICATION_FACTOR" \
+    --conf "spark.cassandra_analytics.job.skip_clean=true" \
     --wait
 SPARK_EXIT_CODE=$?
 set -e

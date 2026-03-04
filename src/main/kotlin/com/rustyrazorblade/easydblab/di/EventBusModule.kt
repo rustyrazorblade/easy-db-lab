@@ -24,13 +24,9 @@ val eventBusModule =
 
                 val redisUrl = System.getenv(Constants.EventBus.REDIS_URL_ENV_VAR)
                 if (!redisUrl.isNullOrBlank()) {
-                    try {
-                        val redisListener = RedisEventListener(redisUrl)
-                        addListener(redisListener)
-                        log.info { "Redis EventListener registered for URL: $redisUrl" }
-                    } catch (e: Exception) {
-                        log.error(e) { "Failed to create Redis EventListener from URL: $redisUrl" }
-                    }
+                    val redisListener = RedisEventListener(redisUrl)
+                    addListener(redisListener)
+                    log.info { "Redis EventListener registered for URL: $redisUrl" }
                 }
             }
         }

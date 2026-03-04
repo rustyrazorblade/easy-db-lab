@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredInstance
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
@@ -30,7 +31,7 @@ class InstanceSpecFactoryTest {
                     controlInstances = 1,
                 )
 
-            val specs = factory.createInstanceSpecs(initConfig, emptyMap())
+            val specs = factory.createInstanceSpecs(initConfig, emptyMap(), dbHasInstanceStore = true)
 
             assertThat(specs).hasSize(3)
             assertThat(specs.map { it.serverType }).containsExactly(
@@ -49,7 +50,7 @@ class InstanceSpecFactoryTest {
                     controlInstances = 1,
                 )
 
-            val specs = factory.createInstanceSpecs(initConfig, emptyMap())
+            val specs = factory.createInstanceSpecs(initConfig, emptyMap(), dbHasInstanceStore = true)
 
             val cassandraSpec = specs.find { it.serverType == ServerType.Cassandra }!!
             val stressSpec = specs.find { it.serverType == ServerType.Stress }!!
@@ -82,7 +83,7 @@ class InstanceSpecFactoryTest {
                         ),
                 )
 
-            val specs = factory.createInstanceSpecs(initConfig, existingInstances)
+            val specs = factory.createInstanceSpecs(initConfig, existingInstances, dbHasInstanceStore = true)
 
             val cassandraSpec = specs.find { it.serverType == ServerType.Cassandra }!!
             val stressSpec = specs.find { it.serverType == ServerType.Stress }!!
@@ -116,7 +117,7 @@ class InstanceSpecFactoryTest {
                         ),
                 )
 
-            val specs = factory.createInstanceSpecs(initConfig, existingInstances)
+            val specs = factory.createInstanceSpecs(initConfig, existingInstances, dbHasInstanceStore = true)
 
             val cassandraSpec = specs.find { it.serverType == ServerType.Cassandra }!!
             val stressSpec = specs.find { it.serverType == ServerType.Stress }!!
@@ -134,7 +135,7 @@ class InstanceSpecFactoryTest {
                     controlInstanceType = "t3.medium",
                 )
 
-            val specs = factory.createInstanceSpecs(initConfig, emptyMap())
+            val specs = factory.createInstanceSpecs(initConfig, emptyMap(), dbHasInstanceStore = true)
 
             val cassandraSpec = specs.find { it.serverType == ServerType.Cassandra }!!
             val stressSpec = specs.find { it.serverType == ServerType.Stress }!!
@@ -153,7 +154,7 @@ class InstanceSpecFactoryTest {
                     ebsSize = 100,
                 )
 
-            val specs = factory.createInstanceSpecs(initConfig, emptyMap())
+            val specs = factory.createInstanceSpecs(initConfig, emptyMap(), dbHasInstanceStore = true)
 
             val cassandraSpec = specs.find { it.serverType == ServerType.Cassandra }!!
             val stressSpec = specs.find { it.serverType == ServerType.Stress }!!
@@ -162,6 +163,41 @@ class InstanceSpecFactoryTest {
             assertThat(cassandraSpec.ebsConfig).isNotNull
             assertThat(stressSpec.ebsConfig).isNull()
             assertThat(controlSpec.ebsConfig).isNull()
+        }
+    }
+
+    @Nested
+    inner class StorageValidation {
+        @Test
+        fun `should succeed when instance type has instance store and no EBS`() {
+            val initConfig = createInitConfig(ebsType = "NONE")
+
+            val specs = factory.createInstanceSpecs(initConfig, emptyMap(), dbHasInstanceStore = true)
+
+            assertThat(specs).hasSize(3)
+            assertThat(specs.find { it.serverType == ServerType.Cassandra }!!.ebsConfig).isNull()
+        }
+
+        @Test
+        fun `should succeed when instance type has no instance store but EBS is configured`() {
+            val initConfig = createInitConfig(ebsType = "gp3", ebsSize = 200)
+
+            val specs = factory.createInstanceSpecs(initConfig, emptyMap(), dbHasInstanceStore = false)
+
+            assertThat(specs).hasSize(3)
+            assertThat(specs.find { it.serverType == ServerType.Cassandra }!!.ebsConfig).isNotNull
+        }
+
+        @Test
+        fun `should fail when instance type has no instance store and no EBS configured`() {
+            val initConfig = createInitConfig(instanceType = "c5.2xlarge", ebsType = "NONE")
+
+            assertThatThrownBy {
+                factory.createInstanceSpecs(initConfig, emptyMap(), dbHasInstanceStore = false)
+            }.isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("c5.2xlarge")
+                .hasMessageContaining("no local instance store")
+                .hasMessageContaining("--ebs.type")
         }
     }
 

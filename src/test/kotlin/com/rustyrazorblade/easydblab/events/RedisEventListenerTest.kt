@@ -1,7 +1,5 @@
 package com.rustyrazorblade.easydblab.events
 
-import io.lettuce.core.RedisClient
-import io.lettuce.core.pubsub.RedisPubSubAdapter
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterAll
@@ -11,6 +9,8 @@ import org.junit.jupiter.api.TestInstance
 import org.testcontainers.containers.GenericContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
+import redis.clients.jedis.Jedis
+import redis.clients.jedis.JedisPubSub
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -42,26 +42,26 @@ class RedisEventListenerTest {
         val receivedMessages = mutableListOf<String>()
         val latch = CountDownLatch(1)
 
-        val subscriberClient =
-            RedisClient.create(
-                "redis://${redis.host}:${redis.getMappedPort(6379)}",
-            )
-        val subConnection = subscriberClient.connectPubSub()
-        subConnection.addListener(
-            object : RedisPubSubAdapter<String, String>() {
-                override fun message(
+        val subscriber = Jedis(redis.host, redis.getMappedPort(6379))
+        val pubSub =
+            object : JedisPubSub() {
+                override fun onMessage(
                     channel: String,
                     message: String,
                 ) {
                     receivedMessages.add(message)
                     latch.countDown()
                 }
-            },
-        )
-        subConnection.sync().subscribe("test-events")
+            }
+
+        val subscribeThread =
+            Thread {
+                subscriber.subscribe(pubSub, "test-events")
+            }
+        subscribeThread.start()
 
         // Small delay to ensure subscription is active
-        Thread.sleep(100)
+        Thread.sleep(200)
 
         val envelope =
             EventEnvelope(
@@ -80,8 +80,9 @@ class RedisEventListenerTest {
         assertThat(deserialized.timestamp).isEqualTo("2026-02-23T10:15:30.123Z")
         assertThat(deserialized.commandName).isEqualTo("start")
 
-        subConnection.close()
-        subscriberClient.shutdown()
+        pubSub.unsubscribe()
+        subscribeThread.join(2000)
+        subscriber.close()
     }
 
     @Test

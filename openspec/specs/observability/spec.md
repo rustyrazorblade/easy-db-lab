@@ -22,6 +22,11 @@ The system MUST collect metrics from all cluster nodes and store them in a Prome
 - **AND** log entries SHALL include the attribute `source: tool-runner`
 - **AND** logs SHALL be shipped to VictoriaLogs via the `logs/local` pipeline
 
+#### Scenario: Tool-runner logs have accurate timestamps
+
+- **WHEN** a user queries VictoriaLogs for tool-runner logs within a specific time window
+- **THEN** the results SHALL include only entries that were actually produced during that window, enabling correlation with Cassandra and system logs from the same period
+
 ### Requirement: Continuous Profiling
 
 The system MUST support continuous profiling for cluster workloads including Spark.

@@ -85,8 +85,8 @@ RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/
     -a "export PROMPT_COMMAND='history -a' && export HISTFILE=/commandhistory/.bash_history" \
     -x
 
-# Install ast-grep
-RUN npm install -g @ast-grep/cli
+# Install ast-grep and openspec
+RUN npm install -g @ast-grep/cli @fission-ai/openspec@latest
 
 # Install Claude Code using native installer
 RUN curl -fsSL https://claude.ai/install.sh | bash

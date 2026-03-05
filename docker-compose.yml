@@ -1,4 +1,10 @@
 services:
+  redis:
+    image: valkey/valkey:8-alpine
+    container_name: easydblab-valkey
+    command: ["valkey-server", "--port", "6399"]
+    ports:
+      - "6399:6399"
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.118.0
     container_name: easydblab-otel-collector

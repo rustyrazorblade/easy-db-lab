@@ -26,5 +26,6 @@ fi
 # Discover the dynamically assigned port
 OTEL_PORT=$(docker compose -f "${APP_HOME}/docker-compose.yml" port otel-collector 4317 2>/dev/null | cut -d: -f2)
 export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:${OTEL_PORT}"
+export EASY_DB_LAB_REDIS_URL="redis://localhost:6399/easydblab-events"
 
 java -Deasydblab.version=$VERSION -Deasydblab.apphome=$APP_HOME -jar $JAR "$@"

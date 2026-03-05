@@ -94,7 +94,7 @@ Uses kotlinx.serialization with `classDiscriminator = "type"`. All events serial
 
 ## Redis Integration
 
-Set `EASY_DB_LAB_REDIS_URL=redis://host:port/channel` to enable Redis pub/sub. Events are published as JSON envelopes. If Redis is unavailable, a warning is logged and the listener is skipped.
+Set `EASY_DB_LAB_REDIS_URL=redis://host:port/channel` to enable Redis pub/sub. Events are published as JSON envelopes. If Redis is unavailable at startup, the tool fails fast with a connection error.
 
 ## Migration Status
 

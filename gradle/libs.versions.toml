@@ -58,7 +58,7 @@ commons-text = "1.13.0"
 cassandra-driver = "4.19.2"
 
 # Redis
-lettuce = "6.5.5.RELEASE"
+jedis = "5.2.0"
 
 # Other
 classgraph = "4.8.184"
@@ -159,7 +159,7 @@ mcp-sdk = { module = "io.modelcontextprotocol:kotlin-sdk", version.ref = "mcp-sd
 kotlinx-io = { module = "org.jetbrains.kotlinx:kotlinx-io-core", version.ref = "kotlinx-io" }
 
 # Redis
-lettuce-core = { module = "io.lettuce:lettuce-core", version.ref = "lettuce" }
+jedis = { module = "redis.clients:jedis", version.ref = "jedis" }
 
 # Resilience4j
 resilience4j-retry = { module = "io.github.resilience4j:resilience4j-retry", version.ref = "resilience4j" }

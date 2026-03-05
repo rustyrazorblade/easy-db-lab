@@ -43,14 +43,14 @@ The system MUST support multiple simultaneous output destinations via fan-out. A
 
 ### REQ-ES-005: Redis Pub/Sub Destination
 
-The system MUST support publishing events to a Redis pub/sub channel, configured via environment variable.
+The system MUST support publishing events to a Redis pub/sub channel using the Jedis client library, configured via environment variable.
 
 **Scenarios:**
 
-- **GIVEN** `EASY_DB_LAB_REDIS_URL` is set (format: `redis://host:port/channel`), **WHEN** the tool starts, **THEN** events are published to the specified Redis channel.
+- **GIVEN** `EASY_DB_LAB_REDIS_URL` is set (format: `redis://host:port/channel`), **WHEN** the tool starts, **THEN** the tool connects using Jedis and publishes events to the specified Redis channel.
 - **GIVEN** a Redis subscriber listening on the channel, **WHEN** commands run, **THEN** the subscriber receives structured event envelopes as JSON.
 - **GIVEN** Redis is unavailable at startup, **WHEN** the environment variable is set, **THEN** the tool fails fast with a connection error.
-- **GIVEN** Redis becomes unavailable during operation, **WHEN** events are emitted, **THEN** the publish error propagates to the caller.
+- **GIVEN** the Redis URL has no path component, **WHEN** the tool starts, **THEN** the system uses the default channel from Constants.
 
 ### REQ-ES-006: Wire Format Serialization
 

@@ -335,8 +335,8 @@ Detailed patterns live in package-level CLAUDE.md files:
 - [`src/test/.../CLAUDE.md`](src/test/kotlin/com/rustyrazorblade/easydblab/CLAUDE.md) — test infrastructure
 
 ## Active Technologies
-- Kotlin (JVM 21, Temurin) + PicoCLI, Koin (DI), kotlinx.serialization, Lettuce (new — Redis client), Ktor (MCP server) (002-event-bus)
+- Kotlin (JVM 21, Temurin) + PicoCLI, Koin (DI), kotlinx.serialization, Jedis (Redis client), Ktor (MCP server) (002-event-bus)
 - N/A (Redis is pub/sub only, not storage) (002-event-bus)
 
 ## Recent Changes
-- 002-event-bus: Added Kotlin (JVM 21, Temurin) + PicoCLI, Koin (DI), kotlinx.serialization, Lettuce (new — Redis client), Ktor (MCP server)
+- 002-event-bus: Added Kotlin (JVM 21, Temurin) + PicoCLI, Koin (DI), kotlinx.serialization, Jedis (Redis client), Ktor (MCP server)

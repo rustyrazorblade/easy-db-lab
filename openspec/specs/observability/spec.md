@@ -43,7 +43,7 @@ The system MUST support continuous profiling for cluster workloads including Spa
 
 ### Requirement: Grafana Dashboards
 
-The system MUST provide pre-configured Grafana dashboards for all supported databases and infrastructure. Dashboard titles MUST use simple descriptive names without cluster name prefixes.
+The system MUST provide pre-configured Grafana dashboards for all supported databases and infrastructure. Dashboard titles MUST use simple descriptive names without cluster name prefixes. The Grafana pod SHALL include an image renderer sidecar for server-side panel rendering.
 
 #### Scenario: Dashboard titles use descriptive names
 
@@ -65,6 +65,11 @@ The system MUST provide pre-configured Grafana dashboards for all supported data
 - **WHEN** the user views the System Overview dashboard in Grafana
 - **THEN** the hostname filter SHALL list hosts from all node types: db, app, control, and spark
 - **AND** the service filter SHALL list all node_role values present in metrics
+
+#### Scenario: Grafana pod includes image renderer sidecar
+
+- **WHEN** the Grafana deployment is applied
+- **THEN** the pod SHALL contain both the Grafana container and a `grafana-image-renderer` sidecar container
 
 ## ADDED Requirements
 

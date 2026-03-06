@@ -266,6 +266,8 @@ User documentation is in `docs/` (mdbook format). When making user-facing change
 
 Product specifications live in `openspec/specs/` and are managed via the **OpenSpec workflow** (skills: `openspec-propose`, `openspec-explore`, `openspec-apply-change`, `openspec-archive-change`). Use OpenSpec to propose, implement, and track changes against specs. Specs are the source of truth for product decisions — consult them when making changes to determine if there are conflicts, and plan spec updates before moving on to implementation.
 
+After running `openspec-apply-change`, use the `simplify` skill to review and improve the code quality of the changes.
+
 If I refer to Kubernetes configs or k8 configs, I am referring to these: `src/main/resources/com/rustyrazorblade/easydblab/commands/k8s/` by default.
 
 ## Observability

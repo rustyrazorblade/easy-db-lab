@@ -75,6 +75,30 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
     }
 
     @Test
+    fun `buildDeployment includes grafana and image renderer containers`() {
+        val deployment = builder.buildDeployment()
+        val containers = deployment.spec.template.spec.containers
+
+        assertThat(containers).hasSize(2)
+        assertThat(containers.map { it.name }).containsExactly("grafana", "grafana-image-renderer")
+    }
+
+    @Test
+    fun `buildDeployment rendering env vars reference correct ports`() {
+        val deployment = builder.buildDeployment()
+        val containers = deployment.spec.template.spec.containers
+        val grafanaContainer = containers.first { it.name == "grafana" }
+        val rendererContainer = containers.first { it.name == "grafana-image-renderer" }
+
+        val rendererPort = rendererContainer.ports.first().containerPort
+        val grafanaPort = grafanaContainer.ports.first().containerPort
+        val envMap = grafanaContainer.env.associate { it.name to it.value }
+
+        assertThat(envMap["GF_RENDERING_SERVER_URL"]).contains(":$rendererPort/")
+        assertThat(envMap["GF_RENDERING_CALLBACK_URL"]).contains(":$grafanaPort/")
+    }
+
+    @Test
     fun `buildDeployment includes volume mounts for all dashboards`() {
         val deployment = builder.buildDeployment()
         val container =

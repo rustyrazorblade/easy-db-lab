@@ -102,6 +102,22 @@ easy-db-lab spark submit \
 
 This skips the upload step entirely, which is useful for large JARs or when resubmitting the same job.
 
+## Cancelling a Job
+
+Cancel a running or pending Spark job without terminating the cluster:
+
+```bash
+easy-db-lab spark stop
+```
+
+Without `--step-id`, this cancels the most recent job. To cancel a specific job:
+
+```bash
+easy-db-lab spark stop --step-id <step-id>
+```
+
+The cancellation uses EMR's `TERMINATE_PROCESS` strategy (SIGKILL). The API is asynchronous — use `spark status` to confirm the job has been cancelled.
+
 ## Checking Job Status
 
 ### View Recent Jobs

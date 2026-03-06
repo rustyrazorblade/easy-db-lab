@@ -34,7 +34,9 @@ class GrafanaManifestBuilder(
         private const val NAMESPACE = "default"
         private const val APP_LABEL = "grafana"
         private const val GRAFANA_IMAGE = "grafana/grafana:latest"
+        private const val IMAGE_RENDERER_IMAGE = "grafana/grafana-image-renderer:latest"
         private const val GRAFANA_PORT = 3000
+        private const val IMAGE_RENDERER_PORT = 8081
         private const val PROVISIONING_CONFIGMAP_NAME = "grafana-dashboards-config"
         private const val DATASOURCES_VOLUME = "datasources"
         private const val DASHBOARDS_CONFIG_VOLUME = "dashboards-config"
@@ -156,7 +158,7 @@ class GrafanaManifestBuilder(
                     .withFsGroup(FS_GROUP)
                     .withRunAsUser(RUN_AS_USER)
                     .build(),
-            ).withContainers(buildGrafanaContainer(clusterName))
+            ).withContainers(buildGrafanaContainer(clusterName), buildImageRendererContainer())
             .withVolumes(buildVolumes())
             .endSpec()
             .endTemplate()
@@ -201,6 +203,16 @@ class GrafanaManifestBuilder(
             .withInitialDelaySeconds(READINESS_INITIAL_DELAY)
             .withPeriodSeconds(READINESS_PERIOD)
             .endReadinessProbe()
+            .build()
+
+    private fun buildImageRendererContainer(): Container =
+        ContainerBuilder()
+            .withName("grafana-image-renderer")
+            .withImage(IMAGE_RENDERER_IMAGE)
+            .addNewPort()
+            .withContainerPort(IMAGE_RENDERER_PORT)
+            .withProtocol("TCP")
+            .endPort()
             .build()
 
     private fun buildVolumeMounts(): List<VolumeMount> {
@@ -286,6 +298,8 @@ class GrafanaManifestBuilder(
                 "GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH",
                 "${GrafanaDashboard.SYSTEM.mountPath}/${GrafanaDashboard.SYSTEM.jsonFileName}",
             ),
+            envVar("GF_RENDERING_SERVER_URL", "http://localhost:$IMAGE_RENDERER_PORT/render"),
+            envVar("GF_RENDERING_CALLBACK_URL", "http://localhost:$GRAFANA_PORT/"),
         )
 
     private fun envVar(

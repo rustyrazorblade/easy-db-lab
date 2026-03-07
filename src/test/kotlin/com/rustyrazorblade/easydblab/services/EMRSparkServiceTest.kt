@@ -21,11 +21,16 @@ import org.mockito.kotlin.whenever
 import software.amazon.awssdk.services.emr.EmrClient
 import software.amazon.awssdk.services.emr.model.AddJobFlowStepsRequest
 import software.amazon.awssdk.services.emr.model.AddJobFlowStepsResponse
+import software.amazon.awssdk.services.emr.model.CancelStepsInfo
+import software.amazon.awssdk.services.emr.model.CancelStepsRequest
+import software.amazon.awssdk.services.emr.model.CancelStepsRequestStatus
+import software.amazon.awssdk.services.emr.model.CancelStepsResponse
 import software.amazon.awssdk.services.emr.model.DescribeStepRequest
 import software.amazon.awssdk.services.emr.model.DescribeStepResponse
 import software.amazon.awssdk.services.emr.model.EmrException
 import software.amazon.awssdk.services.emr.model.FailureDetails
 import software.amazon.awssdk.services.emr.model.Step
+import software.amazon.awssdk.services.emr.model.StepCancellationOption
 import software.amazon.awssdk.services.emr.model.StepState
 import software.amazon.awssdk.services.emr.model.StepStateChangeReason
 import software.amazon.awssdk.services.emr.model.StepStatus
@@ -579,6 +584,92 @@ class EMRSparkServiceTest : BaseKoinTest() {
         // Then
         assertThat(result.isSuccess).isTrue()
         assertThat(result.getOrNull()?.state).isEqualTo(StepState.COMPLETED)
+    }
+
+    // ========== CANCEL JOB TESTS ==========
+
+    @Test
+    fun `cancelJob should call CancelSteps API with TERMINATE_PROCESS and return result`() {
+        // Given
+        val cancelInfo =
+            CancelStepsInfo
+                .builder()
+                .stepId(testStepId)
+                .status(CancelStepsRequestStatus.SUBMITTED)
+                .build()
+
+        val cancelResponse =
+            CancelStepsResponse
+                .builder()
+                .cancelStepsInfoList(cancelInfo)
+                .build()
+
+        val captor = argumentCaptor<CancelStepsRequest>()
+        whenever(mockEmrClient.cancelSteps(captor.capture())).thenReturn(cancelResponse)
+
+        // When
+        val result = sparkService.cancelJob(testClusterId, testStepId)
+
+        // Then
+        assertThat(result.isSuccess).isTrue()
+        val cancelResult = result.getOrNull()!!
+        assertThat(cancelResult.stepId).isEqualTo(testStepId)
+        assertThat(cancelResult.status).isEqualTo("SUBMITTED")
+
+        // Verify the request used TERMINATE_PROCESS strategy
+        val request = captor.firstValue
+        assertThat(request.clusterId()).isEqualTo(testClusterId)
+        assertThat(request.stepIds()).containsExactly(testStepId)
+        assertThat(request.stepCancellationOption()).isEqualTo(StepCancellationOption.TERMINATE_PROCESS)
+    }
+
+    @Test
+    fun `cancelJob should return failure reason when step cannot be cancelled`() {
+        // Given
+        val cancelInfo =
+            CancelStepsInfo
+                .builder()
+                .stepId(testStepId)
+                .status(CancelStepsRequestStatus.FAILED)
+                .reason("Step is already completed")
+                .build()
+
+        val cancelResponse =
+            CancelStepsResponse
+                .builder()
+                .cancelStepsInfoList(cancelInfo)
+                .build()
+
+        whenever(mockEmrClient.cancelSteps(any<CancelStepsRequest>())).thenReturn(cancelResponse)
+
+        // When
+        val result = sparkService.cancelJob(testClusterId, testStepId)
+
+        // Then
+        assertThat(result.isSuccess).isTrue()
+        val cancelResult = result.getOrNull()!!
+        assertThat(cancelResult.status).isEqualTo("FAILED")
+        assertThat(cancelResult.reason).isEqualTo("Step is already completed")
+    }
+
+    @Test
+    fun `cancelJob should return failure when EMR API throws exception`() {
+        // Given
+        whenever(mockEmrClient.cancelSteps(any<CancelStepsRequest>()))
+            .thenThrow(
+                EmrException
+                    .builder()
+                    .message("Cluster not found")
+                    .statusCode(404)
+                    .build(),
+            )
+
+        // When
+        val result = sparkService.cancelJob(testClusterId, testStepId)
+
+        // Then
+        assertThat(result.isFailure).isTrue()
+        assertThat(result.exceptionOrNull()).isInstanceOf(EmrException::class.java)
     }
 
     // ========== EMR API ERROR TESTS ==========

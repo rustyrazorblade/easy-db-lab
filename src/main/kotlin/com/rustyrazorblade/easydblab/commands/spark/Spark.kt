@@ -8,13 +8,14 @@ import picocli.CommandLine.Spec
  * Parent command for Spark EMR cluster operations.
  *
  * This command serves as a container for Spark-related sub-commands including
- * cluster provisioning, job submission, status checking, and job listing.
+ * cluster provisioning, job submission, cancellation, status checking, and job listing.
  * When invoked without a sub-command, it displays usage help.
  *
  * Available sub-commands:
  * - init: Provision a Spark EMR cluster on an existing environment
  * - down: Terminate the Spark EMR cluster
  * - submit: Submit a Spark job to the EMR cluster
+ * - stop: Cancel a running or pending Spark job
  * - status: Check the status of a Spark job (defaults to most recent)
  * - jobs: List recent Spark jobs on the cluster
  * - logs: View logs from a Spark job
@@ -27,6 +28,7 @@ import picocli.CommandLine.Spec
         SparkInit::class,
         SparkDown::class,
         SparkSubmit::class,
+        SparkStop::class,
         SparkStatus::class,
         SparkJobs::class,
         SparkLogs::class,

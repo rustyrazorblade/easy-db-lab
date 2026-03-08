@@ -301,6 +301,34 @@ interface SparkService {
         CONTROLLER("controller.gz"),
     }
 
+    /**
+     * Cancels a running or pending Spark job step on the EMR cluster.
+     *
+     * This uses the EMR CancelSteps API with TERMINATE_PROCESS strategy.
+     * The API is asynchronous — the step may not be cancelled immediately.
+     *
+     * @param clusterId The EMR cluster ID
+     * @param stepId The EMR step ID to cancel
+     * @return Result containing the CancelJobResult with status and reason
+     */
+    fun cancelJob(
+        clusterId: String,
+        stepId: String,
+    ): Result<CancelJobResult>
+
+    /**
+     * Result of a job cancellation request.
+     *
+     * @property stepId The EMR step ID that was targeted
+     * @property status The cancel status (e.g., SUBMITTED, FAILED)
+     * @property reason Optional reason if cancellation failed
+     */
+    data class CancelJobResult(
+        val stepId: String,
+        val status: String,
+        val reason: String? = null,
+    )
+
     companion object {
         const val DEFAULT_JOB_LIST_LIMIT = 10
     }

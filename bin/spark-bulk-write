@@ -23,6 +23,7 @@
 #   --compaction <name>   Compaction strategy (e.g., LeveledCompactionStrategy)
 #   --skip-ddl            Skip keyspace/table creation
 #   --s3-bucket <bucket>  S3 bucket for S3 job type (default: from cluster config)
+#   --concurrent-writes <num>  Concurrent writes per executor (connector only, default: Spark Cassandra Connector default)
 #   --no-wait             Don't wait for job completion
 #   --build               Force rebuild of bulk-writer JAR
 #
@@ -52,6 +53,7 @@ PARALLELISM="10"
 PARTITION_COUNT="10000"
 REPLICATION_FACTOR="1"
 COMPACTION=""
+CONCURRENT_WRITES=""
 SKIP_DDL="false"
 S3_BUCKET=""
 WAIT="--wait"
@@ -96,6 +98,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --compaction)
             COMPACTION="$2"
+            shift 2
+            ;;
+        --concurrent-writes)
+            CONCURRENT_WRITES="$2"
             shift 2
             ;;
         --skip-ddl)
@@ -269,6 +275,7 @@ echo "  Parallelism: $PARALLELISM"
 echo "  Partition Count: $PARTITION_COUNT"
 echo "  Replication Factor: $REPLICATION_FACTOR"
 echo "  Compaction: ${COMPACTION:-default}"
+echo "  Concurrent Writes: ${CONCURRENT_WRITES:-(not set)}"
 echo "  Skip DDL: $SKIP_DDL"
 
 # Build conf options based on job type
@@ -315,6 +322,10 @@ fi
 
 if [ -n "$COMPACTION" ]; then
     CONF_OPTS="$CONF_OPTS --conf spark.easydblab.compaction=$COMPACTION"
+fi
+
+if [ -n "$CONCURRENT_WRITES" ]; then
+    CONF_OPTS="$CONF_OPTS --conf spark.cassandra.output.concurrent.writes=$CONCURRENT_WRITES"
 fi
 
 echo ""

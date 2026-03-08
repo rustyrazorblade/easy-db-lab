@@ -1126,6 +1126,28 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Emr.JobCancelling")
+        data class JobCancelling(
+            val stepId: String,
+        ) : Emr {
+            override fun toDisplayString(): String = "Cancelling job: $stepId..."
+        }
+
+        @Serializable
+        @SerialName("Emr.JobCancelled")
+        data class JobCancelled(
+            val stepId: String,
+            val status: String,
+            val reason: String? = null,
+        ) : Emr {
+            override fun toDisplayString(): String =
+                buildString {
+                    append("Cancel result for $stepId: $status")
+                    reason?.let { append(" ($it)") }
+                }
+        }
+
+        @Serializable
         @SerialName("Emr.SparkStepDetails")
         data class SparkStepDetails(
             val stepId: String,

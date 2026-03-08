@@ -15,9 +15,11 @@ import io.github.resilience4j.retry.Retry
 import software.amazon.awssdk.services.emr.EmrClient
 import software.amazon.awssdk.services.emr.model.ActionOnFailure
 import software.amazon.awssdk.services.emr.model.AddJobFlowStepsRequest
+import software.amazon.awssdk.services.emr.model.CancelStepsRequest
 import software.amazon.awssdk.services.emr.model.DescribeStepRequest
 import software.amazon.awssdk.services.emr.model.HadoopJarStepConfig
 import software.amazon.awssdk.services.emr.model.ListStepsRequest
+import software.amazon.awssdk.services.emr.model.StepCancellationOption
 import software.amazon.awssdk.services.emr.model.StepConfig
 import software.amazon.awssdk.services.emr.model.StepState
 import java.nio.file.Files
@@ -411,6 +413,36 @@ class EMRSparkService(
                         )
                     }
             }
+        }
+
+    override fun cancelJob(
+        clusterId: String,
+        stepId: String,
+    ): Result<SparkService.CancelJobResult> =
+        runCatching {
+            val request =
+                CancelStepsRequest
+                    .builder()
+                    .clusterId(clusterId)
+                    .stepIds(stepId)
+                    .stepCancellationOption(StepCancellationOption.TERMINATE_PROCESS)
+                    .build()
+
+            val cancelInfo =
+                executeWithRetry("emr-cancel-step") {
+                    val response = emrClient.cancelSteps(request)
+                    val results = response.cancelStepsInfoList()
+                    require(results.isNotEmpty()) {
+                        "EMR returned no cancellation results for step $stepId"
+                    }
+                    results.first()
+                }
+
+            SparkService.CancelJobResult(
+                stepId = cancelInfo.stepId(),
+                status = cancelInfo.status()?.toString() ?: "UNKNOWN",
+                reason = cancelInfo.reason(),
+            )
         }
 
     override fun getStepLogs(

@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.mcp
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
+import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.McpEventListener
@@ -9,6 +10,7 @@ import com.rustyrazorblade.easydblab.output.CompositeOutputHandler
 import com.rustyrazorblade.easydblab.output.FilteringChannelOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputEvent
 import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.services.VictoriaMetricsQueryService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
@@ -71,11 +73,14 @@ class McpServer(
     private val context: Context by inject()
     private val outputHandler: OutputHandler by inject()
     private val eventBus: EventBus by inject()
+    private val victoriaMetricsQueryService: VictoriaMetricsQueryService by inject()
+    private val clusterStateManager: ClusterStateManager by inject()
 
     private val toolRegistry = McpToolRegistry()
     private val mcpEventListener = McpEventListener()
     private val executionSemaphore = Semaphore(1) // Only allow one tool execution at a time
     private val statusCache = StatusCache(refreshIntervalSeconds)
+    private var metricsCollector: MetricsCollector? = null
 
     // Status tracking components
     private val outputChannel = Channel<OutputEvent>(Channel.UNLIMITED)
@@ -297,6 +302,7 @@ class McpServer(
             registerAllPrompts(server)
             messageBuffer.start()
             statusCache.start()
+            startMetricsCollectorIfRedisConfigured()
 
             startEmbeddedServer(port, bind, server, onStarted)
         } catch (e: IllegalStateException) {
@@ -305,6 +311,18 @@ class McpServer(
         } catch (e: RuntimeException) {
             log.error(e) { "Unexpected error in MCP server" }
             throw e
+        }
+    }
+
+    private fun startMetricsCollectorIfRedisConfigured() {
+        val redisUrl = System.getenv(Constants.EventBus.REDIS_URL_ENV_VAR)
+        if (!redisUrl.isNullOrBlank()) {
+            metricsCollector =
+                MetricsCollector(victoriaMetricsQueryService, clusterStateManager, eventBus)
+            metricsCollector?.start()
+            log.info { "MetricsCollector started (Redis configured)" }
+        } else {
+            log.debug { "MetricsCollector not started (Redis not configured)" }
         }
     }
 

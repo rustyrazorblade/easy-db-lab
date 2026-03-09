@@ -71,6 +71,7 @@ val servicesModule =
         factoryOf(::TemplateService)
         factory<VictoriaBackupService> { DefaultVictoriaBackupService(get(), get()) }
         factoryOf(::DefaultVictoriaStreamService) bind VictoriaStreamService::class
+        singleOf(::DefaultVictoriaMetricsQueryService) bind VictoriaMetricsQueryService::class
         factoryOf(::DefaultSidecarService) bind SidecarService::class
         singleOf(::DefaultStressJobService) bind StressJobService::class
         singleOf(::HostOperationsService)

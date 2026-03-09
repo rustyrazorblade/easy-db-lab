@@ -4842,6 +4842,38 @@ sealed interface Event {
                     }
                 }.trimEnd()
         }
+
+        @Serializable
+        @SerialName("Metrics.Node")
+        data class Node(
+            val cpuUsagePct: Double,
+            val memoryUsedBytes: Long,
+            val diskReadBytesPerSec: Double,
+            val diskWriteBytesPerSec: Double,
+            val filesystemUsedPct: Double,
+        )
+
+        @Serializable
+        @SerialName("Metrics.System")
+        data class System(
+            val nodes: Map<String, Node>,
+        ) : Metrics {
+            override fun toDisplayString(): String = "System metrics: ${nodes.size} nodes"
+        }
+
+        @Serializable
+        @SerialName("Metrics.Cassandra")
+        data class Cassandra(
+            val readP99Ms: Double,
+            val writeP99Ms: Double,
+            val readOpsPerSec: Double,
+            val writeOpsPerSec: Double,
+            val compactionPending: Long,
+            val compactionCompletedPerSec: Double,
+            val compactionBytesWrittenPerSec: Double,
+        ) : Metrics {
+            override fun toDisplayString(): String = "Cassandra metrics: read_p99=${readP99Ms}ms, write_p99=${writeP99Ms}ms"
+        }
     }
 
     // =========================================================================

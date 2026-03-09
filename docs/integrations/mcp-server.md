@@ -144,6 +144,98 @@ MCP tool names are derived from the command's package location:
    - "Create an OpenSearch domain and monitor its progress"
    - "Submit a Spark job to the EMR cluster"
 
+## Live Metrics Streaming
+
+When Redis is configured via the `EASY_DB_LAB_REDIS_URL` environment variable, the MCP server publishes live cluster metrics to the Redis pub/sub channel every 5 seconds. Metrics are queried from VictoriaMetrics using the same PromQL expressions as the Grafana dashboards.
+
+### Enabling
+
+```bash
+export EASY_DB_LAB_REDIS_URL=redis://localhost:6379/easydblab-events
+easy-db-lab server
+```
+
+Metrics events are published to the same channel as command events. Consumers filter by the `event.type` field.
+
+### Event Types
+
+Only metrics for running services are published. If the cluster is running ClickHouse instead of Cassandra, no Cassandra metrics events are emitted.
+
+#### Metrics.System
+
+Published every 5 seconds with per-node CPU, memory, disk I/O, and filesystem metrics:
+
+```json
+{
+  "timestamp": "2026-03-08T14:22:05.123Z",
+  "commandName": "server",
+  "event": {
+    "type": "Metrics.System",
+    "nodes": {
+      "db-0": {
+        "cpuUsagePct": 34.2,
+        "memoryUsedBytes": 17179869184,
+        "diskReadBytesPerSec": 52428800.0,
+        "diskWriteBytesPerSec": 104857600.0,
+        "filesystemUsedPct": 45.2
+      },
+      "db-1": {
+        "cpuUsagePct": 28.7,
+        "memoryUsedBytes": 16106127360,
+        "diskReadBytesPerSec": 41943040.0,
+        "diskWriteBytesPerSec": 83886080.0,
+        "filesystemUsedPct": 42.8
+      }
+    }
+  }
+}
+```
+
+#### Metrics.Cassandra
+
+Published every 5 seconds when the cluster is running Cassandra:
+
+```json
+{
+  "timestamp": "2026-03-08T14:22:05.187Z",
+  "commandName": "server",
+  "event": {
+    "type": "Metrics.Cassandra",
+    "readP99Ms": 1.247,
+    "writeP99Ms": 0.832,
+    "readOpsPerSec": 15234.5,
+    "writeOpsPerSec": 12087.3,
+    "compactionPending": 3,
+    "compactionCompletedPerSec": 1.5,
+    "compactionBytesWrittenPerSec": 52428800.0
+  }
+}
+```
+
+### Field Reference
+
+**System — per node:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `cpuUsagePct` | double | CPU usage percentage (0-100) |
+| `memoryUsedBytes` | long | Memory used in bytes |
+| `diskReadBytesPerSec` | double | Disk read throughput (bytes/sec) |
+| `diskWriteBytesPerSec` | double | Disk write throughput (bytes/sec) |
+| `filesystemUsedPct` | double | Filesystem usage percentage (0-100) |
+
+**Cassandra — cluster-wide:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `readP99Ms` | double | Read latency p99 in milliseconds |
+| `writeP99Ms` | double | Write latency p99 in milliseconds |
+| `readOpsPerSec` | double | Read operations per second |
+| `writeOpsPerSec` | double | Write operations per second |
+| `compactionPending` | long | Number of pending compactions |
+| `compactionCompletedPerSec` | double | Compactions completed per second |
+| `compactionBytesWrittenPerSec` | double | Compaction write throughput (bytes/sec) |
+
 ## Notes
 
 - The MCP server requires Docker to be installed

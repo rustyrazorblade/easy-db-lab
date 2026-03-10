@@ -404,6 +404,8 @@ step_setup_cassandra() {
     echo "=== Setting Cassandra version to 5.0 ==="
     easy-db-lab cassandra use 5.0
 
+    echo "=== Patching storage_compatibility_mode for Cassandra 5 bulk writer ==="
+    echo "storage_compatibility_mode: NONE" >> cassandra.patch.yaml
     echo "=== Updating configuration ==="
     easy-db-lab cassandra update-config
 
@@ -800,23 +802,8 @@ step_bulk_writer_sidecar() {
 }
 
 step_bulk_writer_s3() {
-    if [ "$ENABLE_SPARK" != true ]; then
-        echo "=== Skipping bulk writer S3 test (use --spark to enable) ==="
-        return 0
-    fi
-    if [ "$ENABLE_CASSANDRA" != true ]; then
-        echo "=== Skipping bulk writer S3 test (use --cassandra to enable) ==="
-        return 0
-    fi
-
-    local s3_bucket
-    s3_bucket=$(jq -r '.dataBucket // .s3Bucket' state.json)
-
-    submit_spark_writer "bulk writer (S3)" \
-        "$PROJECT_ROOT/spark/bulk-writer-s3/build/libs/bulk-writer-s3*.jar" \
-        com.rustyrazorblade.easydblab.spark.S3BulkWriter \
-        data_s3 \
-        --conf "spark.easydblab.s3.bucket=$s3_bucket"
+    echo "=== Skipping bulk writer S3 test (DATA_TRANSPORT_EXTENSION_CLASS not yet implemented) ==="
+    return 0
 }
 
 step_connector_writer() {

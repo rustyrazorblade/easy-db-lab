@@ -46,7 +46,7 @@ The system MUST provide CQL query execution against the cluster via the Java dri
 **Scenarios:**
 
 - **GIVEN** a running Cassandra cluster, **WHEN** the user executes a CQL query, **THEN** the query is routed through the available network path and results are displayed.
-- **GIVEN** the REPL or MCP server is running, **WHEN** multiple CQL queries are executed, **THEN** the CQL session is reused across queries.
+- **GIVEN** the REPL or server is running, **WHEN** multiple CQL queries are executed, **THEN** the CQL session is reused across queries.
 
 ### REQ-CA-006: Nodetool Access
 

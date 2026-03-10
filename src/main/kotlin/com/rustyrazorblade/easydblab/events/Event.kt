@@ -4567,7 +4567,7 @@ sealed interface Event {
     }
 
     // =========================================================================
-    // Event.Mcp — MCP server operations
+    // Event.Mcp — Server MCP operations
     // =========================================================================
 
     @Serializable
@@ -4604,7 +4604,7 @@ sealed interface Event {
         data class ServerStarting(
             val port: Int,
         ) : Mcp {
-            override fun toDisplayString(): String = "Starting MCP server on port $port..."
+            override fun toDisplayString(): String = "Starting server on port $port..."
         }
 
         @Serializable
@@ -4634,7 +4634,7 @@ sealed interface Event {
         ) : Mcp {
             override fun toDisplayString(): String =
                 """
-                Starting MCP server on port $port...
+                Starting server on port $port...
 
                 Server is now available at: http://$bind:$port/sse
                 Swagger UI available at:    http://$bind:$port/swagger

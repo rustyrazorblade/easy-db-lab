@@ -61,7 +61,7 @@ data class ServerStatusResponse(
     val timestamp: String,
 )
 
-/** MCP server implementation using the official SDK. */
+/** Server implementation — MCP protocol, REST endpoints, and background services. */
 class McpServer(
     private val refreshIntervalSeconds: Long = DEFAULT_REFRESH_INTERVAL_SECONDS,
 ) : KoinComponent {
@@ -294,7 +294,7 @@ class McpServer(
         onStarted: (actualPort: Int) -> Unit,
     ) {
         try {
-            log.info { "Starting MCP server with SDK (version ${context.version})" }
+            log.info { "Starting server with MCP SDK (version ${context.version})" }
             initializeStreaming()
 
             val server = createServer()
@@ -309,7 +309,7 @@ class McpServer(
             log.error { "Transport error: ${e.message}" }
             throw e
         } catch (e: RuntimeException) {
-            log.error(e) { "Unexpected error in MCP server" }
+            log.error(e) { "Unexpected error in server" }
             throw e
         }
     }
@@ -364,7 +364,7 @@ class McpServer(
                 install(SSE)
                 routing {
                     swaggerUI("/swagger") {
-                        info = OpenApiInfo("easy-db-lab MCP Server", context.version.toString())
+                        info = OpenApiInfo("easy-db-lab Server", context.version.toString())
                         source = OpenApiDocSource.Routing()
                     }
                     configureSseRoutes(server, serverSessions)
@@ -384,7 +384,7 @@ class McpServer(
         eventBus.emit(Event.Mcp.ServerReady(actualPort, bind))
 
         Thread.currentThread().join()
-        log.info { "MCP server stopped" }
+        log.info { "Server stopped" }
     }
 
     private fun io.ktor.server.routing.Routing.configureSseRoutes(

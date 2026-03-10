@@ -11,7 +11,7 @@ import picocli.CommandLine
  *
  * Commands are registered as factories in Koin (via CommandsModule)
  * to ensure a fresh instance is created for each execution, which
- * is important for the REPL and MCP server.
+ * is important for the REPL and server.
  *
  * For classes not registered in Koin (like parent Runnable commands),
  * this factory falls back to PicoCLI's default factory.

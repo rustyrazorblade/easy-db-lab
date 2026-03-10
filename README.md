@@ -28,7 +28,7 @@ A tool for creating database lab environments in AWS. Designed for testing, benc
 
 ### Developer Experience
 
-- **MCP Server** - AI assistant integration for cluster management
+- **Server** - AI assistant integration, REST status endpoints, live metrics
 - **Interactive CLI** - REPL mode for reduced typing
 - **Homebrew and Docker** - Multiple installation options
 
@@ -470,33 +470,33 @@ bcc-tools is a useful package of tools
 
 https://rustyrazorblade.com/post/2023/2023-11-14-bcc-tools/
 
-## MCP Server Integration
+## Server Integration
 
-easy-db-lab includes a Model Context Protocol (MCP) server that enables AI assistants like Claude Code to interact directly with your database clusters.
+easy-db-lab includes a server mode that enables AI assistants like Claude Code to interact directly with your database clusters via MCP (Model Context Protocol), and provides REST status endpoints for programmatic access.
 
-### Starting the MCP Server
+### Starting the Server
 
-To start the MCP server:
+To start the server:
 
 ```shell
 easy-db-lab server --port 8888
 ```
 
-This starts the MCP server on port 8888 (you can use any available port).
+This starts the server on port 8888 (you can use any available port).
 
 ### Integrating with Claude Code
 
-Once the MCP server is running, add it to Claude Code:
+Once the server is running, add it to Claude Code:
 
 ```shell
 claude mcp add --transport sse easy-db-lab http://127.0.0.1:8888/sse
 ```
 
-This establishes a Server-Sent Events (SSE) connection between Claude Code and your easy-db-lab MCP server.
+This establishes a Server-Sent Events (SSE) connection between Claude Code and the server.
 
 ### What You Can Do
 
-With MCP integration, Claude Code can:
+With the server integration, Claude Code can:
 
 * Manage and provision clusters directly
 * Configure and deploy Cassandra, ClickHouse, and OpenSearch
@@ -505,7 +505,7 @@ With MCP integration, Claude Code can:
 * Troubleshoot issues by analyzing logs and metrics
 * Automate complex multi-step cluster operations
 
-For detailed documentation, see the [MCP Integration section in the user manual](https://rustyrazorblade.github.io/easy-db-lab/integrations/mcp-server/).
+For detailed documentation, see the [Server section in the user manual](https://rustyrazorblade.github.io/easy-db-lab/integrations/server/).
 
 ## Sanity Check Test
 

@@ -26,11 +26,11 @@ The system SHALL support querying VictoriaMetrics via the Prometheus HTTP API (`
 
 ### Requirement: System metrics streaming
 
-The system SHALL publish per-node system metrics to the Redis pub/sub channel every 5 seconds when the MCP server is running with Redis configured.
+The system SHALL publish per-node system metrics to the Redis pub/sub channel every 5 seconds when the server is running with Redis configured.
 
 #### Scenario: System metrics published for all db nodes
 
-- **WHEN** the MCP server is running with Redis configured and db nodes are active
+- **WHEN** the server is running with Redis configured and db nodes are active
 - **THEN** a `Metrics.System` event is published every 5 seconds containing CPU usage, memory used, disk read/write throughput, and filesystem usage percentage for each db node
 
 #### Scenario: Per-node metrics keyed by node alias
@@ -45,7 +45,7 @@ The system SHALL publish per-node system metrics to the Redis pub/sub channel ev
 
 #### Scenario: Metrics collection does not start without Redis
 
-- **WHEN** the MCP server is running without Redis configured
+- **WHEN** the server is running without Redis configured
 - **THEN** no metrics collection timer is started and no metrics events are emitted
 
 ### Requirement: Cassandra metrics streaming
@@ -54,7 +54,7 @@ The system SHALL publish cluster-wide Cassandra metrics to the Redis pub/sub cha
 
 #### Scenario: Cassandra metrics published when Cassandra is the db type
 
-- **WHEN** the MCP server is running with Redis configured and the cluster db type is Cassandra
+- **WHEN** the server is running with Redis configured and the cluster db type is Cassandra
 - **THEN** a `Metrics.Cassandra` event is published every 5 seconds containing read/write p99 latency, read/write ops/sec, compaction pending count, compaction completed rate, and compaction bytes written rate
 
 #### Scenario: No Cassandra event when db type is not Cassandra

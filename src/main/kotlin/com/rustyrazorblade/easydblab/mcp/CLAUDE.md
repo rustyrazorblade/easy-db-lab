@@ -1,20 +1,23 @@
-# MCP Server Package
+# Server Package (`mcp/`)
 
-This package implements the Model Context Protocol (MCP) server that exposes CLI commands as tools for AI agents.
+This package implements the server — a hybrid HTTP server that exposes CLI commands as MCP tools for AI agents, REST endpoints for programmatic status access, and background services for caching and metrics.
 
 ## Architecture
 
 ```
 AI Agent → SSE transport → McpServer → McpToolRegistry → PicoCLI Command → Service Layer
-                                ↓                                               ↓
-                          StatusCache (background refresh every 30s)       eventBus.emit()
-                          ChannelMessageBuffer (legacy output)                  ↓
-                          McpEventListener (structured events)            EventBus dispatches
+HTTP Client → REST endpoints (/status, /stress/status, /swagger)                ↓
+                                ↓                                         eventBus.emit()
+                          StatusCache (background refresh every 30s)            ↓
+                          MetricsCollector (optional, Redis pub/sub)      EventBus dispatches
+                          ChannelMessageBuffer (legacy output)
+                          McpEventListener (structured events)
 ```
 
-**Transport:** SSE (Server-Sent Events) via Ktor embedded Netty server
-**SDK:** `io.modelcontextprotocol:kotlin-sdk` (official MCP Kotlin SDK)
-**Endpoint:** `http://{bind}:{port}/sse` (default: `127.0.0.1:0`)
+**MCP Transport:** SSE (Server-Sent Events) via Ktor embedded Netty server
+**MCP SDK:** `io.modelcontextprotocol:kotlin-sdk` (official MCP Kotlin SDK)
+**MCP Endpoint:** `http://{bind}:{port}/sse` (default: `127.0.0.1:0`)
+**REST Endpoints:** `/status`, `/stress/status`, `/swagger`
 
 ## Files
 

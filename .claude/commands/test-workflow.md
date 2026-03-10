@@ -1,12 +1,12 @@
 ---
 command: "/test-workflow"
 category: "Testing & Demonstration"
-purpose: "End-to-end Cassandra cluster workflow demonstration using MCP servers"
+purpose: "End-to-end Cassandra cluster workflow demonstration using server tools"
 ---
 
 # Cassandra Cluster Test Workflow
 
-Execute a complete end-to-end workflow demonstrating easy-db-lab capabilities using only MCP server tools.
+Execute a complete end-to-end workflow demonstrating easy-db-lab capabilities using only server tools.
 
 ## Workflow Steps
 
@@ -38,7 +38,7 @@ Use `mcp__easy-db-lab__use` to set Cassandra version:
 Use `mcp__easy-db-lab__start` to start all services:
 - Starts Cassandra on database nodes
 - Starts cassandra-easy-stress on stress nodes
-- Starts monitoring and MCP servers on control nodes
+- Starts monitoring and servers on control nodes
 - Report when services are ready
 
 ### 5. Get Cassandra Host IP
@@ -49,8 +49,8 @@ Use `mcp__easy-db-lab__hosts` to retrieve host information:
 ### 6. Wait for Cluster Readiness
 Wait ~30 seconds for Cassandra to fully initialize and be ready to accept connections.
 
-### 7. Check MCP Server Status
-Use `mcp__easy-db-lab__get_server_status` to check if MCP servers are running:
+### 7. Check Server Status
+Use `mcp__easy-db-lab__get_server_status` to check if servers are running:
 - Verify easy-cass-mcp is accessible
 - Verify cassandra-easy-stress is accessible
 - If any are disconnected, report but continue (manual reconnection may be needed)

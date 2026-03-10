@@ -59,7 +59,7 @@ assets_version = "3.0.2"
 - [Spark](user-guide/spark.md)
 - [ClickHouse](user-guide/clickhouse.md)
 - [Shell Aliases](user-guide/shell-aliases.md)
-- [MCP Server](integrations/mcp-server.md)
+- [Server](integrations/server.md)
 
 # Reference
 

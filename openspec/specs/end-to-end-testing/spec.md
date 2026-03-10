@@ -68,7 +68,7 @@ The test runner SHALL provision a full AWS environment including EC2 instances, 
 #### Scenario: VPC and host verification
 
 - **WHEN** infrastructure is provisioned
-- **THEN** VPC tags are verified, hosts are listed, and the MCP server status endpoint returns cluster data
+- **THEN** VPC tags are verified, hosts are listed, and the server status endpoint returns cluster data
 
 ### Requirement: S3 backup verification
 

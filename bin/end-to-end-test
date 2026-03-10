@@ -254,7 +254,7 @@ step_list_hosts() {
 }
 
 step_test_mcp_server() {
-    echo "=== Testing MCP server /status endpoint ==="
+    echo "=== Testing server /status endpoint ==="
 
     # Remove stale .mcp.json if present
     rm -f .mcp.json
@@ -268,7 +268,7 @@ step_test_mcp_server() {
         sleep 2
     fi
 
-    # Start the MCP server in the background on a fixed port.
+    # Start the server in the background on a fixed port.
     # Redirect output to a log file so the server process doesn't hold
     # the tee pipe open after this step returns.
     local server_log=$(mktemp /tmp/e2e-mcp-server-XXXXXX)
@@ -282,7 +282,7 @@ step_test_mcp_server() {
     local elapsed=0
     while [ $elapsed -lt $timeout ]; do
         if curl -s -o /dev/null "${server_url}/status" 2>/dev/null; then
-            echo "MCP server ready at: $server_url"
+            echo "Server ready at: $server_url"
             break
         fi
         sleep 2
@@ -290,7 +290,7 @@ step_test_mcp_server() {
     done
 
     if [ $elapsed -ge $timeout ]; then
-        echo "ERROR: MCP server did not become ready within ${timeout}s"
+        echo "ERROR: Server did not become ready within ${timeout}s"
         kill "$server_pid" 2>/dev/null || true
         return 1
     fi
@@ -345,12 +345,12 @@ step_test_mcp_server() {
     fi
 
     # Clean up — kill process group to catch any children
-    echo "=== Stopping MCP server ==="
+    echo "=== Stopping server ==="
     kill -9 "$server_pid" 2>/dev/null || true
     wait "$server_pid" 2>/dev/null || true
     rm -f .mcp.json .mcp-server.pid "$server_log"
 
-    echo "=== MCP server /status test passed ==="
+    echo "=== Server /status test passed ==="
 }
 
 step_verify_s3_backup() {
@@ -1111,7 +1111,7 @@ step_test_logs_backup() {
 }
 
 step_teardown() {
-    # Kill stale MCP server if still running
+    # Kill stale server if still running
     if [ -f .mcp-server.pid ]; then
         local pid=$(cat .mcp-server.pid)
         kill "$pid" 2>/dev/null || true
@@ -1145,7 +1145,7 @@ STEPS_WORKDIR=(
     "step_verify_k3s:Verify K3s cluster"
     "step_verify_vpc_tags:Verify VPC tags"
     "step_list_hosts:List hosts"
-    "step_test_mcp_server:Test MCP server status endpoint"
+    "step_test_mcp_server:Test server status endpoint"
     "step_verify_s3_backup:Verify S3 backup"
     "step_setup_cassandra:Setup Cassandra"
     "step_verify_cassandra_backup:Verify Cassandra backup"

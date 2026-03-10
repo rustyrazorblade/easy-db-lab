@@ -13,7 +13,7 @@ context: |
   - Testing: JUnit 5 + AssertJ + BaseKoinTest + TestContainers
   - Kubernetes: Fabric8 manifest builders (no YAML string construction)
   - Redis Client: Lettuce (async, non-blocking)
-  - MCP Server: Ktor + SSE
+  - Server: Ktor + SSE (MCP + REST + background services)
   - Logging: io.github.oshai.kotlinlogging.KotlinLogging (internal only)
 
   ## Architecture

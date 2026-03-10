@@ -13,7 +13,7 @@ The project follows a layered architecture:
 
 - **Commands (PicoCLI)** delegate to **Services**, which interact with **External Systems** (K8s, AWS, Filesystem)
 - Commands and Services emit events via the **EventBus**
-- **Listeners** consume events: `ConsoleEventListener` (stdout/stderr), `McpEventListener` (MCP server status), `RedisEventListener` (pub/sub, optional)
+- **Listeners** consume events: `ConsoleEventListener` (stdout/stderr), `McpEventListener` (server MCP status), `RedisEventListener` (pub/sub, optional)
 
 ### Project Modules
 
@@ -40,10 +40,10 @@ See [`commands/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/command
 
 See [`providers/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/providers/CLAUDE.md) for AWS/SSH/Docker patterns and retry logic.
 
-### MCP Server & REPL
+### Server & REPL
 
 Two commands run as long-lived processes instead of the typical run-and-exit pattern:
-- **`Server`** — starts an MCP server (Ktor + SSE) for AI agent integration. See [`mcp/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/mcp/CLAUDE.md).
+- **`Server`** — starts a hybrid HTTP server with MCP protocol support (Ktor + SSE), REST status endpoints, and background services. See [`mcp/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/mcp/CLAUDE.md).
 - **`Repl`** — starts an interactive REPL to reduce typing for repeated commands.
 
 ### Dependency Injection
@@ -297,6 +297,6 @@ Detailed patterns live in package-level CLAUDE.md files:
 - [`services/aws/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/services/aws/CLAUDE.md) — AWS service classes (AMI, EC2, EMR, OpenSearch, S3)
 - [`providers/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/providers/CLAUDE.md) — AWS SDK wrappers, SSH/Docker patterns, retry logic
 - [`configuration/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/configuration/CLAUDE.md) — cluster state, templates, K8s manifest builders, observability stack details
-- [`mcp/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/mcp/CLAUDE.md) — MCP server architecture
+- [`mcp/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/mcp/CLAUDE.md) — Server architecture (MCP, REST, background services)
 - [`kubernetes/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/kubernetes/CLAUDE.md) — K8s client patterns
 - [`src/test/.../CLAUDE.md`](src/test/kotlin/com/rustyrazorblade/easydblab/CLAUDE.md) — test infrastructure

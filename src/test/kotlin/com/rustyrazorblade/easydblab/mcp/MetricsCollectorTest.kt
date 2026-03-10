@@ -69,7 +69,7 @@ class MetricsCollectorTest : BaseKoinTest() {
                     capturedEvents.add(envelope.event)
                 }
 
-                override fun close() {}
+                override fun close() = Unit
             },
         )
 

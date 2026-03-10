@@ -11,6 +11,7 @@ import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.providers.aws.EMRClusterConfig
 import com.rustyrazorblade.easydblab.providers.aws.EMRClusterResult
+import com.rustyrazorblade.easydblab.services.EmrClusterProvisioningConfig
 import com.rustyrazorblade.easydblab.services.aws.EMRService
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -57,7 +58,7 @@ internal class EMRProvisioningServiceTest {
                     capturedEvents.add(envelope.event)
                 }
 
-                override fun close() {}
+                override fun close() = Unit
             },
         )
         val mockClusterStateManager = mock<ClusterStateManager>()
@@ -117,15 +118,17 @@ internal class EMRProvisioningServiceTest {
 
         val result =
             service.provisionEmrCluster(
-                clusterName = "test",
-                masterInstanceType = "m5.2xlarge",
-                workerInstanceType = "m5.4xlarge",
-                workerCount = 5,
-                subnetId = "subnet-123",
-                securityGroupId = "sg-456",
-                keyName = "my-key",
-                clusterState = clusterState,
-                tags = mapOf("env" to "test"),
+                EmrClusterProvisioningConfig(
+                    clusterName = "test",
+                    masterInstanceType = "m5.2xlarge",
+                    workerInstanceType = "m5.4xlarge",
+                    workerCount = 5,
+                    subnetId = "subnet-123",
+                    securityGroupId = "sg-456",
+                    keyName = "my-key",
+                    clusterState = clusterState,
+                    tags = mapOf("env" to "test"),
+                ),
             )
 
         assertThat(result.clusterId).isEqualTo("j-TEST123")
@@ -136,44 +139,23 @@ internal class EMRProvisioningServiceTest {
 
     @Test
     fun `provisionEmrCluster should build correct EMRClusterConfig`() {
-        val clusterState =
-            ClusterState(
-                name = "test-cluster",
-                versions = mutableMapOf(),
-                s3Bucket = "easy-db-lab-test-bucket",
-                clusterId = "test-id",
-                hosts = mapOf(ServerType.Control to listOf(testControlHost)),
-            )
-
-        val createResult =
-            EMRClusterResult(
-                clusterId = "j-ABC",
-                clusterName = "myenv-spark",
-                masterPublicDns = null,
-                state = "STARTING",
-            )
-        val readyResult =
-            EMRClusterResult(
-                clusterId = "j-ABC",
-                clusterName = "myenv-spark",
-                masterPublicDns = "master.dns",
-                state = "WAITING",
-            )
+        val clusterState = createTestClusterState(clusterId = "test-id")
 
         val configCaptor = argumentCaptor<EMRClusterConfig>()
-        whenever(mockEmrService.createCluster(configCaptor.capture())).thenReturn(createResult)
-        whenever(mockEmrService.waitForClusterReady("j-ABC")).thenReturn(readyResult)
+        setupEmrMocks("j-ABC", "myenv-spark", configCaptor)
 
         service.provisionEmrCluster(
-            clusterName = "myenv",
-            masterInstanceType = "m5.2xlarge",
-            workerInstanceType = "m5.4xlarge",
-            workerCount = 5,
-            subnetId = "subnet-123",
-            securityGroupId = "sg-456",
-            keyName = "my-key",
-            clusterState = clusterState,
-            tags = mapOf("env" to "test"),
+            EmrClusterProvisioningConfig(
+                clusterName = "myenv",
+                masterInstanceType = "m5.2xlarge",
+                workerInstanceType = "m5.4xlarge",
+                workerCount = 5,
+                subnetId = "subnet-123",
+                securityGroupId = "sg-456",
+                keyName = "my-key",
+                clusterState = clusterState,
+                tags = mapOf("env" to "test"),
+            ),
         )
 
         val config = configCaptor.firstValue
@@ -190,10 +172,12 @@ internal class EMRProvisioningServiceTest {
         assertThat(config.bootstrapActions.first().name).isEqualTo("Install OTel and Pyroscope Agents")
         assertThat(config.bootstrapActions.first().scriptS3Path).contains("bootstrap-otel.sh")
 
-        // Verify spark-defaults and spark-env classifications are included
+        assertSparkConfigurations(config)
+    }
+
+    private fun assertSparkConfigurations(config: EMRClusterConfig) {
         assertThat(config.configurations).hasSize(2)
         val sparkDefaults = config.configurations.first { it.classification == "spark-defaults" }
-        assertThat(sparkDefaults.classification).isEqualTo("spark-defaults")
         assertThat(sparkDefaults.properties["spark.driver.extraJavaOptions"])
             .contains("-javaagent:/opt/otel/opentelemetry-javaagent.jar")
             .contains("-javaagent:/opt/pyroscope/pyroscope.jar")
@@ -205,7 +189,6 @@ internal class EMRProvisioningServiceTest {
         assertThat(sparkDefaults.properties["spark.executorEnv.OTEL_LOGS_EXPORTER"]).isEqualTo("otlp")
         assertThat(sparkDefaults.properties["spark.yarn.appMasterEnv.OTEL_TRACES_EXPORTER"]).isEqualTo("otlp")
 
-        // Verify spark-env classification for Pyroscope hostname labeling
         val sparkEnv = config.configurations.first { it.classification == "spark-env" }
         assertThat(sparkEnv.configurations).hasSize(1)
         val exportConfig = sparkEnv.configurations.first()
@@ -242,15 +225,17 @@ internal class EMRProvisioningServiceTest {
         whenever(mockEmrService.waitForClusterReady("j-SEQ")).thenReturn(readyResult)
 
         service.provisionEmrCluster(
-            clusterName = "test",
-            masterInstanceType = "m5.xlarge",
-            workerInstanceType = "m5.xlarge",
-            workerCount = 3,
-            subnetId = "subnet-123",
-            securityGroupId = "sg-456",
-            keyName = "my-key",
-            clusterState = clusterState,
-            tags = emptyMap(),
+            EmrClusterProvisioningConfig(
+                clusterName = "test",
+                masterInstanceType = "m5.xlarge",
+                workerInstanceType = "m5.xlarge",
+                workerCount = 3,
+                subnetId = "subnet-123",
+                securityGroupId = "sg-456",
+                keyName = "my-key",
+                clusterState = clusterState,
+                tags = emptyMap(),
+            ),
         )
 
         verify(mockEmrService).createCluster(any())
@@ -272,15 +257,17 @@ internal class EMRProvisioningServiceTest {
 
         assertThatThrownBy {
             service.provisionEmrCluster(
-                clusterName = "test",
-                masterInstanceType = "m5.xlarge",
-                workerInstanceType = "m5.xlarge",
-                workerCount = 3,
-                subnetId = "subnet-123",
-                securityGroupId = "sg-456",
-                keyName = "my-key",
-                clusterState = clusterState,
-                tags = emptyMap(),
+                EmrClusterProvisioningConfig(
+                    clusterName = "test",
+                    masterInstanceType = "m5.xlarge",
+                    workerInstanceType = "m5.xlarge",
+                    workerCount = 3,
+                    subnetId = "subnet-123",
+                    securityGroupId = "sg-456",
+                    keyName = "my-key",
+                    clusterState = clusterState,
+                    tags = emptyMap(),
+                ),
             )
         }.isInstanceOf(RuntimeException::class.java)
             .hasMessageContaining("EMR API unavailable")
@@ -314,15 +301,17 @@ internal class EMRProvisioningServiceTest {
 
         assertThatThrownBy {
             service.provisionEmrCluster(
-                clusterName = "test",
-                masterInstanceType = "m5.xlarge",
-                workerInstanceType = "m5.xlarge",
-                workerCount = 3,
-                subnetId = "subnet-123",
-                securityGroupId = "sg-456",
-                keyName = "my-key",
-                clusterState = clusterState,
-                tags = emptyMap(),
+                EmrClusterProvisioningConfig(
+                    clusterName = "test",
+                    masterInstanceType = "m5.xlarge",
+                    workerInstanceType = "m5.xlarge",
+                    workerCount = 3,
+                    subnetId = "subnet-123",
+                    securityGroupId = "sg-456",
+                    keyName = "my-key",
+                    clusterState = clusterState,
+                    tags = emptyMap(),
+                ),
             )
         }.isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("TERMINATED_WITH_ERRORS")
@@ -363,15 +352,17 @@ internal class EMRProvisioningServiceTest {
 
         assertThatThrownBy {
             service.provisionEmrCluster(
-                clusterName = "test",
-                masterInstanceType = "m5.xlarge",
-                workerInstanceType = "m5.xlarge",
-                workerCount = 3,
-                subnetId = "subnet-123",
-                securityGroupId = "sg-456",
-                keyName = "my-key",
-                clusterState = clusterState,
-                tags = emptyMap(),
+                EmrClusterProvisioningConfig(
+                    clusterName = "test",
+                    masterInstanceType = "m5.xlarge",
+                    workerInstanceType = "m5.xlarge",
+                    workerCount = 3,
+                    subnetId = "subnet-123",
+                    securityGroupId = "sg-456",
+                    keyName = "my-key",
+                    clusterState = clusterState,
+                    tags = emptyMap(),
+                ),
             )
         }.isInstanceOf(IllegalStateException::class.java)
 
@@ -410,15 +401,17 @@ internal class EMRProvisioningServiceTest {
 
         assertThatThrownBy {
             service.provisionEmrCluster(
-                clusterName = "test",
-                masterInstanceType = "m5.xlarge",
-                workerInstanceType = "m5.xlarge",
-                workerCount = 3,
-                subnetId = "subnet-123",
-                securityGroupId = "sg-456",
-                keyName = "my-key",
-                clusterState = clusterState,
-                tags = emptyMap(),
+                EmrClusterProvisioningConfig(
+                    clusterName = "test",
+                    masterInstanceType = "m5.xlarge",
+                    workerInstanceType = "m5.xlarge",
+                    workerCount = 3,
+                    subnetId = "subnet-123",
+                    securityGroupId = "sg-456",
+                    keyName = "my-key",
+                    clusterState = clusterState,
+                    tags = emptyMap(),
+                ),
             )
         }.isInstanceOf(IllegalStateException::class.java)
 
@@ -427,5 +420,43 @@ internal class EMRProvisioningServiceTest {
         assertThat(debugEvents.first().clusterId).isEqualTo("j-DIAG")
         assertThat(debugEvents.first().emrLogsPath)
             .isEqualTo("s3://easy-db-lab-test-bucket/clusters/test-cluster-test-id/spark/emr-logs")
+    }
+
+    private fun createTestClusterState(
+        name: String = "test-cluster",
+        clusterId: String = "",
+    ) = ClusterState(
+        name = name,
+        versions = mutableMapOf(),
+        s3Bucket = "easy-db-lab-test-bucket",
+        clusterId = clusterId,
+        hosts = mapOf(ServerType.Control to listOf(testControlHost)),
+    )
+
+    private fun setupEmrMocks(
+        clusterId: String,
+        clusterName: String,
+        configCaptor: org.mockito.kotlin.KArgumentCaptor<EMRClusterConfig>? = null,
+    ) {
+        val createResult =
+            EMRClusterResult(
+                clusterId = clusterId,
+                clusterName = clusterName,
+                masterPublicDns = null,
+                state = "STARTING",
+            )
+        val readyResult =
+            EMRClusterResult(
+                clusterId = clusterId,
+                clusterName = clusterName,
+                masterPublicDns = "master.dns",
+                state = "WAITING",
+            )
+        if (configCaptor != null) {
+            whenever(mockEmrService.createCluster(configCaptor.capture())).thenReturn(createResult)
+        } else {
+            whenever(mockEmrService.createCluster(any())).thenReturn(createResult)
+        }
+        whenever(mockEmrService.waitForClusterReady(clusterId)).thenReturn(readyResult)
     }
 }

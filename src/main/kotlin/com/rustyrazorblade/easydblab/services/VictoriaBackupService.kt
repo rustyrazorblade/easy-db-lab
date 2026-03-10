@@ -4,6 +4,8 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.victoria.VictoriaBackupJobBuilder
+import com.rustyrazorblade.easydblab.configuration.victoriaLogs
+import com.rustyrazorblade.easydblab.configuration.victoriaMetrics
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import io.github.oshai.kotlinlogging.KotlinLogging

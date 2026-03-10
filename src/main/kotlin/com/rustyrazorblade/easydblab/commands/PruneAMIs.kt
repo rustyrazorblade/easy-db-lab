@@ -105,30 +105,37 @@ class PruneAMIs : PicoBaseCommand() {
         val skipped = mutableListOf<String>()
 
         for (ami in preview.deleted) {
-            displayAMIDetails(ami)
-
-            print("Delete this AMI? [y/N]: ")
-            val response = readlnOrNull()?.trim()?.lowercase() ?: "n"
-            val shouldDelete = response == "y" || response == "yes"
-
-            if (shouldDelete) {
-                try {
-                    service.deregisterAMI(ami.id)
-                    for (snapshotId in ami.snapshotIds) {
-                        service.deleteSnapshot(snapshotId)
-                    }
-                    eventBus.emit(Event.Ami.Deleted)
-                    actuallyDeleted.add(ami.id)
-                } catch (e: Exception) {
-                    eventBus.emit(Event.Ami.DeleteFailed(e.message ?: "unknown error"))
-                }
+            if (confirmAndDeleteAmi(ami)) {
+                actuallyDeleted.add(ami.id)
             } else {
-                eventBus.emit(Event.Ami.Skipped)
                 skipped.add(ami.id)
             }
         }
 
         eventBus.emit(Event.Ami.PruningSummary(actuallyDeleted.size, skipped.size, preview.kept.size))
+    }
+
+    @Suppress("TooGenericExceptionCaught")
+    private fun confirmAndDeleteAmi(ami: AMI): Boolean {
+        displayAMIDetails(ami)
+        print("Delete this AMI? [y/N]: ")
+        val response = readlnOrNull()?.trim()?.lowercase() ?: "n"
+        val shouldDelete = response == "y" || response == "yes"
+        if (!shouldDelete) {
+            eventBus.emit(Event.Ami.Skipped)
+            return false
+        }
+        try {
+            service.deregisterAMI(ami.id)
+            for (snapshotId in ami.snapshotIds) {
+                service.deleteSnapshot(snapshotId)
+            }
+            eventBus.emit(Event.Ami.Deleted)
+            return true
+        } catch (e: Exception) {
+            eventBus.emit(Event.Ami.DeleteFailed(e.message ?: "unknown error"))
+            return false
+        }
     }
 
     private fun displayAMIDetails(ami: AMI) {

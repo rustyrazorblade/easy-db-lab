@@ -6,6 +6,10 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.AWSPolicy
+import com.rustyrazorblade.easydblab.providers.aws.createEMREC2Role
+import com.rustyrazorblade.easydblab.providers.aws.createRoleWithS3Policy
+import com.rustyrazorblade.easydblab.providers.aws.createServiceRole
+import com.rustyrazorblade.easydblab.providers.aws.validateRoleSetup
 
 /**
  * Service responsible for ensuring AWS IAM resources are set up
@@ -114,22 +118,23 @@ class AWSResourceSetupService(
     private fun validateCredentials() {
         try {
             aws.checkPermissions()
-        } catch (e: software.amazon.awssdk.services.sts.model.StsException) {
-            // Check if this is an authorization error (403) vs authentication error (401/other)
-            if (e.statusCode() == Constants.HttpStatus.FORBIDDEN) {
-                // Permission denied - credentials are valid but lack permissions
-                handlePermissionError(e)
-            } else {
-                // Authentication error - invalid or missing credentials
-                handleAuthenticationError(e)
-            }
-            throw e
-        } catch (e: software.amazon.awssdk.core.exception.SdkServiceException) {
-            handlePermissionError(e)
-            throw e
         } catch (e: Exception) {
-            eventBus.emit(Event.AwsSetup.CredentialValidationFailed)
+            emitCredentialError(e)
             throw e
+        }
+    }
+
+    private fun emitCredentialError(e: Exception) {
+        when (e) {
+            is software.amazon.awssdk.services.sts.model.StsException -> {
+                if (e.statusCode() == Constants.HttpStatus.FORBIDDEN) {
+                    handlePermissionError(e)
+                } else {
+                    handleAuthenticationError(e)
+                }
+            }
+            is software.amazon.awssdk.core.exception.SdkServiceException -> handlePermissionError(e)
+            else -> eventBus.emit(Event.AwsSetup.CredentialValidationFailed)
         }
     }
 
@@ -149,15 +154,20 @@ class AWSResourceSetupService(
             // EMR EC2 role (for Spark clusters)
             aws.createEMREC2Role()
             eventBus.emit(Event.AwsSetup.EmrEc2RoleReady(Constants.AWS.Roles.EMR_EC2_ROLE))
-        } catch (e: software.amazon.awssdk.services.iam.model.IamException) {
-            eventBus.emit(Event.AwsSetup.IamPermissionError(ERR_IAM_PERMISSIONS))
-            throw e
-        } catch (e: IllegalStateException) {
-            eventBus.emit(Event.AwsSetup.IamValidationError(ERR_IAM_VALIDATION))
-            throw e
         } catch (e: Exception) {
-            eventBus.emit(Event.AwsSetup.IamUnexpectedError(ERR_IAM_UNEXPECTED))
+            emitIamError(e)
             throw e
+        }
+    }
+
+    private fun emitIamError(e: Exception) {
+        when (e) {
+            is software.amazon.awssdk.services.iam.model.IamException ->
+                eventBus.emit(Event.AwsSetup.IamPermissionError(ERR_IAM_PERMISSIONS))
+            is IllegalStateException ->
+                eventBus.emit(Event.AwsSetup.IamValidationError(ERR_IAM_VALIDATION))
+            else ->
+                eventBus.emit(Event.AwsSetup.IamUnexpectedError(ERR_IAM_UNEXPECTED))
         }
     }
 

@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.configuration.OpenSearchClusterState
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchDomainConfig
+import com.rustyrazorblade.easydblab.services.aws.OpenSearchDomainResult
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
@@ -65,7 +66,6 @@ class OpenSearchStart : PicoBaseCommand() {
     var wait: Boolean = false
 
     override fun execute() {
-        // Validate infrastructure is ready
         val infrastructure =
             clusterState.infrastructure
                 ?: error("Infrastructure not ready. Please run 'up' first.")
@@ -78,36 +78,48 @@ class OpenSearchStart : PicoBaseCommand() {
             infrastructure.securityGroupId
                 ?: error("No security group found in infrastructure. Please run 'up' first.")
 
-        // Generate domain name from cluster name (must be 3-28 lowercase chars)
         val domainName = generateDomainName(clusterState.name)
-
         log.info { "Creating OpenSearch domain: $domainName" }
 
-        // Ensure the OpenSearch service-linked role exists (required for VPC access)
         eventBus.emit(Event.OpenSearch.ServiceLinkedRoleEnsuring)
         openSearchService.ensureServiceLinkedRole()
 
-        val config =
-            OpenSearchDomainConfig(
-                domainName = domainName,
-                instanceType = instanceType,
-                instanceCount = instanceCount,
-                ebsVolumeSize = ebsSize,
-                engineVersion = "OpenSearch_$version",
-                subnetId = subnetId,
-                securityGroupIds = listOf(securityGroupId),
-                accountId = openSearchService.getAccountId(),
-                region = user.region,
-                tags =
-                    mapOf(
-                        Constants.Vpc.TAG_KEY to Constants.Vpc.TAG_VALUE,
-                        "ClusterId" to clusterState.clusterId,
-                    ),
-            )
-
+        val config = buildDomainConfig(domainName, subnetId, securityGroupId)
         val result = openSearchService.createDomain(config)
 
-        // Update cluster state with domain info
+        saveOpenSearchState(result)
+
+        if (wait) {
+            waitForDomainAndUpdateState(domainName)
+        } else {
+            eventBus.emit(Event.OpenSearch.CreateStarted)
+            eventBus.emit(Event.OpenSearch.CreateTimingNote)
+            eventBus.emit(Event.OpenSearch.CreateStatusCheckHint)
+        }
+    }
+
+    private fun buildDomainConfig(
+        domainName: String,
+        subnetId: String,
+        securityGroupId: String,
+    ) = OpenSearchDomainConfig(
+        domainName = domainName,
+        instanceType = instanceType,
+        instanceCount = instanceCount,
+        ebsVolumeSize = ebsSize,
+        engineVersion = "OpenSearch_$version",
+        subnetId = subnetId,
+        securityGroupIds = listOf(securityGroupId),
+        accountId = openSearchService.getAccountId(),
+        region = user.region,
+        tags =
+            mapOf(
+                Constants.Vpc.TAG_KEY to Constants.Vpc.TAG_VALUE,
+                "ClusterId" to clusterState.clusterId,
+            ),
+    )
+
+    private fun saveOpenSearchState(result: OpenSearchDomainResult) {
         clusterState.updateOpenSearchDomain(
             OpenSearchClusterState(
                 domainName = result.domainName,
@@ -118,29 +130,24 @@ class OpenSearchStart : PicoBaseCommand() {
             ),
         )
         clusterStateManager.save(clusterState)
+    }
 
-        if (wait) {
-            eventBus.emit(Event.OpenSearch.Waiting)
-            val activeResult = openSearchService.waitForDomainActive(domainName)
+    private fun waitForDomainAndUpdateState(domainName: String) {
+        eventBus.emit(Event.OpenSearch.Waiting)
+        val activeResult = openSearchService.waitForDomainActive(domainName)
 
-            // Update state with endpoint info
-            clusterState.updateOpenSearchDomain(
-                OpenSearchClusterState(
-                    domainName = activeResult.domainName,
-                    domainId = activeResult.domainId,
-                    endpoint = activeResult.endpoint,
-                    dashboardsEndpoint = activeResult.dashboardsEndpoint,
-                    state = activeResult.state.name,
-                ),
-            )
-            clusterStateManager.save(clusterState)
+        clusterState.updateOpenSearchDomain(
+            OpenSearchClusterState(
+                domainName = activeResult.domainName,
+                domainId = activeResult.domainId,
+                endpoint = activeResult.endpoint,
+                dashboardsEndpoint = activeResult.dashboardsEndpoint,
+                state = activeResult.state.name,
+            ),
+        )
+        clusterStateManager.save(clusterState)
 
-            displayAccessInfo(activeResult.endpoint, activeResult.dashboardsEndpoint)
-        } else {
-            eventBus.emit(Event.OpenSearch.CreateStarted)
-            eventBus.emit(Event.OpenSearch.CreateTimingNote)
-            eventBus.emit(Event.OpenSearch.CreateStatusCheckHint)
-        }
+        displayAccessInfo(activeResult.endpoint, activeResult.dashboardsEndpoint)
     }
 
     private fun generateDomainName(clusterName: String): String {

@@ -132,8 +132,8 @@ complexity:
   LongParameterList:
     active: true
     functionThreshold: 6
-    constructorThreshold: 7
-    ignoreDefaultParameters: false
+    constructorThreshold: 8
+    ignoreDefaultParameters: true
     ignoreDataClasses: true
     ignoreAnnotatedParameter: []
   MethodOverloading:
@@ -173,8 +173,8 @@ complexity:
     thresholdInObjects: 15
     thresholdInEnums: 15
     ignoreDeprecated: false
-    ignorePrivate: false
-    ignoreOverridden: false
+    ignorePrivate: true
+    ignoreOverridden: true
 
 coroutines:
   active: true

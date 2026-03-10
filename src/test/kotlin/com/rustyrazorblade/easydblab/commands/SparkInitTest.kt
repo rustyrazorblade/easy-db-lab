@@ -15,7 +15,7 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.koin.test.get
 import org.mockito.kotlin.any
-import org.mockito.kotlin.eq
+import org.mockito.kotlin.argThat
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
@@ -154,17 +154,7 @@ class SparkInitTest : BaseKoinTest() {
         get<EMRProvisioningService>()
 
         whenever(
-            mockEmrProvisioningService.provisionEmrCluster(
-                any(),
-                any(),
-                any(),
-                any(),
-                any(),
-                any(),
-                any(),
-                any(),
-                any(),
-            ),
+            mockEmrProvisioningService.provisionEmrCluster(any()),
         ).thenReturn(expectedEmr)
 
         val cmd = SparkInit()
@@ -215,17 +205,7 @@ class SparkInitTest : BaseKoinTest() {
         get<EMRProvisioningService>()
 
         whenever(
-            mockEmrProvisioningService.provisionEmrCluster(
-                any(),
-                any(),
-                any(),
-                any(),
-                any(),
-                any(),
-                any(),
-                any(),
-                any(),
-            ),
+            mockEmrProvisioningService.provisionEmrCluster(any()),
         ).thenReturn(expectedEmr)
 
         val cmd = SparkInit()
@@ -235,15 +215,15 @@ class SparkInitTest : BaseKoinTest() {
         cmd.execute()
 
         verify(mockEmrProvisioningService).provisionEmrCluster(
-            clusterName = eq("myenv"),
-            masterInstanceType = eq("m5.xlarge"),
-            workerInstanceType = eq("m5.2xlarge"),
-            workerCount = eq(4),
-            subnetId = eq("subnet-abc"),
-            securityGroupId = eq("sg-xyz"),
-            keyName = eq("test-key"),
-            clusterState = any(),
-            tags = any(),
+            argThat { config ->
+                config.clusterName == "myenv" &&
+                    config.masterInstanceType == "m5.xlarge" &&
+                    config.workerInstanceType == "m5.2xlarge" &&
+                    config.workerCount == 4 &&
+                    config.subnetId == "subnet-abc" &&
+                    config.securityGroupId == "sg-xyz" &&
+                    config.keyName == "test-key"
+            },
         )
     }
 

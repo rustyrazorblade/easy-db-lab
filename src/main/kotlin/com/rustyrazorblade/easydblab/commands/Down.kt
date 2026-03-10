@@ -7,6 +7,8 @@ import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.clusterPrefix
+import com.rustyrazorblade.easydblab.configuration.metricsConfigId
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredResources
 import com.rustyrazorblade.easydblab.providers.aws.TeardownMode
@@ -446,21 +448,25 @@ class Down : PicoBaseCommand() {
             }
 
             for (bucket in dataBuckets) {
-                try {
-                    s3BucketService.setFullBucketLifecycleExpiration(bucket, retentionDays)
-                    eventBus.emit(Event.S3.DataBucketExpiring(bucket, retentionDays))
-
-                    // Attempt to delete the bucket (succeeds only if empty)
-                    eventBus.emit(Event.S3.DataBucketDeleting(bucket))
-                    if (s3BucketService.deleteEmptyBucket(bucket)) {
-                        eventBus.emit(Event.S3.DataBucketDeleted(bucket))
-                    }
-                } catch (e: Exception) {
-                    log.warn(e) { "Failed to handle data bucket: $bucket" }
-                }
+                teardownSingleDataBucket(bucket)
             }
         } catch (e: Exception) {
             log.warn(e) { "Failed to discover data buckets" }
+        }
+    }
+
+    @Suppress("TooGenericExceptionCaught")
+    private fun teardownSingleDataBucket(bucket: String) {
+        try {
+            s3BucketService.setFullBucketLifecycleExpiration(bucket, retentionDays)
+            eventBus.emit(Event.S3.DataBucketExpiring(bucket, retentionDays))
+
+            eventBus.emit(Event.S3.DataBucketDeleting(bucket))
+            if (s3BucketService.deleteEmptyBucket(bucket)) {
+                eventBus.emit(Event.S3.DataBucketDeleted(bucket))
+            }
+        } catch (e: Exception) {
+            log.warn(e) { "Failed to handle data bucket: $bucket" }
         }
     }
 }

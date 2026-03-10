@@ -1,13 +1,17 @@
 package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
+import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.EMRClusterInfo
+import com.rustyrazorblade.easydblab.configuration.emrLogs
 import com.rustyrazorblade.easydblab.configuration.s3Path
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import com.rustyrazorblade.easydblab.services.ObjectStore
+import com.rustyrazorblade.easydblab.services.SparkJobRequest
 import com.rustyrazorblade.easydblab.services.SparkService
 import com.rustyrazorblade.easydblab.services.VictoriaLogsService
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -62,27 +66,19 @@ class EMRSparkService(
         private val TERMINAL_JOB_STATES = setOf(StepState.COMPLETED, StepState.FAILED, StepState.CANCELLED)
     }
 
-    override fun submitJob(
-        clusterId: String,
-        jarPath: String,
-        mainClass: String,
-        jobArgs: List<String>,
-        jobName: String?,
-        sparkConf: Map<String, String>,
-        envVars: Map<String, String>,
-    ): Result<String> =
+    override fun submitJob(request: SparkJobRequest): Result<String> =
         runCatching {
-            val stepName = jobName ?: mainClass.split(".").last()
+            val stepName = request.jobName ?: request.mainClass.split(".").last()
 
             // Enrich spark conf and env vars with OTel Java agent and Pyroscope configuration
-            val otelSparkConf = buildOtelSparkConf(sparkConf, stepName)
-            val otelEnvVars = buildOtelEnvVars(envVars, stepName)
+            val otelSparkConf = buildOtelSparkConf(request.sparkConf, stepName)
+            val otelEnvVars = buildOtelEnvVars(request.envVars, stepName)
 
             val hadoopJarStep =
                 HadoopJarStepConfig
                     .builder()
                     .jar(Constants.EMR.COMMAND_RUNNER_JAR)
-                    .args(buildSparkSubmitArgs(jarPath, mainClass, jobArgs, otelSparkConf, otelEnvVars))
+                    .args(buildSparkSubmitArgs(request.jarPath, request.mainClass, request.jobArgs, otelSparkConf, otelEnvVars))
                     .build()
 
             val stepConfig =
@@ -93,16 +89,16 @@ class EMRSparkService(
                     .hadoopJarStep(hadoopJarStep)
                     .build()
 
-            val request =
+            val addStepsRequest =
                 AddJobFlowStepsRequest
                     .builder()
-                    .jobFlowId(clusterId)
+                    .jobFlowId(request.clusterId)
                     .steps(stepConfig)
                     .build()
 
             val stepId =
                 executeWithRetry("emr-submit-job") {
-                    val response = emrClient.addJobFlowSteps(request)
+                    val response = emrClient.addJobFlowSteps(addStepsRequest)
                     val stepIds = response.stepIds()
                     require(stepIds.isNotEmpty()) {
                         "EMR returned no step IDs for submitted job"
@@ -110,7 +106,7 @@ class EMRSparkService(
                     stepIds.first()
                 }
 
-            log.info { "Submitted Spark job: $stepId to cluster $clusterId" }
+            log.info { "Submitted Spark job: $stepId to cluster ${request.clusterId}" }
             stepId
         }
 
@@ -510,84 +506,98 @@ class EMRSparkService(
             val clusterState = clusterStateManager.load()
             val s3Path = clusterState.s3Path()
 
-            // Create local logs directory: ./logs/{cluster-id}/{step-id}/
             val localLogsDir = Paths.get("logs", clusterId, stepId)
             Files.createDirectories(localLogsDir)
-
             eventBus.emit(Event.Emr.StepLogsDownloading(localLogsDir.toString()))
 
-            // Download both stdout and stderr
-            var logsDownloaded = 0
-            for (logType in listOf(SparkService.LogType.STDOUT, SparkService.LogType.STDERR)) {
-                val logPath =
-                    s3Path
-                        .emrLogs()
-                        .resolve(clusterId)
-                        .resolve("steps")
-                        .resolve(stepId)
-                        .resolve(logType.filename)
-
-                val localGzFile = localLogsDir.resolve(logType.filename)
-                val localLogFile = localLogsDir.resolve(logType.filename.removeSuffix(".gz"))
-
-                try {
-                    executeS3LogRetrievalWithRetry("s3-download-${logType.name.lowercase()}") {
-                        objectStore.downloadFile(logPath, localGzFile, showProgress = false)
-                    }
-                    decompressGzipFile(localGzFile, localLogFile)
-                    // Remove the .gz file after decompression
-                    Files.deleteIfExists(localGzFile)
-                    eventBus.emit(Event.Emr.SparkLogDownloadComplete(logType.name.lowercase()))
-                    logsDownloaded++
-                } catch (e: Exception) {
-                    log.warn { "Could not download ${logType.filename}: ${e.message}" }
-                    eventBus.emit(Event.Emr.SparkLogDownloadUnavailable(logType.name.lowercase()))
-                }
-            }
+            val logsDownloaded = downloadLogFiles(s3Path, clusterId, stepId, localLogsDir)
 
             if (logsDownloaded == 0) {
-                val s3Bucket = clusterState.s3Bucket ?: "UNKNOWN_BUCKET"
-                val emrLogsPath = "${Constants.EMR.S3_LOG_PREFIX}$clusterId/steps/$stepId/"
-                eventBus.emit(
-                    Event.Emr.SparkDebugInstructions(
-                        """
-                        |
-                        |No logs were available. EMR logs typically take 30-60 seconds to upload after job completion.
-                        |
-                        |=== Manual Debug Commands ===
-                        |  # Retry log download
-                        |  easy-db-lab spark logs --step-id $stepId
-                        |
-                        |  # Check step details
-                        |  aws emr describe-step --cluster-id $clusterId --step-id $stepId
-                        |
-                        |  # View stderr directly from S3 (once available)
-                        |  aws s3 cp s3://$s3Bucket/${emrLogsPath}stderr.gz - | gunzip
-                        """.trimMargin(),
-                    ),
-                )
+                emitNoLogsAvailableInstructions(clusterState, clusterId, stepId)
             }
 
-            // Display stderr content if it exists (most useful for debugging)
-            val stderrFile = localLogsDir.resolve("stderr")
-            if (Files.exists(stderrFile)) {
-                val stderrContent = Files.readString(stderrFile)
-                if (stderrContent.isNotBlank()) {
-                    eventBus.emit(Event.Emr.SparkStderrHeader(Constants.EMR.STDERR_TAIL_LINES))
-                    val lines = stderrContent.lines()
-                    val lastLines =
-                        if (lines.size > Constants.EMR.STDERR_TAIL_LINES) {
-                            lines.takeLast(Constants.EMR.STDERR_TAIL_LINES)
-                        } else {
-                            lines
-                        }
-                    lastLines.forEach { eventBus.emit(Event.Emr.SparkStderrLine(it)) }
-                    eventBus.emit(Event.Emr.SparkStderrFooter)
-                }
-            }
-
+            displayStderrTail(localLogsDir)
             localLogsDir
         }
+
+    private fun downloadLogFiles(
+        s3Path: ClusterS3Path,
+        clusterId: String,
+        stepId: String,
+        localLogsDir: Path,
+    ): Int {
+        var count = 0
+        for (logType in listOf(SparkService.LogType.STDOUT, SparkService.LogType.STDERR)) {
+            val logPath =
+                s3Path
+                    .emrLogs()
+                    .resolve(clusterId)
+                    .resolve("steps")
+                    .resolve(stepId)
+                    .resolve(logType.filename)
+            val localGzFile = localLogsDir.resolve(logType.filename)
+            val localLogFile = localLogsDir.resolve(logType.filename.removeSuffix(".gz"))
+            try {
+                executeS3LogRetrievalWithRetry("s3-download-${logType.name.lowercase()}") {
+                    objectStore.downloadFile(logPath, localGzFile, showProgress = false)
+                }
+                decompressGzipFile(localGzFile, localLogFile)
+                Files.deleteIfExists(localGzFile)
+                eventBus.emit(Event.Emr.SparkLogDownloadComplete(logType.name.lowercase()))
+                count++
+            } catch (e: Exception) {
+                log.warn { "Could not download ${logType.filename}: ${e.message}" }
+                eventBus.emit(Event.Emr.SparkLogDownloadUnavailable(logType.name.lowercase()))
+            }
+        }
+        return count
+    }
+
+    private fun emitNoLogsAvailableInstructions(
+        clusterState: ClusterState,
+        clusterId: String,
+        stepId: String,
+    ) {
+        val s3Bucket = clusterState.s3Bucket ?: "UNKNOWN_BUCKET"
+        val emrLogsPath = "${Constants.EMR.S3_LOG_PREFIX}$clusterId/steps/$stepId/"
+        eventBus.emit(
+            Event.Emr.SparkDebugInstructions(
+                """
+                |
+                |No logs were available. EMR logs typically take 30-60 seconds to upload after job completion.
+                |
+                |=== Manual Debug Commands ===
+                |  # Retry log download
+                |  easy-db-lab spark logs --step-id $stepId
+                |
+                |  # Check step details
+                |  aws emr describe-step --cluster-id $clusterId --step-id $stepId
+                |
+                |  # View stderr directly from S3 (once available)
+                |  aws s3 cp s3://$s3Bucket/${emrLogsPath}stderr.gz - | gunzip
+                """.trimMargin(),
+            ),
+        )
+    }
+
+    private fun displayStderrTail(localLogsDir: Path) {
+        val stderrFile = localLogsDir.resolve("stderr")
+        if (Files.exists(stderrFile)) {
+            val stderrContent = Files.readString(stderrFile)
+            if (stderrContent.isNotBlank()) {
+                eventBus.emit(Event.Emr.SparkStderrHeader(Constants.EMR.STDERR_TAIL_LINES))
+                val lines = stderrContent.lines()
+                val lastLines =
+                    if (lines.size > Constants.EMR.STDERR_TAIL_LINES) {
+                        lines.takeLast(Constants.EMR.STDERR_TAIL_LINES)
+                    } else {
+                        lines
+                    }
+                lastLines.forEach { eventBus.emit(Event.Emr.SparkStderrLine(it)) }
+                eventBus.emit(Event.Emr.SparkStderrFooter)
+            }
+        }
+    }
 
     /**
      * Decompresses a gzip file to a specified output file.

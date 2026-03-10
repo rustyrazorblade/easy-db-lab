@@ -162,7 +162,7 @@ class StressStartTest : BaseKoinTest() {
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithNodes)
         whenever(mockClusterStateManager.incrementStressJobCounter()).thenReturn(1)
-        whenever(mockStressJobService.startJob(any(), any(), any(), any(), any(), any(), any()))
+        whenever(mockStressJobService.startJob(any(), any()))
             .thenReturn(Result.success("job-created"))
 
         val command = StressStart()
@@ -174,20 +174,15 @@ class StressStartTest : BaseKoinTest() {
         // Then - verify startJob was called with passthrough args
         verify(mockStressJobService).startJob(
             controlHost = eq(testControlHost),
-            jobName = any(),
-            image = any(),
-            args =
-                argThat { args ->
-                    args.contains("run") &&
-                        args.contains("BasicTimeSeries") &&
-                        args.contains("-d") &&
-                        args.contains("1h") &&
-                        args.contains("--threads") &&
-                        args.contains("100")
+            config =
+                argThat { config ->
+                    config.args.contains("run") &&
+                        config.args.contains("BasicTimeSeries") &&
+                        config.args.contains("-d") &&
+                        config.args.contains("1h") &&
+                        config.args.contains("--threads") &&
+                        config.args.contains("100")
                 },
-            contactPoints = any(),
-            tags = any(),
-            promPort = any(),
         )
     }
 
@@ -207,7 +202,7 @@ class StressStartTest : BaseKoinTest() {
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithNodes)
         whenever(mockClusterStateManager.incrementStressJobCounter()).thenReturn(1)
-        whenever(mockStressJobService.startJob(any(), any(), any(), any(), any(), any(), any()))
+        whenever(mockStressJobService.startJob(any(), any()))
             .thenReturn(Result.failure(RuntimeException("Job creation failed")))
 
         val command = StressStart()
@@ -256,7 +251,7 @@ class StressStartTest : BaseKoinTest() {
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithNodes)
         whenever(mockClusterStateManager.incrementStressJobCounter()).thenReturn(1)
-        whenever(mockStressJobService.startJob(any(), any(), any(), any(), any(), any(), any()))
+        whenever(mockStressJobService.startJob(any(), any()))
             .thenReturn(Result.success("job-created"))
 
         val command = StressStart()
@@ -267,12 +262,7 @@ class StressStartTest : BaseKoinTest() {
 
         verify(mockStressJobService).startJob(
             controlHost = eq(testControlHost),
-            jobName = any(),
-            image = any(),
-            args = any(),
-            contactPoints = any(),
-            tags = argThat { tags -> tags["env"] == "test" && tags["team"] == "qa" },
-            promPort = any(),
+            config = argThat { config -> config.tags["env"] == "test" && config.tags["team"] == "qa" },
         )
     }
 
@@ -291,7 +281,7 @@ class StressStartTest : BaseKoinTest() {
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithNodes)
         whenever(mockClusterStateManager.incrementStressJobCounter()).thenReturn(1)
-        whenever(mockStressJobService.startJob(any(), any(), any(), any(), any(), any(), any()))
+        whenever(mockStressJobService.startJob(any(), any()))
             .thenReturn(Result.success("job-created"))
 
         val command = StressStart()
@@ -301,12 +291,7 @@ class StressStartTest : BaseKoinTest() {
 
         verify(mockStressJobService).startJob(
             controlHost = eq(testControlHost),
-            jobName = eq("keyvalue-1"),
-            image = any(),
-            args = any(),
-            contactPoints = any(),
-            tags = any(),
-            promPort = eq(9501),
+            config = argThat { config -> config.jobName == "keyvalue-1" && config.promPort == 9501 },
         )
     }
 
@@ -325,7 +310,7 @@ class StressStartTest : BaseKoinTest() {
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithNodes)
         whenever(mockClusterStateManager.incrementStressJobCounter()).thenReturn(3)
-        whenever(mockStressJobService.startJob(any(), any(), any(), any(), any(), any(), any()))
+        whenever(mockStressJobService.startJob(any(), any()))
             .thenReturn(Result.success("job-created"))
 
         val command = StressStart()
@@ -336,12 +321,7 @@ class StressStartTest : BaseKoinTest() {
 
         verify(mockStressJobService).startJob(
             controlHost = eq(testControlHost),
-            jobName = eq("my-test"),
-            image = any(),
-            args = any(),
-            contactPoints = any(),
-            tags = any(),
-            promPort = eq(9503),
+            config = argThat { config -> config.jobName == "my-test" && config.promPort == 9503 },
         )
     }
 

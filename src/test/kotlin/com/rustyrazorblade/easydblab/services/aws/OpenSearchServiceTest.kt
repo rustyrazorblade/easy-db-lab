@@ -53,7 +53,7 @@ internal class OpenSearchServiceTest {
                     capturedEvents.add(envelope)
                 }
 
-                override fun close() {}
+                override fun close() = Unit
             },
         )
         openSearchService = OpenSearchService(mockOpenSearchClient, mockAws, eventBus)

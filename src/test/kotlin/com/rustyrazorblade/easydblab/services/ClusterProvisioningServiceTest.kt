@@ -25,7 +25,6 @@ import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argThat
-import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
@@ -138,7 +137,7 @@ class ClusterProvisioningServiceTest {
                         emittedEvents.add(envelope.event)
                     }
 
-                    override fun close() {}
+                    override fun close() = Unit
                 },
             )
 
@@ -254,9 +253,12 @@ class ClusterProvisioningServiceTest {
                     instanceConfig = instanceConfig,
                     servicesConfig = servicesConfig,
                     existingHosts = emptyMap(),
-                    onHostsCreated = { _, _ -> },
-                    onEmrCreated = { emrCreated = it },
-                    onOpenSearchCreated = { },
+                    callbacks =
+                        ProvisioningCallbacks(
+                            onHostsCreated = { _, _ -> },
+                            onEmrCreated = { emrCreated = it },
+                            onOpenSearchCreated = { },
+                        ),
                 )
 
             assertThat(result.errors).isEmpty()
@@ -289,9 +291,12 @@ class ClusterProvisioningServiceTest {
                     instanceConfig = instanceConfig,
                     servicesConfig = servicesConfig,
                     existingHosts = emptyMap(),
-                    onHostsCreated = { _, _ -> },
-                    onEmrCreated = { },
-                    onOpenSearchCreated = { openSearchCreated = it },
+                    callbacks =
+                        ProvisioningCallbacks(
+                            onHostsCreated = { _, _ -> },
+                            onEmrCreated = { },
+                            onOpenSearchCreated = { openSearchCreated = it },
+                        ),
                 )
 
             assertThat(result.errors).isEmpty()
@@ -319,14 +324,6 @@ class ClusterProvisioningServiceTest {
             whenever(
                 emrProvisioningService.provisionEmrCluster(
                     any(),
-                    any(),
-                    any(),
-                    any(),
-                    any(),
-                    any(),
-                    any(),
-                    any(),
-                    any(),
                 ),
             ).thenThrow(RuntimeException("EMR failed"))
 
@@ -335,9 +332,12 @@ class ClusterProvisioningServiceTest {
                     instanceConfig = instanceConfig,
                     servicesConfig = servicesConfig,
                     existingHosts = emptyMap(),
-                    onHostsCreated = { _, _ -> },
-                    onEmrCreated = { },
-                    onOpenSearchCreated = { },
+                    callbacks =
+                        ProvisioningCallbacks(
+                            onHostsCreated = { _, _ -> },
+                            onEmrCreated = { },
+                            onOpenSearchCreated = { },
+                        ),
                 )
 
             assertThat(result.errors).containsKey("EMR cluster")
@@ -366,23 +366,21 @@ class ClusterProvisioningServiceTest {
                 instanceConfig = instanceConfig,
                 servicesConfig = servicesConfig,
                 existingHosts = emptyMap(),
-                onHostsCreated = { serverType, hosts ->
-                    clusterState.hosts = clusterState.hosts + (serverType to hosts)
-                },
-                onEmrCreated = { },
-                onOpenSearchCreated = { },
+                callbacks =
+                    ProvisioningCallbacks(
+                        onHostsCreated = { serverType, hosts ->
+                            clusterState.hosts = clusterState.hosts + (serverType to hosts)
+                        },
+                        onEmrCreated = { },
+                        onOpenSearchCreated = { },
+                    ),
             )
 
             verify(emrProvisioningService).provisionEmrCluster(
-                clusterName = eq("test-cluster"),
-                masterInstanceType = any(),
-                workerInstanceType = any(),
-                workerCount = any(),
-                subnetId = any(),
-                securityGroupId = any(),
-                keyName = any(),
-                clusterState = argThat { hosts[ServerType.Control]?.isNotEmpty() == true },
-                tags = any(),
+                argThat {
+                    clusterName == "test-cluster" &&
+                        clusterState.hosts[ServerType.Control]?.isNotEmpty() == true
+                },
             )
         }
 
@@ -409,20 +407,15 @@ class ClusterProvisioningServiceTest {
                     instanceConfig = instanceConfig,
                     servicesConfig = servicesConfig,
                     existingHosts = emptyMap(),
-                    onHostsCreated = { _, _ -> },
-                    onEmrCreated = { },
-                    onOpenSearchCreated = { },
+                    callbacks =
+                        ProvisioningCallbacks(
+                            onHostsCreated = { _, _ -> },
+                            onEmrCreated = { },
+                            onOpenSearchCreated = { },
+                        ),
                 )
 
             verify(emrProvisioningService, never()).provisionEmrCluster(
-                any(),
-                any(),
-                any(),
-                any(),
-                any(),
-                any(),
-                any(),
-                any(),
                 any(),
             )
             assertThat(result.emrCluster).isNull()
@@ -468,17 +461,7 @@ class ClusterProvisioningServiceTest {
             )
 
         whenever(
-            emrProvisioningService.provisionEmrCluster(
-                any(),
-                any(),
-                any(),
-                any(),
-                any(),
-                any(),
-                any(),
-                any(),
-                any(),
-            ),
+            emrProvisioningService.provisionEmrCluster(any()),
         ).thenReturn(emrState)
     }
 

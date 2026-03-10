@@ -205,31 +205,39 @@ class Repl : PicoBaseCommand() {
         reader: LineReader,
         systemRegistry: SystemRegistry,
     ) {
-        while (true) {
-            try {
-                systemRegistry.cleanUp()
-                val line = reader.readLine(PROMPT)
-
-                if (line.isBlank()) continue
-
-                // Handle exit
-                if (line.trim().equals("exit", ignoreCase = true) ||
-                    line.trim().equals("quit", ignoreCase = true)
-                ) {
-                    break
-                }
-
-                // Execute through system registry (handles builtins and picocli)
-                systemRegistry.execute(line)
-            } catch (e: UserInterruptException) {
-                // Ctrl+C - continue loop
-            } catch (e: EndOfFileException) {
-                // Ctrl+D - exit
-                break
-            } catch (e: Exception) {
-                systemRegistry.trace(e)
-            }
+        var running = true
+        while (running) {
+            running = processReplInput(reader, systemRegistry)
         }
+    }
+
+    private fun processReplInput(
+        reader: LineReader,
+        systemRegistry: SystemRegistry,
+    ): Boolean =
+        try {
+            systemRegistry.cleanUp()
+            val line = reader.readLine(PROMPT)
+            when {
+                line.isBlank() -> true
+                isExitCommand(line) -> false
+                else -> {
+                    systemRegistry.execute(line)
+                    true
+                }
+            }
+        } catch (e: UserInterruptException) {
+            true
+        } catch (e: EndOfFileException) {
+            false
+        } catch (e: Exception) {
+            systemRegistry.trace(e)
+            true
+        }
+
+    private fun isExitCommand(line: String): Boolean {
+        val trimmed = line.trim()
+        return trimmed.equals("exit", ignoreCase = true) || trimmed.equals("quit", ignoreCase = true)
     }
 }
 

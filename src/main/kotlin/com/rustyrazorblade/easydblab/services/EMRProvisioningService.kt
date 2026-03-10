@@ -6,7 +6,9 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.EMRClusterState
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.emr.OtelBootstrapResource
+import com.rustyrazorblade.easydblab.configuration.emrLogs
 import com.rustyrazorblade.easydblab.configuration.s3Path
+import com.rustyrazorblade.easydblab.configuration.spark
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.BootstrapAction
@@ -21,6 +23,31 @@ import kotlin.io.path.createTempFile
 import kotlin.io.path.inputStream
 
 /**
+ * Configuration for provisioning an EMR cluster.
+ *
+ * @property clusterName Base name for the EMR cluster (will have "-spark" appended)
+ * @property masterInstanceType Instance type for the master node
+ * @property workerInstanceType Instance type for core/worker nodes
+ * @property workerCount Number of core/worker nodes
+ * @property subnetId Subnet ID where the cluster will be launched
+ * @property securityGroupId Security group for cluster access
+ * @property keyName SSH key pair name for cluster instances
+ * @property clusterState Current cluster state (for S3 log path)
+ * @property tags Tags to apply to the cluster
+ */
+data class EmrClusterProvisioningConfig(
+    val clusterName: String,
+    val masterInstanceType: String,
+    val workerInstanceType: String,
+    val workerCount: Int,
+    val subnetId: String,
+    val securityGroupId: String,
+    val keyName: String,
+    val clusterState: ClusterState,
+    val tags: Map<String, String>,
+)
+
+/**
  * Service for provisioning EMR clusters for Spark workloads.
  *
  * Encapsulates the logic for creating an EMR cluster from cluster configuration,
@@ -31,28 +58,10 @@ interface EMRProvisioningService {
     /**
      * Provisions an EMR cluster using cluster configuration parameters.
      *
-     * @param clusterName Base name for the EMR cluster (will have "-spark" appended)
-     * @param masterInstanceType Instance type for the master node
-     * @param workerInstanceType Instance type for core/worker nodes
-     * @param workerCount Number of core/worker nodes
-     * @param subnetId Subnet ID where the cluster will be launched
-     * @param securityGroupId Security group for cluster access
-     * @param keyName SSH key pair name for cluster instances
-     * @param clusterState Current cluster state (for S3 log path)
-     * @param tags Tags to apply to the cluster
+     * @param config EMR cluster provisioning configuration
      * @return Created EMR cluster state
      */
-    fun provisionEmrCluster(
-        clusterName: String,
-        masterInstanceType: String,
-        workerInstanceType: String,
-        workerCount: Int,
-        subnetId: String,
-        securityGroupId: String,
-        keyName: String,
-        clusterState: ClusterState,
-        tags: Map<String, String>,
-    ): EMRClusterState
+    fun provisionEmrCluster(config: EmrClusterProvisioningConfig): EMRClusterState
 }
 
 /**
@@ -68,36 +77,26 @@ class DefaultEMRProvisioningService(
 ) : EMRProvisioningService {
     private val log = KotlinLogging.logger {}
 
-    override fun provisionEmrCluster(
-        clusterName: String,
-        masterInstanceType: String,
-        workerInstanceType: String,
-        workerCount: Int,
-        subnetId: String,
-        securityGroupId: String,
-        keyName: String,
-        clusterState: ClusterState,
-        tags: Map<String, String>,
-    ): EMRClusterState {
+    override fun provisionEmrCluster(config: EmrClusterProvisioningConfig): EMRClusterState {
         eventBus.emit(Event.Emr.SparkClusterCreating)
 
-        val s3Path = clusterState.s3Path()
+        val s3Path = config.clusterState.s3Path()
         val bootstrapAction = uploadOtelBootstrapScript(s3Path)
 
-        val sparkDefaults = buildSparkDefaultsConfiguration(clusterState)
+        val sparkDefaults = buildSparkDefaultsConfiguration(config.clusterState)
         val sparkEnv = buildSparkEnvConfiguration()
 
         val emrConfig =
             EMRClusterConfig(
-                clusterName = "$clusterName-spark",
+                clusterName = "${config.clusterName}-spark",
                 logUri = s3Path.emrLogs().toString(),
-                subnetId = subnetId,
-                ec2KeyName = keyName,
-                masterInstanceType = masterInstanceType,
-                coreInstanceType = workerInstanceType,
-                coreInstanceCount = workerCount,
-                additionalSecurityGroups = listOf(securityGroupId),
-                tags = tags,
+                subnetId = config.subnetId,
+                ec2KeyName = config.keyName,
+                masterInstanceType = config.masterInstanceType,
+                coreInstanceType = config.workerInstanceType,
+                coreInstanceCount = config.workerCount,
+                additionalSecurityGroups = listOf(config.securityGroupId),
+                tags = config.tags,
                 bootstrapActions = listOf(bootstrapAction),
                 configurations = listOf(sparkDefaults, sparkEnv),
             )

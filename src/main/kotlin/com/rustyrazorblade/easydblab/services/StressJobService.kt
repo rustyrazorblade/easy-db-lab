@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.getControlHost
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
@@ -21,6 +22,25 @@ import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
 /**
+ * Configuration for starting a stress job.
+ *
+ * @property jobName Unique name for the job
+ * @property image Container image for cassandra-easy-stress
+ * @property args Arguments to pass to cassandra-easy-stress
+ * @property contactPoints Cassandra contact points
+ * @property tags User-provided tags for OTel resource attributes
+ * @property promPort Prometheus metrics port for the stress process
+ */
+data class StressJobConfig(
+    val jobName: String,
+    val image: String,
+    val args: List<String>,
+    val contactPoints: String,
+    val tags: Map<String, String> = emptyMap(),
+    val promPort: Int = Constants.Stress.PROMETHEUS_PORT,
+)
+
+/**
  * Service for managing cassandra-easy-stress K8s Jobs.
  *
  * This service encapsulates all K8s operations for stress jobs, providing
@@ -32,20 +52,12 @@ interface StressJobService {
      * Starts a stress job on the K8s cluster.
      *
      * @param controlHost The control node running K3s
-     * @param jobName Unique name for the job
-     * @param image Container image for cassandra-easy-stress
-     * @param args Arguments to pass to cassandra-easy-stress
-     * @param contactPoints Cassandra contact points
+     * @param config The stress job configuration
      * @return Result containing the created job name or failure
      */
     fun startJob(
         controlHost: ClusterHost,
-        jobName: String,
-        image: String,
-        args: List<String>,
-        contactPoints: String,
-        tags: Map<String, String> = emptyMap(),
-        promPort: Int = Constants.Stress.PROMETHEUS_PORT,
+        config: StressJobConfig,
     ): Result<String>
 
     /**
@@ -140,34 +152,21 @@ class DefaultStressJobService(
 
     override fun startJob(
         controlHost: ClusterHost,
-        jobName: String,
-        image: String,
-        args: List<String>,
-        contactPoints: String,
-        tags: Map<String, String>,
-        promPort: Int,
+        config: StressJobConfig,
     ): Result<String> =
         runCatching {
-            log.info { "Starting stress job: $jobName" }
+            log.info { "Starting stress job: ${config.jobName}" }
 
             ensureSidecarConfigMap(controlHost)
 
-            val job =
-                buildJob(
-                    jobName = jobName,
-                    image = image,
-                    contactPoints = contactPoints,
-                    args = args,
-                    tags = tags,
-                    promPort = promPort,
-                )
+            val job = buildJob(config)
 
-            eventBus.emit(Event.Stress.JobStarting(jobName))
+            eventBus.emit(Event.Stress.JobStarting(config.jobName))
             k8sService
                 .createJob(controlHost, Constants.Stress.NAMESPACE, job)
                 .getOrThrow()
 
-            waitForPodRunning(controlHost, jobName)
+            waitForPodRunning(controlHost, config.jobName)
         }
 
     /**
@@ -350,14 +349,7 @@ class DefaultStressJobService(
     /**
      * Builds a Kubernetes Job for a stress job with OTel sidecar.
      */
-    internal fun buildJob(
-        jobName: String,
-        image: String,
-        contactPoints: String,
-        args: List<String>,
-        tags: Map<String, String> = emptyMap(),
-        promPort: Int = Constants.Stress.PROMETHEUS_PORT,
-    ): Job {
+    internal fun buildJob(config: StressJobConfig): Job {
         val clusterState = clusterStateManager.load()
         val region =
             clusterState.infrastructure?.region
@@ -366,15 +358,28 @@ class DefaultStressJobService(
         val labels =
             mapOf(
                 Constants.Stress.LABEL_KEY to Constants.Stress.LABEL_VALUE,
-                "job-name" to jobName,
+                "job-name" to config.jobName,
             )
 
         val controlNodeIp =
             clusterState.getControlHost()?.privateIp
                 ?: error("No control node found. Re-provision the cluster to fix this.")
-        val pyroscopeServerAddress = "http://$controlNodeIp:${Constants.K8s.PYROSCOPE_PORT}"
 
-        val pyroscopeLabels = "cluster=${clusterState.name},job_name=$jobName"
+        val stressContainer =
+            buildStressContainer(config, region, controlNodeIp, clusterState.name)
+        val otelSidecar = buildOtelSidecarContainer(config.jobName, config.tags, config.promPort)
+
+        return assembleJob(config.jobName, labels, stressContainer, otelSidecar)
+    }
+
+    private fun buildStressContainer(
+        config: StressJobConfig,
+        region: String,
+        controlNodeIp: String,
+        clusterName: String,
+    ): io.fabric8.kubernetes.api.model.Container {
+        val pyroscopeServerAddress = "http://$controlNodeIp:${Constants.K8s.PYROSCOPE_PORT}"
+        val pyroscopeLabels = "cluster=$clusterName,job_name=${config.jobName}"
 
         val javaToolOptions =
             listOf(
@@ -388,95 +393,106 @@ class DefaultStressJobService(
                 "-Dpyroscope.labels=$pyroscopeLabels",
             ).joinToString(" ")
 
-        val stressContainer =
-            ContainerBuilder()
-                .withName("stress")
-                .withImage(image)
-                .withArgs(args)
-                .withEnv(
-                    EnvVarBuilder()
-                        .withName("CASSANDRA_CONTACT_POINTS")
-                        .withValue(contactPoints)
-                        .build(),
-                    EnvVarBuilder()
-                        .withName("CASSANDRA_PORT")
-                        .withValue(Constants.Stress.DEFAULT_CASSANDRA_PORT.toString())
-                        .build(),
-                    EnvVarBuilder()
-                        .withName("CASSANDRA_EASY_STRESS_DEFAULT_DC")
-                        .withValue(region)
-                        .build(),
-                    EnvVarBuilder()
-                        .withName("CASSANDRA_EASY_STRESS_PROM_PORT")
-                        .withValue(promPort.toString())
-                        .build(),
-                    EnvVarBuilder()
-                        .withName("JAVA_TOOL_OPTIONS")
-                        .withValue(javaToolOptions)
-                        .build(),
-                ).withVolumeMounts(
-                    VolumeMountBuilder()
-                        .withName(PYROSCOPE_VOLUME_NAME)
-                        .withMountPath(PYROSCOPE_MOUNT_PATH)
-                        .withReadOnly(true)
-                        .build(),
-                ).build()
+        return ContainerBuilder()
+            .withName("stress")
+            .withImage(config.image)
+            .withArgs(config.args)
+            .withEnv(
+                EnvVarBuilder()
+                    .withName("CASSANDRA_CONTACT_POINTS")
+                    .withValue(config.contactPoints)
+                    .build(),
+                EnvVarBuilder()
+                    .withName("CASSANDRA_PORT")
+                    .withValue(Constants.Stress.DEFAULT_CASSANDRA_PORT.toString())
+                    .build(),
+                EnvVarBuilder()
+                    .withName("CASSANDRA_EASY_STRESS_DEFAULT_DC")
+                    .withValue(region)
+                    .build(),
+                EnvVarBuilder()
+                    .withName("CASSANDRA_EASY_STRESS_PROM_PORT")
+                    .withValue(config.promPort.toString())
+                    .build(),
+                EnvVarBuilder()
+                    .withName("JAVA_TOOL_OPTIONS")
+                    .withValue(javaToolOptions)
+                    .build(),
+            ).withVolumeMounts(
+                VolumeMountBuilder()
+                    .withName(PYROSCOPE_VOLUME_NAME)
+                    .withMountPath(PYROSCOPE_MOUNT_PATH)
+                    .withReadOnly(true)
+                    .build(),
+            ).build()
+    }
 
+    private fun buildOtelSidecarContainer(
+        jobName: String,
+        tags: Map<String, String>,
+        promPort: Int,
+    ): io.fabric8.kubernetes.api.model.Container {
         val resourceAttributes = buildResourceAttributes(jobName, tags)
 
-        val otelSidecar =
-            ContainerBuilder()
-                .withName("otel-sidecar")
-                .withImage("otel/opentelemetry-collector-contrib:latest")
-                .withArgs("--config=/etc/otel/$SIDECAR_CONFIG_FILE_NAME")
-                .withEnv(
-                    EnvVarBuilder()
-                        .withName("K8S_NODE_NAME")
-                        .withNewValueFrom()
-                        .withNewFieldRef()
-                        .withFieldPath("spec.nodeName")
-                        .endFieldRef()
-                        .endValueFrom()
-                        .build(),
-                    EnvVarBuilder()
-                        .withName("HOST_IP")
-                        .withNewValueFrom()
-                        .withNewFieldRef()
-                        .withFieldPath("status.hostIP")
-                        .endFieldRef()
-                        .endValueFrom()
-                        .build(),
-                    EnvVarBuilder()
-                        .withName("CLUSTER_NAME")
-                        .withNewValueFrom()
-                        .withNewConfigMapKeyRef()
-                        .withName("cluster-config")
-                        .withKey("cluster_name")
-                        .endConfigMapKeyRef()
-                        .endValueFrom()
-                        .build(),
-                    EnvVarBuilder()
-                        .withName("GOMEMLIMIT")
-                        .withValue("64MiB")
-                        .build(),
-                    EnvVarBuilder()
-                        .withName("OTEL_RESOURCE_ATTRIBUTES")
-                        .withValue(resourceAttributes)
-                        .build(),
-                    EnvVarBuilder()
-                        .withName("STRESS_PROM_PORT")
-                        .withValue(promPort.toString())
-                        .build(),
-                ).withRestartPolicy("Always")
-                .withVolumeMounts(
-                    VolumeMountBuilder()
-                        .withName("otel-sidecar-config")
-                        .withMountPath("/etc/otel")
-                        .withReadOnly(true)
-                        .build(),
-                ).build()
+        return ContainerBuilder()
+            .withName("otel-sidecar")
+            .withImage("otel/opentelemetry-collector-contrib:latest")
+            .withArgs("--config=/etc/otel/$SIDECAR_CONFIG_FILE_NAME")
+            .withEnv(
+                EnvVarBuilder()
+                    .withName("K8S_NODE_NAME")
+                    .withNewValueFrom()
+                    .withNewFieldRef()
+                    .withFieldPath("spec.nodeName")
+                    .endFieldRef()
+                    .endValueFrom()
+                    .build(),
+                EnvVarBuilder()
+                    .withName("HOST_IP")
+                    .withNewValueFrom()
+                    .withNewFieldRef()
+                    .withFieldPath("status.hostIP")
+                    .endFieldRef()
+                    .endValueFrom()
+                    .build(),
+                EnvVarBuilder()
+                    .withName("CLUSTER_NAME")
+                    .withNewValueFrom()
+                    .withNewConfigMapKeyRef()
+                    .withName("cluster-config")
+                    .withKey("cluster_name")
+                    .endConfigMapKeyRef()
+                    .endValueFrom()
+                    .build(),
+                EnvVarBuilder()
+                    .withName("GOMEMLIMIT")
+                    .withValue("64MiB")
+                    .build(),
+                EnvVarBuilder()
+                    .withName("OTEL_RESOURCE_ATTRIBUTES")
+                    .withValue(resourceAttributes)
+                    .build(),
+                EnvVarBuilder()
+                    .withName("STRESS_PROM_PORT")
+                    .withValue(promPort.toString())
+                    .build(),
+            ).withRestartPolicy("Always")
+            .withVolumeMounts(
+                VolumeMountBuilder()
+                    .withName("otel-sidecar-config")
+                    .withMountPath("/etc/otel")
+                    .withReadOnly(true)
+                    .build(),
+            ).build()
+    }
 
-        return JobBuilder()
+    private fun assembleJob(
+        jobName: String,
+        labels: Map<String, String>,
+        stressContainer: io.fabric8.kubernetes.api.model.Container,
+        otelSidecar: io.fabric8.kubernetes.api.model.Container,
+    ): Job =
+        JobBuilder()
             .withNewMetadata()
             .withName(jobName)
             .withNamespace(Constants.Stress.NAMESPACE)
@@ -514,7 +530,6 @@ class DefaultStressJobService(
             .endTemplate()
             .endSpec()
             .build()
-    }
 
     /**
      * Builds a simple Kubernetes Job for short-lived commands.

@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.getControlHost
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.services.PromQueryResult
@@ -118,8 +119,8 @@ class MetricsCollector(
             val compactionCompleted = querySingleValue(controlHost, CASSANDRA_COMPACTION_COMPLETED_QUERY)
             val compactionBytes = querySingleValue(controlHost, CASSANDRA_COMPACTION_BYTES_QUERY)
 
-            // Skip if no Cassandra metrics are available
-            if (readP99 == null && writeP99 == null && readOps == null && writeOps == null) {
+            val noCassandraMetrics = readP99 == null && writeP99 == null && readOps == null && writeOps == null
+            if (noCassandraMetrics) {
                 return
             }
 

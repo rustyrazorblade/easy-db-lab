@@ -66,6 +66,17 @@ interface CommandExecutor {
 }
 
 /**
+ * Dependencies for requirement checking during command execution.
+ *
+ * @property userConfigProvider Provides user configuration state
+ * @property dockerClientProvider Provides Docker client for availability checks
+ */
+data class RequirementCheckDeps(
+    val userConfigProvider: UserConfigProvider,
+    val dockerClientProvider: DockerClientProvider,
+)
+
+/**
  * Default implementation of CommandExecutor.
  *
  * Uses a thread-local queue to support nested command chains - each thread
@@ -74,8 +85,7 @@ interface CommandExecutor {
 class DefaultCommandExecutor(
     private val context: Context,
     private val clusterStateManager: ClusterStateManager,
-    private val userConfigProvider: UserConfigProvider,
-    private val dockerClientProvider: DockerClientProvider,
+    private val requirementCheckDeps: RequirementCheckDeps,
     private val resourceManager: ResourceManager,
     private val telemetryProvider: TelemetryProvider,
     private val eventBus: EventBus,
@@ -198,7 +208,7 @@ class DefaultCommandExecutor(
 
         // Check if the command requires profile setup
         if (annotations.any { it is RequireProfileSetup }) {
-            if (!userConfigProvider.isSetup()) {
+            if (!requirementCheckDeps.userConfigProvider.isSetup()) {
                 // Run setup command with full lifecycle
                 executeWithLifecycle(SetupProfile())
 
@@ -224,7 +234,7 @@ class DefaultCommandExecutor(
         // Check if the command requires an SSH key
         if (annotations.any { it is RequireSSHKey }) {
             if (!checkSSHKeyAvailability()) {
-                eventBus.emit(Event.Command.SshKeyMissing(userConfigProvider.sshKeyPath))
+                eventBus.emit(Event.Command.SshKeyMissing(requirementCheckDeps.userConfigProvider.sshKeyPath))
                 exitProcess(1)
             }
         }
@@ -278,7 +288,7 @@ class DefaultCommandExecutor(
     @Suppress("TooGenericExceptionCaught")
     private fun checkDockerAvailability(): Boolean =
         try {
-            val dockerClient = dockerClientProvider.getDockerClient()
+            val dockerClient = requirementCheckDeps.dockerClientProvider.getDockerClient()
             // Try to list images as a simple health check
             dockerClient.listImages("", "")
             true
@@ -287,7 +297,7 @@ class DefaultCommandExecutor(
             false
         }
 
-    private fun checkSSHKeyAvailability(): Boolean = File(userConfigProvider.sshKeyPath).exists()
+    private fun checkSSHKeyAvailability(): Boolean = File(requirementCheckDeps.userConfigProvider.sshKeyPath).exists()
 
     /**
      * Handles VPC state reconstruction from environment variable.

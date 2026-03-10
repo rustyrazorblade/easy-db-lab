@@ -136,8 +136,10 @@ val servicesModule =
             DefaultCommandExecutor(
                 get<Context>(),
                 get<ClusterStateManager>(),
-                get<UserConfigProvider>(),
-                get<DockerClientProvider>(),
+                RequirementCheckDeps(
+                    get<UserConfigProvider>(),
+                    get<DockerClientProvider>(),
+                ),
                 get<ResourceManager>(),
                 get<TelemetryProvider>(),
                 get<EventBus>(),

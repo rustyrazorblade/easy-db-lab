@@ -46,7 +46,7 @@ class ClusterConfigurationServiceTest {
                     capturedEvents.add(envelope)
                 }
 
-                override fun close() {}
+                override fun close() = Unit
             },
         )
         whenever(userConfigProvider.sshKeyPath).thenReturn(TEST_SSH_KEY_PATH)

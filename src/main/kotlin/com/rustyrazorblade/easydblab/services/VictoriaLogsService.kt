@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.proxy.HttpClientFactory
@@ -71,7 +72,6 @@ class DefaultVictoriaLogsService(
     companion object {
         private const val VICTORIA_LOGS_PORT = 9428
         private const val QUERY_ENDPOINT = "/select/logsql/query"
-        private const val HTTP_OK = 200
     }
 
     override fun query(
@@ -108,7 +108,7 @@ class DefaultVictoriaLogsService(
                     .build()
 
             httpClient.newCall(request).execute().use { response ->
-                if (response.code != HTTP_OK) {
+                if (response.code != Constants.HttpStatus.OK) {
                     throw RuntimeException(
                         "Victoria Logs query failed with status ${response.code}: ${response.body.string()}",
                     )

@@ -95,7 +95,7 @@ class DefaultVictoriaMetricsQueryService(
 
             httpClient.newCall(request).execute().use { response ->
                 val body = response.body.string()
-                if (response.code != HTTP_OK) {
+                if (response.code != Constants.HttpStatus.OK) {
                     throw RuntimeException(
                         "VictoriaMetrics query failed with status ${response.code}: $body",
                     )
@@ -111,8 +111,4 @@ class DefaultVictoriaMetricsQueryService(
                 parsed.data?.result ?: emptyList()
             }
         }
-
-    companion object {
-        private const val HTTP_OK = 200
-    }
 }

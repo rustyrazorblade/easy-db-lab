@@ -87,17 +87,23 @@ class MetricsCollector(
                 return // No system metrics available yet
             }
 
-            val hostNames = collectHostNames(cpuResults, memResults, diskReadResults, diskWriteResults, fsResults)
+            val cpuByHost = indexByHost(cpuResults)
+            val memByHost = indexByHost(memResults)
+            val diskReadByHost = indexByHost(diskReadResults)
+            val diskWriteByHost = indexByHost(diskWriteResults)
+            val fsByHost = indexByHost(fsResults)
+
+            val hostNames = (cpuByHost.keys + memByHost.keys + diskReadByHost.keys + diskWriteByHost.keys + fsByHost.keys)
             if (hostNames.isEmpty()) return
 
             val nodes =
                 hostNames.associateWith { hostName ->
                     Event.Metrics.Node(
-                        cpuUsagePct = findValueForHost(cpuResults, hostName) ?: 0.0,
-                        memoryUsedBytes = findValueForHost(memResults, hostName)?.toLong() ?: 0L,
-                        diskReadBytesPerSec = findValueForHost(diskReadResults, hostName) ?: 0.0,
-                        diskWriteBytesPerSec = findValueForHost(diskWriteResults, hostName) ?: 0.0,
-                        filesystemUsedPct = findValueForHost(fsResults, hostName) ?: 0.0,
+                        cpuUsagePct = cpuByHost[hostName] ?: 0.0,
+                        memoryUsedBytes = memByHost[hostName]?.toLong() ?: 0L,
+                        diskReadBytesPerSec = diskReadByHost[hostName] ?: 0.0,
+                        diskWriteBytesPerSec = diskWriteByHost[hostName] ?: 0.0,
+                        filesystemUsedPct = fsByHost[hostName] ?: 0.0,
                     )
                 }
 
@@ -150,17 +156,13 @@ class MetricsCollector(
             ?.firstOrNull()
             ?.numericValue()
 
-    private fun collectHostNames(vararg resultSets: List<PromQueryResult>?): Set<String> =
-        resultSets
-            .filterNotNull()
-            .flatMap { results ->
-                results.mapNotNull { it.metric["host_name"] }
-            }.toSet()
-
-    private fun findValueForHost(
-        results: List<PromQueryResult>?,
-        hostName: String,
-    ): Double? = results?.find { it.metric["host_name"] == hostName }?.numericValue()
+    private fun indexByHost(results: List<PromQueryResult>?): Map<String, Double> =
+        results
+            ?.mapNotNull { result ->
+                val host = result.metric["host_name"] ?: return@mapNotNull null
+                val value = result.numericValue() ?: return@mapNotNull null
+                host to value
+            }?.toMap() ?: emptyMap()
 
     companion object {
         // System queries — match Grafana system-overview.json dashboard

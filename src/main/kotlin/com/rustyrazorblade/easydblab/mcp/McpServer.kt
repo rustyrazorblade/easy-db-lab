@@ -319,7 +319,7 @@ class McpServer(
         if (!redisUrl.isNullOrBlank()) {
             metricsCollector =
                 MetricsCollector(victoriaMetricsQueryService, clusterStateManager, eventBus)
-            metricsCollector?.start()
+            metricsCollector!!.start()
             log.info { "MetricsCollector started (Redis configured)" }
         } else {
             log.debug { "MetricsCollector not started (Redis not configured)" }

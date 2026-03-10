@@ -141,33 +141,32 @@ class StatusCache(
         return serializeSection(response, section)
     }
 
+    private val sectionSerializers: Map<String, (StatusResponse) -> String> =
+        mapOf(
+            "cluster" to { r -> json.encodeToString(ClusterInfo.serializer(), r.cluster) },
+            "nodes" to { r -> json.encodeToString(NodesInfo.serializer(), r.nodes) },
+            "networking" to { r -> serializeNullable(NetworkingInfo.serializer(), r.networking) },
+            "securityGroup" to { r -> serializeNullable(SecurityGroupInfo.serializer(), r.securityGroup) },
+            "spark" to { r -> serializeNullable(SparkInfo.serializer(), r.spark) },
+            "opensearch" to { r -> serializeNullable(OpenSearchInfo.serializer(), r.opensearch) },
+            "s3" to { r -> serializeNullable(S3Info.serializer(), r.s3) },
+            "kubernetes" to { r -> serializeNullable(KubernetesInfo.serializer(), r.kubernetes) },
+            "stressJobs" to { r -> serializeNullable(StressInfo.serializer(), r.stressJobs) },
+            "cassandraVersion" to { r -> serializeNullable(CassandraVersionInfo.serializer(), r.cassandraVersion) },
+            "accessInfo" to { r -> serializeNullable(AccessInfo.serializer(), r.accessInfo) },
+        )
+
     private fun serializeSection(
         response: StatusResponse,
         section: String,
     ): String {
-        val sectionExtractors = buildSectionExtractors(response)
-        val extractor =
-            sectionExtractors[section]
+        val serializer =
+            sectionSerializers[section]
                 ?: throw IllegalArgumentException(
                     "Invalid section: '$section'. Valid sections: ${VALID_SECTIONS.joinToString(", ")}",
                 )
-        return extractor()
+        return serializer(response)
     }
-
-    private fun buildSectionExtractors(response: StatusResponse): Map<String, () -> String> =
-        mapOf(
-            "cluster" to { json.encodeToString(ClusterInfo.serializer(), response.cluster) },
-            "nodes" to { json.encodeToString(NodesInfo.serializer(), response.nodes) },
-            "networking" to { serializeNullable(NetworkingInfo.serializer(), response.networking) },
-            "securityGroup" to { serializeNullable(SecurityGroupInfo.serializer(), response.securityGroup) },
-            "spark" to { serializeNullable(SparkInfo.serializer(), response.spark) },
-            "opensearch" to { serializeNullable(OpenSearchInfo.serializer(), response.opensearch) },
-            "s3" to { serializeNullable(S3Info.serializer(), response.s3) },
-            "kubernetes" to { serializeNullable(KubernetesInfo.serializer(), response.kubernetes) },
-            "stressJobs" to { serializeNullable(StressInfo.serializer(), response.stressJobs) },
-            "cassandraVersion" to { serializeNullable(CassandraVersionInfo.serializer(), response.cassandraVersion) },
-            "accessInfo" to { serializeNullable(AccessInfo.serializer(), response.accessInfo) },
-        )
 
     private fun <T> serializeNullable(
         serializer: KSerializer<T>,

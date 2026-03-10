@@ -18,10 +18,11 @@ include 'services:webservice'
 rootProject.name = 'easy-db-lab'
 
 include "core"
-include "spark-shared"
-include "spark-connector-test1"
-include "bulk-writer"
-include "connector-writer"
+include "spark:common"
+include "spark:bulk-writer-sidecar"
+include "spark:bulk-writer-s3"
+include "spark:connector-writer"
+include "spark:connector-read-write"
 
 dependencyResolutionManagement {
     repositories {

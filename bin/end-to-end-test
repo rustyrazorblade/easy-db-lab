@@ -127,7 +127,7 @@ step_build_project() {
         # Pre-build cassandra-analytics with JDK 11 for bulk-writer
         echo "=== Pre-building Cassandra Analytics (JDK 11) ==="
         "$PROJECT_ROOT/bin/build-cassandra-analytics"
-        (cd "$PROJECT_ROOT" && ./gradlew clean shadowJar installDist :spark-connector-test1:jar :bulk-writer:jar)
+        (cd "$PROJECT_ROOT" && ./gradlew clean shadowJar installDist :spark:connector-read-write:shadowJar :spark:bulk-writer-sidecar:shadowJar :spark:bulk-writer-s3:shadowJar :spark:connector-writer:shadowJar)
     else
         (cd "$PROJECT_ROOT" && ./gradlew clean shadowJar installDist)
     fi
@@ -654,11 +654,21 @@ step_spark_submit() {
         echo "=== Skipping Spark job submission (use --spark to enable) ==="
         return 0
     fi
-    echo "=== Submitting Spark job to EMR ==="
+    echo "=== Submitting Spark connector read-write job to EMR ==="
+    local rw_jar
+    rw_jar=$(ls "$PROJECT_ROOT/spark/connector-read-write/build/libs/connector-read-write"*.jar 2>/dev/null | head -1)
+
+    local dc
+    dc=$(easy-db-lab aws region)
+    local hosts
+    hosts=$(jq -r '.hosts.Cassandra | map(.privateIp) | join(",")' "$PROJECT_ROOT/state.json")
+
     easy-db-lab spark submit \
-      --jar "$PROJECT_ROOT/spark-connector-test1/build/libs/spark-connector-test1-12.jar" \
+      --jar "$rw_jar" \
       --main-class com.rustyrazorblade.easydblab.spark.KeyValuePrefixCount \
-      --args "$(easy-db-lab ip db0 --private)" \
+      --conf "spark.easydblab.contactPoints=$hosts" \
+      --conf "spark.easydblab.keyspace=cassandra_easy_stress" \
+      --conf "spark.easydblab.localDc=$dc" \
       --wait
     SPARK_JOB_RAN=true
 }
@@ -743,27 +753,86 @@ step_spark_status() {
     fi
 }
 
-step_bulk_writer_direct() {
+# Helper: submit a spark writer job with standard config and verify row count.
+# Args: $1=label, $2=jar_glob, $3=main_class, $4=table_name, $5..=extra --conf flags
+submit_spark_writer() {
+    local label="$1" jar_glob="$2" main_class="$3" table_name="$4"
+    shift 4
+
+    local dc hosts jar_file
+    dc=$(easy-db-lab aws region)
+    hosts=$(jq -r '.hosts.Cassandra | map(.privateIp) | join(",")' "$PROJECT_ROOT/state.json")
+    jar_file=$(ls $jar_glob 2>/dev/null | head -1)
+
+    echo "=== Submitting $label to EMR ==="
+    easy-db-lab spark submit \
+        --jar "$jar_file" \
+        --main-class "$main_class" \
+        --conf "spark.easydblab.contactPoints=$hosts" \
+        --conf "spark.easydblab.keyspace=bulk_test" \
+        --conf "spark.easydblab.table=$table_name" \
+        --conf "spark.easydblab.localDc=$dc" \
+        --conf "spark.easydblab.rowCount=10000" \
+        --conf "spark.easydblab.parallelism=4" \
+        --conf "spark.easydblab.partitionCount=100" \
+        --conf "spark.easydblab.replicationFactor=1" \
+        "$@" \
+        --wait
+
+    echo "=== Verifying $label results ==="
+    easy-db-lab cassandra cql "SELECT COUNT(*) FROM bulk_test.$table_name"
+}
+
+step_bulk_writer_sidecar() {
     if [ "$ENABLE_SPARK" != true ]; then
-        echo "=== Skipping bulk writer test (use --spark to enable) ==="
+        echo "=== Skipping bulk writer sidecar test (use --spark to enable) ==="
         return 0
     fi
     if [ "$ENABLE_CASSANDRA" != true ]; then
-        echo "=== Skipping bulk writer test (use --cassandra to enable for table creation) ==="
+        echo "=== Skipping bulk writer sidecar test (use --cassandra to enable) ==="
         return 0
     fi
 
-    echo "=== Starting inotifywait to monitor sidecar import directory ==="
-    easy-db-lab exec run --bg --name watch-imports -t cassandra -- inotifywait -m -r /mnt/db1/cassandra/import
+    submit_spark_writer "bulk writer (sidecar/direct)" \
+        "$PROJECT_ROOT/spark/bulk-writer-sidecar/build/libs/bulk-writer-sidecar*.jar" \
+        com.rustyrazorblade.easydblab.spark.DirectBulkWriter \
+        data_sidecar
+}
 
-    echo "=== Submitting bulk writer (direct mode) to EMR ==="
-    "$PROJECT_ROOT/bin/submit-direct-bulk-writer" 10000 4 100 1
+step_bulk_writer_s3() {
+    if [ "$ENABLE_SPARK" != true ]; then
+        echo "=== Skipping bulk writer S3 test (use --spark to enable) ==="
+        return 0
+    fi
+    if [ "$ENABLE_CASSANDRA" != true ]; then
+        echo "=== Skipping bulk writer S3 test (use --cassandra to enable) ==="
+        return 0
+    fi
 
-    echo "=== Verifying bulk write results ==="
-    easy-db-lab cassandra cql "SELECT COUNT(*) FROM bulk_test.data"
+    local s3_bucket
+    s3_bucket=$(jq -r '.dataBucket // .s3Bucket' state.json)
 
-    echo "=== Stopping inotifywait ==="
-    easy-db-lab exec stop watch-imports -t cassandra
+    submit_spark_writer "bulk writer (S3)" \
+        "$PROJECT_ROOT/spark/bulk-writer-s3/build/libs/bulk-writer-s3*.jar" \
+        com.rustyrazorblade.easydblab.spark.S3BulkWriter \
+        data_s3 \
+        --conf "spark.easydblab.s3.bucket=$s3_bucket"
+}
+
+step_connector_writer() {
+    if [ "$ENABLE_SPARK" != true ]; then
+        echo "=== Skipping connector writer test (use --spark to enable) ==="
+        return 0
+    fi
+    if [ "$ENABLE_CASSANDRA" != true ]; then
+        echo "=== Skipping connector writer test (use --cassandra to enable) ==="
+        return 0
+    fi
+
+    submit_spark_writer "connector writer" \
+        "$PROJECT_ROOT/spark/connector-writer/build/libs/connector-writer*.jar" \
+        com.rustyrazorblade.easydblab.spark.StandardConnectorWriter \
+        data_connector
 }
 
 step_clickhouse_start() {
@@ -1157,7 +1226,9 @@ STEPS_WORKDIR=(
     "step_stress_k8s:Run stress K8s test"
     "step_spark_submit:Submit Spark job"
     "step_spark_status:Check Spark status"
-    "step_bulk_writer_direct:Test bulk writer (direct)"
+    "step_bulk_writer_sidecar:Test bulk writer (sidecar)"
+    "step_bulk_writer_s3:Test bulk writer (S3)"
+    "step_connector_writer:Test connector writer"
     "step_cassandra_start_stop:Cassandra start/stop cycle"
     "step_clickhouse_start:Start ClickHouse"
     "step_clickhouse_test:Test ClickHouse"

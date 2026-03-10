@@ -189,107 +189,108 @@ val df = spark.read
 
 Ensure your JAR includes the Spark Cassandra Connector dependency and configure the Cassandra host in your Spark application.
 
-## Bulk Writer
+## Spark Modules
 
-The `bulk-writer` subproject provides high-performance bulk data loading into Cassandra using [Apache Cassandra Analytics](https://github.com/apache/cassandra-analytics). It generates SSTables directly and imports them via Cassandra Sidecar.
+All Spark job modules live under the `spark/` directory and share unified configuration via `spark.easydblab.*` properties. You can compare performance across implementations by swapping the JAR and main class while keeping the same `--conf` flags.
 
-### Transport Modes
+### Module Overview
 
-| Mode | Class | Use Case |
-|------|-------|----------|
-| Direct | `DirectBulkWriter` | Lower latency, direct sidecar connection |
-| S3 | `S3BulkWriter` | Large datasets, network isolation, S3 staging |
+| Module | Gradle Path | Main Class | Description |
+|--------|-------------|------------|-------------|
+| `common` | `:spark:common` | — | Shared config, data generation, CQL setup |
+| `bulk-writer-sidecar` | `:spark:bulk-writer-sidecar` | `DirectBulkWriter` | Cassandra Analytics, direct sidecar transport |
+| `bulk-writer-s3` | `:spark:bulk-writer-s3` | `S3BulkWriter` | Cassandra Analytics, S3 staging transport |
+| `connector-writer` | `:spark:connector-writer` | `StandardConnectorWriter` | Standard Spark Cassandra Connector |
+| `connector-read-write` | `:spark:connector-read-write` | `KeyValuePrefixCount` | Read→transform→write example |
 
-### Building the Bulk Writer
+### Building
 
-#### Step 1: Pre-build Cassandra Analytics (one-time)
+#### Pre-build Cassandra Analytics (one-time, for bulk-writer modules)
 
-The cassandra-analytics library requires JDK 11 to build. A Docker-based script handles this:
+The cassandra-analytics library requires JDK 11 to build:
 
 ```bash
 bin/build-cassandra-analytics
 ```
 
-This script:
-
-1. Clones `apache/cassandra-analytics` to `.cassandra-analytics/`
-2. Builds inside Docker with JDK 11
-3. Copies JARs to `bulk-writer/libs/`
-
 Options:
-
 - `--force` - Rebuild even if JARs exist
 - `--branch <branch>` - Use a specific branch (default: trunk)
 
-**Note**: The `.cassandra-analytics/` directory and `bulk-writer/libs/*.jar` are gitignored. Each developer runs this once locally.
-
-#### Step 2: Build the Bulk Writer JAR
+#### Build JARs
 
 ```bash
-./gradlew :bulk-writer:jar
-```
+# Build all Spark modules
+./gradlew :spark:bulk-writer-sidecar:shadowJar :spark:bulk-writer-s3:shadowJar \
+  :spark:connector-writer:shadowJar :spark:connector-read-write:shadowJar
 
-Output: `bulk-writer/build/libs/bulk-writer-*.jar` (~140MB fat JAR)
+# Or build individually
+./gradlew :spark:bulk-writer-sidecar:shadowJar
+./gradlew :spark:connector-writer:shadowJar
+```
 
 ### Usage
 
-All bulk writers are configured via `--conf` Spark properties, not positional arguments.
+All modules use the same `--conf` properties for easy comparison.
 
-#### Direct Mode
-
-Writes SSTables directly to Cassandra via Sidecar:
+#### Direct Bulk Writer (Sidecar)
 
 ```bash
 easy-db-lab spark submit \
-  --jar bulk-writer/build/libs/bulk-writer-*.jar \
+  --jar spark/bulk-writer-sidecar/build/libs/bulk-writer-sidecar-*.jar \
   --main-class com.rustyrazorblade.easydblab.spark.DirectBulkWriter \
-  --conf spark.easydblab.sidecar.contactPoints=host1,host2,host3 \
+  --conf spark.easydblab.contactPoints=host1,host2,host3 \
   --conf spark.easydblab.keyspace=bulk_test \
-  --conf spark.easydblab.table=data \
   --conf spark.easydblab.localDc=us-west-2 \
   --conf spark.easydblab.rowCount=1000000 \
   --wait
 ```
 
-#### S3 Mode
-
-Writes SSTables to S3, then Sidecar imports them:
+#### S3 Bulk Writer
 
 ```bash
 easy-db-lab spark submit \
-  --jar bulk-writer/build/libs/bulk-writer-*.jar \
+  --jar spark/bulk-writer-s3/build/libs/bulk-writer-s3-*.jar \
   --main-class com.rustyrazorblade.easydblab.spark.S3BulkWriter \
-  --conf spark.easydblab.sidecar.contactPoints=host1,host2,host3 \
+  --conf spark.easydblab.contactPoints=host1,host2,host3 \
   --conf spark.easydblab.keyspace=bulk_test \
-  --conf spark.easydblab.table=data \
   --conf spark.easydblab.localDc=us-west-2 \
   --conf spark.easydblab.s3.bucket=my-bucket \
   --conf spark.easydblab.rowCount=1000000 \
   --wait
 ```
 
-#### Connector Mode
-
-Writes via the standard Spark Cassandra Connector (baseline comparison):
+#### Standard Connector Writer
 
 ```bash
 easy-db-lab spark submit \
-  --jar connector-writer/build/libs/connector-writer-*.jar \
+  --jar spark/connector-writer/build/libs/connector-writer-*.jar \
   --main-class com.rustyrazorblade.easydblab.spark.StandardConnectorWriter \
-  --conf spark.easydblab.cassandra.host=host1,host2,host3 \
+  --conf spark.easydblab.contactPoints=host1,host2,host3 \
   --conf spark.easydblab.keyspace=bulk_test \
-  --conf spark.easydblab.table=data \
   --conf spark.easydblab.localDc=us-west-2 \
   --conf spark.easydblab.rowCount=1000000 \
   --wait
 ```
 
-#### Configuration Properties
+#### Convenience Script
 
-**Common properties (all modes):**
+The `bin/spark-bulk-write` script handles JAR lookup, host resolution, and health checks:
+
+```bash
+# From a cluster directory
+spark-bulk-write direct --rows 10000
+spark-bulk-write s3 --rows 1000000 --parallelism 20
+spark-bulk-write connector --keyspace myks --table mytable
+```
+
+### Configuration Properties
+
+All modules share these properties via `spark.easydblab.*`:
 
 | Property | Description | Default |
 |----------|-------------|---------|
+| `spark.easydblab.contactPoints` | Comma-separated database hosts | Required |
 | `spark.easydblab.keyspace` | Target keyspace | Required |
 | `spark.easydblab.table` | Target table | `data_<timestamp>` |
 | `spark.easydblab.localDc` | Local datacenter name | Required |
@@ -298,64 +299,20 @@ easy-db-lab spark submit \
 | `spark.easydblab.partitionCount` | Cassandra partitions to distribute across | 10000 |
 | `spark.easydblab.replicationFactor` | Keyspace replication factor | 3 |
 | `spark.easydblab.skipDdl` | Skip keyspace/table creation | false |
-| `spark.easydblab.compaction` | Compaction strategy (e.g., `LeveledCompactionStrategy`) | (default) |
-
-**Direct/S3 mode (bulk writer):**
-
-| Property | Description | Default |
-|----------|-------------|---------|
-| `spark.easydblab.sidecar.contactPoints` | Comma-separated Sidecar hosts | Required |
+| `spark.easydblab.compaction` | Compaction strategy | (default) |
 | `spark.easydblab.s3.bucket` | S3 bucket (S3 mode only) | Required for S3 |
 | `spark.easydblab.s3.endpoint` | S3 endpoint override | AWS S3 |
 
-**Connector mode:**
-
-| Property | Description | Default |
-|----------|-------------|---------|
-| `spark.easydblab.cassandra.host` | Comma-separated Cassandra hosts | Required |
-
-### Test Script
-
-A minimal test script is provided:
-
-```bash
-bin/test-spark-bulk-writer
-```
-
-This script:
-
-1. Sources `env.sh` (for SSH config)
-2. Builds the JAR
-3. Gets hosts from `easy-db-lab hosts`
-4. Gets datacenter from `state.json`
-5. Creates a test keyspace/table via SSH + cqlsh
-6. Submits a DirectBulkWriter job
-7. Verifies data was written
-
-**Note**: The script sources `env.sh` which wraps `ssh` to use the generated `sshConfig` file. This enables SSH access to cluster nodes.
-
-### GitHub Actions / CI
-
-The Docker-based build works in CI environments:
-
-```yaml
-- name: Build Cassandra Analytics
-  run: bin/build-cassandra-analytics
-
-- name: Build Bulk Writer
-  run: ./gradlew :bulk-writer:jar
-```
-
-GitHub Actions runners include Docker, so no additional setup is needed.
-
 ### Table Schema
 
-The bulk writer generates test data with this schema:
+The test data generators produce this schema:
 
 ```sql
 CREATE TABLE <keyspace>.<table> (
-    id bigint PRIMARY KEY,
+    partition_id bigint,
+    sequence_id bigint,
     course blob,
-    marks bigint
+    marks bigint,
+    PRIMARY KEY ((partition_id), sequence_id)
 );
 ```

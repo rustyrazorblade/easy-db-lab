@@ -9,14 +9,14 @@ export AWS_PAGER=""
 
 CLUSTER_NAME="${1:-spark-bulk-test}"
 
-echo "=== Building bulk-writer JAR ==="
-(cd "$PROJECT_ROOT" && ./gradlew :bulk-writer:jar -q)
+echo "=== Building bulk-writer-sidecar JAR ==="
+(cd "$PROJECT_ROOT" && ./gradlew :spark:bulk-writer-sidecar:shadowJar -q)
 ./gradlew shadowjar installdist
 
 # Find the built JAR (version number is appended)
-JAR_FILE=$(ls "$PROJECT_ROOT/bulk-writer/build/libs/bulk-writer-"*.jar 2>/dev/null | head -1)
+JAR_FILE=$(ls "$PROJECT_ROOT/spark/bulk-writer-sidecar/build/libs/bulk-writer-sidecar"*.jar 2>/dev/null | head -1)
 if [ -z "$JAR_FILE" ]; then
-    echo "Error: Could not find bulk-writer JAR"
+    echo "Error: Could not find bulk-writer-sidecar JAR"
     exit 1
 fi
 echo "Using JAR: $JAR_FILE"
@@ -76,7 +76,7 @@ SPARK_EXIT_CODE=0
 easy-db-lab spark submit \
   --jar "$JAR_FILE" \
   --main-class com.rustyrazorblade.easydblab.spark.DirectBulkWriter \
-  --conf "spark.easydblab.sidecar.contactPoints=$SIDECAR_HOSTS" \
+  --conf "spark.easydblab.contactPoints=$SIDECAR_HOSTS" \
   --conf "spark.easydblab.keyspace=bulk_test" \
   --conf "spark.easydblab.table=data" \
   --conf "spark.easydblab.localDc=$DC" \

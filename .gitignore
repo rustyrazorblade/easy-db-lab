@@ -155,7 +155,8 @@ site/
 
 # Cassandra Analytics build artifacts (see bin/build-cassandra-analytics)
 .cassandra-analytics/
-bulk-writer/libs/*.jar
+spark/bulk-writer-sidecar/libs/*.jar
+spark/bulk-writer-s3/libs/*.jar
 clusters/
 
 # Claude Code config (mounted in devcontainer)

@@ -17,12 +17,12 @@ PARALLELISM="${2:-4}"
 PARTITION_COUNT="${3:-100}"
 REPLICATION_FACTOR="${4:-3}"
 
-echo "=== Building bulk-writer JAR ==="
-(cd "$PROJECT_ROOT" && ./gradlew :bulk-writer:shadowJar -q)
+echo "=== Building bulk-writer-sidecar JAR ==="
+(cd "$PROJECT_ROOT" && ./gradlew :spark:bulk-writer-sidecar:shadowJar -q)
 
-JAR_FILE=$(ls "$PROJECT_ROOT/bulk-writer/build/libs/bulk-writer"*.jar 2>/dev/null | grep -v sources | grep -v javadoc | head -1)
+JAR_FILE=$(ls "$PROJECT_ROOT/spark/bulk-writer-sidecar/build/libs/bulk-writer-sidecar"*.jar 2>/dev/null | grep -v sources | grep -v javadoc | head -1)
 if [ -z "$JAR_FILE" ] || [ ! -f "$JAR_FILE" ]; then
-    echo "Error: Could not find bulk-writer JAR in bulk-writer/build/libs/"
+    echo "Error: Could not find bulk-writer-sidecar JAR in spark/bulk-writer-sidecar/build/libs/"
     exit 1
 fi
 echo "Using JAR: $JAR_FILE"
@@ -54,7 +54,7 @@ set +e
 easy-db-lab spark submit \
     --jar "$JAR_FILE" \
     --main-class com.rustyrazorblade.easydblab.spark.DirectBulkWriter \
-    --conf "spark.easydblab.sidecar.contactPoints=$SIDECAR_HOSTS" \
+    --conf "spark.easydblab.contactPoints=$SIDECAR_HOSTS" \
     --conf "spark.easydblab.keyspace=bulk_test" \
     --conf "spark.easydblab.table=data" \
     --conf "spark.easydblab.localDc=$DC" \

@@ -8,6 +8,11 @@ Spark job submission, monitoring, and cancellation on AWS EMR clusters with full
 
 The system MUST support submitting and monitoring Spark jobs on EMR with full observability instrumentation.
 
+#### Scenario: Spark submit references reorganized module JARs
+
+- **WHEN** a Spark job is submitted via `EMRSparkService`
+- **THEN** the system MUST resolve JAR paths from the `spark/` subdirectory modules (e.g., `spark/bulk-writer-sidecar/build/libs/`) instead of the previous top-level module paths (e.g., `bulk-writer/build/libs/`)
+
 #### Scenario: Spark submit includes OTel and Pyroscope Java agents
 
 - **WHEN** a Spark job is submitted via `EMRSparkService`

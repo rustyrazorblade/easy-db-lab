@@ -18,8 +18,6 @@ import io.fabric8.kubernetes.api.model.batch.v1.JobBuilder
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
 import io.github.resilience4j.retry.RetryConfig
-import org.koin.core.component.KoinComponent
-import org.koin.core.component.inject
 
 /**
  * Configuration for starting a stress job.
@@ -131,10 +129,9 @@ class DefaultStressJobService(
     private val k8sService: K8sService,
     private val clusterStateManager: ClusterStateManager,
     private val eventBus: EventBus,
-) : StressJobService,
-    KoinComponent {
+    private val templateService: TemplateService,
+) : StressJobService {
     private val log = KotlinLogging.logger {}
-    private val templateService: TemplateService by inject()
 
     companion object {
         private const val JOB_COMPLETION_TIMEOUT_SECONDS = 30

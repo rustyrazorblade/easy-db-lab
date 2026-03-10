@@ -40,6 +40,7 @@ class K8sServiceTest : BaseKoinTest() {
             module {
                 single<SocksProxyService> { mockSocksProxyService }
                 single<TelemetryProvider> { mockTelemetryProvider }
+                single { K8sClientProvider(get()) }
                 factory<K8sService> { DefaultK8sService(get(), get(), get()) }
             },
         )

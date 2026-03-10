@@ -71,6 +71,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
                 clusterStateManager,
                 com.rustyrazorblade.easydblab.events
                     .EventBus(),
+                getKoin().get(),
             )
     }
 

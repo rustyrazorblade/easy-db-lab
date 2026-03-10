@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.observability.TelemetryNames
 import com.rustyrazorblade.easydblab.observability.TelemetryProvider
+import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.time.Instant
@@ -252,7 +253,7 @@ class DefaultK8sNamespaceOperations(
                 .withName(podName)
                 .waitUntilCondition(
                     { p ->
-                        DefaultK8sService.checkForPodFailure(p)
+                        K8sPodUtils.checkForPodFailure(p)
                         p?.status?.conditions?.any {
                             it.type == "Ready" && it.status == "True"
                         } == true
@@ -268,126 +269,119 @@ class DefaultK8sNamespaceOperations(
         namespace: String,
         labelSelector: String,
     ) {
-        deleteAppsResources(client, namespace, labelSelector)
-        deleteServiceAndConfigResources(client, namespace, labelSelector)
-        deleteSecretAndStorageResources(client, namespace, labelSelector)
+        val ns = namespace
+        val sel = labelSelector
+
+        deleteMatchingResources(
+            client
+                .apps()
+                .statefulSets()
+                .inNamespace(ns)
+                .withLabelSelector(sel)
+                .list()
+                .items,
+            "StatefulSet",
+        ) { name ->
+            client
+                .apps()
+                .statefulSets()
+                .inNamespace(ns)
+                .withName(name)
+                .delete()
+        }
+
+        deleteMatchingResources(
+            client
+                .apps()
+                .deployments()
+                .inNamespace(ns)
+                .withLabelSelector(sel)
+                .list()
+                .items,
+            "Deployment",
+        ) { name ->
+            client
+                .apps()
+                .deployments()
+                .inNamespace(ns)
+                .withName(name)
+                .delete()
+        }
+
+        deleteMatchingResources(
+            client
+                .services()
+                .inNamespace(ns)
+                .withLabelSelector(sel)
+                .list()
+                .items,
+            "Service",
+        ) { name ->
+            client
+                .services()
+                .inNamespace(ns)
+                .withName(name)
+                .delete()
+        }
+
+        deleteMatchingResources(
+            client
+                .configMaps()
+                .inNamespace(ns)
+                .withLabelSelector(sel)
+                .list()
+                .items,
+            "ConfigMap",
+        ) { name ->
+            client
+                .configMaps()
+                .inNamespace(ns)
+                .withName(name)
+                .delete()
+        }
+
+        deleteMatchingResources(
+            client
+                .secrets()
+                .inNamespace(ns)
+                .withLabelSelector(sel)
+                .list()
+                .items,
+            "Secret",
+        ) { name ->
+            client
+                .secrets()
+                .inNamespace(ns)
+                .withName(name)
+                .delete()
+        }
+
+        deleteMatchingResources(
+            client
+                .persistentVolumeClaims()
+                .inNamespace(ns)
+                .withLabelSelector(sel)
+                .list()
+                .items,
+            "PVC",
+        ) { name ->
+            client
+                .persistentVolumeClaims()
+                .inNamespace(ns)
+                .withName(name)
+                .delete()
+        }
     }
 
-    private fun deleteAppsResources(
-        client: KubernetesClient,
-        namespace: String,
-        labelSelector: String,
+    private fun <T : HasMetadata> deleteMatchingResources(
+        resources: List<T>,
+        typeName: String,
+        deleter: (String) -> Unit,
     ) {
-        client
-            .apps()
-            .statefulSets()
-            .inNamespace(namespace)
-            .withLabelSelector(labelSelector)
-            .list()
-            .items
-            .forEach { sts ->
-                val name = sts.metadata?.name ?: return@forEach
-                log.info { "Deleting StatefulSet: $name" }
-                client
-                    .apps()
-                    .statefulSets()
-                    .inNamespace(namespace)
-                    .withName(name)
-                    .delete()
-            }
-
-        client
-            .apps()
-            .deployments()
-            .inNamespace(namespace)
-            .withLabelSelector(labelSelector)
-            .list()
-            .items
-            .forEach { deploy ->
-                val name = deploy.metadata?.name ?: return@forEach
-                log.info { "Deleting Deployment: $name" }
-                client
-                    .apps()
-                    .deployments()
-                    .inNamespace(namespace)
-                    .withName(name)
-                    .delete()
-            }
-    }
-
-    private fun deleteServiceAndConfigResources(
-        client: KubernetesClient,
-        namespace: String,
-        labelSelector: String,
-    ) {
-        client
-            .services()
-            .inNamespace(namespace)
-            .withLabelSelector(labelSelector)
-            .list()
-            .items
-            .forEach { svc ->
-                val name = svc.metadata?.name ?: return@forEach
-                log.info { "Deleting Service: $name" }
-                client
-                    .services()
-                    .inNamespace(namespace)
-                    .withName(name)
-                    .delete()
-            }
-
-        client
-            .configMaps()
-            .inNamespace(namespace)
-            .withLabelSelector(labelSelector)
-            .list()
-            .items
-            .forEach { cm ->
-                val name = cm.metadata?.name ?: return@forEach
-                log.info { "Deleting ConfigMap: $name" }
-                client
-                    .configMaps()
-                    .inNamespace(namespace)
-                    .withName(name)
-                    .delete()
-            }
-    }
-
-    private fun deleteSecretAndStorageResources(
-        client: KubernetesClient,
-        namespace: String,
-        labelSelector: String,
-    ) {
-        client
-            .secrets()
-            .inNamespace(namespace)
-            .withLabelSelector(labelSelector)
-            .list()
-            .items
-            .forEach { secret ->
-                val name = secret.metadata?.name ?: return@forEach
-                log.info { "Deleting Secret: $name" }
-                client
-                    .secrets()
-                    .inNamespace(namespace)
-                    .withName(name)
-                    .delete()
-            }
-
-        client
-            .persistentVolumeClaims()
-            .inNamespace(namespace)
-            .withLabelSelector(labelSelector)
-            .list()
-            .items
-            .forEach { pvc ->
-                val name = pvc.metadata?.name ?: return@forEach
-                log.info { "Deleting PVC: $name" }
-                client
-                    .persistentVolumeClaims()
-                    .inNamespace(namespace)
-                    .withName(name)
-                    .delete()
-            }
+        resources.forEach { resource ->
+            val name = resource.metadata?.name ?: return@forEach
+            log.info { "Deleting $typeName: $name" }
+            deleter(name)
+        }
     }
 }

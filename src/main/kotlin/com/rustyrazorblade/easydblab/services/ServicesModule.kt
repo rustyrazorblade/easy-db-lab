@@ -54,6 +54,7 @@ val servicesModule =
         factoryOf(::EC2RegistryService) bind RegistryService::class
         factoryOf(::DefaultK3sService) bind K3sService::class
         factoryOf(::DefaultK3sAgentService) bind K3sAgentService::class
+        singleOf(::K8sClientProvider)
         factoryOf(::DefaultK8sService) bind K8sService::class
         factoryOf(::ClickHouseManifestBuilder)
         factoryOf(::BeylaManifestBuilder)

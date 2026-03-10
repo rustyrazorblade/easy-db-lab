@@ -61,13 +61,12 @@ class MetricsCollector(
         try {
             val clusterState = clusterStateManager.load()
             val controlHost = clusterState.getControlHost() ?: return
-            val dbHosts = clusterState.hosts[ServerType.Cassandra]
-            if (dbHosts.isNullOrEmpty()) return
 
             collectSystemMetrics(controlHost)
 
-            // Only collect Cassandra metrics if the cluster is running Cassandra (not ClickHouse)
-            if (clusterState.clickHouseConfig == null) {
+            // Collect db-specific metrics based on what's running on the db nodes
+            val dbHosts = clusterState.hosts[ServerType.Cassandra]
+            if (!dbHosts.isNullOrEmpty() && clusterState.clickHouseConfig == null) {
                 collectCassandraMetrics(controlHost)
             }
         } catch (e: Exception) {

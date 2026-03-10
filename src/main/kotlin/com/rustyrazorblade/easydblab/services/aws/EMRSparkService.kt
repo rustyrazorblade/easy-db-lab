@@ -465,7 +465,7 @@ class EMRSparkService(
             val localGzFile = localLogsDir.resolve(logType.filename)
             val localLogFile = localLogsDir.resolve(logType.filename.removeSuffix(".gz"))
 
-            eventBus.emit(Event.Emr.SparkLogDownloadStart(logPath.toUri().toString()))
+            eventBus.emit(Event.Emr.SparkLogDownloadStart(logPath.toUri()))
             eventBus.emit(Event.Emr.SparkLogDownloadSaveTo(localLogFile.toString()))
 
             // Download with retry (logs may not be immediately available)
@@ -490,7 +490,7 @@ class EMRSparkService(
             val localLogsDir = Paths.get("logs", "emr", stepId)
             Files.createDirectories(localLogsDir)
 
-            eventBus.emit(Event.Emr.EmrLogsDownloading(emrLogsPath.toUri().toString()))
+            eventBus.emit(Event.Emr.EmrLogsDownloading(emrLogsPath.toUri()))
             eventBus.emit(Event.Emr.EmrLogsSaveTo(localLogsDir.toString()))
 
             objectStore.downloadDirectory(emrLogsPath, localLogsDir, showProgress = true)

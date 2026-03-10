@@ -6,7 +6,6 @@ import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
 
-import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -51,21 +50,10 @@ public class DirectBulkWriter {
             SparkJobConfig config = SparkJobConfig.load(spark.sparkContext().conf());
             config.setupSchema();
 
-            DataGenerator dataGenerator = new BulkTestDataGenerator();
-            System.out.println("Generating " + config.getRowCount() + " rows across " +
-                config.getPartitionCount() + " partitions with parallelism " + config.getParallelism());
+            Dataset<Row> df = config.generateTestData(spark);
 
-            Dataset<Row> df = dataGenerator.generate(spark, config.getRowCount(),
-                config.getParallelism(), config.getPartitionCount());
-
-            Map<String, String> writeOptions = new HashMap<>();
-            writeOptions.put("sidecar_contact_points", config.getContactPoints());
-            writeOptions.put("keyspace", config.getKeyspace());
-            writeOptions.put("table", config.getTable());
-            writeOptions.put("local_dc", config.getLocalDc());
-            writeOptions.put("bulk_writer_cl", "LOCAL_QUORUM");
-            writeOptions.put("number_splits", "-1");
-            writeOptions.put("data_transport", "DIRECT");
+            Map<String, String> writeOptions = config.buildBulkWriteOptions();
+            writeOptions.put(SparkJobConfig.OPT_DATA_TRANSPORT, "DIRECT");
 
             System.out.println("Writing to " + config.getKeyspace() + "." + config.getTable() +
                 " via DIRECT transport");

@@ -244,7 +244,7 @@ class AWSResourceSetupService(
         // Try to get account ID, fallback to placeholder if that fails
         val accountId =
             try {
-                aws.getAccountId() ?: error("Account ID is null")
+                aws.getAccountId()
             } catch (e: Exception) {
                 eventBus.emit(Event.AwsSetup.AccountIdNote)
                 "ACCOUNT_ID"

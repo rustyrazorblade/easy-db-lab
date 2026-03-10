@@ -1,6 +1,12 @@
 package com.rustyrazorblade.easydblab.spark;
 
 import org.apache.spark.SparkConf;
+import org.apache.spark.sql.Dataset;
+import org.apache.spark.sql.Row;
+import org.apache.spark.sql.SparkSession;
+
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Shared configuration for all Spark job modules.
@@ -25,6 +31,25 @@ public class SparkJobConfig {
     // Cassandra Analytics data sink format class
     public static final String CASSANDRA_DATA_SINK =
         "org.apache.cassandra.spark.sparksql.CassandraDataSink";
+
+    // Spark Cassandra Connector format class
+    public static final String CASSANDRA_CONNECTOR_FORMAT =
+        "org.apache.spark.sql.cassandra";
+
+    // Spark Cassandra Connector config keys
+    public static final String CONNECTOR_HOST = "spark.cassandra.connection.host";
+    public static final String CONNECTOR_LOCAL_DC = "spark.cassandra.connection.localDC";
+    public static final String CONNECTOR_EXTENSIONS = "com.datastax.spark.connector.CassandraSparkExtensions";
+    public static final String CONNECTOR_CATALOG = "com.datastax.spark.connector.datasource.CassandraCatalog";
+
+    // Bulk writer option keys (cassandra-analytics SDK)
+    public static final String OPT_SIDECAR_CONTACT_POINTS = "sidecar_contact_points";
+    public static final String OPT_KEYSPACE = "keyspace";
+    public static final String OPT_TABLE = "table";
+    public static final String OPT_LOCAL_DC = "local_dc";
+    public static final String OPT_BULK_WRITER_CL = "bulk_writer_cl";
+    public static final String OPT_NUMBER_SPLITS = "number_splits";
+    public static final String OPT_DATA_TRANSPORT = "data_transport";
 
     // S3 transport size constants
     public static final long S3_MAX_CHUNK_SIZE_BYTES = 100L * 1024 * 1024;       // 100MB
@@ -192,6 +217,41 @@ public class SparkJobConfig {
             return Boolean.parseBoolean(conf.get(key));
         }
         return defaultValue;
+    }
+
+    /**
+     * Generate test data using the standard BulkTestDataGenerator.
+     * Logs progress and returns the generated DataFrame.
+     */
+    public Dataset<Row> generateTestData(SparkSession spark) {
+        DataGenerator dataGenerator = new BulkTestDataGenerator();
+        System.out.println("Generating " + rowCount + " rows across " +
+            partitionCount + " partitions with parallelism " + parallelism);
+        return dataGenerator.generate(spark, rowCount, parallelism, partitionCount);
+    }
+
+    /**
+     * Build the base write options map for cassandra-analytics bulk writers.
+     * Includes sidecar contact points, keyspace, table, local DC, consistency level,
+     * and number of splits. Callers add transport-specific options on top.
+     */
+    public Map<String, String> buildBulkWriteOptions() {
+        Map<String, String> options = new HashMap<>();
+        options.put(OPT_SIDECAR_CONTACT_POINTS, contactPoints);
+        options.put(OPT_KEYSPACE, keyspace);
+        options.put(OPT_TABLE, table);
+        options.put(OPT_LOCAL_DC, localDc);
+        options.put(OPT_BULK_WRITER_CL, "LOCAL_QUORUM");
+        options.put(OPT_NUMBER_SPLITS, "-1");
+        return options;
+    }
+
+    /**
+     * Configure Spark Cassandra Connector host and datacenter on an existing session.
+     */
+    public void configureCassandraConnector(SparkSession spark) {
+        spark.conf().set(CONNECTOR_HOST, contactPoints);
+        spark.conf().set(CONNECTOR_LOCAL_DC, localDc);
     }
 
     // Getters

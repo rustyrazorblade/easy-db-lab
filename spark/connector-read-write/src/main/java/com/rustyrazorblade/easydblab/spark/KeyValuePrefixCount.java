@@ -30,8 +30,8 @@ public class KeyValuePrefixCount {
     public static void main(String[] args) {
         SparkConf conf = new SparkConf(true)
             .setAppName("KeyValuePrefixCount")
-            .set("spark.sql.extensions", "com.datastax.spark.connector.CassandraSparkExtensions")
-            .set("spark.sql.catalog.cassandra", "com.datastax.spark.connector.datasource.CassandraCatalog")
+            .set("spark.sql.extensions", SparkJobConfig.CONNECTOR_EXTENSIONS)
+            .set("spark.sql.catalog.cassandra", SparkJobConfig.CONNECTOR_CATALOG)
             .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer");
 
         SparkSession spark = SparkSession.builder()
@@ -40,10 +40,7 @@ public class KeyValuePrefixCount {
 
         try {
             SparkJobConfig config = SparkJobConfig.load(spark.sparkContext().conf());
-
-            // Set Cassandra connector properties
-            spark.conf().set("spark.cassandra.connection.host", config.getContactPoints());
-            spark.conf().set("spark.cassandra.connection.localDC", config.getLocalDc());
+            config.configureCassandraConnector(spark);
 
             String keyspace = config.getKeyspace();
 
@@ -58,7 +55,7 @@ public class KeyValuePrefixCount {
 
             // Read from keyvalue table
             Dataset<Row> keyValueDF = spark.read()
-                .format("org.apache.spark.sql.cassandra")
+                .format(SparkJobConfig.CASSANDRA_CONNECTOR_FORMAT)
                 .option("keyspace", keyspace)
                 .option("table", "keyvalue")
                 .load();
@@ -72,7 +69,7 @@ public class KeyValuePrefixCount {
 
             // Write results to keyvalue_prefix_count table
             prefixCounts.write()
-                .format("org.apache.spark.sql.cassandra")
+                .format(SparkJobConfig.CASSANDRA_CONNECTOR_FORMAT)
                 .option("keyspace", keyspace)
                 .option("table", "keyvalue_prefix_count")
                 .mode("append")

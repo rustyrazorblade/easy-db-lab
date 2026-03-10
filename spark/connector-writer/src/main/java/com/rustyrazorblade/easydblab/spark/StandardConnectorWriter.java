@@ -34,7 +34,7 @@ public class StandardConnectorWriter {
     public void run() {
         SparkConf conf = new SparkConf(true)
             .setAppName("StandardConnectorWriter")
-            .set("spark.sql.extensions", "com.datastax.spark.connector.CassandraSparkExtensions")
+            .set("spark.sql.extensions", SparkJobConfig.CONNECTOR_EXTENSIONS)
             .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer");
 
         SparkSession spark = SparkSession.builder()
@@ -43,25 +43,16 @@ public class StandardConnectorWriter {
 
         try {
             SparkJobConfig config = SparkJobConfig.load(spark.sparkContext().conf());
-
-            // Set Cassandra connector properties
-            spark.conf().set("spark.cassandra.connection.host", config.getContactPoints());
-            spark.conf().set("spark.cassandra.connection.localDC", config.getLocalDc());
-
+            config.configureCassandraConnector(spark);
             config.setupSchema();
 
-            DataGenerator dataGenerator = new BulkTestDataGenerator();
-            System.out.println("Generating " + config.getRowCount() + " rows across " +
-                config.getPartitionCount() + " partitions with parallelism " + config.getParallelism());
-
-            Dataset<Row> df = dataGenerator.generate(spark, config.getRowCount(),
-                config.getParallelism(), config.getPartitionCount());
+            Dataset<Row> df = config.generateTestData(spark);
 
             System.out.println("Writing to " + config.getKeyspace() + "." + config.getTable() +
                 " via Spark Cassandra Connector");
 
             df.write()
-                .format("org.apache.spark.sql.cassandra")
+                .format(SparkJobConfig.CASSANDRA_CONNECTOR_FORMAT)
                 .option("keyspace", config.getKeyspace())
                 .option("table", config.getTable())
                 .mode("append")

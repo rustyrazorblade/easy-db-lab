@@ -6,11 +6,12 @@ NC_BOLD='\033[1m'
 NC='\033[0m' # No Color
 
 # Determine the cluster directory (where this script is located)
-# Works in both bash and zsh
+# Works in both bash and zsh, and when sourced from outside the directory
+# e.g. source cluster/env.sh works correctly
 if [ -n "${ZSH_VERSION:-}" ]; then
-    CLUSTER_DIR="$(dirname "$(realpath "$0")")"
+    CLUSTER_DIR="$(cd "$(dirname "${(%):-%x}")" && pwd)"
 else
-    CLUSTER_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+    CLUSTER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 fi
 
 echo -e "${YELLOW_BOLD}[WARNING]${YELLOW} We are creating aliases which override these commands:${NC}"

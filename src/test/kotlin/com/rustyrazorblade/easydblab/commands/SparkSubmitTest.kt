@@ -17,6 +17,7 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.koin.test.get
 import org.mockito.kotlin.any
+import org.mockito.kotlin.argThat
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
@@ -142,7 +143,13 @@ class SparkSubmitTest : BaseKoinTest() {
 
         // Then - should not upload since it's already an S3 path
         verify(mockObjectStore, never()).uploadFile(any(), any(), any())
-        verify(mockSparkService).submitJob(any())
+        verify(mockSparkService).submitJob(
+            argThat { req ->
+                req.clusterId == testClusterId &&
+                    req.jarPath == "s3://test-bucket/jars/app.jar" &&
+                    req.mainClass == "com.example.Main"
+            },
+        )
     }
 
     @Test
@@ -186,7 +193,13 @@ class SparkSubmitTest : BaseKoinTest() {
 
         // Then - should upload since it's a local path
         verify(mockObjectStore).uploadFile(any(), any(), any())
-        verify(mockSparkService).submitJob(any())
+        verify(mockSparkService).submitJob(
+            argThat { req ->
+                req.clusterId == testClusterId &&
+                    req.jarPath == expectedS3Path.toString() &&
+                    req.mainClass == "com.example.Main"
+            },
+        )
     }
 
     @Test

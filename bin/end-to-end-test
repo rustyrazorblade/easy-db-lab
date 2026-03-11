@@ -801,7 +801,7 @@ submit_spark_writer() {
 
     # Extract the numeric count from cqlsh output and verify it matches expected rows
     local actual_count
-    actual_count=$(echo "$count_output" | grep -oP '^\s*\K[0-9]+' | head -1)
+    actual_count=$(echo "$count_output" | grep -Eo '[0-9]+' | head -1)
     if [ "$actual_count" != "$expected_rows" ]; then
         echo "ERROR: $label row count mismatch: expected $expected_rows, got ${actual_count:-<none>}"
         return 1
@@ -826,8 +826,9 @@ step_bulk_writer_sidecar() {
 }
 
 step_bulk_writer_s3() {
-    # TODO: Enable once DATA_TRANSPORT_EXTENSION_CLASS is implemented.
-    # Re-add "step_bulk_writer_s3:Test bulk writer (S3)" to SPARK_STEPS when ready.
+    # TODO(spark-refactor): Enable once DATA_TRANSPORT_EXTENSION_CLASS is implemented
+    # in cassandra-analytics. Re-add "step_bulk_writer_s3:Test bulk writer (S3)" to SPARK_STEPS when ready.
+    # See: openspec/changes/archive/2026-03-10-spark-refactor/design.md
     echo "=== Skipping bulk writer S3 test (DATA_TRANSPORT_EXTENSION_CLASS not yet implemented) ==="
     return 0
 }

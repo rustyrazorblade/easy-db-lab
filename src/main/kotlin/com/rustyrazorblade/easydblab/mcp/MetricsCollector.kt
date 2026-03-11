@@ -32,6 +32,7 @@ class MetricsCollector(
 ) {
     private var timer: Timer? = null
 
+    @Synchronized
     fun start() {
         if (timer != null) {
             log.warn { "MetricsCollector already started" }
@@ -50,6 +51,7 @@ class MetricsCollector(
             }
     }
 
+    @Synchronized
     fun stop() {
         timer?.cancel()
         timer = null

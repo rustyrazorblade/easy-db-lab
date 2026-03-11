@@ -1,7 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.datastax.oss.driver.api.core.CqlSession
 import com.datastax.oss.driver.api.core.ConsistencyLevel
+import com.datastax.oss.driver.api.core.CqlSession
 import com.datastax.oss.driver.api.core.cql.ResultSet
 import com.datastax.oss.driver.api.core.cql.SimpleStatement
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -58,8 +58,10 @@ class DefaultCqlSessionService(
             val session = getOrCreateSession()
             log.debug { "Executing CQL: ${cql.take(CQL_LOG_PREVIEW_LENGTH)}..." }
 
-            val statement = SimpleStatement.newInstance(cql)
-                .setConsistencyLevel(ConsistencyLevel.LOCAL_QUORUM)
+            val statement =
+                SimpleStatement
+                    .newInstance(cql)
+                    .setConsistencyLevel(ConsistencyLevel.LOCAL_QUORUM)
             val resultSet = session.execute(statement)
             formatResultSet(resultSet)
         }

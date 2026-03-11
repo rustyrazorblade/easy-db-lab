@@ -36,8 +36,8 @@ jobs:
         with:
           name: test-results
           path: |
-            build/reports/tests/test/
-            build/test-results/test/
+            **/build/reports/tests/test/
+            **/build/test-results/test/
           retention-days: 30
 
       - name: Publish Test Results
@@ -45,7 +45,7 @@ jobs:
         if: always()
         with:
           name: Test Results
-          path: build/test-results/test/*.xml
+          path: '**/build/test-results/test/*.xml'
           reporter: java-junit
           fail-on-error: false
 
@@ -66,6 +66,7 @@ jobs:
           name: coverage-reports
           path: |
             build/reports/kover/
+            **/build/reports/jacoco/
           retention-days: 30
 
   # Run linting and static analysis in parallel with tests

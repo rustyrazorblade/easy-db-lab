@@ -9,6 +9,7 @@ val analyticsDir = rootProject.projectDir.resolve(".cassandra-analytics")
 // Common configuration for ALL subprojects
 subprojects {
     apply(plugin = "java")
+    apply(plugin = "jacoco")
 
     configure<JavaPluginExtension> {
         sourceCompatibility = JavaVersion.VERSION_11
@@ -27,6 +28,18 @@ subprojects {
         // Spark (provided - on EMR cluster)
         "compileOnly"("org.apache.spark:spark-core_$scalaVersion:$sparkVersion")
         "compileOnly"("org.apache.spark:spark-sql_$scalaVersion:$sparkVersion")
+    }
+
+    tasks.named<Test>("test") {
+        finalizedBy(tasks.named("jacocoTestReport"))
+    }
+
+    tasks.named<JacocoReport>("jacocoTestReport") {
+        dependsOn(tasks.named("test"))
+        reports {
+            html.required.set(true)
+            xml.required.set(true)
+        }
     }
 }
 

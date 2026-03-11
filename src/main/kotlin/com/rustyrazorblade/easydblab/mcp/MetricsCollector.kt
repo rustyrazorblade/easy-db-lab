@@ -3,7 +3,6 @@ package com.rustyrazorblade.easydblab.mcp
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
-import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.getControlHost
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -57,16 +56,14 @@ class MetricsCollector(
         log.info { "MetricsCollector stopped" }
     }
 
-    private fun collect() {
+    internal fun collect() {
         try {
             val clusterState = clusterStateManager.load()
             val controlHost = clusterState.getControlHost() ?: return
 
             collectSystemMetrics(controlHost)
 
-            // Collect db-specific metrics based on what's running on the db nodes
-            val dbHosts = clusterState.hosts[ServerType.Cassandra]
-            if (!dbHosts.isNullOrEmpty() && clusterState.clickHouseConfig == null) {
+            if (clusterState.isRunningCassandra()) {
                 collectCassandraMetrics(controlHost)
             }
         } catch (e: Exception) {
@@ -92,7 +89,7 @@ class MetricsCollector(
             val diskWriteByHost = indexByHost(diskWriteResults)
             val fsByHost = indexByHost(fsResults)
 
-            val hostNames = (cpuByHost.keys + memByHost.keys + diskReadByHost.keys + diskWriteByHost.keys + fsByHost.keys)
+            val hostNames = (cpuByHost.keys + memByHost.keys + diskReadByHost.keys + diskWriteByHost.keys + fsByHost.keys).toSet()
             if (hostNames.isEmpty()) return
 
             val nodes =

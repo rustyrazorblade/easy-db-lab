@@ -198,10 +198,7 @@ class MetricsCollectorTest : BaseKoinTest() {
     }
 
     private fun triggerCollection() {
-        // Use reflection to call the private collect() method for testing
-        val collectMethod = MetricsCollector::class.java.getDeclaredMethod("collect")
-        collectMethod.isAccessible = true
-        collectMethod.invoke(collector)
+        collector.collect()
     }
 
     private fun setupCassandraCluster() {

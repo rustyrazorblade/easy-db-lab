@@ -764,10 +764,18 @@ submit_spark_writer() {
     local label="$1" jar_glob="$2" main_class="$3" table_name="$4"
     shift 4
 
-    local dc hosts jar_file
+    # Verify JAR exists before attempting submission
+    local jar_file
+    jar_file=$(ls $jar_glob 2>/dev/null | head -1)
+    if [ -z "$jar_file" ]; then
+        echo "ERROR: No JAR found matching glob: $jar_glob"
+        echo "Build the module first, e.g.: ./gradlew :spark:<module>:shadowJar"
+        return 1
+    fi
+
+    local dc hosts
     dc=$(easy-db-lab aws region)
     hosts=$(jq -r '.hosts.Cassandra | map(.privateIp) | join(",")' "$PROJECT_ROOT/state.json")
-    jar_file=$(ls $jar_glob 2>/dev/null | head -1)
 
     echo "=== Submitting $label to EMR ==="
     easy-db-lab spark submit \
@@ -805,6 +813,8 @@ step_bulk_writer_sidecar() {
 }
 
 step_bulk_writer_s3() {
+    # TODO: Enable once DATA_TRANSPORT_EXTENSION_CLASS is implemented.
+    # Re-add "step_bulk_writer_s3:Test bulk writer (S3)" to SPARK_STEPS when ready.
     echo "=== Skipping bulk writer S3 test (DATA_TRANSPORT_EXTENSION_CLASS not yet implemented) ==="
     return 0
 }
@@ -1217,7 +1227,6 @@ STEPS_WORKDIR=(
     "step_spark_submit:Submit Spark job"
     "step_spark_status:Check Spark status"
     "step_bulk_writer_sidecar:Test bulk writer (sidecar)"
-    "step_bulk_writer_s3:Test bulk writer (S3)"
     "step_connector_writer:Test connector writer"
     "step_cassandra_start_stop:Cassandra start/stop cycle"
     "step_clickhouse_start:Start ClickHouse"

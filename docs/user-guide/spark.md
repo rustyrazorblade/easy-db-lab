@@ -298,7 +298,7 @@ All modules share these properties via `spark.easydblab.*`:
 | `spark.easydblab.parallelism` | Spark partitions for generation | 10 |
 | `spark.easydblab.partitionCount` | Cassandra partitions to distribute across | 10000 |
 | `spark.easydblab.replicationFactor` | Keyspace replication factor | 3 |
-| `spark.easydblab.skipDdl` | Skip keyspace/table creation | false |
+| `spark.easydblab.skipDdl` | Skip keyspace/table creation (validates they exist) | false |
 | `spark.easydblab.compaction` | Compaction strategy | (default) |
 | `spark.easydblab.s3.bucket` | S3 bucket (S3 mode only) | Required for S3 |
 | `spark.easydblab.s3.endpoint` | S3 endpoint override | AWS S3 |

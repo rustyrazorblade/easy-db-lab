@@ -203,6 +203,13 @@ data class ClusterState(
     var stressJobCounter: Int = 0,
 ) {
     /**
+     * Returns true when the db nodes are running Cassandra (not ClickHouse or another database).
+     * The db nodes use ServerType.Cassandra regardless of which database is deployed,
+     * so we check for the absence of database-specific configs to determine if it's Cassandra.
+     */
+    fun isRunningCassandra(): Boolean = !hosts[ServerType.Cassandra].isNullOrEmpty() && clickHouseConfig == null
+
+    /**
      * Update hosts
      */
     fun updateHosts(hosts: Map<ServerType, List<ClusterHost>>) {

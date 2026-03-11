@@ -2,7 +2,7 @@
 
 ## Overview
 
-Add an HTTP endpoint to the MCP server (`easy-db-lab server`) that serves environment status as JSON. This mirrors what the `status` CLI command displays, but as a structured document suitable for programmatic consumption.
+Add an HTTP endpoint to the server (`easy-db-lab server`) that serves environment status as JSON. This mirrors what the `status` CLI command displays, but as a structured document suitable for programmatic consumption.
 
 A background thread periodically fetches live data (EC2 states, security group rules, Cassandra version, etc.) and caches it in memory. The endpoint always reads from this cache for instant responses.
 

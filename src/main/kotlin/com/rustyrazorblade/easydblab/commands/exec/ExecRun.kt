@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.commands.exec
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
@@ -120,7 +121,7 @@ class ExecRun : PicoBaseCommand() {
                 .first()
                 .split("/")
                 .last()
-        val epoch = System.currentTimeMillis() / 1000
+        val epoch = System.currentTimeMillis() / Constants.Time.MILLIS_PER_SECOND
         return "$toolName-$epoch"
     }
 

@@ -47,7 +47,7 @@ The system MUST support a SOCKS5 proxy via SSH dynamic port forwarding as an alt
 **Scenarios:**
 
 - **GIVEN** a running cluster without Tailscale, **WHEN** a component needs to reach internal cluster services (e.g., CQL, HTTP APIs), **THEN** a SOCKS proxy is established through an SSH tunnel to a cluster node.
-- **GIVEN** the REPL or MCP server is running, **WHEN** the proxy is needed, **THEN** it persists for the lifetime of the session rather than per-command.
+- **GIVEN** the REPL or server is running, **WHEN** the proxy is needed, **THEN** it persists for the lifetime of the session rather than per-command.
 
 ### REQ-NET-006: Host Discovery
 

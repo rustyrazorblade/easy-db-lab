@@ -20,6 +20,10 @@ import kotlinx.serialization.Serializable
  *
  * The type discriminator for serialization is derived from the class name.
  */
+private const val BACKUP_TABLE_SEPARATOR_LENGTH = 59
+private const val BACKUP_TABLE_HEADER_FORMAT = "%-30s  %10s  %15s"
+private const val BACKUP_TABLE_ROW_FORMAT = "%-30s  %10d  %15s"
+
 @Serializable
 sealed interface Event {
     /**
@@ -1167,6 +1171,10 @@ sealed interface Event {
             val failureLogFile: String? = null,
         ) : Emr {
             override fun toDisplayString(): String =
+                (detailsSection() + timelineSection() + configSection() + failureSection())
+                    .joinToString("\n")
+
+            private fun detailsSection(): List<String> =
                 listOfNotNull(
                     "=== Step Details ===",
                     "Step ID: $stepId",
@@ -1174,22 +1182,34 @@ sealed interface Event {
                     "State: $state",
                     stateChangeReasonCode?.let { "State Change Reason Code: $it" },
                     stateChangeReasonMessage?.let { "State Change Reason: $it" },
+                )
+
+            private fun timelineSection(): List<String> =
+                listOfNotNull(
                     "",
                     "=== Timeline ===",
                     creationTime?.let { "Created: $it" },
                     startTime?.let { "Started: $it" },
                     endTime?.let { "Ended: $it" },
                     durationSeconds?.let { "Duration: ${it}s" },
+                )
+
+            private fun configSection(): List<String> =
+                listOfNotNull(
                     "",
                     "=== Configuration ===",
                     jarPath?.let { "JAR: $it" },
                     mainClass?.let { "Main Class: $it" },
                     args.takeIf { it.isNotEmpty() }?.let { "Args: ${it.joinToString(" ")}" },
+                )
+
+            private fun failureSection(): List<String> =
+                listOfNotNull(
                     if (failureReason != null || failureMessage != null) "\n=== Failure Details ===" else null,
                     failureReason?.let { "Reason: $it" },
                     failureMessage?.let { "Message: $it" },
                     failureLogFile?.let { "Log File: $it" },
-                ).joinToString("\n")
+                )
         }
 
         @Serializable
@@ -4547,7 +4567,7 @@ sealed interface Event {
     }
 
     // =========================================================================
-    // Event.Mcp — MCP server operations
+    // Event.Mcp — Server MCP operations
     // =========================================================================
 
     @Serializable
@@ -4584,7 +4604,7 @@ sealed interface Event {
         data class ServerStarting(
             val port: Int,
         ) : Mcp {
-            override fun toDisplayString(): String = "Starting MCP server on port $port..."
+            override fun toDisplayString(): String = "Starting server on port $port..."
         }
 
         @Serializable
@@ -4614,7 +4634,7 @@ sealed interface Event {
         ) : Mcp {
             override fun toDisplayString(): String =
                 """
-                Starting MCP server on port $port...
+                Starting server on port $port...
 
                 Server is now available at: http://$bind:$port/sse
                 Swagger UI available at:    http://$bind:$port/swagger
@@ -4745,10 +4765,10 @@ sealed interface Event {
                 buildString {
                     appendLine("VictoriaLogs backups:")
                     appendLine("")
-                    appendLine("%-30s  %10s  %15s".format("Timestamp", "Files", "Total Size"))
-                    appendLine("-".repeat(59))
+                    appendLine(BACKUP_TABLE_HEADER_FORMAT.format("Timestamp", "Files", "Total Size"))
+                    appendLine("-".repeat(BACKUP_TABLE_SEPARATOR_LENGTH))
                     entries.forEach { entry ->
-                        appendLine("%-30s  %10d  %15s".format(entry.timestamp, entry.fileCount, entry.totalSize))
+                        appendLine(BACKUP_TABLE_ROW_FORMAT.format(entry.timestamp, entry.fileCount, entry.totalSize))
                     }
                 }.trimEnd()
         }
@@ -4835,12 +4855,44 @@ sealed interface Event {
                 buildString {
                     appendLine("VictoriaMetrics backups:")
                     appendLine("")
-                    appendLine("%-30s  %10s  %15s".format("Timestamp", "Files", "Total Size"))
-                    appendLine("-".repeat(59))
+                    appendLine(BACKUP_TABLE_HEADER_FORMAT.format("Timestamp", "Files", "Total Size"))
+                    appendLine("-".repeat(BACKUP_TABLE_SEPARATOR_LENGTH))
                     entries.forEach { entry ->
-                        appendLine("%-30s  %10d  %15s".format(entry.timestamp, entry.fileCount, entry.totalSize))
+                        appendLine(BACKUP_TABLE_ROW_FORMAT.format(entry.timestamp, entry.fileCount, entry.totalSize))
                     }
                 }.trimEnd()
+        }
+
+        @Serializable
+        @SerialName("Metrics.Node")
+        data class Node(
+            val cpuUsagePct: Double,
+            val memoryUsedBytes: Long,
+            val diskReadBytesPerSec: Double,
+            val diskWriteBytesPerSec: Double,
+            val filesystemUsedPct: Double,
+        )
+
+        @Serializable
+        @SerialName("Metrics.System")
+        data class System(
+            val nodes: Map<String, Node>,
+        ) : Metrics {
+            override fun toDisplayString(): String = "System metrics: ${nodes.size} nodes"
+        }
+
+        @Serializable
+        @SerialName("Metrics.Cassandra")
+        data class Cassandra(
+            val readP99Ms: Double,
+            val writeP99Ms: Double,
+            val readOpsPerSec: Double,
+            val writeOpsPerSec: Double,
+            val compactionPending: Long,
+            val compactionCompletedPerSec: Double,
+            val compactionBytesWrittenPerSec: Double,
+        ) : Metrics {
+            override fun toDisplayString(): String = "Cassandra metrics: read_p99=${readP99Ms}ms, write_p99=${writeP99Ms}ms"
         }
     }
 

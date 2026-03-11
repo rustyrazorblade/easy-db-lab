@@ -22,6 +22,25 @@ import java.util.concurrent.CountDownLatch
 import kotlin.concurrent.thread
 
 /**
+ * Infrastructure parameters for instance creation.
+ *
+ * @property amiId AMI ID to use for instances
+ * @property keyName SSH key pair name
+ * @property securityGroupId Security group ID
+ * @property subnetIds Available subnet IDs
+ * @property tags Tags to apply to instances
+ * @property clusterName Name of the cluster
+ */
+data class InfrastructureContext(
+    val amiId: String,
+    val keyName: String,
+    val securityGroupId: String,
+    val subnetIds: List<String>,
+    val tags: Map<String, String>,
+    val clusterName: String,
+)
+
+/**
  * Result of cluster provisioning operation.
  *
  * @property hosts Created hosts by server type
@@ -75,6 +94,34 @@ data class OptionalServicesConfig(
 )
 
 /**
+ * Callbacks for provisioning lifecycle events.
+ *
+ * @property onHostsCreated Called when hosts are created for a server type
+ * @property onEmrCreated Called when an EMR cluster is created
+ * @property onOpenSearchCreated Called when an OpenSearch domain is created
+ */
+data class ProvisioningCallbacks(
+    val onHostsCreated: (ServerType, List<ClusterHost>) -> Unit,
+    val onEmrCreated: (EMRClusterState) -> Unit,
+    val onOpenSearchCreated: (OpenSearchClusterState) -> Unit,
+)
+
+/**
+ * Thread synchronization context for parallel provisioning.
+ *
+ * @property stateLock Lock object for state synchronization
+ * @property threadErrors Concurrent map for collecting thread errors
+ * @property callbacks Provisioning lifecycle callbacks
+ */
+private data class ThreadContext(
+    val stateLock: Any,
+    val threadErrors: ConcurrentHashMap<String, Exception>,
+    val callbacks: ProvisioningCallbacks,
+    @Volatile var emrCluster: EMRClusterState? = null,
+    @Volatile var openSearchDomain: OpenSearchClusterState? = null,
+)
+
+/**
  * Service for provisioning cluster infrastructure in parallel.
  *
  * This service handles the parallel creation of EC2 instances, EMR clusters,
@@ -101,18 +148,14 @@ interface ClusterProvisioningService {
      * @param instanceConfig Instance provisioning configuration
      * @param servicesConfig Optional services configuration (EMR, OpenSearch)
      * @param existingHosts Currently existing hosts by server type
-     * @param onHostsCreated Callback when hosts are created (for state updates)
-     * @param onEmrCreated Callback when EMR cluster is created
-     * @param onOpenSearchCreated Callback when OpenSearch domain is created
+     * @param callbacks Callbacks for provisioning lifecycle events
      * @return Result with created resources and any errors
      */
     fun provisionAll(
         instanceConfig: InstanceProvisioningConfig,
         servicesConfig: OptionalServicesConfig,
         existingHosts: Map<ServerType, List<ClusterHost>>,
-        onHostsCreated: (ServerType, List<ClusterHost>) -> Unit,
-        onEmrCreated: (EMRClusterState) -> Unit,
-        onOpenSearchCreated: (OpenSearchClusterState) -> Unit,
+        callbacks: ProvisioningCallbacks,
     ): ProvisioningResult
 }
 
@@ -154,9 +197,8 @@ class DefaultClusterProvisioningService(
                 .map { spec ->
                     thread(start = true, name = "create-${spec.serverType.name}") {
                         try {
-                            val hosts =
-                                createInstancesForType(
-                                    spec = spec,
+                            val infraContext =
+                                InfrastructureContext(
                                     amiId = config.amiId,
                                     keyName = config.userConfig.keyName,
                                     securityGroupId = config.securityGroupId,
@@ -164,6 +206,7 @@ class DefaultClusterProvisioningService(
                                     tags = config.tags,
                                     clusterName = config.clusterName,
                                 )
+                            val hosts = createInstancesForType(spec, infraContext)
                             synchronized(stateLock) {
                                 allHosts[spec.serverType] = (allHosts[spec.serverType] ?: emptyList()) + hosts
                                 onHostsCreated(spec.serverType, hosts)
@@ -188,57 +231,23 @@ class DefaultClusterProvisioningService(
         instanceConfig: InstanceProvisioningConfig,
         servicesConfig: OptionalServicesConfig,
         existingHosts: Map<ServerType, List<ClusterHost>>,
-        onHostsCreated: (ServerType, List<ClusterHost>) -> Unit,
-        onEmrCreated: (EMRClusterState) -> Unit,
-        onOpenSearchCreated: (OpenSearchClusterState) -> Unit,
+        callbacks: ProvisioningCallbacks,
     ): ProvisioningResult {
         val allHosts = existingHosts.toMutableMap()
-        val threadErrors = ConcurrentHashMap<String, Exception>()
-        val stateLock = Any()
-        var emrCluster: EMRClusterState? = null
-        var openSearchDomain: OpenSearchClusterState? = null
+        val ctx =
+            ThreadContext(
+                stateLock = Any(),
+                threadErrors = ConcurrentHashMap(),
+                callbacks = callbacks,
+            )
+        logExistingInstances(instanceConfig)
 
-        // Latch so EMR thread waits for EC2 instances (needs control node IP)
         val instancesReady = CountDownLatch(1)
-
         val serviceThreads = mutableListOf<Thread>()
 
-        // Log messages for existing instances
-        instanceConfig.specs
-            .filter { it.neededCount <= 0 && it.configuredCount > 0 && it.existingCount > 0 }
-            .forEach { spec ->
-                eventBus.emit(Event.Ec2.ExistingInstancesFound(spec.serverType.name, spec.existingCount))
-            }
-
-        // Instance creation threads
         val instanceThreads =
-            instanceConfig.specs
-                .filter { it.neededCount > 0 }
-                .map { spec ->
-                    thread(start = true, name = "create-${spec.serverType.name}") {
-                        try {
-                            val hosts =
-                                createInstancesForType(
-                                    spec = spec,
-                                    amiId = instanceConfig.amiId,
-                                    keyName = instanceConfig.userConfig.keyName,
-                                    securityGroupId = instanceConfig.securityGroupId,
-                                    subnetIds = instanceConfig.subnetIds,
-                                    tags = instanceConfig.tags,
-                                    clusterName = instanceConfig.clusterName,
-                                )
-                            synchronized(stateLock) {
-                                allHosts[spec.serverType] = (allHosts[spec.serverType] ?: emptyList()) + hosts
-                                onHostsCreated(spec.serverType, hosts)
-                            }
-                        } catch (e: Exception) {
-                            log.error(e) { "Failed to create ${spec.serverType.name} instances" }
-                            threadErrors["${spec.serverType.name} instances"] = e
-                        }
-                    }
-                }
+            launchInstanceCreationThreads(instanceConfig, allHosts, ctx)
 
-        // Coordinator thread: waits for all EC2 instances, then signals EMR
         serviceThreads.add(
             thread(start = true, name = "instance-coordinator") {
                 instanceThreads.forEach { it.join() }
@@ -246,97 +255,145 @@ class DefaultClusterProvisioningService(
             },
         )
 
-        // EMR thread — waits for instances before proceeding
-        if (servicesConfig.initConfig.sparkEnabled) {
-            if (servicesConfig.clusterState.emrCluster != null) {
-                eventBus.emit(Event.Emr.ClusterAlreadyExists)
-            } else {
-                serviceThreads.add(
-                    thread(start = true, name = "create-EMR") {
-                        try {
-                            instancesReady.await()
-                            val cluster =
-                                emrProvisioningService.provisionEmrCluster(
-                                    clusterName = servicesConfig.initConfig.name,
-                                    masterInstanceType = servicesConfig.initConfig.sparkMasterInstanceType,
-                                    workerInstanceType = servicesConfig.initConfig.sparkWorkerInstanceType,
-                                    workerCount = servicesConfig.initConfig.sparkWorkerCount,
-                                    subnetId = servicesConfig.subnetId,
-                                    securityGroupId = servicesConfig.securityGroupId,
-                                    keyName = instanceConfig.userConfig.keyName,
-                                    clusterState = servicesConfig.clusterState,
-                                    tags = servicesConfig.tags,
-                                )
-                            synchronized(stateLock) {
-                                emrCluster = cluster
-                                onEmrCreated(cluster)
-                            }
-                        } catch (e: Exception) {
-                            log.error(e) { "Failed to create EMR cluster" }
-                            threadErrors["EMR cluster"] = e
-                        }
-                    },
-                )
-            }
+        launchEmrThread(servicesConfig, instanceConfig, instancesReady, ctx)
+            ?.let { serviceThreads.add(it) }
+
+        launchOpenSearchThread(servicesConfig, ctx)?.let { thread ->
+            serviceThreads.add(thread)
         }
 
-        // OpenSearch thread — runs independently (no dependency on control node)
-        if (servicesConfig.initConfig.opensearchEnabled) {
-            serviceThreads.add(
-                thread(start = true, name = "create-OpenSearch") {
-                    try {
-                        val domain =
-                            createOpenSearchDomain(
-                                initConfig = servicesConfig.initConfig,
-                                subnetId = servicesConfig.subnetId,
-                                securityGroupId = servicesConfig.securityGroupId,
-                                tags = servicesConfig.tags,
-                            )
-                        synchronized(stateLock) {
-                            openSearchDomain = domain
-                            onOpenSearchCreated(domain)
-                        }
-                    } catch (e: Exception) {
-                        log.error(e) { "Failed to create OpenSearch domain" }
-                        threadErrors["OpenSearch domain"] = e
-                    }
-                },
-            )
-        }
-
-        // Wait for coordinator, EMR, and OpenSearch threads
         serviceThreads.forEach { it.join() }
 
         return ProvisioningResult(
             hosts = allHosts.toMap(),
-            errors = threadErrors.toMap(),
-            emrCluster = emrCluster,
-            openSearchDomain = openSearchDomain,
+            errors = ctx.threadErrors.toMap(),
+            emrCluster = ctx.emrCluster,
+            openSearchDomain = ctx.openSearchDomain,
         )
     }
 
+    private fun logExistingInstances(instanceConfig: InstanceProvisioningConfig) {
+        instanceConfig.specs
+            .filter { it.neededCount <= 0 && it.configuredCount > 0 && it.existingCount > 0 }
+            .forEach { spec ->
+                eventBus.emit(Event.Ec2.ExistingInstancesFound(spec.serverType.name, spec.existingCount))
+            }
+    }
+
+    private fun launchInstanceCreationThreads(
+        instanceConfig: InstanceProvisioningConfig,
+        allHosts: MutableMap<ServerType, List<ClusterHost>>,
+        ctx: ThreadContext,
+    ): List<Thread> =
+        instanceConfig.specs
+            .filter { it.neededCount > 0 }
+            .map { spec ->
+                thread(start = true, name = "create-${spec.serverType.name}") {
+                    try {
+                        val infraContext = instanceConfig.toInfrastructureContext()
+                        val hosts = createInstancesForType(spec, infraContext)
+                        synchronized(ctx.stateLock) {
+                            allHosts[spec.serverType] = (allHosts[spec.serverType] ?: emptyList()) + hosts
+                            ctx.callbacks.onHostsCreated(spec.serverType, hosts)
+                        }
+                    } catch (e: Exception) {
+                        log.error(e) { "Failed to create ${spec.serverType.name} instances" }
+                        ctx.threadErrors["${spec.serverType.name} instances"] = e
+                    }
+                }
+            }
+
+    private fun launchEmrThread(
+        servicesConfig: OptionalServicesConfig,
+        instanceConfig: InstanceProvisioningConfig,
+        instancesReady: CountDownLatch,
+        ctx: ThreadContext,
+    ): Thread? {
+        if (!servicesConfig.initConfig.sparkEnabled) return null
+        if (servicesConfig.clusterState.emrCluster != null) {
+            eventBus.emit(Event.Emr.ClusterAlreadyExists)
+            return null
+        }
+        return thread(start = true, name = "create-EMR") {
+            try {
+                instancesReady.await()
+                val cluster =
+                    emrProvisioningService.provisionEmrCluster(
+                        EmrClusterProvisioningConfig(
+                            clusterName = servicesConfig.initConfig.name,
+                            masterInstanceType = servicesConfig.initConfig.sparkMasterInstanceType,
+                            workerInstanceType = servicesConfig.initConfig.sparkWorkerInstanceType,
+                            workerCount = servicesConfig.initConfig.sparkWorkerCount,
+                            subnetId = servicesConfig.subnetId,
+                            securityGroupId = servicesConfig.securityGroupId,
+                            keyName = instanceConfig.userConfig.keyName,
+                            clusterState = servicesConfig.clusterState,
+                            tags = servicesConfig.tags,
+                        ),
+                    )
+                synchronized(ctx.stateLock) {
+                    ctx.emrCluster = cluster
+                    ctx.callbacks.onEmrCreated(cluster)
+                }
+            } catch (e: Exception) {
+                log.error(e) { "Failed to create EMR cluster" }
+                ctx.threadErrors["EMR cluster"] = e
+            }
+        }
+    }
+
+    private fun launchOpenSearchThread(
+        servicesConfig: OptionalServicesConfig,
+        ctx: ThreadContext,
+    ): Thread? {
+        if (!servicesConfig.initConfig.opensearchEnabled) return null
+        return thread(start = true, name = "create-OpenSearch") {
+            try {
+                val domain =
+                    createOpenSearchDomain(
+                        initConfig = servicesConfig.initConfig,
+                        subnetId = servicesConfig.subnetId,
+                        securityGroupId = servicesConfig.securityGroupId,
+                        tags = servicesConfig.tags,
+                    )
+                synchronized(ctx.stateLock) {
+                    ctx.openSearchDomain = domain
+                    ctx.callbacks.onOpenSearchCreated(domain)
+                }
+            } catch (e: Exception) {
+                log.error(e) { "Failed to create OpenSearch domain" }
+                ctx.threadErrors["OpenSearch domain"] = e
+            }
+        }
+    }
+
+    private fun InstanceProvisioningConfig.toInfrastructureContext() =
+        InfrastructureContext(
+            amiId = amiId,
+            keyName = userConfig.keyName,
+            securityGroupId = securityGroupId,
+            subnetIds = subnetIds,
+            tags = tags,
+            clusterName = clusterName,
+        )
+
     private fun createInstancesForType(
         spec: InstanceSpec,
-        amiId: String,
-        keyName: String,
-        securityGroupId: String,
-        subnetIds: List<String>,
-        tags: Map<String, String>,
-        clusterName: String,
+        infraContext: InfrastructureContext,
     ): List<ClusterHost> {
         val config =
             InstanceCreationConfig(
                 serverType = spec.serverType,
                 count = spec.neededCount,
                 instanceType = spec.instanceType,
-                amiId = amiId,
-                keyName = keyName,
-                securityGroupId = securityGroupId,
-                subnetIds = subnetIds,
+                amiId = infraContext.amiId,
+                keyName = infraContext.keyName,
+                securityGroupId = infraContext.securityGroupId,
+                subnetIds = infraContext.subnetIds,
                 iamInstanceProfile = Constants.AWS.Roles.EC2_INSTANCE_ROLE,
                 ebsConfig = spec.ebsConfig,
-                tags = tags,
-                clusterName = clusterName,
+                tags = infraContext.tags,
+                clusterName = infraContext.clusterName,
                 startIndex = spec.existingCount,
             )
 

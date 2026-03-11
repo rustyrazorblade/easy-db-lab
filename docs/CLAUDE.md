@@ -18,7 +18,7 @@ docs/
 ├── user-guide/            # Feature documentation (the bulk of the docs)
 ├── reference/             # Ports, commands, infrastructure details
 ├── development/           # Developer guides (building, testing, publishing)
-├── integrations/          # External tool integrations (MCP server)
+├── integrations/          # External tool integrations (server)
 └── plans/                 # Implementation plans (not published)
 ```
 

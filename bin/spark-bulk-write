@@ -212,31 +212,44 @@ fi
 echo ""
 
 # Find or build JAR based on job type
-if [ "$JOB_TYPE" = "connector" ]; then
-    # StandardConnectorWriter uses connector-writer module (spark-cassandra-connector)
-    JAR_FILE=$(ls "$PROJECT_ROOT/connector-writer/build/libs/connector-writer-"*.jar 2>/dev/null | head -1)
-    if [ -z "$JAR_FILE" ] || [ "$FORCE_BUILD" = "true" ]; then
-        echo "=== Building connector-writer JAR ==="
-        (cd "$PROJECT_ROOT" && ./gradlew :connector-writer:jar -q)
-        JAR_FILE=$(ls "$PROJECT_ROOT/connector-writer/build/libs/connector-writer-"*.jar 2>/dev/null | head -1)
-        if [ -z "$JAR_FILE" ]; then
-            echo "Error: Could not find connector-writer JAR after build"
-            exit 1
+case $JOB_TYPE in
+    direct)
+        JAR_FILE=$(ls "$PROJECT_ROOT/spark/bulk-writer-sidecar/build/libs/bulk-writer-sidecar"*.jar 2>/dev/null | head -1)
+        if [ -z "$JAR_FILE" ] || [ "$FORCE_BUILD" = "true" ]; then
+            echo "=== Building bulk-writer-sidecar JAR ==="
+            (cd "$PROJECT_ROOT" && ./gradlew :spark:bulk-writer-sidecar:shadowJar -q)
+            JAR_FILE=$(ls "$PROJECT_ROOT/spark/bulk-writer-sidecar/build/libs/bulk-writer-sidecar"*.jar 2>/dev/null | head -1)
+            if [ -z "$JAR_FILE" ]; then
+                echo "Error: Could not find bulk-writer-sidecar JAR after build"
+                exit 1
+            fi
         fi
-    fi
-else
-    # DirectBulkWriter and S3BulkWriter use bulk-writer module (cassandra-analytics)
-    JAR_FILE=$(ls "$PROJECT_ROOT/bulk-writer/build/libs/bulk-writer-"*.jar 2>/dev/null | head -1)
-    if [ -z "$JAR_FILE" ] || [ "$FORCE_BUILD" = "true" ]; then
-        echo "=== Building bulk-writer JAR ==="
-        (cd "$PROJECT_ROOT" && ./gradlew :bulk-writer:jar -q)
-        JAR_FILE=$(ls "$PROJECT_ROOT/bulk-writer/build/libs/bulk-writer-"*.jar 2>/dev/null | head -1)
-        if [ -z "$JAR_FILE" ]; then
-            echo "Error: Could not find bulk-writer JAR after build"
-            exit 1
+        ;;
+    s3)
+        JAR_FILE=$(ls "$PROJECT_ROOT/spark/bulk-writer-s3/build/libs/bulk-writer-s3"*.jar 2>/dev/null | head -1)
+        if [ -z "$JAR_FILE" ] || [ "$FORCE_BUILD" = "true" ]; then
+            echo "=== Building bulk-writer-s3 JAR ==="
+            (cd "$PROJECT_ROOT" && ./gradlew :spark:bulk-writer-s3:shadowJar -q)
+            JAR_FILE=$(ls "$PROJECT_ROOT/spark/bulk-writer-s3/build/libs/bulk-writer-s3"*.jar 2>/dev/null | head -1)
+            if [ -z "$JAR_FILE" ]; then
+                echo "Error: Could not find bulk-writer-s3 JAR after build"
+                exit 1
+            fi
         fi
-    fi
-fi
+        ;;
+    connector)
+        JAR_FILE=$(ls "$PROJECT_ROOT/spark/connector-writer/build/libs/connector-writer"*.jar 2>/dev/null | head -1)
+        if [ -z "$JAR_FILE" ] || [ "$FORCE_BUILD" = "true" ]; then
+            echo "=== Building connector-writer JAR ==="
+            (cd "$PROJECT_ROOT" && ./gradlew :spark:connector-writer:shadowJar -q)
+            JAR_FILE=$(ls "$PROJECT_ROOT/spark/connector-writer/build/libs/connector-writer"*.jar 2>/dev/null | head -1)
+            if [ -z "$JAR_FILE" ]; then
+                echo "Error: Could not find connector-writer JAR after build"
+                exit 1
+            fi
+        fi
+        ;;
+esac
 echo "Using JAR: $JAR_FILE"
 
 # Get datacenter (region) via CLI
@@ -281,14 +294,14 @@ echo "  Skip DDL: $SKIP_DDL"
 # Build conf options based on job type
 CONF_OPTS=""
 
+CONF_OPTS="$CONF_OPTS --conf spark.easydblab.contactPoints=$HOSTS"
+
 case $JOB_TYPE in
     direct)
         MAIN_CLASS="com.rustyrazorblade.easydblab.spark.DirectBulkWriter"
-        CONF_OPTS="$CONF_OPTS --conf spark.easydblab.sidecar.contactPoints=$HOSTS"
         ;;
     s3)
         MAIN_CLASS="com.rustyrazorblade.easydblab.spark.S3BulkWriter"
-        CONF_OPTS="$CONF_OPTS --conf spark.easydblab.sidecar.contactPoints=$HOSTS"
 
         # Get S3 bucket via CLI if not provided
         if [ -z "$S3_BUCKET" ]; then
@@ -303,7 +316,6 @@ case $JOB_TYPE in
         ;;
     connector)
         MAIN_CLASS="com.rustyrazorblade.easydblab.spark.StandardConnectorWriter"
-        CONF_OPTS="$CONF_OPTS --conf spark.easydblab.cassandra.host=$HOSTS"
         ;;
 esac
 

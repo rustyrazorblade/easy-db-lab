@@ -106,6 +106,7 @@ object Constants {
 
     // HTTP Status Codes
     object HttpStatus {
+        const val OK = 200
         const val BAD_REQUEST = 400
         const val FORBIDDEN = 403
         const val NOT_FOUND = 404
@@ -284,10 +285,12 @@ object Constants {
     object Victoria {
         const val METRICS_EXPORT_PATH = "/api/v1/export/native"
         const val METRICS_IMPORT_PATH = "/api/v1/import/native"
+        const val METRICS_QUERY_PATH = "/api/v1/query"
         const val LOGS_EXPORT_PATH = "/select/logsql/query"
         const val LOGS_IMPORT_PATH = "/insert/jsonline"
         const val DEFAULT_METRICS_MATCH = """{__name__!=""}"""
         const val DEFAULT_LOGS_QUERY = "*"
+        const val METRICS_COLLECTION_INTERVAL_SECONDS = 5L
     }
 
     // Proxy configuration

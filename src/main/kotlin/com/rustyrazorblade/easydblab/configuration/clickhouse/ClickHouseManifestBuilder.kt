@@ -7,6 +7,7 @@ import io.fabric8.kubernetes.api.model.ConfigMapEnvSourceBuilder
 import io.fabric8.kubernetes.api.model.ConfigMapKeySelectorBuilder
 import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.ContainerBuilder
+import io.fabric8.kubernetes.api.model.ContainerPortBuilder
 import io.fabric8.kubernetes.api.model.EnvVarBuilder
 import io.fabric8.kubernetes.api.model.EnvVarSourceBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
@@ -14,6 +15,7 @@ import io.fabric8.kubernetes.api.model.HostPathVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.KeyToPathBuilder
 import io.fabric8.kubernetes.api.model.ObjectFieldSelectorBuilder
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaimBuilder
+import io.fabric8.kubernetes.api.model.ProbeBuilder
 import io.fabric8.kubernetes.api.model.Quantity
 import io.fabric8.kubernetes.api.model.SecurityContextBuilder
 import io.fabric8.kubernetes.api.model.ServiceBuilder
@@ -352,22 +354,7 @@ class ClickHouseManifestBuilder(
                     .withRunAsUser(CLICKHOUSE_UID)
                     .withRunAsGroup(CLICKHOUSE_GID)
                     .build(),
-            ).addNewPort()
-            .withContainerPort(KEEPER_CLIENT_PORT)
-            .withName("client")
-            .endPort()
-            .addNewPort()
-            .withContainerPort(KEEPER_RAFT_PORT)
-            .withName("raft")
-            .endPort()
-            .addNewPort()
-            .withContainerPort(METRICS_PORT)
-            .withName("metrics")
-            .endPort()
-            .addNewPort()
-            .withContainerPort(KEEPER_HTTP_CONTROL_PORT)
-            .withName("http-control")
-            .endPort()
+            ).addAllToPorts(buildKeeperPorts())
             .addNewEnv()
             .withName("KEEPER_SERVER_ID")
             .withNewValueFrom()
@@ -392,23 +379,29 @@ class ClickHouseManifestBuilder(
                     .build(),
                 VolumeMountBuilder().withName("data").withMountPath("/var/lib/clickhouse-keeper").build(),
                 VolumeMountBuilder().withName("logs").withMountPath("/mnt/db1/clickhouse/keeper/logs").build(),
-            ).withNewLivenessProbe()
-            .withNewHttpGet()
-            .withPath("/ready")
-            .withNewPort(KEEPER_HTTP_CONTROL_PORT)
-            .endHttpGet()
-            .withInitialDelaySeconds(LIVENESS_INITIAL_DELAY)
-            .withPeriodSeconds(LIVENESS_PERIOD)
-            .endLivenessProbe()
-            .withNewReadinessProbe()
-            .withNewHttpGet()
-            .withPath("/ready")
-            .withNewPort(KEEPER_HTTP_CONTROL_PORT)
-            .endHttpGet()
-            .withInitialDelaySeconds(READINESS_INITIAL_DELAY)
-            .withPeriodSeconds(READINESS_PERIOD)
-            .endReadinessProbe()
+            ).withLivenessProbe(buildKeeperHealthProbe(LIVENESS_INITIAL_DELAY, LIVENESS_PERIOD))
+            .withReadinessProbe(buildKeeperHealthProbe(READINESS_INITIAL_DELAY, READINESS_PERIOD))
             .build()
+
+    private fun buildKeeperPorts() =
+        listOf(
+            ContainerPortBuilder().withContainerPort(KEEPER_CLIENT_PORT).withName("client").build(),
+            ContainerPortBuilder().withContainerPort(KEEPER_RAFT_PORT).withName("raft").build(),
+            ContainerPortBuilder().withContainerPort(METRICS_PORT).withName("metrics").build(),
+            ContainerPortBuilder().withContainerPort(KEEPER_HTTP_CONTROL_PORT).withName("http-control").build(),
+        )
+
+    private fun buildKeeperHealthProbe(
+        initialDelay: Int,
+        period: Int,
+    ) = ProbeBuilder()
+        .withNewHttpGet()
+        .withPath("/ready")
+        .withNewPort(KEEPER_HTTP_CONTROL_PORT)
+        .endHttpGet()
+        .withInitialDelaySeconds(initialDelay)
+        .withPeriodSeconds(period)
+        .build()
 
     /**
      * Builds the Server StatefulSet.

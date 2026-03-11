@@ -145,7 +145,7 @@ src/test/kotlin/com/rustyrazorblade/easydblab/
 ├── commands/                # Command tests (mirrors main)
 ├── configuration/           # Configuration tests
 ├── kubernetes/              # K8s tests
-├── mcp/                     # MCP server tests
+├── mcp/                     # Server tests (MCP, REST, background services)
 ├── providers/aws/           # AWS provider tests
 ├── services/                # Service tests
 └── ...

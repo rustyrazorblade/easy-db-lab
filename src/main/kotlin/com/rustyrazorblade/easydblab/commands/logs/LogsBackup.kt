@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.commands.logs
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
+import com.rustyrazorblade.easydblab.configuration.getControlHost
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.VictoriaBackupService
 import org.koin.core.component.inject

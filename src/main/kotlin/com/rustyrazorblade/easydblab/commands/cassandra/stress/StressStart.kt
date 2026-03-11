@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.services.StressJobConfig
 import com.rustyrazorblade.easydblab.services.StressJobService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
@@ -96,12 +97,15 @@ class StressStart : PicoBaseCommand() {
         stressJobService
             .startJob(
                 controlHost = controlNode,
-                jobName = fullJobName,
-                image = image,
-                args = args,
-                contactPoints = contactPoints,
-                tags = parsedTags,
-                promPort = promPort,
+                config =
+                    StressJobConfig(
+                        jobName = fullJobName,
+                        image = image,
+                        args = args,
+                        contactPoints = contactPoints,
+                        tags = parsedTags,
+                        promPort = promPort,
+                    ),
             ).getOrElse { e ->
                 error("Failed to create job: ${e.message}")
             }

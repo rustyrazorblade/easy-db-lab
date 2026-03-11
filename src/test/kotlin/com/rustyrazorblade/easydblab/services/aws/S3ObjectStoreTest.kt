@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
+import com.rustyrazorblade.easydblab.configuration.spark
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.aws.S3ObjectStore
 import org.assertj.core.api.Assertions.assertThat

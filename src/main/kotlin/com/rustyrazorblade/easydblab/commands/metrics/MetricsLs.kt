@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.s3Path
+import com.rustyrazorblade.easydblab.configuration.victoriaMetrics
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import org.koin.core.component.inject

@@ -215,7 +215,7 @@ class EMRSparkServiceTest : BaseKoinTest() {
             .thenReturn(response)
 
         // When
-        val result = sparkService.submitJob(testClusterId, testJarPath, testMainClass, jobArgs, jobName)
+        val result = sparkService.submitJob(SparkJobRequest(testClusterId, testJarPath, testMainClass, jobArgs, jobName))
 
         // Then
         assertThat(result.isSuccess).isTrue()
@@ -236,7 +236,7 @@ class EMRSparkServiceTest : BaseKoinTest() {
             .thenReturn(response)
 
         // When
-        val result = sparkService.submitJob(testClusterId, testJarPath, testMainClass, listOf(), null)
+        val result = sparkService.submitJob(SparkJobRequest(testClusterId, testJarPath, testMainClass))
 
         // Then
         assertThat(result.isSuccess).isTrue()
@@ -258,7 +258,7 @@ class EMRSparkServiceTest : BaseKoinTest() {
             .thenReturn(response)
 
         // When
-        val result = sparkService.submitJob(testClusterId, testJarPath, testMainClass, jobArgs, null)
+        val result = sparkService.submitJob(SparkJobRequest(testClusterId, testJarPath, testMainClass, jobArgs))
 
         // Then
         assertThat(result.isSuccess).isTrue()
@@ -279,7 +279,7 @@ class EMRSparkServiceTest : BaseKoinTest() {
         whenever(mockEmrClient.addJobFlowSteps(captor.capture())).thenReturn(response)
 
         // When
-        sparkService.submitJob(testClusterId, testJarPath, testMainClass, listOf(), "test-job")
+        sparkService.submitJob(SparkJobRequest(testClusterId, testJarPath, testMainClass, jobName = "test-job"))
 
         // Then
         val args =
@@ -687,7 +687,7 @@ class EMRSparkServiceTest : BaseKoinTest() {
             )
 
         // When
-        val result = sparkService.submitJob(testClusterId, testJarPath, testMainClass, listOf(), null)
+        val result = sparkService.submitJob(SparkJobRequest(testClusterId, testJarPath, testMainClass))
 
         // Then
         assertThat(result.isFailure).isTrue()

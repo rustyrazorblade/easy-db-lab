@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.output
 import com.github.dockerjava.api.model.Frame
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
+import com.rustyrazorblade.easydblab.configuration.clickhouse
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import io.github.oshai.kotlinlogging.KotlinLogging

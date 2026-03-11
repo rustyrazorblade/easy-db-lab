@@ -25,7 +25,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-BULK_WRITER_DIR="$PROJECT_ROOT/bulk-writer"
+BULK_WRITER_DIR="$PROJECT_ROOT/spark/bulk-writer-sidecar"
 
 # Default values
 ROW_COUNT="1000"
@@ -93,10 +93,10 @@ echo "Table: $TABLE"
 echo ""
 
 echo "=== Step 1: Building bulk-writer shadow JAR ==="
-(cd "$PROJECT_ROOT" && ./gradlew :spark-shared:clean :bulk-writer:clean :bulk-writer:shadowJar -q)
+(cd "$PROJECT_ROOT" && ./gradlew :spark:common:clean :spark:bulk-writer-sidecar:clean :spark:bulk-writer-sidecar:shadowJar -q)
 
 # Find the built JAR
-JAR_FILE=$(ls "$BULK_WRITER_DIR/build/libs/bulk-writer-"*".jar" 2>/dev/null | grep -v sources | grep -v javadoc | head -1)
+JAR_FILE=$(ls "$BULK_WRITER_DIR/build/libs/bulk-writer-sidecar"*".jar" 2>/dev/null | grep -v sources | grep -v javadoc | head -1)
 if [ -z "$JAR_FILE" ]; then
     echo "Error: Could not find bulk-writer JAR"
     exit 1
@@ -216,7 +216,7 @@ set -x
 docker compose exec -T spark-master /opt/spark/bin/spark-submit \
     --master spark://spark-master:7077 \
     --class com.rustyrazorblade.easydblab.spark.DirectBulkWriter \
-    --conf "spark.easydblab.sidecar.contactPoints=$SIDECAR_CONTACT" \
+    --conf "spark.easydblab.contactPoints=$SIDECAR_CONTACT" \
     --conf "spark.easydblab.keyspace=$KEYSPACE" \
     --conf "spark.easydblab.table=$TABLE" \
     --conf "spark.easydblab.localDc=$LOCAL_DC" \

@@ -104,11 +104,24 @@ class EMRService(
                     .build()
             }
 
-        val applications =
-            config.applications.map { appName ->
-                Application.builder().name(appName).build()
-            }
+        val instancesConfig = buildInstancesConfig(config)
+        val request = buildRunJobFlowRequest(config, tags, instancesConfig)
 
+        val response = RetryUtil.withAwsRetry("run-job-flow") { emrClient.runJobFlow(request) }
+        val clusterId = response.jobFlowId()
+
+        log.info { "EMR cluster creation initiated: $clusterId" }
+        eventBus.emit(Event.Emr.ClusterInitiated(clusterId))
+
+        return EMRClusterResult(
+            clusterId = clusterId,
+            clusterName = config.clusterName,
+            masterPublicDns = null,
+            state = ClusterState.STARTING.toString(),
+        )
+    }
+
+    private fun buildInstancesConfig(config: EMRClusterConfig): JobFlowInstancesConfig {
         val masterInstanceGroup =
             InstanceGroupConfig
                 .builder()
@@ -125,7 +138,7 @@ class EMRService(
                 .instanceCount(config.coreInstanceCount)
                 .build()
 
-        val instancesConfigBuilder =
+        val builder =
             JobFlowInstancesConfig
                 .builder()
                 .ec2SubnetId(config.subnetId)
@@ -133,15 +146,25 @@ class EMRService(
                 .instanceGroups(masterInstanceGroup, coreInstanceGroup)
                 .keepJobFlowAliveWhenNoSteps(true)
 
-        // Add additional security groups if specified (needed for EMR to access Cassandra)
         if (config.additionalSecurityGroups.isNotEmpty()) {
-            instancesConfigBuilder
+            builder
                 .additionalMasterSecurityGroups(config.additionalSecurityGroups)
                 .additionalSlaveSecurityGroups(config.additionalSecurityGroups)
             log.info { "Adding security groups to EMR: ${config.additionalSecurityGroups}" }
         }
 
-        val instancesConfig = instancesConfigBuilder.build()
+        return builder.build()
+    }
+
+    private fun buildRunJobFlowRequest(
+        config: EMRClusterConfig,
+        tags: List<Tag>,
+        instancesConfig: JobFlowInstancesConfig,
+    ): RunJobFlowRequest {
+        val applications =
+            config.applications.map { appName ->
+                Application.builder().name(appName).build()
+            }
 
         val requestBuilder =
             RunJobFlowRequest
@@ -182,20 +205,7 @@ class EMRService(
             log.info { "Adding ${config.configurations.size} configurations to EMR cluster" }
         }
 
-        val request = requestBuilder.build()
-
-        val response = RetryUtil.withAwsRetry("run-job-flow") { emrClient.runJobFlow(request) }
-        val clusterId = response.jobFlowId()
-
-        log.info { "EMR cluster creation initiated: $clusterId" }
-        eventBus.emit(Event.Emr.ClusterInitiated(clusterId))
-
-        return EMRClusterResult(
-            clusterId = clusterId,
-            clusterName = config.clusterName,
-            masterPublicDns = null,
-            state = ClusterState.STARTING.toString(),
-        )
+        return requestBuilder.build()
     }
 
     /**

@@ -57,7 +57,7 @@ class DockerTest {
                                 }
                             }
 
-                            override fun close() {}
+                            override fun close() = Unit
                         },
                     )
                     eventBus

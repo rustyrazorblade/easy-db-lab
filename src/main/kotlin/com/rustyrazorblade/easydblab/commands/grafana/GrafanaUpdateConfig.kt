@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.clusterPrefix
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
@@ -112,7 +113,7 @@ class GrafanaUpdateConfig : PicoBaseCommand() {
 
         for (name in deployments) {
             k8sService
-                .rolloutRestartDeployment(controlNode, name)
+                .rolloutRestartDeployment(controlNode, name, "default")
                 .onSuccess {
                     eventBus.emit(Event.Grafana.WorkloadRestarted("Deployment", name))
                 }.onFailure { exception ->
@@ -122,7 +123,7 @@ class GrafanaUpdateConfig : PicoBaseCommand() {
 
         for (name in daemonSets) {
             k8sService
-                .rolloutRestartDaemonSet(controlNode, name)
+                .rolloutRestartDaemonSet(controlNode, name, "default")
                 .onSuccess {
                     eventBus.emit(Event.Grafana.WorkloadRestarted("DaemonSet", name))
                 }.onFailure { exception ->

@@ -3,6 +3,11 @@ package com.rustyrazorblade.easydblab.providers
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.providers.aws.AWS
+import com.rustyrazorblade.easydblab.providers.aws.createRoleWithS3Policy
+import com.rustyrazorblade.easydblab.providers.aws.createServiceRole
+import com.rustyrazorblade.easydblab.providers.aws.disableBucketRequestMetrics
+import com.rustyrazorblade.easydblab.providers.aws.enableBucketRequestMetrics
+import com.rustyrazorblade.easydblab.providers.aws.setLifecycleExpirationRule
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows

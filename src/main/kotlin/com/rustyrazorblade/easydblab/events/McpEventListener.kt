@@ -4,7 +4,7 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import java.util.Collections
 
 /**
- * EventListener implementation for the MCP server.
+ * EventListener implementation for the server's MCP integration.
  *
  * Buffers EventEnvelopes for retrieval by the get_server_status tool.
  * Thread-safe for concurrent access from multiple emitting threads.

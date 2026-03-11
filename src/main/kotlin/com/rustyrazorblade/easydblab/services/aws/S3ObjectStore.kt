@@ -105,10 +105,7 @@ class S3ObjectStore(
                     log.info { "Downloaded ${remotePath.toUri()} to $localPath" }
                 }.run()
         } catch (e: SdkClientException) {
-            val hasFileExists =
-                generateSequence(e as Throwable) { it.cause }
-                    .any { it is FileAlreadyExistsException }
-            if (hasFileExists) {
+            if (isCausedByFileExists(e)) {
                 log.info { "File already exists, skipping download: $localPath" }
                 return ObjectStore.DownloadResult(
                     localPath = localPath,
@@ -350,6 +347,10 @@ class S3ObjectStore(
      * @param remotePath The S3 path to check
      * @return A configured HeadObjectRequest
      */
+    private fun isCausedByFileExists(e: SdkClientException): Boolean =
+        generateSequence(e as Throwable) { it.cause }
+            .any { it is FileAlreadyExistsException }
+
     private fun createHeadRequest(remotePath: ClusterS3Path): HeadObjectRequest =
         HeadObjectRequest
             .builder()

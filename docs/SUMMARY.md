@@ -32,7 +32,7 @@
 
 # Integrations
 
-- [MCP Server](integrations/mcp-server.md)
+- [Server](integrations/server.md)
 
 # Reference
 

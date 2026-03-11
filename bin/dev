@@ -60,21 +60,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 WORKSPACE_FOLDER="$PROJECT_ROOT"
 
-# Build mount args for Claude credentials if ENABLE_CLAUDE=1
-CLAUDE_MOUNT_ARGS=()
-if [[ "${ENABLE_CLAUDE:-}" == "1" ]]; then
-    if [[ -f "$HOME/.claude/.credentials.json" ]]; then
-        CLAUDE_MOUNT_ARGS=(--mount "type=bind,source=$HOME/.claude/.credentials.json,target=/home/node/.claude/.credentials.json")
-    else
-        echo -e "${YELLOW}Warning: ~/.claude/.credentials.json not found. Claude auth will not persist.${NC}"
-    fi
-fi
-
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 NC='\033[0m' # No Color
+
+# Ensure Claude config directory exists (mounted by devcontainer.json)
+mkdir -p "$PROJECT_ROOT/.devcontainer/claude"
 
 usage() {
     cat <<EOF
@@ -101,12 +94,8 @@ Commands:
     clean           Full cleanup (containers, volumes)
     help            Show this help message
 
-Environment Variables:
-    ENABLE_CLAUDE=1     Mount ~/.claude config directory (for Claude Code users)
-
 Examples:
     $(basename "$0") start
-    ENABLE_CLAUDE=1 $(basename "$0") start
     $(basename "$0") claude
     $(basename "$0") shell
     $(basename "$0") test
@@ -156,7 +145,7 @@ get_compose_project() {
 cmd_start() {
     check_devcontainer
     info "Starting dev container..."
-    devcontainer up --workspace-folder "$WORKSPACE_FOLDER" ${CLAUDE_MOUNT_ARGS[@]+"${CLAUDE_MOUNT_ARGS[@]}"}
+    devcontainer up --workspace-folder "$WORKSPACE_FOLDER"
 }
 
 cmd_stop() {
@@ -174,7 +163,7 @@ cmd_stop() {
 cmd_rebuild() {
     check_devcontainer
     info "Rebuilding dev container..."
-    devcontainer up --workspace-folder "$WORKSPACE_FOLDER" --remove-existing-container ${CLAUDE_MOUNT_ARGS[@]+"${CLAUDE_MOUNT_ARGS[@]}"}
+    devcontainer up --workspace-folder "$WORKSPACE_FOLDER" --remove-existing-container
 }
 
 cmd_build() {

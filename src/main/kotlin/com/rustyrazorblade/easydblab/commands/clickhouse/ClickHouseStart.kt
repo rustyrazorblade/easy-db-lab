@@ -11,6 +11,7 @@ import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.clickhouse.ClickHouseManifestBuilder
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.K8sService
+import com.rustyrazorblade.easydblab.services.PersistentVolumeConfig
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -157,12 +158,15 @@ class ClickHouseStart : PicoBaseCommand() {
         k8sService
             .createLocalPersistentVolumes(
                 controlHost = controlNode,
-                dbName = "clickhouse",
-                localPath = "/mnt/db1/clickhouse",
-                count = replicaCount,
-                storageSize = "100Gi",
-                namespace = Constants.ClickHouse.NAMESPACE,
-                volumeClaimTemplateName = "data",
+                config =
+                    PersistentVolumeConfig(
+                        dbName = "clickhouse",
+                        localPath = "/mnt/db1/clickhouse",
+                        count = replicaCount,
+                        storageSize = "100Gi",
+                        namespace = Constants.ClickHouse.NAMESPACE,
+                        volumeClaimTemplateName = "data",
+                    ),
             ).getOrElse { exception ->
                 error("Failed to create Local PVs: ${exception.message}")
             }

@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.mcp
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
+import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.McpEventListener
@@ -9,6 +10,7 @@ import com.rustyrazorblade.easydblab.output.CompositeOutputHandler
 import com.rustyrazorblade.easydblab.output.FilteringChannelOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputEvent
 import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.services.VictoriaMetricsQueryService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
@@ -59,7 +61,7 @@ data class ServerStatusResponse(
     val timestamp: String,
 )
 
-/** MCP server implementation using the official SDK. */
+/** Server implementation — MCP protocol, REST endpoints, and background services. */
 class McpServer(
     private val refreshIntervalSeconds: Long = DEFAULT_REFRESH_INTERVAL_SECONDS,
 ) : KoinComponent {
@@ -71,11 +73,14 @@ class McpServer(
     private val context: Context by inject()
     private val outputHandler: OutputHandler by inject()
     private val eventBus: EventBus by inject()
+    private val victoriaMetricsQueryService: VictoriaMetricsQueryService by inject()
+    private val clusterStateManager: ClusterStateManager by inject()
 
     private val toolRegistry = McpToolRegistry()
     private val mcpEventListener = McpEventListener()
     private val executionSemaphore = Semaphore(1) // Only allow one tool execution at a time
     private val statusCache = StatusCache(refreshIntervalSeconds)
+    private var metricsCollector: MetricsCollector? = null
 
     // Status tracking components
     private val outputChannel = Channel<OutputEvent>(Channel.UNLIMITED)
@@ -289,7 +294,7 @@ class McpServer(
         onStarted: (actualPort: Int) -> Unit,
     ) {
         try {
-            log.info { "Starting MCP server with SDK (version ${context.version})" }
+            log.info { "Starting server with MCP SDK (version ${context.version})" }
             initializeStreaming()
 
             val server = createServer()
@@ -297,14 +302,27 @@ class McpServer(
             registerAllPrompts(server)
             messageBuffer.start()
             statusCache.start()
+            startMetricsCollectorIfRedisConfigured()
 
             startEmbeddedServer(port, bind, server, onStarted)
         } catch (e: IllegalStateException) {
             log.error { "Transport error: ${e.message}" }
             throw e
         } catch (e: RuntimeException) {
-            log.error(e) { "Unexpected error in MCP server" }
+            log.error(e) { "Unexpected error in server" }
             throw e
+        }
+    }
+
+    private fun startMetricsCollectorIfRedisConfigured() {
+        val redisUrl = System.getenv(Constants.EventBus.REDIS_URL_ENV_VAR)
+        if (!redisUrl.isNullOrBlank()) {
+            metricsCollector =
+                MetricsCollector(victoriaMetricsQueryService, clusterStateManager, eventBus)
+            metricsCollector!!.start()
+            log.info { "MetricsCollector started (Redis configured)" }
+        } else {
+            log.debug { "MetricsCollector not started (Redis not configured)" }
         }
     }
 
@@ -346,128 +364,14 @@ class McpServer(
                 install(SSE)
                 routing {
                     swaggerUI("/swagger") {
-                        info = OpenApiInfo("easy-db-lab MCP Server", context.version.toString())
+                        info = OpenApiInfo("easy-db-lab Server", context.version.toString())
                         source = OpenApiDocSource.Routing()
                     }
-                    sse("/sse") {
-                        val transport = SseServerTransport("/message", this)
-                        val serverSession = server.createSession(transport)
-                        serverSessions[transport.sessionId] = serverSession
-
-                        serverSession.onClose {
-                            log.info { "Server session closed for: ${transport.sessionId}" }
-                            serverSessions.remove(transport.sessionId)
-                        }
-                        awaitCancellation()
-                    }
-                    post("/message") {
-                        val sessionId: String? = call.request.queryParameters["sessionId"]
-                        if (sessionId == null) {
-                            call.respond(HttpStatusCode.BadRequest, "Missing sessionId parameter")
-                            return@post
-                        }
-
-                        val transport = serverSessions[sessionId]?.transport as? SseServerTransport
-                        if (transport == null) {
-                            call.respond(HttpStatusCode.NotFound, "Session not found")
-                            return@post
-                        }
-
-                        transport.handlePostMessage(call)
-                    }
-                    get("/stress/status") {
-                        val live = call.request.queryParameters["live"]?.toBoolean() ?: false
-
-                        if (live) {
-                            statusCache.forceRefresh()
-                        }
-
-                        try {
-                            val json = statusCache.getStatus("stressJobs")
-                            if (json == null) {
-                                call.respond(
-                                    HttpStatusCode.ServiceUnavailable,
-                                    "Status not yet available",
-                                )
-                            } else {
-                                call.respondText(json, ContentType.Application.Json)
-                            }
-                        } catch (e: IllegalArgumentException) {
-                            call.respond(HttpStatusCode.BadRequest, e.message ?: "Invalid request")
-                        }
-                    }.describe {
-                        summary = "Get stress job status"
-                        description = "Returns the current status of Cassandra stress jobs " +
-                            "running on the cluster."
-                        parameters {
-                            query("live") {
-                                description = "Force a live refresh of status data before responding"
-                                required = false
-                            }
-                        }
-                        responses {
-                            HttpStatusCode.OK {
-                                description = "JSON stress job status response"
-                                ContentType.Application.Json()
-                            }
-                            HttpStatusCode.ServiceUnavailable {
-                                description = "Status not yet available (cache warming up)"
-                            }
-                        }
-                    }
-                    get("/status") {
-                        val live = call.request.queryParameters["live"]?.toBoolean() ?: false
-                        val section = call.request.queryParameters["section"]
-
-                        if (live) {
-                            statusCache.forceRefresh()
-                        }
-
-                        try {
-                            val json = statusCache.getStatus(section)
-                            if (json == null) {
-                                call.respond(
-                                    HttpStatusCode.ServiceUnavailable,
-                                    "Status not yet available",
-                                )
-                            } else {
-                                call.respondText(json, ContentType.Application.Json)
-                            }
-                        } catch (e: IllegalArgumentException) {
-                            call.respond(HttpStatusCode.BadRequest, e.message ?: "Invalid request")
-                        }
-                    }.describe {
-                        summary = "Get cluster environment status"
-                        description = "Returns cached status of the cluster environment " +
-                            "including nodes, networking, Cassandra version, and more."
-                        parameters {
-                            query("live") {
-                                description = "Force a live refresh of status data before responding"
-                                required = false
-                            }
-                            query("section") {
-                                description = "Return only a specific section. " +
-                                    "Valid values: ${StatusCache.VALID_SECTIONS.joinToString(", ")}"
-                                required = false
-                            }
-                        }
-                        responses {
-                            HttpStatusCode.OK {
-                                description = "JSON status response"
-                                ContentType.Application.Json()
-                            }
-                            HttpStatusCode.BadRequest {
-                                description = "Invalid section parameter"
-                            }
-                            HttpStatusCode.ServiceUnavailable {
-                                description = "Status not yet available (cache warming up)"
-                            }
-                        }
-                    }
+                    configureSseRoutes(server, serverSessions)
+                    configureStatusRoutes()
                 }
             }.start(wait = false)
 
-        // Get the actual port (important when port 0 is requested)
         val actualPort =
             kotlinx.coroutines.runBlocking {
                 ktorServer.engine
@@ -476,16 +380,115 @@ class McpServer(
                     .port
             }
 
-        // Notify caller of actual port before blocking
         onStarted(actualPort)
+        eventBus.emit(Event.Mcp.ServerReady(actualPort, bind))
 
-        eventBus.emit(
-            Event.Mcp.ServerReady(actualPort, bind),
-        )
-
-        // Wait for shutdown
         Thread.currentThread().join()
+        log.info { "Server stopped" }
+    }
 
-        log.info { "MCP server stopped" }
+    private fun io.ktor.server.routing.Routing.configureSseRoutes(
+        server: Server,
+        serverSessions: ConcurrentMap<String, ServerSession>,
+    ) {
+        sse("/sse") {
+            val transport = SseServerTransport("/message", this)
+            val serverSession = server.createSession(transport)
+            serverSessions[transport.sessionId] = serverSession
+
+            serverSession.onClose {
+                log.info { "Server session closed for: ${transport.sessionId}" }
+                serverSessions.remove(transport.sessionId)
+            }
+            awaitCancellation()
+        }
+        post("/message") {
+            val sessionId: String? = call.request.queryParameters["sessionId"]
+            if (sessionId == null) {
+                call.respond(HttpStatusCode.BadRequest, "Missing sessionId parameter")
+                return@post
+            }
+
+            val transport = serverSessions[sessionId]?.transport as? SseServerTransport
+            if (transport == null) {
+                call.respond(HttpStatusCode.NotFound, "Session not found")
+                return@post
+            }
+
+            transport.handlePostMessage(call)
+        }
+    }
+
+    private fun io.ktor.server.routing.Routing.configureStatusRoutes() {
+        get("/stress/status") {
+            val live = call.request.queryParameters["live"]?.toBoolean() ?: false
+            if (live) statusCache.forceRefresh()
+            respondWithCachedStatus("stressJobs")
+        }.describe {
+            summary = "Get stress job status"
+            description = "Returns the current status of Cassandra stress jobs " +
+                "running on the cluster."
+            parameters {
+                query("live") {
+                    description = "Force a live refresh of status data before responding"
+                    required = false
+                }
+            }
+            responses {
+                HttpStatusCode.OK {
+                    description = "JSON stress job status response"
+                    ContentType.Application.Json()
+                }
+                HttpStatusCode.ServiceUnavailable {
+                    description = "Status not yet available (cache warming up)"
+                }
+            }
+        }
+        get("/status") {
+            val live = call.request.queryParameters["live"]?.toBoolean() ?: false
+            val section = call.request.queryParameters["section"]
+            if (live) statusCache.forceRefresh()
+            respondWithCachedStatus(section)
+        }.describe {
+            summary = "Get cluster environment status"
+            description = "Returns cached status of the cluster environment " +
+                "including nodes, networking, Cassandra version, and more."
+            parameters {
+                query("live") {
+                    description = "Force a live refresh of status data before responding"
+                    required = false
+                }
+                query("section") {
+                    description = "Return only a specific section. " +
+                        "Valid values: ${StatusCache.VALID_SECTIONS.joinToString(", ")}"
+                    required = false
+                }
+            }
+            responses {
+                HttpStatusCode.OK {
+                    description = "JSON status response"
+                    ContentType.Application.Json()
+                }
+                HttpStatusCode.BadRequest {
+                    description = "Invalid section parameter"
+                }
+                HttpStatusCode.ServiceUnavailable {
+                    description = "Status not yet available (cache warming up)"
+                }
+            }
+        }
+    }
+
+    private suspend fun io.ktor.server.routing.RoutingContext.respondWithCachedStatus(section: String?) {
+        try {
+            val json = statusCache.getStatus(section)
+            if (json == null) {
+                call.respond(HttpStatusCode.ServiceUnavailable, "Status not yet available")
+            } else {
+                call.respondText(json, ContentType.Application.Json)
+            }
+        } catch (e: IllegalArgumentException) {
+            call.respond(HttpStatusCode.BadRequest, e.message ?: "Invalid request")
+        }
     }
 }

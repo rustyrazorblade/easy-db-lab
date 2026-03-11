@@ -10,7 +10,7 @@ data class Context(
     val easyDbLabUserDirectory: File,
     val isMcp: Boolean = false,
     /**
-     * Indicates if running in an interactive mode (REPL or MCP server) where
+     * Indicates if running in an interactive mode (REPL or server) where
      * resources like CQL sessions should be kept open across commands.
      * Mutable so REPL can set this after context creation.
      */
@@ -29,7 +29,7 @@ data class Context(
         fun forCli(easyDbLabUserDirectory: File): Context = Context(easyDbLabUserDirectory, isMcp = false, isInteractive = false)
 
         /**
-         * Create a Context for MCP server execution
+         * Create a Context for server execution
          */
         fun forMcp(easyDbLabUserDirectory: File): Context = Context(easyDbLabUserDirectory, isMcp = true, isInteractive = true)
 

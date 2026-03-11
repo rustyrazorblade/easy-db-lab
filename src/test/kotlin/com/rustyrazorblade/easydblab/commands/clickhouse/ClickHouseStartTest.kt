@@ -92,7 +92,7 @@ class ClickHouseStartTest : BaseKoinTest() {
         // Default successful K8s operations
         whenever(mockK8sService.ensureLocalStorageClass(any()))
             .thenReturn(Result.success(Unit))
-        whenever(mockK8sService.createLocalPersistentVolumes(any(), any(), any(), any(), any(), any(), any(), any()))
+        whenever(mockK8sService.createLocalPersistentVolumes(any(), any()))
             .thenReturn(Result.success(Unit))
         whenever(mockK8sService.createClickHouseS3ConfigMap(any(), any(), any()))
             .thenReturn(Result.success(Unit))
@@ -195,12 +195,6 @@ class ClickHouseStartTest : BaseKoinTest() {
 
             verify(mockK8sService).createLocalPersistentVolumes(
                 any(),
-                eq("clickhouse"),
-                any(),
-                eq(3),
-                any(),
-                any(),
-                eq(Constants.ClickHouse.NAMESPACE),
                 any(),
             )
             verify(mockClickHouseManifestBuilder).buildAllResources(
@@ -281,7 +275,7 @@ class ClickHouseStartTest : BaseKoinTest() {
     inner class ErrorHandling {
         @Test
         fun `execute fails when PV creation fails`() {
-            whenever(mockK8sService.createLocalPersistentVolumes(any(), any(), any(), any(), any(), any(), any(), any()))
+            whenever(mockK8sService.createLocalPersistentVolumes(any(), any()))
                 .thenReturn(Result.failure(RuntimeException("PV creation failed")))
 
             val command = ClickHouseStart()

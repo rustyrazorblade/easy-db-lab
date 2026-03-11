@@ -70,6 +70,22 @@ class EC2VpcService(
 ) : VpcService {
     companion object {
         private val log = KotlinLogging.logger {}
+
+        private val PORT_DESCRIPTIONS =
+            mapOf(
+                WellKnownPorts.SSH to "SSH",
+                WellKnownPorts.HTTP to "HTTP",
+                WellKnownPorts.HTTPS to "HTTPS",
+                WellKnownPorts.MYSQL to "MySQL",
+                WellKnownPorts.POSTGRESQL to "PostgreSQL",
+                WellKnownPorts.REDIS to "Redis",
+                WellKnownPorts.CASSANDRA_INTERNODE to "Cassandra Inter-node",
+                WellKnownPorts.CASSANDRA_INTERNODE_SSL to "Cassandra Inter-node SSL",
+                WellKnownPorts.CASSANDRA_CQL to "Cassandra CQL",
+                WellKnownPorts.CASSANDRA_CQL_SSL to "Cassandra CQL SSL",
+                WellKnownPorts.CASSANDRA_THRIFT to "Cassandra Thrift",
+                WellKnownPorts.CASSANDRA_JMX to "Cassandra JMX",
+            )
     }
 
     override fun createVpc(
@@ -1169,28 +1185,12 @@ class EC2VpcService(
             else -> protocol.uppercase()
         }
 
-    @Suppress("MagicNumber", "CyclomaticComplexity")
     private fun getPortDescription(
         fromPort: Int?,
         toPort: Int?,
     ): String? {
         if (fromPort == null || toPort == null) return "All traffic"
         if (fromPort != toPort) return null
-
-        return when (fromPort) {
-            WellKnownPorts.SSH -> "SSH"
-            WellKnownPorts.HTTP -> "HTTP"
-            WellKnownPorts.HTTPS -> "HTTPS"
-            WellKnownPorts.MYSQL -> "MySQL"
-            WellKnownPorts.POSTGRESQL -> "PostgreSQL"
-            WellKnownPorts.REDIS -> "Redis"
-            WellKnownPorts.CASSANDRA_INTERNODE -> "Cassandra Inter-node"
-            WellKnownPorts.CASSANDRA_INTERNODE_SSL -> "Cassandra Inter-node SSL"
-            WellKnownPorts.CASSANDRA_CQL -> "Cassandra CQL"
-            WellKnownPorts.CASSANDRA_CQL_SSL -> "Cassandra CQL SSL"
-            WellKnownPorts.CASSANDRA_THRIFT -> "Cassandra Thrift"
-            WellKnownPorts.CASSANDRA_JMX -> "Cassandra JMX"
-            else -> null
-        }
+        return PORT_DESCRIPTIONS[fromPort]
     }
 }

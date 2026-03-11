@@ -3,6 +3,9 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.cassandraPatch
+import com.rustyrazorblade.easydblab.configuration.k8s
+import com.rustyrazorblade.easydblab.configuration.kubeconfig
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
@@ -47,7 +50,7 @@ internal class ClusterBackupServiceTest {
                     capturedEvents.add(envelope)
                 }
 
-                override fun close() {}
+                override fun close() = Unit
             },
         )
         service =

@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.ObjectStore
+import com.rustyrazorblade.easydblab.services.SparkJobRequest
 import com.rustyrazorblade.easydblab.services.SparkService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -114,13 +115,15 @@ class SparkSubmit : PicoBaseCommand() {
         val stepId =
             sparkService
                 .submitJob(
-                    clusterId = clusterInfo.clusterId,
-                    jarPath = s3JarPath,
-                    mainClass = mainClass,
-                    jobArgs = jobArgs,
-                    jobName = jobName,
-                    sparkConf = sparkConfMap,
-                    envVars = envVarsMap,
+                    SparkJobRequest(
+                        clusterId = clusterInfo.clusterId,
+                        jarPath = s3JarPath,
+                        mainClass = mainClass,
+                        jobArgs = jobArgs,
+                        jobName = jobName,
+                        sparkConf = sparkConfMap,
+                        envVars = envVarsMap,
+                    ),
                 ).getOrElse { exception ->
                     error(exception.message ?: "Failed to submit Spark job")
                 }

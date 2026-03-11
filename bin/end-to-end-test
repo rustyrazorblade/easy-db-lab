@@ -127,7 +127,7 @@ step_build_project() {
         # Pre-build cassandra-analytics with JDK 11 for bulk-writer
         echo "=== Pre-building Cassandra Analytics (JDK 11) ==="
         "$PROJECT_ROOT/bin/build-cassandra-analytics"
-        (cd "$PROJECT_ROOT" && ./gradlew clean shadowJar installDist :spark-connector-test1:jar :bulk-writer:jar)
+        (cd "$PROJECT_ROOT" && ./gradlew clean shadowJar installDist :spark:connector-read-write:shadowJar :spark:bulk-writer-sidecar:shadowJar :spark:bulk-writer-s3:shadowJar :spark:connector-writer:shadowJar)
     else
         (cd "$PROJECT_ROOT" && ./gradlew clean shadowJar installDist)
     fi
@@ -254,7 +254,7 @@ step_list_hosts() {
 }
 
 step_test_mcp_server() {
-    echo "=== Testing MCP server /status endpoint ==="
+    echo "=== Testing server /status endpoint ==="
 
     # Remove stale .mcp.json if present
     rm -f .mcp.json
@@ -268,7 +268,7 @@ step_test_mcp_server() {
         sleep 2
     fi
 
-    # Start the MCP server in the background on a fixed port.
+    # Start the server in the background on a fixed port.
     # Redirect output to a log file so the server process doesn't hold
     # the tee pipe open after this step returns.
     local server_log=$(mktemp /tmp/e2e-mcp-server-XXXXXX)
@@ -282,7 +282,7 @@ step_test_mcp_server() {
     local elapsed=0
     while [ $elapsed -lt $timeout ]; do
         if curl -s -o /dev/null "${server_url}/status" 2>/dev/null; then
-            echo "MCP server ready at: $server_url"
+            echo "Server ready at: $server_url"
             break
         fi
         sleep 2
@@ -290,7 +290,7 @@ step_test_mcp_server() {
     done
 
     if [ $elapsed -ge $timeout ]; then
-        echo "ERROR: MCP server did not become ready within ${timeout}s"
+        echo "ERROR: Server did not become ready within ${timeout}s"
         kill "$server_pid" 2>/dev/null || true
         return 1
     fi
@@ -345,12 +345,12 @@ step_test_mcp_server() {
     fi
 
     # Clean up — kill process group to catch any children
-    echo "=== Stopping MCP server ==="
+    echo "=== Stopping server ==="
     kill -9 "$server_pid" 2>/dev/null || true
     wait "$server_pid" 2>/dev/null || true
     rm -f .mcp.json .mcp-server.pid "$server_log"
 
-    echo "=== MCP server /status test passed ==="
+    echo "=== Server /status test passed ==="
 }
 
 step_verify_s3_backup() {
@@ -404,6 +404,11 @@ step_setup_cassandra() {
     echo "=== Setting Cassandra version to 5.0 ==="
     easy-db-lab cassandra use 5.0
 
+    # Cassandra 5 defaults to storage_compatibility_mode: UPGRADING, which uses the legacy
+    # sstable format. The cassandra-analytics bulk writer requires NONE (the new sstable format)
+    # or it fails with incompatible sstable errors during bulk load.
+    echo "=== Patching storage_compatibility_mode for Cassandra 5 bulk writer ==="
+    echo "storage_compatibility_mode: NONE" >> cassandra.patch.yaml
     echo "=== Updating configuration ==="
     easy-db-lab cassandra update-config
 
@@ -654,11 +659,21 @@ step_spark_submit() {
         echo "=== Skipping Spark job submission (use --spark to enable) ==="
         return 0
     fi
-    echo "=== Submitting Spark job to EMR ==="
+    echo "=== Submitting Spark connector read-write job to EMR ==="
+    local rw_jar
+    rw_jar=$(ls "$PROJECT_ROOT/spark/connector-read-write/build/libs/connector-read-write"*.jar 2>/dev/null | head -1)
+
+    local dc
+    dc=$(easy-db-lab aws region)
+    local hosts
+    hosts=$(jq -r '.hosts.Cassandra | map(.privateIp) | join(",")' "$PROJECT_ROOT/state.json")
+
     easy-db-lab spark submit \
-      --jar "$PROJECT_ROOT/spark-connector-test1/build/libs/spark-connector-test1-12.jar" \
+      --jar "$rw_jar" \
       --main-class com.rustyrazorblade.easydblab.spark.KeyValuePrefixCount \
-      --args "$(easy-db-lab ip db0 --private)" \
+      --conf "spark.easydblab.contactPoints=$hosts" \
+      --conf "spark.easydblab.keyspace=cassandra_easy_stress" \
+      --conf "spark.easydblab.localDc=$dc" \
       --wait
     SPARK_JOB_RAN=true
 }
@@ -743,27 +758,95 @@ step_spark_status() {
     fi
 }
 
-step_bulk_writer_direct() {
+# Helper: submit a spark writer job with standard config and verify row count.
+# Args: $1=label, $2=jar_glob, $3=main_class, $4=table_name, $5..=extra --conf flags
+submit_spark_writer() {
+    local label="$1" jar_glob="$2" main_class="$3" table_name="$4"
+    shift 4
+
+    # Verify JAR exists before attempting submission
+    local jar_file
+    jar_file=$(ls $jar_glob 2>/dev/null | head -1)
+    if [ -z "$jar_file" ]; then
+        echo "ERROR: No JAR found matching glob: $jar_glob"
+        echo "Build the module first, e.g.: ./gradlew :spark:<module>:shadowJar"
+        return 1
+    fi
+
+    local dc hosts
+    dc=$(easy-db-lab aws region)
+    hosts=$(jq -r '.hosts.Cassandra | map(.privateIp) | join(",")' "$PROJECT_ROOT/state.json")
+
+    local expected_rows=10000
+
+    echo "=== Submitting $label to EMR ==="
+    easy-db-lab spark submit \
+        --jar "$jar_file" \
+        --main-class "$main_class" \
+        --conf "spark.easydblab.contactPoints=$hosts" \
+        --conf "spark.easydblab.keyspace=bulk_test" \
+        --conf "spark.easydblab.table=$table_name" \
+        --conf "spark.easydblab.localDc=$dc" \
+        --conf "spark.easydblab.rowCount=$expected_rows" \
+        --conf "spark.easydblab.parallelism=4" \
+        --conf "spark.easydblab.partitionCount=100" \
+        --conf "spark.easydblab.replicationFactor=3" \
+        "$@" \
+        --wait
+
+    echo "=== Verifying $label results ==="
+    local count_output
+    count_output=$(easy-db-lab cassandra cql "SELECT COUNT(*) FROM bulk_test.$table_name")
+    echo "$count_output"
+
+    # Extract the numeric count from cqlsh output and verify it matches expected rows
+    local actual_count
+    actual_count=$(echo "$count_output" | grep -Eo '[0-9]+' | head -1)
+    if [ "$actual_count" != "$expected_rows" ]; then
+        echo "ERROR: $label row count mismatch: expected $expected_rows, got ${actual_count:-<none>}"
+        return 1
+    fi
+    echo "=== $label verified: $actual_count rows at LOCAL_QUORUM ==="
+}
+
+step_bulk_writer_sidecar() {
     if [ "$ENABLE_SPARK" != true ]; then
-        echo "=== Skipping bulk writer test (use --spark to enable) ==="
+        echo "=== Skipping bulk writer sidecar test (use --spark to enable) ==="
         return 0
     fi
     if [ "$ENABLE_CASSANDRA" != true ]; then
-        echo "=== Skipping bulk writer test (use --cassandra to enable for table creation) ==="
+        echo "=== Skipping bulk writer sidecar test (use --cassandra to enable) ==="
         return 0
     fi
 
-    echo "=== Starting inotifywait to monitor sidecar import directory ==="
-    easy-db-lab exec run --bg --name watch-imports -t cassandra -- inotifywait -m -r /mnt/db1/cassandra/import
+    submit_spark_writer "bulk writer (sidecar/direct)" \
+        "$PROJECT_ROOT/spark/bulk-writer-sidecar/build/libs/bulk-writer-sidecar*.jar" \
+        com.rustyrazorblade.easydblab.spark.DirectBulkWriter \
+        data_sidecar
+}
 
-    echo "=== Submitting bulk writer (direct mode) to EMR ==="
-    "$PROJECT_ROOT/bin/submit-direct-bulk-writer" 10000 4 100 1
+step_bulk_writer_s3() {
+    # TODO(spark-refactor): Enable once DATA_TRANSPORT_EXTENSION_CLASS is implemented
+    # in cassandra-analytics. Re-add "step_bulk_writer_s3:Test bulk writer (S3)" to SPARK_STEPS when ready.
+    # See: openspec/changes/archive/2026-03-10-spark-refactor/design.md
+    echo "=== Skipping bulk writer S3 test (DATA_TRANSPORT_EXTENSION_CLASS not yet implemented) ==="
+    return 0
+}
 
-    echo "=== Verifying bulk write results ==="
-    easy-db-lab cassandra cql "SELECT COUNT(*) FROM bulk_test.data"
+step_connector_writer() {
+    if [ "$ENABLE_SPARK" != true ]; then
+        echo "=== Skipping connector writer test (use --spark to enable) ==="
+        return 0
+    fi
+    if [ "$ENABLE_CASSANDRA" != true ]; then
+        echo "=== Skipping connector writer test (use --cassandra to enable) ==="
+        return 0
+    fi
 
-    echo "=== Stopping inotifywait ==="
-    easy-db-lab exec stop watch-imports -t cassandra
+    submit_spark_writer "connector writer" \
+        "$PROJECT_ROOT/spark/connector-writer/build/libs/connector-writer*.jar" \
+        com.rustyrazorblade.easydblab.spark.StandardConnectorWriter \
+        data_connector
 }
 
 step_clickhouse_start() {
@@ -1111,7 +1194,7 @@ step_test_logs_backup() {
 }
 
 step_teardown() {
-    # Kill stale MCP server if still running
+    # Kill stale server if still running
     if [ -f .mcp-server.pid ]; then
         local pid=$(cat .mcp-server.pid)
         kill "$pid" 2>/dev/null || true
@@ -1145,7 +1228,7 @@ STEPS_WORKDIR=(
     "step_verify_k3s:Verify K3s cluster"
     "step_verify_vpc_tags:Verify VPC tags"
     "step_list_hosts:List hosts"
-    "step_test_mcp_server:Test MCP server status endpoint"
+    "step_test_mcp_server:Test server status endpoint"
     "step_verify_s3_backup:Verify S3 backup"
     "step_setup_cassandra:Setup Cassandra"
     "step_verify_cassandra_backup:Verify Cassandra backup"
@@ -1157,7 +1240,8 @@ STEPS_WORKDIR=(
     "step_stress_k8s:Run stress K8s test"
     "step_spark_submit:Submit Spark job"
     "step_spark_status:Check Spark status"
-    "step_bulk_writer_direct:Test bulk writer (direct)"
+    "step_bulk_writer_sidecar:Test bulk writer (sidecar)"
+    "step_connector_writer:Test connector writer"
     "step_cassandra_start_stop:Cassandra start/stop cycle"
     "step_clickhouse_start:Start ClickHouse"
     "step_clickhouse_test:Test ClickHouse"

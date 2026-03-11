@@ -71,6 +71,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
                 clusterStateManager,
                 com.rustyrazorblade.easydblab.events
                     .EventBus(),
+                getKoin().get(),
             )
     }
 
@@ -78,10 +79,12 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
     fun `buildJob should include stress and otel-sidecar containers`() {
         val job =
             service.buildJob(
-                jobName = "stress-test-123",
-                image = "ghcr.io/apache/cassandra-easy-stress:latest",
-                contactPoints = "10.0.1.6",
-                args = listOf("run", "KeyValue"),
+                StressJobConfig(
+                    jobName = "stress-test-123",
+                    image = "ghcr.io/apache/cassandra-easy-stress:latest",
+                    contactPoints = "10.0.1.6",
+                    args = listOf("run", "KeyValue"),
+                ),
             )
 
         val containers = job.spec.template.spec.containers
@@ -98,10 +101,12 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
     fun `buildJob should configure stress container correctly`() {
         val job =
             service.buildJob(
-                jobName = "stress-test-123",
-                image = "ghcr.io/apache/cassandra-easy-stress:latest",
-                contactPoints = "10.0.1.6,10.0.1.7",
-                args = listOf("run", "KeyValue", "-d", "1h"),
+                StressJobConfig(
+                    jobName = "stress-test-123",
+                    image = "ghcr.io/apache/cassandra-easy-stress:latest",
+                    contactPoints = "10.0.1.6,10.0.1.7",
+                    args = listOf("run", "KeyValue", "-d", "1h"),
+                ),
             )
 
         val stress =
@@ -119,10 +124,12 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
     fun `buildJob should configure otel-sidecar container with env vars and resources`() {
         val job =
             service.buildJob(
-                jobName = "stress-test-123",
-                image = "ghcr.io/apache/cassandra-easy-stress:latest",
-                contactPoints = "10.0.1.6",
-                args = listOf("run", "KeyValue"),
+                StressJobConfig(
+                    jobName = "stress-test-123",
+                    image = "ghcr.io/apache/cassandra-easy-stress:latest",
+                    contactPoints = "10.0.1.6",
+                    args = listOf("run", "KeyValue"),
+                ),
             )
 
         val sidecar =
@@ -166,10 +173,12 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
     fun `buildJob should include otel-sidecar config volume and mount`() {
         val job =
             service.buildJob(
-                jobName = "stress-test-123",
-                image = "ghcr.io/apache/cassandra-easy-stress:latest",
-                contactPoints = "10.0.1.6",
-                args = listOf("run", "KeyValue"),
+                StressJobConfig(
+                    jobName = "stress-test-123",
+                    image = "ghcr.io/apache/cassandra-easy-stress:latest",
+                    contactPoints = "10.0.1.6",
+                    args = listOf("run", "KeyValue"),
+                ),
             )
 
         val volumes = job.spec.template.spec.volumes
@@ -189,10 +198,12 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
     fun `buildJob should use correct nodeSelector matching ServerType`() {
         val job =
             service.buildJob(
-                jobName = "stress-test-123",
-                image = "ghcr.io/apache/cassandra-easy-stress:latest",
-                contactPoints = "10.0.1.6",
-                args = listOf("run", "KeyValue"),
+                StressJobConfig(
+                    jobName = "stress-test-123",
+                    image = "ghcr.io/apache/cassandra-easy-stress:latest",
+                    contactPoints = "10.0.1.6",
+                    args = listOf("run", "KeyValue"),
+                ),
             )
 
         val nodeSelector = job.spec.template.spec.nodeSelector
@@ -205,10 +216,12 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
     fun `buildJob should set correct job metadata and spec`() {
         val job =
             service.buildJob(
-                jobName = "stress-test-123",
-                image = "ghcr.io/apache/cassandra-easy-stress:latest",
-                contactPoints = "10.0.1.6",
-                args = listOf("run", "KeyValue"),
+                StressJobConfig(
+                    jobName = "stress-test-123",
+                    image = "ghcr.io/apache/cassandra-easy-stress:latest",
+                    contactPoints = "10.0.1.6",
+                    args = listOf("run", "KeyValue"),
+                ),
             )
 
         assertThat(job.metadata.name).isEqualTo("stress-test-123")
@@ -242,11 +255,13 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
     fun `buildJob should include custom tags in OTEL_RESOURCE_ATTRIBUTES`() {
         val job =
             service.buildJob(
-                jobName = "stress-test-123",
-                image = "ghcr.io/apache/cassandra-easy-stress:latest",
-                contactPoints = "10.0.1.6",
-                args = listOf("run", "KeyValue"),
-                tags = mapOf("env" to "production", "team" to "platform"),
+                StressJobConfig(
+                    jobName = "stress-test-123",
+                    image = "ghcr.io/apache/cassandra-easy-stress:latest",
+                    contactPoints = "10.0.1.6",
+                    args = listOf("run", "KeyValue"),
+                    tags = mapOf("env" to "production", "team" to "platform"),
+                ),
             )
 
         val sidecar =
@@ -290,11 +305,13 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
     fun `buildJob should set CASSANDRA_EASY_STRESS_PROM_PORT on stress container`() {
         val job =
             service.buildJob(
-                jobName = "keyvalue-1",
-                image = "ghcr.io/apache/cassandra-easy-stress:latest",
-                contactPoints = "10.0.1.6",
-                args = listOf("run", "KeyValue"),
-                promPort = 9501,
+                StressJobConfig(
+                    jobName = "keyvalue-1",
+                    image = "ghcr.io/apache/cassandra-easy-stress:latest",
+                    contactPoints = "10.0.1.6",
+                    args = listOf("run", "KeyValue"),
+                    promPort = 9501,
+                ),
             )
 
         val stress =
@@ -308,11 +325,13 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
     fun `buildJob should set STRESS_PROM_PORT on otel-sidecar container`() {
         val job =
             service.buildJob(
-                jobName = "keyvalue-1",
-                image = "ghcr.io/apache/cassandra-easy-stress:latest",
-                contactPoints = "10.0.1.6",
-                args = listOf("run", "KeyValue"),
-                promPort = 9502,
+                StressJobConfig(
+                    jobName = "keyvalue-1",
+                    image = "ghcr.io/apache/cassandra-easy-stress:latest",
+                    contactPoints = "10.0.1.6",
+                    args = listOf("run", "KeyValue"),
+                    promPort = 9502,
+                ),
             )
 
         val sidecar =
@@ -342,10 +361,12 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
     fun `buildJob should include pyroscope hostPath volume`() {
         val job =
             service.buildJob(
-                jobName = "stress-test-123",
-                image = "ghcr.io/apache/cassandra-easy-stress:latest",
-                contactPoints = "10.0.1.6",
-                args = listOf("run", "KeyValue"),
+                StressJobConfig(
+                    jobName = "stress-test-123",
+                    image = "ghcr.io/apache/cassandra-easy-stress:latest",
+                    contactPoints = "10.0.1.6",
+                    args = listOf("run", "KeyValue"),
+                ),
             )
 
         val volumes = job.spec.template.spec.volumes
@@ -358,10 +379,12 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
     fun `buildJob should mount pyroscope volume in stress container as read-only`() {
         val job =
             service.buildJob(
-                jobName = "stress-test-123",
-                image = "ghcr.io/apache/cassandra-easy-stress:latest",
-                contactPoints = "10.0.1.6",
-                args = listOf("run", "KeyValue"),
+                StressJobConfig(
+                    jobName = "stress-test-123",
+                    image = "ghcr.io/apache/cassandra-easy-stress:latest",
+                    contactPoints = "10.0.1.6",
+                    args = listOf("run", "KeyValue"),
+                ),
             )
 
         val stress =
@@ -376,10 +399,12 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
     fun `buildJob should set JAVA_TOOL_OPTIONS with pyroscope agent config`() {
         val job =
             service.buildJob(
-                jobName = "stress-test-123",
-                image = "ghcr.io/apache/cassandra-easy-stress:latest",
-                contactPoints = "10.0.1.6",
-                args = listOf("run", "KeyValue"),
+                StressJobConfig(
+                    jobName = "stress-test-123",
+                    image = "ghcr.io/apache/cassandra-easy-stress:latest",
+                    contactPoints = "10.0.1.6",
+                    args = listOf("run", "KeyValue"),
+                ),
             )
 
         val stress =

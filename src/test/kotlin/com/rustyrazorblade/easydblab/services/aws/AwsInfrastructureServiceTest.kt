@@ -512,7 +512,7 @@ class AwsInfrastructureServiceTest {
                         }
                     }
 
-                    override fun close() {}
+                    override fun close() = Unit
                 },
             )
             val throwingService =

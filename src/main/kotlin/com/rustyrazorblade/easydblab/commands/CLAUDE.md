@@ -103,7 +103,7 @@ class MyCommand(context: Context) : PicoBaseCommand(context) {
 
 ### 3. Use Annotations
 
-- `@McpCommand` - Expose command to MCP server for AI agents
+- `@McpCommand` - Expose command as an MCP tool in the server
 - `@RequireProfileSetup` - Require AWS profile configuration
 - `@RequireSSHKey` - Require SSH key to be available
 
@@ -123,7 +123,7 @@ commandLine.addSubcommand("parent", parentCommand)
 
 ## Annotations
 
-- `@McpCommand` — expose command to MCP server for AI agents (must also add to `McpToolRegistry`)
+- `@McpCommand` — expose command as an MCP tool in the server (must also add to `McpToolRegistry`)
 - `@RequireProfileSetup` — require AWS profile configuration before execution
 - `@RequireSSHKey` — require SSH key to be available
 - `@TriggerBackup` — trigger a cluster state backup after execution
@@ -131,7 +131,7 @@ commandLine.addSubcommand("parent", parentCommand)
 
 ## Special Long-Running Commands
 
-- **`Server`** — starts MCP server (Ktor + SSE). Does not exit until stopped.
+- **`Server`** — starts the server (MCP + REST + background services via Ktor). Does not exit until stopped.
 - **`Repl`** — starts interactive REPL. Does not exit until user quits.
 
 Both set `context.isInteractive = true` to keep resources (like CQL sessions) alive across invocations.

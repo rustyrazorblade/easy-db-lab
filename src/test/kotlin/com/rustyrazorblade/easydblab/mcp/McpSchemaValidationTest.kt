@@ -32,140 +32,187 @@ class McpSchemaValidationTest : BaseKoinTest() {
             val issues = mutableListOf<String>()
             val schema = tool.inputSchema
 
-            // Check 1: Must have type field at root
-            if (!schema.containsKey("type")) {
-                issues.add("Missing root 'type' field")
-            }
-
-            // Check 2: Must have properties field (even if empty)
-            if (!schema.containsKey("properties")) {
-                issues.add("Missing 'properties' field")
-            }
-
-            // Check 3: additionalProperties should be boolean, not string
-            val additionalProps = schema["additionalProperties"]
-            if (additionalProps != null && additionalProps !is JsonPrimitive) {
-                issues.add("additionalProperties must be a boolean primitive")
-            }
+            validateRootSchema(schema, issues)
 
             val properties = schema["properties"]?.jsonObject
             if (properties != null) {
-                properties.forEach { (propName, propValue) ->
-                    val prop = propValue.jsonObject
-
-                    // Check 4: Each property must have a type
-                    if (!prop.containsKey("type")) {
-                        issues.add("Property '$propName' missing 'type' field")
-                    }
-
-                    // Check 5: If enum is present, it must be an array
-                    val enumField = prop["enum"]
-                    if (enumField != null && enumField !is JsonArray) {
-                        issues.add("Property '$propName' has invalid 'enum' field (must be array)")
-                    }
-
-                    // Check 6: Default value must match the type
-                    val type = prop["type"]?.jsonPrimitive?.content
-                    val defaultValue = prop["default"]
-                    if (defaultValue != null && type != null) {
-                        when (type) {
-                            "string" -> {
-                                if (defaultValue !is JsonPrimitive || !defaultValue.isString) {
-                                    issues.add(
-                                        "Property '$propName' has non-string default for string type",
-                                    )
-                                }
-                            }
-                            "number" -> {
-                                if (defaultValue !is JsonPrimitive ||
-                                    defaultValue.doubleOrNull == null
-                                ) {
-                                    issues.add(
-                                        "Property '$propName' has non-number default for number type",
-                                    )
-                                }
-                            }
-                            "boolean" -> {
-                                if (defaultValue !is JsonPrimitive ||
-                                    defaultValue.booleanOrNull == null
-                                ) {
-                                    issues.add(
-                                        "Property '$propName' has non-boolean default for boolean type",
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    // Check 7: If enum exists, default must be one of the enum values
-                    if (enumField is JsonArray && defaultValue != null) {
-                        val enumValues = enumField.map { it.jsonPrimitive.content }
-                        val defaultStr = defaultValue.jsonPrimitive.content
-                        if (defaultStr !in enumValues) {
-                            issues.add(
-                                "Property '$propName' default '$defaultStr' not in enum values: $enumValues",
-                            )
-                        }
-                    }
-
-                    // Check 8: Look for nested objects that might need $ref or proper definitions
-                    if (type == "object" && !prop.containsKey("properties")) {
-                        issues.add(
-                            "Property '$propName' is type 'object' but missing 'properties' definition",
-                        )
-                    }
-
-                    // Check 9: Description should be a string
-                    val description = prop["description"]
-                    if (description != null &&
-                        (description !is JsonPrimitive || !description.isString)
-                    ) {
-                        issues.add("Property '$propName' has non-string description")
-                    }
-                }
+                validateProperties(properties, issues)
             }
 
-            // Check 10: If required field exists, it must be an array of strings
-            val required = schema["required"]
-            if (required != null) {
-                if (required !is JsonArray) {
-                    issues.add("'required' field must be an array")
-                } else {
-                    required.forEach { item ->
-                        if (item !is JsonPrimitive || !item.isString) {
-                            issues.add("'required' array contains non-string value")
-                        }
-                        // Check that required fields actually exist in properties
-                        val reqField = item.jsonPrimitive.content
-                        if (properties != null && !properties.containsKey(reqField)) {
-                            issues.add("Required field '$reqField' not found in properties")
-                        }
-                    }
-                }
-            }
+            validateRequiredField(schema, properties, issues)
 
             if (issues.isNotEmpty()) {
-                println("Tool $index (${tool.name}) - ${issues.size} issues:")
-                issues.forEach { println("  - $it") }
-                println()
+                printIssues(index, tool.name, schema, issues)
                 issueCount++
-
-                // Print the problematic schema for debugging
-                if (index == 15) {
-                    println("Full schema for tool 15:")
-                    println(
-                        Json { prettyPrint = true }
-                            .encodeToString(JsonObject.serializer(), schema),
-                    )
-                    println()
-                }
             }
         }
 
         if (issueCount == 0) {
-            println("✓ All tools pass JSON Schema 2020-12 compliance checks")
+            println("All tools pass JSON Schema 2020-12 compliance checks")
         } else {
             println("Found issues in $issueCount tools")
+        }
+    }
+
+    private fun validateRootSchema(
+        schema: JsonObject,
+        issues: MutableList<String>,
+    ) {
+        if (!schema.containsKey("type")) {
+            issues.add("Missing root 'type' field")
+        }
+        if (!schema.containsKey("properties")) {
+            issues.add("Missing 'properties' field")
+        }
+        val additionalProps = schema["additionalProperties"]
+        if (additionalProps != null && additionalProps !is JsonPrimitive) {
+            issues.add("additionalProperties must be a boolean primitive")
+        }
+    }
+
+    private fun validateProperties(
+        properties: JsonObject,
+        issues: MutableList<String>,
+    ) {
+        properties.forEach { (propName, propValue) ->
+            val prop = propValue.jsonObject
+            validatePropertyType(prop, propName, issues)
+            validatePropertyEnum(prop, propName, issues)
+            validatePropertyDefault(prop, propName, issues)
+            validateEnumDefault(prop, propName, issues)
+            validateNestedObject(prop, propName, issues)
+            validateDescription(prop, propName, issues)
+        }
+    }
+
+    private fun validatePropertyType(
+        prop: JsonObject,
+        propName: String,
+        issues: MutableList<String>,
+    ) {
+        if (!prop.containsKey("type")) {
+            issues.add("Property '$propName' missing 'type' field")
+        }
+    }
+
+    private fun validatePropertyEnum(
+        prop: JsonObject,
+        propName: String,
+        issues: MutableList<String>,
+    ) {
+        val enumField = prop["enum"]
+        if (enumField != null && enumField !is JsonArray) {
+            issues.add("Property '$propName' has invalid 'enum' field (must be array)")
+        }
+    }
+
+    private fun validatePropertyDefault(
+        prop: JsonObject,
+        propName: String,
+        issues: MutableList<String>,
+    ) {
+        val type = prop["type"]?.jsonPrimitive?.content ?: return
+        val defaultValue = prop["default"] ?: return
+
+        when (type) {
+            "string" -> {
+                if (defaultValue !is JsonPrimitive || !defaultValue.isString) {
+                    issues.add("Property '$propName' has non-string default for string type")
+                }
+            }
+            "number" -> {
+                if (defaultValue !is JsonPrimitive || defaultValue.doubleOrNull == null) {
+                    issues.add("Property '$propName' has non-number default for number type")
+                }
+            }
+            "boolean" -> {
+                if (defaultValue !is JsonPrimitive || defaultValue.booleanOrNull == null) {
+                    issues.add("Property '$propName' has non-boolean default for boolean type")
+                }
+            }
+        }
+    }
+
+    private fun validateEnumDefault(
+        prop: JsonObject,
+        propName: String,
+        issues: MutableList<String>,
+    ) {
+        val enumField = prop["enum"]
+        val defaultValue = prop["default"]
+        if (enumField is JsonArray && defaultValue != null) {
+            val enumValues = enumField.map { it.jsonPrimitive.content }
+            val defaultStr = defaultValue.jsonPrimitive.content
+            if (defaultStr !in enumValues) {
+                issues.add(
+                    "Property '$propName' default '$defaultStr' not in enum values: $enumValues",
+                )
+            }
+        }
+    }
+
+    private fun validateNestedObject(
+        prop: JsonObject,
+        propName: String,
+        issues: MutableList<String>,
+    ) {
+        val type = prop["type"]?.jsonPrimitive?.content
+        if (type == "object" && !prop.containsKey("properties")) {
+            issues.add(
+                "Property '$propName' is type 'object' but missing 'properties' definition",
+            )
+        }
+    }
+
+    private fun validateDescription(
+        prop: JsonObject,
+        propName: String,
+        issues: MutableList<String>,
+    ) {
+        val description = prop["description"]
+        if (description != null && (description !is JsonPrimitive || !description.isString)) {
+            issues.add("Property '$propName' has non-string description")
+        }
+    }
+
+    private fun validateRequiredField(
+        schema: JsonObject,
+        properties: JsonObject?,
+        issues: MutableList<String>,
+    ) {
+        val required = schema["required"] ?: return
+        if (required !is JsonArray) {
+            issues.add("'required' field must be an array")
+            return
+        }
+        required.forEach { item ->
+            if (item !is JsonPrimitive || !item.isString) {
+                issues.add("'required' array contains non-string value")
+            }
+            val reqField = item.jsonPrimitive.content
+            if (properties != null && !properties.containsKey(reqField)) {
+                issues.add("Required field '$reqField' not found in properties")
+            }
+        }
+    }
+
+    private fun printIssues(
+        index: Int,
+        toolName: String,
+        schema: JsonObject,
+        issues: List<String>,
+    ) {
+        println("Tool $index ($toolName) - ${issues.size} issues:")
+        issues.forEach { println("  - $it") }
+        println()
+
+        if (index == 15) {
+            println("Full schema for tool 15:")
+            println(
+                Json { prettyPrint = true }
+                    .encodeToString(JsonObject.serializer(), schema),
+            )
+            println()
         }
     }
 }

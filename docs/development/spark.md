@@ -4,148 +4,102 @@ This guide covers developing and testing Spark-related functionality in easy-db-
 
 ## Project Structure
 
-```
-bulk-writer/                    # Spark application for bulk loading Cassandra
-├── build.gradle.kts           # Gradle build with shadow plugin
-└── src/main/java/             # Java source code
-    └── com/rustyrazorblade/easydblab/spark/
-        ├── DirectBulkWriter.java   # Direct sidecar connection mode
-        └── S3BulkWriter.java       # S3 staging mode
+All Spark modules live under `spark/` with shared configuration:
 
-bin/
-├── build-cassandra-analytics  # Builds cassandra-analytics (JDK 11)
-├── submit-direct-bulk-writer  # Test script for DirectBulkWriter
-└── debug-log-pipeline         # Debug Victoria Logs pipeline
+- `spark/common/` — Shared config (`SparkJobConfig`), data generation (`BulkTestDataGenerator`), CQL setup
+- `spark/bulk-writer-sidecar/` — Cassandra Analytics, direct sidecar transport (`DirectBulkWriter`)
+- `spark/bulk-writer-s3/` — Cassandra Analytics, S3 staging transport (`S3BulkWriter`)
+- `spark/connector-writer/` — Standard Spark Cassandra Connector (`StandardConnectorWriter`)
+- `spark/connector-read-write/` — Read→transform→write example (`KeyValuePrefixCount`)
 
-.cassandra-analytics/          # Cloned cassandra-analytics repo (gitignored)
-```
+Gradle modules use nested paths: `:spark:common`, `:spark:bulk-writer-sidecar`, etc.
 
 ## Prerequisites
 
-The `bulk-writer` module depends on [Apache Cassandra Analytics](https://github.com/apache/cassandra-analytics), which requires JDK 11 to build. A Docker-based script handles this automatically.
+The bulk-writer modules depend on [Apache Cassandra Analytics](https://github.com/apache/cassandra-analytics), which requires JDK 11 to build.
 
 ### One-Time Setup
-
-Build cassandra-analytics locally (required before bulk-writer will compile):
 
 ```bash
 bin/build-cassandra-analytics
 ```
 
-This script:
-1. Clones `apache/cassandra-analytics` to `.cassandra-analytics/`
-2. Builds inside Docker with JDK 11
-3. Publishes to local Maven repository (`~/.m2/repository`)
-
 Options:
 - `--force` - Rebuild even if already built
 - `--branch <branch>` - Use a specific branch (default: trunk)
 
-## Building the Bulk Writer
-
-After cassandra-analytics is built:
+## Building
 
 ```bash
-# Build the fat JAR
-./gradlew :bulk-writer:shadowJar
+# Build all Spark modules
+./gradlew :spark:bulk-writer-sidecar:shadowJar :spark:bulk-writer-s3:shadowJar \
+  :spark:connector-writer:shadowJar :spark:connector-read-write:shadowJar
 
-# Output location
-ls bulk-writer/build/libs/bulk-writer-*.jar
+# Build individually
+./gradlew :spark:bulk-writer-sidecar:shadowJar
+./gradlew :spark:connector-writer:shadowJar
+
+# Output locations
+ls spark/bulk-writer-sidecar/build/libs/bulk-writer-sidecar-*.jar
+ls spark/connector-writer/build/libs/connector-writer-*.jar
 ```
 
-The shadow JAR includes all dependencies except Spark (which is provided by EMR).
+Shadow JARs include all dependencies except Spark (provided by EMR).
 
 ## Running Tests
 
-The main project tests exclude the bulk-writer module to avoid requiring the cassandra-analytics build:
+Main project tests exclude bulk-writer modules to avoid requiring cassandra-analytics:
 
 ```bash
-# Run main project tests (works without cassandra-analytics)
 ./gradlew :test
-
-# Run specific test class
-./gradlew :test --tests "EMRSparkServiceTest"
 ```
 
 ## Testing with a Live Cluster
 
-### Using bin/submit-direct-bulk-writer
+### Using bin/spark-bulk-write
 
-This script automates the bulk writer test workflow:
+This script handles JAR lookup, host resolution, and health checks:
 
 ```bash
-bin/submit-direct-bulk-writer [rowCount] [parallelism] [replicationFactor]
+# From a cluster directory (where state.json exists)
+spark-bulk-write direct --rows 10000
+spark-bulk-write s3 --rows 1000000 --parallelism 20
+spark-bulk-write connector --keyspace myks --table mytable
 ```
 
-The script:
-1. Builds the bulk-writer JAR
-2. Reads cluster configuration from `state.json`
-3. Uploads JAR to S3
-4. Submits the Spark job to EMR
-5. Waits for completion
-6. **Automatically downloads and displays logs on failure**
-7. Verifies data on success
+### Using bin/submit-direct-bulk-writer
 
-Example:
+Simplified script for direct bulk writer testing:
+
 ```bash
-# Default: 1000 rows, 4 partitions, RF=1
-bin/submit-direct-bulk-writer
-
-# Custom parameters
-bin/submit-direct-bulk-writer 100000 10 3
+bin/submit-direct-bulk-writer [rowCount] [parallelism] [partitionCount] [replicationFactor]
 ```
 
 ### Manual Spark Job Submission
 
+All modules use unified `spark.easydblab.*` configuration:
+
 ```bash
-# Submit with wait (blocks until completion)
 easy-db-lab spark submit \
-    --jar bulk-writer/build/libs/bulk-writer-*.jar \
+    --jar spark/bulk-writer-sidecar/build/libs/bulk-writer-sidecar-*.jar \
     --main-class com.rustyrazorblade.easydblab.spark.DirectBulkWriter \
-    --conf spark.easydblab.sidecar.contactPoints=host1,host2 \
+    --conf spark.easydblab.contactPoints=host1,host2 \
     --conf spark.easydblab.keyspace=bulk_test \
-    --conf spark.easydblab.table=data \
     --conf spark.easydblab.localDc=us-west-2 \
     --conf spark.easydblab.rowCount=1000 \
     --conf spark.easydblab.replicationFactor=1 \
-    --wait
-
-# Submit without wait (returns immediately)
-easy-db-lab spark submit \
-    --jar bulk-writer/build/libs/bulk-writer-*.jar \
-    --main-class com.rustyrazorblade.easydblab.spark.DirectBulkWriter \
-    --conf spark.easydblab.sidecar.contactPoints=host1,host2 \
-    --conf spark.easydblab.keyspace=bulk_test \
-    --conf spark.easydblab.localDc=us-west-2
-
-# Submit using a JAR already on S3
-easy-db-lab spark submit \
-    --jar s3://my-bucket/jars/bulk-writer-0.1.jar \
-    --main-class com.rustyrazorblade.easydblab.spark.DirectBulkWriter \
-    --conf spark.easydblab.sidecar.contactPoints=host1,host2 \
-    --conf spark.easydblab.keyspace=bulk_test \
-    --conf spark.easydblab.localDc=us-west-2 \
     --wait
 ```
 
 ## Debugging Failed Jobs
 
-When a Spark job fails, easy-db-lab automatically:
-
-1. Queries Victoria Logs for step-specific logs
-2. Downloads stderr and stdout from S3
-3. Displays the last 100 lines of stderr
+When a Spark job fails, easy-db-lab automatically queries logs and displays failure details.
 
 ### Manual Log Retrieval
 
 ```bash
-# Download logs for a specific step
 easy-db-lab spark logs --step-id <step-id>
-
-# Check job status
 easy-db-lab spark status --step-id <step-id>
-
-# List recent jobs
 easy-db-lab spark jobs
 ```
 
@@ -154,69 +108,31 @@ easy-db-lab spark jobs
 Logs are stored at: `s3://<bucket>/spark/emr-logs/<cluster-id>/steps/<step-id>/`
 
 ```bash
-# View stderr directly
 aws s3 cp s3://<bucket>/spark/emr-logs/<cluster-id>/steps/<step-id>/stderr.gz - | gunzip
-
-# Download all step logs
-aws s3 sync s3://<bucket>/spark/emr-logs/<cluster-id>/steps/<step-id>/ ./logs/
 ```
 
-## EMRSparkService
+## Adding a New Spark Module
 
-The `EMRSparkService` class (`providers/aws/EMRSparkService.kt`) handles all Spark/EMR operations:
-
-| Method | Description |
-|--------|-------------|
-| `submitJob()` | Submits a Spark job to EMR |
-| `waitForJobCompletion()` | Polls until job completes, auto-downloads logs on failure |
-| `getJobStatus()` | Returns current job state |
-| `listJobs()` | Lists recent jobs on the cluster |
-| `getStepLogs()` | Downloads specific log type (stdout/stderr) |
-| `downloadStepLogs()` | Downloads and displays all logs for a step |
-
-### Polling Configuration
-
-See `Constants.kt` for tunable values:
-
-| Constant | Value | Description |
-|----------|-------|-------------|
-| `EMR.POLL_INTERVAL_MS` | 5000 | Poll interval during job wait |
-| `EMR.MAX_POLL_TIMEOUT_MS` | 4 hours | Maximum wait time |
-| `EMR.LOG_INTERVAL_POLLS` | 12 | Log status every N polls (~60s) |
-| `EMR.STDERR_TAIL_LINES` | 100 | Lines to display on failure |
-
-## Common Issues
-
-### Build Failure: Missing cassandra-analytics
-
-```
-Could not find org.apache.cassandra:cassandra-analytics-core_spark3_2.12:0.3-SNAPSHOT
-```
-
-**Solution**: Run `bin/build-cassandra-analytics` to build and install the dependency locally.
-
-### Spark Job Fails with No Logs
-
-EMR logs may take 30-60 seconds to upload to S3 after job completion. The `downloadStepLogs()` method retries automatically. If logs still aren't available:
-
-```bash
-# Wait and retry manually
-sleep 60
-easy-db-lab spark logs --step-id <step-id>
-```
-
-### Sidecar Connection Refused
-
-The bulk writer connects to Cassandra Sidecar on port 9043. Ensure:
-1. Sidecar is running on Cassandra nodes
-2. Security groups allow port 9043 from EMR nodes
-3. Correct internal IPs are being used (not public IPs)
+1. Create a directory under `spark/` (e.g., `spark/bulk-reader/`)
+2. Add `build.gradle.kts` — use an existing module as a template
+3. Add `include "spark:bulk-reader"` to `settings.gradle`
+4. Depend on `:spark:common` for shared config
+5. Use `SparkJobConfig.load(sparkConf)` for configuration
+6. Implement your main class and submit via `easy-db-lab spark submit`
 
 ## Architecture Notes
 
+### Shared Configuration
+
+`SparkJobConfig` in `spark/common` provides:
+- Property constants (`PROP_CONTACT_POINTS`, etc.)
+- Config loading from `SparkConf` with validation
+- Schema setup via `CqlSetup`
+- Consistent defaults across all modules
+
 ### Why Shadow JAR?
 
-The bulk-writer uses the Gradle Shadow plugin to create a fat JAR because:
+Bulk-writer modules use the Gradle Shadow plugin because:
 1. EMR provides Spark, so those dependencies are `compileOnly`
 2. Cassandra Analytics has many transitive dependencies
 3. `mergeServiceFiles()` properly handles `META-INF/services` for SPI

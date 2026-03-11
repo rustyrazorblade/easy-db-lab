@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
+import com.rustyrazorblade.easydblab.configuration.getControlHost
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.VictoriaStreamService
 import org.koin.core.component.inject

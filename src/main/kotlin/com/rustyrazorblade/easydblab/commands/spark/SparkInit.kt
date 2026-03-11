@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.EMRProvisioningService
+import com.rustyrazorblade.easydblab.services.EmrClusterProvisioningConfig
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
@@ -88,15 +89,17 @@ class SparkInit : PicoBaseCommand() {
 
         val emrCluster =
             emrProvisioningService.provisionEmrCluster(
-                clusterName = state.initConfig!!.name,
-                masterInstanceType = masterInstanceType,
-                workerInstanceType = workerInstanceType,
-                workerCount = workerCount,
-                subnetId = infrastructure.subnetIds.first(),
-                securityGroupId = securityGroupId,
-                keyName = user.keyName,
-                clusterState = state,
-                tags = tags,
+                EmrClusterProvisioningConfig(
+                    clusterName = state.initConfig!!.name,
+                    masterInstanceType = masterInstanceType,
+                    workerInstanceType = workerInstanceType,
+                    workerCount = workerCount,
+                    subnetId = infrastructure.subnetIds.first(),
+                    securityGroupId = securityGroupId,
+                    keyName = user.keyName,
+                    clusterState = state,
+                    tags = tags,
+                ),
             )
 
         state.updateEmrCluster(emrCluster)

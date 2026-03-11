@@ -37,11 +37,11 @@ This page documents the ports used by easy-db-lab and the services it provisions
 | 9400 | Beyla eBPF metrics (Prometheus) |
 | 9435 | ebpf_exporter metrics (Prometheus) |
 
-## MCP Server
+## Server
 
 | Port | Purpose |
 |------|---------|
-| 8080 | Default MCP server port (configurable via `--port`) |
+| 8080 | Default server port (configurable via `--port`) |
 
 ## SSH
 

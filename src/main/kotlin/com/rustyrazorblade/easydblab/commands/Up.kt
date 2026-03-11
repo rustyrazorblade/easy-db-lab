@@ -14,6 +14,9 @@ import com.rustyrazorblade.easydblab.configuration.InfrastructureState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.clusterPrefix
+import com.rustyrazorblade.easydblab.configuration.dataBucketName
+import com.rustyrazorblade.easydblab.configuration.metricsConfigId
 import com.rustyrazorblade.easydblab.configuration.toHost
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredInstance
@@ -29,6 +32,8 @@ import com.rustyrazorblade.easydblab.services.K3sClusterConfig
 import com.rustyrazorblade.easydblab.services.K3sClusterService
 import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.OptionalServicesConfig
+import com.rustyrazorblade.easydblab.services.ProvisioningCallbacks
+import com.rustyrazorblade.easydblab.services.ProvisioningResult
 import com.rustyrazorblade.easydblab.services.RegistryService
 import com.rustyrazorblade.easydblab.services.aws.AMIResolver
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
@@ -238,31 +243,12 @@ class Up : PicoBaseCommand() {
     private fun provisionInfrastructure(initConfig: InitConfig) {
         eventBus.emit(Event.Provision.InfrastructureStarting)
 
-        // Create VPC if needed, or validate existing one
         val vpcId = createOrValidateVpc(initConfig)
-
-        // Set up VPC networking (subnets, security groups, internet gateway)
-        val availabilityZones =
-            initConfig.azs.ifEmpty {
-                listOf("a", "b", "c")
-            }
-        val vpcNetworkingConfig =
-            VpcNetworkingConfig(
-                vpcId = vpcId,
-                clusterName = initConfig.name,
-                clusterId = workingState.clusterId,
-                region = initConfig.region,
-                availabilityZones = availabilityZones,
-                isOpen = initConfig.open,
-                tags = initConfig.tags,
-                vpcCidr = initConfig.cidr,
-            )
-        val vpcInfra = awsInfrastructureService.setupVpcNetworking(vpcNetworkingConfig) { getExternalIpAddress() }
+        val vpcInfra = setupVpcNetworking(initConfig, vpcId)
         val subnetIds = vpcInfra.subnetIds
         val securityGroupId = vpcInfra.securityGroupId
         val igwId = vpcInfra.internetGatewayId
 
-        // Resolve AMI ID
         val amiId =
             amiResolver.resolveAmiId(initConfig.ami, initConfig.arch).getOrElse { error ->
                 error(error.message ?: "Failed to resolve AMI")
@@ -274,54 +260,97 @@ class Up : PicoBaseCommand() {
                 "ClusterId" to workingState.clusterId,
             ) + initConfig.tags
 
-        // Discover existing instances and create specs
-        val existingInstances = ec2InstanceService.findInstancesByClusterId(workingState.clusterId)
-        logExistingInstances(existingInstances)
+        val existingHosts = discoverExistingHosts()
+        val instanceConfig = buildInstanceConfig(initConfig, amiId, securityGroupId, subnetIds, baseTags)
+        val servicesConfig = buildServicesConfig(initConfig, subnetIds, securityGroupId, baseTags)
 
-        // Convert existing instances to ClusterHosts
-        val existingHosts =
-            existingInstances.mapValues { (_, instances) ->
-                instances.map { it.toClusterHost() }
-            }
-
-        // Check if database instance type has local instance store
-        val dbHasInstanceStore = ec2InstanceService.hasInstanceStore(initConfig.instanceType)
-
-        // Create instance specs using factory (validates storage requirements)
-        val instanceSpecs = instanceSpecFactory.createInstanceSpecs(initConfig, existingInstances, dbHasInstanceStore)
-
-        // Configure provisioning
-        val instanceConfig =
-            InstanceProvisioningConfig(
-                specs = instanceSpecs,
-                amiId = amiId,
-                securityGroupId = securityGroupId,
-                subnetIds = subnetIds,
-                tags = baseTags,
-                clusterName = initConfig.name,
-                userConfig = userConfig,
-            )
-
-        val servicesConfig =
-            OptionalServicesConfig(
-                initConfig = initConfig,
-                subnetId = subnetIds.first(),
-                securityGroupId = securityGroupId,
-                tags = baseTags,
-                clusterState = workingState,
-            )
-
-        // Ensure OpenSearch service-linked role exists if needed
         if (initConfig.opensearchEnabled) {
             openSearchService.ensureServiceLinkedRole()
         }
 
-        // Provision all infrastructure in parallel
-        val result =
-            clusterProvisioningService.provisionAll(
-                instanceConfig = instanceConfig,
-                servicesConfig = servicesConfig,
-                existingHosts = existingHosts,
+        val result = executeProvisioning(instanceConfig, servicesConfig, existingHosts)
+        reportProvisioningFailures(result)
+
+        finalizeInfrastructureState(vpcId, subnetIds, securityGroupId, igwId)
+
+        printProvisioningSuccessMessage()
+        eventBus.emit(
+            Event.Provision.ClusterStateUpdated(
+                result.hosts.values
+                    .flatten()
+                    .size,
+            ),
+        )
+    }
+
+    private fun setupVpcNetworking(
+        initConfig: InitConfig,
+        vpcId: String,
+    ) = awsInfrastructureService.setupVpcNetworking(
+        VpcNetworkingConfig(
+            vpcId = vpcId,
+            clusterName = initConfig.name,
+            clusterId = workingState.clusterId,
+            region = initConfig.region,
+            availabilityZones = initConfig.azs.ifEmpty { listOf("a", "b", "c") },
+            isOpen = initConfig.open,
+            tags = initConfig.tags,
+            vpcCidr = initConfig.cidr,
+        ),
+    ) { getExternalIpAddress() }
+
+    private fun discoverExistingHosts(): Map<ServerType, List<ClusterHost>> {
+        val existingInstances = ec2InstanceService.findInstancesByClusterId(workingState.clusterId)
+        logExistingInstances(existingInstances)
+        return existingInstances.mapValues { (_, instances) ->
+            instances.map { it.toClusterHost() }
+        }
+    }
+
+    private fun buildInstanceConfig(
+        initConfig: InitConfig,
+        amiId: String,
+        securityGroupId: String,
+        subnetIds: List<String>,
+        baseTags: Map<String, String>,
+    ): InstanceProvisioningConfig {
+        val existingInstances = ec2InstanceService.findInstancesByClusterId(workingState.clusterId)
+        val dbHasInstanceStore = ec2InstanceService.hasInstanceStore(initConfig.instanceType)
+        val instanceSpecs = instanceSpecFactory.createInstanceSpecs(initConfig, existingInstances, dbHasInstanceStore)
+        return InstanceProvisioningConfig(
+            specs = instanceSpecs,
+            amiId = amiId,
+            securityGroupId = securityGroupId,
+            subnetIds = subnetIds,
+            tags = baseTags,
+            clusterName = initConfig.name,
+            userConfig = userConfig,
+        )
+    }
+
+    private fun buildServicesConfig(
+        initConfig: InitConfig,
+        subnetIds: List<String>,
+        securityGroupId: String,
+        baseTags: Map<String, String>,
+    ) = OptionalServicesConfig(
+        initConfig = initConfig,
+        subnetId = subnetIds.first(),
+        securityGroupId = securityGroupId,
+        tags = baseTags,
+        clusterState = workingState,
+    )
+
+    private fun executeProvisioning(
+        instanceConfig: InstanceProvisioningConfig,
+        servicesConfig: OptionalServicesConfig,
+        existingHosts: Map<ServerType, List<ClusterHost>>,
+    ) = clusterProvisioningService.provisionAll(
+        instanceConfig = instanceConfig,
+        servicesConfig = servicesConfig,
+        existingHosts = existingHosts,
+        callbacks =
+            ProvisioningCallbacks(
                 onHostsCreated = { serverType, hosts ->
                     synchronized(stateLock) {
                         val allHosts = workingState.hosts.toMutableMap()
@@ -343,11 +372,14 @@ class Up : PicoBaseCommand() {
                         clusterStateManager.save(workingState)
                     }
                     eventBus.emit(Event.Provision.OpenSearchReady(osState.endpoint ?: "unknown"))
-                    osState.dashboardsEndpoint?.let { eventBus.emit(Event.Provision.OpenSearchDashboards("Dashboards: $it")) }
+                    osState.dashboardsEndpoint?.let {
+                        eventBus.emit(Event.Provision.OpenSearchDashboards("Dashboards: $it"))
+                    }
                 },
-            )
+            ),
+    )
 
-        // Report any failures
+    private fun reportProvisioningFailures(result: ProvisioningResult) {
         if (result.errors.isNotEmpty()) {
             eventBus.emit(Event.Provision.InfrastructureFailureHeader)
             result.errors.forEach { (resource, error) ->
@@ -358,8 +390,14 @@ class Up : PicoBaseCommand() {
                     result.errors.keys.joinToString(", "),
             )
         }
+    }
 
-        // Update infrastructure state and mark as up
+    private fun finalizeInfrastructureState(
+        vpcId: String,
+        subnetIds: List<String>,
+        securityGroupId: String,
+        igwId: String?,
+    ) {
         synchronized(stateLock) {
             workingState.updateInfrastructure(
                 InfrastructureState(
@@ -373,15 +411,6 @@ class Up : PicoBaseCommand() {
             workingState.markInfrastructureUp()
             clusterStateManager.save(workingState)
         }
-
-        printProvisioningSuccessMessage()
-        eventBus.emit(
-            Event.Provision.ClusterStateUpdated(
-                result.hosts.values
-                    .flatten()
-                    .size,
-            ),
-        )
     }
 
     private fun logExistingInstances(existingInstances: Map<ServerType, List<DiscoveredInstance>>) {

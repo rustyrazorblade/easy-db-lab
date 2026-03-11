@@ -7,7 +7,16 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.cassandra
+import com.rustyrazorblade.easydblab.configuration.clickhouse
+import com.rustyrazorblade.easydblab.configuration.clusterPrefix
+import com.rustyrazorblade.easydblab.configuration.emrLogs
+import com.rustyrazorblade.easydblab.configuration.getAllInstanceIds
+import com.rustyrazorblade.easydblab.configuration.getControlHost
+import com.rustyrazorblade.easydblab.configuration.pyroscope
 import com.rustyrazorblade.easydblab.configuration.s3Path
+import com.rustyrazorblade.easydblab.configuration.spark
+import com.rustyrazorblade.easydblab.configuration.tempo
 import com.rustyrazorblade.easydblab.kubernetes.getLocalKubeconfigPath
 import com.rustyrazorblade.easydblab.providers.aws.InstanceDetails
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
@@ -19,6 +28,7 @@ import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.EMRService
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
 import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
@@ -131,55 +141,37 @@ class StatusCache(
         return serializeSection(response, section)
     }
 
-    @Suppress("CyclomaticComplexity")
+    private val sectionSerializers: Map<String, (StatusResponse) -> String> =
+        mapOf(
+            "cluster" to { r -> json.encodeToString(ClusterInfo.serializer(), r.cluster) },
+            "nodes" to { r -> json.encodeToString(NodesInfo.serializer(), r.nodes) },
+            "networking" to { r -> serializeNullable(NetworkingInfo.serializer(), r.networking) },
+            "securityGroup" to { r -> serializeNullable(SecurityGroupInfo.serializer(), r.securityGroup) },
+            "spark" to { r -> serializeNullable(SparkInfo.serializer(), r.spark) },
+            "opensearch" to { r -> serializeNullable(OpenSearchInfo.serializer(), r.opensearch) },
+            "s3" to { r -> serializeNullable(S3Info.serializer(), r.s3) },
+            "kubernetes" to { r -> serializeNullable(KubernetesInfo.serializer(), r.kubernetes) },
+            "stressJobs" to { r -> serializeNullable(StressInfo.serializer(), r.stressJobs) },
+            "cassandraVersion" to { r -> serializeNullable(CassandraVersionInfo.serializer(), r.cassandraVersion) },
+            "accessInfo" to { r -> serializeNullable(AccessInfo.serializer(), r.accessInfo) },
+        )
+
     private fun serializeSection(
         response: StatusResponse,
         section: String,
-    ): String =
-        when (section) {
-            "cluster" -> json.encodeToString(ClusterInfo.serializer(), response.cluster)
-            "nodes" -> json.encodeToString(NodesInfo.serializer(), response.nodes)
-            "networking" ->
-                response.networking?.let {
-                    json.encodeToString(NetworkingInfo.serializer(), it)
-                } ?: "null"
-            "securityGroup" ->
-                response.securityGroup?.let {
-                    json.encodeToString(SecurityGroupInfo.serializer(), it)
-                } ?: "null"
-            "spark" ->
-                response.spark?.let {
-                    json.encodeToString(SparkInfo.serializer(), it)
-                } ?: "null"
-            "opensearch" ->
-                response.opensearch?.let {
-                    json.encodeToString(OpenSearchInfo.serializer(), it)
-                } ?: "null"
-            "s3" ->
-                response.s3?.let {
-                    json.encodeToString(S3Info.serializer(), it)
-                } ?: "null"
-            "kubernetes" ->
-                response.kubernetes?.let {
-                    json.encodeToString(KubernetesInfo.serializer(), it)
-                } ?: "null"
-            "stressJobs" ->
-                response.stressJobs?.let {
-                    json.encodeToString(StressInfo.serializer(), it)
-                } ?: "null"
-            "cassandraVersion" ->
-                response.cassandraVersion?.let {
-                    json.encodeToString(CassandraVersionInfo.serializer(), it)
-                } ?: "null"
-            "accessInfo" ->
-                response.accessInfo?.let {
-                    json.encodeToString(AccessInfo.serializer(), it)
-                } ?: "null"
-            else ->
-                throw IllegalArgumentException(
+    ): String {
+        val serializer =
+            sectionSerializers[section]
+                ?: throw IllegalArgumentException(
                     "Invalid section: '$section'. Valid sections: ${VALID_SECTIONS.joinToString(", ")}",
                 )
-        }
+        return serializer(response)
+    }
+
+    private fun <T> serializeNullable(
+        serializer: KSerializer<T>,
+        value: T?,
+    ): String = value?.let { json.encodeToString(serializer, it) } ?: "null"
 
     private fun scheduleNextRefresh() {
         timer.purge()

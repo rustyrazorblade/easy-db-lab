@@ -399,13 +399,13 @@ easy-db-lab repl
 
 ### server
 
-Start the MCP server for Claude Code integration.
+Start the server for Claude Code integration, REST status endpoints, and live metrics.
 
 ```bash
 easy-db-lab server
 ```
 
-See [MCP Server Integration](../integrations/mcp-server.md) for details.
+See [Server](../integrations/server.md) for details.
 
 ---
 

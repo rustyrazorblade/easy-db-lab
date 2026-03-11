@@ -46,6 +46,28 @@ class EventSerializationTest {
             Event.Logs.NoLogsFound,
             Event.Metrics.BackupComplete("s3://bucket/metrics"),
             Event.Metrics.NoControlNode,
+            Event.Metrics.System(
+                nodes =
+                    mapOf(
+                        "db-0" to
+                            Event.Metrics.Node(
+                                cpuUsagePct = 34.2,
+                                memoryUsedBytes = 17179869184,
+                                diskReadBytesPerSec = 52428800.0,
+                                diskWriteBytesPerSec = 104857600.0,
+                                filesystemUsedPct = 45.2,
+                            ),
+                    ),
+            ),
+            Event.Metrics.Cassandra(
+                readP99Ms = 1.247,
+                writeP99Ms = 0.832,
+                readOpsPerSec = 15234.5,
+                writeOpsPerSec = 12087.3,
+                compactionPending = 3,
+                compactionCompletedPerSec = 1.5,
+                compactionBytesWrittenPerSec = 52428800.0,
+            ),
             Event.Setup.ProfileAlreadyConfigured("default"),
             Event.Setup.ValidatingCredentials,
             Event.Ssh.ExecutingCommand("ls -la"),

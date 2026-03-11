@@ -12,16 +12,16 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 
 /**
- * Tests for DefaultK8sService.checkForPodFailure which detects terminal pod failures
+ * Tests for K8sPodUtils.checkForPodFailure which detects terminal pod failures
  * like CrashLoopBackOff, Error, ImagePullBackOff, and ErrImagePull.
  */
 class K8sServicePodFailureTest {
     @Test
     fun `checkForPodFailure should throw for each terminal failure reason`() {
-        for (reason in DefaultK8sService.TERMINAL_FAILURE_REASONS) {
+        for (reason in K8sPodUtils.TERMINAL_FAILURE_REASONS) {
             val pod = buildPodWithWaitingContainer("test-pod", "main", reason)
 
-            assertThatThrownBy { DefaultK8sService.checkForPodFailure(pod) }
+            assertThatThrownBy { K8sPodUtils.checkForPodFailure(pod) }
                 .isInstanceOf(IllegalStateException::class.java)
                 .hasMessageContaining("test-pod")
                 .hasMessageContaining(reason)
@@ -47,13 +47,13 @@ class K8sServicePodFailureTest {
                         ).build(),
                 ).build()
 
-        assertThatCode { DefaultK8sService.checkForPodFailure(pod) }
+        assertThatCode { K8sPodUtils.checkForPodFailure(pod) }
             .doesNotThrowAnyException()
     }
 
     @Test
     fun `checkForPodFailure should not throw for null pod`() {
-        assertThatCode { DefaultK8sService.checkForPodFailure(null) }
+        assertThatCode { K8sPodUtils.checkForPodFailure(null) }
             .doesNotThrowAnyException()
     }
 
@@ -61,7 +61,7 @@ class K8sServicePodFailureTest {
     fun `checkForPodFailure should not throw for ContainerCreating`() {
         val pod = buildPodWithWaitingContainer("creating-pod", "main", "ContainerCreating")
 
-        assertThatCode { DefaultK8sService.checkForPodFailure(pod) }
+        assertThatCode { K8sPodUtils.checkForPodFailure(pod) }
             .doesNotThrowAnyException()
     }
 
@@ -87,7 +87,7 @@ class K8sServicePodFailureTest {
                         ).build(),
                 ).build()
 
-        assertThatThrownBy { DefaultK8sService.checkForPodFailure(pod) }
+        assertThatThrownBy { K8sPodUtils.checkForPodFailure(pod) }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("init-fail-pod")
             .hasMessageContaining("init container")
@@ -104,14 +104,14 @@ class K8sServicePodFailureTest {
                 "back-off 5m0s restarting failed container",
             )
 
-        assertThatThrownBy { DefaultK8sService.checkForPodFailure(pod) }
+        assertThatThrownBy { K8sPodUtils.checkForPodFailure(pod) }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("back-off 5m0s restarting failed container")
     }
 
     @Test
     fun `TERMINAL_FAILURE_REASONS should contain all expected reasons`() {
-        assertThat(DefaultK8sService.TERMINAL_FAILURE_REASONS)
+        assertThat(K8sPodUtils.TERMINAL_FAILURE_REASONS)
             .containsExactlyInAnyOrder(
                 "CrashLoopBackOff",
                 "Error",

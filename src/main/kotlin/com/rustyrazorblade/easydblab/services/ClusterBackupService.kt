@@ -2,6 +2,15 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.cassandraConfig
+import com.rustyrazorblade.easydblab.configuration.cassandraPatch
+import com.rustyrazorblade.easydblab.configuration.cassandraVersions
+import com.rustyrazorblade.easydblab.configuration.envScript
+import com.rustyrazorblade.easydblab.configuration.environmentScript
+import com.rustyrazorblade.easydblab.configuration.k8s
+import com.rustyrazorblade.easydblab.configuration.kubeconfig
+import com.rustyrazorblade.easydblab.configuration.setupInstanceScript
+import com.rustyrazorblade.easydblab.configuration.stateJson
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -493,28 +502,15 @@ class DefaultClusterBackupService(
             var filesSkipped = 0
 
             for (target in BackupTarget.entries) {
-                val currentHash = currentHashes[target]
-                val storedHash = storedHashes[target.name]
-
-                // Skip if file doesn't exist
-                if (currentHash == null) {
-                    log.debug { "Skipping ${target.name}: file does not exist" }
-                    continue
+                val result = processBackupTarget(target, currentHashes, storedHashes, workingDirectory, s3Root)
+                when (result) {
+                    BackupTargetResult.SkippedNoFile -> Unit
+                    BackupTargetResult.SkippedUnchanged -> filesSkipped++
+                    is BackupTargetResult.Uploaded -> {
+                        updatedHashes[target.name] = result.hash
+                        filesUploaded++
+                    }
                 }
-
-                // Skip if hash hasn't changed
-                if (currentHash == storedHash) {
-                    log.debug { "Skipping ${target.name}: hash unchanged" }
-                    filesSkipped++
-                    continue
-                }
-
-                // Upload the changed file
-                uploadTarget(workingDirectory, target, s3Root)
-                updatedHashes[target.name] = currentHash
-                filesUploaded++
-
-                log.info { "Backed up ${target.name} (hash changed)" }
             }
 
             IncrementalBackupResult(
@@ -524,6 +520,28 @@ class DefaultClusterBackupService(
                 updatedHashes = updatedHashes,
             )
         }
+
+    private fun processBackupTarget(
+        target: BackupTarget,
+        currentHashes: Map<BackupTarget, String?>,
+        storedHashes: Map<String, String>,
+        workingDirectory: String,
+        s3Root: ClusterS3Path,
+    ): BackupTargetResult {
+        val currentHash = currentHashes[target]
+        if (currentHash == null) {
+            log.debug { "Skipping ${target.name}: file does not exist" }
+            return BackupTargetResult.SkippedNoFile
+        }
+        val storedHash = storedHashes[target.name]
+        if (currentHash == storedHash) {
+            log.debug { "Skipping ${target.name}: hash unchanged" }
+            return BackupTargetResult.SkippedUnchanged
+        }
+        uploadTarget(workingDirectory, target, s3Root)
+        log.info { "Backed up ${target.name} (hash changed)" }
+        return BackupTargetResult.Uploaded(currentHash)
+    }
 
     /**
      * Uploads a specific backup target to S3.
@@ -611,4 +629,14 @@ class DefaultClusterBackupService(
         private val log = KotlinLogging.logger {}
         private const val HASH_BUFFER_SIZE = 8192
     }
+}
+
+private sealed class BackupTargetResult {
+    data object SkippedNoFile : BackupTargetResult()
+
+    data object SkippedUnchanged : BackupTargetResult()
+
+    data class Uploaded(
+        val hash: String,
+    ) : BackupTargetResult()
 }

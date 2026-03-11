@@ -91,7 +91,7 @@ class AwsS3BucketServiceTest : BaseKoinTest() {
                     emitted.add(envelope.event)
                 }
 
-                override fun close() {}
+                override fun close() = Unit
             },
         )
 
@@ -126,7 +126,7 @@ class AwsS3BucketServiceTest : BaseKoinTest() {
                     emitted.add(envelope.event)
                 }
 
-                override fun close() {}
+                override fun close() = Unit
             },
         )
 

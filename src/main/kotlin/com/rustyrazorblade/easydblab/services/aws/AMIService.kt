@@ -327,18 +327,7 @@ class AMIService(
 
         log.info { "Searching for AMI matching pattern: $pattern" }
 
-        val amis =
-            try {
-                Retry
-                    .decorateSupplier(validationRetry) {
-                        listPrivateAMIs(pattern, aws.getAccountId())
-                    }.get()
-            } catch (e: Exception) {
-                throw AMIValidationException.AWSServiceError(
-                    "Failed to query AMIs: ${e.message}",
-                    e,
-                )
-            }
+        val amis = queryAmis(pattern)
 
         if (amis.isEmpty()) {
             displayNoAMIFoundError(pattern, requiredArchitecture)
@@ -377,6 +366,19 @@ class AMIService(
 
         return selectedAMI
     }
+
+    private fun queryAmis(pattern: String): List<AMI> =
+        try {
+            Retry
+                .decorateSupplier(validationRetry) {
+                    listPrivateAMIs(pattern, aws.getAccountId())
+                }.get()
+        } catch (e: Exception) {
+            throw AMIValidationException.AWSServiceError(
+                "Failed to query AMIs: ${e.message}",
+                e,
+            )
+        }
 
     private fun displayNoAMIFoundError(
         pattern: String,

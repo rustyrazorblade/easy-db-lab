@@ -1,7 +1,9 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.datastax.oss.driver.api.core.ConsistencyLevel
 import com.datastax.oss.driver.api.core.CqlSession
 import com.datastax.oss.driver.api.core.cql.ResultSet
+import com.datastax.oss.driver.api.core.cql.SimpleStatement
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.driver.CqlSessionFactory
@@ -56,7 +58,11 @@ class DefaultCqlSessionService(
             val session = getOrCreateSession()
             log.debug { "Executing CQL: ${cql.take(CQL_LOG_PREVIEW_LENGTH)}..." }
 
-            val resultSet = session.execute(cql)
+            val statement =
+                SimpleStatement
+                    .newInstance(cql)
+                    .setConsistencyLevel(ConsistencyLevel.LOCAL_QUORUM)
+            val resultSet = session.execute(statement)
             formatResultSet(resultSet)
         }
 
@@ -124,7 +130,7 @@ class DefaultCqlSessionService(
         // Header
         val headers = (0 until columnDefinitions.size()).map { columnDefinitions[it].name.asCql(false) }
         sb.appendLine(headers.joinToString(" | "))
-        sb.appendLine(headers.map { "-".repeat(it.length.coerceAtLeast(MIN_COLUMN_WIDTH)) }.joinToString("-+-"))
+        sb.appendLine(headers.joinToString("-+-") { "-".repeat(it.length.coerceAtLeast(MIN_COLUMN_WIDTH)) })
 
         // Rows
         for (row in resultSet) {

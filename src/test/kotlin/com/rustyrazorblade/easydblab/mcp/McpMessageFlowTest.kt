@@ -68,7 +68,7 @@ class McpMessageFlowTest : KoinComponent {
     }
 
     @Test
-    fun `test message flow through MCP server`() {
+    fun `test message flow through server`() {
         // Use reflection to access the private messageBuffer field
         val messageBufferField = McpServer::class.java.getDeclaredField("messageBuffer")
         messageBufferField.isAccessible = true

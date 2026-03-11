@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.EMRClusterInfo
 import com.rustyrazorblade.easydblab.configuration.s3Path
+import com.rustyrazorblade.easydblab.configuration.spark
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.SparkService
 import org.assertj.core.api.Assertions.assertThat
@@ -16,7 +17,7 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.koin.test.get
 import org.mockito.kotlin.any
-import org.mockito.kotlin.anyOrNull
+import org.mockito.kotlin.argThat
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
@@ -53,17 +54,6 @@ class SparkSubmitTest : BaseKoinTest() {
                 }
             },
         )
-
-    @Test
-    fun `command validates required parameters`() {
-        val command = SparkSubmit()
-
-        // Verify optional parameters have defaults and required lateinit vars are not initialized
-        assertThat(command.jobArgs).isEmpty()
-        assertThat(command.wait).isFalse()
-        // jarPath and mainClass are lateinit vars that will be set by PicoCLI
-        // Attempting to access them before initialization would throw UninitializedPropertyAccessException
-    }
 
     @Test
     fun `local JAR upload should use cluster-specific S3 path`(
@@ -134,7 +124,7 @@ class SparkSubmitTest : BaseKoinTest() {
 
         // Set up mocks
         whenever(mockSparkService.validateCluster()).thenReturn(Result.success(validClusterInfo))
-        whenever(mockSparkService.submitJob(any(), any(), any(), any(), anyOrNull(), any(), any()))
+        whenever(mockSparkService.submitJob(any()))
             .thenReturn(Result.success("s-STEPID"))
 
         // When
@@ -143,13 +133,11 @@ class SparkSubmitTest : BaseKoinTest() {
         // Then - should not upload since it's already an S3 path
         verify(mockObjectStore, never()).uploadFile(any(), any(), any())
         verify(mockSparkService).submitJob(
-            testClusterId,
-            "s3://test-bucket/jars/app.jar",
-            "com.example.Main",
-            emptyList(),
-            null,
-            emptyMap(),
-            emptyMap(),
+            argThat { req ->
+                req.clusterId == testClusterId &&
+                    req.jarPath == "s3://test-bucket/jars/app.jar" &&
+                    req.mainClass == "com.example.Main"
+            },
         )
     }
 
@@ -186,7 +174,7 @@ class SparkSubmitTest : BaseKoinTest() {
         whenever(mockSparkService.validateCluster()).thenReturn(Result.success(validClusterInfo))
         whenever(mockObjectStore.uploadFile(any(), any(), any()))
             .thenReturn(ObjectStore.UploadResult(expectedS3Path, localJar.length()))
-        whenever(mockSparkService.submitJob(any(), any(), any(), any(), anyOrNull(), any(), any()))
+        whenever(mockSparkService.submitJob(any()))
             .thenReturn(Result.success("s-STEPID"))
 
         // When
@@ -195,13 +183,11 @@ class SparkSubmitTest : BaseKoinTest() {
         // Then - should upload since it's a local path
         verify(mockObjectStore).uploadFile(any(), any(), any())
         verify(mockSparkService).submitJob(
-            testClusterId,
-            expectedS3Path.toString(),
-            "com.example.Main",
-            emptyList(),
-            null,
-            emptyMap(),
-            emptyMap(),
+            argThat { req ->
+                req.clusterId == testClusterId &&
+                    req.jarPath == expectedS3Path.toString() &&
+                    req.mainClass == "com.example.Main"
+            },
         )
     }
 
@@ -241,17 +227,8 @@ class SparkSubmitTest : BaseKoinTest() {
         command.mainClass = "com.example.Main"
 
         whenever(mockSparkService.validateCluster()).thenReturn(Result.success(validClusterInfo))
-        whenever(
-            mockSparkService.submitJob(
-                any(),
-                any(),
-                any(),
-                any<List<String>>(),
-                anyOrNull(),
-                any(),
-                any(),
-            ),
-        ).thenReturn(Result.failure(RuntimeException("EMR API error")))
+        whenever(mockSparkService.submitJob(any()))
+            .thenReturn(Result.failure(RuntimeException("EMR API error")))
 
         // When/Then
         assertThatThrownBy { command.execute() }

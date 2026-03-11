@@ -54,6 +54,7 @@ val servicesModule =
         factoryOf(::EC2RegistryService) bind RegistryService::class
         factoryOf(::DefaultK3sService) bind K3sService::class
         factoryOf(::DefaultK3sAgentService) bind K3sAgentService::class
+        singleOf(::K8sClientProvider)
         factoryOf(::DefaultK8sService) bind K8sService::class
         factoryOf(::ClickHouseManifestBuilder)
         factoryOf(::BeylaManifestBuilder)
@@ -71,6 +72,7 @@ val servicesModule =
         factoryOf(::TemplateService)
         factory<VictoriaBackupService> { DefaultVictoriaBackupService(get(), get()) }
         factoryOf(::DefaultVictoriaStreamService) bind VictoriaStreamService::class
+        singleOf(::DefaultVictoriaMetricsQueryService) bind VictoriaMetricsQueryService::class
         factoryOf(::DefaultSidecarService) bind SidecarService::class
         singleOf(::DefaultStressJobService) bind StressJobService::class
         singleOf(::HostOperationsService)
@@ -135,8 +137,10 @@ val servicesModule =
             DefaultCommandExecutor(
                 get<Context>(),
                 get<ClusterStateManager>(),
-                get<UserConfigProvider>(),
-                get<DockerClientProvider>(),
+                RequirementCheckDeps(
+                    get<UserConfigProvider>(),
+                    get<DockerClientProvider>(),
+                ),
                 get<ResourceManager>(),
                 get<TelemetryProvider>(),
                 get<EventBus>(),

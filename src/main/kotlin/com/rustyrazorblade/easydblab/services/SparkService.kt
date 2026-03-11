@@ -7,6 +7,27 @@ import java.nio.file.Path
 import java.time.Instant
 
 /**
+ * Configuration for submitting a Spark job.
+ *
+ * @property clusterId The EMR cluster ID
+ * @property jarPath S3 path to the JAR file (s3://bucket/key)
+ * @property mainClass Main class to execute
+ * @property jobArgs Arguments to pass to the Spark application
+ * @property jobName Optional job name (defaults to main class)
+ * @property sparkConf Spark configuration properties (passed as --conf key=value)
+ * @property envVars Environment variables (passed to both executor and app master)
+ */
+data class SparkJobRequest(
+    val clusterId: String,
+    val jarPath: String,
+    val mainClass: String,
+    val jobArgs: List<String> = listOf(),
+    val jobName: String? = null,
+    val sparkConf: Map<String, String> = emptyMap(),
+    val envVars: Map<String, String> = emptyMap(),
+)
+
+/**
  * Service for managing Spark job lifecycle on EMR clusters.
  *
  * This service encapsulates all EMR Spark operations including job submission,
@@ -24,24 +45,10 @@ interface SparkService {
     /**
      * Submits a Spark job to the EMR cluster.
      *
-     * @param clusterId The EMR cluster ID
-     * @param jarPath S3 path to the JAR file (s3://bucket/key)
-     * @param mainClass Main class to execute
-     * @param jobArgs Arguments to pass to the Spark application
-     * @param jobName Optional job name (defaults to main class)
-     * @param sparkConf Spark configuration properties (passed as --conf key=value)
-     * @param envVars Environment variables (passed to both executor and app master)
+     * @param request The spark job submission configuration
      * @return Result containing the EMR step ID on success, or error on failure
      */
-    fun submitJob(
-        clusterId: String,
-        jarPath: String,
-        mainClass: String,
-        jobArgs: List<String> = listOf(),
-        jobName: String? = null,
-        sparkConf: Map<String, String> = emptyMap(),
-        envVars: Map<String, String> = emptyMap(),
-    ): Result<String>
+    fun submitJob(request: SparkJobRequest): Result<String>
 
     /**
      * Waits for a Spark job to complete, polling EMR for status updates.

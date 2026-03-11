@@ -48,7 +48,7 @@ class McpServerStreamingTest : KoinTest {
     }
 
     @Test
-    fun `MCP server should maintain semaphore-based single command execution`() {
+    fun `server should maintain semaphore-based single command execution`() {
         val server = McpServer()
 
         // Use reflection to access the private executionSemaphore field for testing
@@ -71,8 +71,8 @@ class McpServerStreamingTest : KoinTest {
     }
 
     @Test
-    fun `MCP server should be instantiable with mock context`() {
-        // This test verifies that we can create an MCP server instance
+    fun `server should be instantiable with mock context`() {
+        // This test verifies that we can create a server instance
         val server = McpServer()
         assertNotNull(server, "Should be able to create McpServer instance")
     }

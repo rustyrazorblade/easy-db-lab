@@ -11,6 +11,6 @@ You are assisting the user run an Apache Cassandra lab environment. The tool cur
 - A user will /provision a new environment if one hasn't been set up already.
 
 **Agent Usage Guidelines:**
-- Use a subagent to make the calls to the easy-db-lab MCP server.
+- Use a subagent to make the calls to the easy-db-lab server.
 - Allow calls to get_server_status without asking permission.
 - Wait 5 seconds between calls to get_server_status

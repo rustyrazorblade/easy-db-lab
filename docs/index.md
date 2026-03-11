@@ -48,7 +48,7 @@ If you're looking for tools to help manage Cassandra in *production* environment
 ### Developer Experience
 
 - **Shell Aliases**: Convenient shortcuts for cluster management (`c0`, `c-all`, `c-status`, etc.)
-- **MCP Server**: Integration with Claude Code for AI-assisted operations
+- **Server**: Integration with Claude Code for AI-assisted operations
 - **Restore Support**: Recover cluster state from VPC ID or S3 backup
 - **SOCKS5 Proxy**: Secure access to private cluster resources
 

@@ -84,8 +84,11 @@ class CommandExecutorTest : BaseKoinTest() {
             DefaultCommandExecutor(
                 context = context,
                 clusterStateManager = mockClusterStateManager,
-                userConfigProvider = mockUserConfigProvider,
-                dockerClientProvider = mockDockerClientProvider,
+                requirementCheckDeps =
+                    RequirementCheckDeps(
+                        userConfigProvider = mockUserConfigProvider,
+                        dockerClientProvider = mockDockerClientProvider,
+                    ),
                 resourceManager = mockResourceManager,
                 telemetryProvider = mockTelemetryProvider,
                 eventBus = EventBus(),

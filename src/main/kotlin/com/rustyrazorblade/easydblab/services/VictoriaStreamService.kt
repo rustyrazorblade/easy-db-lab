@@ -71,7 +71,6 @@ class DefaultVictoriaStreamService(
     private val httpClientFactory: HttpClientFactory,
 ) : VictoriaStreamService {
     companion object {
-        private const val HTTP_OK = 200
         private const val HTTP_NO_CONTENT = 204
         private const val STREAM_TIMEOUT_MINUTES = 30L
         private const val BUFFER_SIZE = 8192
@@ -143,7 +142,7 @@ class DefaultVictoriaStreamService(
 
         val sourceResponse = sourceClient.newCall(sourceRequest).execute()
 
-        if (sourceResponse.code != HTTP_OK) {
+        if (sourceResponse.code != Constants.HttpStatus.OK) {
             val errorBody = sourceResponse.body.string()
             sourceResponse.close()
             error("Source returned HTTP ${sourceResponse.code}: $errorBody")
@@ -177,7 +176,7 @@ class DefaultVictoriaStreamService(
                 .build()
 
         directClient.newCall(targetRequest).execute().use { targetResponse ->
-            if (targetResponse.code != HTTP_OK && targetResponse.code != HTTP_NO_CONTENT) {
+            if (targetResponse.code != Constants.HttpStatus.OK && targetResponse.code != HTTP_NO_CONTENT) {
                 val errorBody = targetResponse.body.string()
                 error("Target returned HTTP ${targetResponse.code}: $errorBody")
             }

@@ -11,6 +11,7 @@ import com.rustyrazorblade.easydblab.providers.aws.IamPolicyPrincipal
 import com.rustyrazorblade.easydblab.providers.aws.IamPolicyResource
 import com.rustyrazorblade.easydblab.providers.aws.IamPolicyStatement
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
+import com.rustyrazorblade.easydblab.providers.aws.ensureOpenSearchServiceLinkedRole
 import io.github.oshai.kotlinlogging.KotlinLogging
 import software.amazon.awssdk.services.opensearch.OpenSearchClient
 import software.amazon.awssdk.services.opensearch.model.ClusterConfig
@@ -140,6 +141,28 @@ class OpenSearchService(
         log.info { "Creating OpenSearch domain: ${config.domainName}" }
         eventBus.emit(Event.OpenSearch.Creating(config.domainName))
 
+        val request = buildCreateDomainRequest(config)
+
+        val response =
+            RetryUtil.withAwsRetry("create-opensearch-domain") {
+                openSearchClient.createDomain(request)
+            }
+
+        val domainStatus = response.domainStatus()
+
+        log.info { "OpenSearch domain creation initiated: ${domainStatus.domainId()}" }
+        eventBus.emit(Event.OpenSearch.Initiated(domainStatus.domainName()))
+
+        return OpenSearchDomainResult(
+            domainName = domainStatus.domainName(),
+            domainId = domainStatus.domainId(),
+            endpoint = domainStatus.endpoint(),
+            dashboardsEndpoint = domainStatus.endpoint()?.let { getDashboardsEndpoint(it) },
+            state = DomainState.fromDomainStatus(domainStatus.processing(), domainStatus.deleted()),
+        )
+    }
+
+    private fun buildCreateDomainRequest(config: OpenSearchDomainConfig): CreateDomainRequest {
         val tags =
             config.tags.map { (key, value) ->
                 Tag
@@ -173,59 +196,24 @@ class OpenSearchService(
                 .securityGroupIds(config.securityGroupIds)
                 .build()
 
-        val encryptionAtRest =
-            EncryptionAtRestOptions
-                .builder()
-                .enabled(true)
-                .build()
-
-        val nodeToNode =
-            NodeToNodeEncryptionOptions
-                .builder()
-                .enabled(true)
-                .build()
-
-        val domainEndpointOptions =
-            DomainEndpointOptions
-                .builder()
-                .enforceHTTPS(true)
-                .build()
-
-        // Generate access policy allowing all AWS principals (VPC security groups provide network-level access control)
         val accessPolicy = buildAccessPolicy(config.region, config.accountId, config.domainName)
 
-        val request =
-            CreateDomainRequest
-                .builder()
-                .domainName(config.domainName)
-                .engineVersion(config.engineVersion)
-                .clusterConfig(clusterConfig)
-                .ebsOptions(ebsOptions)
-                .vpcOptions(vpcOptions)
-                .encryptionAtRestOptions(encryptionAtRest)
-                .nodeToNodeEncryptionOptions(nodeToNode)
-                .domainEndpointOptions(domainEndpointOptions)
-                .accessPolicies(accessPolicy)
-                .tagList(tags)
-                .build()
-
-        val response =
-            RetryUtil.withAwsRetry("create-opensearch-domain") {
-                openSearchClient.createDomain(request)
-            }
-
-        val domainStatus = response.domainStatus()
-
-        log.info { "OpenSearch domain creation initiated: ${domainStatus.domainId()}" }
-        eventBus.emit(Event.OpenSearch.Initiated(domainStatus.domainName()))
-
-        return OpenSearchDomainResult(
-            domainName = domainStatus.domainName(),
-            domainId = domainStatus.domainId(),
-            endpoint = domainStatus.endpoint(),
-            dashboardsEndpoint = domainStatus.endpoint()?.let { getDashboardsEndpoint(it) },
-            state = DomainState.fromDomainStatus(domainStatus.processing(), domainStatus.deleted()),
-        )
+        return CreateDomainRequest
+            .builder()
+            .domainName(config.domainName)
+            .engineVersion(config.engineVersion)
+            .clusterConfig(clusterConfig)
+            .ebsOptions(ebsOptions)
+            .vpcOptions(vpcOptions)
+            .encryptionAtRestOptions(
+                EncryptionAtRestOptions.builder().enabled(true).build(),
+            ).nodeToNodeEncryptionOptions(
+                NodeToNodeEncryptionOptions.builder().enabled(true).build(),
+            ).domainEndpointOptions(
+                DomainEndpointOptions.builder().enforceHTTPS(true).build(),
+            ).accessPolicies(accessPolicy)
+            .tagList(tags)
+            .build()
     }
 
     /**

@@ -4,6 +4,11 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.AWS
+import com.rustyrazorblade.easydblab.providers.aws.attachS3Policy
+import com.rustyrazorblade.easydblab.providers.aws.disableBucketRequestMetrics
+import com.rustyrazorblade.easydblab.providers.aws.enableBucketRequestMetrics
+import com.rustyrazorblade.easydblab.providers.aws.setFullBucketLifecycleExpiration
+import com.rustyrazorblade.easydblab.providers.aws.setLifecycleExpirationRule
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 

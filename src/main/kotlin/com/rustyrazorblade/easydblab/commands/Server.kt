@@ -12,20 +12,20 @@ import picocli.CommandLine.Option
 import java.io.File
 
 /**
- * Starts the MCP (Model Context Protocol) server for AI assistant integration.
+ * Starts the server for AI assistant integration, REST status endpoints, and live metrics.
  */
 @RequireProfileSetup
 @Command(
     name = "server",
     description = [
-        "Start MCP server for AI assistant integration. " +
+        "Start server for AI assistant integration. " +
             "Add to claude with: claude mcp add --transport sse easy-db-lab http://127.0.0.1:<port>/sse",
     ],
 )
 class Server : PicoBaseCommand() {
     @Option(
         names = ["--port", "-p"],
-        description = ["MCP server port (0 = any free port)"],
+        description = ["Server port (0 = any free port)"],
     )
     var port: Int = 0
 
@@ -60,7 +60,7 @@ class Server : PicoBaseCommand() {
         // Mark context as interactive so CQL sessions stay open across commands
         context.isInteractive = true
 
-        log.info { "Starting easy-db-lab MCP server..." }
+        log.info { "Starting easy-db-lab server..." }
 
         try {
             val server = McpServer(refreshInterval)
@@ -84,10 +84,10 @@ class Server : PicoBaseCommand() {
                 eventBus.emit(Event.Command.McpConfigSaved(configFile.absolutePath))
             }
 
-            log.info { "MCP server stopped." }
+            log.info { "Server stopped." }
         } catch (e: RuntimeException) {
-            log.error(e) { "Failed to start MCP server" }
-            System.err.println("Failed to start MCP server: ${e.message}")
+            log.error(e) { "Failed to start server" }
+            System.err.println("Failed to start server: ${e.message}")
             throw e
         }
     }

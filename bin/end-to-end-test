@@ -796,7 +796,7 @@ submit_spark_writer() {
 
     echo "=== Verifying $label results ==="
     local count_output
-    count_output=$(easy-db-lab cassandra cql "CONSISTENCY LOCAL_QUORUM; SELECT COUNT(*) FROM bulk_test.$table_name")
+    count_output=$(easy-db-lab cassandra cql "SELECT COUNT(*) FROM bulk_test.$table_name")
     echo "$count_output"
 
     # Extract the numeric count from cqlsh output and verify it matches expected rows

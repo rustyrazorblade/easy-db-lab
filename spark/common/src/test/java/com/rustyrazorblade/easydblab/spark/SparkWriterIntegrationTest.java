@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.spark;
 
 import com.datastax.oss.driver.api.core.CqlSession;
-import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
@@ -51,35 +50,24 @@ public class SparkWriterIntegrationTest {
             .withNetworkAliases("cassandra")
             .withStartupTimeout(java.time.Duration.ofMinutes(3));
 
-    private static GenericContainer<?> spark;
+    @Container
+    private static final GenericContainer<?> spark = createSparkContainer();
 
-    @BeforeAll
-    static void setUp() {
-        // Spark container runs as the entrypoint; we'll exec spark-submit into it
-        spark = new GenericContainer<>(DockerImageName.parse(SPARK_IMAGE))
+    private static GenericContainer<?> createSparkContainer() {
+        var container = new GenericContainer<>(DockerImageName.parse(SPARK_IMAGE))
             .withNetwork(network)
             .withNetworkAliases("spark")
-            // Keep container alive so we can exec spark-submit into it
             .withCommand("sleep", "infinity")
             .withStartupTimeout(java.time.Duration.ofMinutes(2));
 
-        // Copy writer JARs into the container if they exist
-        copyJarIfExists(spark, "connector-writer",
+        copyJarIfExists(container, "connector-writer",
             "spark/connector-writer/build/libs", "connector-writer");
-        copyJarIfExists(spark, "bulk-writer-sidecar",
+        copyJarIfExists(container, "bulk-writer-sidecar",
             "spark/bulk-writer-sidecar/build/libs", "bulk-writer-sidecar");
-        copyJarIfExists(spark, "bulk-writer-s3",
+        copyJarIfExists(container, "bulk-writer-s3",
             "spark/bulk-writer-s3/build/libs", "bulk-writer-s3");
 
-        spark.start();
-    }
-
-    @AfterAll
-    static void tearDown() {
-        if (spark != null) {
-            spark.stop();
-        }
-        network.close();
+        return container;
     }
 
     @Test
@@ -168,7 +156,6 @@ public class SparkWriterIntegrationTest {
 
         String cassandraHost = "cassandra";
 
-        // Build the command
         java.util.List<String> cmd = new java.util.ArrayList<>();
         cmd.add("/opt/spark/bin/spark-submit");
         cmd.add("--master");
@@ -218,15 +205,33 @@ public class SparkWriterIntegrationTest {
     }
 
     /**
+     * Resolve the project root directory. Uses the Gradle-provided system property,
+     * which avoids fragile parent directory traversal.
+     */
+    private static Path projectRoot() {
+        String root = System.getProperty("project.root");
+        if (root != null) {
+            return Paths.get(root);
+        }
+        // Fallback for IDE runs where the system property may not be set
+        Path dir = Paths.get(System.getProperty("user.dir"));
+        while (dir != null && !Files.exists(dir.resolve("settings.gradle"))) {
+            dir = dir.getParent();
+        }
+        if (dir == null) {
+            throw new IllegalStateException(
+                "Cannot find project root. Run tests via Gradle or set -Dproject.root=...");
+        }
+        return dir;
+    }
+
+    /**
      * Copy a shadow JAR from the build output into the Spark container.
      * Silently skips if the JAR doesn't exist (test will fail with a clear message later).
      */
     private static void copyJarIfExists(GenericContainer<?> container,
             String moduleName, String buildLibsDir, String jarPrefix) {
-        Path libsDir = Paths.get(System.getProperty("user.dir"))
-            .getParent() // spark/common -> spark
-            .getParent() // spark -> project root
-            .resolve(buildLibsDir);
+        Path libsDir = projectRoot().resolve(buildLibsDir);
 
         if (!Files.isDirectory(libsDir)) {
             return;

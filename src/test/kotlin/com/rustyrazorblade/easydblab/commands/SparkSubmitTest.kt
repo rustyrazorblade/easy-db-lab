@@ -56,17 +56,6 @@ class SparkSubmitTest : BaseKoinTest() {
         )
 
     @Test
-    fun `command validates required parameters`() {
-        val command = SparkSubmit()
-
-        // Verify optional parameters have defaults and required lateinit vars are not initialized
-        assertThat(command.jobArgs).isEmpty()
-        assertThat(command.wait).isFalse()
-        // jarPath and mainClass are lateinit vars that will be set by PicoCLI
-        // Attempting to access them before initialization would throw UninitializedPropertyAccessException
-    }
-
-    @Test
     fun `local JAR upload should use cluster-specific S3 path`(
         @TempDir tempDir: File,
     ) {

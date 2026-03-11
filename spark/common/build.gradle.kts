@@ -20,4 +20,8 @@ tasks.test {
     useJUnitPlatform()
     // Spark integration tests need more time
     systemProperty("junit.jupiter.execution.timeout.default", "10m")
+    // Pass project root so integration tests don't rely on fragile parent traversal
+    systemProperty("project.root", rootProject.projectDir.absolutePath)
+    // Integration tests need the connector-writer shadow JAR
+    dependsOn(":spark:connector-writer:shadowJar")
 }

@@ -135,10 +135,15 @@ public class SparkJobConfig {
 
     /**
      * Set up the database schema (keyspace and table) before writing data.
+     * When skipDdl is true, validates that the table already exists to fail fast
+     * rather than discovering the missing schema during the write phase.
      */
     public void setupSchema() {
         if (skipDdl) {
-            System.out.println("Skipping DDL creation (skipDdl=true)");
+            System.out.println("Skipping DDL creation (skipDdl=true), verifying table exists...");
+            try (CqlSetup cqlSetup = new CqlSetup(contactPoints, localDc)) {
+                cqlSetup.validateTableExists(keyspace, table);
+            }
             return;
         }
         try (CqlSetup cqlSetup = new CqlSetup(contactPoints, localDc)) {
@@ -169,24 +174,22 @@ public class SparkJobConfig {
 
     private static String getRequiredProperty(SparkConf conf, String key) {
         if (!conf.contains(key)) {
-            System.err.println("ERROR: Required Spark property not set: " + key);
-            System.err.println("");
-            System.err.println("Required properties:");
-            System.err.println("  --conf " + PROP_CONTACT_POINTS + "=<hosts>");
-            System.err.println("  --conf " + PROP_KEYSPACE + "=<keyspace>");
-            System.err.println("  --conf " + PROP_LOCAL_DC + "=<datacenter>");
-            System.err.println("");
-            System.err.println("Optional properties:");
-            System.err.println("  --conf " + PROP_TABLE + "=<table> (default: data_<timestamp>)");
-            System.err.println("  --conf " + PROP_ROW_COUNT + "=<count> (default: 1000000)");
-            System.err.println("  --conf " + PROP_PARALLELISM + "=<num> (default: 10)");
-            System.err.println("  --conf " + PROP_PARTITION_COUNT + "=<count> (default: 10000)");
-            System.err.println("  --conf " + PROP_REPLICATION_FACTOR + "=<rf> (default: 3)");
-            System.err.println("  --conf " + PROP_SKIP_DDL + "=true|false (default: false)");
-            System.err.println("  --conf " + PROP_COMPACTION + "=<strategy>");
-            System.err.println("  --conf " + PROP_S3_BUCKET + "=<bucket> (S3 transport only)");
-            System.err.println("  --conf " + PROP_S3_ENDPOINT + "=<url> (S3 transport only)");
-            System.exit(1);
+            String usage = "ERROR: Required Spark property not set: " + key + "\n\n" +
+                "Required properties:\n" +
+                "  --conf " + PROP_CONTACT_POINTS + "=<hosts>\n" +
+                "  --conf " + PROP_KEYSPACE + "=<keyspace>\n" +
+                "  --conf " + PROP_LOCAL_DC + "=<datacenter>\n\n" +
+                "Optional properties:\n" +
+                "  --conf " + PROP_TABLE + "=<table> (default: data_<timestamp>)\n" +
+                "  --conf " + PROP_ROW_COUNT + "=<count> (default: 1000000)\n" +
+                "  --conf " + PROP_PARALLELISM + "=<num> (default: 10)\n" +
+                "  --conf " + PROP_PARTITION_COUNT + "=<count> (default: 10000)\n" +
+                "  --conf " + PROP_REPLICATION_FACTOR + "=<rf> (default: 3)\n" +
+                "  --conf " + PROP_SKIP_DDL + "=true|false (default: false)\n" +
+                "  --conf " + PROP_COMPACTION + "=<strategy>\n" +
+                "  --conf " + PROP_S3_BUCKET + "=<bucket> (S3 transport only)\n" +
+                "  --conf " + PROP_S3_ENDPOINT + "=<url> (S3 transport only)";
+            throw new IllegalArgumentException(usage);
         }
         return conf.get(key);
     }

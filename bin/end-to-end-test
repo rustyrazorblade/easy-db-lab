@@ -404,6 +404,9 @@ step_setup_cassandra() {
     echo "=== Setting Cassandra version to 5.0 ==="
     easy-db-lab cassandra use 5.0
 
+    # Cassandra 5 defaults to storage_compatibility_mode: UPGRADING, which uses the legacy
+    # sstable format. The cassandra-analytics bulk writer requires NONE (the new sstable format)
+    # or it fails with incompatible sstable errors during bulk load.
     echo "=== Patching storage_compatibility_mode for Cassandra 5 bulk writer ==="
     echo "storage_compatibility_mode: NONE" >> cassandra.patch.yaml
     echo "=== Updating configuration ==="

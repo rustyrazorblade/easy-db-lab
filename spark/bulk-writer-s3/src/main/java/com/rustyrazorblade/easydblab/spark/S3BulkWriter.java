@@ -55,10 +55,10 @@ public class S3BulkWriter {
 
             // Validate S3-specific config
             if (config.getS3Bucket() == null) {
-                System.err.println("ERROR: Required Spark property not set: " + SparkJobConfig.PROP_S3_BUCKET);
-                System.err.println("  --conf " + SparkJobConfig.PROP_S3_BUCKET + "=<bucket> (required)");
-                System.err.println("  --conf " + SparkJobConfig.PROP_S3_ENDPOINT + "=<url> (optional)");
-                System.exit(1);
+                throw new IllegalArgumentException(
+                    "ERROR: Required Spark property not set: " + SparkJobConfig.PROP_S3_BUCKET + "\n" +
+                    "  --conf " + SparkJobConfig.PROP_S3_BUCKET + "=<bucket> (required)\n" +
+                    "  --conf " + SparkJobConfig.PROP_S3_ENDPOINT + "=<url> (optional)");
             }
 
             if (config.getS3Endpoint() != null) {

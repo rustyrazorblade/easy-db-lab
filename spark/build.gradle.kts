@@ -66,7 +66,8 @@ configure(subprojects.filter { it.name.startsWith("bulk-writer") }) {
         "implementation"("org.apache.cassandra:cassandra-bridge_spark3_$scalaVersion:$cassandraAnalyticsVersion")
         "implementation"("org.apache.cassandra:cassandra-analytics-spark-converter_spark3_$scalaVersion:$cassandraAnalyticsVersion")
 
-        // Cassandra Analytics - internal modules not published to Maven (from build output)
+        // Cassandra Analytics - internal modules not published to Maven.
+        // These JARs are built from source by bin/dev build-analytics (requires JDK 11).
         "implementation"(files("$analyticsDir/cassandra-five-zero/build/libs/five-zero.jar"))
         "implementation"(files("$analyticsDir/cassandra-five-zero-bridge/build/libs/five-zero-bridge.jar"))
         "implementation"(files("$analyticsDir/cassandra-five-zero-types/build/libs/five-zero-types.jar"))

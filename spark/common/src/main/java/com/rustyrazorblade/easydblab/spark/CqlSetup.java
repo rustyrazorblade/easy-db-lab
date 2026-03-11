@@ -161,6 +161,29 @@ public class CqlSetup implements AutoCloseable {
     }
 
     /**
+     * Validate that a table exists in the given keyspace.
+     * Fails fast with a clear error if the table is missing, avoiding late failures
+     * during the write phase which waste time and infrastructure cost.
+     *
+     * @param keyspace Keyspace name
+     * @param table Table name
+     * @throws RuntimeException if the keyspace or table does not exist
+     */
+    public void validateTableExists(String keyspace, String table) {
+        var metadata = session.getMetadata();
+        var ks = metadata.getKeyspace(keyspace).orElse(null);
+        if (ks == null) {
+            throw new RuntimeException("Keyspace '" + keyspace + "' does not exist. " +
+                "Either create it manually or remove skipDdl=true.");
+        }
+        if (ks.getTable(table).isEmpty()) {
+            throw new RuntimeException("Table '" + keyspace + "." + table + "' does not exist. " +
+                "Either create it manually or remove skipDdl=true.");
+        }
+        System.out.println("Verified " + keyspace + "." + table + " exists");
+    }
+
+    /**
      * Execute an arbitrary CQL statement.
      *
      * @param cql CQL statement to execute

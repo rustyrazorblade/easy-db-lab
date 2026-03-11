@@ -267,7 +267,7 @@ For more details, see [packer/README.md](packer/README.md) and [packer/TESTING.m
 
 User documentation is in `docs/` (mdbook format). When making user-facing changes, make sure the docs for that feature are up to date.
 
-Product specifications live in `openspec/specs/` and are managed via the **OpenSpec workflow** (skills: `openspec-propose`, `openspec-explore`, `openspec-apply-change`, `openspec-archive-change`). Use OpenSpec to propose, implement, and track changes against specs. Specs are the source of truth for product decisions — consult them when making changes to determine if there are conflicts, and plan spec updates before moving on to implementation.
+This project relies on **OpenSpec** to maintain product specifications. Specs live in `openspec/specs/` and are managed via the OpenSpec workflow (skills: `openspec-propose`, `openspec-explore`, `openspec-apply-change`, `openspec-archive-change`). **Specs are the source of truth for product decisions.** Before making any change, check relevant specs to ensure the change does not conflict. If a conflict is found, notify the user before proceeding — do not silently override the spec. If a change requires updating a spec, plan the spec update before moving on to implementation.
 
 After running `openspec-apply-change`, use the `simplify` skill to review and improve the code quality of the changes.
 

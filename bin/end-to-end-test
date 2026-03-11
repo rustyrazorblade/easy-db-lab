@@ -777,6 +777,8 @@ submit_spark_writer() {
     dc=$(easy-db-lab aws region)
     hosts=$(jq -r '.hosts.Cassandra | map(.privateIp) | join(",")' "$PROJECT_ROOT/state.json")
 
+    local expected_rows=10000
+
     echo "=== Submitting $label to EMR ==="
     easy-db-lab spark submit \
         --jar "$jar_file" \
@@ -785,15 +787,26 @@ submit_spark_writer() {
         --conf "spark.easydblab.keyspace=bulk_test" \
         --conf "spark.easydblab.table=$table_name" \
         --conf "spark.easydblab.localDc=$dc" \
-        --conf "spark.easydblab.rowCount=10000" \
+        --conf "spark.easydblab.rowCount=$expected_rows" \
         --conf "spark.easydblab.parallelism=4" \
         --conf "spark.easydblab.partitionCount=100" \
-        --conf "spark.easydblab.replicationFactor=1" \
+        --conf "spark.easydblab.replicationFactor=3" \
         "$@" \
         --wait
 
     echo "=== Verifying $label results ==="
-    easy-db-lab cassandra cql "SELECT COUNT(*) FROM bulk_test.$table_name"
+    local count_output
+    count_output=$(easy-db-lab cassandra cql "CONSISTENCY LOCAL_QUORUM; SELECT COUNT(*) FROM bulk_test.$table_name")
+    echo "$count_output"
+
+    # Extract the numeric count from cqlsh output and verify it matches expected rows
+    local actual_count
+    actual_count=$(echo "$count_output" | grep -oP '^\s*\K[0-9]+' | head -1)
+    if [ "$actual_count" != "$expected_rows" ]; then
+        echo "ERROR: $label row count mismatch: expected $expected_rows, got ${actual_count:-<none>}"
+        return 1
+    fi
+    echo "=== $label verified: $actual_count rows at LOCAL_QUORUM ==="
 }
 
 step_bulk_writer_sidecar() {

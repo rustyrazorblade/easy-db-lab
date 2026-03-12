@@ -89,6 +89,23 @@ data class ClusterS3Path(
             bucket: String,
             key: String,
         ): ClusterS3Path = ClusterS3Path(bucket, key.split("/").filter { it.isNotBlank() })
+
+        /**
+         * Parse an S3 URI (s3://bucket/key) into a ClusterS3Path.
+         *
+         * @param uri The S3 URI to parse (e.g., "s3://my-bucket/path/to/file.jar")
+         * @return A new ClusterS3Path representing the URI
+         * @throws IllegalArgumentException if the URI doesn't start with "s3://"
+         */
+        fun fromUri(uri: String): ClusterS3Path {
+            require(uri.startsWith("s3://")) { "S3 URI must start with 's3://': $uri" }
+            val withoutScheme = uri.removePrefix("s3://")
+            val segments = withoutScheme.split("/").filter { it.isNotBlank() }
+            require(segments.isNotEmpty()) { "S3 URI must contain a bucket name: $uri" }
+            val bucket = segments.first()
+            val keySegments = segments.drop(1)
+            return ClusterS3Path(bucket, keySegments)
+        }
     }
 
     // Core Path-like methods

@@ -359,4 +359,46 @@ class ClusterS3PathTest {
         assertThat(backupPath.toString())
             .isEqualTo("s3://my-bucket/victorialogs/20240101-120000")
     }
+
+    // fromUri tests
+
+    @Test
+    fun `fromUri parses valid S3 URI with path`() {
+        val path = ClusterS3Path.fromUri("s3://my-bucket/path/to/file.jar")
+
+        assertThat(path.bucket).isEqualTo("my-bucket")
+        assertThat(path.getKey()).isEqualTo("path/to/file.jar")
+        assertThat(path.toString()).isEqualTo("s3://my-bucket/path/to/file.jar")
+    }
+
+    @Test
+    fun `fromUri parses bucket-only URI`() {
+        val path = ClusterS3Path.fromUri("s3://my-bucket")
+
+        assertThat(path.bucket).isEqualTo("my-bucket")
+        assertThat(path.getKey()).isEmpty()
+        assertThat(path.toString()).isEqualTo("s3://my-bucket")
+    }
+
+    @Test
+    fun `fromUri throws for non-S3 URI`() {
+        assertThatThrownBy { ClusterS3Path.fromUri("https://example.com/file.jar") }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("s3://")
+    }
+
+    @Test
+    fun `fromUri throws for empty scheme`() {
+        assertThatThrownBy { ClusterS3Path.fromUri("my-bucket/file.jar") }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("s3://")
+    }
+
+    @Test
+    fun `fromUri roundtrips with toString`() {
+        val original = "s3://test-bucket/spark/jars/app-1.0.jar"
+        val path = ClusterS3Path.fromUri(original)
+
+        assertThat(path.toString()).isEqualTo(original)
+    }
 }

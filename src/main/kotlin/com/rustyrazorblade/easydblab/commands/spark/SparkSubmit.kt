@@ -89,6 +89,11 @@ class SparkSubmit : PicoBaseCommand() {
         // Determine JAR location (S3 or local)
         val s3JarPath =
             if (jarPath.startsWith("s3://")) {
+                // Validate the S3 jar exists before submitting
+                val s3Path = ClusterS3Path.fromUri(jarPath)
+                require(objectStore.fileExists(s3Path)) {
+                    "JAR file does not exist in S3: $jarPath"
+                }
                 eventBus.emit(Event.Emr.UsingS3Jar(jarPath))
                 jarPath
             } else {

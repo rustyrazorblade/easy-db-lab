@@ -11,16 +11,18 @@ EASY_DB_LAB_USER_DATA=~/.easy-db-lab/
 
 VERSION=$(grep '^version' "${APP_HOME}/gradle.properties" | cut -d '=' -f2)
 
-if [ "${EASY_DB_LAB_REBUILD}" = "1" ]; then
+if [ "${EASY_DB_LAB_SKIP_BUILD}" != "1" ]; then
     "${APP_HOME}/gradlew" -p "${APP_HOME}" shadowJar installDist -q
 fi
 
 JAR="${APP_HOME}/build/libs/easy-db-lab-${VERSION}-all.jar"
 
 # Start OTel collector
-if ! docker compose -f "${APP_HOME}/docker-compose.yml" up -d > /dev/null 2>&1; then
-    echo "Failed to start OTel collector" >&2
-    exit 1
+if [ "${EASY_DB_LAB_SKIP_DOCKER}" != "1" ]; then
+    if ! docker compose -f "${APP_HOME}/docker-compose.yml" up -d > /dev/null 2>&1; then
+        echo "Failed to start OTel collector" >&2
+        exit 1
+    fi
 fi
 
 # Discover the dynamically assigned port

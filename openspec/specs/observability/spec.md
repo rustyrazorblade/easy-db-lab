@@ -70,10 +70,22 @@ The system MUST provide pre-configured Grafana dashboards for all supported data
 - **THEN** the hostname filter SHALL list hosts from all node types: db, app, control, and spark
 - **AND** the service filter SHALL list all node_role values present in metrics
 
-#### Scenario: Grafana pod includes image renderer sidecar
+#### Scenario: Renderer container runs alongside Grafana
 
-- **WHEN** the Grafana deployment is applied
-- **THEN** the pod SHALL contain both the Grafana container and a `grafana-image-renderer` sidecar container
+- **WHEN** the Grafana deployment is applied to the cluster
+- **THEN** the pod SHALL contain a `grafana-image-renderer` container using the `grafana/grafana-image-renderer:latest` image
+- **AND** the renderer SHALL listen on port 8081
+
+#### Scenario: Grafana is configured to use the renderer
+
+- **WHEN** the Grafana container starts
+- **THEN** the environment variable `GF_RENDERING_SERVER_URL` SHALL be set to `http://localhost:8081/render`
+- **AND** the environment variable `GF_RENDERING_CALLBACK_URL` SHALL be set to `http://localhost:3000/`
+
+#### Scenario: Panel image rendering via Grafana API
+
+- **WHEN** a client requests a panel render via Grafana's `/render/d-solo/` HTTP API
+- **THEN** Grafana SHALL delegate rendering to the sidecar and return a PNG image
 
 ### Requirement: Status endpoint includes Tempo and Pyroscope S3 paths
 

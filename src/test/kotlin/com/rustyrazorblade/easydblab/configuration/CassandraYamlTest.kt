@@ -33,3 +33,4 @@ internal class CassandraYamlTest {
         assertThat(yaml.parser.get("cluster_name").asText()).isEqualTo("test-cluster")
     }
 }
+

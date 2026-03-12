@@ -1452,6 +1452,10 @@ fi
 echo "=== Building project ==="
 (cd "$PROJECT_ROOT" && ./gradlew shadowJar installDist)
 
+# Skip per-invocation rebuild and docker compose in easy-db-lab — we just built above
+export EASY_DB_LAB_SKIP_BUILD=1
+export EASY_DB_LAB_SKIP_DOCKER=1
+
 # Change to work directory
 cd "$TEST_WORKDIR"
 echo "=== Work directory: $(pwd) ==="

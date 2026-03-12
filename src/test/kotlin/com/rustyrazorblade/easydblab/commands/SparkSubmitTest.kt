@@ -124,6 +124,7 @@ class SparkSubmitTest : BaseKoinTest() {
 
         // Set up mocks
         whenever(mockSparkService.validateCluster()).thenReturn(Result.success(validClusterInfo))
+        whenever(mockObjectStore.fileExists(any())).thenReturn(true)
         whenever(mockSparkService.submitJob(any()))
             .thenReturn(Result.success("s-STEPID"))
 
@@ -139,6 +140,34 @@ class SparkSubmitTest : BaseKoinTest() {
                     req.mainClass == "com.example.Main"
             },
         )
+    }
+
+    @Test
+    fun `execute should fail fast when S3 JAR does not exist`() {
+        val validClusterInfo =
+            EMRClusterInfo(
+                clusterId = "j-TEST123",
+                name = "test-cluster",
+                masterPublicDns = "master.example.com",
+                state = "WAITING",
+            )
+
+        initMocks()
+
+        val command = SparkSubmit()
+        command.jarPath = "s3://test-bucket/jars/nonexistent.jar"
+        command.mainClass = "com.example.Main"
+
+        whenever(mockSparkService.validateCluster()).thenReturn(Result.success(validClusterInfo))
+        whenever(mockObjectStore.fileExists(any())).thenReturn(false)
+
+        assertThatThrownBy { command.execute() }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("does not exist in S3")
+            .hasMessageContaining("s3://test-bucket/jars/nonexistent.jar")
+
+        // Should never attempt to submit the job
+        verify(mockSparkService, never()).submitJob(any())
     }
 
     @Test
@@ -227,6 +256,7 @@ class SparkSubmitTest : BaseKoinTest() {
         command.mainClass = "com.example.Main"
 
         whenever(mockSparkService.validateCluster()).thenReturn(Result.success(validClusterInfo))
+        whenever(mockObjectStore.fileExists(any())).thenReturn(true)
         whenever(mockSparkService.submitJob(any()))
             .thenReturn(Result.failure(RuntimeException("EMR API error")))
 

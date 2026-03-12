@@ -151,6 +151,28 @@ class S3ObjectStoreIntegrationTest {
     }
 
     @Nested
+    inner class FileExistsFromUri {
+        @Test
+        fun `should validate existing jar via fromUri and fileExists`(
+            @TempDir tempDir: Path,
+        ) {
+            val testFile = tempDir.resolve("app.jar").toFile()
+            testFile.writeText("fake jar content")
+            val s3Path = ClusterS3Path.root(TEST_BUCKET).resolve("spark/app.jar")
+            objectStore.uploadFile(testFile, s3Path, showProgress = false)
+
+            val parsed = ClusterS3Path.fromUri("s3://$TEST_BUCKET/spark/app.jar")
+            assertThat(objectStore.fileExists(parsed)).isTrue()
+        }
+
+        @Test
+        fun `should return false for non-existent jar via fromUri`() {
+            val parsed = ClusterS3Path.fromUri("s3://$TEST_BUCKET/spark/nonexistent.jar")
+            assertThat(objectStore.fileExists(parsed)).isFalse()
+        }
+    }
+
+    @Nested
     inner class GetFileInfo {
         @Test
         fun `should return metadata for existing file`(

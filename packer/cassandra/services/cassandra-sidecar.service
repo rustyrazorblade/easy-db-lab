@@ -1,12 +1,25 @@
 [Unit]
 Description=Apache Cassandra Sidecar
+After=docker.service
+Requires=docker.service
 
 [Service]
 Environment="JAVA_OPTS=-Dsidecar.config=file:///etc/cassandra-sidecar/cassandra-sidecar.yaml -Dsidecar.logdir=/mnt/db1/cassandra/logs/sidecar"
 EnvironmentFile=-/etc/default/cassandra-sidecar
-ExecStart=/usr/local/cassandra-sidecar/bin/cassandra-sidecar
-User=cassandra
+ExecStartPre=-/usr/bin/docker rm -f cassandra-sidecar
+ExecStart=/usr/bin/docker run \
+  --rm \
+  --name cassandra-sidecar \
+  --network host \
+  -v /etc/cassandra-sidecar:/etc/cassandra-sidecar:ro \
+  -v /mnt/db1/cassandra:/mnt/db1/cassandra \
+  -v /usr/local/otel:/usr/local/otel:ro \
+  -v /usr/local/pyroscope:/usr/local/pyroscope:ro \
+  -e JAVA_OPTS \
+  -e OTEL_SERVICE_NAME \
+  -e OTEL_EXPORTER_OTLP_ENDPOINT \
+  ghcr.io/apache/cassandra-sidecar:latest
+ExecStop=/usr/bin/docker stop cassandra-sidecar
 
 [Install]
 WantedBy=multi-user.target
-

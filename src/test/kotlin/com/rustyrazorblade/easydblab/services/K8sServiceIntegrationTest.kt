@@ -7,6 +7,8 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.clickhouse.ClickHouseManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.headlamp.HeadlampManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.inspektorgadget.InspektorGadgetManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboard
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
@@ -324,6 +326,31 @@ class K8sServiceIntegrationTest {
 
         assertConfigMapExists("yace-config", "yace-config.yaml")
         assertDeploymentExists("yace")
+    }
+
+    @Test
+    @Order(20)
+    fun `should apply inspektor-gadget resources`() {
+        val resources = InspektorGadgetManifestBuilder().buildAllResources()
+        applyAndVerify(resources)
+
+        assertServiceAccountExists("inspektor-gadget")
+        assertClusterRoleExists("inspektor-gadget")
+        assertClusterRoleBindingExists("inspektor-gadget")
+        assertDaemonSetExists("inspektor-gadget")
+    }
+
+    @Test
+    @Order(23)
+    fun `should apply Headlamp resources`() {
+        val resources = HeadlampManifestBuilder().buildAllResources()
+        applyAndVerify(resources)
+
+        assertServiceAccountExists("headlamp")
+        assertClusterRoleExists("headlamp")
+        assertClusterRoleBindingExists("headlamp")
+        assertServiceExists("headlamp")
+        assertDeploymentExists("headlamp")
     }
 
     @Test
@@ -745,6 +772,8 @@ class K8sServiceIntegrationTest {
             BeylaManifestBuilder(templateService).buildAllResources() +
             PyroscopeManifestBuilder(templateService).buildAllResources() +
             YaceManifestBuilder(templateService).buildAllResources() +
+            InspektorGadgetManifestBuilder().buildAllResources() +
+            HeadlampManifestBuilder().buildAllResources() +
             GrafanaManifestBuilder(templateService).buildAllResources() +
             ClickHouseManifestBuilder(DefaultClickHouseConfigService()).buildAllResources(
                 totalReplicas = 3,

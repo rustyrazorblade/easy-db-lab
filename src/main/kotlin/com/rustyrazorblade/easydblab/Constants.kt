@@ -124,6 +124,9 @@ object Constants {
     object Packer {
         const val CASSANDRA_VERSIONS_FILE = "cassandra_versions.yaml"
         const val AWS_CREDENTIALS_ENV = "AWS_SHARED_CREDENTIALS_FILE"
+        const val AWS_PROFILE_ENV = "AWS_PROFILE"
+        const val AWS_CONFIG_DIR_MOUNT = "/aws-config"
+        const val AWS_CONFIG_FILE_ENV = "AWS_CONFIG_FILE"
     }
 
     // Event Bus configuration

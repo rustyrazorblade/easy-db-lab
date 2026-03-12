@@ -128,19 +128,28 @@ class Packer(
 
         logger.info { "Mounting $tempDir to $containerWorkingDir, starting with $args" }
 
-        // mount credentials
-        // get the main process and go up a directory
         val packerDir = VolumeMapping(tempDir.absolutePath, containerWorkingDir, AccessMode.ro)
-        var creds = Constants.Paths.CREDENTIALS_MOUNT
 
         // Packer builds can take 30+ minutes, especially when building from source
         val packerTimeout = Duration.ofMinutes(PACKER_TIMEOUT_MINUTES)
 
-        return docker
-            .addVolume(packerDir)
-            .addVolume(
-                VolumeMapping(awsCredentialsManager.credentialsPath, creds, AccessMode.ro),
-            ).addEnv("${Constants.Packer.AWS_CREDENTIALS_ENV}=$creds")
-            .runContainer(Containers.PACKER, args, containerWorkingDir, packerTimeout)
+        val dockerWithCreds = docker.addVolume(packerDir)
+
+        if (awsCredentialsManager.isProfileBased) {
+            // Mount the host ~/.aws/ directory so named profiles (including SSO) are available
+            val awsConfigMount = Constants.Packer.AWS_CONFIG_DIR_MOUNT
+            dockerWithCreds
+                .addVolume(VolumeMapping(awsCredentialsManager.hostAwsConfigDir, awsConfigMount, AccessMode.ro))
+                .addEnv("${Constants.Packer.AWS_CREDENTIALS_ENV}=$awsConfigMount/credentials")
+                .addEnv("${Constants.Packer.AWS_CONFIG_FILE_ENV}=$awsConfigMount/config")
+                .addEnv("${Constants.Packer.AWS_PROFILE_ENV}=${awsCredentialsManager.profileName}")
+        } else {
+            val creds = Constants.Paths.CREDENTIALS_MOUNT
+            dockerWithCreds
+                .addVolume(VolumeMapping(awsCredentialsManager.credentialsPath, creds, AccessMode.ro))
+                .addEnv("${Constants.Packer.AWS_CREDENTIALS_ENV}=$creds")
+        }
+
+        return dockerWithCreds.runContainer(Containers.PACKER, args, containerWorkingDir, packerTimeout)
     }
 }

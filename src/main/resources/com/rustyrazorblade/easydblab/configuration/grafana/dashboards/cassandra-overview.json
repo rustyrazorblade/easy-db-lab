@@ -1539,7 +1539,7 @@
         "options": [],
         "query": "label_values(up{job=\"cassandra-maac\", cluster=~\"$cluster\", datacenter=~\"$datacenter\", rack=~\"$rack\"}, host_name)",
         "refresh": 2,
-        "regex": "",
+        "regex": "db.*",
         "sort": 0,
         "type": "query"
       }

@@ -193,7 +193,6 @@ class DefaultEMRProvisioningService(
         val pyroscopeFlags =
             listOf(
                 "-javaagent:${Constants.PyroscopeJavaAgent.INSTALL_PATH}",
-                "-Dpyroscope.application.name=spark",
                 "-Dpyroscope.server.address=http://$controlIp:${Constants.K8s.PYROSCOPE_PORT}",
                 "-Dpyroscope.format=jfr",
                 "-Dpyroscope.profiler.event=cpu",
@@ -207,7 +206,6 @@ class DefaultEMRProvisioningService(
                 "OTEL_LOGS_EXPORTER" to "otlp",
                 "OTEL_METRICS_EXPORTER" to "otlp",
                 "OTEL_TRACES_EXPORTER" to "otlp",
-                "OTEL_SERVICE_NAME" to "spark",
             )
 
         val properties =

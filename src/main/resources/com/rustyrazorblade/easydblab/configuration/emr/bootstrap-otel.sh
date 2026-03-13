@@ -42,13 +42,23 @@ sudo chmod 755 "$COLLECTOR_BIN"
 rm -rf "$TMPDIR"
 echo "OTel Collector installed successfully"
 
+# --- Detect node role ---
+if [ "${IS_MASTER:-false}" = "true" ]; then
+  NODE_ROLE="spark-master"
+else
+  NODE_ROLE="spark-worker"
+fi
+echo "Node role: $NODE_ROLE"
+
 # --- OTel Collector Config ---
 echo "Writing OTel Collector config to $COLLECTOR_CONFIG"
 sudo tee "$COLLECTOR_CONFIG" > /dev/null << 'CONFIGEOF'
 __OTEL_COLLECTOR_CONFIG__
 CONFIGEOF
 # Note: __CONTROL_NODE_IP__ is resolved at upload time by TemplateService
-echo "OTel Collector config written"
+# Patch node role placeholder with the per-node value
+sudo sed -i "s/__NODE_ROLE__/$NODE_ROLE/g" "$COLLECTOR_CONFIG"
+echo "OTel Collector config written with node_role=$NODE_ROLE"
 
 # --- OTel Collector systemd service ---
 echo "Creating otel-collector systemd service"
@@ -79,5 +89,18 @@ echo "Installing Pyroscope Java agent to $PYROSCOPE_JAR"
 sudo curl -fsSL -o "$PYROSCOPE_JAR" "$PYROSCOPE_URL"
 sudo chmod 644 "$PYROSCOPE_JAR"
 echo "Pyroscope Java agent installed successfully"
+
+# --- Set per-node service names in spark-env.sh ---
+# OTEL_SERVICE_NAME is read by the OTel Java agent.
+# PYROSCOPE_APPLICATION_NAME is read by the Pyroscope Java agent.
+# Both override the cluster-wide defaults so master and worker profiles can be filtered separately.
+SPARK_ENV="/etc/spark/conf/spark-env.sh"
+if [ -f "$SPARK_ENV" ]; then
+  echo "export OTEL_SERVICE_NAME=$NODE_ROLE" | sudo tee -a "$SPARK_ENV" > /dev/null
+  echo "export PYROSCOPE_APPLICATION_NAME=$NODE_ROLE" | sudo tee -a "$SPARK_ENV" > /dev/null
+  echo "Set OTEL_SERVICE_NAME=$NODE_ROLE and PYROSCOPE_APPLICATION_NAME=$NODE_ROLE in $SPARK_ENV"
+else
+  echo "Warning: $SPARK_ENV not found, skipping node role env var injection"
+fi
 
 echo "=== All agents installed successfully ==="

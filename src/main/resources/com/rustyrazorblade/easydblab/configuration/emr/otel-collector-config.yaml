@@ -30,7 +30,7 @@ processors:
   resource/role:
     attributes:
       - key: node_role
-        value: spark
+        value: __NODE_ROLE__
         action: upsert
 
 exporters:

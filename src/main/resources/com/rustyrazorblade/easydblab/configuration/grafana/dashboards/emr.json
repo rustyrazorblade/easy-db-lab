@@ -13,7 +13,7 @@
       "collapsed": false,
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
       "id": 1,
-      "title": "Host Metrics",
+      "title": "Workers — OS Stats",
       "type": "row"
     },
     {
@@ -41,10 +41,7 @@
             "thresholdsStyle": { "mode": "off" }
           },
           "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [{ "color": "green", "value": null }]
-          },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
           "unit": "percent"
         },
         "overrides": []
@@ -58,7 +55,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "100 - (avg by(host_name) (rate(system_cpu_time_seconds_total{state=\"idle\", node_role=\"spark\", host_name=~\"$hostname\"}[1m])) * 100)",
+          "expr": "100 - (avg by(host_name) (rate(system_cpu_time_seconds_total{state=\"idle\", node_role=\"spark-worker\", host_name=~\"$hostname\"}[1m])) * 100)",
           "legendFormat": "{{host_name}}",
           "refId": "A"
         }
@@ -91,10 +88,7 @@
             "thresholdsStyle": { "mode": "off" }
           },
           "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [{ "color": "green", "value": null }]
-          },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
           "unit": "bytes"
         },
         "overrides": []
@@ -108,13 +102,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "system_memory_usage_bytes{state=\"used\", node_role=\"spark\", host_name=~\"$hostname\"}",
+          "expr": "system_memory_usage_bytes{state=\"used\", node_role=\"spark-worker\", host_name=~\"$hostname\"}",
           "legendFormat": "{{host_name}} used",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "system_memory_usage_bytes{state=\"cached\", node_role=\"spark\", host_name=~\"$hostname\"}",
+          "expr": "system_memory_usage_bytes{state=\"cached\", node_role=\"spark-worker\", host_name=~\"$hostname\"}",
           "legendFormat": "{{host_name}} cached",
           "refId": "B"
         }
@@ -147,18 +141,13 @@
             "thresholdsStyle": { "mode": "off" }
           },
           "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [{ "color": "green", "value": null }]
-          },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
           "unit": "Bps"
         },
         "overrides": [
           {
             "matcher": { "id": "byRegexp", "options": ".*read.*" },
-            "properties": [
-              { "id": "custom.transform", "value": "negative-Y" }
-            ]
+            "properties": [{ "id": "custom.transform", "value": "negative-Y" }]
           }
         ]
       },
@@ -171,13 +160,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "rate(system_disk_io_bytes_total{direction=\"read\", node_role=\"spark\", host_name=~\"$hostname\"}[1m])",
+          "expr": "rate(system_disk_io_bytes_total{direction=\"read\", node_role=\"spark-worker\", host_name=~\"$hostname\"}[1m])",
           "legendFormat": "{{host_name}} read",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "rate(system_disk_io_bytes_total{direction=\"write\", node_role=\"spark\", host_name=~\"$hostname\"}[1m])",
+          "expr": "rate(system_disk_io_bytes_total{direction=\"write\", node_role=\"spark-worker\", host_name=~\"$hostname\"}[1m])",
           "legendFormat": "{{host_name}} write",
           "refId": "B"
         }
@@ -210,18 +199,13 @@
             "thresholdsStyle": { "mode": "off" }
           },
           "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [{ "color": "green", "value": null }]
-          },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
           "unit": "Bps"
         },
         "overrides": [
           {
             "matcher": { "id": "byRegexp", "options": ".*receive.*" },
-            "properties": [
-              { "id": "custom.transform", "value": "negative-Y" }
-            ]
+            "properties": [{ "id": "custom.transform", "value": "negative-Y" }]
           }
         ]
       },
@@ -234,13 +218,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "rate(system_network_io_bytes_total{direction=\"receive\", node_role=\"spark\", host_name=~\"$hostname\"}[1m])",
+          "expr": "rate(system_network_io_bytes_total{direction=\"receive\", node_role=\"spark-worker\", host_name=~\"$hostname\"}[1m])",
           "legendFormat": "{{host_name}} receive",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "rate(system_network_io_bytes_total{direction=\"transmit\", node_role=\"spark\", host_name=~\"$hostname\"}[1m])",
+          "expr": "rate(system_network_io_bytes_total{direction=\"transmit\", node_role=\"spark-worker\", host_name=~\"$hostname\"}[1m])",
           "legendFormat": "{{host_name}} transmit",
           "refId": "B"
         }
@@ -273,10 +257,7 @@
             "thresholdsStyle": { "mode": "off" }
           },
           "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [{ "color": "green", "value": null }]
-          },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
           "unit": "short"
         },
         "overrides": []
@@ -290,13 +271,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "system_cpu_load_average_1m{node_role=\"spark\", host_name=~\"$hostname\"}",
+          "expr": "system_cpu_load_average_1m{node_role=\"spark-worker\", host_name=~\"$hostname\"}",
           "legendFormat": "{{host_name}} 1m",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "system_cpu_load_average_5m{node_role=\"spark\", host_name=~\"$hostname\"}",
+          "expr": "system_cpu_load_average_5m{node_role=\"spark-worker\", host_name=~\"$hostname\"}",
           "legendFormat": "{{host_name}} 5m",
           "refId": "B"
         }
@@ -329,10 +310,7 @@
             "thresholdsStyle": { "mode": "off" }
           },
           "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [{ "color": "green", "value": null }]
-          },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
           "unit": "none"
         },
         "overrides": []
@@ -346,7 +324,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "system_filesystem_usage_bytes{state=\"used\", node_role=\"spark\", mountpoint=\"/\"} / on(host_name) system_filesystem_usage_bytes{state=\"free\", node_role=\"spark\", mountpoint=\"/\"}",
+          "expr": "system_filesystem_usage_bytes{state=\"used\", node_role=\"spark-worker\", mountpoint=\"/\"} / on(host_name) system_filesystem_usage_bytes{state=\"free\", node_role=\"spark-worker\", mountpoint=\"/\"}",
           "legendFormat": "{{host_name}} /",
           "refId": "A"
         }
@@ -358,7 +336,7 @@
       "collapsed": false,
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 25 },
       "id": 20,
-      "title": "Spark JVM Metrics",
+      "title": "Workers — Spark JVM",
       "type": "row"
     },
     {
@@ -386,10 +364,7 @@
             "thresholdsStyle": { "mode": "off" }
           },
           "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [{ "color": "green", "value": null }]
-          },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
           "unit": "bytes"
         },
         "overrides": []
@@ -403,13 +378,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "jvm_memory_used_bytes{jvm_memory_type=\"heap\", node_role=\"spark\", host_name=~\"$hostname\"}",
+          "expr": "jvm_memory_used_bytes{jvm_memory_type=\"heap\", node_role=\"spark-worker\", host_name=~\"$hostname\"}",
           "legendFormat": "{{host_name}} {{jvm_memory_pool_name}} used",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "jvm_memory_committed_bytes{jvm_memory_type=\"heap\", node_role=\"spark\", host_name=~\"$hostname\"}",
+          "expr": "jvm_memory_committed_bytes{jvm_memory_type=\"heap\", node_role=\"spark-worker\", host_name=~\"$hostname\"}",
           "legendFormat": "{{host_name}} {{jvm_memory_pool_name}} committed",
           "refId": "B"
         }
@@ -442,10 +417,7 @@
             "thresholdsStyle": { "mode": "off" }
           },
           "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [{ "color": "green", "value": null }]
-          },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
           "unit": "s"
         },
         "overrides": []
@@ -459,7 +431,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "rate(jvm_gc_duration_seconds_sum{node_role=\"spark\", host_name=~\"$hostname\"}[1m])",
+          "expr": "rate(jvm_gc_duration_seconds_sum{node_role=\"spark-worker\", host_name=~\"$hostname\"}[1m])",
           "legendFormat": "{{host_name}} {{jvm_gc_name}} duration",
           "refId": "A"
         }
@@ -492,10 +464,7 @@
             "thresholdsStyle": { "mode": "off" }
           },
           "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [{ "color": "green", "value": null }]
-          },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
           "unit": "short"
         },
         "overrides": []
@@ -509,7 +478,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "jvm_thread_count{node_role=\"spark\", host_name=~\"$hostname\"}",
+          "expr": "jvm_thread_count{node_role=\"spark-worker\", host_name=~\"$hostname\"}",
           "legendFormat": "{{host_name}} threads",
           "refId": "A"
         }
@@ -542,10 +511,7 @@
             "thresholdsStyle": { "mode": "off" }
           },
           "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [{ "color": "green", "value": null }]
-          },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
           "unit": "short"
         },
         "overrides": []
@@ -559,13 +525,619 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "jvm_class_count{node_role=\"spark\", host_name=~\"$hostname\"}",
+          "expr": "jvm_class_count{node_role=\"spark-worker\", host_name=~\"$hostname\"}",
           "legendFormat": "{{host_name}} loaded",
           "refId": "A"
         }
       ],
       "title": "JVM Classes Loaded",
       "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 42 },
+      "id": 30,
+      "title": "Workers — Profiling",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "grafana-pyroscope-datasource", "uid": "pyroscope" },
+      "gridPos": { "h": 20, "w": 12, "x": 0, "y": 43 },
+      "id": 31,
+      "targets": [
+        {
+          "datasource": { "type": "grafana-pyroscope-datasource", "uid": "pyroscope" },
+          "profileTypeId": "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
+          "labelSelector": "{service_name=\"spark-worker\"}",
+          "queryType": "profile",
+          "refId": "A",
+          "groupBy": ["hostname"]
+        }
+      ],
+      "title": "Worker CPU Flame Graph",
+      "type": "flamegraph"
+    },
+    {
+      "datasource": { "type": "grafana-pyroscope-datasource", "uid": "pyroscope" },
+      "gridPos": { "h": 20, "w": 12, "x": 12, "y": 43 },
+      "id": 32,
+      "targets": [
+        {
+          "datasource": { "type": "grafana-pyroscope-datasource", "uid": "pyroscope" },
+          "profileTypeId": "memory:alloc_in_new_tlab_bytes:bytes:space:bytes",
+          "labelSelector": "{service_name=\"spark-worker\"}",
+          "queryType": "profile",
+          "refId": "A",
+          "groupBy": ["hostname"]
+        }
+      ],
+      "title": "Worker Memory Allocation Flame Graph",
+      "type": "flamegraph"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 63 },
+      "id": 40,
+      "title": "Master — OS Stats",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 64 },
+      "id": 41,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "100 - (avg by(host_name) (rate(system_cpu_time_seconds_total{state=\"idle\", node_role=\"spark-master\", host_name=~\"$hostname\"}[1m])) * 100)",
+          "legendFormat": "{{host_name}}",
+          "refId": "A"
+        }
+      ],
+      "title": "CPU Usage",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 64 },
+      "id": 42,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "system_memory_usage_bytes{state=\"used\", node_role=\"spark-master\", host_name=~\"$hostname\"}",
+          "legendFormat": "{{host_name}} used",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "system_memory_usage_bytes{state=\"cached\", node_role=\"spark-master\", host_name=~\"$hostname\"}",
+          "legendFormat": "{{host_name}} cached",
+          "refId": "B"
+        }
+      ],
+      "title": "Memory Usage",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": true,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "Bps"
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byRegexp", "options": ".*read.*" },
+            "properties": [{ "id": "custom.transform", "value": "negative-Y" }]
+          }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 72 },
+      "id": 43,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "rate(system_disk_io_bytes_total{direction=\"read\", node_role=\"spark-master\", host_name=~\"$hostname\"}[1m])",
+          "legendFormat": "{{host_name}} read",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "rate(system_disk_io_bytes_total{direction=\"write\", node_role=\"spark-master\", host_name=~\"$hostname\"}[1m])",
+          "legendFormat": "{{host_name}} write",
+          "refId": "B"
+        }
+      ],
+      "title": "Disk I/O",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": true,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "Bps"
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byRegexp", "options": ".*receive.*" },
+            "properties": [{ "id": "custom.transform", "value": "negative-Y" }]
+          }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 72 },
+      "id": 44,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "rate(system_network_io_bytes_total{direction=\"receive\", node_role=\"spark-master\", host_name=~\"$hostname\"}[1m])",
+          "legendFormat": "{{host_name}} receive",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "rate(system_network_io_bytes_total{direction=\"transmit\", node_role=\"spark-master\", host_name=~\"$hostname\"}[1m])",
+          "legendFormat": "{{host_name}} transmit",
+          "refId": "B"
+        }
+      ],
+      "title": "Network I/O",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 80 },
+      "id": 45,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "system_cpu_load_average_1m{node_role=\"spark-master\", host_name=~\"$hostname\"}",
+          "legendFormat": "{{host_name}} 1m",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "system_cpu_load_average_5m{node_role=\"spark-master\", host_name=~\"$hostname\"}",
+          "legendFormat": "{{host_name}} 5m",
+          "refId": "B"
+        }
+      ],
+      "title": "Load Average",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 80 },
+      "id": 46,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "system_filesystem_usage_bytes{state=\"used\", node_role=\"spark-master\", mountpoint=\"/\"} / on(host_name) system_filesystem_usage_bytes{state=\"free\", node_role=\"spark-master\", mountpoint=\"/\"}",
+          "legendFormat": "{{host_name}} /",
+          "refId": "A"
+        }
+      ],
+      "title": "Filesystem Usage",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 88 },
+      "id": 50,
+      "title": "Master — Spark JVM",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 89 },
+      "id": 51,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "jvm_memory_used_bytes{jvm_memory_type=\"heap\", node_role=\"spark-master\", host_name=~\"$hostname\"}",
+          "legendFormat": "{{host_name}} {{jvm_memory_pool_name}} used",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "jvm_memory_committed_bytes{jvm_memory_type=\"heap\", node_role=\"spark-master\", host_name=~\"$hostname\"}",
+          "legendFormat": "{{host_name}} {{jvm_memory_pool_name}} committed",
+          "refId": "B"
+        }
+      ],
+      "title": "JVM Heap Memory",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 89 },
+      "id": 52,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "rate(jvm_gc_duration_seconds_sum{node_role=\"spark-master\", host_name=~\"$hostname\"}[1m])",
+          "legendFormat": "{{host_name}} {{jvm_gc_name}} duration",
+          "refId": "A"
+        }
+      ],
+      "title": "GC Duration Rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 97 },
+      "id": 53,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "jvm_thread_count{node_role=\"spark-master\", host_name=~\"$hostname\"}",
+          "legendFormat": "{{host_name}} threads",
+          "refId": "A"
+        }
+      ],
+      "title": "JVM Threads",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 97 },
+      "id": 54,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "jvm_class_count{node_role=\"spark-master\", host_name=~\"$hostname\"}",
+          "legendFormat": "{{host_name}} loaded",
+          "refId": "A"
+        }
+      ],
+      "title": "JVM Classes Loaded",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 105 },
+      "id": 60,
+      "title": "Master — Profiling",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "grafana-pyroscope-datasource", "uid": "pyroscope" },
+      "gridPos": { "h": 20, "w": 12, "x": 0, "y": 106 },
+      "id": 61,
+      "targets": [
+        {
+          "datasource": { "type": "grafana-pyroscope-datasource", "uid": "pyroscope" },
+          "profileTypeId": "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
+          "labelSelector": "{service_name=\"spark-master\"}",
+          "queryType": "profile",
+          "refId": "A",
+          "groupBy": ["hostname"]
+        }
+      ],
+      "title": "Master CPU Flame Graph",
+      "type": "flamegraph"
+    },
+    {
+      "datasource": { "type": "grafana-pyroscope-datasource", "uid": "pyroscope" },
+      "gridPos": { "h": 20, "w": 12, "x": 12, "y": 106 },
+      "id": 62,
+      "targets": [
+        {
+          "datasource": { "type": "grafana-pyroscope-datasource", "uid": "pyroscope" },
+          "profileTypeId": "memory:alloc_in_new_tlab_bytes:bytes:space:bytes",
+          "labelSelector": "{service_name=\"spark-master\"}",
+          "queryType": "profile",
+          "refId": "A",
+          "groupBy": ["hostname"]
+        }
+      ],
+      "title": "Master Memory Allocation Flame Graph",
+      "type": "flamegraph"
     }
   ],
   "refresh": "30s",
@@ -599,7 +1171,7 @@
           "type": "prometheus",
           "uid": "${datasource}"
         },
-        "definition": "label_values(system_cpu_time_seconds_total{node_role=\"spark\"}, host_name)",
+        "definition": "label_values(system_cpu_time_seconds_total{node_role=~\"spark-.*\"}, host_name)",
         "hide": 0,
         "includeAll": true,
         "label": "Hostname",
@@ -608,7 +1180,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(system_cpu_time_seconds_total{node_role=\"spark\"}, host_name)",
+          "query": "label_values(system_cpu_time_seconds_total{node_role=~\"spark-.*\"}, host_name)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 2,

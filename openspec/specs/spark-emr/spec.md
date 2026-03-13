@@ -118,6 +118,24 @@ The system SHALL upload a bootstrap action script to S3 and configure EMR cluste
 - **WHEN** `EMRService.createCluster()` is called with an `EMRClusterConfig` containing `bootstrapActions`
 - **THEN** the bootstrap actions are attached to the `RunJobFlowRequest` and executed during cluster bootstrap
 
+### Requirement: Per-node role labeling for master/worker differentiation
+
+The system SHALL label all telemetry (metrics, logs, traces, profiles) with `spark-master` or `spark-worker` based on the EMR node role so that dashboards and queries can filter each role independently.
+
+#### Scenario: OTel Collector labels host metrics by role
+
+- **WHEN** the OTel Collector runs on an EMR node
+- **THEN** all metrics and logs are tagged with `node_role=spark-master` on the master node
+- **AND** `node_role=spark-worker` on worker nodes
+- **AND** the role is detected at bootstrap time from the `IS_MASTER` EMR environment variable
+
+#### Scenario: Spark JVMs report by role
+
+- **WHEN** a Spark JVM starts on an EMR node
+- **THEN** `OTEL_SERVICE_NAME` is set to `spark-master` or `spark-worker` based on the node role
+- **AND** `PYROSCOPE_APPLICATION_NAME` is set to `spark-master` or `spark-worker` accordingly
+- **AND** these values are injected via `/etc/spark/conf/spark-env.sh` by the bootstrap script
+
 ### Requirement: OTel Collector runs as systemd service on EMR nodes
 
 The system SHALL run the OTel Collector as a persistent systemd service on every EMR node, accepting OTLP from local Spark JVMs, collecting host metrics, and forwarding all telemetry to the control node.

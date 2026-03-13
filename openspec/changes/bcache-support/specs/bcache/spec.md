@@ -1,6 +1,6 @@
-### Requirement: bcache write-back caching for database nodes
+### Requirement: bcache caching for database nodes
 
-The system SHALL support an optional bcache write-back caching configuration for database nodes, enabled by passing `--bcache` to the `init` command. When enabled, the local NVMe instance store SHALL be configured as the bcache cache device and the EBS volume SHALL be configured as the backing device. The resulting `/dev/bcache0` virtual block device SHALL be formatted with XFS and mounted to `/mnt/db1`, replacing the direct EBS or NVMe mount.
+The system SHALL support an optional bcache caching configuration for database nodes, enabled by passing `--bcache` to the `init` command. When enabled, the local NVMe instance store SHALL be configured as the bcache cache device and the EBS volume SHALL be configured as the backing device. The resulting `/dev/bcache0` virtual block device SHALL be formatted with XFS and mounted to `/mnt/db1`, replacing the direct EBS or NVMe mount.
 
 bcache is disabled by default (`--bcache` is a boolean flag, default `false`).
 
@@ -9,19 +9,35 @@ bcache is disabled by default (`--bcache` is a boolean flag, default `false`).
 - **WHEN** the user runs `init` without `--bcache`
 - **THEN** the system SHALL use the existing storage setup logic (NVMe or EBS directly, no caching layer)
 
-#### Scenario: bcache enabled with valid prerequisites
+#### Scenario: bcache enabled with valid prerequisites (default mode)
 
-- **WHEN** the user runs `init` with `--bcache`, an instance type that has local NVMe instance store, and `--ebs.type` set to a non-NONE value
-- **THEN** the system SHALL store `bcache = true` in `InitConfig`
+- **WHEN** the user runs `init` with `--bcache` and no `--bcache.mode` flag, an instance type that has local NVMe instance store, and `--ebs.type` set to a non-NONE value
+- **THEN** the system SHALL store `bcache = true` and `bcacheMode = "writethrough"` in `InitConfig`
 - **AND** the generated `setup_instance.sh` SHALL configure NVMe as the bcache cache device and EBS as the bcache backing device
 - **AND** the database SHALL be stored on `/dev/bcache0` mounted at `/mnt/db1`
-- **AND** the bcache cache mode SHALL be set to writeback
+- **AND** the bcache cache mode SHALL be set to `writethrough`
+
+#### Scenario: bcache enabled in writeback mode
+
+- **WHEN** the user runs `init` with `--bcache --bcache.mode=writeback`, an instance type that has local NVMe instance store, and `--ebs.type` set to a non-NONE value
+- **THEN** the system SHALL store `bcache = true` and `bcacheMode = "writeback"` in `InitConfig`
+- **AND** the generated `setup_instance.sh` SHALL configure the bcache cache mode as `writeback`
 
 ### Requirement: bcache cache mode
 
-The system SHALL configure bcache in **writeback** mode. In writeback mode, writes are acknowledged after being stored in the NVMe cache, and flushed to the EBS backing device asynchronously. This maximises write performance at the cost of a small window of data loss if the instance is terminated before dirty cache lines are flushed.
+The system SHALL support two bcache cache modes, selectable via `--bcache.mode`:
 
-This risk is acceptable for test workloads where data durability between test runs is not required.
+- **`writethrough`** (default): Writes are committed to both the NVMe cache and the EBS backing device before being acknowledged. This is the safe default — there is no risk of data loss on instance termination. Write performance is bounded by EBS throughput.
+- **`writeback`**: Writes are acknowledged after being stored in the NVMe cache, and flushed to the EBS backing device asynchronously. This maximises write performance at the cost of a small window of data loss if the instance is terminated before dirty cache lines are flushed.
+
+`writethrough` is the default because it is the safer option. Users who need maximum write performance and accept the durability trade-off should pass `--bcache.mode=writeback`.
+
+The system SHALL reject any value for `--bcache.mode` other than `writethrough` or `writeback` with a clear error message at init time.
+
+#### Scenario: invalid cache mode
+
+- **WHEN** the user runs `init` with `--bcache --bcache.mode=<invalid>`
+- **THEN** the system SHALL fail with a clear error message listing the accepted values (`writethrough`, `writeback`)
 
 ### Requirement: bcache device detection
 

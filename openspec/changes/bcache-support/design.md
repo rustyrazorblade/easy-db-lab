@@ -14,24 +14,25 @@ bcache requires:
 
 **Goals:**
 - Add `--bcache` flag to `init`, stored in `InitConfig`.
+- Add `--bcache.mode` flag to `init` (values: `writethrough`, `writeback`; default: `writethrough`), stored in `InitConfig`. Writethrough is the default because it is safe for all workloads — writes are committed to both the NVMe cache and the EBS backing device before being acknowledged. Users who need maximum write performance can opt into `writeback`.
 - Validate at init time: `--bcache` requires `--ebs.type != NONE` AND instance type has local instance store. Fail fast if either is absent.
-- Generate `setup_instance.sh` with bcache-awareness by injecting `BCACHE_ENABLED` (true/false) via TemplateService template substitution.
-- In the bcache path of `setup_instance.sh`: make NVMe the cache device, EBS the backing device, set writeback mode, format and mount `/dev/bcache0`.
+- Generate `setup_instance.sh` with bcache-awareness by injecting `BCACHE_ENABLED` (true/false) and `BCACHE_MODE` (writethrough/writeback) via TemplateService template substitution.
+- In the bcache path of `setup_instance.sh`: make NVMe the cache device, EBS the backing device, set the configured cache mode, format and mount `/dev/bcache0`.
 - Add `bcache-tools` to the Packer AMI build so `make-bcache` is available.
 
 **Non-Goals:**
 - Supporting bcache with multiple EBS volumes or multiple NVMe devices beyond the primary pair.
-- Choosing cache mode (writethrough vs writeback) at runtime — writeback is fixed as the default.
+- Supporting cache modes other than `writethrough` and `writeback`.
 - Persisting bcache configuration across reboots (test clusters are ephemeral; bcache must be re-registered on reboot, which is out of scope for now).
 - Migrating existing clusters to bcache after init.
 
 ## Decisions
 
-### 1. Inject bcache flag into setup_instance.sh via TemplateService
+### 1. Inject bcache flags into setup_instance.sh via TemplateService
 
-**Rationale:** `setup_instance.sh` is a static classpath resource. The bcache path needs to know whether bcache is enabled before it runs. The cleanest mechanism is to convert the static extraction to a TemplateService-based generation that replaces a `__BCACHE_ENABLED__` placeholder with `true` or `false`. This keeps the bcache logic inside the script (where it belongs) while allowing Init to configure it.
+**Rationale:** `setup_instance.sh` is a static classpath resource. The bcache path needs to know whether bcache is enabled and which cache mode to use before it runs. The cleanest mechanism is to convert the static extraction to a TemplateService-based generation that replaces `__BCACHE_ENABLED__` with `true` or `false` and `__BCACHE_MODE__` with `writethrough` or `writeback`. This keeps the bcache logic inside the script (where it belongs) while allowing Init to configure it.
 
-`Init.extractResourceFiles()` currently calls `extractResourceFile(...)` to copy the script verbatim. This method will be updated to read the script as a template string and write the substituted version.
+`Init.extractResourceFiles()` currently calls `extractResourceFile(...)` to copy the script verbatim. This method will be updated to read the script as a template string and write the substituted version, replacing both `__BCACHE_ENABLED__` and `__BCACHE_MODE__` placeholders.
 
 **Alternative considered:** Pass `BCACHE_ENABLED=true` as an environment variable prefix when invoking the script (e.g., `sudo BCACHE_ENABLED=true bash setup_instance.sh`). Rejected because it would require modifying `SetupInstance.kt` to read from cluster state, adding coupling between the command and the bcache feature at runtime.
 

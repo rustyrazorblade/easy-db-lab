@@ -9,7 +9,7 @@ dependencies {
     // Test dependencies
     testImplementation(libs.bundles.testcontainers)
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    testRuntimeOnly(libs.junit.platform.launcher)
     testImplementation("org.assertj:assertj-core:3.25.3")
     // Spark is compileOnly (provided on EMR), but needed for unit testing SparkJobConfig.
     // Version variables are set by spark/build.gradle.kts subprojects block.

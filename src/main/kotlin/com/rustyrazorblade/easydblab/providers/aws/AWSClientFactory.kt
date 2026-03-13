@@ -1,13 +1,9 @@
 package com.rustyrazorblade.easydblab.providers.aws
 
-import com.rustyrazorblade.easydblab.observability.OtelTelemetryProvider
-import com.rustyrazorblade.easydblab.observability.TelemetryProvider
-import io.opentelemetry.instrumentation.awssdk.v2_2.AwsSdkTelemetry
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider
 import software.amazon.awssdk.auth.credentials.ProfileCredentialsProvider
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
-import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.ec2.Ec2Client
 import software.amazon.awssdk.services.iam.IamClient
@@ -75,30 +71,10 @@ interface AWSClientFactory {
 /**
  * Default implementation that creates real AWS SDK clients.
  *
- * When OpenTelemetry is enabled (via OTEL_EXPORTER_OTLP_ENDPOINT), AWS SDK calls
- * are automatically instrumented with tracing.
- *
- * @param telemetryProvider The telemetry provider for instrumenting AWS SDK calls
+ * AWS SDK calls are automatically instrumented by the OTel Java agent via bytecode
+ * transformation when the container is run with the agent.
  */
-class DefaultAWSClientFactory(
-    private val telemetryProvider: TelemetryProvider,
-) : AWSClientFactory {
-    /**
-     * Gets the client override configuration with optional telemetry interceptor.
-     * When telemetry is enabled, adds the AWS SDK telemetry interceptor for automatic tracing.
-     */
-    private fun getClientOverrideConfig(): ClientOverrideConfiguration {
-        val builder = ClientOverrideConfiguration.builder()
-
-        // Add telemetry interceptor if OTel is enabled
-        if (telemetryProvider is OtelTelemetryProvider) {
-            val awsTelemetry = AwsSdkTelemetry.create(telemetryProvider.getOpenTelemetry())
-            builder.addExecutionInterceptor(awsTelemetry.newExecutionInterceptor())
-        }
-
-        return builder.build()
-    }
-
+class DefaultAWSClientFactory : AWSClientFactory {
     override fun createAWSClient(
         accessKey: String,
         secret: String,
@@ -143,14 +119,11 @@ class DefaultAWSClientFactory(
         credentialsProvider: AwsCredentialsProvider,
         region: Region,
     ): AWS {
-        val overrideConfig = getClientOverrideConfig()
-
         val iamClient =
             IamClient
                 .builder()
                 .region(region)
                 .credentialsProvider(credentialsProvider)
-                .overrideConfiguration(overrideConfig)
                 .build()
 
         val s3Client =
@@ -158,7 +131,6 @@ class DefaultAWSClientFactory(
                 .builder()
                 .region(region)
                 .credentialsProvider(credentialsProvider)
-                .overrideConfiguration(overrideConfig)
                 .build()
 
         val stsClient =
@@ -166,7 +138,6 @@ class DefaultAWSClientFactory(
                 .builder()
                 .region(region)
                 .credentialsProvider(credentialsProvider)
-                .overrideConfiguration(overrideConfig)
                 .build()
 
         return AWS(iamClient, s3Client, stsClient)
@@ -175,13 +146,10 @@ class DefaultAWSClientFactory(
     private fun createEc2ClientWithProvider(
         credentialsProvider: AwsCredentialsProvider,
         region: Region,
-    ): Ec2Client {
-        val overrideConfig = getClientOverrideConfig()
-        return Ec2Client
+    ): Ec2Client =
+        Ec2Client
             .builder()
             .region(region)
             .credentialsProvider(credentialsProvider)
-            .overrideConfiguration(overrideConfig)
             .build()
-    }
 }

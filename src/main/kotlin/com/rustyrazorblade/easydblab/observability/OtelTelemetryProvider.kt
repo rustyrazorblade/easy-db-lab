@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.observability
 
 import io.github.oshai.kotlinlogging.KotlinLogging
+import io.opentelemetry.api.GlobalOpenTelemetry
 import io.opentelemetry.api.OpenTelemetry
 import io.opentelemetry.api.common.AttributeKey
 import io.opentelemetry.api.common.Attributes
@@ -8,56 +9,31 @@ import io.opentelemetry.api.metrics.Meter
 import io.opentelemetry.api.trace.StatusCode
 import io.opentelemetry.api.trace.Tracer
 import io.opentelemetry.context.Context
-import io.opentelemetry.instrumentation.logback.appender.v1_0.OpenTelemetryAppender
-import io.opentelemetry.sdk.OpenTelemetrySdk
-import io.opentelemetry.sdk.autoconfigure.AutoConfiguredOpenTelemetrySdk
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.TimeUnit
 
 private val log = KotlinLogging.logger {}
 
 /**
- * OpenTelemetry implementation of TelemetryProvider using auto-configuration.
+ * OpenTelemetry implementation of TelemetryProvider backed by the OTel Java agent.
  *
- * Uses AutoConfiguredOpenTelemetrySdk to automatically read standard OTEL environment variables:
- * - OTEL_EXPORTER_OTLP_ENDPOINT: The OTLP endpoint for exporting telemetry
- * - OTEL_RESOURCE_ATTRIBUTES: Additional resource attributes (key=value,key2=value2)
- * - OTEL_SERVICE_NAME: Service name (defaults to "easy-db-lab" if not set)
+ * Delegates to [GlobalOpenTelemetry], which is initialized by the OTel Java agent
+ * when the JVM starts with `-javaagent:/app/otel/opentelemetry-javaagent.jar`.
  *
- * Features:
- * - Automatic configuration from environment variables
- * - Log export via Logback appender bridge
- * - Resource attributes for service identification
- * - Graceful shutdown with flush on exit
+ * The agent handles:
+ * - SDK initialization from standard OTEL_* environment variables
+ * - OTLP export configuration
+ * - Bytecode instrumentation of AWS SDK, OkHttp, and Logback
+ * - Graceful shutdown and flush on JVM exit
+ *
+ * When the agent is not attached (e.g., running the CLI locally without configuration),
+ * [GlobalOpenTelemetry] returns a no-op instance and all operations are zero-cost.
  */
 class OtelTelemetryProvider : TelemetryProvider {
-    private val openTelemetry: OpenTelemetry
-    private val sdk: OpenTelemetrySdk
+    private val openTelemetry: OpenTelemetry = GlobalOpenTelemetry.get()
 
     // Cache for histograms and counters to avoid recreation
     private val histogramCache = ConcurrentHashMap<String, io.opentelemetry.api.metrics.LongHistogram>()
     private val counterCache = ConcurrentHashMap<String, io.opentelemetry.api.metrics.LongCounter>()
-
-    init {
-        log.info { "Initializing OpenTelemetry with auto-configuration" }
-
-        val autoConfiguredSdk =
-            AutoConfiguredOpenTelemetrySdk
-                .builder()
-                .addResourceCustomizer { envResource, _ ->
-                    OtelResourceBuilder.buildResource(envResource)
-                }.disableShutdownHook() // We handle shutdown manually
-                .build()
-
-        sdk = autoConfiguredSdk.openTelemetrySdk
-        openTelemetry = sdk
-
-        // Install the Logback appender bridge to export logs via OTel
-        OpenTelemetryAppender.install(openTelemetry)
-
-        // Log effective configuration for debugging
-        logEffectiveConfiguration()
-    }
 
     override fun getTracer(name: String): Tracer = openTelemetry.getTracer(name)
 
@@ -133,26 +109,11 @@ class OtelTelemetryProvider : TelemetryProvider {
     }
 
     override fun shutdown() {
-        log.info { "Shutting down OpenTelemetry..." }
-        try {
-            sdk.sdkTracerProvider.forceFlush().join(SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            sdk.sdkMeterProvider.forceFlush().join(SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            sdk.sdkLoggerProvider.forceFlush().join(SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            sdk.shutdown().join(SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            log.info { "OpenTelemetry shutdown complete" }
-        } catch (e: Exception) {
-            log.warn(e) { "Error during OpenTelemetry shutdown" }
-        }
+        // Shutdown and flush are handled by the OTel Java agent's shutdown hook
+        log.debug { "OpenTelemetry shutdown delegated to the agent" }
     }
 
     override fun isEnabled(): Boolean = true
-
-    /**
-     * Gets the current OpenTelemetry instance for use with auto-instrumentation libraries.
-     *
-     * This is needed for configuring AWS SDK and OkHttp auto-instrumentation.
-     */
-    fun getOpenTelemetry(): OpenTelemetry = openTelemetry
 
     private fun buildAttributes(attributes: Map<String, String>): Attributes {
         val builder = Attributes.builder()
@@ -160,21 +121,5 @@ class OtelTelemetryProvider : TelemetryProvider {
             builder.put(AttributeKey.stringKey(key), value)
         }
         return builder.build()
-    }
-
-    private fun logEffectiveConfiguration() {
-        val endpoint = System.getenv("OTEL_EXPORTER_OTLP_ENDPOINT") ?: "default"
-        val resourceAttrs = System.getenv("OTEL_RESOURCE_ATTRIBUTES")
-
-        log.info { "OpenTelemetry initialized successfully" }
-        log.info { "  Endpoint: $endpoint" }
-        log.info { "  Service name: ${TelemetryNames.SERVICE_NAME}" }
-        if (!resourceAttrs.isNullOrBlank()) {
-            log.info { "  Resource attributes from env: $resourceAttrs" }
-        }
-    }
-
-    companion object {
-        private const val SHUTDOWN_TIMEOUT_SECONDS = 5L
     }
 }

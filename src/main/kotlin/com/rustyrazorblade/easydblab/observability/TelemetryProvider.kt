@@ -6,10 +6,10 @@ import io.opentelemetry.api.trace.Tracer
 /**
  * Interface for telemetry operations providing tracing and metrics capabilities.
  *
- * This abstraction allows for different implementations based on whether
- * OpenTelemetry is configured (via OTEL_EXPORTER_OTLP_ENDPOINT environment variable):
- * - When configured: OtelTelemetryProvider exports traces and metrics via gRPC
- * - When not configured: NoOpTelemetryProvider provides zero-overhead no-ops
+ * Backed by [OtelTelemetryProvider], which delegates to the OTel Java agent's
+ * [io.opentelemetry.api.GlobalOpenTelemetry] instance. When the agent is attached,
+ * traces and metrics are exported per the OTEL_* environment variable configuration.
+ * When running without the agent, all operations are no-ops.
  */
 interface TelemetryProvider {
     /**

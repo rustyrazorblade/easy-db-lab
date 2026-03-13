@@ -129,7 +129,7 @@ dependencies {
     // Cassandra Driver
     implementation(libs.cassandra.driver.core)
 
-    // OpenTelemetry
+    // OpenTelemetry (API only — SDK, exporters, and instrumentation are provided by the OTel Java agent)
     implementation(libs.bundles.opentelemetry)
 
     // Testing
@@ -137,6 +137,23 @@ dependencies {
     testImplementation(libs.bundles.koin.test)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.bundles.testcontainers)
+}
+
+// Separate configuration for the OTel Java agent (not added to the app classpath)
+val otelAgent by configurations.creating {
+    isTransitive = false
+}
+
+dependencies {
+    otelAgent(libs.opentelemetry.javaagent)
+}
+
+// Copy the OTel agent JAR to the build directory so Jib can include it in the container
+val copyOtelAgent by tasks.registering(Copy::class) {
+    description = "Copy OpenTelemetry Java agent to build directory for inclusion in the container image"
+    from(otelAgent)
+    rename("opentelemetry-javaagent-.*\\.jar", "opentelemetry-javaagent.jar")
+    into(layout.buildDirectory.dir("otel-agent"))
 }
 
 kotlin {
@@ -322,6 +339,7 @@ jib {
         appRoot = "/app"
         jvmFlags =
             listOf(
+                "-javaagent:/app/otel/opentelemetry-javaagent.jar",
                 "-Deasydblab.ami.name=rustyrazorblade/images/easy-db-lab-cassandra-amd64-$version",
                 "-Deasydblab.version=$version",
                 "-Deasydblab.apphome=/app",
@@ -336,6 +354,10 @@ jib {
                 path {
                     setFrom(file("packer"))
                     into = "/app/packer"
+                }
+                path {
+                    setFrom(layout.buildDirectory.dir("otel-agent"))
+                    into = "/app/otel"
                 }
             }
         }
@@ -356,9 +378,16 @@ jib {
 
 // Jib doesn't fully support configuration cache yet
 tasks.named("jib") {
+    dependsOn(copyOtelAgent)
     notCompatibleWithConfigurationCache("Jib plugin doesn't fully support configuration cache yet")
 }
 
 tasks.named("jibDockerBuild") {
+    dependsOn(copyOtelAgent)
+    notCompatibleWithConfigurationCache("Jib plugin doesn't fully support configuration cache yet")
+}
+
+tasks.named("jibBuildTar") {
+    dependsOn(copyOtelAgent)
     notCompatibleWithConfigurationCache("Jib plugin doesn't fully support configuration cache yet")
 }

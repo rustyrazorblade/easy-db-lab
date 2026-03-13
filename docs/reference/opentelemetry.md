@@ -1,6 +1,6 @@
 # OpenTelemetry Instrumentation
 
-easy-db-lab includes optional OpenTelemetry (OTel) instrumentation for distributed tracing and metrics. When enabled, traces and metrics are exported to an OTLP-compatible collector.
+easy-db-lab includes OpenTelemetry (OTel) instrumentation for distributed tracing and metrics, powered by the [OpenTelemetry Java Agent](https://github.com/open-telemetry/opentelemetry-java-instrumentation). The agent is bundled in the container image at `/app/otel/opentelemetry-javaagent.jar` and activated automatically when the container runs.
 
 ## Enabling OpenTelemetry
 
@@ -13,7 +13,7 @@ easy-db-lab up
 
 When this environment variable is:
 - **Set**: Traces and metrics are exported via gRPC to the specified endpoint
-- **Not set**: OpenTelemetry is completely disabled with zero overhead
+- **Not set**: The agent is loaded but no data is exported
 
 ## Instrumented Operations
 
@@ -43,7 +43,7 @@ K8s operations via the fabric8 client are instrumented:
 
 ### AWS SDK Calls
 
-When OTel is enabled, AWS SDK calls are automatically instrumented using the OpenTelemetry AWS SDK instrumentation library. This includes:
+AWS SDK calls are automatically instrumented by the OTel Java agent via bytecode transformation. This includes:
 - EC2 operations
 - S3 operations
 - IAM operations
@@ -53,10 +53,12 @@ When OTel is enabled, AWS SDK calls are automatically instrumented using the Ope
 
 ## Resource Attributes
 
-Traces include the following resource attributes:
-- `service.name`: `easy-db-lab`
-- `service.version`: Application version
-- `host.name`: Local hostname
+The OTel Java agent automatically populates resource attributes. Override them via standard OTel environment variables:
+
+```bash
+export OTEL_SERVICE_NAME=easy-db-lab
+export OTEL_RESOURCE_ATTRIBUTES=deployment.environment=prod,cluster.id=my-cluster
+```
 
 ## Node Role Labeling
 
@@ -155,13 +157,13 @@ YACE exposes scraped metrics as Prometheus-compatible metrics on port 5001, whic
 
 ## Configuration
 
-The following environment variables are supported:
+The OTel Java agent supports the full set of standard [OTel environment variables](https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/). Key variables:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP gRPC endpoint | None (OTel disabled) |
-
-Additional standard OTel environment variables may work depending on the SDK defaults.
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP gRPC endpoint | None (no export) |
+| `OTEL_SERVICE_NAME` | Service name in traces | `unknown_service` |
+| `OTEL_RESOURCE_ATTRIBUTES` | Extra resource attributes | None |
 
 ## Example: Using with Jaeger
 
@@ -198,12 +200,12 @@ easy-db-lab up
 
 1. Verify the endpoint is correct and reachable
 2. Check that the collector accepts gRPC OTLP (port 4317 is standard)
-3. Look for OpenTelemetry initialization logs on startup
+3. Confirm `OTEL_EXPORTER_OTLP_ENDPOINT` is set in the container environment
 
 ### High Latency
 
 Traces are batched before export (default 1 second delay). This is normal and reduces overhead.
 
-### Shutdown Warnings
+### Shutdown Flush
 
-A shutdown hook flushes remaining telemetry on exit. Brief delays during shutdown are expected.
+The OTel Java agent registers its own shutdown hook and flushes remaining telemetry on JVM exit. Brief delays during shutdown are expected.

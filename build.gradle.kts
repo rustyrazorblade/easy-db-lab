@@ -274,6 +274,13 @@ tasks.assemble {
 
 // Kover code coverage configuration
 kover {
+    currentProject {
+        instrumentation {
+            // integrationTest runs against real AWS infrastructure - exclude from coverage collection
+            excludedTestTasks.add("integrationTest")
+        }
+    }
+
     reports {
         filters {
             excludes {

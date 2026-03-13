@@ -93,6 +93,7 @@ jackson-datatype-jsr310 = { module = "com.fasterxml.jackson.datatype:jackson-dat
 
 # Testing
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter-engine", version.ref = "jupiter" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
 assertj-core = { module = "org.assertj:assertj-core", version.ref = "assertj" }
 mockito-kotlin = { module = "org.mockito.kotlin:mockito-kotlin", version.ref = "mockito-kotlin" }
 testcontainers-core = { module = "org.testcontainers:testcontainers", version.ref = "testcontainers" }
@@ -190,7 +191,7 @@ logging = ["logback-classic", "kotlin-logging"]
 jackson = ["jackson-dataformat-yaml", "jackson-module-kotlin", "jackson-datatype-jsr310"]
 
 # Testing bundle
-testing = ["junit-jupiter", "assertj-core", "mockito-kotlin"]
+testing = ["junit-jupiter", "junit-platform-launcher", "assertj-core", "mockito-kotlin"]
 
 # TestContainers bundle
 testcontainers = ["testcontainers-core", "testcontainers-junit", "testcontainers-cassandra", "testcontainers-k3s", "testcontainers-localstack"]

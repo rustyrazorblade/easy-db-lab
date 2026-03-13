@@ -64,13 +64,6 @@ tasks.named<CreateStartScripts>("startScripts") {
     }
 }
 
-// In this section you declare where to find the dependencies of your project
-allprojects {
-    repositories {
-        mavenCentral()
-    }
-}
-
 // In this section you declare the dependencies for your production and test code
 dependencies {
     // Logging
@@ -158,27 +151,6 @@ sourceSets {
     val test by getting {
         java.srcDirs("src/test/kotlin")
     }
-
-    val integrationTest by creating {
-        java {
-            compileClasspath += sourceSets["main"].output + sourceSets["test"].output
-            runtimeClasspath += sourceSets["main"].output + sourceSets["test"].output
-            srcDir("src/integration-test/kotlin")
-        }
-    }
-}
-
-// The integrationTest source set creates these configurations automatically
-// We just need to make them extend from the test configurations
-configurations["integrationTestImplementation"].extendsFrom(configurations["testImplementation"])
-configurations["integrationTestRuntimeOnly"].extendsFrom(configurations["testRuntimeOnly"])
-
-tasks.register<Test>("integrationTest") {
-    testClassesDirs = sourceSets["integrationTest"].output.classesDirs
-    classpath = sourceSets["integrationTest"].runtimeClasspath
-    outputs.upToDateWhen { false }
-    description = "Runs the full end to end tests. Will create a cluster in AWS. Errors might require manual cluster tear down."
-    group = "Verification"
 }
 
 tasks.test {

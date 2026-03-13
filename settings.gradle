@@ -26,6 +26,7 @@ include "spark:connector-read-write"
 
 dependencyResolutionManagement {
     repositories {
+        mavenLocal()
         mavenCentral()
     }
 

@@ -64,13 +64,6 @@ tasks.named<CreateStartScripts>("startScripts") {
     }
 }
 
-// In this section you declare where to find the dependencies of your project
-allprojects {
-    repositories {
-        mavenCentral()
-    }
-}
-
 // In this section you declare the dependencies for your production and test code
 dependencies {
     // Logging
@@ -174,6 +167,7 @@ configurations["integrationTestImplementation"].extendsFrom(configurations["test
 configurations["integrationTestRuntimeOnly"].extendsFrom(configurations["testRuntimeOnly"])
 
 tasks.register<Test>("integrationTest") {
+    useJUnitPlatform()
     testClassesDirs = sourceSets["integrationTest"].output.classesDirs
     classpath = sourceSets["integrationTest"].runtimeClasspath
     outputs.upToDateWhen { false }

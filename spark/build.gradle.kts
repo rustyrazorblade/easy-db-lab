@@ -16,11 +16,6 @@ subprojects {
         targetCompatibility = JavaVersion.VERSION_11
     }
 
-    repositories {
-        mavenLocal()
-        mavenCentral()
-    }
-
     extra["sparkVersion"] = sparkVersion
     extra["scalaVersion"] = scalaVersion
 

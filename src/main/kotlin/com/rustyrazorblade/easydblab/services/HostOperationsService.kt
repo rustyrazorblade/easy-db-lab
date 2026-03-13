@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import org.koin.core.component.KoinComponent
+import org.slf4j.MDC
 
 /**
  * Service for iterating over cluster hosts and executing operations.
@@ -73,12 +74,21 @@ class HostOperationsService(
             val threads =
                 filteredHosts.map { host ->
                     kotlin.concurrent.thread(start = true, isDaemon = false) {
-                        action(host)
+                        MDC.put("host", host.alias)
+                        try {
+                            action(host)
+                        } finally {
+                            MDC.remove("host")
+                        }
                     }
                 }
             threads.forEach { it.join() }
         } else {
-            filteredHosts.forEach(action)
+            filteredHosts.forEach { host ->
+                MDC.putCloseable("host", host.alias).use {
+                    action(host)
+                }
+            }
         }
     }
 

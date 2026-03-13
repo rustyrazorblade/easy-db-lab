@@ -1,6 +1,6 @@
 [versions]
 # Kotlin
-kotlin = "2.3.0"
+kotlin = "2.3.10"
 
 # MCP SDK
 mcp-sdk = "0.8.1"

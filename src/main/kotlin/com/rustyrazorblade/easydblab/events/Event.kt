@@ -5438,6 +5438,33 @@ sealed interface Event {
     // Event.Ssh — SSH operations
     // =========================================================================
 
+    // =========================================================================
+    // Event.Profiling — async-profiler flamegraph operations
+    // =========================================================================
+
+    @Serializable
+    sealed interface Profiling : Event {
+        @Serializable
+        @SerialName("Profiling.Starting")
+        data class Starting(
+            val host: String,
+            val args: List<String>,
+        ) : Profiling {
+            override fun toDisplayString(): String {
+                val argsStr = if (args.isEmpty()) "(default options)" else args.joinToString(" ")
+                return "Starting profiler on $host with: $argsStr"
+            }
+        }
+
+        @Serializable
+        @SerialName("Profiling.Complete")
+        data class Complete(
+            val host: String,
+        ) : Profiling {
+            override fun toDisplayString(): String = "Profiling complete on $host. Data sent to Pyroscope."
+        }
+    }
+
     @Serializable
     sealed interface Ssh : Event {
         @Serializable

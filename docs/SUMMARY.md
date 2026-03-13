@@ -40,6 +40,7 @@
 - [Ports](reference/ports.md)
 - [Log Infrastructure](reference/log-infrastructure.md)
 - [OpenTelemetry](reference/opentelemetry.md)
+- [Dashboards](reference/dashboards.md)
 - [Pyroscope Configuration](reference/pyroscope-configuration.md)
 - [Spark Debugging](reference/spark-debugging.md)
 

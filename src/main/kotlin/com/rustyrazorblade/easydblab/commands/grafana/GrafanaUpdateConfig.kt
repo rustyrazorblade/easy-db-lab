@@ -17,6 +17,7 @@ import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBu
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.toHost
 import com.rustyrazorblade.easydblab.configuration.victoria.VictoriaManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.sidecar.SidecarManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.yace.YaceManifestBuilder
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
@@ -64,6 +65,7 @@ class GrafanaUpdateConfig : PicoBaseCommand() {
     private val beylaManifestBuilder: BeylaManifestBuilder by inject()
     private val pyroscopeManifestBuilder: PyroscopeManifestBuilder by inject()
     private val yaceManifestBuilder: YaceManifestBuilder by inject()
+    private val sidecarManifestBuilder: SidecarManifestBuilder by inject()
 
     companion object {
         private const val CLUSTER_CONFIG_NAME = "cluster-config"
@@ -92,6 +94,7 @@ class GrafanaUpdateConfig : PicoBaseCommand() {
         applyFabric8Resources("S3 Manager", controlNode, s3ManagerManifestBuilder.buildAllResources())
         applyFabric8Resources("Beyla", controlNode, beylaManifestBuilder.buildAllResources())
         applyFabric8Resources("YACE", controlNode, yaceManifestBuilder.buildAllResources())
+        applyFabric8Resources("Cassandra Sidecar", controlNode, sidecarManifestBuilder.buildAllResources())
 
         // Apply Pyroscope resources (requires directory setup via SSH first)
         applyPyroscopeResources(controlNode)
@@ -109,7 +112,7 @@ class GrafanaUpdateConfig : PicoBaseCommand() {
         eventBus.emit(Event.Grafana.WorkloadsRestarting)
 
         val deployments = listOf("victoria-metrics", "victoria-logs", "tempo", "pyroscope", "grafana")
-        val daemonSets = listOf("otel-collector", "fluent-bit-journald", "beyla", "ebpf-exporter", "pyroscope-ebpf")
+        val daemonSets = listOf("otel-collector", "fluent-bit-journald", "beyla", "ebpf-exporter", "pyroscope-ebpf", "cassandra-sidecar")
 
         for (name in deployments) {
             k8sService

@@ -1,13 +1,5 @@
 #!/bin/bash
 
-# grab the repo
-git clone https://github.com/apache/cassandra-sidecar.git
-
-# build
-(
-cd cassandra-sidecar
-./gradlew shadowjar installDist
-sudo cp -r build/install/apache-cassandra-sidecar /usr/local/cassandra-sidecar
-)
-
-
+# Cassandra sidecar is now deployed as a K8s DaemonSet via k3s.
+# The image ghcr.io/apache/cassandra-sidecar:latest is pulled at deploy time.
+# No installation steps are needed here.

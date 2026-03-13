@@ -44,16 +44,17 @@ class Stop : PicoBaseCommand() {
     }
 
     /**
-     * Stop cassandra-sidecar service on Cassandra nodes
+     * Remove cassandra-sidecar DaemonSet from the cluster
      */
     private fun stopSidecar() {
         eventBus.emit(Event.Cassandra.SidecarStopping)
 
-        hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList, parallel = true) { host ->
+        val controlHost = clusterState.hosts[ServerType.Control]?.firstOrNull()
+        if (controlHost != null) {
             sidecarService
-                .stop(host.toHost())
+                .remove(controlHost)
                 .onFailure { e ->
-                    eventBus.emit(Event.Cassandra.SidecarStopFailed(host.alias, "${e.message}"))
+                    eventBus.emit(Event.Cassandra.SidecarStopFailed("all", "${e.message}"))
                 }
         }
 

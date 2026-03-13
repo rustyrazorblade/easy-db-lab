@@ -17,6 +17,7 @@ import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuil
 import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.victoria.VictoriaManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.sidecar.SidecarManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.yace.YaceManifestBuilder
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
@@ -324,6 +325,21 @@ class K8sServiceIntegrationTest {
 
         assertConfigMapExists("yace-config", "yace-config.yaml")
         assertDeploymentExists("yace")
+    }
+
+    @Test
+    @Order(20)
+    fun `should apply Cassandra Sidecar resources`() {
+        // Create host directories that the sidecar mounts from the node
+        k3s.execInContainer("mkdir", "-p", "/etc/cassandra-sidecar")
+        k3s.execInContainer("mkdir", "-p", "/mnt/db1/cassandra")
+        k3s.execInContainer("mkdir", "-p", "/usr/local/otel")
+        k3s.execInContainer("mkdir", "-p", "/usr/local/pyroscope")
+
+        val resources = SidecarManifestBuilder().buildAllResources()
+        applyAndVerify(resources)
+
+        assertDaemonSetExists("cassandra-sidecar")
     }
 
     @Test
@@ -745,6 +761,7 @@ class K8sServiceIntegrationTest {
             BeylaManifestBuilder(templateService).buildAllResources() +
             PyroscopeManifestBuilder(templateService).buildAllResources() +
             YaceManifestBuilder(templateService).buildAllResources() +
+            SidecarManifestBuilder().buildAllResources() +
             GrafanaManifestBuilder(templateService).buildAllResources() +
             ClickHouseManifestBuilder(DefaultClickHouseConfigService()).buildAllResources(
                 totalReplicas = 3,

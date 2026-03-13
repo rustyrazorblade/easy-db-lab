@@ -42,16 +42,17 @@ class Restart : PicoBaseCommand() {
     }
 
     /**
-     * Restart cassandra-sidecar service on Cassandra nodes
+     * Rolling restart of the cassandra-sidecar DaemonSet
      */
     private fun restartSidecar() {
         eventBus.emit(Event.Cassandra.SidecarRestarting)
 
-        hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList, parallel = true) { host ->
+        val controlHost = clusterState.hosts[ServerType.Control]?.firstOrNull()
+        if (controlHost != null) {
             sidecarService
-                .restart(host.toHost())
+                .rolloutRestart(controlHost)
                 .onFailure { e ->
-                    eventBus.emit(Event.Cassandra.SidecarRestartFailed(host.alias, "${e.message}"))
+                    eventBus.emit(Event.Cassandra.SidecarRestartFailed("all", "${e.message}"))
                 }
         }
 

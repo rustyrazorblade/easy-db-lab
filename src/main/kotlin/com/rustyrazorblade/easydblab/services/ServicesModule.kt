@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.clickhouse.ClickHouseManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.sidecar.SidecarManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuilder
@@ -68,6 +69,7 @@ val servicesModule =
         factoryOf(::TempoManifestBuilder)
         factoryOf(::VictoriaManifestBuilder)
         factoryOf(::YaceManifestBuilder)
+        factoryOf(::SidecarManifestBuilder)
         factoryOf(::DefaultGrafanaDashboardService) bind GrafanaDashboardService::class
         factoryOf(::TemplateService)
         factory<VictoriaBackupService> { DefaultVictoriaBackupService(get(), get()) }

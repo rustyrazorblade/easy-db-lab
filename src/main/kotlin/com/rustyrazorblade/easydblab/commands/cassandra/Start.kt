@@ -52,12 +52,13 @@ class Start : PicoBaseCommand() {
             cassandraService.start(h).getOrThrow()
         }
 
-        // Start cassandra-sidecar on Cassandra nodes
-        hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList, parallel = true) { host ->
+        // Deploy cassandra-sidecar DaemonSet via k3s
+        val controlHost = clusterState.hosts[ServerType.Control]?.firstOrNull()
+        if (controlHost != null) {
             sidecarService
-                .start(host.toHost())
+                .deploy(controlHost)
                 .onFailure { e ->
-                    eventBus.emit(Event.Cassandra.SidecarStartFailed(host.alias, "${e.message}"))
+                    eventBus.emit(Event.Cassandra.SidecarStartFailed("all", "${e.message}"))
                 }
         }
 

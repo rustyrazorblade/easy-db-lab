@@ -151,7 +151,6 @@ sourceSets {
     val test by getting {
         java.srcDirs("src/test/kotlin")
     }
-
 }
 
 tasks.test {

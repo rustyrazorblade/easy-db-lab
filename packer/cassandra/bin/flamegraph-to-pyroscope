@@ -1,0 +1,47 @@
+#!/bin/bash
+
+# flamegraph-to-pyroscope: Profile Cassandra using async-profiler and send data to Pyroscope
+#
+# Usage: flamegraph-to-pyroscope [asprof-options]
+#
+# Options are passed directly to asprof. The output format (-o collapsed) and output
+# file (-f) are managed automatically. The Cassandra PID is auto-detected via cassandra-pid.
+#
+# Examples:
+#   flamegraph-to-pyroscope -d 30
+#   flamegraph-to-pyroscope -d 60 -e alloc
+#   flamegraph-to-pyroscope -d 30 -t
+
+set -e
+
+ASPROF=/usr/local/async-profiler/bin/asprof
+APP_NAME="cassandra.flamegraph"
+
+# Source environment for Pyroscope server address
+# shellcheck source=/dev/null
+[ -f /etc/default/cassandra ] && source /etc/default/cassandra
+
+PYROSCOPE_ADDR="${PYROSCOPE_SERVER_ADDRESS:-http://localhost:4040}"
+
+# Create temp file for collapsed stacks output
+OUTFILE=$(mktemp /tmp/flamegraph-XXXXXX.collapsed)
+trap "rm -f $OUTFILE" EXIT
+
+# Get the Cassandra PID
+PID=$(cassandra-pid)
+
+if [ -z "$PID" ] || [ "$PID" = "0" ]; then
+    echo "Error: Could not determine Cassandra PID" >&2
+    exit 1
+fi
+
+echo "Profiling Cassandra (PID: $PID)..."
+sudo "$ASPROF" -o collapsed -f "$OUTFILE" "$@" "$PID"
+
+echo "Sending profile to Pyroscope at $PYROSCOPE_ADDR..."
+curl -s -X POST \
+    "${PYROSCOPE_ADDR}/ingest?name=${APP_NAME}&spyName=asyncprofiler&format=collapsed" \
+    -H "Content-Type: text/plain" \
+    --data-binary @"$OUTFILE"
+
+echo "Profile sent to Pyroscope."

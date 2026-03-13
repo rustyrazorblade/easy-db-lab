@@ -1,0 +1,9 @@
+[Unit]
+Description=Flamegraph profiler for Cassandra (one-shot, sends to Pyroscope)
+After=cassandra.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/flamegraph-to-pyroscope -d 30
+EnvironmentFile=-/etc/default/cassandra
+RemainAfterExit=no

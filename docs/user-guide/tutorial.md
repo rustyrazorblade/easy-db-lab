@@ -24,7 +24,7 @@ This creates a 3-node Cassandra cluster by default.
 | `--app`, `--stress`, `-s` | Number of stress/application instances | 0 |
 | `--instance`, `-i` | Cassandra instance type | r3.2xlarge |
 | `--stress-instance`, `-si` | Stress instance type | c7i.2xlarge |
-| `--azs`, `-z` | Availability zones (e.g., `a,b,c`) | all available |
+| `--azs`, `-z` | Availability zone letter suffixes (e.g., `-z a -z b -z c` or `-z a,b,c`). Pass only the trailing letter, not the full AZ name. Region is set via `setup-profile`. | all available |
 | `--arch`, `-a` | CPU architecture (AMD64, ARM64) | AMD64 |
 | `--ebs.type` | EBS volume type (NONE, gp2, gp3, io1, io2) | NONE |
 | `--ebs.size` | EBS volume size in GB | 256 |

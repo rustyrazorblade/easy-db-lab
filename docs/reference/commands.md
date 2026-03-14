@@ -78,7 +78,7 @@ easy-db-lab init [cluster-name] [options]
 | `--app`, `--stress`, `-s` | Number of stress instances | 0 |
 | `--instance`, `-i` | Cassandra instance type | r3.2xlarge |
 | `--stress-instance`, `-si` | Stress instance type | c7i.2xlarge |
-| `--azs`, `-z` | Availability zones (e.g., `a,b,c`) | all |
+| `--azs`, `-z` | Availability zone suffixes to use — pass the letter(s) only, not the full AZ name. Repeat the flag or use commas: `-z a -z b -z c` or `-z a,b,c`. The region is set in your profile via `setup-profile`. | all |
 | `--arch`, `-a` | CPU architecture (AMD64, ARM64) | AMD64 |
 | `--ebs.type` | EBS volume type (NONE, gp2, gp3, io1, io2) | NONE |
 | `--ebs.size` | EBS volume size in GB | 256 |

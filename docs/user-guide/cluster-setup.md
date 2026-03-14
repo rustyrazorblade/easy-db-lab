@@ -56,6 +56,24 @@ If the selected instance type has no instance store and `--ebs.type` is not spec
 easy-db-lab init my-cluster --instance c5.2xlarge --ebs.type gp3 --ebs.size 200
 ```
 
+## Availability Zones
+
+By default, easy-db-lab spreads instances across all available zones in your configured region. To restrict which zones are used, pass the **letter suffix** of each zone — not the full AZ name.
+
+```bash
+# Restrict to us-east-1c, us-east-1d, and us-east-1e
+easy-db-lab init my-cluster --db 3 -z c -z d -z e
+
+# Equivalent using comma-separated values
+easy-db-lab init my-cluster --db 3 -z c,d,e
+```
+
+```admonish warning
+Pass only the trailing letter(s), **not** the full AZ name. `-z us-east-1c` is incorrect and will produce unexpected results. Use `-z c` instead.
+```
+
+The region itself is configured during `setup-profile` and is not set per-cluster.
+
 ## Launch
 
 The `up` command provisions all AWS infrastructure:

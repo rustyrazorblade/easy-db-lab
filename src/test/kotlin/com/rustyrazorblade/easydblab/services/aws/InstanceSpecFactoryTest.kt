@@ -202,6 +202,70 @@ class InstanceSpecFactoryTest {
     }
 
     @Nested
+    inner class BcacheValidation {
+        @Test
+        fun `should succeed when bcache enabled with EBS and instance store (writethrough default)`() {
+            val initConfig = createInitConfig(ebsType = "gp3", ebsSize = 200, bcache = true)
+
+            val specs = factory.createInstanceSpecs(initConfig, emptyMap(), dbHasInstanceStore = true)
+
+            assertThat(specs).hasSize(3)
+            assertThat(specs.find { it.serverType == ServerType.Cassandra }!!.ebsConfig).isNotNull
+        }
+
+        @Test
+        fun `should succeed when bcache enabled with EBS and instance store in writeback mode`() {
+            val initConfig = createInitConfig(ebsType = "gp3", ebsSize = 200, bcache = true, bcacheMode = "writeback")
+
+            val specs = factory.createInstanceSpecs(initConfig, emptyMap(), dbHasInstanceStore = true)
+
+            assertThat(specs).hasSize(3)
+            assertThat(specs.find { it.serverType == ServerType.Cassandra }!!.ebsConfig).isNotNull
+        }
+
+        @Test
+        fun `should succeed when bcache enabled with EBS and instance store in writethrough mode`() {
+            val initConfig =
+                createInitConfig(ebsType = "gp3", ebsSize = 200, bcache = true, bcacheMode = "writethrough")
+
+            val specs = factory.createInstanceSpecs(initConfig, emptyMap(), dbHasInstanceStore = true)
+
+            assertThat(specs).hasSize(3)
+        }
+
+        @Test
+        fun `should fail when bcache enabled without EBS`() {
+            val initConfig = createInitConfig(ebsType = "NONE", bcache = true)
+
+            assertThatThrownBy {
+                factory.createInstanceSpecs(initConfig, emptyMap(), dbHasInstanceStore = true)
+            }.isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("--bcache requires an EBS volume")
+                .hasMessageContaining("--ebs.type")
+        }
+
+        @Test
+        fun `should fail when bcache enabled without instance store`() {
+            val initConfig = createInitConfig(instanceType = "c5.2xlarge", ebsType = "gp3", bcache = true)
+
+            assertThatThrownBy {
+                factory.createInstanceSpecs(initConfig, emptyMap(), dbHasInstanceStore = false)
+            }.isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("--bcache requires an instance type with local NVMe instance store")
+                .hasMessageContaining("c5.2xlarge")
+        }
+
+        @Test
+        fun `should leave validation unchanged when bcache disabled`() {
+            val initConfig = createInitConfig(ebsType = "NONE", bcache = false)
+
+            // With instance store this should pass
+            val specs = factory.createInstanceSpecs(initConfig, emptyMap(), dbHasInstanceStore = true)
+            assertThat(specs).hasSize(3)
+        }
+    }
+
+    @Nested
     inner class CreateEbsConfig {
         @Test
         fun `should return null for NONE type`() {
@@ -281,6 +345,8 @@ class InstanceSpecFactoryTest {
         ebsSize: Int = 100,
         ebsIops: Int = 0,
         ebsThroughput: Int = 0,
+        bcache: Boolean = false,
+        bcacheMode: String = "writethrough",
     ): InitConfig =
         InitConfig(
             cassandraInstances = cassandraInstances,
@@ -295,6 +361,8 @@ class InstanceSpecFactoryTest {
             ebsThroughput = ebsThroughput,
             controlInstances = controlInstances,
             controlInstanceType = controlInstanceType,
+            bcache = bcache,
+            bcacheMode = bcacheMode,
         )
 
     /**

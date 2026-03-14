@@ -56,6 +56,36 @@ If the selected instance type has no instance store and `--ebs.type` is not spec
 easy-db-lab init my-cluster --instance c5.2xlarge --ebs.type gp3 --ebs.size 200
 ```
 
+### bcache: NVMe-Accelerated EBS Storage
+
+The `--bcache` flag configures Linux bcache to use the local NVMe instance store as a transparent cache in front of the EBS volume. This gives you EBS-level persistence with NVMe-level I/O performance for hot data.
+
+**Prerequisites:**
+
+- The database instance type must have local NVMe instance store (e.g., `i3.xlarge`, `i4i.xlarge`, `m5d.2xlarge`).
+- `--ebs.type` must be set to a non-NONE value — EBS is the backing device.
+
+```bash
+easy-db-lab init my-cluster --instance i4i.xlarge --ebs.type gp3 --ebs.size 500 --bcache
+```
+
+**Cache modes:**
+
+| Mode | Description | When to use |
+|------|-------------|-------------|
+| `writethrough` (default) | Writes go to both NVMe and EBS before acknowledgement. No data loss risk. | Most workloads |
+| `writeback` | Writes acknowledged after NVMe cache only, flushed to EBS asynchronously. Higher write throughput. | Maximum write performance, ephemeral test data |
+
+```bash
+# High-performance writeback mode
+easy-db-lab init my-cluster --instance i4i.xlarge --ebs.type gp3 --ebs.size 500 --bcache --bcache.mode=writeback
+```
+
+**Caveats:**
+
+- bcache configuration is **not persistent across reboots**. If a cluster node is rebooted, bcache devices will not be re-registered automatically. Test clusters are typically not rebooted, so this is rarely an issue.
+- In `writeback` mode, a small window of unacknowledged writes may be lost if an instance is terminated unexpectedly before dirty cache lines are flushed to EBS.
+
 ## Launch
 
 The `up` command provisions all AWS infrastructure:

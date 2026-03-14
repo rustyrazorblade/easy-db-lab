@@ -81,6 +81,20 @@ class DefaultInstanceSpecFactory : InstanceSpecFactory {
             )
         }
 
+        if (initConfig.bcache && ebsConfig == null) {
+            throw IllegalArgumentException(
+                "--bcache requires an EBS volume for the backing device. " +
+                    "Specify --ebs.type (e.g., --ebs.type gp3) to attach an EBS volume.",
+            )
+        }
+
+        if (initConfig.bcache && !dbHasInstanceStore) {
+            throw IllegalArgumentException(
+                "--bcache requires an instance type with local NVMe instance store as the cache device. " +
+                    "Instance type ${initConfig.instanceType} has no local instance store.",
+            )
+        }
+
         val existingCassandraCount = existingInstances[ServerType.Cassandra]?.size ?: 0
         val existingStressCount = existingInstances[ServerType.Stress]?.size ?: 0
         val existingControlCount = existingInstances[ServerType.Control]?.size ?: 0

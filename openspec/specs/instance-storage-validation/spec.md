@@ -29,3 +29,27 @@ The system SHALL use the AWS `DescribeInstanceTypes` API to determine whether an
 - **WHEN** the system needs to validate an instance type's storage capabilities
 - **THEN** the system SHALL call `DescribeInstanceTypes` with the instance type name
 - **AND** the system SHALL check the `instanceStorageSupported` field to determine if instance store is available
+
+### Requirement: bcache validation requires both EBS and instance store
+
+When the `--bcache` flag is enabled, the system SHALL enforce that BOTH of the following conditions are true at init time. If either condition is not met, the system SHALL fail with a clear error message and NOT proceed.
+
+1. The database instance type MUST have local NVMe instance store (required as the bcache cache device).
+2. `--ebs.type` MUST NOT be `NONE` (required as the bcache backing device).
+
+#### Scenario: --bcache with EBS and instance store (valid)
+
+- **WHEN** the user runs init with `--bcache`, an instance type that has local NVMe instance store (e.g., `i3.xlarge`), and `--ebs.type gp3`
+- **THEN** the system SHALL proceed normally
+
+#### Scenario: --bcache without EBS
+
+- **WHEN** the user runs init with `--bcache`, an instance type that has instance store, but `--ebs.type` is `NONE`
+- **THEN** the system SHALL fail with an error indicating that `--bcache` requires `--ebs.type` to be specified
+- **AND** the system SHALL NOT create any EC2 instances
+
+#### Scenario: --bcache without instance store
+
+- **WHEN** the user runs init with `--bcache`, `--ebs.type gp3`, but an instance type that has no local instance store (e.g., `c5.2xlarge`)
+- **THEN** the system SHALL fail with an error indicating that `--bcache` requires an instance type with local NVMe instance store
+- **AND** the system SHALL NOT create any EC2 instances

@@ -102,6 +102,8 @@ data class InitConfig(
     val opensearchVersion: String = "2.11",
     val opensearchEbsSize: Int = 100,
     val cidr: String = Constants.Vpc.DEFAULT_CIDR,
+    val bcache: Boolean = false,
+    val bcacheMode: String = "writethrough",
 ) {
     companion object {
         /**
@@ -145,6 +147,8 @@ data class InitConfig(
                 opensearchVersion = init.opensearch.version,
                 opensearchEbsSize = init.opensearch.ebsSize,
                 cidr = init.cidr,
+                bcache = init.bcache,
+                bcacheMode = init.bcacheMode,
             )
     }
 }

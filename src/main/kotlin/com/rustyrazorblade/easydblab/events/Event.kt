@@ -5481,4 +5481,39 @@ sealed interface Event {
             override fun toDisplayString(): String = "Uploading directory $localDir to $remoteDir"
         }
     }
+
+    // =========================================================================
+    // Event.Profiling — async-profiler / Pyroscope profiling operations
+    // =========================================================================
+
+    @Serializable
+    sealed interface Profiling : Event {
+        @Serializable
+        @SerialName("Profiling.Starting")
+        data class Starting(
+            val host: String,
+            val args: List<String>,
+        ) : Profiling {
+            override fun toDisplayString(): String = "Starting profiler on $host with args: ${args.joinToString(" ")}"
+        }
+
+        @Serializable
+        @SerialName("Profiling.Complete")
+        data class Complete(
+            val host: String,
+        ) : Profiling {
+            override fun toDisplayString(): String = "Profile complete on $host, data sent to Pyroscope"
+        }
+
+        @Serializable
+        @SerialName("Profiling.Failed")
+        data class Failed(
+            val host: String,
+            val error: String,
+        ) : Profiling {
+            override fun toDisplayString(): String = "Profiling failed on $host: $error"
+
+            override fun isError(): Boolean = true
+        }
+    }
 }

@@ -76,6 +76,7 @@ val servicesModule =
         factoryOf(::DefaultSidecarService) bind SidecarService::class
         singleOf(::DefaultStressJobService) bind StressJobService::class
         singleOf(::HostOperationsService)
+        factoryOf(::DefaultProfilingService) bind ProfilingService::class
 
         // Cluster configuration service for writing config files
         factoryOf(::DefaultClusterConfigurationService) bind ClusterConfigurationService::class

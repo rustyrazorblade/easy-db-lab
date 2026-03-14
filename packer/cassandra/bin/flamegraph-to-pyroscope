@@ -1,0 +1,47 @@
+#!/bin/bash
+# Run async-profiler against the Cassandra process and push the result to Pyroscope.
+#
+# Usage: flamegraph-to-pyroscope [asprof-options]
+#
+# All arguments are passed directly to asprof. The script adds:
+#   -o collapsed   (output format required by Pyroscope ingest API)
+#   <PID>          (Cassandra process PID, appended last)
+#
+# Example:
+#   flamegraph-to-pyroscope -d 30 -e cpu
+#   flamegraph-to-pyroscope -d 60 -e alloc -t
+
+set -euo pipefail
+
+# Load environment (provides PYROSCOPE_SERVER_ADDRESS, CLUSTER_NAME, etc.)
+if [[ -f /etc/default/cassandra ]]; then
+    # shellcheck disable=SC1091
+    source /etc/default/cassandra
+fi
+
+PYROSCOPE_ADDR="${PYROSCOPE_SERVER_ADDRESS:-http://localhost:4040}"
+APP_NAME="cassandra.$(hostname)"
+ASPROF=/usr/local/async-profiler/bin/asprof
+TMPFILE=$(mktemp /tmp/flamegraph-XXXXXX.collapsed)
+
+cleanup() {
+    rm -f "$TMPFILE"
+}
+trap cleanup EXIT
+
+CASSANDRA_PID=$(cassandra-pid)
+if [[ -z "$CASSANDRA_PID" ]]; then
+    echo "ERROR: Could not find Cassandra PID" >&2
+    exit 1
+fi
+
+echo "Profiling Cassandra (PID $CASSANDRA_PID) — args: $*"
+sudo "$ASPROF" -o collapsed -f "$TMPFILE" "$@" "$CASSANDRA_PID"
+
+echo "Sending profile to Pyroscope at $PYROSCOPE_ADDR"
+curl -sf -X POST \
+    "${PYROSCOPE_ADDR}/ingest?name=${APP_NAME}&spyName=async-profiler&format=collapsed" \
+    -H "Content-Type: text/plain" \
+    --data-binary "@${TMPFILE}"
+
+echo "Profile sent successfully"

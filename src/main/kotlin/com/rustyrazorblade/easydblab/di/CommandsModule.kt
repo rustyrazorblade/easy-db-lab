@@ -47,6 +47,7 @@ import com.rustyrazorblade.easydblab.commands.grafana.GrafanaUpdateConfig
 import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearchStart
 import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearchStatus
 import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearchStop
+import com.rustyrazorblade.easydblab.commands.profile.ProfileCassandra
 import com.rustyrazorblade.easydblab.commands.spark.SparkJobs
 import com.rustyrazorblade.easydblab.commands.spark.SparkLogs
 import com.rustyrazorblade.easydblab.commands.spark.SparkStatus
@@ -119,6 +120,9 @@ val commandsModule =
         factory { OpenSearchStart() }
         factory { OpenSearchStatus() }
         factory { OpenSearchStop() }
+
+        // Profile subcommands
+        factory { ProfileCassandra() }
 
         // Spark subcommands
         factory { SparkJobs() }

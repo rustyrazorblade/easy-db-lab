@@ -1,0 +1,10 @@
+[Unit]
+Description=One-shot async-profiler flamegraph for Cassandra (sends to Pyroscope)
+After=cassandra.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/flamegraph-to-pyroscope -d 30 -e cpu
+EnvironmentFile=-/etc/default/cassandra
+StandardOutput=journal
+StandardError=journal

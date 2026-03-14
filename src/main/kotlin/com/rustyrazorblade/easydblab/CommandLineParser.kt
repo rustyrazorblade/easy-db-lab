@@ -31,6 +31,7 @@ import com.rustyrazorblade.easydblab.commands.logs.Logs
 import com.rustyrazorblade.easydblab.commands.metrics.Metrics
 import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearch
 import com.rustyrazorblade.easydblab.commands.spark.Spark
+import com.rustyrazorblade.easydblab.commands.profile.Profile
 import com.rustyrazorblade.easydblab.commands.tailscale.Tailscale
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.di.KoinCommandFactory
@@ -89,6 +90,7 @@ import kotlin.system.exitProcess
         Logs::class,
         Metrics::class,
         Tailscale::class,
+        Profile::class,
     ],
 )
 class EasyDBLabCommand : Runnable {

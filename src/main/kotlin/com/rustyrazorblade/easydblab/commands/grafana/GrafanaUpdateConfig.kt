@@ -7,6 +7,8 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.headlamp.HeadlampManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.inspektorgadget.InspektorGadgetManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.clusterPrefix
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuilder
@@ -40,6 +42,8 @@ import picocli.CommandLine.Command
  * - Beyla (L7 network eBPF metrics)
  * - ebpf_exporter (TCP, block I/O, VFS eBPF metrics)
  * - Pyroscope (continuous profiling server + eBPF agent)
+ * - inspektor-gadget (eBPF-based kernel tracing and inspection)
+ * - Headlamp (Kubernetes web UI with inspektor-gadget plugin, port 4466)
  * - Grafana with pre-configured dashboards
  * - Docker registry and S3 manager
  */
@@ -64,6 +68,8 @@ class GrafanaUpdateConfig : PicoBaseCommand() {
     private val beylaManifestBuilder: BeylaManifestBuilder by inject()
     private val pyroscopeManifestBuilder: PyroscopeManifestBuilder by inject()
     private val yaceManifestBuilder: YaceManifestBuilder by inject()
+    private val inspektorGadgetManifestBuilder: InspektorGadgetManifestBuilder by inject()
+    private val headlampManifestBuilder: HeadlampManifestBuilder by inject()
 
     companion object {
         private const val CLUSTER_CONFIG_NAME = "cluster-config"
@@ -92,6 +98,8 @@ class GrafanaUpdateConfig : PicoBaseCommand() {
         applyFabric8Resources("S3 Manager", controlNode, s3ManagerManifestBuilder.buildAllResources())
         applyFabric8Resources("Beyla", controlNode, beylaManifestBuilder.buildAllResources())
         applyFabric8Resources("YACE", controlNode, yaceManifestBuilder.buildAllResources())
+        applyFabric8Resources("inspektor-gadget", controlNode, inspektorGadgetManifestBuilder.buildAllResources())
+        applyFabric8Resources("Headlamp", controlNode, headlampManifestBuilder.buildAllResources())
 
         // Apply Pyroscope resources (requires directory setup via SSH first)
         applyPyroscopeResources(controlNode)
@@ -108,8 +116,8 @@ class GrafanaUpdateConfig : PicoBaseCommand() {
     private fun restartObservabilityWorkloads(controlNode: ClusterHost) {
         eventBus.emit(Event.Grafana.WorkloadsRestarting)
 
-        val deployments = listOf("victoria-metrics", "victoria-logs", "tempo", "pyroscope", "grafana")
-        val daemonSets = listOf("otel-collector", "fluent-bit-journald", "beyla", "ebpf-exporter", "pyroscope-ebpf")
+        val deployments = listOf("victoria-metrics", "victoria-logs", "tempo", "pyroscope", "grafana", "headlamp")
+        val daemonSets = listOf("otel-collector", "fluent-bit-journald", "beyla", "ebpf-exporter", "pyroscope-ebpf", "inspektor-gadget")
 
         for (name in deployments) {
             k8sService

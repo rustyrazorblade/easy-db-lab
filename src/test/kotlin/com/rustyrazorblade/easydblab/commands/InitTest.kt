@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
@@ -248,6 +249,46 @@ class InitTest : BaseKoinTest() {
                     initConfig?.bcache == false && initConfig?.bcacheMode == "writethrough"
                 },
             )
+        }
+
+        @Test
+        fun `setup script contains bcache enabled substitution`() {
+            val command = Init()
+            command.clean = true
+            command.bcache = true
+            command.bcacheMode = "writeback"
+            command.execute()
+
+            val scriptContent = File("setup_instance.sh").readText()
+            assertThat(scriptContent).contains("BCACHE_ENABLED=true")
+            assertThat(scriptContent).contains("BCACHE_MODE=writeback")
+            assertThat(scriptContent).contains("EBS_DEVICE=${Constants.EBS.DEFAULT_DEVICE_NAME}")
+        }
+
+        @Test
+        fun `setup script contains bcache disabled substitution by default`() {
+            val command = Init()
+            command.clean = true
+            command.execute()
+
+            val scriptContent = File("setup_instance.sh").readText()
+            assertThat(scriptContent).contains("BCACHE_ENABLED=false")
+            assertThat(scriptContent).contains("BCACHE_MODE=writethrough")
+            assertThat(scriptContent).contains("EBS_DEVICE=${Constants.EBS.DEFAULT_DEVICE_NAME}")
+        }
+
+        @Test
+        fun `setup script does not contain unsubstituted placeholders`() {
+            val command = Init()
+            command.clean = true
+            command.bcache = true
+            command.bcacheMode = "writethrough"
+            command.execute()
+
+            val scriptContent = File("setup_instance.sh").readText()
+            assertThat(scriptContent).doesNotContain("__BCACHE_ENABLED__")
+            assertThat(scriptContent).doesNotContain("__BCACHE_MODE__")
+            assertThat(scriptContent).doesNotContain("__EBS_DEVICE__")
         }
     }
 }

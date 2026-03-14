@@ -312,7 +312,7 @@ class Init : PicoBaseCommand() {
                     mapOf(
                         "BCACHE_ENABLED" to bcache.toString(),
                         "BCACHE_MODE" to bcacheMode,
-                        "EBS_DEVICE" to "/dev/xvdf",
+                        "EBS_DEVICE" to Constants.EBS.DEFAULT_DEVICE_NAME,
                     ),
                 )
         File("setup_instance.sh").writeText(script)

@@ -23,7 +23,7 @@ kaml = "0.77.0"
 kotlinx-coroutines = "1.10.2"
 
 # Testing
-jupiter = "5.5.2"
+jupiter = "6.0.3"
 assertj = "3.27.6"
 mockito-kotlin = "6.1.0"
 testcontainers = "1.21.4"
@@ -93,7 +93,7 @@ jackson-datatype-jsr310 = { module = "com.fasterxml.jackson.datatype:jackson-dat
 
 # Testing
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter-engine", version.ref = "jupiter" }
-junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "jupiter" }
 assertj-core = { module = "org.assertj:assertj-core", version.ref = "assertj" }
 mockito-kotlin = { module = "org.mockito.kotlin:mockito-kotlin", version.ref = "mockito-kotlin" }
 testcontainers-core = { module = "org.testcontainers:testcontainers", version.ref = "testcontainers" }

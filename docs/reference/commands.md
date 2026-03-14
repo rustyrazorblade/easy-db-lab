@@ -92,6 +92,8 @@ easy-db-lab init [cluster-name] [options]
 | `--vpc` | Use existing VPC ID | - |
 | `--up` | Auto-provision after init | false |
 | `--clean` | Remove existing config first | false |
+| `--bcache` | Enable bcache NVMe caching in front of EBS (requires `--ebs.type` and an instance type with local NVMe) | false |
+| `--bcache.mode` | bcache cache mode: `writethrough` (safe) or `writeback` (higher write performance) | writethrough |
 
 ### up
 

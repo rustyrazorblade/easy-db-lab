@@ -109,6 +109,11 @@ build {
     script = "install/install_fio.sh"
   }
 
+  # install bcache-tools for optional bcache caching support
+  provisioner "shell" {
+    script = "install/install_bcache.sh"
+  }
+
   # install async profiler
   provisioner "shell" {
     script = "install/install_async_profiler.sh"

@@ -61,3 +61,23 @@ services:
       bash /packer/cassandra/install/install_cassandra_easy_stress.sh &&
       echo 'Cassandra provisioning complete!'
       "
+
+  # Test bcache installation script
+  test-bcache:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: easy-db-lab-packer-test
+    volumes:
+      - ./:/packer:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    working_dir: /home/ubuntu
+    user: ubuntu
+    environment:
+      - DEBIAN_FRONTEND=noninteractive
+    command: >
+      bash -c "
+      echo 'Running bcache installation script...' &&
+      bash /packer/base/install/install_bcache.sh &&
+      echo 'bcache installation complete!'
+      "

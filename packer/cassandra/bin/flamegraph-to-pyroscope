@@ -15,7 +15,8 @@
 set -e
 
 ASPROF=/usr/local/async-profiler/bin/asprof
-APP_NAME="cassandra.flamegraph"
+# Include hostname so each node's profile is stored separately in Pyroscope
+APP_NAME="cassandra.$(hostname)"
 
 # Source environment for Pyroscope server address
 # shellcheck source=/dev/null
@@ -25,7 +26,8 @@ PYROSCOPE_ADDR="${PYROSCOPE_SERVER_ADDRESS:-http://localhost:4040}"
 
 # Create temp file for collapsed stacks output
 OUTFILE=$(mktemp /tmp/flamegraph-XXXXXX.collapsed)
-trap "rm -f $OUTFILE" EXIT
+# Use single quotes so $OUTFILE is expanded at trap execution time, not definition time
+trap 'rm -f "$OUTFILE"' EXIT
 
 # Get the Cassandra PID
 PID=$(cassandra-pid)
@@ -36,11 +38,13 @@ if [ -z "$PID" ] || [ "$PID" = "0" ]; then
 fi
 
 echo "Profiling Cassandra (PID: $PID)..."
+FROM=$(date +%s)
 sudo "$ASPROF" -o collapsed -f "$OUTFILE" "$@" "$PID"
+UNTIL=$(date +%s)
 
 echo "Sending profile to Pyroscope at $PYROSCOPE_ADDR..."
-curl -s -X POST \
-    "${PYROSCOPE_ADDR}/ingest?name=${APP_NAME}&spyName=asyncprofiler&format=collapsed" \
+curl -sf -X POST \
+    "${PYROSCOPE_ADDR}/ingest?name=${APP_NAME}&spyName=asyncprofiler&format=collapsed&from=${FROM}&until=${UNTIL}" \
     -H "Content-Type: text/plain" \
     --data-binary @"$OUTFILE"
 

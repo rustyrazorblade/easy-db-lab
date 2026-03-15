@@ -577,6 +577,15 @@ step_cassandra_start_stop() {
     easy-db-lab cassandra restart
 }
 
+step_cassandra_profile() {
+    if [ "$ENABLE_CASSANDRA" != true ]; then
+        echo "=== Skipping Cassandra profile test (use --cassandra to enable) ==="
+        return 0
+    fi
+    echo "=== Testing cassandra profile command ==="
+    easy-db-lab cassandra profile -d 10
+}
+
 step_test_ssh_nodetool() {
     if [ "$ENABLE_CASSANDRA" != true ]; then
         echo "=== Skipping SSH nodetool test (use --cassandra to enable) ==="
@@ -1243,6 +1252,7 @@ STEPS_WORKDIR=(
     "step_bulk_writer_sidecar:Test bulk writer (sidecar)"
     "step_connector_writer:Test connector writer"
     "step_cassandra_start_stop:Cassandra start/stop cycle"
+    "step_cassandra_profile:Test cassandra profile command"
     "step_clickhouse_start:Start ClickHouse"
     "step_clickhouse_test:Test ClickHouse"
     "step_clickhouse_stop:Stop ClickHouse"

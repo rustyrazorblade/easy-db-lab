@@ -19,4 +19,4 @@ echo "Installed flamegraph-cassandra.service to /etc/systemd/system/"
 
 sudo systemctl daemon-reload
 
-echo "✓ install_flamegraph_service.sh completed successfully"
+echo "install_flamegraph_service.sh completed successfully"

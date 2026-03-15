@@ -5463,6 +5463,17 @@ sealed interface Event {
         ) : Profiling {
             override fun toDisplayString(): String = "Profiling complete on $host. Data sent to Pyroscope."
         }
+
+        @Serializable
+        @SerialName("Profiling.Error")
+        data class Error(
+            val host: String,
+            val message: String,
+        ) : Profiling {
+            override fun toDisplayString(): String = "Profiling failed on $host: $message"
+
+            override fun isError(): Boolean = true
+        }
     }
 
     @Serializable

@@ -7,20 +7,34 @@ import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import io.github.oshai.kotlinlogging.KotlinLogging
 
 /**
- * Service for running async-profiler on cluster nodes and sending results to Pyroscope.
+ * Service for managing continuous async-profiler flamegraph collection on cluster nodes.
+ *
+ * Profiling runs as a systemd service (`flamegraph-cassandra`) that loops indefinitely:
+ * profile for FLAMEGRAPH_INTERVAL seconds, upload to Pyroscope, repeat.
  */
 interface ProfilingService {
     /**
-     * Profiles the database process on the given host and sends the flamegraph to Pyroscope.
+     * Starts continuous profiling on the given host.
+     *
+     * Writes any extra asprof args to `/etc/default/flamegraph-cassandra` as
+     * `FLAMEGRAPH_EXTRA_ARGS`, then starts the `flamegraph-cassandra` systemd unit.
      *
      * @param host The host to profile
-     * @param args Additional arguments to pass to asprof (e.g., ["-d", "30", "-e", "alloc"])
+     * @param args Extra arguments to pass to asprof (e.g. ["-e", "alloc", "-t"])
      * @return Result indicating success or failure
      */
-    fun profileNode(
+    fun startProfiling(
         host: Host,
         args: List<String>,
     ): Result<Unit>
+
+    /**
+     * Stops the continuous profiler on the given host.
+     *
+     * @param host The host on which to stop profiling
+     * @return Result indicating success or failure
+     */
+    fun stopProfiling(host: Host): Result<Unit>
 }
 
 class DefaultProfilingService(
@@ -29,19 +43,35 @@ class DefaultProfilingService(
 ) : ProfilingService {
     private val log = KotlinLogging.logger {}
 
-    override fun profileNode(
+    override fun startProfiling(
         host: Host,
         args: List<String>,
     ): Result<Unit> =
         runCatching {
             eventBus.emit(Event.Profiling.Starting(host.alias, args))
 
-            val argStr = args.joinToString(" ") { it.shellQuote() }
-            val command = "/usr/local/bin/flamegraph-to-pyroscope $argStr".trim()
-            remoteOps.executeRemotely(host, command)
+            if (args.isNotEmpty()) {
+                val extraArgs = args.joinToString(" ") { it.shellQuote() }
+                val envContent = "FLAMEGRAPH_EXTRA_ARGS=$extraArgs"
+                remoteOps.executeRemotely(
+                    host,
+                    "printf '%s\\n' ${envContent.shellQuote()} | sudo tee /etc/default/flamegraph-cassandra > /dev/null",
+                )
+            }
 
-            log.info { "Profiling complete on ${host.alias}" }
-            eventBus.emit(Event.Profiling.Complete(host.alias))
+            remoteOps.executeRemotely(host, "sudo systemctl start flamegraph-cassandra")
+            log.info { "Continuous profiling started on ${host.alias}" }
+            eventBus.emit(Event.Profiling.Started(host.alias))
+        }.onFailure { e ->
+            eventBus.emit(Event.Profiling.Error(host.alias, e.message ?: "Unknown error"))
+        }
+
+    override fun stopProfiling(host: Host): Result<Unit> =
+        runCatching {
+            eventBus.emit(Event.Profiling.Stopping(host.alias))
+            remoteOps.executeRemotely(host, "sudo systemctl stop flamegraph-cassandra")
+            log.info { "Profiling stopped on ${host.alias}" }
+            eventBus.emit(Event.Profiling.Stopped(host.alias))
         }.onFailure { e ->
             eventBus.emit(Event.Profiling.Error(host.alias, e.message ?: "Unknown error"))
         }

@@ -582,8 +582,11 @@ step_cassandra_profile() {
         echo "=== Skipping Cassandra profile test (use --cassandra to enable) ==="
         return 0
     fi
-    echo "=== Testing cassandra profile command ==="
-    easy-db-lab cassandra profile -d 10
+    echo "=== Testing cassandra profile start/stop ==="
+    easy-db-lab cassandra profile start
+    echo "Profiling running, waiting 65 seconds for at least one upload cycle..."
+    sleep 65
+    easy-db-lab cassandra profile stop
 }
 
 step_test_ssh_nodetool() {

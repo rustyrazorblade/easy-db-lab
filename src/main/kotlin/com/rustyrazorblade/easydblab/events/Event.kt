@@ -5457,11 +5457,27 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("Profiling.Complete")
-        data class Complete(
+        @SerialName("Profiling.Started")
+        data class Started(
             val host: String,
         ) : Profiling {
-            override fun toDisplayString(): String = "Profiling complete on $host. Data sent to Pyroscope."
+            override fun toDisplayString(): String = "Continuous profiling started on $host."
+        }
+
+        @Serializable
+        @SerialName("Profiling.Stopping")
+        data class Stopping(
+            val host: String,
+        ) : Profiling {
+            override fun toDisplayString(): String = "Stopping profiler on $host..."
+        }
+
+        @Serializable
+        @SerialName("Profiling.Stopped")
+        data class Stopped(
+            val host: String,
+        ) : Profiling {
+            override fun toDisplayString(): String = "Profiler stopped on $host."
         }
 
         @Serializable

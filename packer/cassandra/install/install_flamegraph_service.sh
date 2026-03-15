@@ -12,7 +12,7 @@ sudo chmod +x /usr/local/bin/flamegraph-to-pyroscope
 
 echo "Installed flamegraph-to-pyroscope to /usr/local/bin/"
 
-# Install the SystemD one-shot service
+# Install the SystemD service
 sudo cp "$SERVICES_DIR/flamegraph-cassandra.service" /etc/systemd/system/flamegraph-cassandra.service
 
 echo "Installed flamegraph-cassandra.service to /etc/systemd/system/"

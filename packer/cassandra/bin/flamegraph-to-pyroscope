@@ -1,16 +1,15 @@
 #!/bin/bash
 
-# flamegraph-to-pyroscope: Profile Cassandra using async-profiler and send data to Pyroscope
+# flamegraph-to-pyroscope: Continuously profile Cassandra and send data to Pyroscope.
 #
-# Usage: flamegraph-to-pyroscope [asprof-options]
+# Runs in a loop: profiles for FLAMEGRAPH_INTERVAL seconds (default: 60), uploads
+# the collapsed-stack file to Pyroscope, then repeats. Runs until stopped (SIGTERM).
 #
-# Options are passed directly to asprof. The output format (-o collapsed) and output
-# file (-f) are managed automatically. The Cassandra PID is auto-detected via cassandra-pid.
+# Configuration via /etc/default/flamegraph-cassandra:
+#   FLAMEGRAPH_INTERVAL=60        Profile duration per upload cycle in seconds
+#   FLAMEGRAPH_EXTRA_ARGS="-e alloc -t"   Extra asprof options (space-separated)
 #
-# Examples:
-#   flamegraph-to-pyroscope -d 30
-#   flamegraph-to-pyroscope -d 60 -e alloc
-#   flamegraph-to-pyroscope -d 30 -t
+# The Cassandra PID is auto-detected via cassandra-pid.
 
 set -e
 
@@ -18,16 +17,21 @@ ASPROF=/usr/local/async-profiler/bin/asprof
 # Include hostname so each node's profile is stored separately in Pyroscope
 APP_NAME="cassandra.$(hostname)"
 
-# Source environment for Pyroscope server address
+# Source environment for Pyroscope address
 # shellcheck source=/dev/null
 [ -f /etc/default/cassandra ] && source /etc/default/cassandra
 
-PYROSCOPE_ADDR="${PYROSCOPE_SERVER_ADDRESS:-http://localhost:4040}"
+# Source optional per-node profiler config (interval and extra args)
+# shellcheck source=/dev/null
+[ -f /etc/default/flamegraph-cassandra ] && source /etc/default/flamegraph-cassandra
 
-# Create temp file for collapsed stacks output
-OUTFILE=$(mktemp /tmp/flamegraph-XXXXXX.collapsed)
-# Use single quotes so $OUTFILE is expanded at trap execution time, not definition time
-trap 'rm -f "$OUTFILE"' EXIT
+PYROSCOPE_ADDR="${PYROSCOPE_SERVER_ADDRESS:-http://localhost:4040}"
+INTERVAL="${FLAMEGRAPH_INTERVAL:-60}"
+
+# FLAMEGRAPH_EXTRA_ARGS may contain space-separated asprof options, e.g. "-e alloc"
+# Word-split intentionally to build an array from the env var.
+# shellcheck disable=SC2206
+EXTRA_ARGS=($FLAMEGRAPH_EXTRA_ARGS)
 
 # Get the Cassandra PID
 PID=$(cassandra-pid)
@@ -37,15 +41,27 @@ if [ -z "$PID" ] || [ "$PID" = "0" ]; then
     exit 1
 fi
 
-echo "Profiling Cassandra (PID: $PID)..."
-FROM=$(date +%s)
-sudo "$ASPROF" -o collapsed -f "$OUTFILE" "$@" "$PID"
-UNTIL=$(date +%s)
+echo "Starting continuous profiling (interval: ${INTERVAL}s, PID: $PID, app: $APP_NAME)..."
 
-echo "Sending profile to Pyroscope at $PYROSCOPE_ADDR..."
-curl -sf -X POST \
-    "${PYROSCOPE_ADDR}/ingest?name=${APP_NAME}&spyName=asyncprofiler&format=collapsed&from=${FROM}&until=${UNTIL}" \
-    -H "Content-Type: text/plain" \
-    --data-binary @"$OUTFILE"
+OUTFILE=""
 
-echo "Profile sent to Pyroscope."
+cleanup() {
+    rm -f "$OUTFILE"
+}
+trap cleanup EXIT
+
+while true; do
+    OUTFILE=$(mktemp /tmp/flamegraph-XXXXXX.collapsed)
+    FROM=$(date +%s)
+    sudo "$ASPROF" -o collapsed -f "$OUTFILE" -d "$INTERVAL" "${EXTRA_ARGS[@]}" "$PID"
+    UNTIL=$(date +%s)
+
+    curl -sf -X POST \
+        "${PYROSCOPE_ADDR}/ingest?name=${APP_NAME}&spyName=asyncprofiler&format=collapsed&from=${FROM}&until=${UNTIL}" \
+        -H "Content-Type: text/plain" \
+        --data-binary @"$OUTFILE"
+
+    rm -f "$OUTFILE"
+    OUTFILE=""
+    echo "Cycle complete at $(date -Iseconds), profile sent to Pyroscope."
+done

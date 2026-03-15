@@ -57,25 +57,43 @@ class ProfilingServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `profileNode should emit Starting then Complete events on success`() {
+    fun `startProfiling should emit Starting then Started events on success`() {
         val successResponse = Response(text = "", stderr = "")
         whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
             .thenReturn(successResponse)
 
-        val result = profilingService.profileNode(testHost, listOf("-d", "30"))
+        val result = profilingService.startProfiling(testHost, listOf("-e", "alloc"))
 
         assertThat(result.isSuccess).isTrue()
         assertThat(emittedEvents).hasSize(2)
         assertThat(emittedEvents[0]).isInstanceOf(Event.Profiling.Starting::class.java)
-        assertThat(emittedEvents[1]).isInstanceOf(Event.Profiling.Complete::class.java)
+        assertThat(emittedEvents[1]).isInstanceOf(Event.Profiling.Started::class.java)
     }
 
     @Test
-    fun `profileNode should emit Starting then Error events on failure`() {
+    fun `startProfiling with no extra args should skip env file write and just start service`() {
+        val successResponse = Response(text = "", stderr = "")
+        whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
+            .thenReturn(successResponse)
+
+        val result = profilingService.startProfiling(testHost, emptyList())
+
+        assertThat(result.isSuccess).isTrue()
+        // Only one executeRemotely call: systemctl start (no env file write)
+        verify(mockRemoteOps).executeRemotely(
+            eq(testHost),
+            eq("sudo systemctl start flamegraph-cassandra"),
+            any(),
+            any(),
+        )
+    }
+
+    @Test
+    fun `startProfiling should emit Starting then Error events on failure`() {
         whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
             .thenThrow(RuntimeException("SSH connection refused"))
 
-        val result = profilingService.profileNode(testHost, listOf("-d", "30"))
+        val result = profilingService.startProfiling(testHost, emptyList())
 
         assertThat(result.isFailure).isTrue()
         assertThat(emittedEvents).hasSize(2)
@@ -86,52 +104,64 @@ class ProfilingServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `profileNode should build command with shell-quoted args`() {
+    fun `startProfiling with args should write env file with shell-quoted args`() {
         val successResponse = Response(text = "", stderr = "")
         whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
             .thenReturn(successResponse)
 
-        profilingService.profileNode(testHost, listOf("-d", "30", "-e", "alloc"))
+        profilingService.startProfiling(testHost, listOf("-e", "alloc"))
 
         verify(mockRemoteOps).executeRemotely(
             eq(testHost),
-            eq("/usr/local/bin/flamegraph-to-pyroscope -d 30 -e alloc"),
+            eq("printf '%s\\n' 'FLAMEGRAPH_EXTRA_ARGS=-e alloc' | sudo tee /etc/default/flamegraph-cassandra > /dev/null"),
             any(),
             any(),
         )
     }
 
     @Test
-    fun `profileNode should shell-quote args containing special characters`() {
+    fun `stopProfiling should emit Stopping then Stopped events on success`() {
         val successResponse = Response(text = "", stderr = "")
         whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
             .thenReturn(successResponse)
 
-        // An arg with a space should be single-quoted
-        profilingService.profileNode(testHost, listOf("-e", "cpu wall"))
+        val result = profilingService.stopProfiling(testHost)
+
+        assertThat(result.isSuccess).isTrue()
+        assertThat(emittedEvents).hasSize(2)
+        assertThat(emittedEvents[0]).isInstanceOf(Event.Profiling.Stopping::class.java)
+        assertThat(emittedEvents[1]).isInstanceOf(Event.Profiling.Stopped::class.java)
+    }
+
+    @Test
+    fun `stopProfiling should execute systemctl stop command`() {
+        val successResponse = Response(text = "", stderr = "")
+        whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
+            .thenReturn(successResponse)
+
+        profilingService.stopProfiling(testHost)
 
         verify(mockRemoteOps).executeRemotely(
             eq(testHost),
-            eq("/usr/local/bin/flamegraph-to-pyroscope -e 'cpu wall'"),
+            eq("sudo systemctl stop flamegraph-cassandra"),
             any(),
             any(),
         )
     }
 
     @Test
-    fun `profileNode with no args should execute bare command`() {
-        val successResponse = Response(text = "", stderr = "")
+    fun `stopProfiling should emit Stopping then Error events on failure`() {
         whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
-            .thenReturn(successResponse)
+            .thenThrow(RuntimeException("SSH timeout"))
 
-        profilingService.profileNode(testHost, emptyList())
+        val result = profilingService.stopProfiling(testHost)
 
-        verify(mockRemoteOps).executeRemotely(
-            eq(testHost),
-            eq("/usr/local/bin/flamegraph-to-pyroscope"),
-            any(),
-            any(),
-        )
+        assertThat(result.isFailure).isTrue()
+        assertThat(emittedEvents).hasSize(2)
+        assertThat(emittedEvents[0]).isInstanceOf(Event.Profiling.Stopping::class.java)
+        val errorEvent = emittedEvents[1] as Event.Profiling.Error
+        assertThat(errorEvent.host).isEqualTo("db0")
+        assertThat(errorEvent.message).contains("SSH timeout")
     }
 
     @Test

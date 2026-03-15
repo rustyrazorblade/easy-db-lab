@@ -321,12 +321,6 @@ object Constants {
         const val S3_CERT_PATH = "registry/ca.crt"
     }
 
-    // EBS configuration
-    object EBS {
-        /** Default EBS device name used on AWS EC2 instances */
-        const val DEFAULT_DEVICE_NAME = "/dev/xvdf"
-    }
-
     // VPC and tagging configuration
     object Vpc {
         /** Default VPC CIDR block */

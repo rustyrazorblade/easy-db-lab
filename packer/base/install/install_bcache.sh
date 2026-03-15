@@ -12,10 +12,10 @@ if command -v make-bcache &> /dev/null; then
     exit 0
 fi
 
-echo "Installing bcache-tools and linux-modules-extra-aws..."
+echo "Installing bcache-tools, linux-modules-extra-aws, and nvme-cli..."
 
 sudo DEBIAN_FRONTEND=noninteractive apt update
-sudo DEBIAN_FRONTEND=noninteractive apt install -y bcache-tools linux-modules-extra-aws
+sudo DEBIAN_FRONTEND=noninteractive apt install -y bcache-tools linux-modules-extra-aws nvme-cli
 
 # Verify installation
 echo "Verifying bcache-tools installation..."

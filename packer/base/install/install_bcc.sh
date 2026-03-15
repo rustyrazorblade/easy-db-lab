@@ -3,6 +3,10 @@ set -euo pipefail
 
 echo "=== Running: install_bcc.sh ==="
 
+# shellcheck source=../../lib/s3_cache.sh
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/../../lib/s3_cache.sh"
+
 BCC_VERSION=0.35.0
 WORK_DIR=""
 
@@ -24,6 +28,25 @@ if command -v bcc-lua &> /dev/null; then
 fi
 
 echo "Installing BCC version ${BCC_VERSION}..."
+
+CACHE_KEY="packer-build-cache/bcc/bcc-v${BCC_VERSION}-$(uname -m).tar.gz"
+CACHE_ARCHIVE=$(mktemp --suffix=".tar.gz")
+
+# Try to restore from S3 cache before compiling
+if s3_cache_get "${PACKER_CACHE_BUCKET:-}" "${CACHE_KEY}" "${CACHE_ARCHIVE}"; then
+    echo "Extracting BCC from cache..."
+    sudo tar -xzf "${CACHE_ARCHIVE}" -C /
+    rm -f "${CACHE_ARCHIVE}"
+    echo "Verifying BCC installation from cache..."
+    if ! python3 -c "import bcc" 2>/dev/null; then
+        echo "ERROR: BCC Python module not found after cache restore"
+        exit 1
+    fi
+    echo "BCC ${BCC_VERSION} restored from cache successfully"
+    echo "✓ install_bcc.sh completed successfully"
+    exit 0
+fi
+rm -f "${CACHE_ARCHIVE}"
 
 # Remove any existing BCC installations
 echo "Removing existing BCC packages..."
@@ -88,6 +111,18 @@ if ! python3 -c "import bcc" 2>/dev/null; then
     echo "ERROR: BCC Python module not found after installation"
     exit 1
 fi
+
+# Upload compiled artifacts to S3 cache (best-effort)
+echo "Creating cache archive of installed BCC artifacts..."
+CACHE_ARCHIVE=$(mktemp --suffix=".tar.gz")
+# Collect installed paths; libbpf may not always be present
+BCC_CACHE_PATHS=(/usr/lib/libbcc* /usr/share/bcc /usr/lib/python3/dist-packages/bcc)
+if compgen -G "/usr/lib/libbpf*" > /dev/null 2>&1; then
+    BCC_CACHE_PATHS+=(/usr/lib/libbpf*)
+fi
+sudo tar -czf "${CACHE_ARCHIVE}" "${BCC_CACHE_PATHS[@]}" 2>/dev/null || true
+s3_cache_put "${PACKER_CACHE_BUCKET:-}" "${CACHE_KEY}" "${CACHE_ARCHIVE}"
+rm -f "${CACHE_ARCHIVE}"
 
 echo "BCC ${BCC_VERSION} installed successfully"
 echo "✓ install_bcc.sh completed successfully"

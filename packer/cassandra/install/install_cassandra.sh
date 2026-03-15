@@ -83,6 +83,10 @@ if [ -z "$INSTALL_CASSANDRA" ]; then
     exit 0
 fi
 
+# shellcheck source=../../lib/s3_cache.sh
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/../../lib/s3_cache.sh"
+
 # Enable strict error handling
 set -euo pipefail
 set -x
@@ -211,20 +215,41 @@ do
         exit 1
     fi
 
-    echo "Building version $version with ant"
-    (
-      cd "$version" || exit 1
-      ant realclean && ant -Dno-checkstyle=true $ANT_FLAGS || exit 1
-      rm -rf .git
-    ) || {
-        echo "ERROR: Ant build failed for version $version"
-        exit 1
-    }
+    GIT_SHA=$(git -C "$version" rev-parse --short=12 HEAD)
+    CACHE_KEY="packer-build-cache/cassandra/${version}-${GIT_SHA}.tar.gz"
+    CACHE_ARCHIVE=$(mktemp --suffix=".tar.gz")
 
-    sudo mv "$version" "/usr/local/cassandra/$version" || {
-        echo "ERROR: Failed to move built version $version to /usr/local/cassandra/"
-        exit 1
-    }
+    if s3_cache_get "${PACKER_CACHE_BUCKET:-}" "${CACHE_KEY}" "${CACHE_ARCHIVE}"; then
+        echo "Extracting Cassandra $version from cache..."
+        sudo mkdir -p "/usr/local/cassandra"
+        sudo tar -xzf "${CACHE_ARCHIVE}" -C "/usr/local/cassandra/"
+        rm -f "${CACHE_ARCHIVE}"
+        echo "Cassandra $version restored from cache, skipping ant build"
+    else
+        rm -f "${CACHE_ARCHIVE}"
+
+        echo "Building version $version with ant"
+        (
+          cd "$version" || exit 1
+          ant realclean && ant -Dno-checkstyle=true $ANT_FLAGS || exit 1
+          rm -rf .git
+        ) || {
+            echo "ERROR: Ant build failed for version $version"
+            exit 1
+        }
+
+        sudo mv "$version" "/usr/local/cassandra/$version" || {
+            echo "ERROR: Failed to move built version $version to /usr/local/cassandra/"
+            exit 1
+        }
+
+        # Upload built artifact to S3 cache (best-effort)
+        echo "Creating cache archive for Cassandra $version..."
+        CACHE_ARCHIVE=$(mktemp --suffix=".tar.gz")
+        sudo tar -czf "${CACHE_ARCHIVE}" -C "/usr/local/cassandra" "$version" 2>/dev/null || true
+        s3_cache_put "${PACKER_CACHE_BUCKET:-}" "${CACHE_KEY}" "${CACHE_ARCHIVE}"
+        rm -f "${CACHE_ARCHIVE}"
+    fi
   fi
 
   # Verify the version was successfully moved to /usr/local/cassandra/

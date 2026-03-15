@@ -31,5 +31,5 @@
 
 - version: "trunk"
   url: https://github.com/rustyrazorblade/easy-db-lab/releases/download/nightly/apache-cassandra-trunk-bin.tar.gz
-  java: "17"
+  java: "21"
   python: "3.10.6"

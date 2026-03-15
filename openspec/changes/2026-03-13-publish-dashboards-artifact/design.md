@@ -41,7 +41,7 @@ Alternative: Only trigger on version tags. Rejected — the container image publ
 
 ### Single zip archive (`easy-db-lab-dashboards.zip`)
 
-One archive is simpler to link to in documentation and easier to distribute. Grafana supports bulk import via zip in newer versions, and individual files can be extracted from the zip manually.
+One archive is simpler to link to in documentation and easier to distribute. Users extract the zip and import each JSON file individually via Grafana's dashboard import UI (Grafana does not natively support zip bulk import — each dashboard is imported separately).
 
 Alternative: Publish each JSON as a separate release asset. Rejected — 11 individual files clutter the release page and provide no benefit.
 

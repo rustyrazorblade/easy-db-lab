@@ -20,9 +20,12 @@ https://github.com/rustyrazorblade/easy-db-lab/releases/download/v<VERSION>/easy
 
 ## Importing into Grafana
 
+Grafana does not support importing a zip archive directly. Import each dashboard individually:
+
 1. Download and extract the zip archive
 2. In Grafana, go to **Dashboards > Import**
-3. Upload each JSON file or paste its contents
+3. Click **Upload dashboard JSON file** and select one of the extracted `.json` files
+4. Repeat for each dashboard you want to import
 
 ## Datasource Configuration
 

@@ -35,13 +35,14 @@ jobs:
           zip -j "$GITHUB_WORKSPACE/artifacts/easy-db-lab-dashboards.zip" *.json
 
           echo "Dashboard archive contents:"
-          unzip -l artifacts/easy-db-lab-dashboards.zip
+          unzip -l "$GITHUB_WORKSPACE/artifacts/easy-db-lab-dashboards.zip"
 
       - name: Upload dashboards to version release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: artifacts/easy-db-lab-dashboards.zip
+          fail_on_unmatched_files: true
 
       - name: Upload dashboards to latest pre-release
         if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
@@ -51,6 +52,7 @@ jobs:
           name: Latest (unreleased)
           prerelease: true
           files: artifacts/easy-db-lab-dashboards.zip
+          fail_on_unmatched_files: true
           body: |
             Rolling pre-release with the latest dashboards from the main branch.
             This is updated automatically on every push to main.
@@ -60,7 +62,8 @@ jobs:
 
 - [x] 2.1 Add a `docs/reference/dashboards.md` page documenting:
   - The dashboard artifact is published as `easy-db-lab-dashboards.zip` on every versioned GitHub Release
-  - Download URL pattern: `https://github.com/rustyrazorblade/easy-db-lab/releases/latest/download/easy-db-lab-dashboards.zip`
+  - Download URL pattern for latest pre-release: `https://github.com/rustyrazorblade/easy-db-lab/releases/download/latest/easy-db-lab-dashboards.zip`
+  - Download URL pattern for a specific version: `https://github.com/rustyrazorblade/easy-db-lab/releases/download/v<VERSION>/easy-db-lab-dashboards.zip`
   - How to import into an external Grafana instance (download zip, extract, use Grafana's dashboard import UI)
   - Datasource requirement: dashboards default to a datasource named `VictoriaMetrics`; users can change this via the datasource dropdown in Grafana
   - List of included dashboards and what each covers

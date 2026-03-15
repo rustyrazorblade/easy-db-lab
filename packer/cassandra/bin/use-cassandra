@@ -48,6 +48,8 @@ elif [ "$JAVA_VERSION" = "11" ]; then
   sudo update-java-alternatives -s java-1.11.0-openjdk-$ARCH
 elif [ "$JAVA_VERSION" = "17" ]; then
   sudo update-java-alternatives -s java-1.17.0-openjdk-$ARCH
+elif [ "$JAVA_VERSION" = "21" ]; then
+  sudo update-java-alternatives -s java-1.21.0-openjdk-$ARCH
 else
   echo "Unknown java version $JAVA_VERSION"
   exit 1

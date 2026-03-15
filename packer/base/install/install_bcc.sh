@@ -3,9 +3,9 @@ set -euo pipefail
 
 echo "=== Running: install_bcc.sh ==="
 
+# Uploaded to /tmp/s3_cache.sh by the packer file provisioner in base.pkr.hcl
 # shellcheck source=../../lib/s3_cache.sh
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/../../lib/s3_cache.sh"
+source "/tmp/s3_cache.sh"
 
 BCC_VERSION=0.35.0
 WORK_DIR=""
@@ -32,21 +32,28 @@ echo "Installing BCC version ${BCC_VERSION}..."
 CACHE_KEY="packer-build-cache/bcc/bcc-v${BCC_VERSION}-$(uname -m).tar.gz"
 CACHE_ARCHIVE=$(mktemp --suffix=".tar.gz")
 
-# Try to restore from S3 cache before compiling
+# Try to restore from S3 cache before compiling.
+# Use nested if for tar extraction so a corrupted archive falls back to compilation
+# rather than aborting the build under set -euo pipefail.
 if s3_cache_get "${PACKER_CACHE_BUCKET:-}" "${CACHE_KEY}" "${CACHE_ARCHIVE}"; then
     echo "Extracting BCC from cache..."
-    sudo tar -xzf "${CACHE_ARCHIVE}" -C /
-    rm -f "${CACHE_ARCHIVE}"
-    echo "Verifying BCC installation from cache..."
-    if ! python3 -c "import bcc" 2>/dev/null; then
-        echo "ERROR: BCC Python module not found after cache restore"
-        exit 1
+    if sudo tar -xzf "${CACHE_ARCHIVE}" -C /; then
+        rm -f "${CACHE_ARCHIVE}"
+        echo "Verifying BCC installation from cache..."
+        if ! python3 -c "import bcc" 2>/dev/null; then
+            echo "ERROR: BCC Python module not found after cache restore"
+            exit 1
+        fi
+        echo "BCC ${BCC_VERSION} restored from cache successfully"
+        echo "✓ install_bcc.sh completed successfully"
+        exit 0
+    else
+        echo "WARNING: Cache archive extraction failed, falling back to compilation"
+        rm -f "${CACHE_ARCHIVE}"
     fi
-    echo "BCC ${BCC_VERSION} restored from cache successfully"
-    echo "✓ install_bcc.sh completed successfully"
-    exit 0
+else
+    rm -f "${CACHE_ARCHIVE}"
 fi
-rm -f "${CACHE_ARCHIVE}"
 
 # Remove any existing BCC installations
 echo "Removing existing BCC packages..."
@@ -121,6 +128,8 @@ if compgen -G "/usr/lib/libbpf*" > /dev/null 2>&1; then
     BCC_CACHE_PATHS+=(/usr/lib/libbpf*)
 fi
 sudo tar -czf "${CACHE_ARCHIVE}" "${BCC_CACHE_PATHS[@]}" 2>/dev/null || true
+# Make archive readable by the non-root user running aws s3 cp
+sudo chmod a+r "${CACHE_ARCHIVE}"
 s3_cache_put "${PACKER_CACHE_BUCKET:-}" "${CACHE_KEY}" "${CACHE_ARCHIVE}"
 rm -f "${CACHE_ARCHIVE}"
 

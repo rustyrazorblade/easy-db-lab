@@ -83,9 +83,9 @@ if [ -z "$INSTALL_CASSANDRA" ]; then
     exit 0
 fi
 
+# Uploaded to /tmp/s3_cache.sh by the packer file provisioner in cassandra.pkr.hcl
 # shellcheck source=../../lib/s3_cache.sh
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/../../lib/s3_cache.sh"
+source "/tmp/s3_cache.sh"
 
 # Enable strict error handling
 set -euo pipefail
@@ -219,15 +219,24 @@ do
     CACHE_KEY="packer-build-cache/cassandra/${version}-${GIT_SHA}.tar.gz"
     CACHE_ARCHIVE=$(mktemp --suffix=".tar.gz")
 
+    # Use a flag variable and nested if for tar extraction so a corrupted archive
+    # falls back to the ant build rather than aborting under set -euo pipefail.
+    CACHE_HIT=0
     if s3_cache_get "${PACKER_CACHE_BUCKET:-}" "${CACHE_KEY}" "${CACHE_ARCHIVE}"; then
         echo "Extracting Cassandra $version from cache..."
         sudo mkdir -p "/usr/local/cassandra"
-        sudo tar -xzf "${CACHE_ARCHIVE}" -C "/usr/local/cassandra/"
-        rm -f "${CACHE_ARCHIVE}"
-        echo "Cassandra $version restored from cache, skipping ant build"
-    else
-        rm -f "${CACHE_ARCHIVE}"
+        if sudo tar -xzf "${CACHE_ARCHIVE}" -C "/usr/local/cassandra/"; then
+            # Clean up the cloned repo — it can be several hundred MB
+            rm -rf "$version"
+            CACHE_HIT=1
+            echo "Cassandra $version restored from cache, skipping ant build"
+        else
+            echo "WARNING: Cache extraction failed, falling back to ant build"
+        fi
+    fi
+    rm -f "${CACHE_ARCHIVE}"
 
+    if [[ "$CACHE_HIT" == "0" ]]; then
         echo "Building version $version with ant"
         (
           cd "$version" || exit 1
@@ -247,6 +256,8 @@ do
         echo "Creating cache archive for Cassandra $version..."
         CACHE_ARCHIVE=$(mktemp --suffix=".tar.gz")
         sudo tar -czf "${CACHE_ARCHIVE}" -C "/usr/local/cassandra" "$version" 2>/dev/null || true
+        # Make archive readable by the non-root user running aws s3 cp
+        sudo chmod a+r "${CACHE_ARCHIVE}"
         s3_cache_put "${PACKER_CACHE_BUCKET:-}" "${CACHE_KEY}" "${CACHE_ARCHIVE}"
         rm -f "${CACHE_ARCHIVE}"
     fi

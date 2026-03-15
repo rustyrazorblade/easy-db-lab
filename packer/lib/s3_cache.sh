@@ -58,7 +58,10 @@ s3_cache_put() {
     fi
 
     echo "[s3_cache] Writing cache: s3://${bucket}/${key}"
-    aws s3 cp --no-progress "${src}" "s3://${bucket}/${key}" || true
-    echo "[s3_cache] Cache write complete (errors are non-fatal)"
+    if aws s3 cp --no-progress "${src}" "s3://${bucket}/${key}"; then
+        echo "[s3_cache] Cache write successful: s3://${bucket}/${key}"
+    else
+        echo "[s3_cache] Cache write failed (non-fatal): s3://${bucket}/${key}"
+    fi
     return 0
 }

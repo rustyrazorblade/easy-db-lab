@@ -76,6 +76,10 @@ A shared `s3_cache_get` / `s3_cache_put` helper will be extracted to `packer/lib
 
 **Alternative considered:** Inline the logic in each script. Rejected — duplication makes it harder to change the bucket naming convention later.
 
+**Deployment**: Packer's `script` provisioner uploads only a single file. `s3_cache.sh` will not exist at the relative path once the script runs on the remote build machine. Both `base.pkr.hcl` and `cassandra.pkr.hcl` must include a `provisioner "file"` block that uploads `../lib/s3_cache.sh` to `/tmp/s3_cache.sh` before any script that sources it. The scripts source it from this fixed path.
+
+**Provisioner ordering for BCC in `base.pkr.hcl`**: `install_awscli.sh` must run before `install_bcc.sh` because the cache helpers call `aws s3 cp`.
+
 ### 6. `PACKER_CACHE_SKIP` bypass
 
 Setting `PACKER_CACHE_SKIP=1` skips both cache reads and writes. Useful when:
@@ -102,3 +106,4 @@ This will be documented but not automated — the IAM policy for packer instance
 - **Corrupted cache entry**: If a cache upload was interrupted, the S3 object may be partial. The `tar` extraction will fail, causing the build to fall back to compiling from scratch (best-effort read handles this).
 - **S3 bucket not configured**: If `PACKER_CACHE_BUCKET` is unset, cache operations are skipped entirely and the build proceeds normally. This is the safe default for users who haven't set up caching.
 - **Architecture mismatch**: `uname -m` in the key prevents cross-architecture cache hits.
+- **Base OS change**: The BCC cache key (`bcc-v{VERSION}-{ARCH}`) does not include the OS release. If the base AMI moves to a new Ubuntu LTS (e.g., 24.04 → 26.04), the existing cache entry would match but the binary may be incompatible. Mitigation: set `PACKER_CACHE_SKIP=1` whenever the base OS is upgraded, or manually delete the affected S3 objects.

@@ -1,4 +1,4 @@
-package com.rustyrazorblade.easydblab.commands.profile
+package com.rustyrazorblade.easydblab.commands.cassandra
 
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
@@ -22,21 +22,21 @@ import picocli.CommandLine.Unmatched
  *   -t              Split stack traces by thread
  *
  * Examples:
- *   profile cassandra -d 30
- *   profile cassandra -d 60 -e alloc
- *   profile cassandra -d 30 -t
+ *   cassandra profile -d 30
+ *   cassandra profile -d 60 -e alloc
+ *   cassandra profile -d 30 -t
  */
 @RequireProfileSetup
 @RequireSSHKey
 @Command(
-    name = "cassandra",
+    name = "profile",
     description = [
         "Profile Cassandra nodes using async-profiler. Results are sent to Pyroscope.",
         "Unrecognized options are passed directly to asprof.",
     ],
     mixinStandardHelpOptions = true,
 )
-class ProfileCassandra : PicoBaseCommand() {
+class Profile : PicoBaseCommand() {
     private val profilingService: ProfilingService by inject()
 
     @Unmatched

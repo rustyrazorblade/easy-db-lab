@@ -32,6 +32,7 @@ import picocli.CommandLine.Spec
         UseCassandra::class,
         WriteConfig::class,
         Stress::class,
+        Profile::class,
     ],
 )
 class Cassandra : Runnable {

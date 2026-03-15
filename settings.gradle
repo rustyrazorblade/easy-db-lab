@@ -18,6 +18,7 @@ include 'services:webservice'
 rootProject.name = 'easy-db-lab'
 
 include "core"
+include "jvm-pause-agent"
 include "spark:common"
 include "spark:bulk-writer-sidecar"
 include "spark:bulk-writer-s3"

@@ -1,0 +1,3 @@
+schema: spec-driven
+name: add-jhiccup
+title: Add jvm-pause-agent for JVM hiccup measurement

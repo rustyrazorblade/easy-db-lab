@@ -233,6 +233,11 @@ distributions {
             from("packer") {
                 into("packer")
             }
+            // Include the jvm-pause-agent shadow JAR for deployment to Cassandra nodes
+            from(project(":jvm-pause-agent").tasks.named("shadowJar")) {
+                into("lib/jvm-pause-agent")
+                rename { "jvm-pause-agent.jar" }
+            }
         }
     }
 }
@@ -244,6 +249,7 @@ tasks.distTar {
 
 tasks.named("installDist") {
     dependsOn(tasks.named("shadowJar"))
+    dependsOn(project(":jvm-pause-agent").tasks.named("shadowJar"))
 }
 
 tasks.assemble {

@@ -142,6 +142,9 @@ class SetupInstance : PicoBaseCommand() {
             remoteOps.upload(h, Path.of("setup_instance.sh"), "setup_instance.sh")
             remoteOps.executeRemotely(h, "sudo bash setup_instance.sh").text
         }
+        val appHome = System.getProperty("easydblab.apphome", ".")
+        val jvmPauseAgentJar = Path.of("$appHome/lib/jvm-pause-agent/jvm-pause-agent.jar")
+
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, "") { host ->
             val h = host.toHost()
             setup(h)
@@ -150,6 +153,14 @@ class SetupInstance : PicoBaseCommand() {
             remoteOps.executeRemotely(h, "sudo hostnamectl set-hostname ${h.alias}").text
             remoteOps.upload(h, Path.of("setup_instance.sh"), "setup_instance.sh")
             remoteOps.executeRemotely(h, "sudo bash setup_instance.sh").text
+            if (jvmPauseAgentJar.toFile().exists()) {
+                remoteOps.executeRemotely(h, "sudo mkdir -p /usr/local/jvm-pause-agent").text
+                remoteOps.upload(h, jvmPauseAgentJar, "jvm-pause-agent.jar")
+                remoteOps.executeRemotely(
+                    h,
+                    "sudo mv jvm-pause-agent.jar /usr/local/jvm-pause-agent/jvm-pause-agent.jar",
+                ).text
+            }
         }
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Control, "") { host ->
             val h = host.toHost()

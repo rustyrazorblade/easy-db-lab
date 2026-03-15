@@ -134,3 +134,15 @@ if [ -f "$PYROSCOPE_JAR" ] && [ -n "$PYROSCOPE_SERVER_ADDRESS" ]; then
 elif [ ! -f "$PYROSCOPE_JAR" ]; then
     echo "INFO: Pyroscope Java agent not found at $PYROSCOPE_JAR, skipping profiling" >&2
 fi
+
+# JVM pause detection agent
+# Measures JVM pauses (GC stop-the-world, safepoint stalls, OS scheduling jitter) by tracking
+# sleep overshoot. Emits jvm.pause.duration histogram via OTLP gRPC to the local OTel collector.
+# Deployed by easy-db-lab setup-instances from the distribution.
+JVM_PAUSE_AGENT_JAR="/usr/local/jvm-pause-agent/jvm-pause-agent.jar"
+if [ -f "$JVM_PAUSE_AGENT_JAR" ]; then
+    export JVM_OPTS="$JVM_OPTS -javaagent:${JVM_PAUSE_AGENT_JAR}"
+    export JVM_OPTS="$JVM_OPTS -Djvm.pause.agent.cluster.name=${CLUSTER_NAME:-unknown}"
+else
+    echo "INFO: jvm-pause-agent not found at $JVM_PAUSE_AGENT_JAR, skipping JVM pause detection" >&2
+fi

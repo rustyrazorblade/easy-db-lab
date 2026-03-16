@@ -66,7 +66,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "rate(mutations_count{job=\"cassandra-easy-stress\"}[1m])",
+          "expr": "rate(mutations_count{job=\"cassandra-easy-stress\", job_name=~\"$job_name\"}[1m])",
           "legendFormat": "{{job_name}}",
           "refId": "A"
         }
@@ -124,7 +124,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "rate(selects_count{job=\"cassandra-easy-stress\"}[1m])",
+          "expr": "rate(selects_count{job=\"cassandra-easy-stress\", job_name=~\"$job_name\"}[1m])",
           "legendFormat": "{{job_name}}",
           "refId": "A"
         }
@@ -189,7 +189,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "mutations{job=\"cassandra-easy-stress\", quantile=\"${quantile}\"}",
+          "expr": "mutations{job=\"cassandra-easy-stress\", job_name=~\"$job_name\", quantile=\"${quantile}\"}",
           "legendFormat": "{{job_name}}",
           "refId": "A"
         }
@@ -247,7 +247,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "selects{job=\"cassandra-easy-stress\", quantile=\"${quantile}\"}",
+          "expr": "selects{job=\"cassandra-easy-stress\", job_name=~\"$job_name\", quantile=\"${quantile}\"}",
           "legendFormat": "{{job_name}}",
           "refId": "A"
         }
@@ -305,7 +305,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "deletions{job=\"cassandra-easy-stress\", quantile=\"${quantile}\"}",
+          "expr": "deletions{job=\"cassandra-easy-stress\", job_name=~\"$job_name\", quantile=\"${quantile}\"}",
           "legendFormat": "{{job_name}}",
           "refId": "A"
         }
@@ -363,7 +363,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "rate(mutations_sum{job=\"cassandra-easy-stress\"}[1m]) / rate(mutations_count{job=\"cassandra-easy-stress\"}[1m])",
+          "expr": "rate(mutations_sum{job=\"cassandra-easy-stress\", job_name=~\"$job_name\"}[1m]) / rate(mutations_count{job=\"cassandra-easy-stress\", job_name=~\"$job_name\"}[1m])",
           "legendFormat": "{{job_name}}",
           "refId": "A"
         }
@@ -428,7 +428,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "rate(errors_total{job=\"cassandra-easy-stress\"}[1m])",
+          "expr": "rate(errors_total{job=\"cassandra-easy-stress\", job_name=~\"$job_name\"}[1m])",
           "legendFormat": "{{job_name}}",
           "refId": "A"
         }
@@ -486,7 +486,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "errors_total{job=\"cassandra-easy-stress\"}",
+          "expr": "errors_total{job=\"cassandra-easy-stress\", job_name=~\"$job_name\"}",
           "legendFormat": "{{job_name}}",
           "refId": "A"
         }
@@ -519,6 +519,30 @@
         "regex": "",
         "skipUrlSync": false,
         "type": "datasource"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "definition": "label_values(mutations_count{job=\"cassandra-easy-stress\"}, job_name)",
+        "hide": 0,
+        "includeAll": true,
+        "allValue": ".*",
+        "label": "Job",
+        "multi": true,
+        "name": "job_name",
+        "options": [],
+        "query": {
+          "query": "label_values(mutations_count{job=\"cassandra-easy-stress\"}, job_name)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
       },
       {
         "current": {

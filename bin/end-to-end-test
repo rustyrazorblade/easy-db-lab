@@ -1454,6 +1454,9 @@ echo "=== Building project ==="
 
 # Skip per-invocation rebuild and docker compose in easy-db-lab — we just built above
 export EASY_DB_LAB_SKIP_BUILD=1
+
+# Start Docker services once upfront (Redis, OTel collector), then skip per-invocation restarts
+docker compose -f "$PROJECT_ROOT/docker-compose.yml" up -d
 export EASY_DB_LAB_SKIP_DOCKER=1
 
 # Change to work directory

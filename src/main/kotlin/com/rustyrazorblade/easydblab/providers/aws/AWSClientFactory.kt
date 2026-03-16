@@ -93,7 +93,7 @@ class DefaultAWSClientFactory(
         // Add telemetry interceptor if OTel is enabled
         if (telemetryProvider is OtelTelemetryProvider) {
             val awsTelemetry = AwsSdkTelemetry.create(telemetryProvider.getOpenTelemetry())
-            builder.addExecutionInterceptor(awsTelemetry.newExecutionInterceptor())
+            builder.addExecutionInterceptor(awsTelemetry.createExecutionInterceptor())
         }
 
         return builder.build()

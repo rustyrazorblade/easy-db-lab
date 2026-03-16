@@ -65,13 +65,11 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
     }
 
     @Test
-    fun `buildDashboardConfigMap substitutes template variables`() {
-        val configMap = builder.buildDashboardConfigMap(GrafanaDashboard.SYSTEM)
-        val json = configMap.data[GrafanaDashboard.SYSTEM.jsonFileName]!!
+    fun `buildDashboardConfigMap preserves Grafana built-in variables`() {
+        val configMap = builder.buildDashboardConfigMap(GrafanaDashboard.CLICKHOUSE)
+        val json = configMap.data[GrafanaDashboard.CLICKHOUSE.jsonFileName]!!
 
-        // Template variables should be substituted - no remaining __KEY__ placeholders
-        assertThat(json).doesNotContain("__CLUSTER_NAME__")
-        assertThat(json).doesNotContain("__BUCKET_NAME__")
+        assertThat(json).contains("\$__rate_interval")
     }
 
     @Test

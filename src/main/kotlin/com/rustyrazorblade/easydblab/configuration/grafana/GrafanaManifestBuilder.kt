@@ -24,8 +24,8 @@ import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
  * ConfigMaps. The Deployment is also built in code, dynamically adding volume mounts for each
  * dashboard entry in [GrafanaDashboard].
  *
- * @property templateService Used for loading dashboard JSON from classpath and performing
- *   `__KEY__` variable substitution
+ * @property templateService Used for loading the dashboards provisioning YAML and
+ *   reading cluster name for Grafana branding
  */
 class GrafanaManifestBuilder(
     private val templateService: TemplateService,
@@ -93,12 +93,12 @@ class GrafanaManifestBuilder(
      * @return ConfigMap containing the substituted dashboard JSON
      */
     fun buildDashboardConfigMap(dashboard: GrafanaDashboard): ConfigMap {
-        val template =
-            templateService.fromResource(
-                GrafanaDashboard::class.java,
-                dashboard.resourcePath,
-            )
-        val json = template.substitute()
+        val json =
+            GrafanaDashboard::class.java
+                .getResourceAsStream("/${dashboard.jsonFileName}")
+                ?.bufferedReader()
+                ?.readText()
+                ?: error("Dashboard resource not found: ${dashboard.jsonFileName}")
 
         return ConfigMapBuilder()
             .withNewMetadata()

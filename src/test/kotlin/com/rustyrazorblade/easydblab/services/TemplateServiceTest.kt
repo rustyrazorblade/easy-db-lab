@@ -205,6 +205,21 @@ class TemplateServiceTest : BaseKoinTest() {
     }
 
     @Test
+    fun `substitute preserves dollar sign before double underscore in Grafana variables`() {
+        val input = "rate(metric{cluster=\"__CLUSTER_NAME__\"}[\$__rate_interval])"
+        val expected = "rate(metric{cluster=\"test-cluster\"}[\$__rate_interval])"
+        val template =
+            TemplateService.Template(
+                input,
+                mapOf("CLUSTER_NAME" to "test-cluster"),
+            )
+
+        val result = template.substitute()
+
+        assertThat(result).isEqualTo(expected)
+    }
+
+    @Test
     fun `fromFile creates template from file with context variables`() {
         setupClusterState()
 

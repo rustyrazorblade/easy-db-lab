@@ -164,10 +164,10 @@ val result = template.substitute(mapOf("EXTRA" to "value"))  // extra vars overr
 
 All Grafana K8s resources are built programmatically using Fabric8:
 
-- **`GrafanaDashboard`** — enum registry of all dashboards. Single source of truth for dashboard metadata (configMapName, volumeName, mountPath, resourcePath, optional flag). Adding a new dashboard = add an enum entry + drop a JSON file.
-- **`GrafanaManifestBuilder`** — builds all Grafana K8s resources (provisioning ConfigMap, dashboard ConfigMaps, Deployment) as typed Fabric8 objects. Uses `TemplateService` for `__KEY__` variable substitution in dashboard JSON. The Deployment includes a `grafana-image-renderer` sidecar container (port 8081) for server-side panel rendering.
+- **`GrafanaDashboard`** — enum registry of all dashboards. Single source of truth for dashboard metadata (configMapName, volumeName, mountPath, jsonFileName, optional flag). Adding a new dashboard = add an enum entry + drop a JSON file in the top-level `dashboards/` directory.
+- **`GrafanaManifestBuilder`** — builds all Grafana K8s resources (provisioning ConfigMap, dashboard ConfigMaps, Deployment) as typed Fabric8 objects. Dashboard JSON is loaded directly from the classpath (no `TemplateService` — dashboards don't use `__KEY__` variables). Uses `TemplateService` only for the dashboards provisioning YAML and cluster name. The Deployment includes a `grafana-image-renderer` sidecar container (port 8081) for server-side panel rendering.
 - **`GrafanaDatasourceConfig`** — datasource provisioning YAML generation.
-- **Dashboard JSON files** — stored in `resources/.../configuration/grafana/dashboards/*.json`. Raw JSON with `__KEY__` template placeholders.
+- **Dashboard JSON files** — stored in the top-level `dashboards/` directory at the project root. Gradle copies them into classpath resources at build time. Also published as a standalone zip via GitHub Actions for consumption by other projects.
 
 ## Pyroscope Subpackage (`pyroscope/`)
 

@@ -204,6 +204,8 @@ class TemplateServiceTest : BaseKoinTest() {
         assertThat(template.substitute()).isEqualTo("bucket: my-test-bucket")
     }
 
+    // Regression guard: dashboards no longer go through TemplateService, but this
+    // ensures that if any future template ever contains $__rate_interval, it won't be corrupted.
     @Test
     fun `substitute preserves dollar sign before double underscore in Grafana variables`() {
         val input = "rate(metric{cluster=\"__CLUSTER_NAME__\"}[\$__rate_interval])"

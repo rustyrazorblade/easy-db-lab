@@ -1,0 +1,30 @@
+name: Publish Dashboards
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'dashboards/**'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Create dashboards zip
+        run: cd dashboards && zip -r ../dashboards.zip *.json
+
+      - name: Create or update latest release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! gh release view latest > /dev/null 2>&1; then
+            gh release create latest --title "Latest" --notes "Automatically updated on every push to main."
+          fi
+          gh release upload latest dashboards.zip --clobber

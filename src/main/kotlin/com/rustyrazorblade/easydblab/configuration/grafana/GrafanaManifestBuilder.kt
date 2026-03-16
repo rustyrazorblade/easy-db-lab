@@ -86,15 +86,16 @@ class GrafanaManifestBuilder(
     /**
      * Builds a ConfigMap for a single dashboard.
      *
-     * Loads the dashboard JSON via [TemplateService.fromResource] which performs
-     * `__KEY__` variable substitution, then wraps it in a Fabric8 ConfigMap.
+     * Loads the dashboard JSON directly from the classpath without template substitution.
+     * Dashboards don't use `__KEY__` variables, and running them through TemplateService
+     * corrupts Grafana built-in variables like `$__rate_interval`.
      *
      * @param dashboard The dashboard to build a ConfigMap for
-     * @return ConfigMap containing the substituted dashboard JSON
+     * @return ConfigMap containing the raw dashboard JSON
      */
     fun buildDashboardConfigMap(dashboard: GrafanaDashboard): ConfigMap {
         val json =
-            GrafanaDashboard::class.java
+            GrafanaManifestBuilder::class.java
                 .getResourceAsStream("/${dashboard.jsonFileName}")
                 ?.bufferedReader()
                 ?.readText()

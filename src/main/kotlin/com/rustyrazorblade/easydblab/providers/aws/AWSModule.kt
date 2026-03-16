@@ -46,7 +46,7 @@ private fun createClientOverrideConfig(telemetryProvider: TelemetryProvider): Cl
 
     if (telemetryProvider is OtelTelemetryProvider) {
         val awsTelemetry = AwsSdkTelemetry.create(telemetryProvider.getOpenTelemetry())
-        builder.addExecutionInterceptor(awsTelemetry.newExecutionInterceptor())
+        builder.addExecutionInterceptor(awsTelemetry.createExecutionInterceptor())
     }
 
     return builder.build()

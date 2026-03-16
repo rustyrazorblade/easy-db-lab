@@ -58,7 +58,7 @@ commons-text = "1.13.0"
 cassandra-driver = "4.19.2"
 
 # Redis
-jedis = "5.2.0"
+jedis = "7.4.0"
 
 # Other
 classgraph = "4.8.184"

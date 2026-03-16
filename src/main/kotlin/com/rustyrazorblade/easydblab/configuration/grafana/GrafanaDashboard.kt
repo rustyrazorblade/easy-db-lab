@@ -109,4 +109,12 @@ enum class GrafanaDashboard(
         resourcePath = "dashboards/log-investigation.json",
         optional = true,
     ),
+    JVM_PAUSE(
+        configMapName = "grafana-dashboard-jvm-pause",
+        volumeName = "dashboard-jvm-pause",
+        mountPath = "/var/lib/grafana/dashboards/jvm-pause",
+        jsonFileName = "jvm-pause.json",
+        resourcePath = "dashboards/jvm-pause.json",
+        optional = true,
+    ),
 }

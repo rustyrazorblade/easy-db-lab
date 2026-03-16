@@ -134,3 +134,14 @@ if [ -f "$PYROSCOPE_JAR" ] && [ -n "$PYROSCOPE_SERVER_ADDRESS" ]; then
 elif [ ! -f "$PYROSCOPE_JAR" ]; then
     echo "INFO: Pyroscope Java agent not found at $PYROSCOPE_JAR, skipping profiling" >&2
 fi
+
+# JVM Pause Agent - measures GC pauses, safepoint stalls, and OS scheduling jitter
+# Emits jvm.pause.duration histogram via OTLP gRPC to the local OTel collector.
+# CLUSTER_NAME is set by easy-db-lab at cluster startup time via /etc/default/cassandra.
+JVM_PAUSE_AGENT_JAR="/usr/local/jvm-pause-agent/jvm-pause-agent.jar"
+if [ -f "$JVM_PAUSE_AGENT_JAR" ]; then
+    export JVM_OPTS="$JVM_OPTS -javaagent:${JVM_PAUSE_AGENT_JAR}"
+    export JVM_OPTS="$JVM_OPTS -Djvm.pause.agent.cluster.name=${CLUSTER_NAME:-unknown}"
+else
+    echo "INFO: jvm-pause-agent not found at $JVM_PAUSE_AGENT_JAR, skipping JVM pause measurement" >&2
+fi

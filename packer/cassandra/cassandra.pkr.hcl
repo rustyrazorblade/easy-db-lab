@@ -173,6 +173,14 @@ build {
     script = "install/install_pyroscope_agent.sh"
   }
 
+  # install jvm-pause-agent for JVM hiccup measurement
+  provisioner "shell" {
+    environment_vars = [
+      "RELEASE_VERSION=${var.release_version}",
+    ]
+    script = "install/install_jvm_pause_agent.sh"
+  }
+
   # install OpenTelemetry Java agent for sidecar instrumentation
   provisioner "shell" {
     script = "install/install_otel_agent.sh"

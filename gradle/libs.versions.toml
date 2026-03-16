@@ -62,7 +62,7 @@ jedis = "5.2.0"
 
 # Other
 classgraph = "4.8.184"
-resilience4j = "2.3.0"
+resilience4j = "2.4.0"
 fabric8-kubernetes = "7.5.0"
 
 # OpenTelemetry

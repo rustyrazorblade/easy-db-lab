@@ -57,7 +57,7 @@ class ClickHouseManifestBuilder(
         private const val INTERSERVER_PORT = 9009
 
         // StatefulSet
-        private const val KEEPER_REPLICAS = 3
+        private val KEEPER_REPLICAS = Constants.ClickHouse.KEEPER_REPLICAS
 
         // Probes
         private const val LIVENESS_INITIAL_DELAY = 30
@@ -305,14 +305,6 @@ class ClickHouseManifestBuilder(
                     .build(),
             ).endVolume()
             .addNewVolume()
-            .withName("data")
-            .withHostPath(
-                HostPathVolumeSourceBuilder()
-                    .withPath("/mnt/db1/clickhouse/keeper")
-                    .withType("DirectoryOrCreate")
-                    .build(),
-            ).endVolume()
-            .addNewVolume()
             .withName("logs")
             .withHostPath(
                 HostPathVolumeSourceBuilder()
@@ -322,7 +314,21 @@ class ClickHouseManifestBuilder(
             ).endVolume()
             .endSpec()
             .endTemplate()
-            .endSpec()
+            .withVolumeClaimTemplates(
+                PersistentVolumeClaimBuilder()
+                    .withNewMetadata()
+                    .withName("data")
+                    .addToLabels("app.kubernetes.io/name", KEEPER_APP_LABEL)
+                    .endMetadata()
+                    .withNewSpec()
+                    .withAccessModes("ReadWriteOnce")
+                    .withStorageClassName("local-storage")
+                    .withNewResources()
+                    .addToRequests("storage", Quantity(PVC_STORAGE_SIZE))
+                    .endResources()
+                    .endSpec()
+                    .build(),
+            ).endSpec()
             .build()
 
     private fun buildKeeperInitContainer() =
@@ -338,7 +344,6 @@ class ClickHouseManifestBuilder(
                 chown -R 101:101 /var/lib/clickhouse-keeper
                 mkdir -p /mnt/db1/clickhouse/keeper/logs
                 chown -R 101:101 /mnt/db1/clickhouse/keeper/logs
-                chmod 755 /mnt/db1/clickhouse/keeper/logs
                 """.trimIndent(),
             ).addToVolumeMounts(
                 VolumeMountBuilder().withName("data").withMountPath("/var/lib/clickhouse-keeper").build(),

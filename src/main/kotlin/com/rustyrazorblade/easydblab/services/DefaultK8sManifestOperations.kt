@@ -135,10 +135,8 @@ class DefaultK8sManifestOperations(
                         .forceConflicts()
                         .serverSideApply()
                 } catch (e: Exception) {
-                    if (e.message?.contains("rollingUpdate") == true &&
-                        e.message?.contains("Recreate") == true
-                    ) {
-                        log.info { "$kind/$name has strategy conflict, deleting and re-creating" }
+                    if (requiresDeleteAndRecreate(e)) {
+                        log.info { "$kind/$name has immutable field conflict, deleting and re-creating" }
                         client.resource(resource).delete()
                         client
                             .resource(resource)
@@ -151,6 +149,20 @@ class DefaultK8sManifestOperations(
                 log.info { "Applied $kind/$name successfully" }
             }
         }
+
+    /**
+     * Checks if a server-side apply failure requires delete-and-recreate.
+     * This happens when immutable fields are changed (e.g., StatefulSet volumeClaimTemplates,
+     * Deployment strategy type).
+     */
+    private fun requiresDeleteAndRecreate(e: Exception): Boolean {
+        val msg = e.message ?: return false
+        // Strategy type conflict (e.g., RollingUpdate → Recreate)
+        if (msg.contains("rollingUpdate") && msg.contains("Recreate")) return true
+        // StatefulSet immutable spec fields (e.g., adding/changing volumeClaimTemplates)
+        if (msg.contains("updates to statefulset spec") && msg.contains("Forbidden")) return true
+        return false
+    }
 
     override fun labelNode(
         controlHost: ClusterHost,

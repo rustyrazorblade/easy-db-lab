@@ -7,9 +7,11 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.observability.TelemetryNames
 import com.rustyrazorblade.easydblab.observability.TelemetryProvider
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
+import io.fabric8.kubernetes.api.model.PersistentVolume
 import io.fabric8.kubernetes.api.model.PersistentVolumeBuilder
 import io.fabric8.kubernetes.api.model.Quantity
 import io.fabric8.kubernetes.api.model.storage.StorageClassBuilder
+import io.fabric8.kubernetes.client.KubernetesClient
 import io.github.oshai.kotlinlogging.KotlinLogging
 
 private val log = KotlinLogging.logger {}
@@ -193,7 +195,7 @@ class DefaultK8sStorageOperations(
 
                     val existing = client.persistentVolumes().withName(pvName).get()
                     if (existing != null) {
-                        log.info { "PV $pvName already exists, skipping" }
+                        clearStaleClaimRefUid(client, existing, pvName)
                         continue
                     }
 
@@ -237,6 +239,48 @@ class DefaultK8sStorageOperations(
                 eventBus.emit(Event.K8s.LocalPvsCreated(config.count, config.dbName))
             }
         }
+
+    /**
+     * If a PV's claimRef has a UID pointing to a deleted PVC, clear just the UID.
+     * The claimRef name/namespace remain correct (matching the PVC the StatefulSet will create),
+     * so clearing the UID restores the PV to a pre-bound state that accepts new PVCs.
+     */
+    private fun clearStaleClaimRefUid(
+        client: KubernetesClient,
+        existing: PersistentVolume,
+        pvName: String,
+    ) {
+        val phase = existing.status?.phase ?: "Unknown"
+        val claimRef = existing.spec?.claimRef
+        if (claimRef?.uid == null) {
+            log.debug { "PV $pvName already exists (phase=$phase, no claimRef UID), skipping" }
+            return
+        }
+
+        log.debug {
+            "PV $pvName: phase=$phase claimRef=${claimRef.namespace}/${claimRef.name} uid=${claimRef.uid}"
+        }
+
+        val boundPvc =
+            client
+                .persistentVolumeClaims()
+                .inNamespace(claimRef.namespace)
+                .withName(claimRef.name)
+                .get()
+
+        if (boundPvc != null && boundPvc.status?.phase == "Bound") {
+            log.debug { "PV $pvName bound to active PVC ${claimRef.name}, skipping" }
+            return
+        }
+
+        log.info { "PV $pvName has stale claimRef UID (PVC ${claimRef.name} no longer exists), clearing to allow rebinding" }
+        client.persistentVolumes().withName(pvName).edit { pv ->
+            pv.spec.claimRef.uid = null
+            pv.spec.claimRef.resourceVersion = null
+            pv
+        }
+        log.info { "PV $pvName claimRef UID cleared, PV should transition to Available for rebinding" }
+    }
 
     override fun ensureLocalStorageClass(controlHost: ClusterHost): Result<Unit> =
         runCatching {

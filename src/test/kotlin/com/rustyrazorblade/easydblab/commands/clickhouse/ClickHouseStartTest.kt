@@ -12,6 +12,7 @@ import com.rustyrazorblade.easydblab.configuration.clickhouse.ClickHouseManifest
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.services.K8sService
+import com.rustyrazorblade.easydblab.services.PersistentVolumeConfig
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -20,8 +21,10 @@ import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 
@@ -189,14 +192,33 @@ class ClickHouseStartTest : BaseKoinTest() {
     @Nested
     inner class SuccessfulDeployment {
         @Test
-        fun `execute creates PVs, applies manifests, and scales`() {
+        fun `execute creates keeper and server PVs with correct configs`() {
             val command = ClickHouseStart()
             command.execute()
 
-            verify(mockK8sService).createLocalPersistentVolumes(
+            val configCaptor = argumentCaptor<PersistentVolumeConfig>()
+            verify(mockK8sService, times(2)).createLocalPersistentVolumes(
                 any(),
-                any(),
+                configCaptor.capture(),
             )
+
+            val configs = configCaptor.allValues
+            val keeperConfig = configs.first { it.dbName == "clickhouse-keeper" }
+            assertThat(keeperConfig.localPath).isEqualTo("/mnt/db1/clickhouse/keeper")
+            assertThat(keeperConfig.count).isEqualTo(Constants.ClickHouse.KEEPER_REPLICAS)
+            assertThat(keeperConfig.volumeClaimTemplateName).isEqualTo("data")
+
+            val serverConfig = configs.first { it.dbName == "clickhouse" }
+            assertThat(serverConfig.localPath).isEqualTo("/mnt/db1/clickhouse")
+            assertThat(serverConfig.count).isEqualTo(3)
+            assertThat(serverConfig.volumeClaimTemplateName).isEqualTo("data")
+        }
+
+        @Test
+        fun `execute applies manifests and scales`() {
+            val command = ClickHouseStart()
+            command.execute()
+
             verify(mockClickHouseManifestBuilder).buildAllResources(
                 totalReplicas = eq(3),
                 replicasPerShard = eq(3),
@@ -282,7 +304,7 @@ class ClickHouseStartTest : BaseKoinTest() {
 
             assertThatThrownBy { command.execute() }
                 .isInstanceOf(IllegalStateException::class.java)
-                .hasMessageContaining("Failed to create Local PVs")
+                .hasMessageContaining("Failed to create PVs for clickhouse-keeper")
         }
     }
 }

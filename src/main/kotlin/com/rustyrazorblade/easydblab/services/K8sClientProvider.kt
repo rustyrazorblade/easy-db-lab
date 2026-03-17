@@ -18,14 +18,13 @@ class K8sClientProvider(
     private val socksProxyService: SocksProxyService,
 ) {
     fun createClient(controlHost: ClusterHost): KubernetesClient {
-        log.info { "Creating K8s client for ${controlHost.alias} (${controlHost.privateIp})" }
+        log.debug { "Creating K8s client for ${controlHost.alias} (${controlHost.privateIp})" }
 
         socksProxyService.ensureRunning(controlHost)
         val proxyPort = socksProxyService.getLocalPort()
 
         val kubeconfigPath = Path.of(Constants.K3s.LOCAL_KUBECONFIG)
-        log.info { "Using kubeconfig from $kubeconfigPath" }
-        log.info { "Using proxied Kubernetes client on localhost:$proxyPort" }
+        log.debug { "Using kubeconfig=$kubeconfigPath proxy=localhost:$proxyPort" }
 
         val clientFactory =
             ProxiedKubernetesClientFactory(
@@ -34,7 +33,7 @@ class K8sClientProvider(
             )
 
         val client = clientFactory.createClient(kubeconfigPath)
-        log.info { "K8s client created, master URL: ${client.configuration.masterUrl}" }
+        log.debug { "K8s client created, master URL: ${client.configuration.masterUrl}" }
 
         return client
     }

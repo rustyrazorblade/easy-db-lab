@@ -231,6 +231,8 @@ object Constants {
         const val HTTP_PORT = 8123
         const val NATIVE_PORT = 9000
         const val MINIMUM_NODES_REQUIRED = 3
+        const val KEEPER_REPLICAS = 3
+        const val PV_STORAGE_SIZE = "100Gi"
         const val S3_CONFIG_NAME = "clickhouse-s3-config"
         const val DEFAULT_S3_CACHE_SIZE = "10Gi"
         const val DEFAULT_S3_CACHE_ON_WRITE = "true"

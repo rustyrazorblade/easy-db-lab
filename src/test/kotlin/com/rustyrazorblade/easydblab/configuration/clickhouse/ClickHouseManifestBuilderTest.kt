@@ -129,6 +129,42 @@ class ClickHouseManifestBuilderTest {
     }
 
     @Test
+    fun `keeper StatefulSet uses PVC template for node-affinity storage`() {
+        val resources = buildResources()
+        val keeperSts =
+            resources
+                .filterIsInstance<StatefulSet>()
+                .first { it.metadata.name == "clickhouse-keeper" }
+
+        val vcts = keeperSts.spec.volumeClaimTemplates
+        assertThat(vcts).hasSize(1)
+        assertThat(vcts[0].metadata.name).isEqualTo("data")
+        assertThat(vcts[0].metadata.labels)
+            .containsEntry("app.kubernetes.io/name", "clickhouse-keeper")
+        assertThat(vcts[0].spec.storageClassName).isEqualTo("local-storage")
+
+        // config is a ConfigMap volume, logs is a hostPath volume
+        val volumes = keeperSts.spec.template.spec.volumes
+        val volumeNames = volumes.map { it.name }
+        assertThat(volumeNames).containsExactlyInAnyOrder("config", "logs")
+        assertThat(volumes.first { it.name == "logs" }.hostPath.path)
+            .isEqualTo("/mnt/db1/clickhouse/keeper/logs")
+    }
+
+    @Test
+    fun `keeper logs write to mnt data volume not boot volume`() {
+        val resources = buildResources()
+        val keeperConfig =
+            resources
+                .filterIsInstance<ConfigMap>()
+                .first { it.metadata.name == "clickhouse-keeper-config" }
+
+        val xml = keeperConfig.data["keeper_config.xml"]!!
+        assertThat(xml).contains("/mnt/db1/clickhouse/keeper/logs/clickhouse-keeper.log")
+        assertThat(xml).contains("/mnt/db1/clickhouse/keeper/logs/clickhouse-keeper.err.log")
+    }
+
+    @Test
     fun `no containers have resource limits or requests`() {
         val resources = buildResources()
         val statefulSets = resources.filterIsInstance<StatefulSet>()

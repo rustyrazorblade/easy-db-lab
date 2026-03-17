@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.github.dockerjava.api.model.Ulimit
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
@@ -18,9 +19,14 @@ import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBu
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.victoria.VictoriaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.yace.YaceManifestBuilder
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.observability.NoOpTelemetryProvider
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
+import io.fabric8.kubernetes.api.model.PersistentVolumeBuilder
+import io.fabric8.kubernetes.api.model.PersistentVolumeClaimBuilder
 import io.fabric8.kubernetes.api.model.Pod
+import io.fabric8.kubernetes.api.model.Quantity
 import io.fabric8.kubernetes.api.model.apps.DaemonSet
 import io.fabric8.kubernetes.api.model.apps.Deployment
 import io.fabric8.kubernetes.api.model.apps.StatefulSet
@@ -34,6 +40,7 @@ import org.junit.jupiter.api.Order
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.junit.jupiter.api.TestMethodOrder
+import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 import org.slf4j.LoggerFactory
@@ -376,6 +383,182 @@ class K8sServiceIntegrationTest {
         assertServiceExists("clickhouse-client")
         assertStatefulSetExists("clickhouse-keeper")
         assertStatefulSetExists("clickhouse")
+    }
+
+    // -----------------------------------------------------------------------
+    // Phase 2b: PV lifecycle — verify stale claimRef recycling works
+    // -----------------------------------------------------------------------
+
+    @Test
+    @Order(23)
+    fun `PV with stale claimRef should rebind after clearing UID`() {
+        val pvName = "pv-lifecycle-test"
+        val pvcName = "pvc-lifecycle-test"
+
+        // 1. Create a local-storage PV pre-bound to a PVC name (like ClickHouseStart does)
+        val pv =
+            PersistentVolumeBuilder()
+                .withNewMetadata()
+                .withName(pvName)
+                .endMetadata()
+                .withNewSpec()
+                .addToCapacity("storage", Quantity("1Gi"))
+                .withAccessModes("ReadWriteOnce")
+                .withPersistentVolumeReclaimPolicy("Retain")
+                .withStorageClassName("local-storage")
+                .withNewLocal()
+                .withPath("/tmp/pv-lifecycle-test")
+                .endLocal()
+                .withNewClaimRef()
+                .withName(pvcName)
+                .withNamespace(DEFAULT_NAMESPACE)
+                .endClaimRef()
+                .withNewNodeAffinity()
+                .withNewRequired()
+                .addNewNodeSelectorTerm()
+                .addNewMatchExpression()
+                .withKey(Constants.NODE_ORDINAL_LABEL)
+                .withOperator("In")
+                .withValues("0")
+                .endMatchExpression()
+                .endNodeSelectorTerm()
+                .endRequired()
+                .endNodeAffinity()
+                .endSpec()
+                .build()
+        client.persistentVolumes().resource(pv).create()
+        k3s.execInContainer("mkdir", "-p", "/tmp/pv-lifecycle-test")
+
+        // 2. Create a matching PVC — it should bind to the pre-bound PV
+        val pvc =
+            PersistentVolumeClaimBuilder()
+                .withNewMetadata()
+                .withName(pvcName)
+                .withNamespace(DEFAULT_NAMESPACE)
+                .endMetadata()
+                .withNewSpec()
+                .withAccessModes("ReadWriteOnce")
+                .withStorageClassName("local-storage")
+                .withNewResources()
+                .addToRequests("storage", Quantity("1Gi"))
+                .endResources()
+                .endSpec()
+                .build()
+        client.persistentVolumeClaims().resource(pvc).create()
+
+        // Wait for the PVC to bind
+        waitForPvcBound(pvcName, timeoutSeconds = 30)
+
+        // Verify PV now has a UID in its claimRef (K8s filled it in)
+        val boundPv = client.persistentVolumes().withName(pvName).get()
+        assertThat(boundPv.spec.claimRef.uid).isNotNull()
+
+        // 3. Delete the PVC (simulating "clickhouse stop")
+        client
+            .persistentVolumeClaims()
+            .inNamespace(DEFAULT_NAMESPACE)
+            .withName(pvcName)
+            .delete()
+
+        // Wait for PV to transition to Released
+        waitForPvPhase(pvName, "Released", timeoutSeconds = 30)
+
+        // 4. Clear just the UID (the fix from clearStaleClaimRefUid)
+        client.persistentVolumes().withName(pvName).edit { editPv ->
+            editPv.spec.claimRef.uid = null
+            editPv.spec.claimRef.resourceVersion = null
+            editPv
+        }
+
+        // 5. Create a new PVC with the same name (simulating "clickhouse start")
+        client.persistentVolumeClaims().resource(pvc).create()
+
+        // 6. Verify it binds — this is the core assertion
+        waitForPvcBound(pvcName, timeoutSeconds = 30)
+
+        val reboundPv = client.persistentVolumes().withName(pvName).get()
+        assertThat(reboundPv.status.phase).isEqualTo("Bound")
+        assertThat(reboundPv.spec.claimRef.uid).isNotNull()
+
+        // Cleanup
+        client
+            .persistentVolumeClaims()
+            .inNamespace(DEFAULT_NAMESPACE)
+            .withName(pvcName)
+            .delete()
+        client.persistentVolumes().withName(pvName).delete()
+    }
+
+    @Test
+    @Order(24)
+    fun `createLocalPersistentVolumes recycles stale PVs via service layer`() {
+        val storageOps = createStorageOperations()
+        val testHost =
+            ClusterHost(
+                publicIp = "unused",
+                privateIp = "unused",
+                alias = "test",
+                availabilityZone = "us-west-2a",
+            )
+        val config =
+            PersistentVolumeConfig(
+                dbName = "recycletest",
+                localPath = "/tmp/recycletest",
+                count = 1,
+                storageSize = "1Gi",
+                namespace = DEFAULT_NAMESPACE,
+                volumeClaimTemplateName = "data",
+            )
+        k3s.execInContainer("mkdir", "-p", "/tmp/recycletest")
+
+        // First call: creates the PV
+        storageOps.createLocalPersistentVolumes(testHost, config).getOrThrow()
+        val pvName = "data-recycletest-0"
+        assertThat(client.persistentVolumes().withName(pvName).get()).isNotNull
+
+        // Create and bind a PVC, then delete it (simulating stop)
+        val pvc =
+            PersistentVolumeClaimBuilder()
+                .withNewMetadata()
+                .withName(pvName)
+                .withNamespace(DEFAULT_NAMESPACE)
+                .endMetadata()
+                .withNewSpec()
+                .withAccessModes("ReadWriteOnce")
+                .withStorageClassName("local-storage")
+                .withNewResources()
+                .addToRequests("storage", Quantity("1Gi"))
+                .endResources()
+                .endSpec()
+                .build()
+        client.persistentVolumeClaims().resource(pvc).create()
+        waitForPvcBound(pvName, timeoutSeconds = 30)
+        client
+            .persistentVolumeClaims()
+            .inNamespace(DEFAULT_NAMESPACE)
+            .withName(pvName)
+            .delete()
+        waitForPvPhase(pvName, "Released", timeoutSeconds = 30)
+
+        // Second call: should detect stale claimRef and clear the UID
+        storageOps.createLocalPersistentVolumes(testHost, config).getOrThrow()
+
+        // Verify the PV's claimRef UID was cleared (pre-bound state)
+        val recycledPv = client.persistentVolumes().withName(pvName).get()
+        assertThat(recycledPv.spec.claimRef.uid).isNull()
+        assertThat(recycledPv.spec.claimRef.name).isEqualTo(pvName)
+
+        // Verify a new PVC can bind
+        client.persistentVolumeClaims().resource(pvc).create()
+        waitForPvcBound(pvName, timeoutSeconds = 30)
+
+        // Cleanup
+        client
+            .persistentVolumeClaims()
+            .inNamespace(DEFAULT_NAMESPACE)
+            .withName(pvName)
+            .delete()
+        client.persistentVolumes().withName(pvName).delete()
     }
 
     // -----------------------------------------------------------------------
@@ -752,6 +935,63 @@ class K8sServiceIntegrationTest {
                 s3CacheSize = "10Gi",
                 s3CacheOnWrite = "true",
             )
+
+    private fun waitForPvcBound(
+        pvcName: String,
+        timeoutSeconds: Int,
+    ) {
+        val deadline = System.currentTimeMillis() + timeoutSeconds * MILLIS_PER_SECOND
+        while (System.currentTimeMillis() < deadline) {
+            val pvc =
+                client
+                    .persistentVolumeClaims()
+                    .inNamespace(DEFAULT_NAMESPACE)
+                    .withName(pvcName)
+                    .get()
+            if (pvc?.status?.phase == "Bound") return
+            Thread.sleep(POLL_INTERVAL_MS)
+        }
+        val pvc =
+            client
+                .persistentVolumeClaims()
+                .inNamespace(DEFAULT_NAMESPACE)
+                .withName(pvcName)
+                .get()
+        throw AssertionError(
+            "PVC '$pvcName' did not bind within ${timeoutSeconds}s. Phase: ${pvc?.status?.phase}",
+        )
+    }
+
+    private fun waitForPvPhase(
+        pvName: String,
+        expectedPhase: String,
+        timeoutSeconds: Int,
+    ) {
+        val deadline = System.currentTimeMillis() + timeoutSeconds * MILLIS_PER_SECOND
+        while (System.currentTimeMillis() < deadline) {
+            val pv = client.persistentVolumes().withName(pvName).get()
+            if (pv?.status?.phase == expectedPhase) return
+            Thread.sleep(POLL_INTERVAL_MS)
+        }
+        val pv = client.persistentVolumes().withName(pvName).get()
+        throw AssertionError(
+            "PV '$pvName' did not reach phase '$expectedPhase' within ${timeoutSeconds}s. Phase: ${pv?.status?.phase}",
+        )
+    }
+
+    private fun createStorageOperations(): DefaultK8sStorageOperations {
+        val mockClientProvider = mock<K8sClientProvider>()
+        whenever(mockClientProvider.createClient(any())).thenAnswer {
+            KubernetesClientBuilder()
+                .withConfig(Config.fromKubeconfig(k3s.kubeConfigYaml))
+                .build()
+        }
+        return DefaultK8sStorageOperations(
+            mockClientProvider,
+            NoOpTelemetryProvider(),
+            EventBus(),
+        )
+    }
 
     private fun extractContainers(resource: HasMetadata): List<io.fabric8.kubernetes.api.model.Container> =
         when (resource) {

@@ -10,7 +10,6 @@ import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.time.Instant
-import java.util.concurrent.TimeUnit
 
 private val log = KotlinLogging.logger {}
 
@@ -243,24 +242,134 @@ class DefaultK8sNamespaceOperations(
             return
         }
 
-        for (pod in pods.items) {
-            val podName = pod.metadata?.name ?: continue
-            log.debug { "Waiting for pod $podName to be ready" }
+        val podNames = pods.items.mapNotNull { it.metadata?.name }
+        log.info { "Waiting for ${podNames.size} pods: ${podNames.joinToString(", ")}" }
 
+        for (podName in podNames) {
+            val deadline = System.currentTimeMillis() + timeoutSeconds * Constants.Time.MILLIS_PER_SECOND
+            var lastLoggedState = ""
+
+            while (System.currentTimeMillis() < deadline) {
+                val pod =
+                    client
+                        .pods()
+                        .inNamespace(namespace)
+                        .withName(podName)
+                        .get() ?: break
+
+                K8sPodUtils.checkForPodFailure(pod)
+
+                val isReady =
+                    pod.status?.conditions?.any {
+                        it.type == "Ready" && it.status == "True"
+                    } == true
+
+                if (isReady) {
+                    log.info { "Pod $podName is ready" }
+                    break
+                }
+
+                val currentState = describePodState(pod)
+                if (currentState != lastLoggedState) {
+                    log.info { "Pod $podName: $currentState" }
+                    lastLoggedState = currentState
+                }
+
+                val remaining = (deadline - System.currentTimeMillis()) / Constants.Time.MILLIS_PER_SECOND
+                if (remaining <= 0) {
+                    logPvcStatus(client, namespace)
+                    error(
+                        "Timed out waiting for [$timeoutSeconds] seconds for pod $podName. " +
+                            "Last state: $currentState",
+                    )
+                }
+
+                Thread.sleep(POD_POLL_INTERVAL_MS)
+            }
+        }
+    }
+
+    private fun describePodState(pod: io.fabric8.kubernetes.api.model.Pod): String {
+        val phase = pod.status?.phase ?: "Unknown"
+        val parts = mutableListOf("phase=$phase")
+
+        // Show init container progress
+        val initStatuses = pod.status?.initContainerStatuses.orEmpty()
+        if (initStatuses.isNotEmpty()) {
+            val initSummary =
+                initStatuses.joinToString(", ") { cs ->
+                    val state =
+                        when {
+                            cs.state?.running != null -> "running"
+                            cs.state?.terminated != null -> {
+                                val t = cs.state.terminated
+                                if (t.exitCode == 0) "done" else "failed(exit=${t.exitCode})"
+                            }
+                            cs.state?.waiting != null -> "waiting(${cs.state.waiting.reason ?: "unknown"})"
+                            else -> "unknown"
+                        }
+                    "${cs.name}=$state"
+                }
+            parts.add("init=[$initSummary]")
+        }
+
+        // Show container states
+        val containerStatuses = pod.status?.containerStatuses.orEmpty()
+        if (containerStatuses.isNotEmpty()) {
+            val containerSummary =
+                containerStatuses.joinToString(", ") { cs ->
+                    val state =
+                        when {
+                            cs.state?.running != null -> "running"
+                            cs.state?.terminated != null -> "terminated(${cs.state.terminated.reason})"
+                            cs.state?.waiting != null -> "waiting(${cs.state.waiting.reason ?: "unknown"})"
+                            else -> "unknown"
+                        }
+                    "${cs.name}=$state(restarts=${cs.restartCount ?: 0})"
+                }
+            parts.add("containers=[$containerSummary]")
+        }
+
+        // Show scheduling issues
+        val conditions = pod.status?.conditions.orEmpty()
+        val unschedulable = conditions.find { it.type == "PodScheduled" && it.status == "False" }
+        if (unschedulable != null) {
+            parts.add("unschedulable: ${unschedulable.message}")
+        }
+
+        return parts.joinToString(" ")
+    }
+
+    private fun logPvcStatus(
+        client: KubernetesClient,
+        namespace: String,
+    ) {
+        val pvcs =
             client
-                .pods()
+                .persistentVolumeClaims()
                 .inNamespace(namespace)
-                .withName(podName)
-                .waitUntilCondition(
-                    { p ->
-                        K8sPodUtils.checkForPodFailure(p)
-                        p?.status?.conditions?.any {
-                            it.type == "Ready" && it.status == "True"
-                        } == true
-                    },
-                    timeoutSeconds.toLong(),
-                    TimeUnit.SECONDS,
-                )
+                .list()
+                .items
+        if (pvcs.isEmpty()) return
+
+        log.info { "PVC status in namespace $namespace:" }
+        for (pvc in pvcs) {
+            val name = pvc.metadata?.name ?: "unknown"
+            val pvcPhase = pvc.status?.phase ?: "Unknown"
+            val volumeName = pvc.spec?.volumeName ?: "<unbound>"
+            log.info { "  PVC $name: phase=$pvcPhase volume=$volumeName" }
+        }
+
+        val pvNames = pvcs.mapNotNull { it.spec?.volumeName }.filter { it.isNotBlank() }.toSet()
+        if (pvNames.isNotEmpty()) {
+            log.info { "PV status:" }
+            val allPvs = client.persistentVolumes().list().items
+            for (pv in allPvs.filter { it.metadata?.name in pvNames }) {
+                val pvPhase = pv.status?.phase ?: "Unknown"
+                val claimRef = pv.spec?.claimRef
+                val claimInfo = claimRef?.let { "${it.namespace}/${it.name} uid=${it.uid ?: "<none>"}" } ?: "<none>"
+                log.info { "  PV ${pv.metadata.name}: phase=$pvPhase claimRef=$claimInfo" }
+            }
         }
     }
 
@@ -385,3 +494,5 @@ class DefaultK8sNamespaceOperations(
         }
     }
 }
+
+private const val POD_POLL_INTERVAL_MS = 5000L

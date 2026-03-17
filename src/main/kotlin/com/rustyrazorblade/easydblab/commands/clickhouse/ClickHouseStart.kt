@@ -93,7 +93,9 @@ class ClickHouseStart : PicoBaseCommand() {
         )
 
         ensureLocalStorageClass(controlNode)
-        createLocalPersistentVolumes(controlNode, actualReplicas)
+        eventBus.emit(Event.ClickHouse.CreatingPvs)
+        createPersistentVolumes(controlNode, "clickhouse-keeper", "/mnt/db1/clickhouse/keeper", Constants.ClickHouse.KEEPER_REPLICAS)
+        createPersistentVolumes(controlNode, "clickhouse", "/mnt/db1/clickhouse", actualReplicas)
         val bucket = setupS3Secret(controlNode)
         applyManifestsAndConfigureCluster(controlNode, actualReplicas, replicasPerShard, clickHouseConfig)
         waitForPodsIfRequired(controlNode)
@@ -145,30 +147,26 @@ class ClickHouseStart : PicoBaseCommand() {
             }
     }
 
-    /**
-     * Creates Local PersistentVolumes for ClickHouse data.
-     *
-     * Each PV has node affinity to ensure clickhouse-X pod runs on dbX node.
-     */
-    private fun createLocalPersistentVolumes(
+    private fun createPersistentVolumes(
         controlNode: ClusterHost,
-        replicaCount: Int,
+        dbName: String,
+        localPath: String,
+        count: Int,
     ) {
-        eventBus.emit(Event.ClickHouse.CreatingPvs)
         k8sService
             .createLocalPersistentVolumes(
                 controlHost = controlNode,
                 config =
                     PersistentVolumeConfig(
-                        dbName = "clickhouse",
-                        localPath = "/mnt/db1/clickhouse",
-                        count = replicaCount,
-                        storageSize = "100Gi",
+                        dbName = dbName,
+                        localPath = localPath,
+                        count = count,
+                        storageSize = Constants.ClickHouse.PV_STORAGE_SIZE,
                         namespace = Constants.ClickHouse.NAMESPACE,
                         volumeClaimTemplateName = "data",
                     ),
             ).getOrElse { exception ->
-                error("Failed to create Local PVs: ${exception.message}")
+                error("Failed to create PVs for $dbName: ${exception.message}")
             }
     }
 

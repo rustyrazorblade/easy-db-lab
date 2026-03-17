@@ -1,6 +1,7 @@
 name: Publish Dashboards
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main

@@ -80,6 +80,7 @@ class ClickHouseManifestBuilder(
      * @param replicasPerShard Number of replicas per shard
      * @param s3CacheSize S3 cache size (e.g. "10Gi")
      * @param s3CacheOnWrite Whether to cache on write operations
+     * @param s3TierMoveFactor Fraction of local disk free space that triggers data move to S3 tier
      * @return List of all K8s resources
      */
     fun buildAllResources(
@@ -87,11 +88,12 @@ class ClickHouseManifestBuilder(
         replicasPerShard: Int,
         s3CacheSize: String,
         s3CacheOnWrite: String,
+        s3TierMoveFactor: Double,
     ): List<HasMetadata> =
         listOf(
             buildKeeperConfigMap(),
             buildServerConfigMap(totalReplicas, replicasPerShard),
-            buildClusterConfigMap(replicasPerShard, s3CacheSize, s3CacheOnWrite),
+            buildClusterConfigMap(replicasPerShard, s3CacheSize, s3CacheOnWrite, s3TierMoveFactor),
             buildKeeperService(),
             buildServerHeadlessService(),
             buildServerClientService(),
@@ -143,6 +145,7 @@ class ClickHouseManifestBuilder(
         replicasPerShard: Int,
         s3CacheSize: String,
         s3CacheOnWrite: String,
+        s3TierMoveFactor: Double,
     ): HasMetadata =
         ConfigMapBuilder()
             .withNewMetadata()
@@ -153,6 +156,7 @@ class ClickHouseManifestBuilder(
             .addToData("replicas-per-shard", replicasPerShard.toString())
             .addToData("s3-cache-size", s3CacheSize)
             .addToData("s3-cache-on-write", s3CacheOnWrite)
+            .addToData("s3-tier-move-factor", s3TierMoveFactor.toString())
             .build()
 
     /**
@@ -518,7 +522,7 @@ class ClickHouseManifestBuilder(
                 mkdir -p /mnt/db1/clickhouse/user_files
                 mkdir -p /mnt/db1/clickhouse/format_schemas
                 mkdir -p /mnt/db1/clickhouse/disks/s3_disk
-                mkdir -p /mnt/db1/clickhouse/disks/s3_cache
+                mkdir -p /mnt/db1/clickhouse/disks/s3
                 mkdir -p /mnt/db1/clickhouse/logs
                 chown -R 101:101 /mnt/db1/clickhouse
                 """.trimIndent(),
@@ -593,6 +597,17 @@ class ClickHouseManifestBuilder(
                                     ConfigMapKeySelectorBuilder()
                                         .withName("clickhouse-cluster-config")
                                         .withKey("s3-cache-on-write")
+                                        .build(),
+                                ).build(),
+                        ).build(),
+                    EnvVarBuilder()
+                        .withName("CLICKHOUSE_S3_TIER_MOVE_FACTOR")
+                        .withValueFrom(
+                            EnvVarSourceBuilder()
+                                .withConfigMapKeyRef(
+                                    ConfigMapKeySelectorBuilder()
+                                        .withName("clickhouse-cluster-config")
+                                        .withKey("s3-tier-move-factor")
                                         .build(),
                                 ).build(),
                         ).build(),

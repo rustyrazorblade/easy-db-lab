@@ -1,0 +1,99 @@
+#!/bin/bash
+#
+# Run end-to-end tests against a pull request branch.
+#
+# Usage:
+#   bin/e2e-pr <PR-number> [end-to-end-test flags...]
+#
+# Examples:
+#   bin/e2e-pr 142 --cassandra
+#   bin/e2e-pr 142 --all
+#   bin/e2e-pr 142 --cassandra --start-step 10
+#   bin/e2e-pr 142 --list-steps
+#
+# This script:
+#   1. Fetches the PR branch using `gh`
+#   2. Creates a temporary git worktree for that branch
+#   3. Runs bin/end-to-end-test inside the worktree
+#   4. Cleans up the worktree on exit
+#
+set -euo pipefail
+
+if [ $# -lt 1 ]; then
+    echo "Usage: $0 <PR-number> [end-to-end-test flags...]"
+    echo ""
+    echo "Examples:"
+    echo "  $0 142 --cassandra"
+    echo "  $0 142 --all"
+    echo "  $0 142 --cassandra --start-step 10"
+    exit 1
+fi
+
+PR_NUMBER="$1"
+shift
+
+# Resolve the project root from this script's location
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Fetch PR metadata
+echo "=== Fetching PR #${PR_NUMBER} ==="
+PR_JSON=$(gh pr view "$PR_NUMBER" --json headRefName,title,state --repo "$(git -C "$PROJECT_ROOT" remote get-url origin)" 2>&1) || {
+    echo "ERROR: Failed to fetch PR #${PR_NUMBER}"
+    echo "$PR_JSON"
+    exit 1
+}
+
+PR_BRANCH=$(echo "$PR_JSON" | jq -r '.headRefName')
+PR_TITLE=$(echo "$PR_JSON" | jq -r '.title')
+PR_STATE=$(echo "$PR_JSON" | jq -r '.state')
+
+echo "  Branch: $PR_BRANCH"
+echo "  Title:  $PR_TITLE"
+echo "  State:  $PR_STATE"
+
+if [ "$PR_STATE" = "CLOSED" ] || [ "$PR_STATE" = "MERGED" ]; then
+    echo "WARNING: PR #${PR_NUMBER} is ${PR_STATE}. Continue anyway? (y/N)"
+    read -r confirm
+    if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
+        exit 0
+    fi
+fi
+
+# Fetch the branch
+echo "=== Fetching branch $PR_BRANCH ==="
+git -C "$PROJECT_ROOT" fetch origin "$PR_BRANCH"
+
+# Create worktree
+WORKTREE_DIR="${PROJECT_ROOT}/.worktrees/e2e-pr-${PR_NUMBER}"
+mkdir -p "$(dirname "$WORKTREE_DIR")"
+
+cleanup_worktree() {
+    echo ""
+    echo "=== Cleaning up worktree ==="
+    git -C "$PROJECT_ROOT" worktree remove --force "$WORKTREE_DIR" 2>/dev/null || true
+    echo "Worktree removed: $WORKTREE_DIR"
+}
+trap cleanup_worktree EXIT
+
+# Remove stale worktree if it exists from a previous run
+if [ -d "$WORKTREE_DIR" ]; then
+    echo "=== Removing stale worktree from previous run ==="
+    git -C "$PROJECT_ROOT" worktree remove --force "$WORKTREE_DIR" 2>/dev/null || true
+fi
+
+echo "=== Creating worktree at $WORKTREE_DIR ==="
+git -C "$PROJECT_ROOT" worktree add "$WORKTREE_DIR" "origin/$PR_BRANCH"
+
+echo ""
+echo "=========================================="
+echo "  E2E Test: PR #${PR_NUMBER}"
+echo "  Branch:   $PR_BRANCH"
+echo "  Title:    $PR_TITLE"
+echo "  Args:     $*"
+echo "=========================================="
+echo ""
+
+# Run end-to-end-test from the worktree
+cd "$WORKTREE_DIR"
+exec bin/end-to-end-test "$@"

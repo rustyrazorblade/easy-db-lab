@@ -2,7 +2,16 @@
 
 easy-db-lab includes optional OpenTelemetry (OTel) instrumentation for distributed tracing and metrics. When enabled, traces and metrics are exported to an OTLP-compatible collector.
 
-## Enabling OpenTelemetry
+## CLI Tool Instrumentation
+
+The easy-db-lab CLI tool runs with the OpenTelemetry Java Agent, which automatically instruments:
+
+- **AWS SDK calls** - EC2, S3, IAM, EMR, STS, OpenSearch operations
+- **HTTP clients** - OkHttp and other HTTP libraries
+- **JDBC/Cassandra driver** - Database operations
+- **JVM metrics** - Memory, threads, garbage collection
+
+### Enabling Instrumentation
 
 Set the `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable to your OTLP collector endpoint:
 
@@ -13,52 +22,15 @@ easy-db-lab up
 
 When this environment variable is:
 - **Set**: Traces and metrics are exported via gRPC to the specified endpoint
-- **Not set**: OpenTelemetry is completely disabled with zero overhead
+- **Not set**: The agent is still loaded but no telemetry is exported (minimal overhead)
 
-## Instrumented Operations
+The agent uses automatic instrumentation only - there is no custom manual instrumentation in the CLI tool code.
 
-### Commands
+## Cluster Node Instrumentation
 
-All CLI commands are automatically instrumented with:
-- A span for each command execution
-- Duration metrics
-- Command count metrics
-- Success/failure attributes
+The following instrumentation applies to cluster nodes (Cassandra, stress, Spark) and is separate from the CLI tool:
 
-### SSH Operations
-
-Remote SSH operations are instrumented including:
-- Command execution (`ssh.execute`)
-- File uploads (`ssh.upload`, `ssh.upload_directory`)
-- File downloads (`ssh.download`, `ssh.download_directory`)
-
-Span attributes include host alias, target IP, and (for non-secret commands) the command text.
-
-### Kubernetes Operations
-
-K8s operations via the fabric8 client are instrumented:
-- Manifest application (`k8s.apply_manifests`, `k8s.apply_yaml`)
-- Namespace deletion (`k8s.delete_namespace`)
-- StatefulSet scaling (`k8s.scale_statefulset`)
-
-### AWS SDK Calls
-
-When OTel is enabled, AWS SDK calls are automatically instrumented using the OpenTelemetry AWS SDK instrumentation library. This includes:
-- EC2 operations
-- S3 operations
-- IAM operations
-- EMR operations
-- STS operations
-- OpenSearch operations
-
-## Resource Attributes
-
-Traces include the following resource attributes:
-- `service.name`: `easy-db-lab`
-- `service.version`: Application version
-- `host.name`: Local hostname
-
-## Node Role Labeling
+### Node Role Labeling
 
 The OTel Collector on cluster nodes uses the `k8sattributes` processor to read the K8s node label `type` and set it as the `node_role` resource attribute. This label is used by Grafana dashboards (e.g., System Overview) for hostname and service filtering.
 
@@ -73,20 +45,7 @@ The `k8sattributes` processor runs in the `metrics/local` and `logs/local` pipel
 
 The processor requires RBAC access to the K8s API. The OTel Collector DaemonSet runs with a dedicated ServiceAccount (`otel-collector`) that has read-only access to pods and nodes.
 
-## Metrics
-
-The following metrics are exported:
-
-| Metric | Type | Description |
-|--------|------|-------------|
-| `easydblab.command.duration` | Histogram | Command execution duration (ms) |
-| `easydblab.command.count` | Counter | Number of commands executed |
-| `easydblab.ssh.operation.duration` | Histogram | SSH operation duration (ms) |
-| `easydblab.ssh.operation.count` | Counter | Number of SSH operations |
-| `easydblab.k8s.operation.duration` | Histogram | K8s operation duration (ms) |
-| `easydblab.k8s.operation.count` | Counter | Number of K8s operations |
-
-## Stress Job Metrics
+### Stress Job Metrics
 
 When running cassandra-easy-stress as K8s Jobs, metrics are automatically collected via an OTel collector sidecar container. The sidecar scrapes the stress process's Prometheus endpoint (`localhost:9500`) and forwards metrics via OTLP to the node's OTel DaemonSet, which then exports them to VictoriaMetrics.
 
@@ -100,7 +59,7 @@ The Prometheus scrape job is named `cassandra-easy-stress`. The following labels
 
 Short-lived stress commands (`list`, `info`, `fields`) do not include the sidecar since they complete quickly and don't produce meaningful metrics.
 
-## Spark JVM Instrumentation
+### Spark JVM Instrumentation
 
 EMR Spark jobs are auto-instrumented with the OpenTelemetry Java Agent (v2.25.0) and Pyroscope Java Agent (v2.3.0), both installed via an EMR bootstrap action. The OTel agent is activated through `spark.driver.extraJavaOptions` and `spark.executor.extraJavaOptions`.
 
@@ -115,7 +74,7 @@ Key configuration:
 - **Service name**: `spark-<job-name>` (set per job)
 - **Profiling**: CPU, allocation (512k threshold), lock (10ms threshold) profiles in JFR format sent to Pyroscope server
 
-## Cassandra Sidecar Instrumentation
+### Cassandra Sidecar Instrumentation
 
 The Cassandra Sidecar process is instrumented with the OpenTelemetry Java Agent and Pyroscope Java Agent, matching the pattern used for Cassandra itself. Both agents are loaded via `-javaagent` flags set in `/etc/default/cassandra-sidecar`, which is written by the `setup-instances` command.
 
@@ -127,7 +86,7 @@ Key configuration:
 - **Profiling**: CPU, allocation (512k threshold), lock (10ms threshold) profiles sent to Pyroscope server
 - **Activation**: Gated on `/etc/default/cassandra-sidecar` — the systemd `EnvironmentFile=-` directive makes it optional, so the sidecar starts normally without instrumentation if the file doesn't exist
 
-## Tool Runner Log Collection
+### Tool Runner Log Collection
 
 Commands run via `exec run` are executed through `systemd-run`, which captures stdout and stderr to log files under `/var/log/easydblab/tools/`. The OTel Collector's `filelog/tools` receiver watches this directory and ships log entries to VictoriaLogs with the attribute `source: tool-runner`.
 
@@ -139,7 +98,7 @@ Key details:
 - **Foreground commands**: Output displayed after completion, also logged to file
 - **Background commands** (`--bg`): Output logged to file only, tool runs as a systemd transient unit
 
-## YACE CloudWatch Scrape
+### YACE CloudWatch Scrape
 
 YACE (Yet Another CloudWatch Exporter) runs on the control node and scrapes AWS CloudWatch metrics for services used by the cluster. It uses tag-based auto-discovery with the `easy_cass_lab=1` tag to find relevant resources.
 
@@ -153,15 +112,24 @@ EMR metrics are collected directly via OTel Collectors on Spark nodes (see Spark
 
 YACE exposes scraped metrics as Prometheus-compatible metrics on port 5001, which are then scraped by the OTel Collector and forwarded to VictoriaMetrics. This replaces the previous CloudWatch datasource in Grafana with a Prometheus-based approach, giving dashboards access to CloudWatch metrics through VictoriaMetrics queries.
 
+## Resource Attributes
+
+Traces from the CLI tool and cluster nodes include the following resource attributes:
+- `service.name`: Service identifier (e.g., `easy-db-lab`, `cassandra-sidecar`, `spark-<job-name>`)
+- `service.version`: Application version (CLI tool only)
+- `host.name`: Hostname
+
 ## Configuration
 
 The following environment variables are supported:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP gRPC endpoint | None (OTel disabled) |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP gRPC endpoint | None (no export) |
+| `OTEL_SERVICE_NAME` | Override service name | `easy-db-lab` |
+| `OTEL_RESOURCE_ATTRIBUTES` | Additional resource attributes | None |
 
-Additional standard OTel environment variables may work depending on the SDK defaults.
+Additional standard OTel environment variables are supported by the agent. See the [OpenTelemetry Java Agent documentation](https://opentelemetry.io/docs/instrumentation/java/automatic/agent-config/) for details.
 
 ## Example: Using with Jaeger
 
@@ -198,12 +166,8 @@ easy-db-lab up
 
 1. Verify the endpoint is correct and reachable
 2. Check that the collector accepts gRPC OTLP (port 4317 is standard)
-3. Look for OpenTelemetry initialization logs on startup
+3. Look for OpenTelemetry agent logs on startup (use `-Dotel.javaagent.debug=true` to enable debug logging)
 
 ### High Latency
 
 Traces are batched before export (default 1 second delay). This is normal and reduces overhead.
-
-### Shutdown Warnings
-
-A shutdown hook flushes remaining telemetry on exit. Brief delays during shutdown are expected.

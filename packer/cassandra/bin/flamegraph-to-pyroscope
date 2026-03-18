@@ -59,7 +59,8 @@ while true; do
     curl -sf -X POST \
         "${PYROSCOPE_ADDR}/ingest?name=${APP_NAME}&spyName=asyncprofiler&format=collapsed&from=${FROM}&until=${UNTIL}" \
         -H "Content-Type: text/plain" \
-        --data-binary @"$OUTFILE"
+        --data-binary @"$OUTFILE" \
+        || echo "Upload failed (Pyroscope unreachable?), continuing profiling loop."
 
     rm -f "$OUTFILE"
     OUTFILE=""

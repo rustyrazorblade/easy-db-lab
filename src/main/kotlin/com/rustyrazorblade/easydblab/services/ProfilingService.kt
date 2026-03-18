@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
+import io.github.oshai.kotlinlogging.KLogger
 import io.github.oshai.kotlinlogging.KotlinLogging
 
 /**
@@ -11,51 +12,60 @@ import io.github.oshai.kotlinlogging.KotlinLogging
  *
  * Profiling runs as a systemd service (`flamegraph-cassandra`) that loops indefinitely:
  * profile for FLAMEGRAPH_INTERVAL seconds, upload to Pyroscope, repeat.
+ *
+ * Extends SystemDServiceManager so callers can also use isRunning()/getStatus() to
+ * diagnose whether profiling is active on a node.
  */
-interface ProfilingService {
+interface ProfilingService : SystemDServiceManager {
     /**
      * Starts continuous profiling on the given host.
      *
-     * Writes any extra asprof args to `/etc/default/flamegraph-cassandra` as
-     * `FLAMEGRAPH_EXTRA_ARGS`, then starts the `flamegraph-cassandra` systemd unit.
+     * Writes FLAMEGRAPH_EXTRA_ARGS (and optionally FLAMEGRAPH_INTERVAL) to
+     * `/etc/default/flamegraph-cassandra`, then starts the `flamegraph-cassandra` systemd unit.
      *
      * @param host The host to profile
      * @param args Extra arguments to pass to asprof (e.g. ["-e", "alloc", "-t"])
+     * @param interval Upload interval in seconds, or null to use the service default (60)
      * @return Result indicating success or failure
      */
     fun startProfiling(
         host: Host,
         args: List<String>,
+        interval: Int? = null,
     ): Result<Unit>
-
-    /**
-     * Stops the continuous profiler on the given host.
-     *
-     * @param host The host on which to stop profiling
-     * @return Result indicating success or failure
-     */
-    fun stopProfiling(host: Host): Result<Unit>
 }
 
+/**
+ * Default implementation of ProfilingService.
+ *
+ * Extends AbstractSystemDServiceManager for free isRunning/getStatus/restart operations.
+ * Overrides stop to emit domain-specific Profiling events.
+ */
 class DefaultProfilingService(
-    private val remoteOps: RemoteOperationsService,
-    private val eventBus: EventBus,
-) : ProfilingService {
-    private val log = KotlinLogging.logger {}
+    remoteOps: RemoteOperationsService,
+    eventBus: EventBus,
+) : AbstractSystemDServiceManager("flamegraph-cassandra", remoteOps, eventBus),
+    ProfilingService {
+    override val log: KLogger = KotlinLogging.logger {}
 
     override fun startProfiling(
         host: Host,
         args: List<String>,
+        interval: Int?,
     ): Result<Unit> =
         runCatching {
             eventBus.emit(Event.Profiling.Starting(host.alias, args))
 
-            if (args.isNotEmpty()) {
-                val extraArgs = args.joinToString(" ") { it.shellQuote() }
-                val envContent = "FLAMEGRAPH_EXTRA_ARGS=$extraArgs"
+            val envLines = buildList {
+                if (interval != null) add("FLAMEGRAPH_INTERVAL=$interval")
+                if (args.isNotEmpty()) add("FLAMEGRAPH_EXTRA_ARGS=${args.joinToString(" ") { it.shellQuote() }}")
+            }
+
+            if (envLines.isNotEmpty()) {
+                val quotedArgs = envLines.joinToString(" ") { it.shellQuote() }
                 remoteOps.executeRemotely(
                     host,
-                    "printf '%s\\n' ${envContent.shellQuote()} | sudo tee /etc/default/flamegraph-cassandra > /dev/null",
+                    "printf '%s\\n' $quotedArgs | sudo tee /etc/default/flamegraph-cassandra > /dev/null",
                 )
             }
 
@@ -66,7 +76,7 @@ class DefaultProfilingService(
             eventBus.emit(Event.Profiling.Error(host.alias, e.message ?: "Unknown error"))
         }
 
-    override fun stopProfiling(host: Host): Result<Unit> =
+    override fun stop(host: Host): Result<Unit> =
         runCatching {
             eventBus.emit(Event.Profiling.Stopping(host.alias))
             remoteOps.executeRemotely(host, "sudo systemctl stop flamegraph-cassandra")

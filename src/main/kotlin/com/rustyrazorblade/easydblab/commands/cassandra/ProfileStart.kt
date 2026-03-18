@@ -10,13 +10,14 @@ import com.rustyrazorblade.easydblab.services.HostOperationsService
 import com.rustyrazorblade.easydblab.services.ProfilingService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
+import picocli.CommandLine.Option
 import picocli.CommandLine.Unmatched
 
 /**
  * Start continuous async-profiler flamegraph collection on all Cassandra nodes.
  *
  * Starts the `flamegraph-cassandra` systemd service on each node. The service loops
- * indefinitely: profile for FLAMEGRAPH_INTERVAL seconds (default: 60), upload to
+ * indefinitely: profile for --interval seconds (default: 60), upload to
  * Pyroscope, repeat — until stopped with `cassandra profile stop`.
  *
  * Unrecognized options are passed to asprof. Common options:
@@ -26,7 +27,7 @@ import picocli.CommandLine.Unmatched
  * Examples:
  *   cassandra profile start
  *   cassandra profile start -e alloc
- *   cassandra profile start -e cpu -t
+ *   cassandra profile start --interval 30 -e cpu -t
  */
 @RequireProfileSetup
 @RequireSSHKey
@@ -34,7 +35,7 @@ import picocli.CommandLine.Unmatched
     name = "start",
     description = [
         "Start continuous profiling on all Cassandra nodes.",
-        "Data is uploaded to Pyroscope every 60 seconds.",
+        "Data is uploaded to Pyroscope every --interval seconds (default: 60).",
         "Unrecognized options are passed directly to asprof.",
     ],
     mixinStandardHelpOptions = true,
@@ -42,6 +43,12 @@ import picocli.CommandLine.Unmatched
 class ProfileStart : PicoBaseCommand() {
     private val profilingService: ProfilingService by inject()
     private val hostOperationsService: HostOperationsService by inject()
+
+    @Option(
+        names = ["--interval"],
+        description = ["Profile upload interval in seconds (default: 60)."],
+    )
+    var interval: Int? = null
 
     @Unmatched
     var profilerArgs: MutableList<String> = mutableListOf()
@@ -53,8 +60,9 @@ class ProfileStart : PicoBaseCommand() {
             return
         }
 
+        val args = profilerArgs.toList()
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, parallel = true) { host ->
-            profilingService.startProfiling(host.toHost(), profilerArgs)
+            profilingService.startProfiling(host.toHost(), args, interval)
         }
     }
 }

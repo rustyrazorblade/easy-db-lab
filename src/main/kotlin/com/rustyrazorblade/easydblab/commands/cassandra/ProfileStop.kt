@@ -35,7 +35,7 @@ class ProfileStop : PicoBaseCommand() {
         }
 
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, parallel = true) { host ->
-            profilingService.stopProfiling(host.toHost())
+            profilingService.stop(host.toHost())
         }
     }
 }

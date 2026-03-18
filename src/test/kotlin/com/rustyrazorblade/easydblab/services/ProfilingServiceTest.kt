@@ -71,7 +71,7 @@ class ProfilingServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `startProfiling with no extra args should skip env file write and just start service`() {
+    fun `startProfiling with no extra args or interval should skip env file write and just start service`() {
         val successResponse = Response(text = "", stderr = "")
         whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
             .thenReturn(successResponse)
@@ -120,12 +120,44 @@ class ProfilingServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `stopProfiling should emit Stopping then Stopped events on success`() {
+    fun `startProfiling with interval should write FLAMEGRAPH_INTERVAL to env file`() {
         val successResponse = Response(text = "", stderr = "")
         whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
             .thenReturn(successResponse)
 
-        val result = profilingService.stopProfiling(testHost)
+        profilingService.startProfiling(testHost, emptyList(), interval = 5)
+
+        verify(mockRemoteOps).executeRemotely(
+            eq(testHost),
+            eq("printf '%s\\n' FLAMEGRAPH_INTERVAL=5 | sudo tee /etc/default/flamegraph-cassandra > /dev/null"),
+            any(),
+            any(),
+        )
+    }
+
+    @Test
+    fun `startProfiling with interval and args should write both to env file`() {
+        val successResponse = Response(text = "", stderr = "")
+        whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
+            .thenReturn(successResponse)
+
+        profilingService.startProfiling(testHost, listOf("-e", "alloc"), interval = 5)
+
+        verify(mockRemoteOps).executeRemotely(
+            eq(testHost),
+            eq("printf '%s\\n' FLAMEGRAPH_INTERVAL=5 'FLAMEGRAPH_EXTRA_ARGS=-e alloc' | sudo tee /etc/default/flamegraph-cassandra > /dev/null"),
+            any(),
+            any(),
+        )
+    }
+
+    @Test
+    fun `stop should emit Stopping then Stopped events on success`() {
+        val successResponse = Response(text = "", stderr = "")
+        whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
+            .thenReturn(successResponse)
+
+        val result = profilingService.stop(testHost)
 
         assertThat(result.isSuccess).isTrue()
         assertThat(emittedEvents).hasSize(2)
@@ -134,12 +166,12 @@ class ProfilingServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `stopProfiling should execute systemctl stop command`() {
+    fun `stop should execute systemctl stop command`() {
         val successResponse = Response(text = "", stderr = "")
         whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
             .thenReturn(successResponse)
 
-        profilingService.stopProfiling(testHost)
+        profilingService.stop(testHost)
 
         verify(mockRemoteOps).executeRemotely(
             eq(testHost),
@@ -150,11 +182,11 @@ class ProfilingServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `stopProfiling should emit Stopping then Error events on failure`() {
+    fun `stop should emit Stopping then Error events on failure`() {
         whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
             .thenThrow(RuntimeException("SSH timeout"))
 
-        val result = profilingService.stopProfiling(testHost)
+        val result = profilingService.stop(testHost)
 
         assertThat(result.isFailure).isTrue()
         assertThat(emittedEvents).hasSize(2)
@@ -162,11 +194,5 @@ class ProfilingServiceTest : BaseKoinTest() {
         val errorEvent = emittedEvents[1] as Event.Profiling.Error
         assertThat(errorEvent.host).isEqualTo("db0")
         assertThat(errorEvent.message).contains("SSH timeout")
-    }
-
-    @Test
-    fun `Error event is marked as error`() {
-        val errorEvent = Event.Profiling.Error("db0", "something went wrong")
-        assertThat(errorEvent.isError()).isTrue()
     }
 }

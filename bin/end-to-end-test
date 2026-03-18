@@ -583,9 +583,10 @@ step_cassandra_profile() {
         return 0
     fi
     echo "=== Testing cassandra profile start/stop ==="
-    easy-db-lab cassandra profile start
-    echo "Profiling running, waiting 65 seconds for at least one upload cycle..."
-    sleep 65
+    # Use a 5-second interval so one full upload cycle completes quickly
+    easy-db-lab cassandra profile start --interval 5
+    echo "Profiling running, waiting 15 seconds for at least one upload cycle..."
+    sleep 15
     easy-db-lab cassandra profile stop
 }
 

@@ -147,9 +147,6 @@ dependencies {
     // Cassandra Driver
     implementation(libs.cassandra.driver.core)
 
-    // OpenTelemetry
-    implementation(libs.bundles.opentelemetry)
-
     // Testing
     testImplementation(libs.bundles.testing)
     testImplementation(libs.bundles.koin.test)

@@ -3,8 +3,6 @@ package com.rustyrazorblade.easydblab.providers.aws
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.EventBus
-import com.rustyrazorblade.easydblab.observability.OtelTelemetryProvider
-import com.rustyrazorblade.easydblab.observability.TelemetryProvider
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.SparkService
 import com.rustyrazorblade.easydblab.services.VictoriaLogsService
@@ -41,9 +39,7 @@ import software.amazon.awssdk.services.sts.StsClient
  * Creates a ClientOverrideConfiguration.
  * Note: AWS SDK instrumentation is handled automatically by the OpenTelemetry Java agent.
  */
-private fun createClientOverrideConfig(telemetryProvider: TelemetryProvider): ClientOverrideConfiguration {
-    return ClientOverrideConfiguration.builder().build()
-}
+private fun createClientOverrideConfig(): ClientOverrideConfiguration = ClientOverrideConfiguration.builder().build()
 
 /**
  * Koin module for AWS service dependency injection.
@@ -88,7 +84,7 @@ val awsModule =
 
         // Provide AWS SDK clients as singletons with credentials and optional telemetry
         single {
-            val overrideConfig = createClientOverrideConfig(get<TelemetryProvider>())
+            val overrideConfig = createClientOverrideConfig()
             IamClient
                 .builder()
                 .region(get<Region>())
@@ -98,7 +94,7 @@ val awsModule =
         }
 
         single {
-            val overrideConfig = createClientOverrideConfig(get<TelemetryProvider>())
+            val overrideConfig = createClientOverrideConfig()
             Ec2Client
                 .builder()
                 .region(get<Region>())
@@ -108,7 +104,7 @@ val awsModule =
         }
 
         single {
-            val overrideConfig = createClientOverrideConfig(get<TelemetryProvider>())
+            val overrideConfig = createClientOverrideConfig()
             S3Client
                 .builder()
                 .region(get<Region>())
@@ -118,7 +114,7 @@ val awsModule =
         }
 
         single {
-            val overrideConfig = createClientOverrideConfig(get<TelemetryProvider>())
+            val overrideConfig = createClientOverrideConfig()
             StsClient
                 .builder()
                 .region(get<Region>())
@@ -128,7 +124,7 @@ val awsModule =
         }
 
         single {
-            val overrideConfig = createClientOverrideConfig(get<TelemetryProvider>())
+            val overrideConfig = createClientOverrideConfig()
             EmrClient
                 .builder()
                 .region(get<Region>())
@@ -138,7 +134,7 @@ val awsModule =
         }
 
         single {
-            val overrideConfig = createClientOverrideConfig(get<TelemetryProvider>())
+            val overrideConfig = createClientOverrideConfig()
             OpenSearchClient
                 .builder()
                 .region(get<Region>())
@@ -197,7 +193,7 @@ val awsModule =
         }
 
         // Provide AWSClientFactory for creating AWS clients with custom credentials
-        single<AWSClientFactory> { DefaultAWSClientFactory(get<TelemetryProvider>()) }
+        single<AWSClientFactory> { DefaultAWSClientFactory() }
 
         // Provide ObjectStore implementation (S3) as singleton
         single<ObjectStore> {

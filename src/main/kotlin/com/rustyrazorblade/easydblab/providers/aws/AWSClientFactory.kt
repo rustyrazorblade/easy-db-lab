@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.providers.aws
 
-import com.rustyrazorblade.easydblab.observability.TelemetryProvider
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider
 import software.amazon.awssdk.auth.credentials.ProfileCredentialsProvider
@@ -73,22 +72,9 @@ interface AWSClientFactory {
 /**
  * Default implementation that creates real AWS SDK clients.
  *
- * When OpenTelemetry is enabled (via OTEL_EXPORTER_OTLP_ENDPOINT), AWS SDK calls
- * are automatically instrumented with tracing.
- *
- * @param telemetryProvider The telemetry provider for instrumenting AWS SDK calls
+ * AWS SDK instrumentation is handled automatically by the OpenTelemetry Java agent.
  */
-class DefaultAWSClientFactory(
-    private val telemetryProvider: TelemetryProvider,
-) : AWSClientFactory {
-    /**
-     * Gets the client override configuration.
-     * Note: AWS SDK instrumentation is handled automatically by the OpenTelemetry Java agent.
-     */
-    private fun getClientOverrideConfig(): ClientOverrideConfiguration {
-        return ClientOverrideConfiguration.builder().build()
-    }
-
+class DefaultAWSClientFactory : AWSClientFactory {
     override fun createAWSClient(
         accessKey: String,
         secret: String,
@@ -133,7 +119,7 @@ class DefaultAWSClientFactory(
         credentialsProvider: AwsCredentialsProvider,
         region: Region,
     ): AWS {
-        val overrideConfig = getClientOverrideConfig()
+        val overrideConfig = ClientOverrideConfiguration.builder().build()
 
         val iamClient =
             IamClient
@@ -166,7 +152,7 @@ class DefaultAWSClientFactory(
         credentialsProvider: AwsCredentialsProvider,
         region: Region,
     ): Ec2Client {
-        val overrideConfig = getClientOverrideConfig()
+        val overrideConfig = ClientOverrideConfiguration.builder().build()
         return Ec2Client
             .builder()
             .region(region)

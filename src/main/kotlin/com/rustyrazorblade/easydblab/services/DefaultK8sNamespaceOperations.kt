@@ -4,8 +4,6 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
-import com.rustyrazorblade.easydblab.observability.TelemetryNames
-import com.rustyrazorblade.easydblab.observability.TelemetryProvider
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -19,7 +17,6 @@ private val log = KotlinLogging.logger {}
  */
 class DefaultK8sNamespaceOperations(
     private val clientProvider: K8sClientProvider,
-    private val telemetryProvider: TelemetryProvider,
     private val eventBus: EventBus,
 ) : K8sNamespaceOperations {
     override fun getObservabilityStatus(controlHost: ClusterHost): Result<String> =
@@ -100,28 +97,21 @@ class DefaultK8sNamespaceOperations(
         namespace: String,
     ): Result<Unit> =
         runCatching {
-            val attributes =
-                mapOf(
-                    TelemetryNames.Attributes.HOST_ALIAS to controlHost.alias,
-                    TelemetryNames.Attributes.K8S_NAMESPACE to namespace,
-                )
-            telemetryProvider.withSpan(TelemetryNames.Spans.K8S_DELETE_NAMESPACE, attributes) {
-                log.debug { "Deleting namespace $namespace via SOCKS proxy" }
+            log.debug { "Deleting namespace $namespace via SOCKS proxy" }
 
-                eventBus.emit(Event.K8s.NamespaceDeleting(namespace))
+            eventBus.emit(Event.K8s.NamespaceDeleting(namespace))
 
-                clientProvider.createClient(controlHost).use { client ->
-                    val ns = client.namespaces().withName(namespace).get()
-                    if (ns != null) {
-                        client.namespaces().withName(namespace).delete()
-                        log.info { "Deleted namespace: $namespace" }
-                    } else {
-                        log.info { "Namespace $namespace does not exist, nothing to delete" }
-                    }
+            clientProvider.createClient(controlHost).use { client ->
+                val ns = client.namespaces().withName(namespace).get()
+                if (ns != null) {
+                    client.namespaces().withName(namespace).delete()
+                    log.info { "Deleted namespace: $namespace" }
+                } else {
+                    log.info { "Namespace $namespace does not exist, nothing to delete" }
                 }
-
-                eventBus.emit(Event.K8s.NamespaceDeleted(namespace))
             }
+
+            eventBus.emit(Event.K8s.NamespaceDeleted(namespace))
         }
 
     override fun deleteResourcesByLabel(

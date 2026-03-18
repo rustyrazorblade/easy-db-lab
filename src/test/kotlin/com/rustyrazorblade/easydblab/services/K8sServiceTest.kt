@@ -2,7 +2,6 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
-import com.rustyrazorblade.easydblab.observability.TelemetryProvider
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -23,7 +22,6 @@ import org.mockito.kotlin.whenever
  */
 class K8sServiceTest : BaseKoinTest() {
     private lateinit var mockSocksProxyService: SocksProxyService
-    private lateinit var mockTelemetryProvider: TelemetryProvider
     private lateinit var k8sService: K8sService
 
     private val testClusterHost =
@@ -39,23 +37,14 @@ class K8sServiceTest : BaseKoinTest() {
         listOf(
             module {
                 single<SocksProxyService> { mockSocksProxyService }
-                single<TelemetryProvider> { mockTelemetryProvider }
                 single { K8sClientProvider(get()) }
-                factory<K8sService> { DefaultK8sService(get(), get(), get()) }
+                factory<K8sService> { DefaultK8sService(get(), get()) }
             },
         )
 
     @BeforeEach
     fun setupMocks() {
         mockSocksProxyService = mock()
-        mockTelemetryProvider = mock()
-
-        // Mock withSpan to just execute the block
-        whenever(mockTelemetryProvider.withSpan<Any>(any(), any(), any())).thenAnswer { invocation ->
-            @Suppress("UNCHECKED_CAST")
-            val block = invocation.getArgument<() -> Any>(2)
-            block()
-        }
 
         k8sService = getKoin().get()
     }

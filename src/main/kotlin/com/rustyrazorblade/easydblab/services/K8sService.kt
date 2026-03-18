@@ -5,7 +5,6 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
-import com.rustyrazorblade.easydblab.observability.TelemetryProvider
 import io.fabric8.kubernetes.api.model.HasMetadata
 import java.nio.file.Path
 
@@ -209,17 +208,14 @@ interface K8sService :
  * them via Kotlin's delegation pattern.
  *
  * @property clientProvider Shared provider for creating Kubernetes clients
- * @property telemetryProvider Provider for observability telemetry
  * @property eventBus Event bus for emitting domain events
  */
 class DefaultK8sService(
     clientProvider: K8sClientProvider,
-    telemetryProvider: TelemetryProvider,
     eventBus: EventBus,
 ) : K8sService,
     K8sManifestOperations by DefaultK8sManifestOperations(
         clientProvider,
-        telemetryProvider,
         eventBus,
     ),
     K8sJobOperations by DefaultK8sJobOperations(
@@ -228,11 +224,9 @@ class DefaultK8sService(
     ),
     K8sNamespaceOperations by DefaultK8sNamespaceOperations(
         clientProvider,
-        telemetryProvider,
         eventBus,
     ),
     K8sStorageOperations by DefaultK8sStorageOperations(
         clientProvider,
-        telemetryProvider,
         eventBus,
     )

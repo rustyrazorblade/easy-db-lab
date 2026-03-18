@@ -23,7 +23,6 @@ import com.rustyrazorblade.easydblab.services.aws.EMRSparkService
 import com.rustyrazorblade.easydblab.services.aws.InstanceSpecFactory
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
 import com.rustyrazorblade.easydblab.services.aws.S3ObjectStore
-import io.opentelemetry.instrumentation.awssdk.v2_2.AwsSdkTelemetry
 import org.koin.dsl.module
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider
@@ -39,17 +38,11 @@ import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.sts.StsClient
 
 /**
- * Creates a ClientOverrideConfiguration with optional OTel telemetry interceptor.
+ * Creates a ClientOverrideConfiguration.
+ * Note: AWS SDK instrumentation is handled automatically by the OpenTelemetry Java agent.
  */
 private fun createClientOverrideConfig(telemetryProvider: TelemetryProvider): ClientOverrideConfiguration {
-    val builder = ClientOverrideConfiguration.builder()
-
-    if (telemetryProvider is OtelTelemetryProvider) {
-        val awsTelemetry = AwsSdkTelemetry.create(telemetryProvider.getOpenTelemetry())
-        builder.addExecutionInterceptor(awsTelemetry.createExecutionInterceptor())
-    }
-
-    return builder.build()
+    return ClientOverrideConfiguration.builder().build()
 }
 
 /**

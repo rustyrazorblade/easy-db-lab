@@ -1,8 +1,6 @@
 package com.rustyrazorblade.easydblab.providers.aws
 
-import com.rustyrazorblade.easydblab.observability.OtelTelemetryProvider
 import com.rustyrazorblade.easydblab.observability.TelemetryProvider
-import io.opentelemetry.instrumentation.awssdk.v2_2.AwsSdkTelemetry
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider
 import software.amazon.awssdk.auth.credentials.ProfileCredentialsProvider
@@ -84,19 +82,11 @@ class DefaultAWSClientFactory(
     private val telemetryProvider: TelemetryProvider,
 ) : AWSClientFactory {
     /**
-     * Gets the client override configuration with optional telemetry interceptor.
-     * When telemetry is enabled, adds the AWS SDK telemetry interceptor for automatic tracing.
+     * Gets the client override configuration.
+     * Note: AWS SDK instrumentation is handled automatically by the OpenTelemetry Java agent.
      */
     private fun getClientOverrideConfig(): ClientOverrideConfiguration {
-        val builder = ClientOverrideConfiguration.builder()
-
-        // Add telemetry interceptor if OTel is enabled
-        if (telemetryProvider is OtelTelemetryProvider) {
-            val awsTelemetry = AwsSdkTelemetry.create(telemetryProvider.getOpenTelemetry())
-            builder.addExecutionInterceptor(awsTelemetry.createExecutionInterceptor())
-        }
-
-        return builder.build()
+        return ClientOverrideConfiguration.builder().build()
     }
 
     override fun createAWSClient(

@@ -26,4 +26,4 @@ OTEL_PORT=$(docker compose -f "${APP_HOME}/docker-compose.yml" port otel-collect
 export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:${OTEL_PORT}"
 export EASY_DB_LAB_REDIS_URL="redis://localhost:6399/easydblab-events"
 
-java -Deasydblab.version=$VERSION -Deasydblab.apphome=$APP_HOME -jar $JAR "$@"
+java -Deasydblab.version=$VERSION -Deasydblab.apphome=$APP_HOME -javaagent:"$APP_HOME/build/otel-agent/opentelemetry-javaagent.jar" -jar $JAR "$@"

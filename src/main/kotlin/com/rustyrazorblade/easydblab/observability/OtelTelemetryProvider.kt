@@ -8,7 +8,6 @@ import io.opentelemetry.api.metrics.Meter
 import io.opentelemetry.api.trace.StatusCode
 import io.opentelemetry.api.trace.Tracer
 import io.opentelemetry.context.Context
-import io.opentelemetry.instrumentation.logback.appender.v1_0.OpenTelemetryAppender
 import io.opentelemetry.sdk.OpenTelemetrySdk
 import io.opentelemetry.sdk.autoconfigure.AutoConfiguredOpenTelemetrySdk
 import java.util.concurrent.ConcurrentHashMap
@@ -52,8 +51,7 @@ class OtelTelemetryProvider : TelemetryProvider {
         sdk = autoConfiguredSdk.openTelemetrySdk
         openTelemetry = sdk
 
-        // Install the Logback appender bridge to export logs via OTel
-        OpenTelemetryAppender.install(openTelemetry)
+        // Note: Logback instrumentation is handled automatically by the OpenTelemetry Java agent
 
         // Log effective configuration for debugging
         logEffectiveConfiguration()

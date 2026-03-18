@@ -35,7 +35,7 @@ val copyOtelAgent =
     }
 
 dependencies {
-    otelAgentConfig("io.opentelemetry.javaagent:opentelemetry-javaagent:2.26.0")
+    otelAgentConfig("io.opentelemetry.javaagent:opentelemetry-javaagent:${libs.versions.opentelemetry.agent.get()}")
 }
 
 group = "com.rustyrazorblade"

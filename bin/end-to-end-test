@@ -892,6 +892,50 @@ EOF
     clickhouse-query "INSERT INTO test (id) VALUES (1)"
 }
 
+step_clickhouse_s3_tier_test() {
+    if [ "$ENABLE_CLICKHOUSE" != true ]; then
+        echo "=== Skipping ClickHouse S3 tier test (use --clickhouse to enable) ==="
+        return 0
+    fi
+    echo "=== Testing ClickHouse s3_tier storage policy ==="
+
+    local data_bucket
+    data_bucket=$(jq -r '.dataBucket // empty' state.json 2>/dev/null)
+    if [ -z "$data_bucket" ]; then
+        echo "ERROR: dataBucket not found in state.json"
+        return 1
+    fi
+    echo "Data bucket: $data_bucket"
+
+    clickhouse-query <<'EOF'
+CREATE OR REPLACE TABLE test_s3_tier (
+    id UInt64,
+    value String,
+    ts DateTime DEFAULT now()
+) ENGINE = ReplicatedMergeTree('/clickhouse/tables/{shard}/default/test_s3_tier', '{replica}')
+ORDER BY id
+SETTINGS storage_policy = 's3_tier'
+EOF
+
+    echo "=== Inserting data into test_s3_tier ==="
+    clickhouse-query "INSERT INTO test_s3_tier (id, value) SELECT number, randomString(100) FROM numbers(10000)"
+
+    echo "=== Moving data to S3 cold tier ==="
+    clickhouse-query "ALTER TABLE test_s3_tier MOVE PARTITION tuple() TO DISK 's3'"
+
+    echo "=== Verifying data is in S3 bucket ==="
+    local object_count
+    object_count=$(aws s3 ls "s3://${data_bucket}/clickhouse/" --recursive 2>/dev/null | wc -l)
+    if [ "$object_count" -gt 0 ]; then
+        echo "ClickHouse data found in S3: OK ($object_count objects)"
+    else
+        echo "ERROR: No ClickHouse data found in s3://${data_bucket}/clickhouse/"
+        return 1
+    fi
+
+    echo "=== ClickHouse S3 tier test passed ==="
+}
+
 step_clickhouse_stop() {
     if [ "$ENABLE_CLICKHOUSE" != true ]; then
         echo "=== Skipping ClickHouse stop (use --clickhouse to enable) ==="
@@ -1245,6 +1289,7 @@ STEPS_WORKDIR=(
     "step_cassandra_start_stop:Cassandra start/stop cycle"
     "step_clickhouse_start:Start ClickHouse"
     "step_clickhouse_test:Test ClickHouse"
+    "step_clickhouse_s3_tier_test:Test ClickHouse S3 tier policy"
     "step_clickhouse_stop:Stop ClickHouse"
     "step_opensearch_start:Start OpenSearch"
     "step_opensearch_test:Test OpenSearch"

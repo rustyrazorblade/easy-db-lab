@@ -40,6 +40,12 @@ class ClickHouseInit : PicoBaseCommand() {
     )
     var replicasPerShard: Int = Constants.ClickHouse.DEFAULT_REPLICAS_PER_SHARD
 
+    @Option(
+        names = ["--s3-tier-move-factor"],
+        description = ["Fraction of local disk free space that triggers data move to S3 tier (default: ${Constants.ClickHouse.DEFAULT_S3_TIER_MOVE_FACTOR})"],
+    )
+    var s3TierMoveFactor: Double = Constants.ClickHouse.DEFAULT_S3_TIER_MOVE_FACTOR
+
     override fun execute() {
         val state = clusterStateManager.load()
         val config =
@@ -47,6 +53,7 @@ class ClickHouseInit : PicoBaseCommand() {
                 s3CacheSize = s3CacheSize,
                 s3CacheOnWrite = s3CacheOnWrite,
                 replicasPerShard = replicasPerShard,
+                s3TierMoveFactor = s3TierMoveFactor,
             )
         state.updateClickHouseConfig(config)
         clusterStateManager.save(state)
@@ -56,6 +63,7 @@ class ClickHouseInit : PicoBaseCommand() {
                 replicasPerShard = replicasPerShard,
                 s3CacheSize = s3CacheSize,
                 s3CacheOnWrite = s3CacheOnWrite,
+                s3TierMoveFactor = s3TierMoveFactor,
             ),
         )
     }

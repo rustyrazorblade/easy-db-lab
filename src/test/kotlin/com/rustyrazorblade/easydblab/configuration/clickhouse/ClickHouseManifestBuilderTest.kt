@@ -23,6 +23,7 @@ class ClickHouseManifestBuilderTest {
             replicasPerShard = 3,
             s3CacheSize = "10Gi",
             s3CacheOnWrite = "true",
+            s3TierMoveFactor = 0.2,
         )
 
     @Test
@@ -70,6 +71,7 @@ class ClickHouseManifestBuilderTest {
         assertThat(clusterConfig.data).containsEntry("replicas-per-shard", "3")
         assertThat(clusterConfig.data).containsEntry("s3-cache-size", "10Gi")
         assertThat(clusterConfig.data).containsEntry("s3-cache-on-write", "true")
+        assertThat(clusterConfig.data).containsEntry("s3-tier-move-factor", "0.2")
     }
 
     @Test
@@ -94,6 +96,19 @@ class ClickHouseManifestBuilderTest {
         assertThat(clientSvc.spec.type).isEqualTo("NodePort")
         val portNames = clientSvc.spec.ports.map { it.name }
         assertThat(portNames).contains("http", "native")
+    }
+
+    @Test
+    fun `server ConfigMap config xml contains s3_tier storage policy`() {
+        val resources = buildResources()
+        val serverConfig =
+            resources
+                .filterIsInstance<ConfigMap>()
+                .first { it.metadata.name == "clickhouse-server-config" }
+
+        val configXml = serverConfig.data["config.xml"]!!
+        assertThat(configXml).contains("<s3_tier>")
+        assertThat(configXml).contains("CLICKHOUSE_S3_TIER_MOVE_FACTOR")
     }
 
     @Test

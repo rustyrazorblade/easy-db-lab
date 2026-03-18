@@ -4462,6 +4462,7 @@ sealed interface Event {
             val replicasPerShard: Int,
             val s3CacheSize: String,
             val s3CacheOnWrite: String,
+            val s3TierMoveFactor: Double,
         ) : ClickHouse {
             override fun toDisplayString(): String =
                 """
@@ -4469,6 +4470,7 @@ sealed interface Event {
                   Replicas per shard: $replicasPerShard
                   S3 cache size: $s3CacheSize
                   S3 cache on write: $s3CacheOnWrite
+                  S3 tier move factor: $s3TierMoveFactor
                 """.trimIndent()
         }
     }

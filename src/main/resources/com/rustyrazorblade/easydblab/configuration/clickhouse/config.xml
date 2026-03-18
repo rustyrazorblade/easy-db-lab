@@ -18,41 +18,53 @@
     <format_schema_path>/mnt/db1/clickhouse/format_schemas/</format_schema_path>
 
     <!-- Storage Configuration -->
-    <!-- Available policies: 'local' (default), 's3_main' (S3 with local cache) -->
+    <!-- Available policies: 'local' (default), 's3_main' (S3 with local cache), 's3_tier' (local hot, S3 cold) -->
     <storage_configuration>
         <disks>
-            <default>
-                <keep_free_space_bytes>1073741824</keep_free_space_bytes>
-            </default>
+            <local>
+                <type>local</type>
+                <path>/mnt/db1/clickhouse/</path>
+            </local>
             <s3_disk>
                 <type>s3</type>
                 <endpoint from_env="CLICKHOUSE_S3_ENDPOINT"/>
                 <use_environment_credentials>true</use_environment_credentials>
                 <metadata_path>/mnt/db1/clickhouse/disks/s3_disk/</metadata_path>
             </s3_disk>
-            <s3_cache>
+            <s3>
                 <type>cache</type>
                 <disk>s3_disk</disk>
-                <path>/mnt/db1/clickhouse/disks/s3_cache/</path>
+                <path>/mnt/db1/clickhouse/disks/s3/</path>
                 <max_size from_env="CLICKHOUSE_S3_CACHE_SIZE"/>
                 <cache_on_write_operations from_env="CLICKHOUSE_S3_CACHE_ON_WRITE"/>
-            </s3_cache>
+            </s3>
         </disks>
         <policies>
             <local>
                 <volumes>
                     <main>
-                        <disk>default</disk>
+                        <disk>local</disk>
                     </main>
                 </volumes>
             </local>
             <s3_main>
                 <volumes>
                     <main>
-                        <disk>s3_cache</disk>
+                        <disk>s3</disk>
                     </main>
                 </volumes>
             </s3_main>
+            <s3_tier>
+                <volumes>
+                    <hot>
+                        <disk>local</disk>
+                    </hot>
+                    <cold>
+                        <disk>s3</disk>
+                    </cold>
+                </volumes>
+                <move_factor from_env="CLICKHOUSE_S3_TIER_MOVE_FACTOR"/>
+            </s3_tier>
         </policies>
     </storage_configuration>
 

@@ -934,6 +934,7 @@ class K8sServiceIntegrationTest {
                 replicasPerShard = 3,
                 s3CacheSize = "10Gi",
                 s3CacheOnWrite = "true",
+                s3TierMoveFactor = 0.2,
             )
 
     private fun waitForPvcBound(

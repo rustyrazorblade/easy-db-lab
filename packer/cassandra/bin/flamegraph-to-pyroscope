@@ -1,13 +1,14 @@
 #!/bin/bash
 
-# flamegraph-to-pyroscope: Continuously profile Cassandra and send data to Pyroscope.
+# flamegraph-to-pyroscope: Continuous profiling using async-profiler --loop, uploading to Pyroscope.
 #
-# Runs in a loop: profiles for FLAMEGRAPH_INTERVAL seconds (default: 60), uploads
-# the collapsed-stack file to Pyroscope, then repeats. Runs until stopped (SIGTERM).
+# Uses asprof's native --loop mode: profiles continuously, writing one collapsed-stack
+# file per interval. Each completed file is uploaded to Pyroscope and removed.
+# Runs until stopped (SIGTERM from systemd).
 #
 # Configuration via /etc/default/flamegraph-cassandra:
-#   FLAMEGRAPH_INTERVAL=60        Profile duration per upload cycle in seconds
-#   FLAMEGRAPH_EXTRA_ARGS="-e alloc -t"   Extra asprof options (space-separated)
+#   FLAMEGRAPH_INTERVAL=60              Profile duration per upload cycle (seconds)
+#   FLAMEGRAPH_EXTRA_ARGS="-e alloc -t" Extra asprof options (space-separated)
 #
 # The Cassandra PID is auto-detected via cassandra-pid.
 
@@ -16,6 +17,8 @@ set -e
 ASPROF=/usr/local/async-profiler/bin/asprof
 # Include hostname so each node's profile is stored separately in Pyroscope
 APP_NAME="cassandra.$(hostname)"
+OUTDIR=$(mktemp -d /tmp/flamegraph-XXXXXX)
+ASPROF_PID=""
 
 # Source environment for Pyroscope address
 # shellcheck source=/dev/null
@@ -28,10 +31,42 @@ APP_NAME="cassandra.$(hostname)"
 PYROSCOPE_ADDR="${PYROSCOPE_SERVER_ADDRESS:-http://localhost:4040}"
 INTERVAL="${FLAMEGRAPH_INTERVAL:-60}"
 
-# FLAMEGRAPH_EXTRA_ARGS may contain space-separated asprof options, e.g. "-e alloc"
-# Word-split intentionally to build an array from the env var.
-# shellcheck disable=SC2206
-EXTRA_ARGS=($FLAMEGRAPH_EXTRA_ARGS)
+# Build extra args array; empty if FLAMEGRAPH_EXTRA_ARGS is unset or blank.
+EXTRA_ARGS=()
+if [ -n "${FLAMEGRAPH_EXTRA_ARGS:-}" ]; then
+    # Word-split intentionally to expand space-separated options into array elements.
+    # shellcheck disable=SC2206
+    EXTRA_ARGS=($FLAMEGRAPH_EXTRA_ARGS)
+fi
+
+upload_file() {
+    local f="$1"
+    local until from
+    # Use file mtime as the end of the profiling interval.
+    until=$(stat -c %Y "$f")
+    from=$((until - INTERVAL))
+    curl -sf -X POST \
+        "${PYROSCOPE_ADDR}/ingest?name=${APP_NAME}&spyName=asyncprofiler&format=collapsed&from=${from}&until=${until}" \
+        -H "Content-Type: text/plain" \
+        --data-binary @"$f" \
+        || echo "Upload failed at $(date -Iseconds), continuing..."
+    rm -f "$f"
+    echo "Profile sent to Pyroscope ($(date -d @"${from}" -Iseconds) to $(date -d @"${until}" -Iseconds))"
+}
+
+cleanup() {
+    echo "Stopping profiler..."
+    if [ -n "$ASPROF_PID" ]; then
+        kill "$ASPROF_PID" 2>/dev/null || true
+        wait "$ASPROF_PID" 2>/dev/null || true
+    fi
+    # Upload any remaining completed files before exiting.
+    for f in "${OUTDIR}"/profile-*.collapsed; do
+        [ -f "$f" ] && upload_file "$f" || true
+    done
+    rm -rf "$OUTDIR"
+}
+trap cleanup EXIT
 
 # Get the Cassandra PID
 PID=$(cassandra-pid)
@@ -43,26 +78,21 @@ fi
 
 echo "Starting continuous profiling (interval: ${INTERVAL}s, PID: $PID, app: $APP_NAME)..."
 
-OUTFILE=""
+# Start async-profiler with --loop for native continuous profiling.
+# --loop <N>s: profile in a loop, writing one output file per interval, then reset.
+# %t in the filename is replaced with a timestamp so each interval gets a unique file.
+sudo "$ASPROF" --loop "${INTERVAL}s" -o collapsed \
+    -f "${OUTDIR}/profile-%t.collapsed" \
+    "${EXTRA_ARGS[@]}" "$PID" &
+ASPROF_PID=$!
 
-cleanup() {
-    rm -f "$OUTFILE"
-}
-trap cleanup EXIT
-
-while true; do
-    OUTFILE=$(mktemp /tmp/flamegraph-XXXXXX.collapsed)
-    FROM=$(date +%s)
-    sudo "$ASPROF" -o collapsed -f "$OUTFILE" -d "$INTERVAL" "${EXTRA_ARGS[@]}" "$PID"
-    UNTIL=$(date +%s)
-
-    curl -sf -X POST \
-        "${PYROSCOPE_ADDR}/ingest?name=${APP_NAME}&spyName=asyncprofiler&format=collapsed&from=${FROM}&until=${UNTIL}" \
-        -H "Content-Type: text/plain" \
-        --data-binary @"$OUTFILE" \
-        || echo "Upload failed (Pyroscope unreachable?), continuing profiling loop."
-
-    rm -f "$OUTFILE"
-    OUTFILE=""
-    echo "Cycle complete at $(date -Iseconds), profile sent to Pyroscope."
+# Poll for completed profile files and upload them.
+# Files are removed after upload so only unprocessed files remain at any time.
+while kill -0 "$ASPROF_PID" 2>/dev/null; do
+    for f in "${OUTDIR}"/profile-*.collapsed; do
+        [ -f "$f" ] && upload_file "$f" || true
+    done
+    sleep 5
 done
+
+wait "$ASPROF_PID" 2>/dev/null || true

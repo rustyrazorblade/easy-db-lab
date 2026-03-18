@@ -1459,8 +1459,8 @@ export EASY_DB_LAB_SKIP_BUILD=1
 docker compose -f "$PROJECT_ROOT/docker-compose.yml" up -d
 
 # Discover the dynamically assigned OTLP port and export for test execution
-OTEL_EXPORTER_OTLP_ENDPOINT=$(docker compose -f "$PROJECT_ROOT/docker-compose.yml" port otel-collector 4317 2>/dev/null)
-export OTEL_EXPORTER_OTLP_ENDPOINT
+OTEL_PORT=$(docker compose -f "$PROJECT_ROOT/docker-compose.yml" port otel-collector 4317 2>/dev/null | cut -d: -f2)
+export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:${OTEL_PORT}"
 export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
 echo "OpenTelemetry OTLP endpoint: $OTEL_EXPORTER_OTLP_ENDPOINT (protocol: grpc)"
 

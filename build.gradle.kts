@@ -248,6 +248,10 @@ distributions {
             from("packer") {
                 into("packer")
             }
+            // Include the OTel agent in the distribution
+            from(copyOtelAgent) {
+                into("agents")
+            }
         }
     }
 }

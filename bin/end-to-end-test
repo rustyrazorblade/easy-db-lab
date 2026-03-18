@@ -1457,6 +1457,13 @@ export EASY_DB_LAB_SKIP_BUILD=1
 
 # Start Docker services once upfront (Redis, OTel collector), then skip per-invocation restarts
 docker compose -f "$PROJECT_ROOT/docker-compose.yml" up -d
+
+# Discover the dynamically assigned OTLP port and export for test execution
+OTEL_EXPORTER_OTLP_ENDPOINT=$(docker compose -f "$PROJECT_ROOT/docker-compose.yml" port otel-collector 4317 2>/dev/null)
+export OTEL_EXPORTER_OTLP_ENDPOINT
+export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+echo "OpenTelemetry OTLP endpoint: $OTEL_EXPORTER_OTLP_ENDPOINT (protocol: grpc)"
+
 export EASY_DB_LAB_SKIP_DOCKER=1
 
 # Change to work directory

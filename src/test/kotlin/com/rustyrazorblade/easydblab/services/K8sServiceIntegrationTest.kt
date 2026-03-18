@@ -20,7 +20,6 @@ import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.victoria.VictoriaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.yace.YaceManifestBuilder
 import com.rustyrazorblade.easydblab.events.EventBus
-import com.rustyrazorblade.easydblab.observability.NoOpTelemetryProvider
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.PersistentVolumeBuilder
@@ -988,7 +987,6 @@ class K8sServiceIntegrationTest {
         }
         return DefaultK8sStorageOperations(
             mockClientProvider,
-            NoOpTelemetryProvider(),
             EventBus(),
         )
     }

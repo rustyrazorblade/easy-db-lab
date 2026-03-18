@@ -34,18 +34,10 @@
         </filter>
     </appender>
 
-    <appender name="OTEL"
-              class="io.opentelemetry.instrumentation.logback.appender.v1_0.OpenTelemetryAppender">
-        <captureExperimentalAttributes>true</captureExperimentalAttributes>
-        <captureMdcAttributes>*</captureMdcAttributes>
-        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
-            <level>INFO</level>
-        </filter>
-    </appender>
+    <!-- Note: Log instrumentation is handled automatically by the OpenTelemetry Java agent -->
 
     <root level="DEBUG">
         <appender-ref ref="INFO_FILE" />
         <appender-ref ref="DEBUG_FILE" />
-        <appender-ref ref="OTEL" />
     </root>
 </configuration>

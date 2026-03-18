@@ -21,6 +21,23 @@ plugins {
     alias(libs.plugins.ktor)
 }
 
+// Configuration for OpenTelemetry Java agent
+val otelAgentConfig: Configuration by configurations.creating {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+}
+
+val copyOtelAgent =
+    tasks.register<Copy>("copyOtelAgent") {
+        from(otelAgentConfig)
+        into("${project.layout.buildDirectory.get()}/otel-agent")
+        rename { "opentelemetry-javaagent.jar" }
+    }
+
+dependencies {
+    otelAgentConfig("io.opentelemetry.javaagent:opentelemetry-javaagent:${libs.versions.opentelemetry.agent.get()}")
+}
+
 group = "com.rustyrazorblade"
 
 tasks.withType<ShadowJar> {
@@ -36,6 +53,7 @@ application {
     mainClass.set("com.rustyrazorblade.easydblab.MainKt")
     applicationDefaultJvmArgs =
         listOf(
+            "-javaagent:\$APP_HOME/agents/opentelemetry-javaagent.jar",
             "-Deasydblab.ami.name=rustyrazorblade/images/easy-db-lab-cassandra-amd64-$version",
             "-Deasydblab.version=$version",
         )
@@ -61,14 +79,6 @@ tasks.named<CreateStartScripts>("startScripts") {
         unixScript.writeText(newBody)
 
         // This needs to be updated for windows
-    }
-}
-
-// Force OpenTelemetry incubator versions before Gradle upgrades them
-configurations.all {
-    resolutionStrategy {
-        force("io.opentelemetry:opentelemetry-api-incubator:1.45.0-alpha")
-        force("io.opentelemetry:opentelemetry-sdk-extension-incubator:1.45.0-alpha")
     }
 }
 
@@ -136,9 +146,6 @@ dependencies {
 
     // Cassandra Driver
     implementation(libs.cassandra.driver.core)
-
-    // OpenTelemetry
-    implementation(libs.bundles.opentelemetry)
 
     // Testing
     testImplementation(libs.bundles.testing)
@@ -241,6 +248,10 @@ distributions {
             from("packer") {
                 into("packer")
             }
+            // Include the OTel agent in the distribution
+            from(copyOtelAgent) {
+                into("agents")
+            }
         }
     }
 }
@@ -251,7 +262,14 @@ tasks.distTar {
 }
 
 tasks.named("installDist") {
-    dependsOn(tasks.named("shadowJar"))
+    dependsOn(tasks.named("shadowJar"), copyOtelAgent)
+    doLast {
+        // Copy agent to installDist location
+        copy {
+            from("${project.layout.buildDirectory.get()}/otel-agent")
+            into(layout.buildDirectory.dir("install/easy-db-lab/agents"))
+        }
+    }
 }
 
 tasks.assemble {
@@ -330,6 +348,7 @@ jib {
         appRoot = "/app"
         jvmFlags =
             listOf(
+                "-javaagent:/agents/opentelemetry-javaagent.jar",
                 "-Deasydblab.ami.name=rustyrazorblade/images/easy-db-lab-cassandra-amd64-$version",
                 "-Deasydblab.version=$version",
                 "-Deasydblab.apphome=/app",
@@ -344,6 +363,10 @@ jib {
                 path {
                     setFrom(file("packer"))
                     into = "/app/packer"
+                }
+                path {
+                    setFrom("${project.layout.buildDirectory.get()}/otel-agent")
+                    into = "/agents"
                 }
             }
         }
@@ -364,9 +387,11 @@ jib {
 
 // Jib doesn't fully support configuration cache yet
 tasks.named("jib") {
+    dependsOn(copyOtelAgent)
     notCompatibleWithConfigurationCache("Jib plugin doesn't fully support configuration cache yet")
 }
 
 tasks.named("jibDockerBuild") {
+    dependsOn(copyOtelAgent)
     notCompatibleWithConfigurationCache("Jib plugin doesn't fully support configuration cache yet")
 }

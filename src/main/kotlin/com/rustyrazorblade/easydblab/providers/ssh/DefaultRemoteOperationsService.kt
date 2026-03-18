@@ -4,8 +4,6 @@ import com.rustyrazorblade.easydblab.Version
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
-import com.rustyrazorblade.easydblab.observability.TelemetryNames
-import com.rustyrazorblade.easydblab.observability.TelemetryProvider
 import com.rustyrazorblade.easydblab.ssh.Response
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
@@ -31,16 +29,9 @@ class DefaultRemoteOperationsService(
 ) : RemoteOperationsService,
     KoinComponent {
     private val eventBus: EventBus by inject()
-    private val telemetryProvider: TelemetryProvider by inject()
 
     companion object {
         private val log = KotlinLogging.logger {}
-
-        /**
-         * Maximum length of command to include in telemetry attributes.
-         * Commands longer than this are truncated to avoid bloating traces.
-         */
-        private const val MAX_COMMAND_LENGTH_FOR_ATTRIBUTE = 200
 
         /**
          * Default retry configuration for SSH operations:
@@ -67,23 +58,10 @@ class DefaultRemoteOperationsService(
         secret: Boolean,
     ): Response {
         log.debug { "Executing command on ${host.alias}: ${if (secret) "[REDACTED]" else command}" }
-        val attributes =
-            mutableMapOf(
-                TelemetryNames.Attributes.HOST_ALIAS to host.alias,
-                TelemetryNames.Attributes.HOST_TARGET to host.public,
-            )
-        if (!secret) {
-            attributes[TelemetryNames.Attributes.SSH_COMMAND] = command.take(MAX_COMMAND_LENGTH_FOR_ATTRIBUTE)
-        } else {
-            attributes[TelemetryNames.Attributes.SSH_COMMAND_REDACTED] = "true"
-        }
-
-        return telemetryProvider.withSpan(TelemetryNames.Spans.SSH_EXECUTE, attributes) {
-            Retry
-                .decorateSupplier(retry) {
-                    connectionProvider.getConnection(host).executeRemoteCommand(command, output, secret)
-                }.get()
-        }
+        return Retry
+            .decorateSupplier(retry) {
+                connectionProvider.getConnection(host).executeRemoteCommand(command, output, secret)
+            }.get()
     }
 
     override fun upload(
@@ -92,19 +70,10 @@ class DefaultRemoteOperationsService(
         remote: String,
     ) {
         log.info { "Uploading $local to ${host.alias}:$remote" }
-        val attributes =
-            mapOf(
-                TelemetryNames.Attributes.HOST_ALIAS to host.alias,
-                TelemetryNames.Attributes.HOST_TARGET to host.public,
-                TelemetryNames.Attributes.FILE_PATH_LOCAL to local.toString(),
-                TelemetryNames.Attributes.FILE_PATH_REMOTE to remote,
-            )
-        telemetryProvider.withSpan(TelemetryNames.Spans.SSH_UPLOAD, attributes) {
-            Retry
-                .decorateRunnable(retry) {
-                    connectionProvider.getConnection(host).uploadFile(local, remote)
-                }.run()
-        }
+        Retry
+            .decorateRunnable(retry) {
+                connectionProvider.getConnection(host).uploadFile(local, remote)
+            }.run()
     }
 
     override fun uploadDirectory(
@@ -114,19 +83,10 @@ class DefaultRemoteOperationsService(
     ) {
         log.info { "Uploading directory $localDir to ${host.alias}:$remoteDir" }
         eventBus.emit(Event.Ssh.UploadingDirectory(localDir.toString(), remoteDir))
-        val attributes =
-            mapOf(
-                TelemetryNames.Attributes.HOST_ALIAS to host.alias,
-                TelemetryNames.Attributes.HOST_TARGET to host.public,
-                TelemetryNames.Attributes.FILE_PATH_LOCAL to localDir.toString(),
-                TelemetryNames.Attributes.FILE_PATH_REMOTE to remoteDir,
-            )
-        telemetryProvider.withSpan(TelemetryNames.Spans.SSH_UPLOAD_DIRECTORY, attributes) {
-            Retry
-                .decorateRunnable(retry) {
-                    connectionProvider.getConnection(host).uploadDirectory(localDir, remoteDir)
-                }.run()
-        }
+        Retry
+            .decorateRunnable(retry) {
+                connectionProvider.getConnection(host).uploadDirectory(localDir, remoteDir)
+            }.run()
     }
 
     override fun uploadDirectory(
@@ -142,19 +102,10 @@ class DefaultRemoteOperationsService(
         local: Path,
     ) {
         log.info { "Downloading ${host.alias}:$remote to $local" }
-        val attributes =
-            mapOf(
-                TelemetryNames.Attributes.HOST_ALIAS to host.alias,
-                TelemetryNames.Attributes.HOST_TARGET to host.public,
-                TelemetryNames.Attributes.FILE_PATH_REMOTE to remote,
-                TelemetryNames.Attributes.FILE_PATH_LOCAL to local.toString(),
-            )
-        telemetryProvider.withSpan(TelemetryNames.Spans.SSH_DOWNLOAD, attributes) {
-            Retry
-                .decorateRunnable(retry) {
-                    connectionProvider.getConnection(host).downloadFile(remote, local)
-                }.run()
-        }
+        Retry
+            .decorateRunnable(retry) {
+                connectionProvider.getConnection(host).downloadFile(remote, local)
+            }.run()
     }
 
     override fun downloadDirectory(
@@ -168,24 +119,15 @@ class DefaultRemoteOperationsService(
             "Downloading directory ${host.alias}:$remoteDir to $localDir " +
                 "(include: $includeFilters, exclude: $excludeFilters)"
         }
-        val attributes =
-            mapOf(
-                TelemetryNames.Attributes.HOST_ALIAS to host.alias,
-                TelemetryNames.Attributes.HOST_TARGET to host.public,
-                TelemetryNames.Attributes.FILE_PATH_REMOTE to remoteDir,
-                TelemetryNames.Attributes.FILE_PATH_LOCAL to localDir.toString(),
-            )
-        telemetryProvider.withSpan(TelemetryNames.Spans.SSH_DOWNLOAD_DIRECTORY, attributes) {
-            Retry
-                .decorateRunnable(retry) {
-                    connectionProvider.getConnection(host).downloadDirectory(
-                        remoteDir,
-                        localDir,
-                        includeFilters,
-                        excludeFilters,
-                    )
-                }.run()
-        }
+        Retry
+            .decorateRunnable(retry) {
+                connectionProvider.getConnection(host).downloadDirectory(
+                    remoteDir,
+                    localDir,
+                    includeFilters,
+                    excludeFilters,
+                )
+            }.run()
     }
 
     override fun getRemoteVersion(

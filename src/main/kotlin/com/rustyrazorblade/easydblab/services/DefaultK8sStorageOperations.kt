@@ -4,8 +4,6 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
-import com.rustyrazorblade.easydblab.observability.TelemetryNames
-import com.rustyrazorblade.easydblab.observability.TelemetryProvider
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.PersistentVolume
 import io.fabric8.kubernetes.api.model.PersistentVolumeBuilder
@@ -22,7 +20,6 @@ private val log = KotlinLogging.logger {}
  */
 class DefaultK8sStorageOperations(
     private val clientProvider: K8sClientProvider,
-    private val telemetryProvider: TelemetryProvider,
     private val eventBus: EventBus,
 ) : K8sStorageOperations {
     override fun createClickHouseS3ConfigMap(
@@ -79,28 +76,20 @@ class DefaultK8sStorageOperations(
         replicas: Int,
     ): Result<Unit> =
         runCatching {
-            val attributes =
-                mapOf(
-                    TelemetryNames.Attributes.HOST_ALIAS to controlHost.alias,
-                    TelemetryNames.Attributes.K8S_NAMESPACE to namespace,
-                    TelemetryNames.Attributes.K8S_RESOURCE_NAME to statefulSetName,
-                )
-            telemetryProvider.withSpan(TelemetryNames.Spans.K8S_SCALE_STATEFULSET, attributes) {
-                log.info { "Scaling StatefulSet $statefulSetName in namespace $namespace to $replicas replicas" }
+            log.info { "Scaling StatefulSet $statefulSetName in namespace $namespace to $replicas replicas" }
 
-                clientProvider.createClient(controlHost).use { client ->
-                    client
-                        .apps()
-                        .statefulSets()
-                        .inNamespace(namespace)
-                        .withName(statefulSetName)
-                        .scale(replicas)
+            clientProvider.createClient(controlHost).use { client ->
+                client
+                    .apps()
+                    .statefulSets()
+                    .inNamespace(namespace)
+                    .withName(statefulSetName)
+                    .scale(replicas)
 
-                    log.info { "StatefulSet $statefulSetName scaled to $replicas replicas" }
-                }
-
-                eventBus.emit(Event.K8s.StatefulSetScaled(statefulSetName, replicas))
+                log.info { "StatefulSet $statefulSetName scaled to $replicas replicas" }
             }
+
+            eventBus.emit(Event.K8s.StatefulSetScaled(statefulSetName, replicas))
         }
 
     override fun createConfigMap(

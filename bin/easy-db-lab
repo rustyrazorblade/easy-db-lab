@@ -12,6 +12,7 @@ EASY_DB_LAB_USER_DATA=~/.easy-db-lab/
 VERSION=$(grep '^version' "${APP_HOME}/gradle.properties" | cut -d '=' -f2)
 
 JAR="${APP_HOME}/build/libs/easy-db-lab-${VERSION}-all.jar"
+OTEL_AGENT="${APP_HOME}/build/install/easy-db-lab/agents/opentelemetry-javaagent.jar"
 
 # Start OTel collector
 if [ "${EASY_DB_LAB_SKIP_DOCKER}" != "1" ]; then
@@ -26,4 +27,8 @@ OTEL_PORT=$(docker compose -f "${APP_HOME}/docker-compose.yml" port otel-collect
 export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:${OTEL_PORT}"
 export EASY_DB_LAB_REDIS_URL="redis://localhost:6399/easydblab-events"
 
-java -Deasydblab.version=$VERSION -Deasydblab.apphome=$APP_HOME -jar $JAR "$@"
+# Route OTel agent logs through application logger (logback) instead of stdout
+# This prevents agent messages from polluting machine-readable output (like JSON policies)
+export OTEL_JAVAAGENT_LOGGING=application
+
+java -Xshare:off -Deasydblab.version=$VERSION -Deasydblab.apphome=$APP_HOME -javaagent:"$OTEL_AGENT" -jar $JAR "$@"

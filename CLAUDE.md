@@ -285,7 +285,7 @@ All observability K8s resources are built programmatically using Fabric8 manifes
 
 **Grafana** (port 3000): Dashboards built via `GrafanaManifestBuilder`. Dashboard JSON in `configuration/grafana/dashboards/` with `__KEY__` template substitution. `GrafanaDashboard` enum is the single source of truth for dashboard metadata.
 
-**OTel Instrumentation in Kotlin**: The `observability/` package provides `TelemetryProvider` with `withSpan()`, `recordDuration()`, `incrementCounter()`. See `docs/reference/opentelemetry.md`.
+**CLI Tool Instrumentation**: The CLI tool uses the OpenTelemetry Java Agent for automatic instrumentation of AWS SDK calls, HTTP clients, JDBC operations, and JVM metrics. No manual instrumentation exists in the Kotlin code. See `docs/reference/opentelemetry.md`.
 
 **CLI commands**: `grafana update-config`, `logs query/backup/import/ls`, `metrics backup/import/ls`
 

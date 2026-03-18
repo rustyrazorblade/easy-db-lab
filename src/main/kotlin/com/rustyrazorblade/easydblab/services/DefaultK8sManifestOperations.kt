@@ -4,8 +4,6 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kubernetes.ManifestApplier
-import com.rustyrazorblade.easydblab.observability.TelemetryNames
-import com.rustyrazorblade.easydblab.observability.TelemetryProvider
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.nio.file.Path
@@ -18,7 +16,6 @@ private val log = KotlinLogging.logger {}
  */
 class DefaultK8sManifestOperations(
     private val clientProvider: K8sClientProvider,
-    private val telemetryProvider: TelemetryProvider,
     private val eventBus: EventBus,
 ) : K8sManifestOperations {
     override fun applyManifests(
@@ -26,43 +23,36 @@ class DefaultK8sManifestOperations(
         manifestPath: Path,
     ): Result<Unit> =
         runCatching {
-            val attributes =
-                mapOf(
-                    TelemetryNames.Attributes.HOST_ALIAS to controlHost.alias,
-                    TelemetryNames.Attributes.FILE_PATH_LOCAL to manifestPath.toString(),
-                )
-            telemetryProvider.withSpan(TelemetryNames.Spans.K8S_APPLY_MANIFESTS, attributes) {
-                log.info { "Applying K8s manifests from $manifestPath via SOCKS proxy" }
+            log.info { "Applying K8s manifests from $manifestPath via SOCKS proxy" }
 
-                clientProvider.createClient(controlHost).use { client ->
-                    eventBus.emit(Event.K8s.ManifestsApplying)
+            clientProvider.createClient(controlHost).use { client ->
+                eventBus.emit(Event.K8s.ManifestsApplying)
 
-                    val pathFile = manifestPath.toFile()
-                    val manifestFiles =
-                        if (pathFile.isFile) {
-                            listOf(pathFile)
-                        } else {
-                            pathFile
-                                .listFiles { file ->
-                                    file.extension == "yaml" || file.extension == "yml"
-                                }?.sorted() ?: emptyList()
-                        }
-
-                    check(manifestFiles.isNotEmpty()) { "No manifest files found at $manifestPath" }
-
-                    log.info { "Found ${manifestFiles.size} manifest files to apply" }
-                    manifestFiles.forEachIndexed { index, file ->
-                        log.info { "  [$index] ${file.name}" }
+                val pathFile = manifestPath.toFile()
+                val manifestFiles =
+                    if (pathFile.isFile) {
+                        listOf(pathFile)
+                    } else {
+                        pathFile
+                            .listFiles { file ->
+                                file.extension == "yaml" || file.extension == "yml"
+                            }?.sorted() ?: emptyList()
                     }
 
-                    for ((index, file) in manifestFiles.withIndex()) {
-                        log.info { "Processing manifest ${index + 1}/${manifestFiles.size}: ${file.name}" }
-                        ManifestApplier.applyManifest(client, file)
-                    }
+                check(manifestFiles.isNotEmpty()) { "No manifest files found at $manifestPath" }
 
-                    log.info { "All ${manifestFiles.size} manifests applied successfully" }
-                    eventBus.emit(Event.K8s.ManifestsApplied)
+                log.info { "Found ${manifestFiles.size} manifest files to apply" }
+                manifestFiles.forEachIndexed { index, file ->
+                    log.info { "  [$index] ${file.name}" }
                 }
+
+                for ((index, file) in manifestFiles.withIndex()) {
+                    log.info { "Processing manifest ${index + 1}/${manifestFiles.size}: ${file.name}" }
+                    ManifestApplier.applyManifest(client, file)
+                }
+
+                log.info { "All ${manifestFiles.size} manifests applied successfully" }
+                eventBus.emit(Event.K8s.ManifestsApplied)
             }
         }
 
@@ -105,17 +95,11 @@ class DefaultK8sManifestOperations(
         yamlContent: String,
     ): Result<Unit> =
         runCatching {
-            val attributes =
-                mapOf(
-                    TelemetryNames.Attributes.HOST_ALIAS to controlHost.alias,
-                )
-            telemetryProvider.withSpan(TelemetryNames.Spans.K8S_APPLY_YAML, attributes) {
-                log.info { "Applying YAML content via SOCKS proxy" }
+            log.info { "Applying YAML content via SOCKS proxy" }
 
-                clientProvider.createClient(controlHost).use { client ->
-                    ManifestApplier.applyYaml(client, yamlContent)
-                    log.info { "YAML content applied successfully" }
-                }
+            clientProvider.createClient(controlHost).use { client ->
+                ManifestApplier.applyYaml(client, yamlContent)
+                log.info { "YAML content applied successfully" }
             }
         }
 

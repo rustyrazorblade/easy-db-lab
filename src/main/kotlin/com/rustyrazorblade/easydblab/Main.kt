@@ -3,26 +3,27 @@ package com.rustyrazorblade.easydblab
 import com.github.ajalt.mordant.TermColors
 import com.github.dockerjava.api.exception.DockerException
 import com.rustyrazorblade.easydblab.di.KoinModules
-import com.rustyrazorblade.easydblab.observability.TelemetryProvider
+import io.github.oshai.kotlinlogging.KLogger
 import io.github.oshai.kotlinlogging.KotlinLogging
+import io.github.oshai.kotlinlogging.KotlinLoggingConfiguration
 import org.koin.core.context.startKoin
-import org.koin.java.KoinJavaComponent.getKoin
 import software.amazon.awssdk.core.exception.SdkServiceException
 import software.amazon.awssdk.services.ec2.model.Ec2Exception
 import software.amazon.awssdk.services.s3.model.S3Exception
 import software.amazon.awssdk.services.sts.model.StsException
 import kotlin.system.exitProcess
 
-private val log = KotlinLogging.logger {}
+private val log: KLogger by lazy { KotlinLogging.logger {} }
 
 @Suppress("TooGenericExceptionCaught")
 fun main(arguments: Array<String>) {
+    // Suppress kotlin-logging initialization message to prevent pollution of machine-readable output
+    KotlinLoggingConfiguration.logStartupMessage = false
+
     // Initialize Koin dependency injection
     startKoin {
         modules(KoinModules.getAllModules())
     }
-
-    registerShutdownHook()
 
     val parser = CommandLineParser()
     try {
@@ -46,19 +47,6 @@ fun main(arguments: Array<String>) {
     } catch (e: RuntimeException) {
         handleRuntimeError(e)
     }
-}
-
-private fun registerShutdownHook() {
-    Runtime.getRuntime().addShutdownHook(
-        Thread {
-            try {
-                val telemetry = getKoin().get<TelemetryProvider>()
-                telemetry.shutdown()
-            } catch (_: Exception) {
-                // Ignore errors during shutdown
-            }
-        },
-    )
 }
 
 private fun handleDockerError(e: DockerException) {

@@ -64,6 +64,14 @@ tasks.named<CreateStartScripts>("startScripts") {
     }
 }
 
+// Force OpenTelemetry incubator versions before Gradle upgrades them
+configurations.all {
+    resolutionStrategy {
+        force("io.opentelemetry:opentelemetry-api-incubator:1.45.0-alpha")
+        force("io.opentelemetry:opentelemetry-sdk-extension-incubator:1.45.0-alpha")
+    }
+}
+
 // In this section you declare the dependencies for your production and test code
 dependencies {
     // Logging

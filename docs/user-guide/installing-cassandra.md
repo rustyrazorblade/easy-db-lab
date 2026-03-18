@@ -85,22 +85,17 @@ Example patch file:
 ```yaml
 cluster_name: "my-cluster"
 num_tokens: 4
-seed_provider:
-  class_name: "org.apache.cassandra.locator.SimpleSeedProvider"
-  parameters:
-    seeds: "10.0.1.28"
-hints_directory: "/mnt/db1/cassandra/hints"
-data_file_directories:
-  - "/mnt/db1/cassandra/data"
-commitlog_directory: "/mnt/db1/cassandra/commitlog"
 concurrent_reads: 64
 concurrent_writes: 64
 trickle_fsync: true
-endpoint_snitch: "Ec2Snitch"
 ```
 
-```admonish info title="Auto-Injected Fields"
-`listen_address` and `rpc_address` are automatically injected with each node's private IP. Do not include them in your patch file.
+```admonish warning title="Auto-Managed Settings — Do Not Include"
+The following settings are automatically managed by easy-db-lab. Including them in your patch file may cause problems:
+
+- `listen_address`, `rpc_address` — injected with each node's private IP
+- `seed_provider` / `seeds` — configured automatically based on cluster topology
+- `hints_directory`, `data_file_directories`, `commitlog_directory` — set based on the cluster's disk configuration
 ```
 
 ### Apply Configuration

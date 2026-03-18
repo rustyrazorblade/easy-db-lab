@@ -31,4 +31,4 @@ export EASY_DB_LAB_REDIS_URL="redis://localhost:6399/easydblab-events"
 # This prevents agent messages from polluting machine-readable output (like JSON policies)
 export OTEL_JAVAAGENT_LOGGING=application
 
-java -Deasydblab.version=$VERSION -Deasydblab.apphome=$APP_HOME -javaagent:"$OTEL_AGENT" -jar $JAR "$@"
+java -Xshare:off -Deasydblab.version=$VERSION -Deasydblab.apphome=$APP_HOME -javaagent:"$OTEL_AGENT" -jar $JAR "$@"

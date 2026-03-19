@@ -156,7 +156,7 @@ The script will:
 
 This allows the skill to analyze failures and invoke debugging automatically.
 
-## Step 4: No Build Preparation Needed
+## Step 4: No Build or Cleanup Needed
 
 The end-to-end test script handles everything automatically:
 - **Builds the project** (line 1502: `./gradlew shadowJar installDist`)
@@ -170,6 +170,32 @@ You don't need to:
 - ❌ Manually build anything
 
 The script does all of this. Just run it.
+
+## ⚠️ ABSOLUTE RULE: NEVER USE `rm`
+
+**CRITICAL SAFETY RULE:**
+
+🚫 **NEVER EXECUTE `rm` COMMANDS. EVER.**
+
+This is an **ABSOLUTE RULE** with no exceptions:
+- ❌ Do NOT use `rm` to clean up files
+- ❌ Do NOT use `rm -rf` for anything
+- ❌ Do NOT remove state.json, kubeconfig, sshConfig, or any files
+- ❌ Do NOT clean up "old" or "stale" files
+- ❌ Do NOT delete anything
+
+**Why:**
+- The test script handles cleanup via `--clean` flag
+- Files are never "stale" - clusters are fresh
+- Manual file deletion can break active clusters
+- User may need files for debugging
+
+**If you think files need cleanup:**
+- They don't
+- The script handles it
+- Trust the --clean flag
+
+**NO EXCEPTIONS. NEVER USE `rm`.**
 
 ## Step 5: Run and Monitor End-to-End Tests
 

@@ -156,29 +156,20 @@ The script will:
 
 This allows the skill to analyze failures and invoke debugging automatically.
 
-## Step 4: Build Prerequisites
+## Step 4: No Build Preparation Needed
 
-Before running tests, ensure the project is built:
+The end-to-end test script handles everything automatically:
+- **Builds the project** (line 1502: `./gradlew shadowJar installDist`)
+- **Cleans up old files** via `init --clean` flag
+- **Sets up Docker services** (Redis, OTel collector)
 
-```bash
-# Check if shadow JAR exists and is recent
-if [ -f build/libs/easy-db-lab-*-all.jar ]; then
-    echo "Shadow JAR exists"
-    # Check if it's older than source files
-    if find src/main/kotlin -newer build/libs/easy-db-lab-*-all.jar 2>/dev/null | grep -q .; then
-        echo "Source files newer than JAR - rebuild needed"
-        BUILD_NEEDED=true
-    else
-        echo "JAR is up to date"
-        BUILD_NEEDED=false
-    fi
-else
-    echo "Shadow JAR not found - build needed"
-    BUILD_NEEDED=true
-fi
-```
+You don't need to:
+- ❌ Check if builds are needed
+- ❌ Clean build directories
+- ❌ Remove old environment files
+- ❌ Manually build anything
 
-The end-to-end test script handles building itself, but checking first helps set expectations.
+The script does all of this. Just run it.
 
 ## Step 5: Run End-to-End Tests
 

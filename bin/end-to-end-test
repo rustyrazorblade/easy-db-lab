@@ -28,6 +28,7 @@
 #   --clickhouse       Enable ClickHouse-related steps.
 #   --opensearch       Enable OpenSearch-related steps.
 #   --ebs              Use EBS volumes.
+#   --no-teardown      Skip teardown prompt; exit with status (0=pass, 1=fail).
 #
 
 set -e  # Exit on any error
@@ -63,6 +64,7 @@ USE_EBS=false
 LIST_STEPS=false
 BREAKPOINTS=""
 START_STEP=""
+NO_TEARDOWN=false
 while [[ $# -gt 0 ]]; do
   case $1 in
     --list-steps|-l)
@@ -109,9 +111,13 @@ while [[ $# -gt 0 ]]; do
       START_STEP="$2"
       shift 2
       ;;
+    --no-teardown)
+      NO_TEARDOWN=true
+      shift
+      ;;
     *)
       echo "Unknown option: $1"
-      echo "Usage: $0 [--list-steps|-l] [--break <steps>] [--start-step <N>] [--build] [--spark] [--cassandra] [--clickhouse] [--opensearch] [--all] [--ebs]"
+      echo "Usage: $0 [--list-steps|-l] [--break <steps>] [--start-step <N>] [--build] [--spark] [--cassandra] [--clickhouse] [--opensearch] [--all] [--ebs] [--no-teardown]"
       exit 1
       ;;
   esac
@@ -1464,6 +1470,17 @@ cleanup() {
     echo "The cluster is still running. You can inspect it from another terminal."
     echo "Work directory: $TEST_WORKDIR"
     echo ""
+
+    if [ "$NO_TEARDOWN" = true ]; then
+        echo "=== --no-teardown specified: skipping teardown ==="
+        echo "Cluster remains running for inspection"
+        if [ "$FAILURE_COUNT" -gt 0 ]; then
+            exit 1
+        else
+            exit 0
+        fi
+    fi
+
     while true; do
         read -p "Type 'yes' to tear down the cluster, or Ctrl-C to keep it running: " confirm
         if [ "$confirm" = "yes" ]; then

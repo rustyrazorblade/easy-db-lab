@@ -34,6 +34,8 @@ easy-db-lab clickhouse init --s3-cache-on-write false
 |--------|-------------|---------|
 | `--s3-cache` | Size of the local S3 cache | 10Gi |
 | `--s3-cache-on-write` | Cache data during write operations | true |
+| `--s3-tier-move-factor` | Move data to S3 tier when local disk free space falls below this fraction (0.0-1.0) | 0.2 |
+| `--replicas-per-shard` | Number of replicas per shard | 3 |
 
 Configuration is saved to the cluster state and applied when you run `clickhouse start`.
 
@@ -189,14 +191,14 @@ ClickHouse is configured with two storage policies. You select the policy when c
 
 ### Policy Comparison
 
-| Aspect | `local` | `s3_main` |
-|--------|---------|-----------|
-| **Storage Location** | Local NVMe disks | S3 bucket with configurable local cache |
-| **Performance** | Best latency, highest throughput | Higher latency, cache-dependent |
-| **Capacity** | Limited by disk size | Virtually unlimited |
-| **Cost** | Included in instance cost | S3 storage + request costs |
-| **Data Persistence** | Lost when cluster is destroyed | Persists independently |
-| **Best For** | Benchmarks, low-latency queries | Large datasets, cost-sensitive workloads |
+| Aspect | `local` | `s3_main` | `s3_tier` |
+|--------|---------|-----------|-----------|
+| **Storage Location** | Local NVMe disks | S3 bucket with configurable local cache | Hybrid: starts local, moves to S3 when disk fills |
+| **Performance** | Best latency, highest throughput | Higher latency, cache-dependent | Good initially, degrades as data moves to S3 |
+| **Capacity** | Limited by disk size | Virtually unlimited | Virtually unlimited |
+| **Cost** | Included in instance cost | S3 storage + request costs | S3 storage + request costs |
+| **Data Persistence** | Lost when cluster is destroyed | Persists independently | Persists independently |
+| **Best For** | Benchmarks, low-latency queries | Large datasets, cost-sensitive workloads | Mixed hot/cold workloads with automatic tiering |
 
 ### Local Storage (`local`)
 
@@ -250,6 +252,50 @@ SETTINGS storage_policy = 's3_main';
 - Cold data is fetched from S3 on demand
 - Cache is automatically managed by ClickHouse
 - First query on cold data will be slower; subsequent queries use cache
+
+### S3 Tiered Storage (`s3_tier`)
+
+The S3 tiered policy provides automatic data movement from local disks to S3 based on disk space availability. This policy starts with local storage and automatically moves data to S3 when local disk space runs low, providing the best of both worlds: fast local performance for hot data and unlimited S3 capacity for cold data.
+
+**Prerequisite**: Your cluster must be initialized with an S3 bucket. Set this during `init`:
+
+```bash
+easy-db-lab init my-cluster --s3-bucket my-clickhouse-data
+```
+
+Configure the tiering behavior before starting ClickHouse:
+
+```bash
+# Move data to S3 when local disk free space falls below 20% (default)
+easy-db-lab clickhouse init --s3-tier-move-factor 0.2
+
+# More aggressive tiering - move when free space < 50%
+easy-db-lab clickhouse init --s3-tier-move-factor 0.5
+```
+
+Then create tables with S3 tiered storage:
+
+```sql
+CREATE TABLE my_table (...)
+ENGINE = ReplicatedMergeTree('/clickhouse/tables/{shard}/default/my_table', '{replica}')
+ORDER BY id
+SETTINGS storage_policy = 's3_tier';
+```
+
+**When to use S3 tiered storage:**
+
+- Workloads with mixed hot/cold data access patterns
+- Growing datasets that may outgrow local disk capacity
+- Want automatic cost optimization without manual intervention
+- Need local performance for recent data with S3 capacity for historical data
+
+**How automatic tiering works:**
+
+- New data is written to local disks first (fast writes)
+- When local disk free space falls below the configured threshold (default: 20%), ClickHouse automatically moves the oldest data to S3
+- Data on S3 is still queryable but with higher latency
+- The local cache (configured with `--s3-cache`) helps performance for frequently accessed S3 data
+- Manual moves are also possible: `ALTER TABLE my_table MOVE PARTITION tuple() TO DISK 's3'`
 
 ## Stopping ClickHouse
 

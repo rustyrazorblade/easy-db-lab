@@ -106,7 +106,7 @@ class ClickHouseStartTest : BaseKoinTest() {
         whenever(mockK8sService.waitForPodsReady(any(), any(), any()))
             .thenReturn(Result.success(Unit))
 
-        whenever(mockClickHouseManifestBuilder.buildAllResources(any(), any(), any(), any()))
+        whenever(mockClickHouseManifestBuilder.buildAllResources(any(), any(), any(), any(), any()))
             .thenReturn(emptyList())
     }
 
@@ -224,6 +224,7 @@ class ClickHouseStartTest : BaseKoinTest() {
                 replicasPerShard = eq(3),
                 s3CacheSize = any(),
                 s3CacheOnWrite = any(),
+                s3TierMoveFactor = any(),
             )
             verify(mockK8sService).scaleStatefulSet(
                 any(),

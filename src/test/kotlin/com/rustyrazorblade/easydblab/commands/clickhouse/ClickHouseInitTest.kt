@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.ClickHouseConfig
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
@@ -106,5 +107,80 @@ class ClickHouseInitTest : BaseKoinTest() {
         assertThat(savedState.clickHouseConfig).isNotNull
         assertThat(savedState.clickHouseConfig!!.replicasPerShard)
             .isEqualTo(Constants.ClickHouse.DEFAULT_REPLICAS_PER_SHARD)
+    }
+
+    @Test
+    fun `init rejects s3TierMoveFactor below 0`() {
+        val state = createTestState()
+        whenever(mockClusterStateManager.load()).thenReturn(state)
+
+        val command = ClickHouseInit()
+        command.s3TierMoveFactor = -0.1
+
+        assertThatThrownBy { command.execute() }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("s3TierMoveFactor must be in range [0.0, 1.0]")
+    }
+
+    @Test
+    fun `init rejects s3TierMoveFactor above 1`() {
+        val state = createTestState()
+        whenever(mockClusterStateManager.load()).thenReturn(state)
+
+        val command = ClickHouseInit()
+        command.s3TierMoveFactor = 1.1
+
+        assertThatThrownBy { command.execute() }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("s3TierMoveFactor must be in range [0.0, 1.0]")
+    }
+
+    @Test
+    fun `init accepts s3TierMoveFactor at lower boundary`() {
+        val state = createTestState()
+        whenever(mockClusterStateManager.load()).thenReturn(state)
+
+        val command = ClickHouseInit()
+        command.s3TierMoveFactor = 0.0
+        command.execute()
+
+        val captor = argumentCaptor<ClusterState>()
+        verify(mockClusterStateManager).save(captor.capture())
+
+        val savedState = captor.firstValue
+        assertThat(savedState.clickHouseConfig!!.s3TierMoveFactor).isEqualTo(0.0)
+    }
+
+    @Test
+    fun `init accepts s3TierMoveFactor at upper boundary`() {
+        val state = createTestState()
+        whenever(mockClusterStateManager.load()).thenReturn(state)
+
+        val command = ClickHouseInit()
+        command.s3TierMoveFactor = 1.0
+        command.execute()
+
+        val captor = argumentCaptor<ClusterState>()
+        verify(mockClusterStateManager).save(captor.capture())
+
+        val savedState = captor.firstValue
+        assertThat(savedState.clickHouseConfig!!.s3TierMoveFactor).isEqualTo(1.0)
+    }
+
+    @Test
+    fun `init uses default s3TierMoveFactor when not specified`() {
+        val state = createTestState()
+        whenever(mockClusterStateManager.load()).thenReturn(state)
+
+        val command = ClickHouseInit()
+        command.execute()
+
+        val captor = argumentCaptor<ClusterState>()
+        verify(mockClusterStateManager).save(captor.capture())
+
+        val savedState = captor.firstValue
+        assertThat(savedState.clickHouseConfig).isNotNull
+        assertThat(savedState.clickHouseConfig!!.s3TierMoveFactor)
+            .isEqualTo(Constants.ClickHouse.DEFAULT_S3_TIER_MOVE_FACTOR)
     }
 }

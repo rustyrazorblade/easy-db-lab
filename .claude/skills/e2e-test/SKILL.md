@@ -419,13 +419,42 @@ The failure log includes:
 
 **AUTOMATIC DEBUGGING:**
 
-When tests fail, **automatically invoke the debug-environment skill** to diagnose:
+When tests fail, **immediately start parallel investigation using agent teams** (if available):
 
-```
-I'll now automatically debug the failed tests using the debug-environment skill.
-```
+### Option A: Agent Teams Available (Preferred)
 
-Then use the Task tool to invoke debug-environment:
+**Use agent teams to investigate in parallel:**
+
+1. **Main agent** (you) continues with:
+   - Summarizing test results
+   - Identifying failed steps
+   - Preparing preliminary report
+
+2. **Team member agent** starts investigating immediately:
+   - Check kubernetes containers: `kubectl get pods -A`
+   - Check running services: `kubectl get svc -A`
+   - Review pod logs: `kubectl logs <pod> -n <namespace>`
+   - SSH to nodes to check systemd services
+   - Examine K8s events: `kubectl get events -A --sort-by='.lastTimestamp'`
+   - Check disk space, memory, resources
+   - Identify patterns in failures
+
+**Team member is read-only:**
+- ✅ CAN: Check status, read logs, inspect resources
+- ✅ CAN: SSH to nodes and check service status
+- ✅ CAN: Query K8s cluster for information
+- ❌ CANNOT: Make changes, restart services, modify configs
+- ❌ CANNOT: Use `rm` or delete anything
+
+**Coordination:**
+- Main agent presents initial findings
+- Team member reports investigation results
+- Both contribute to root cause analysis
+- Combined findings presented to user
+
+### Option B: No Agent Teams (Fallback)
+
+Use the Task tool to invoke debug-environment sequentially:
 
 ```
 Use Task tool with:
@@ -434,18 +463,21 @@ Use Task tool with:
   prompt: "Use the debug-environment skill to investigate the test failures. The e2e tests failed with N step(s) failing. The cluster is still running in the current directory. Please diagnose what went wrong."
 ```
 
-This will:
-1. Launch the debug-environment skill in a subagent
-2. Analyze the environment (state.json, kubeconfig, sshConfig)
-3. Check SSH and K8s connectivity
-4. Review failed pods and services
-5. Examine logs and events
-6. Identify root cause
-7. Recommend fixes
+### Investigation Process
+
+The debugging agent(s) will:
+1. Analyze the environment (state.json, kubeconfig, sshConfig)
+2. Check SSH and K8s connectivity
+3. Review failed pods and services
+4. Examine logs and events
+5. Identify root cause
+6. Recommend fixes
+
+### Final Report
 
 After debugging completes, present findings to the user with:
 - Summary of failures
-- Root cause analysis
+- Root cause analysis (combined from main agent + team member)
 - Recommended fixes
 - Whether to tear down or keep cluster for manual investigation
 

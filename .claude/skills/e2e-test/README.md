@@ -46,13 +46,16 @@ Runs tests without manual intervention:
 - Returns exit code (0=pass, 1=fail)
 - Leaves cluster running for inspection
 
-### 🔍 Automatic Failure Debugging
+### 🔍 Automatic Failure Debugging with Agent Teams
 
 When tests fail:
-1. Automatically invokes `/debug-environment` skill
-2. Analyzes cluster state, logs, and events
-3. Identifies root cause
-4. Recommends specific fixes
+1. **Immediately starts parallel investigation** using agent teams (if available)
+2. **Team member investigates** while main agent summarizes results
+3. **Read-only inspection:** Checks pods, services, logs, SSH to nodes
+4. **Combined analysis:** Both agents contribute to root cause diagnosis
+5. **Actionable recommendations:** Specific fixes based on findings
+
+**Fallback:** If agent teams unavailable, uses sequential debugging via `/debug-environment`
 
 ### ⚡ Real-Time Progress Reporting
 
@@ -253,25 +256,55 @@ When tests fail:
    ↓
 2. Skill detects failure
    ↓
-3. Automatically invokes /debug-environment
+3. If agent teams available:
+   ├─ Main Agent: Summarizes test results, prepares report
+   └─ Team Member: Investigates in parallel
+       - kubectl get pods -A
+       - kubectl logs <failed-pods>
+       - SSH to nodes, check systemd services
+       - Review K8s events
+       - Check resources (disk, memory)
    ↓
-4. Debug skill:
-   - Checks environment files
-   - Tests SSH/K8s connectivity
-   - Reviews failed pods
-   - Analyzes logs and events
-   - Identifies root cause
+4. Both agents analyze:
+   - Main: Test execution patterns, step failures
+   - Team: Live cluster state, logs, service health
    ↓
-5. Reports findings:
-   - What failed
-   - Why it failed
-   - How to fix it
+5. Combined findings:
+   - What failed (test steps)
+   - Why it failed (root cause from investigation)
+   - Cluster state (from team member)
+   - How to fix it (recommendations)
    ↓
 6. User decides:
    - Apply fix and retest
    - Manual investigation
    - Tear down cluster
 ```
+
+**Key benefit:** Investigation starts immediately while test results are being processed, reducing time to diagnosis.
+
+### Team Member Investigation Scope
+
+**What team members CAN do (read-only investigation):**
+- ✅ Check Kubernetes pods: `kubectl get pods -A`
+- ✅ Read pod logs: `kubectl logs <pod> -n <namespace>`
+- ✅ Check services: `kubectl get svc -A`
+- ✅ Review events: `kubectl get events -A`
+- ✅ SSH to nodes: `ssh -F sshConfig <node>`
+- ✅ Check systemd services: `systemctl status <service>`
+- ✅ View service logs: `journalctl -u <service>`
+- ✅ Check resources: `df -h`, `free -h`, `top`
+- ✅ Inspect configs: `cat`, `grep`, read files
+
+**What team members CANNOT do (no modifications):**
+- ❌ Restart services or pods
+- ❌ Modify configurations
+- ❌ Delete or remove files (`rm` is prohibited)
+- ❌ Apply K8s manifests
+- ❌ Change cluster state
+- ❌ Run test commands that modify state
+
+This ensures safe, parallel investigation without risk of interfering with the cluster or test state.
 
 ### Common Failure Scenarios
 

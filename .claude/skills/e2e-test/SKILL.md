@@ -197,56 +197,87 @@ This is an **ABSOLUTE RULE** with no exceptions:
 
 **NO EXCEPTIONS. NEVER USE `rm`.**
 
-## Step 5: Run and Monitor End-to-End Tests
+## Step 5: Delegate Test Execution to Team Member
 
-Execute the test with determined flags **using `--no-teardown` for non-interactive mode**.
+**IMPORTANT:** You are the **coordinator**, not the executor.
 
-**Execution Method:**
+### Use Agent Teams Architecture
 
-Run the test and actively monitor its output in real-time:
+**Your role (Main Agent - Coordinator):**
+- Determine test scope (from Step 2)
+- Delegate test execution to team member
+- Monitor progress via team member reports
+- Relay updates to user
+- Coordinate investigation when failures occur
+- Synthesize findings and provide recommendations
 
-```bash
-# IMPORTANT: Always add --no-teardown when running via this skill
-# This allows the skill to handle failures and invoke debugging
+**Team Member Role (Test Runner):**
+- Execute `bin/end-to-end-test` with determined flags
+- Monitor output in real-time
+- Report step transitions and outcomes to main agent
+- Complete test run to the end
+- Report final results (pass/fail, exit code)
 
-# Example invocations:
+### Delegation Approach
 
-# Basic Cassandra test (non-interactive)
-bin/end-to-end-test --cassandra --no-teardown 2>&1
+**If agent teams available (preferred):**
 
-# Full test suite (non-interactive)
-bin/end-to-end-test --all --no-teardown 2>&1
+Assign a team member to run the test:
 
-# Spark + Cassandra (non-interactive)
-bin/end-to-end-test --spark --cassandra --no-teardown 2>&1
-
-# ClickHouse only (non-interactive)
-bin/end-to-end-test --clickhouse --no-teardown 2>&1
-
-# With custom instance type
-EASY_DB_LAB_INSTANCE_TYPE=c5d.4xlarge bin/end-to-end-test --cassandra --no-teardown 2>&1
-
-# Build AMI image first (slow - only when needed)
-bin/end-to-end-test --build --cassandra --no-teardown 2>&1
+```
+Team member task:
+- Run: bin/end-to-end-test --<flags> --no-teardown 2>&1
+- Monitor output in real-time
+- Report back:
+  * When each step starts: "Step N/TOTAL: <name>"
+  * When steps complete or fail
+  * Progress updates every 3-5 steps
+  * Final outcome (pass/fail, exit code)
 ```
 
-**Why `2>&1`?** Captures both stdout and stderr so you see all output including errors.
+You (main agent) then:
+- Relay progress updates to user
+- Coordinate investigation if failures occur
+- Prepare final report
 
-**Monitor While Running:**
+**If agent teams NOT available (fallback):**
 
-The test will run for 15-60 minutes depending on scope. You MUST:
+You must run the test directly:
 
-1. **Watch the output** as it streams
-2. **Detect step transitions** (look for "Step N/TOTAL: <name>")
-3. **Report progress to user** (see Step 6 for details)
-4. **Detect failures immediately** (look for "FAILED:" or "ERROR:")
-5. **Wait for completion** (look for "All tests passed" or "N step(s) FAILED")
+```bash
+bin/end-to-end-test --<determined-flags> --no-teardown 2>&1
+```
 
-**Note:** The `--no-teardown` flag:
-- Skips the interactive teardown prompt
-- Exits with status 0 (pass) or 1 (fail)
-- Leaves cluster running for debugging
-- Enables this skill to automatically debug failures
+And handle monitoring yourself (see Step 6).
+
+### Test Command Format
+
+Always use `--no-teardown` flag:
+
+```bash
+# Basic Cassandra test
+bin/end-to-end-test --cassandra --no-teardown
+
+# Full test suite
+bin/end-to-end-test --all --no-teardown
+
+# Spark + Cassandra
+bin/end-to-end-test --spark --cassandra --no-teardown
+
+# ClickHouse only
+bin/end-to-end-test --clickhouse --no-teardown
+
+# With custom instance type
+EASY_DB_LAB_INSTANCE_TYPE=c5d.4xlarge bin/end-to-end-test --cassandra --no-teardown
+
+# Build AMI first (slow)
+bin/end-to-end-test --build --cassandra --no-teardown
+```
+
+**Why `--no-teardown`?**
+- Exits with status code (0=pass, 1=fail)
+- Leaves cluster running for investigation
+- Enables automatic failure debugging
 
 ### Important Environment Variables
 
@@ -279,108 +310,90 @@ The test will run for 15-60 minutes depending on scope. You MUST:
    - Costs accumulate per hour for running resources
    - Always tear down when done to avoid unnecessary charges
 
-## Step 6: Monitor and Report Test Progress
+## Step 6: Coordinate Progress Reporting
 
-**IMPORTANT:** Actively monitor the test and report progress to the user in real-time.
+**Your Role as Coordinator:**
 
-The test outputs step transitions in this format:
+Receive progress reports from the test runner team member and relay them to the user.
+
+### If Using Agent Teams:
+
+**Test runner team member reports:**
 ```
-==========================================
 Step N/TOTAL: <step-name>
-==========================================
+Status: Starting/Complete/Failed
+Duration: Xm Ys (if complete)
+Error: <details> (if failed)
 ```
 
-**Your Monitoring Responsibilities:**
+**You relay to user in friendly format:**
+```
+✓ Step N/TOTAL: <step-name> - Complete (2m 15s)
+✗ Step N/TOTAL: <step-name> - FAILED
+  Error: <brief description>
+```
 
-1. **Report Each Step as It Starts:**
-   ```
-   ✓ Step N/TOTAL started: <step-name>
-   ```
+### If No Agent Teams (You Run Test):
 
-2. **Report Step Outcomes:**
-   - On success: Continue to next step (no special message unless interesting)
-   - On failure: Report immediately:
-   ```
-   ✗ Step N failed: <step-name>
-   Error: <brief error from output>
-   ```
+Monitor the test output directly (see patterns below).
 
-3. **Key Milestones to Report:**
-   - Build completed
-   - Cluster initialized
-   - K3s cluster ready
-   - Database started (Cassandra/ClickHouse)
-   - Observability stack deployed
-   - Tests running
-   - Test completion (pass/fail)
+### Reporting Format
 
-4. **How to Monitor:**
-   ```bash
-   # The test outputs to stdout/stderr
-   # Watch for these patterns:
-   # - "Step N/TOTAL: <name>" = new step starting
-   # - "FAILED: Step N - <name>" = step failed
-   # - "All tests passed successfully" = success
-   # - "N step(s) FAILED" = failure
-   ```
-
-5. **Progress Updates:**
-   Provide periodic updates every 3-5 steps or when significant milestones occur:
-   ```
-   Progress: Completed 10/35 steps
-   Current: Testing Cassandra stress jobs...
-   ```
-
-6. **Don't Spam:**
-   - Report step transitions
-   - Report failures immediately
-   - Report milestone completions
-   - Don't report every line of output
-
-**Example Monitoring Output:**
-
+**1. Initial Status:**
 ```
 Starting end-to-end tests with --cassandra flag
 Test scope: Cassandra + Core infrastructure
 Estimated duration: 15-20 minutes
-
-✓ Step 1/35: Build project - Building...
-✓ Step 1/35: Build project - Complete (2m 15s)
-
-✓ Step 2/35: Check version - Complete
-
-✓ Step 4/35: Initialize cluster - Creating 3-node cluster...
-✓ Step 4/35: Initialize cluster - Complete (8m 30s)
-
-✓ Step 6/35: Wait for K3s - Cluster ready
-
-Progress: 10/35 steps complete
-Current milestone: Cassandra setup starting...
-
-✓ Step 11/35: Setup Cassandra - Installing Cassandra 5.0...
-✓ Step 11/35: Setup Cassandra - Complete (3m 45s)
-
-✓ Step 15/35: Run stress test - Generating load...
-✓ Step 15/35: Run stress test - Complete
-
-Progress: 20/35 steps complete
-Current milestone: Observability stack testing...
-
-✗ Step 23/35: Test VictoriaMetrics - FAILED
-Error: VictoriaMetrics pod not responding on port 8428
-
-Automatically invoking debug-environment to diagnose...
+Test runner: Team member (or: Running directly)
 ```
 
-**Pattern Recognition:**
+**2. Step Updates:**
 
-Monitor output for these patterns:
-- `Step N/TOTAL:` → New step starting
+Report key steps and milestones:
+```
+✓ Step 1/35: Build project - Complete (2m 15s)
+✓ Step 4/35: Initialize cluster - Complete (8m 30s)
+✓ Step 6/35: Wait for K3s - Cluster ready
+✓ Step 11/35: Setup Cassandra - Complete (3m 45s)
+```
+
+**3. Progress Milestones:**
+
+Every 5-10 steps or at key milestones:
+```
+Progress: 10/35 steps complete
+Current milestone: Cassandra setup starting...
+```
+
+**4. Failures:**
+
+Report immediately:
+```
+✗ Step 23/35: Test VictoriaMetrics - FAILED
+  Error: VictoriaMetrics pod not responding on port 8428
+
+Coordinating investigation...
+```
+
+### Monitoring Patterns
+
+Test output patterns to watch for:
+- `Step N/TOTAL: <name>` → New step starting
+- `FAILED: Step N - <name>` → Step failed
+- `All tests passed successfully` → Success
+- `N step(s) FAILED` → Failure
 - `===` lines → Step boundaries
-- `FAILED:` → Immediate failure
-- `ERROR:` → Problem detected
-- `Complete` → Step succeeded
-- Time estimates like `(2m 15s)` → Duration
+
+### Key Milestones to Report:
+- Build completed
+- Cluster initialized
+- K3s cluster ready
+- Database started
+- Observability stack deployed
+- Tests running
+- Test completion (pass/fail)
+
+**Don't spam:** Report transitions and milestones, not every line of output.
 
 ## Step 7: Handle Test Results and Auto-Debug
 
@@ -417,44 +430,72 @@ The failure log includes:
 - Kubernetes events
 - Disk usage
 
-**AUTOMATIC DEBUGGING:**
+**COORDINATE AUTOMATIC DEBUGGING:**
 
-When tests fail, **immediately start parallel investigation using agent teams** (if available):
+When tests fail, **coordinate parallel investigation using your team**.
 
-### Option A: Agent Teams Available (Preferred)
+### Agent Team Architecture (Preferred)
 
-**Use agent teams to investigate in parallel:**
+**You have three agents working together:**
 
-1. **Main agent** (you) continues with:
-   - Summarizing test results
-   - Identifying failed steps
-   - Preparing preliminary report
+1. **Test Runner Team Member** (already running):
+   - Completes test execution
+   - Reports final results: exit code, failed steps, failure log
+   - Provides test-level context
 
-2. **Team member agent** starts investigating immediately:
-   - Check kubernetes containers: `kubectl get pods -A`
-   - Check running services: `kubectl get svc -A`
-   - Review pod logs: `kubectl logs <pod> -n <namespace>`
-   - SSH to nodes to check systemd services
-   - Examine K8s events: `kubectl get events -A --sort-by='.lastTimestamp'`
-   - Check disk space, memory, resources
-   - Identify patterns in failures
+2. **Investigation Team Member** (you assign when failure detected):
+   - Starts investigating immediately in parallel
+   - Checks live cluster state (read-only)
+   - Tasks:
+     * `kubectl get pods -A` - Check pod status
+     * `kubectl logs <pod> -n <namespace>` - Read logs
+     * `kubectl get events -A --sort-by='.lastTimestamp'` - Recent events
+     * `ssh -F sshConfig <node> "systemctl status <service>"` - Check services
+     * `ssh -F sshConfig <node> "journalctl -u <service> -n 100"` - Service logs
+     * Check resources: disk, memory, CPU
+     * Identify failure patterns
 
-**Team member is read-only:**
-- ✅ CAN: Check status, read logs, inspect resources
-- ✅ CAN: SSH to nodes and check service status
-- ✅ CAN: Query K8s cluster for information
-- ❌ CANNOT: Make changes, restart services, modify configs
-- ❌ CANNOT: Use `rm` or delete anything
+3. **You (Main Agent - Coordinator)**:
+   - Receive test results from test runner
+   - Assign investigation to team member
+   - Receive investigation findings
+   - Synthesize both perspectives:
+     * Test execution failures (what tests failed)
+     * Live cluster state (why they failed)
+   - Present combined analysis to user
 
-**Coordination:**
-- Main agent presents initial findings
-- Team member reports investigation results
-- Both contribute to root cause analysis
-- Combined findings presented to user
+**Investigation Team Member is Read-Only:**
+- ✅ CAN: Check status, read logs, inspect resources, SSH to nodes
+- ✅ CAN: Query K8s cluster, check services, view configs
+- ❌ CANNOT: Restart services, modify configs, delete files (`rm`)
+- ❌ CANNOT: Change cluster state or make modifications
 
-### Option B: No Agent Teams (Fallback)
+### Coordination Flow
 
-Use the Task tool to invoke debug-environment sequentially:
+```
+Test Fails
+    ↓
+Test Runner → Reports to you: Failed steps, exit code, failure log
+    ↓
+You → Assign Investigation Team Member: Check live cluster state
+    ↓
+Investigation → Reports findings: Pod status, logs, resource state
+    ↓
+You → Synthesize:
+    * Test perspective (what failed)
+    * Cluster perspective (why it failed)
+    * Combined root cause analysis
+    ↓
+Present to User:
+    * Summary of failures
+    * Root cause
+    * Cluster state
+    * Recommended fixes
+```
+
+### Fallback (No Agent Teams)
+
+If agent teams not available, use Task tool to invoke debug-environment:
 
 ```
 Use Task tool with:
@@ -463,23 +504,14 @@ Use Task tool with:
   prompt: "Use the debug-environment skill to investigate the test failures. The e2e tests failed with N step(s) failing. The cluster is still running in the current directory. Please diagnose what went wrong."
 ```
 
-### Investigation Process
+### Final Report to User
 
-The debugging agent(s) will:
-1. Analyze the environment (state.json, kubeconfig, sshConfig)
-2. Check SSH and K8s connectivity
-3. Review failed pods and services
-4. Examine logs and events
-5. Identify root cause
-6. Recommend fixes
-
-### Final Report
-
-After debugging completes, present findings to the user with:
-- Summary of failures
-- Root cause analysis (combined from main agent + team member)
-- Recommended fixes
-- Whether to tear down or keep cluster for manual investigation
+Present findings with:
+- **Test Results:** What steps failed, error messages
+- **Cluster Investigation:** Live state findings from investigation team member
+- **Root Cause Analysis:** Combined understanding from both perspectives
+- **Recommended Fixes:** Specific actions based on findings
+- **Next Steps:** Whether to tear down, fix and retest, or investigate further
 
 ### Resume from Failed Step
 

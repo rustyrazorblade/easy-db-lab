@@ -15,6 +15,21 @@ Run comprehensive end-to-end tests with intelligent scope detection, non-interac
 /e2e-test --all
 ```
 
+## ⚠️ CRITICAL SAFETY RULE
+
+**NEVER USE `rm` COMMANDS. EVER.**
+
+This skill is prohibited from executing `rm` for any reason:
+- ❌ No file cleanup
+- ❌ No directory removal
+- ❌ No deletion of "old" or "stale" files
+
+The test script handles all cleanup via `--clean` flag. Files are never stale - clusters are fresh. Manual deletion breaks things.
+
+**NO EXCEPTIONS.**
+
+---
+
 ## Features
 
 ### 🎯 Intelligent Test Scope Detection

@@ -21,11 +21,9 @@
     <!-- Available policies: 'local' (default), 's3_main' (S3 with local cache), 's3_tier' (local hot + S3 cold) -->
     <storage_configuration>
         <disks>
-            <local>
-                <type>local</type>
-                <path>/mnt/db1/clickhouse/</path>
+            <default>
                 <keep_free_space_bytes>1073741824</keep_free_space_bytes>
-            </local>
+            </default>
             <s3_disk>
                 <type>s3</type>
                 <endpoint from_env="CLICKHOUSE_S3_ENDPOINT"/>
@@ -44,7 +42,7 @@
             <local>
                 <volumes>
                     <main>
-                        <disk>local</disk>
+                        <disk>default</disk>
                     </main>
                 </volumes>
             </local>
@@ -58,7 +56,7 @@
             <s3_tier>
                 <volumes>
                     <hot>
-                        <disk>local</disk>
+                        <disk>default</disk>
                     </hot>
                     <cold>
                         <disk>s3</disk>

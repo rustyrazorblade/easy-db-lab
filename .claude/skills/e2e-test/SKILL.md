@@ -171,9 +171,13 @@ You don't need to:
 
 The script does all of this. Just run it.
 
-## Step 5: Run End-to-End Tests
+## Step 5: Run and Monitor End-to-End Tests
 
-Execute the test with determined flags **using `--no-teardown` for non-interactive mode**:
+Execute the test with determined flags **using `--no-teardown` for non-interactive mode**.
+
+**Execution Method:**
+
+Run the test and actively monitor its output in real-time:
 
 ```bash
 # IMPORTANT: Always add --no-teardown when running via this skill
@@ -182,23 +186,35 @@ Execute the test with determined flags **using `--no-teardown` for non-interacti
 # Example invocations:
 
 # Basic Cassandra test (non-interactive)
-bin/end-to-end-test --cassandra --no-teardown
+bin/end-to-end-test --cassandra --no-teardown 2>&1
 
 # Full test suite (non-interactive)
-bin/end-to-end-test --all --no-teardown
+bin/end-to-end-test --all --no-teardown 2>&1
 
 # Spark + Cassandra (non-interactive)
-bin/end-to-end-test --spark --cassandra --no-teardown
+bin/end-to-end-test --spark --cassandra --no-teardown 2>&1
 
 # ClickHouse only (non-interactive)
-bin/end-to-end-test --clickhouse --no-teardown
+bin/end-to-end-test --clickhouse --no-teardown 2>&1
 
 # With custom instance type
-EASY_DB_LAB_INSTANCE_TYPE=c5d.4xlarge bin/end-to-end-test --cassandra --no-teardown
+EASY_DB_LAB_INSTANCE_TYPE=c5d.4xlarge bin/end-to-end-test --cassandra --no-teardown 2>&1
 
 # Build AMI image first (slow - only when needed)
-bin/end-to-end-test --build --cassandra --no-teardown
+bin/end-to-end-test --build --cassandra --no-teardown 2>&1
 ```
+
+**Why `2>&1`?** Captures both stdout and stderr so you see all output including errors.
+
+**Monitor While Running:**
+
+The test will run for 15-60 minutes depending on scope. You MUST:
+
+1. **Watch the output** as it streams
+2. **Detect step transitions** (look for "Step N/TOTAL: <name>")
+3. **Report progress to user** (see Step 6 for details)
+4. **Detect failures immediately** (look for "FAILED:" or "ERROR:")
+5. **Wait for completion** (look for "All tests passed" or "N step(s) FAILED")
 
 **Note:** The `--no-teardown` flag:
 - Skips the interactive teardown prompt
@@ -237,27 +253,108 @@ bin/end-to-end-test --build --cassandra --no-teardown
    - Costs accumulate per hour for running resources
    - Always tear down when done to avoid unnecessary charges
 
-## Step 6: Monitor Test Progress
+## Step 6: Monitor and Report Test Progress
 
-The test script outputs progress for each step. Key indicators:
+**IMPORTANT:** Actively monitor the test and report progress to the user in real-time.
 
-**Success Indicators:**
-- Each step completes without "FAILED" messages
-- K8s pods reach "Running" state
-- Services respond to health checks
-- Final summary shows "All tests passed successfully"
+The test outputs step transitions in this format:
+```
+==========================================
+Step N/TOTAL: <step-name>
+==========================================
+```
 
-**Failure Indicators:**
-- "FAILED: Step N - <name>" messages
-- Pods stuck in "Pending", "CrashLoopBackOff", or "Error"
-- Services not responding
-- Final summary shows "N step(s) FAILED"
+**Your Monitoring Responsibilities:**
 
-**Common Issues:**
-- AWS rate limits (slow down, retry)
-- Instance capacity issues (try different region/instance type)
-- Timeout waiting for resources (may need longer waits)
-- Build failures (check code quality first with `./gradlew detekt ktlintCheck`)
+1. **Report Each Step as It Starts:**
+   ```
+   ✓ Step N/TOTAL started: <step-name>
+   ```
+
+2. **Report Step Outcomes:**
+   - On success: Continue to next step (no special message unless interesting)
+   - On failure: Report immediately:
+   ```
+   ✗ Step N failed: <step-name>
+   Error: <brief error from output>
+   ```
+
+3. **Key Milestones to Report:**
+   - Build completed
+   - Cluster initialized
+   - K3s cluster ready
+   - Database started (Cassandra/ClickHouse)
+   - Observability stack deployed
+   - Tests running
+   - Test completion (pass/fail)
+
+4. **How to Monitor:**
+   ```bash
+   # The test outputs to stdout/stderr
+   # Watch for these patterns:
+   # - "Step N/TOTAL: <name>" = new step starting
+   # - "FAILED: Step N - <name>" = step failed
+   # - "All tests passed successfully" = success
+   # - "N step(s) FAILED" = failure
+   ```
+
+5. **Progress Updates:**
+   Provide periodic updates every 3-5 steps or when significant milestones occur:
+   ```
+   Progress: Completed 10/35 steps
+   Current: Testing Cassandra stress jobs...
+   ```
+
+6. **Don't Spam:**
+   - Report step transitions
+   - Report failures immediately
+   - Report milestone completions
+   - Don't report every line of output
+
+**Example Monitoring Output:**
+
+```
+Starting end-to-end tests with --cassandra flag
+Test scope: Cassandra + Core infrastructure
+Estimated duration: 15-20 minutes
+
+✓ Step 1/35: Build project - Building...
+✓ Step 1/35: Build project - Complete (2m 15s)
+
+✓ Step 2/35: Check version - Complete
+
+✓ Step 4/35: Initialize cluster - Creating 3-node cluster...
+✓ Step 4/35: Initialize cluster - Complete (8m 30s)
+
+✓ Step 6/35: Wait for K3s - Cluster ready
+
+Progress: 10/35 steps complete
+Current milestone: Cassandra setup starting...
+
+✓ Step 11/35: Setup Cassandra - Installing Cassandra 5.0...
+✓ Step 11/35: Setup Cassandra - Complete (3m 45s)
+
+✓ Step 15/35: Run stress test - Generating load...
+✓ Step 15/35: Run stress test - Complete
+
+Progress: 20/35 steps complete
+Current milestone: Observability stack testing...
+
+✗ Step 23/35: Test VictoriaMetrics - FAILED
+Error: VictoriaMetrics pod not responding on port 8428
+
+Automatically invoking debug-environment to diagnose...
+```
+
+**Pattern Recognition:**
+
+Monitor output for these patterns:
+- `Step N/TOTAL:` → New step starting
+- `===` lines → Step boundaries
+- `FAILED:` → Immediate failure
+- `ERROR:` → Problem detected
+- `Complete` → Step succeeded
+- Time estimates like `(2m 15s)` → Duration
 
 ## Step 7: Handle Test Results and Auto-Debug
 

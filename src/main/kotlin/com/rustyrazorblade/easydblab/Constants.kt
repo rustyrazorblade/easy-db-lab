@@ -237,6 +237,7 @@ object Constants {
         const val DEFAULT_S3_CACHE_SIZE = "10Gi"
         const val DEFAULT_S3_CACHE_ON_WRITE = "true"
         const val DEFAULT_REPLICAS_PER_SHARD = 3
+        const val DEFAULT_S3_TIER_MOVE_FACTOR = 0.2
     }
 
     // YACE (Yet Another CloudWatch Exporter) configuration

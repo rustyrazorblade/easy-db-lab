@@ -26,6 +26,7 @@ import picocli.CommandLine.Option
  * Storage policies available for tables:
  * - 'local': Local disk storage (default)
  * - 's3_main': S3 storage with local cache
+ * - 's3_tier': Local NVMe as hot tier, S3 as cold tier (automatic data migration)
  *
  * Example creating a distributed replicated table:
  * ```sql
@@ -197,6 +198,7 @@ class ClickHouseStart : PicoBaseCommand() {
                 replicasPerShard = replicasPerShard,
                 s3CacheSize = clickHouseConfig.s3CacheSize,
                 s3CacheOnWrite = clickHouseConfig.s3CacheOnWrite,
+                s3TierMoveFactor = clickHouseConfig.s3TierMoveFactor,
             )
 
         for (resource in resources) {

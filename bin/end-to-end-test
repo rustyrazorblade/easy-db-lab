@@ -892,6 +892,54 @@ EOF
     clickhouse-query "INSERT INTO test (id) VALUES (1)"
 }
 
+step_clickhouse_s3_tier_test() {
+    if [ "$ENABLE_CLICKHOUSE" != true ]; then
+        echo "=== Skipping ClickHouse S3 tier test (use --clickhouse to enable) ==="
+        return 0
+    fi
+    echo "=== Testing ClickHouse S3 tier storage policy ==="
+
+    local data_bucket
+    data_bucket=$(jq -r '.dataBucket // empty' state.json 2>/dev/null)
+    if [ -z "$data_bucket" ]; then
+        echo "ERROR: dataBucket not found in state.json"
+        return 1
+    fi
+    echo "Data bucket: $data_bucket"
+
+    echo "--- Creating table with s3_tier storage policy ---"
+    clickhouse-query <<'EOF'
+CREATE OR REPLACE TABLE test_s3_tier (
+    id UInt64,
+    ts DateTime DEFAULT now()
+) ENGINE = ReplicatedMergeTree('/clickhouse/tables/{shard}/default/test_s3_tier', '{replica}')
+ORDER BY id
+SETTINGS storage_policy = 's3_tier'
+EOF
+
+    echo "--- Inserting 10000 rows ---"
+    clickhouse-query "INSERT INTO test_s3_tier (id) SELECT number FROM numbers(10000)"
+
+    echo "--- Forcing data move to S3 disk ---"
+    clickhouse-query "ALTER TABLE test_s3_tier MOVE PARTITION tuple() TO DISK 's3'"
+
+    echo "--- Verifying data exists in S3 bucket ---"
+    local s3_object_count
+    s3_object_count=$(aws s3 ls "s3://${data_bucket}/clickhouse/" --recursive 2>/dev/null | wc -l)
+    echo "S3 object count under clickhouse/: $s3_object_count"
+    if [ "$s3_object_count" -gt 0 ]; then
+        echo "S3 tier test PASSED: $s3_object_count objects found in s3://${data_bucket}/clickhouse/"
+    else
+        echo "ERROR: No objects found in s3://${data_bucket}/clickhouse/ after moving data to S3 tier"
+        return 1
+    fi
+
+    echo "--- Cleaning up test table ---"
+    clickhouse-query "DROP TABLE IF EXISTS test_s3_tier"
+
+    echo "=== ClickHouse S3 tier test completed ==="
+}
+
 step_clickhouse_stop() {
     if [ "$ENABLE_CLICKHOUSE" != true ]; then
         echo "=== Skipping ClickHouse stop (use --clickhouse to enable) ==="
@@ -1245,6 +1293,7 @@ STEPS_WORKDIR=(
     "step_cassandra_start_stop:Cassandra start/stop cycle"
     "step_clickhouse_start:Start ClickHouse"
     "step_clickhouse_test:Test ClickHouse"
+    "step_clickhouse_s3_tier_test:Test ClickHouse S3 tier policy"
     "step_clickhouse_stop:Stop ClickHouse"
     "step_opensearch_start:Start OpenSearch"
     "step_opensearch_test:Test OpenSearch"

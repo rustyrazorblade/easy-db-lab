@@ -39,12 +39,14 @@ When tests fail:
 3. Identifies root cause
 4. Recommends specific fixes
 
-### ⚡ Background Execution
+### ⚡ Real-Time Progress Reporting
 
-Runs in an isolated subagent context:
-- Tests run to completion independently
-- Reports back when done
-- Doesn't block main conversation
+Monitors test execution and reports progress:
+- Reports each step as it starts
+- Reports step outcomes (pass/fail)
+- Provides milestone updates
+- Detects and reports failures immediately
+- Total test transparency
 
 ## How It Works
 
@@ -63,13 +65,20 @@ git diff --name-only main...HEAD
 # - Spark: spark/**, src/**/spark/**
 ```
 
-### 2. Test Execution
+### 2. Test Execution and Monitoring
 
-Runs end-to-end test with appropriate flags:
+Runs end-to-end test with appropriate flags and monitors progress in real-time:
 
 ```bash
 bin/end-to-end-test --<detected-flags> --no-teardown
 ```
+
+While running, the skill:
+- **Reports each step** as it starts
+- **Reports outcomes** (pass/fail)
+- **Provides progress updates** every few steps
+- **Immediately flags errors** as they occur
+- **Estimates time remaining** based on progress
 
 The `--no-teardown` flag:
 - Skips interactive prompt

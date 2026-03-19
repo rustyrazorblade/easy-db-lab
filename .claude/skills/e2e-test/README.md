@@ -66,6 +66,46 @@ Monitors test execution and reports progress:
 - Detects and reports failures immediately
 - Total test transparency
 
+## Architecture
+
+This skill uses an **agent teams coordinator pattern**:
+
+### Agent Roles
+
+**Main Agent (Coordinator - You interact with this one):**
+- Analyzes code changes to determine test scope
+- Delegates test execution to team member
+- Relays progress updates to user
+- Coordinates investigation when failures occur
+- Synthesizes findings from multiple perspectives
+- Provides final recommendations
+
+**Test Runner Team Member:**
+- Executes `bin/end-to-end-test` with determined flags
+- Monitors test output in real-time
+- Reports step transitions and outcomes
+- Completes test run and reports final results
+
+**Investigation Team Member (if tests fail):**
+- Investigates live cluster state (read-only)
+- Checks pods, services, logs, events
+- SSHs to nodes to check systemd services
+- Identifies failure patterns
+- Reports findings to coordinator
+
+### Benefits
+
+- **Parallel execution:** Investigation starts immediately when failures detected
+- **Multiple perspectives:** Test results + live cluster state
+- **Coordinated response:** Main agent synthesizes all findings
+- **Reduced diagnosis time:** No waiting for sequential debugging
+
+### Fallback
+
+If agent teams unavailable, main agent handles everything sequentially.
+
+---
+
 ## How It Works
 
 ### 1. Scope Detection
@@ -247,41 +287,57 @@ See [reference/test-scope-detection.md](reference/test-scope-detection.md) for d
 
 ## Failure Handling
 
-### Automatic Debugging Flow
+### Automatic Debugging Flow (Agent Teams)
 
-When tests fail:
+When tests fail with agent teams:
 
 ```
 1. Test fails (exit code 1)
    ↓
-2. Skill detects failure
+2. Test Runner Team Member
+   └─ Reports to Main Agent:
+      - Failed steps
+      - Error messages
+      - Failure log
+      - Exit code
    ↓
-3. If agent teams available:
-   ├─ Main Agent: Summarizes test results, prepares report
-   └─ Team Member: Investigates in parallel
-       - kubectl get pods -A
-       - kubectl logs <failed-pods>
-       - SSH to nodes, check systemd services
-       - Review K8s events
-       - Check resources (disk, memory)
+3. Main Agent (Coordinator)
+   ├─ Receives test results
+   └─ Assigns Investigation Team Member:
+      "Check live cluster state for failures"
    ↓
-4. Both agents analyze:
-   - Main: Test execution patterns, step failures
-   - Team: Live cluster state, logs, service health
+4. Investigation Team Member (in parallel)
+   └─ Investigates cluster (read-only):
+      - kubectl get pods -A
+      - kubectl logs <failed-pods>
+      - kubectl get events -A
+      - ssh <node> "systemctl status <service>"
+      - ssh <node> "journalctl -u <service>"
+      - Check resources (disk, memory, CPU)
    ↓
-5. Combined findings:
-   - What failed (test steps)
-   - Why it failed (root cause from investigation)
-   - Cluster state (from team member)
-   - How to fix it (recommendations)
+5. Main Agent Synthesizes:
+   ├─ Test perspective: Which steps failed
+   ├─ Cluster perspective: Live state findings
+   └─ Combined root cause analysis
    ↓
-6. User decides:
+6. Present to User:
+   - Summary of failures
+   - Root cause (from combined analysis)
+   - Current cluster state
+   - Recommended fixes
+   - Next steps
+   ↓
+7. User decides:
    - Apply fix and retest
    - Manual investigation
    - Tear down cluster
 ```
 
-**Key benefit:** Investigation starts immediately while test results are being processed, reducing time to diagnosis.
+**Key benefits:**
+- **Parallel investigation:** Starts immediately when failure detected
+- **Multiple perspectives:** Test execution + live cluster state
+- **Faster diagnosis:** No sequential waiting
+- **Coordinated response:** Single coherent analysis from multiple sources
 
 ### Team Member Investigation Scope
 

@@ -52,7 +52,7 @@ okhttp = "5.3.2"
 # Apache
 sshd = "2.16.0"
 commons-io = "2.21.0"
-commons-text = "1.13.0"
+commons-text = "1.15.0"
 
 # Cassandra
 cassandra-driver = "4.19.2"

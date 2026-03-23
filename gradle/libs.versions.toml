@@ -71,7 +71,7 @@ opentelemetry-agent = "2.26.0"
 # Gradle Plugins
 shadow = "9.3.2"
 versions = "0.53.0"
-ktlint = "14.0.1"
+ktlint = "14.2.0"
 detekt = "1.23.8"
 kover = "0.9.4"
 jib = "3.5.2"

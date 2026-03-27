@@ -280,10 +280,6 @@ class Init : PicoBaseCommand() {
     private fun extractResourceFiles() {
         eventBus.emit(Event.Setup.WritingSetupScript)
         extractResourceFile("setup_instance.sh", "setup_instance.sh")
-
-        eventBus.emit(Event.Setup.CreatingCassandraDir)
-        File("cassandra").mkdirs()
-        extractResourceFile("cassandra-sidecar.yaml", "cassandra/cassandra-sidecar.yaml")
     }
 
     private fun extractResourceFile(

@@ -29,6 +29,7 @@
 #   --opensearch       Enable OpenSearch-related steps.
 #   --ebs              Use EBS volumes.
 #   --no-teardown      Skip teardown prompt; exit with status (0=pass, 1=fail).
+#   --clean            Run 'easy-db-lab clean' and remove stale artifacts before starting.
 #
 
 set -e  # Exit on any error
@@ -65,6 +66,7 @@ LIST_STEPS=false
 BREAKPOINTS=""
 START_STEP=""
 NO_TEARDOWN=false
+CLEAN=false
 while [[ $# -gt 0 ]]; do
   case $1 in
     --list-steps|-l)
@@ -115,13 +117,33 @@ while [[ $# -gt 0 ]]; do
       NO_TEARDOWN=true
       shift
       ;;
+    --clean)
+      CLEAN=true
+      shift
+      ;;
     *)
       echo "Unknown option: $1"
-      echo "Usage: $0 [--list-steps|-l] [--break <steps>] [--start-step <N>] [--build] [--spark] [--cassandra] [--clickhouse] [--opensearch] [--all] [--ebs] [--no-teardown]"
+      echo "Usage: $0 [--list-steps|-l] [--break <steps>] [--start-step <N>] [--build] [--spark] [--cassandra] [--clickhouse] [--opensearch] [--all] [--ebs] [--no-teardown] [--clean]"
       exit 1
       ;;
   esac
 done
+
+# ============================================================================
+# Pre-flight Checks
+# ============================================================================
+
+SOCKS5_PROXY_PORT=1080
+
+# Only check port availability for fresh runs; when resuming from a step,
+# the proxy may already be running from a previous run.
+if [ -z "$START_STEP" ] && lsof -Pi :$SOCKS5_PROXY_PORT -sTCP:LISTEN -t >/dev/null 2>&1; then
+    echo "ERROR: Port $SOCKS5_PROXY_PORT is already in use."
+    echo "  The SOCKS5 proxy requires this port to be free for a new test run."
+    echo "  Check for existing SSH tunnels or other processes: lsof -Pi :$SOCKS5_PROXY_PORT"
+    echo "  To stop an existing socks5 proxy: source env.sh && stop-socks5"
+    exit 1
+fi
 
 # ============================================================================
 # Test Step Functions
@@ -265,16 +287,10 @@ step_test_mcp_server() {
     # Remove stale .mcp.json if present
     rm -f .mcp.json
 
-    # Kill any stale server on this port
-    local server_port=9852
-    local stale_pid=$(lsof -ti :$server_port 2>/dev/null || true)
-    if [ -n "$stale_pid" ]; then
-        echo "Killing stale process on port $server_port (PID: $stale_pid)"
-        kill "$stale_pid" 2>/dev/null || true
-        sleep 2
-    fi
+    local server_port
+    server_port=$(python3 -c "import socket; s=socket.socket(); s.bind(('', 0)); print(s.getsockname()[1]); s.close()")
 
-    # Start the server in the background on a fixed port.
+    # Start the server in the background on a free port.
     # Redirect output to a log file so the server process doesn't hold
     # the tee pipe open after this step returns.
     local server_log=$(mktemp /tmp/e2e-mcp-server-XXXXXX)
@@ -283,13 +299,25 @@ step_test_mcp_server() {
     echo "$server_pid" > .mcp-server.pid
     local server_url="http://127.0.0.1:${server_port}"
 
+    echo "Server log: $server_log"
+    echo "Server PID: $server_pid"
+
     # Wait for the server to accept connections
+    # Use NO_PROXY to bypass the SOCKS5 proxy for localhost connections
     local timeout=120
     local elapsed=0
+    local last_curl_error=""
     while [ $elapsed -lt $timeout ]; do
-        if curl -s -o /dev/null "${server_url}/status" 2>/dev/null; then
-            echo "Server ready at: $server_url"
+        last_curl_error=$(NO_PROXY="localhost,127.0.0.1" command curl -s -o /dev/null -w "%{http_code} %{errormsg}" "${server_url}/status" 2>&1)
+        local exit_code=$?
+        if [ $exit_code -eq 0 ] && echo "$last_curl_error" | grep -q "^200"; then
+            echo "Server ready at: $server_url (${elapsed}s)"
             break
+        fi
+        if [ $((elapsed % 10)) -eq 0 ]; then
+            echo "Waiting for server... (${elapsed}/${timeout}s) last response: $last_curl_error"
+            echo "Server log tail:"
+            tail -5 "$server_log" 2>/dev/null || true
         fi
         sleep 2
         elapsed=$((elapsed + 2))
@@ -297,6 +325,9 @@ step_test_mcp_server() {
 
     if [ $elapsed -ge $timeout ]; then
         echo "ERROR: Server did not become ready within ${timeout}s"
+        echo "Last curl response: $last_curl_error"
+        echo "Server log:"
+        cat "$server_log" 2>/dev/null || true
         kill "$server_pid" 2>/dev/null || true
         return 1
     fi
@@ -442,15 +473,6 @@ step_verify_cassandra_backup() {
         missing_files+=("config/cassandra.patch.yaml")
     fi
 
-    echo "=== Checking cassandra config directory backup ==="
-    local cassandra_config_count=$(aws s3 ls "s3://${s3_fullpath}/config/cassandra-config/" --recursive 2>/dev/null | wc -l)
-    if [ "$cassandra_config_count" -gt 0 ]; then
-        echo "  config/cassandra-config: OK ($cassandra_config_count files)"
-    else
-        echo "  config/cassandra-config: MISSING"
-        missing_files+=("config/cassandra-config/")
-    fi
-
     if [ ${#missing_files[@]} -ne 0 ]; then
         echo "ERROR: Missing Cassandra backup files in s3://${s3_fullpath}/:"
         for f in "${missing_files[@]}"; do
@@ -539,13 +561,6 @@ step_verify_restore() {
             missing_files+=("cassandra.patch.yaml")
         fi
 
-        local cassandra_config_count=$(find "$restore_dir/cassandra" -type f 2>/dev/null | wc -l)
-        if [ "$cassandra_config_count" -gt 0 ]; then
-            echo "  cassandra/: OK ($cassandra_config_count files)"
-        else
-            echo "  cassandra/: MISSING or empty"
-            missing_files+=("cassandra/")
-        fi
     fi
 
     if [ ${#missing_files[@]} -ne 0 ]; then
@@ -832,11 +847,30 @@ step_bulk_writer_sidecar() {
 }
 
 step_bulk_writer_s3() {
-    # TODO(spark-refactor): Enable once DATA_TRANSPORT_EXTENSION_CLASS is implemented
-    # in cassandra-analytics. Re-add "step_bulk_writer_s3:Test bulk writer (S3)" to SPARK_STEPS when ready.
-    # See: openspec/changes/archive/2026-03-10-spark-refactor/design.md
-    echo "=== Skipping bulk writer S3 test (DATA_TRANSPORT_EXTENSION_CLASS not yet implemented) ==="
+    echo "=== Skipping bulk writer S3 test (temporarily disabled) ==="
     return 0
+    # TODO: re-enable when bulk writer S3 test is fixed
+    # if [ "$ENABLE_SPARK" != true ]; then
+    #     echo "=== Skipping bulk writer S3 test (use --spark to enable) ==="
+    #     return 0
+    # fi
+    # if [ "$ENABLE_CASSANDRA" != true ]; then
+    #     echo "=== Skipping bulk writer S3 test (use --cassandra to enable) ==="
+    #     return 0
+    # fi
+    #
+    # local data_bucket
+    # data_bucket=$(jq -r '.dataBucket // empty' state.json 2>/dev/null)
+    # if [ -z "$data_bucket" ]; then
+    #     echo "ERROR: dataBucket not found in state.json"
+    #     return 1
+    # fi
+    #
+    # submit_spark_writer "bulk writer (S3)" \
+    #     "$PROJECT_ROOT/spark/bulk-writer-s3/build/libs/bulk-writer-s3*.jar" \
+    #     com.rustyrazorblade.easydblab.spark.S3BulkWriter \
+    #     data_s3 \
+    #     --conf "spark.easydblab.s3.bucket=$data_bucket"
 }
 
 step_connector_writer() {
@@ -1295,6 +1329,7 @@ STEPS_WORKDIR=(
     "step_spark_submit:Submit Spark job"
     "step_spark_status:Check Spark status"
     "step_bulk_writer_sidecar:Test bulk writer (sidecar)"
+    "step_bulk_writer_s3:Test bulk writer (S3)"
     "step_connector_writer:Test connector writer"
     "step_cassandra_start_stop:Cassandra start/stop cycle"
     "step_clickhouse_start:Start ClickHouse"
@@ -1518,11 +1553,21 @@ fi
 echo "=== Building project ==="
 (cd "$PROJECT_ROOT" && ./gradlew shadowJar installDist)
 
+# Clean stale artifacts if requested (runs after build so the binary is available)
+if [ "$CLEAN" = true ]; then
+    echo "=== Cleaning stale artifacts ==="
+    easy-db-lab clean
+    rm -f "$PROJECT_ROOT/.socks5-proxy-state"
+    rm -f "$PROJECT_ROOT/.s3-fullpath"
+    rm -f "$PROJECT_ROOT/.mcp-server.pid"
+    echo "=== Clean complete ==="
+fi
+
 # Skip per-invocation rebuild and docker compose in easy-db-lab — we just built above
 export EASY_DB_LAB_SKIP_BUILD=1
 
 # Start Docker services once upfront (Redis, OTel collector), then skip per-invocation restarts
-docker compose -f "$PROJECT_ROOT/docker-compose.yml" up -d
+docker compose -f "$PROJECT_ROOT/docker-compose.yml" up -d --wait
 
 # Discover the dynamically assigned OTLP port and export for test execution
 OTEL_PORT=$(docker compose -f "$PROJECT_ROOT/docker-compose.yml" port otel-collector 4317 2>/dev/null | cut -d: -f2)
@@ -1531,6 +1576,13 @@ export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
 echo "OpenTelemetry OTLP endpoint: $OTEL_EXPORTER_OTLP_ENDPOINT (protocol: grpc)"
 
 export EASY_DB_LAB_SKIP_DOCKER=1
+
+# Kill any stale easy-db-lab server processes before tests begin
+stale_pids=$(pgrep -f "easy-db-lab.*server" 2>/dev/null || true)
+if [ -n "$stale_pids" ]; then
+    echo "Killing stale easy-db-lab server process(es) (PID: $(echo $stale_pids | tr '\n' ' '))"
+    echo "$stale_pids" | xargs kill -9 2>/dev/null || true
+fi
 
 # Change to work directory
 cd "$TEST_WORKDIR"

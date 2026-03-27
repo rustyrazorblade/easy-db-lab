@@ -112,10 +112,9 @@ sealed interface Event {
         @Serializable
         @SerialName("Cassandra.SidecarStopFailed")
         data class SidecarStopFailed(
-            val host: String,
             val error: String,
         ) : Cassandra {
-            override fun toDisplayString(): String = "Warning: Failed to stop cassandra-sidecar on $host: $error"
+            override fun toDisplayString(): String = "Warning: Failed to stop cassandra-sidecar DaemonSet: $error"
 
             override fun isError(): Boolean = true
         }
@@ -141,10 +140,9 @@ sealed interface Event {
         @Serializable
         @SerialName("Cassandra.SidecarRestartFailed")
         data class SidecarRestartFailed(
-            val host: String,
             val error: String,
         ) : Cassandra {
-            override fun toDisplayString(): String = "Warning: Failed to restart cassandra-sidecar on $host: $error"
+            override fun toDisplayString(): String = "Warning: Failed to restart cassandra-sidecar DaemonSet: $error"
 
             override fun isError(): Boolean = true
         }
@@ -158,10 +156,9 @@ sealed interface Event {
         @Serializable
         @SerialName("Cassandra.SidecarStartFailed")
         data class SidecarStartFailed(
-            val host: String,
             val error: String,
         ) : Cassandra {
-            override fun toDisplayString(): String = "Warning: Failed to start cassandra-sidecar on $host: $error"
+            override fun toDisplayString(): String = "Warning: Failed to start cassandra-sidecar DaemonSet: $error"
 
             override fun isError(): Boolean = true
         }
@@ -5312,12 +5309,6 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("Setup.CreatingCassandraDir")
-        data object CreatingCassandraDir : Setup {
-            override fun toDisplayString(): String = "Creating cassandra directory and writing sidecar config"
-        }
-
-        @Serializable
         @SerialName("Setup.WorkspaceInitialized")
         data class WorkspaceInitialized(
             val cassandraInstances: Int,
@@ -5481,6 +5472,21 @@ sealed interface Event {
             val remoteDir: String,
         ) : Ssh {
             override fun toDisplayString(): String = "Uploading directory $localDir to $remoteDir"
+        }
+    }
+
+    // =========================================================================
+    // Event.Server — Server lifecycle events
+    // =========================================================================
+
+    @Serializable
+    sealed interface Server : Event {
+        @Serializable
+        @SerialName("Server.InfrastructureGone")
+        data class InfrastructureGone(
+            val vpcName: String,
+        ) : Server {
+            override fun toDisplayString(): String = "Infrastructure gone: VPC '$vpcName' no longer exists. Shutting down server."
         }
     }
 }

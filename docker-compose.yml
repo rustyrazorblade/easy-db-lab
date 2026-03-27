@@ -5,6 +5,11 @@ services:
     command: ["valkey-server", "--port", "6399"]
     ports:
       - "6399:6399"
+    healthcheck:
+      test: ["CMD", "valkey-cli", "-p", "6399", "ping"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.118.0
     container_name: easydblab-otel-collector

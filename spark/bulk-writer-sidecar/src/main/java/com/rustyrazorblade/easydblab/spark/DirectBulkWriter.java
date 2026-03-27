@@ -53,10 +53,10 @@ public class DirectBulkWriter {
             Dataset<Row> df = config.generateTestData(spark);
 
             Map<String, String> writeOptions = config.buildBulkWriteOptions();
-            writeOptions.put(SparkJobConfig.OPT_DATA_TRANSPORT, "DIRECT");
+            writeOptions.put(SparkJobConfig.OPT_DATA_TRANSPORT, SparkJobConfig.TRANSPORT_DIRECT);
 
             System.out.println("Writing to " + config.getKeyspace() + "." + config.getTable() +
-                " via DIRECT transport");
+                " via " + SparkJobConfig.TRANSPORT_DIRECT + " transport");
 
             df.write()
                 .format(SparkJobConfig.CASSANDRA_DATA_SINK)

@@ -1,293 +1,128 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
-import com.rustyrazorblade.easydblab.configuration.Host
-import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
-import com.rustyrazorblade.easydblab.ssh.Response
+import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.sidecar.SidecarManifestBuilder
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
+import org.koin.core.module.dsl.factoryOf
 import org.koin.dsl.module
 import org.mockito.kotlin.any
-import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 
 /**
- * Test suite for SidecarService following TDD principles.
- *
- * These tests verify cassandra-sidecar lifecycle operations (start, stop, restart)
- * and status checks using mocked SSH operations.
+ * Tests for DefaultSidecarService — K3s DaemonSet lifecycle operations.
  */
 class SidecarServiceTest : BaseKoinTest() {
-    private lateinit var mockRemoteOps: RemoteOperationsService
+    private lateinit var mockK8sService: K8sService
+    private lateinit var mockClusterStateManager: ClusterStateManager
     private lateinit var sidecarService: SidecarService
 
-    private val testHost =
-        Host(
-            public = "54.123.45.67",
-            private = "10.0.1.10",
-            alias = "db0",
+    private val testControlHost =
+        ClusterHost(
+            publicIp = "54.123.45.67",
+            privateIp = "10.0.1.10",
+            alias = "control0",
             availabilityZone = "us-west-2a",
+            instanceId = "i-control0",
+        )
+
+    private val testClusterState =
+        ClusterState(
+            name = "test-cluster",
+            versions = null,
+            clusterId = "test-cluster-id",
         )
 
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
-                single<RemoteOperationsService> { mockRemoteOps }
-                factory<SidecarService> { DefaultSidecarService(get(), get()) }
+                single { mockK8sService }
+                single { mockClusterStateManager }
+                single { TemplateService(get(), get()) }
+                factoryOf(::SidecarManifestBuilder)
+                factory<SidecarService> {
+                    DefaultSidecarService(get(), get(), get())
+                }
             },
         )
 
     @BeforeEach
     fun setupMocks() {
-        mockRemoteOps = mock()
+        mockK8sService = mock()
+        mockClusterStateManager = mock()
         sidecarService = getKoin().get()
+
+        whenever(mockClusterStateManager.load()).thenReturn(testClusterState)
+        whenever(mockK8sService.applyResource(any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.deleteResourcesByLabel(any(), any(), any(), any()))
+            .thenReturn(Result.success(Unit))
+        whenever(mockK8sService.rolloutRestartDaemonSet(any(), any(), any()))
+            .thenReturn(Result.success(Unit))
     }
 
-    // ========== START OPERATION TESTS ==========
-
     @Test
-    fun `start should execute systemctl start command successfully`() {
-        // Given
-        val expectedCommand = "sudo systemctl start cassandra-sidecar"
-        val successResponse = Response(text = "", stderr = "")
-        whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(expectedCommand), any(), any()))
-            .thenReturn(successResponse)
+    fun `deploy applies all resources from manifest builder`() {
+        val result = sidecarService.deploy(testControlHost, "ghcr.io/apache/cassandra-sidecar:latest")
 
-        // When
-        val result = sidecarService.start(testHost)
-
-        // Then
         assertThat(result.isSuccess).isTrue()
-        verify(mockRemoteOps).executeRemotely(eq(testHost), eq(expectedCommand), any(), any())
+        // ConfigMap + DaemonSet = 2 resources
+        verify(mockK8sService, times(2)).applyResource(any(), any())
     }
 
     @Test
-    fun `start should return failure when SSH operation throws exception`() {
-        // Given
-        val expectedCommand = "sudo systemctl start cassandra-sidecar"
-        whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(expectedCommand), any(), any()))
-            .thenThrow(RuntimeException("Connection refused"))
+    fun `deploy returns failure when k8s apply fails`() {
+        whenever(mockK8sService.applyResource(any(), any()))
+            .thenReturn(Result.failure(RuntimeException("K8s unreachable")))
 
-        // When
-        val result = sidecarService.start(testHost)
+        val result = sidecarService.deploy(testControlHost, "ghcr.io/apache/cassandra-sidecar:latest")
 
-        // Then
         assertThat(result.isFailure).isTrue()
-        assertThat(result.exceptionOrNull())
-            .hasMessageContaining("Connection refused")
+        assertThat(result.exceptionOrNull()).hasMessageContaining("K8s unreachable")
     }
 
-    // ========== STOP OPERATION TESTS ==========
-
     @Test
-    fun `stop should execute systemctl stop command successfully`() {
-        // Given
-        val expectedCommand = "sudo systemctl stop cassandra-sidecar"
-        val successResponse = Response(text = "", stderr = "")
-        whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(expectedCommand), any(), any()))
-            .thenReturn(successResponse)
+    fun `undeploy deletes daemonset resources by label`() {
+        val result = sidecarService.undeploy(testControlHost)
 
-        // When
-        val result = sidecarService.stop(testHost)
-
-        // Then
         assertThat(result.isSuccess).isTrue()
-        verify(mockRemoteOps).executeRemotely(eq(testHost), eq(expectedCommand), any(), any())
+        verify(mockK8sService).deleteResourcesByLabel(any(), any(), any(), any())
     }
 
     @Test
-    fun `stop should return failure when SSH operation throws exception`() {
-        // Given
-        val expectedCommand = "sudo systemctl stop cassandra-sidecar"
-        whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(expectedCommand), any(), any()))
-            .thenThrow(RuntimeException("Connection timeout"))
+    fun `undeploy returns failure when k8s delete fails`() {
+        whenever(mockK8sService.deleteResourcesByLabel(any(), any(), any(), any()))
+            .thenReturn(Result.failure(RuntimeException("Delete failed")))
 
-        // When
-        val result = sidecarService.stop(testHost)
+        val result = sidecarService.undeploy(testControlHost)
 
-        // Then
         assertThat(result.isFailure).isTrue()
-        assertThat(result.exceptionOrNull())
-            .hasMessageContaining("Connection timeout")
+        assertThat(result.exceptionOrNull()).hasMessageContaining("Delete failed")
     }
 
-    // ========== RESTART OPERATION TESTS ==========
-
     @Test
-    fun `restart should execute systemctl restart command successfully`() {
-        // Given
-        val expectedCommand = "sudo systemctl restart cassandra-sidecar"
-        val successResponse = Response(text = "", stderr = "")
-        whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(expectedCommand), any(), any()))
-            .thenReturn(successResponse)
+    fun `restart triggers daemonset rolling restart`() {
+        val result = sidecarService.restart(testControlHost)
 
-        // When
-        val result = sidecarService.restart(testHost)
-
-        // Then
         assertThat(result.isSuccess).isTrue()
-        verify(mockRemoteOps).executeRemotely(eq(testHost), eq(expectedCommand), any(), any())
+        verify(mockK8sService).rolloutRestartDaemonSet(any(), any(), any())
     }
 
     @Test
-    fun `restart should return failure when SSH operation throws exception`() {
-        // Given
-        val expectedCommand = "sudo systemctl restart cassandra-sidecar"
-        whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(expectedCommand), any(), any()))
-            .thenThrow(RuntimeException("Timeout restarting service"))
+    fun `restart returns failure when k8s rollout fails`() {
+        whenever(mockK8sService.rolloutRestartDaemonSet(any(), any(), any()))
+            .thenReturn(Result.failure(RuntimeException("Rollout failed")))
 
-        // When
-        val result = sidecarService.restart(testHost)
+        val result = sidecarService.restart(testControlHost)
 
-        // Then
         assertThat(result.isFailure).isTrue()
-        assertThat(result.exceptionOrNull())
-            .hasMessageContaining("Timeout restarting service")
-    }
-
-    // ========== IS RUNNING TESTS ==========
-
-    @Test
-    fun `isRunning should return true when cassandra-sidecar is active`() {
-        // Given
-        val expectedCommand = "sudo systemctl is-active cassandra-sidecar"
-        val activeResponse = Response(text = "active", stderr = "")
-        whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(expectedCommand), any(), any()))
-            .thenReturn(activeResponse)
-
-        // When
-        val result = sidecarService.isRunning(testHost)
-
-        // Then
-        assertThat(result.isSuccess).isTrue()
-        assertThat(result.getOrNull()).isTrue()
-        verify(mockRemoteOps).executeRemotely(eq(testHost), eq(expectedCommand), any(), any())
-    }
-
-    @Test
-    fun `isRunning should return false when cassandra-sidecar is inactive`() {
-        // Given
-        val expectedCommand = "sudo systemctl is-active cassandra-sidecar"
-        val inactiveResponse = Response(text = "inactive", stderr = "")
-        whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(expectedCommand), any(), any()))
-            .thenReturn(inactiveResponse)
-
-        // When
-        val result = sidecarService.isRunning(testHost)
-
-        // Then
-        assertThat(result.isSuccess).isTrue()
-        assertThat(result.getOrNull()).isFalse()
-        verify(mockRemoteOps).executeRemotely(eq(testHost), eq(expectedCommand), any(), any())
-    }
-
-    @Test
-    fun `isRunning should return false when cassandra-sidecar is in failed state`() {
-        // Given
-        val expectedCommand = "sudo systemctl is-active cassandra-sidecar"
-        val failedResponse = Response(text = "failed", stderr = "")
-        whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(expectedCommand), any(), any()))
-            .thenReturn(failedResponse)
-
-        // When
-        val result = sidecarService.isRunning(testHost)
-
-        // Then
-        assertThat(result.isSuccess).isTrue()
-        assertThat(result.getOrNull()).isFalse()
-        verify(mockRemoteOps).executeRemotely(eq(testHost), eq(expectedCommand), any(), any())
-    }
-
-    @Test
-    fun `isRunning should handle active status with whitespace`() {
-        // Given
-        val expectedCommand = "sudo systemctl is-active cassandra-sidecar"
-        val activeResponse = Response(text = "active\n", stderr = "")
-        whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(expectedCommand), any(), any()))
-            .thenReturn(activeResponse)
-
-        // When
-        val result = sidecarService.isRunning(testHost)
-
-        // Then
-        assertThat(result.isSuccess).isTrue()
-        assertThat(result.getOrNull()).isTrue()
-    }
-
-    @Test
-    fun `isRunning should be case insensitive for active status`() {
-        // Given
-        val expectedCommand = "sudo systemctl is-active cassandra-sidecar"
-        val activeResponse = Response(text = "ACTIVE", stderr = "")
-        whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(expectedCommand), any(), any()))
-            .thenReturn(activeResponse)
-
-        // When
-        val result = sidecarService.isRunning(testHost)
-
-        // Then
-        assertThat(result.isSuccess).isTrue()
-        assertThat(result.getOrNull()).isTrue()
-    }
-
-    @Test
-    fun `isRunning should return failure when SSH operation throws exception`() {
-        // Given
-        val expectedCommand = "sudo systemctl is-active cassandra-sidecar"
-        whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(expectedCommand), any(), any()))
-            .thenThrow(RuntimeException("SSH connection lost"))
-
-        // When
-        val result = sidecarService.isRunning(testHost)
-
-        // Then
-        assertThat(result.isFailure).isTrue()
-        assertThat(result.exceptionOrNull())
-            .hasMessageContaining("SSH connection lost")
-    }
-
-    // ========== GET STATUS TESTS ==========
-
-    @Test
-    fun `getStatus should return status output successfully`() {
-        // Given
-        val expectedCommand = "sudo systemctl status cassandra-sidecar"
-        val statusOutput =
-            """
-            cassandra-sidecar.service - Cassandra Sidecar Server
-               Loaded: loaded (/etc/systemd/system/cassandra-sidecar.service; enabled)
-               Active: active (running) since Mon 2024-01-15 10:00:00 UTC; 2h ago
-            """.trimIndent()
-        val successResponse = Response(text = statusOutput, stderr = "")
-        whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(expectedCommand), any(), any()))
-            .thenReturn(successResponse)
-
-        // When
-        val result = sidecarService.getStatus(testHost)
-
-        // Then
-        assertThat(result.isSuccess).isTrue()
-        assertThat(result.getOrNull()).isEqualTo(statusOutput)
-        verify(mockRemoteOps).executeRemotely(eq(testHost), eq(expectedCommand), any(), any())
-    }
-
-    @Test
-    fun `getStatus should return failure when SSH operation throws exception`() {
-        // Given
-        val expectedCommand = "sudo systemctl status cassandra-sidecar"
-        whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(expectedCommand), any(), any()))
-            .thenThrow(RuntimeException("Failed to get status"))
-
-        // When
-        val result = sidecarService.getStatus(testHost)
-
-        // Then
-        assertThat(result.isFailure).isTrue()
-        assertThat(result.exceptionOrNull())
-            .hasMessageContaining("Failed to get status")
+        assertThat(result.exceptionOrNull()).hasMessageContaining("Rollout failed")
     }
 }

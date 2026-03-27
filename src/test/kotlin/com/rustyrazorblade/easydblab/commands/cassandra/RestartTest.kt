@@ -37,6 +37,15 @@ class RestartTest : BaseKoinTest() {
             instanceId = "i-db0",
         )
 
+    private val testControlHost =
+        ClusterHost(
+            publicIp = "54.1.2.5",
+            privateIp = "10.0.1.3",
+            alias = "control0",
+            availabilityZone = "us-west-2a",
+            instanceId = "i-control0",
+        )
+
     private val testClusterState =
         ClusterState(
             name = "test-cluster",
@@ -45,6 +54,7 @@ class RestartTest : BaseKoinTest() {
             hosts =
                 mapOf(
                     ServerType.Cassandra to listOf(testCassandraHost),
+                    ServerType.Control to listOf(testControlHost),
                 ),
         )
 

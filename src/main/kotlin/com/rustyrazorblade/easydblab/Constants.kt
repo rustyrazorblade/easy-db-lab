@@ -174,11 +174,6 @@ object Constants {
 
     // Configuration file paths
     object ConfigPaths {
-        // Cassandra node configs
-        const val CASSANDRA_SIDECAR_CONFIG = "cassandra/cassandra-sidecar.yaml"
-        const val CASSANDRA_REMOTE_SIDECAR_DIR = "/etc/cassandra-sidecar"
-        const val CASSANDRA_REMOTE_SIDECAR_CONFIG = "$CASSANDRA_REMOTE_SIDECAR_DIR/cassandra-sidecar.yaml"
-
         // Local config files
         const val CASSANDRA_PATCH_FILE = "cassandra.patch.yaml"
     }
@@ -272,6 +267,12 @@ object Constants {
         const val DOWNLOAD_URL =
             "https://github.com/grafana/pyroscope-java/releases/download/v$VERSION/pyroscope.jar"
         const val INSTALL_PATH = "/opt/pyroscope/pyroscope.jar"
+    }
+
+    // Cassandra node configuration
+    object Cassandra {
+        /** UID of the cassandra OS user — must match the cassandra-sidecar container image */
+        const val USER_ID = 999L
     }
 
     // Cassandra stress testing configuration

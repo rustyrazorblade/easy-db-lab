@@ -37,6 +37,15 @@ class StopTest : BaseKoinTest() {
             instanceId = "i-db0",
         )
 
+    private val testControlHost =
+        ClusterHost(
+            publicIp = "54.1.2.5",
+            privateIp = "10.0.1.3",
+            alias = "control0",
+            availabilityZone = "us-west-2a",
+            instanceId = "i-control0",
+        )
+
     private val testClusterState =
         ClusterState(
             name = "test-cluster",
@@ -45,6 +54,7 @@ class StopTest : BaseKoinTest() {
             hosts =
                 mapOf(
                     ServerType.Cassandra to listOf(testCassandraHost),
+                    ServerType.Control to listOf(testControlHost),
                 ),
         )
 
@@ -68,7 +78,7 @@ class StopTest : BaseKoinTest() {
 
         whenever(mockClusterStateManager.load()).thenReturn(testClusterState)
         whenever(mockCassandraService.stop(any())).thenReturn(Result.success(Unit))
-        whenever(mockSidecarService.stop(any())).thenReturn(Result.success(Unit))
+        whenever(mockSidecarService.undeploy(any())).thenReturn(Result.success(Unit))
     }
 
     @Test
@@ -80,11 +90,11 @@ class StopTest : BaseKoinTest() {
     }
 
     @Test
-    fun `execute stops sidecar on all nodes`() {
+    fun `execute undeploys sidecar daemonset`() {
         val command = Stop()
         command.execute()
 
-        verify(mockSidecarService).stop(any())
+        verify(mockSidecarService).undeploy(any())
     }
 
     @Test

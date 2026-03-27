@@ -17,9 +17,6 @@ fun ClusterS3Path.config(): ClusterS3Path = resolve(ClusterS3Path.CONFIG_DIR)
 /** Path for Cassandra patch configuration file. */
 fun ClusterS3Path.cassandraPatch(): ClusterS3Path = resolve(ClusterS3Path.CONFIG_DIR).resolve(ClusterS3Path.CASSANDRA_PATCH_FILE)
 
-/** Path for Cassandra configuration directory (local cassandra/ dir). */
-fun ClusterS3Path.cassandraConfig(): ClusterS3Path = resolve(ClusterS3Path.CONFIG_DIR).resolve(ClusterS3Path.CASSANDRA_CONFIG_DIR)
-
 /** Path for cassandra_versions.yaml file. */
 fun ClusterS3Path.cassandraVersions(): ClusterS3Path = resolve(ClusterS3Path.CONFIG_DIR).resolve(ClusterS3Path.CASSANDRA_VERSIONS_FILE)
 

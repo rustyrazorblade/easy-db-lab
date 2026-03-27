@@ -1,14 +1,11 @@
 package com.rustyrazorblade.easydblab.commands.cassandra
 
-import com.fasterxml.jackson.databind.node.ArrayNode
 import com.fasterxml.jackson.databind.node.ObjectNode
-import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
-import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.toHost
 import com.rustyrazorblade.easydblab.events.Event
@@ -107,8 +104,6 @@ class UpdateConfig : PicoBaseCommand() {
             remoteOps.executeRemotely(it, "rm -rf $tempDir").text
 
             eventBus.emit(Event.Cassandra.ConfigUpdated("$it"))
-
-            uploadSidecarConfig(it)
         }
 
         if (restart) {
@@ -116,36 +111,5 @@ class UpdateConfig : PicoBaseCommand() {
                 Restart().apply { this.hosts = this@UpdateConfig.hosts }
             }
         }
-    }
-
-    /**
-     * Upload sidecar config with host's private IP.
-     *
-     * This method modifies the cassandra-sidecar.yaml to set the host-specific IP address
-     * in both the cassandra_instances and driver_parameters sections.
-     */
-    private fun uploadSidecarConfig(host: Host) {
-        val sidecarYaml =
-            context.yaml.readTree(
-                Path.of(Constants.ConfigPaths.CASSANDRA_SIDECAR_CONFIG).toFile().inputStream(),
-            )
-        val instances = sidecarYaml.get("cassandra_instances") as ArrayNode
-        (instances[0] as ObjectNode).put("host", host.private)
-
-        // Update driver_parameters.contact_points
-        val driverParams = sidecarYaml.get("driver_parameters") as ObjectNode
-        val contactPoints = driverParams.putArray("contact_points")
-        contactPoints.add("${host.private}:9042")
-
-        val sidecarTmp = Files.createTempFile("sidecar", ".yaml")
-        context.yaml.writeValue(sidecarTmp.toFile(), sidecarYaml)
-        remoteOps.upload(host, sidecarTmp, "cassandra-sidecar.yaml")
-        sidecarTmp.deleteExisting()
-
-        remoteOps.executeRemotely(
-            host,
-            "sudo mv cassandra-sidecar.yaml ${Constants.ConfigPaths.CASSANDRA_REMOTE_SIDECAR_CONFIG}",
-        )
-        eventBus.emit(Event.Cassandra.SidecarConfigUpdated("$host"))
     }
 }

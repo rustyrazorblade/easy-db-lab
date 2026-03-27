@@ -63,11 +63,12 @@ data class ServerStatusResponse(
 
 /** Server implementation — MCP protocol, REST endpoints, and background services. */
 class McpServer(
-    private val refreshIntervalSeconds: Long = DEFAULT_REFRESH_INTERVAL_SECONDS,
+    private val refreshIntervalSeconds: Long = Constants.Time.DEFAULT_STATUS_REFRESH_SECONDS,
+    private val autoShutdown: Boolean = false,
+    private val vpcName: String? = null,
 ) : KoinComponent {
     companion object {
         private val log = KotlinLogging.logger {}
-        private const val DEFAULT_REFRESH_INTERVAL_SECONDS = 30L
     }
 
     private val context: Context by inject()
@@ -79,7 +80,7 @@ class McpServer(
     private val toolRegistry = McpToolRegistry()
     private val mcpEventListener = McpEventListener()
     private val executionSemaphore = Semaphore(1) // Only allow one tool execution at a time
-    private val statusCache = StatusCache(refreshIntervalSeconds)
+    private val statusCache = StatusCache(refreshIntervalSeconds, autoShutdown, vpcName)
     private var metricsCollector: MetricsCollector? = null
 
     // Status tracking components

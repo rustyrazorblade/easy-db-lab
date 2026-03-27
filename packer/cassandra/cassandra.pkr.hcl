@@ -134,12 +134,7 @@ build {
   }
 
   provisioner "shell" {
-    script = "install/install_sidecar.sh"
-  }
-
-  provisioner "shell" {
     inline = [
-      "sudo mkdir -p /etc/cassandra-sidecar",
       "sudo mkdir -p /mnt/db1/cassandra/import",
       "sudo chown ubuntu:ubuntu /mnt/db1/cassandra/import"
     ]

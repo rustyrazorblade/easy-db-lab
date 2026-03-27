@@ -8,6 +8,10 @@ import com.rustyrazorblade.easydblab.configuration.InfrastructureState
 import com.rustyrazorblade.easydblab.configuration.InfrastructureStatus
 import com.rustyrazorblade.easydblab.configuration.NodeState
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.providers.aws.InstanceDetails
 import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupDetails
 import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupRuleInfo
@@ -24,6 +28,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
@@ -32,6 +37,7 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 import java.time.Instant
+import java.util.concurrent.atomic.AtomicBoolean
 
 class StatusCacheTest : BaseKoinTest() {
     private lateinit var mockClusterStateManager: ClusterStateManager
@@ -154,6 +160,13 @@ class StatusCacheTest : BaseKoinTest() {
                 outboundRules = emptyList(),
             ),
         )
+    }
+
+    @AfterEach
+    fun teardown() {
+        if (::statusCache.isInitialized) {
+            statusCache.stop()
+        }
     }
 
     @Test
@@ -414,5 +427,86 @@ class StatusCacheTest : BaseKoinTest() {
 
         // Should still have cached data
         assertThat(statusCache.getStatus()).isNotNull()
+    }
+
+    @Test
+    fun `auto-shutdown triggers when VPC is not found`() {
+        whenever(mockVpcService.findVpcByName(any())).thenReturn(null)
+
+        val shutdownCalled = AtomicBoolean(false)
+        val capturedEvents = mutableListOf<Event>()
+        val eventBus = getKoin().get<EventBus>()
+        val listener =
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    capturedEvents.add(envelope.event)
+                }
+
+                override fun close() {}
+            }
+        eventBus.addListener(listener)
+
+        try {
+            statusCache =
+                StatusCache(
+                    refreshIntervalSeconds = 3600,
+                    autoShutdown = true,
+                    vpcName = "easy-db-lab-test-cluster",
+                    onShutdown = { shutdownCalled.set(true) },
+                )
+            statusCache.forceRefresh()
+        } finally {
+            eventBus.removeListener(listener)
+        }
+
+        assertThat(shutdownCalled.get()).isTrue()
+        assertThat(capturedEvents).anyMatch { it is Event.Server.InfrastructureGone }
+    }
+
+    @Test
+    fun `auto-shutdown does not trigger when AWS throws an exception`() {
+        whenever(mockVpcService.findVpcByName(any())).thenThrow(RuntimeException("AWS unavailable"))
+
+        val shutdownCalled = AtomicBoolean(false)
+        statusCache =
+            StatusCache(
+                refreshIntervalSeconds = 3600,
+                autoShutdown = true,
+                vpcName = "easy-db-lab-test-cluster",
+                onShutdown = { shutdownCalled.set(true) },
+            )
+        statusCache.forceRefresh()
+
+        assertThat(shutdownCalled.get()).isFalse()
+    }
+
+    @Test
+    fun `auto-shutdown skips check when vpcName is null`() {
+        val shutdownCalled = AtomicBoolean(false)
+        statusCache =
+            StatusCache(
+                refreshIntervalSeconds = 3600,
+                autoShutdown = true,
+                vpcName = null,
+                onShutdown = { shutdownCalled.set(true) },
+            )
+        statusCache.forceRefresh()
+
+        assertThat(shutdownCalled.get()).isFalse()
+    }
+
+    @Test
+    fun `auto-shutdown skips check when vpcName is blank`() {
+        val shutdownCalled = AtomicBoolean(false)
+        statusCache =
+            StatusCache(
+                refreshIntervalSeconds = 3600,
+                autoShutdown = true,
+                vpcName = "  ",
+                onShutdown = { shutdownCalled.set(true) },
+            )
+        statusCache.forceRefresh()
+
+        assertThat(shutdownCalled.get()).isFalse()
     }
 }

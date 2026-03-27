@@ -163,3 +163,4 @@ clusters/
 .devcontainer/claude/
 .s3-fullpath
 .worktrees/
+.mcp-server.pid

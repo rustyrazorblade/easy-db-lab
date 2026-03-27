@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.getControlHost
 import com.rustyrazorblade.easydblab.configuration.toHost
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.CassandraService
@@ -43,20 +44,15 @@ class Stop : PicoBaseCommand() {
         stopSidecar()
     }
 
-    /**
-     * Stop cassandra-sidecar service on Cassandra nodes
-     */
     private fun stopSidecar() {
+        val controlHost = clusterState.getControlHost() ?: return
         eventBus.emit(Event.Cassandra.SidecarStopping)
-
-        hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList, parallel = true) { host ->
-            sidecarService
-                .stop(host.toHost())
-                .onFailure { e ->
-                    eventBus.emit(Event.Cassandra.SidecarStopFailed(host.alias, "${e.message}"))
-                }
-        }
-
-        eventBus.emit(Event.Cassandra.SidecarStopped)
+        sidecarService
+            .undeploy(controlHost)
+            .onSuccess {
+                eventBus.emit(Event.Cassandra.SidecarStopped)
+            }.onFailure { e ->
+                eventBus.emit(Event.Cassandra.SidecarStopFailed("${e.message}"))
+            }
     }
 }

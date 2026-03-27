@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.commands.cassandra
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
-import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -68,26 +67,11 @@ class UpdateConfigTest : BaseKoinTest() {
             num_tokens: 4
             """.trimIndent(),
         )
-
-        // Create required sidecar config
-        File(Constants.ConfigPaths.CASSANDRA_SIDECAR_CONFIG).also { f ->
-            f.parentFile?.mkdirs()
-            f.writeText(
-                """
-                cassandra_instances:
-                  - host: 127.0.0.1
-                driver_parameters:
-                  contact_points:
-                    - "127.0.0.1:9042"
-                """.trimIndent(),
-            )
-        }
     }
 
     @AfterEach
     fun cleanup() {
         File("cassandra.patch.yaml").delete()
-        File(Constants.ConfigPaths.CASSANDRA_SIDECAR_CONFIG).delete()
     }
 
     @Test
@@ -97,15 +81,5 @@ class UpdateConfigTest : BaseKoinTest() {
 
         val output = outputHandler.messages.joinToString("\n")
         assertThat(output).contains("Uploading cassandra.patch.yaml")
-        assertThat(output).contains("Configuration updated")
-    }
-
-    @Test
-    fun `execute uploads sidecar config`() {
-        val command = UpdateConfig()
-        command.execute()
-
-        val output = outputHandler.messages.joinToString("\n")
-        assertThat(output).contains("Sidecar configuration updated")
     }
 }

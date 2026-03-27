@@ -80,7 +80,7 @@ class StartTest : BaseKoinTest() {
 
         whenever(mockClusterStateManager.load()).thenReturn(testClusterState)
         whenever(mockCassandraService.start(any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockSidecarService.start(any())).thenReturn(Result.success(Unit))
+        whenever(mockSidecarService.deploy(any(), any())).thenReturn(Result.success(Unit))
     }
 
     @Test
@@ -89,7 +89,7 @@ class StartTest : BaseKoinTest() {
         command.execute()
 
         verify(mockCassandraService).start(any(), eq(true))
-        verify(mockSidecarService).start(any())
+        verify(mockSidecarService).deploy(any(), any())
     }
 
     @Test

@@ -225,6 +225,13 @@ easy-db-lab cassandra start [options]
 |--------|-------------|---------|
 | `--sleep` | Time between starts in seconds | 120 |
 | `--hosts` | Filter to specific hosts | - |
+| `--sidecar-image` | Container image for the sidecar DaemonSet | `ghcr.io/apache/cassandra-sidecar:latest` |
+
+Use `--sidecar-image` to test a fork or specific version:
+
+```bash
+easy-db-lab cassandra start --sidecar-image ghcr.io/myfork/cassandra-sidecar:my-branch
+```
 
 ### cassandra stop
 

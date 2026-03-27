@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.getControlHost
 import com.rustyrazorblade.easydblab.configuration.toHost
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.CassandraService
@@ -36,10 +37,17 @@ class Start : PicoBaseCommand() {
 
     companion object {
         private const val DEFAULT_SLEEP_BETWEEN_STARTS_SECONDS = 120L
+        const val DEFAULT_SIDECAR_IMAGE = "ghcr.io/apache/cassandra-sidecar:latest"
     }
 
     @Option(names = ["--sleep"], description = ["Time to sleep between starts in seconds"])
     var sleep: Long = DEFAULT_SLEEP_BETWEEN_STARTS_SECONDS
+
+    @Option(
+        names = ["--sidecar-image"],
+        description = ["Container image for the Cassandra sidecar DaemonSet (default: $DEFAULT_SIDECAR_IMAGE)"],
+    )
+    var sidecarImage: String = DEFAULT_SIDECAR_IMAGE
 
     @Mixin
     var hosts = HostsMixin()
@@ -52,12 +60,13 @@ class Start : PicoBaseCommand() {
             cassandraService.start(h).getOrThrow()
         }
 
-        // Start cassandra-sidecar on Cassandra nodes
-        hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList, parallel = true) { host ->
+        // Deploy cassandra-sidecar DaemonSet via K3s
+        val controlHost = clusterState.getControlHost()
+        if (controlHost != null) {
             sidecarService
-                .start(host.toHost())
+                .deploy(controlHost, sidecarImage)
                 .onFailure { e ->
-                    eventBus.emit(Event.Cassandra.SidecarStartFailed(host.alias, "${e.message}"))
+                    eventBus.emit(Event.Cassandra.SidecarStartFailed("${e.message}"))
                 }
         }
 

@@ -41,6 +41,12 @@ class Server : PicoBaseCommand() {
     )
     var refreshInterval: Long = Constants.Time.DEFAULT_STATUS_REFRESH_SECONDS
 
+    @Option(
+        names = ["--auto-shutdown"],
+        description = ["Shut down the server if the cluster VPC is removed"],
+    )
+    var autoShutdown: Boolean = false
+
     companion object {
         private val log = KotlinLogging.logger {}
     }
@@ -62,8 +68,15 @@ class Server : PicoBaseCommand() {
 
         log.info { "Starting easy-db-lab server..." }
 
+        val vpcName =
+            if (autoShutdown && clusterStateManager.exists()) {
+                "easy-db-lab-${clusterStateManager.load().name}"
+            } else {
+                null
+            }
+
         try {
-            val server = McpServer(refreshInterval)
+            val server = McpServer(refreshInterval, autoShutdown, vpcName)
             server.start(port, bind) { actualPort ->
                 // Generate .mcp.json with actual port
                 val config =

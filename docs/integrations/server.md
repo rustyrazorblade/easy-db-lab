@@ -236,6 +236,22 @@ Published every 5 seconds when the cluster is running Cassandra:
 | `compactionCompletedPerSec` | double | Compactions completed per second |
 | `compactionBytesWrittenPerSec` | double | Compaction write throughput (bytes/sec) |
 
+## Auto-Shutdown on Infrastructure Removal
+
+When running the server in unattended or automated scenarios, you can enable automatic shutdown if the cluster's AWS infrastructure is torn down:
+
+```bash
+easy-db-lab server --auto-shutdown
+```
+
+When `--auto-shutdown` is set, the server checks whether the cluster VPC still exists on each status refresh cycle (controlled by `--refresh`). If the VPC is no longer found, the server emits a shutdown event and exits cleanly with code 0.
+
+This is useful when:
+- Running the server alongside an automated test workflow that tears down infrastructure when done
+- Leaving the server running overnight and wanting it to stop automatically after `easy-db-lab down`
+
+**Note:** The check is skipped if no cluster state exists or the VPC name cannot be determined. AWS API errors during the check are logged and ignored — only a confirmed "VPC not found" result triggers shutdown.
+
 ## Notes
 
 - The server requires Docker to be installed

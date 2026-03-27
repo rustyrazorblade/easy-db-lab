@@ -41,7 +41,6 @@ data class ClusterS3Path(
         internal const val K8S_DIR = "k8s"
         internal const val CONFIG_DIR = "config"
         internal const val CASSANDRA_PATCH_FILE = "cassandra.patch.yaml"
-        internal const val CASSANDRA_CONFIG_DIR = "cassandra-config"
         internal const val CASSANDRA_VERSIONS_FILE = "cassandra_versions.yaml"
         internal const val ENV_SCRIPT_FILE = "env.sh"
         internal const val ENVIRONMENT_FILE = "environment.sh"

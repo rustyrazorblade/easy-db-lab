@@ -17,6 +17,8 @@ import com.rustyrazorblade.easydblab.configuration.pyroscope
 import com.rustyrazorblade.easydblab.configuration.s3Path
 import com.rustyrazorblade.easydblab.configuration.spark
 import com.rustyrazorblade.easydblab.configuration.tempo
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kubernetes.getLocalKubeconfigPath
 import com.rustyrazorblade.easydblab.providers.aws.InstanceDetails
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
@@ -43,6 +45,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
+import kotlin.system.exitProcess
 
 /**
  * Background cache for environment status data.
@@ -51,11 +54,13 @@ import kotlin.concurrent.withLock
  * storing the result in memory for instant retrieval via the /status endpoint.
  */
 class StatusCache(
-    private val refreshIntervalSeconds: Long = DEFAULT_REFRESH_INTERVAL_SECONDS,
+    private val refreshIntervalSeconds: Long = Constants.Time.DEFAULT_STATUS_REFRESH_SECONDS,
+    private val autoShutdown: Boolean = false,
+    private val vpcName: String? = null,
+    private val onShutdown: () -> Unit = { exitProcess(0) },
 ) : KoinComponent {
     companion object {
         private val log = KotlinLogging.logger {}
-        private const val DEFAULT_REFRESH_INTERVAL_SECONDS = 30L
         private const val INITIALIZATION_TIMEOUT_SECONDS = 60L
         private const val HOURS_PER_DAY = 24
         private val DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
@@ -77,6 +82,7 @@ class StatusCache(
     }
 
     private val context: Context by inject()
+    private val eventBus: EventBus by inject()
     private val clusterStateManager: ClusterStateManager by inject()
     private val ec2InstanceService: EC2InstanceService by inject()
     private val vpcService: VpcService by inject()
@@ -204,6 +210,25 @@ class StatusCache(
             } catch (e: Exception) {
                 log.warn(e) { "Failed to refresh status cache" }
             }
+            checkVpcExists()
+        }
+    }
+
+    private fun checkVpcExists() {
+        if (!autoShutdown) return
+        if (vpcName.isNullOrBlank()) {
+            log.warn { "Auto-shutdown enabled but no VPC name available; skipping infrastructure check" }
+            return
+        }
+        try {
+            val found = vpcService.findVpcByName(vpcName)
+            if (found == null) {
+                log.warn { "VPC '$vpcName' not found — infrastructure is gone" }
+                eventBus.emit(Event.Server.InfrastructureGone(vpcName))
+                onShutdown()
+            }
+        } catch (e: Exception) {
+            log.warn(e) { "Failed to check VPC existence for '$vpcName'; skipping shutdown" }
         }
     }
 

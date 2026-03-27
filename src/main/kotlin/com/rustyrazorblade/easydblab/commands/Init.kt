@@ -15,6 +15,7 @@ import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.network.CidrBlock
 import com.rustyrazorblade.easydblab.services.CommandExecutor
+import com.rustyrazorblade.easydblab.services.TemplateService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -59,6 +60,7 @@ import kotlin.system.exitProcess
 class Init : PicoBaseCommand() {
     private val userConfig: User by inject()
     private val commandExecutor: CommandExecutor by inject()
+    private val templateService: TemplateService by inject()
 
     companion object {
         private const val DEFAULT_CASSANDRA_INSTANCE_COUNT = 3
@@ -197,6 +199,18 @@ class Init : PicoBaseCommand() {
     )
     var cidr: String = Constants.Vpc.DEFAULT_CIDR
 
+    @Option(
+        names = ["--bcache"],
+        description = ["Enable bcache: use local NVMe as cache device in front of the EBS backing device. Requires --ebs.type and an instance type with local NVMe instance store."],
+    )
+    var bcache = false
+
+    @Option(
+        names = ["--bcache.mode"],
+        description = ["bcache cache mode: writethrough (default, safe) or writeback (higher write performance, small risk of data loss on instance termination)."],
+    )
+    var bcacheMode = "writethrough"
+
     override fun execute() {
         validateParameters()
 
@@ -237,6 +251,10 @@ class Init : PicoBaseCommand() {
         require(ebsThroughput >= 0) { "EBS throughput cannot be negative" }
         // Validate CIDR block format and prefix length
         CidrBlock(cidr)
+        // Validate bcache mode value
+        require(bcacheMode in listOf("writethrough", "writeback")) {
+            "--bcache.mode must be one of: writethrough, writeback (got: $bcacheMode)"
+        }
     }
 
     private fun checkExistingFiles() {
@@ -279,11 +297,24 @@ class Init : PicoBaseCommand() {
 
     private fun extractResourceFiles() {
         eventBus.emit(Event.Setup.WritingSetupScript)
-        extractResourceFile("setup_instance.sh", "setup_instance.sh")
+        extractSetupScript()
 
         eventBus.emit(Event.Setup.CreatingCassandraDir)
         File("cassandra").mkdirs()
         extractResourceFile("cassandra-sidecar.yaml", "cassandra/cassandra-sidecar.yaml")
+    }
+
+    private fun extractSetupScript() {
+        val script =
+            templateService
+                .fromResource(this::class.java, "setup_instance.sh")
+                .substitute(
+                    mapOf(
+                        "BCACHE_ENABLED" to bcache.toString(),
+                        "BCACHE_MODE" to bcacheMode,
+                    ),
+                )
+        File("setup_instance.sh").writeText(script)
     }
 
     private fun extractResourceFile(

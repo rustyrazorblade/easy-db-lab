@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
@@ -38,6 +39,10 @@ class InitTest : BaseKoinTest() {
         outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
 
         whenever(mockClusterStateManager.exists()).thenReturn(false)
+        // TemplateService calls load() when generating setup_instance.sh
+        whenever(mockClusterStateManager.load()).thenReturn(
+            ClusterState(name = "test", versions = mutableMapOf()),
+        )
     }
 
     @AfterEach
@@ -199,6 +204,87 @@ class InitTest : BaseKoinTest() {
             assertThatThrownBy { command.execute() }
                 .isInstanceOf(IllegalArgumentException::class.java)
                 .hasMessageContaining("negative")
+        }
+    }
+
+    @Nested
+    inner class BcacheOptions {
+        @Test
+        fun `execute fails with invalid bcache mode`() {
+            val command = Init()
+            command.clean = true
+            command.bcacheMode = "invalid-mode"
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("--bcache.mode must be one of")
+                .hasMessageContaining("writethrough")
+                .hasMessageContaining("writeback")
+        }
+
+        @Test
+        fun `execute stores bcache config in cluster state`() {
+            val command = Init()
+            command.clean = true
+            command.bcache = true
+            command.bcacheMode = "writeback"
+            command.execute()
+
+            verify(mockClusterStateManager).save(
+                argThat {
+                    initConfig?.bcache == true && initConfig?.bcacheMode == "writeback"
+                },
+            )
+        }
+
+        @Test
+        fun `execute stores bcache disabled by default`() {
+            val command = Init()
+            command.clean = true
+            command.execute()
+
+            verify(mockClusterStateManager).save(
+                argThat {
+                    initConfig?.bcache == false && initConfig?.bcacheMode == "writethrough"
+                },
+            )
+        }
+
+        @Test
+        fun `setup script contains bcache enabled substitution`() {
+            val command = Init()
+            command.clean = true
+            command.bcache = true
+            command.bcacheMode = "writeback"
+            command.execute()
+
+            val scriptContent = File("setup_instance.sh").readText()
+            assertThat(scriptContent).contains("BCACHE_ENABLED=true")
+            assertThat(scriptContent).contains("BCACHE_MODE=writeback")
+        }
+
+        @Test
+        fun `setup script contains bcache disabled substitution by default`() {
+            val command = Init()
+            command.clean = true
+            command.execute()
+
+            val scriptContent = File("setup_instance.sh").readText()
+            assertThat(scriptContent).contains("BCACHE_ENABLED=false")
+            assertThat(scriptContent).contains("BCACHE_MODE=writethrough")
+        }
+
+        @Test
+        fun `setup script does not contain unsubstituted placeholders`() {
+            val command = Init()
+            command.clean = true
+            command.bcache = true
+            command.bcacheMode = "writethrough"
+            command.execute()
+
+            val scriptContent = File("setup_instance.sh").readText()
+            assertThat(scriptContent).doesNotContain("__BCACHE_ENABLED__")
+            assertThat(scriptContent).doesNotContain("__BCACHE_MODE__")
         }
     }
 }

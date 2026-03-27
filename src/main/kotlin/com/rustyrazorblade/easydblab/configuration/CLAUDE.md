@@ -194,6 +194,11 @@ Three independent profiling mechanisms run simultaneously:
 
 See `spec/PYROSCOPE.md` for full architecture details and debugging steps.
 
+## Sidecar Subpackage (`sidecar/`)
+
+- **`SidecarManifestBuilder`** — builds the Cassandra sidecar ConfigMap (config template) + DaemonSet. Runs on all `type=db` nodes with `hostNetwork: true`. An init container (busybox) substitutes `__HOST_IP__` from the Kubernetes Downward API (`status.hostIP`) into the config template at pod startup. Pyroscope Java agent injected via `JAVA_TOOL_OPTIONS` using host-mounted jar at `/usr/local/pyroscope`. Takes `image`, `controlNodeIp`, and `clusterName` as `buildAllResources()` parameters.
+- **Config resource** — `cassandra-sidecar.yaml` stored in `resources/.../configuration/sidecar/`. Uses `__HOST_IP__` placeholder for both `cassandra_instances[0].host` and `driver_parameters.contact_points`.
+
 ## Beyla Subpackage (`beyla/`)
 
 - **`BeylaManifestBuilder`** — builds Beyla eBPF auto-instrumentation ConfigMap + DaemonSet. Runs on all nodes with hostNetwork/hostPID/privileged for eBPF access.

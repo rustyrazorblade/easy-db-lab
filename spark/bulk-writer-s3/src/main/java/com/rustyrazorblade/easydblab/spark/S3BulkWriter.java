@@ -73,17 +73,19 @@ public class S3BulkWriter {
             Dataset<Row> df = config.generateTestData(spark);
 
             Map<String, String> writeOptions = config.buildBulkWriteOptions();
-            writeOptions.put(SparkJobConfig.OPT_DATA_TRANSPORT, "S3_COMPAT");
+            writeOptions.put(SparkJobConfig.OPT_DATA_TRANSPORT, SparkJobConfig.TRANSPORT_S3_COMPAT);
+            writeOptions.put(SparkJobConfig.OPT_DATA_TRANSPORT_EXTENSION_CLASS,
+                EasyDbLabStorageExtension.EXTENSION_CLASS_NAME);
             if (config.getS3Endpoint() != null) {
-                writeOptions.put("storage_client_endpoint_override", config.getS3Endpoint());
+                writeOptions.put(SparkJobConfig.OPT_STORAGE_CLIENT_ENDPOINT_OVERRIDE, config.getS3Endpoint());
             }
-            writeOptions.put("storage_client_max_chunk_size_in_bytes",
+            writeOptions.put(SparkJobConfig.OPT_STORAGE_CLIENT_MAX_CHUNK_SIZE,
                 String.valueOf(SparkJobConfig.S3_MAX_CHUNK_SIZE_BYTES));
-            writeOptions.put("max_size_per_sstable_bundle_in_bytes_s3_transport",
+            writeOptions.put(SparkJobConfig.OPT_MAX_SIZE_PER_SSTABLE_BUNDLE_S3,
                 String.valueOf(SparkJobConfig.S3_MAX_SSTABLE_BUNDLE_BYTES));
 
             System.out.println("Writing to " + config.getKeyspace() + "." + config.getTable() +
-                " via S3_COMPAT transport");
+                " via " + SparkJobConfig.TRANSPORT_S3_COMPAT + " transport");
 
             df.write()
                 .format(SparkJobConfig.CASSANDRA_DATA_SINK)

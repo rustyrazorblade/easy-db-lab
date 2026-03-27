@@ -247,10 +247,6 @@ class ClusterBackupServiceS3IntegrationTest {
                         File(this, "manifest.yaml").writeText("manifest-content")
                     }
                     File(this, "cassandra.patch.yaml").writeText("patch-content")
-                    File(this, "cassandra").apply {
-                        mkdirs()
-                        File(this, "cassandra.yaml").writeText("cassandra-config")
-                    }
                     File(this, "cassandra_versions.yaml").writeText("versions-content")
                     File(this, "environment.sh").writeText("ENV_VAR=value")
                     File(this, "setup_instance.sh").writeText("#!/bin/bash\necho setup")
@@ -267,7 +263,6 @@ class ClusterBackupServiceS3IntegrationTest {
             assertThat(backupResult.isBackedUp(BackupTarget.KUBECONFIG)).isTrue()
             assertThat(backupResult.isBackedUp(BackupTarget.K8S_MANIFESTS)).isTrue()
             assertThat(backupResult.isBackedUp(BackupTarget.CASSANDRA_PATCH)).isTrue()
-            assertThat(backupResult.isBackedUp(BackupTarget.CASSANDRA_CONFIG)).isTrue()
             assertThat(backupResult.isBackedUp(BackupTarget.CASSANDRA_VERSIONS)).isTrue()
             assertThat(backupResult.isBackedUp(BackupTarget.ENVIRONMENT_SCRIPT)).isTrue()
             assertThat(backupResult.isBackedUp(BackupTarget.SETUP_INSTANCE_SCRIPT)).isTrue()

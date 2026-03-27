@@ -2,7 +2,7 @@
 name: e2e-test
 description: Run end-to-end tests for easy-db-lab. Automatically detects what to test based on code changes in the current branch, or allows manual specification of test scope. Use when validating changes, running CI tests, or verifying full system functionality. Runs in background, reports results, and automatically debugs failures.
 allowed-tools: Bash, Read, Grep, Glob, Task
-argument-hint: [--cassandra|--clickhouse|--opensearch|--spark|--all]
+argument-hint: [--cassandra|--clickhouse|--opensearch|--spark|--all] [--clean] [--start-step <N>]
 disable-model-invocation: false
 user-invocable: true
 ---
@@ -17,6 +17,10 @@ User-provided arguments: $ARGUMENTS
 
 If no arguments provided, detect what to test based on code changes in current branch.
 
+If `--clean` is present in arguments, pass `--clean` to `bin/end-to-end-test`.
+
+If `--start-step <N>` is present in arguments, pass it through to `bin/end-to-end-test`. This skips steps 1 through N-1 and starts execution at step N. Useful for resuming after a failure or skipping infrastructure setup when a cluster is already running. When `--start-step` is provided, skip the cluster existence check (Step 1) — a running cluster is assumed.
+
 ## Current Branch Information
 
 Current branch: !`git branch --show-current`
@@ -27,21 +31,33 @@ Recent commits on this branch: !`git log --oneline main..HEAD 2>/dev/null | head
 
 **CRITICAL:** Check if an e2e test cluster is already running before starting new tests.
 
-```bash
-# Check if state.json exists in current directory
-if [ -f state.json ]; then
-    echo "Found existing cluster (state.json exists)"
+**SKIP THIS STEP if `--clean` was provided.** The `--clean` flag tears down any existing environment, so there is no risk of duplicate infrastructure and no need to check status.
 
-    # Check if it's from e2e tests (name contains "test")
-    cluster_name=$(jq -r '.name' state.json)
-    if [[ "$cluster_name" == *"test"* ]]; then
-        echo "E2E test cluster already exists: $cluster_name"
-        echo "CLUSTER_EXISTS=true"
-    fi
+### Infrastructure Status Check
+
+Only perform this check if `--clean` was NOT provided.
+
+**IMPORTANT:** Use `easy-db-lab status` as the sole source of truth for whether infrastructure is running. Do NOT check for `state.json` — it is unreliable and may exist even after a cluster has been torn down.
+
+```bash
+# Always check actual infrastructure status — never gate on state.json
+status_output=$(easy-db-lab status 2>&1)
+
+if echo "$status_output" | grep -q "Infrastructure: UP"; then
+    echo "Infrastructure is UP — active cluster detected"
+    echo "CLUSTER_EXISTS=true"
+else
+    echo "Infrastructure is not UP — safe to proceed with new test"
+    echo "CLUSTER_EXISTS=false"
 fi
 ```
 
-**If cluster exists:**
+**Detection Logic:**
+- `easy-db-lab status` shows `Infrastructure: UP` → Active cluster (do NOT proceed)
+- `easy-db-lab status` shows `Infrastructure: DOWN` → Cluster is down (proceed with tests)
+- `easy-db-lab status` errors or shows no cluster → No cluster (proceed with tests)
+
+**If active cluster exists (CLUSTER_EXISTS=true):**
 
 Do NOT re-run the full test. Instead:
 
@@ -197,58 +213,27 @@ This is an **ABSOLUTE RULE** with no exceptions:
 
 **NO EXCEPTIONS. NEVER USE `rm`.**
 
-## Step 5: Delegate Test Execution to Team Member
+## Step 5: Run Test Directly as Background Bash
 
-**IMPORTANT:** You are the **coordinator**, not the executor.
+**CRITICAL: Do NOT use the Agent tool to delegate test execution.**
 
-### Use Agent Teams Architecture
+Delegating to a subagent traps all test output inside the subagent until the test completes (20+ minutes), making real-time progress reporting impossible. Always run the test directly in the main agent using the Bash tool with `run_in_background: true`.
 
-**Your role (Main Agent - Coordinator):**
-- Determine test scope (from Step 2)
-- Delegate test execution to team member
-- Monitor progress via team member reports
-- Relay updates to user
-- Coordinate investigation when failures occur
-- Synthesize findings and provide recommendations
+### How to Run
 
-**Team Member Role (Test Runner):**
-- Execute `bin/end-to-end-test` with determined flags
-- Monitor output in real-time
-- Report step transitions and outcomes to main agent
-- Complete test run to the end
-- Report final results (pass/fail, exit code)
-
-### Delegation Approach
-
-**If agent teams available (preferred):**
-
-Assign a team member to run the test:
-
-```
-Team member task:
-- Run: bin/end-to-end-test --<flags> --no-teardown 2>&1
-- Monitor output in real-time
-- Report back:
-  * When each step starts: "Step N/TOTAL: <name>"
-  * When steps complete or fail
-  * Progress updates every 3-5 steps
-  * Final outcome (pass/fail, exit code)
-```
-
-You (main agent) then:
-- Relay progress updates to user
-- Coordinate investigation if failures occur
-- Prepare final report
-
-**If agent teams NOT available (fallback):**
-
-You must run the test directly:
+Use the Bash tool with `run_in_background: true`:
 
 ```bash
-bin/end-to-end-test --<determined-flags> --no-teardown 2>&1
+bin/end-to-end-test --<flags> --no-teardown 2>&1
 ```
 
-And handle monitoring yourself (see Step 6).
+The Bash tool result will include an `output_file` path. **Save this path** — you will use it to monitor progress in Step 6.
+
+**IMMEDIATELY after launching the background Bash:**
+1. Tell the user the test has started and which flags are being used
+2. Record the `output_file` path from the Bash tool result
+3. Record `last_reported_step = 0`
+4. Begin monitoring (see Step 6)
 
 ### Test Command Format
 
@@ -272,7 +257,19 @@ EASY_DB_LAB_INSTANCE_TYPE=c5d.4xlarge bin/end-to-end-test --cassandra --no-teard
 
 # Build AMI first (slow)
 bin/end-to-end-test --build --cassandra --no-teardown
+
+# Clean old environment files before starting
+bin/end-to-end-test --clean --cassandra --no-teardown
+
+# Skip infra setup, start from step 21 (e.g. Spark steps on existing cluster)
+bin/end-to-end-test --start-step 21 --spark --cassandra --no-teardown
 ```
+
+**Using `--start-step`:**
+- Skips all steps before N (1-based, matches `--list-steps` output)
+- Requires a cluster already running — skips infra provisioning
+- Use `bin/end-to-end-test --list-steps` to see step numbers
+- When `--start-step` is provided, skip the cluster existence check
 
 **Why `--no-teardown`?**
 - Exits with status code (0=pass, 1=fail)
@@ -310,90 +307,243 @@ bin/end-to-end-test --build --cassandra --no-teardown
    - Costs accumulate per hour for running resources
    - Always tear down when done to avoid unnecessary charges
 
-## Step 6: Coordinate Progress Reporting
+## Step 6: Monitor Progress via Output File
 
-**Your Role as Coordinator:**
+The test runs as a background Bash. You push updates to the user by running a short-lived poller in background, re-launching it on every notification.
 
-Receive progress reports from the test runner team member and relay them to the user.
+### The Poller
 
-### If Using Agent Teams:
-
-**Test runner team member reports:**
-```
-Step N/TOTAL: <step-name>
-Status: Starting/Complete/Failed
-Duration: Xm Ys (if complete)
-Error: <details> (if failed)
+After launching the test, immediately launch this as a background Bash:
+```bash
+sleep 10 && grep "^Step\|^FAILED\|step(s) FAILED\|All tests passed" <output_file>
 ```
 
-**You relay to user in friendly format:**
-```
-✓ Step N/TOTAL: <step-name> - Complete (2m 15s)
-✗ Step N/TOTAL: <step-name> - FAILED
-  Error: <brief description>
+### The Absolute Rule
+
+**In EVERY response you send — whether triggered by a poll notification OR a user message — your FIRST tool call MUST be to re-launch the poller** (unless the test has already finished):
+
+```bash
+sleep 10 && grep "^Step\|^FAILED\|step(s) FAILED\|All tests passed" <output_file>
 ```
 
-### If No Agent Teams (You Run Test):
+Do this BEFORE reading results, BEFORE responding to the user, BEFORE anything else. This is what keeps the loop alive. If you skip this even once, updates stop.
 
-Monitor the test output directly (see patterns below).
+### After Re-launching
+
+Read the output and output a **full cumulative progress report** showing every step seen so far. This lets the user see the full picture without scrolling back:
+
+```
+Progress: Step N/TOTAL
+
+✅ Step 1/TOTAL: <step-name>
+✅ Step 2/TOTAL: <step-name>
+⏭️ Step 3/TOTAL: <step-name> - Skipped
+❌ Step 4/TOTAL: <step-name> - FAILED
+✅ Step 5/TOTAL: <step-name>
+🔄 Step 6/TOTAL: <step-name> - Running...
+```
+
+Use:
+- ✅ for completed steps
+- ❌ for failed steps
+- ⏭️ for skipped steps
+- 🔄 for the currently-running step
+
+### Stop Condition
+
+Stop re-launching when the output contains `All tests passed` or `step(s) FAILED`.
+
+**Example Monitoring Flow:**
+
+```
+[System notifies: new output available]
+→ Check output immediately
+→ Find: Steps 6, 7, 8 completed since last check
+→ Report to user (full cumulative list):
+   "Progress: Step 8/40
+
+    ✅ Step 1/40: Build project
+    ✅ Step 2/40: Check version
+    ✅ Step 3/40: Build packer image
+    ✅ Step 4/40: Set IAM policies
+    ✅ Step 5/40: Initialize cluster
+    ✅ Step 6/40: Setup kubectl
+    ✅ Step 7/40: Wait for K3s
+    ✅ Step 8/40: Verify cluster
+    🔄 Step 9/40: Verify VPC tags - Running..."
+
+[System notifies: new output available]
+→ Check output immediately
+→ Find: Step 9 complete, Step 10 started
+→ Report to user (full cumulative list):
+   "Progress: Step 9/40
+
+    ✅ Step 1/40: Build project
+    ...
+    ✅ Step 9/40: Verify VPC tags
+    🔄 Step 10/40: List hosts - Running..."
+```
+
+**Concrete Execution Timeline:**
+
+```
+Message 1: [You start the test]
+  "Starting e2e tests with --spark. Running in background.
+   Will report each step as it completes."
+
+→ [System notification arrives: new output]
+
+Message 2: [Full progress report after steps 1-2]
+  "Progress: Step 2/40
+
+   ✅ Step 1/40: Build project
+   ✅ Step 2/40: Check version
+   🔄 Step 3/40: Build packer image - Running..."
+
+→ [System notification arrives: new output]
+
+Message 3: [Full progress report after steps 3-5]
+  "Progress: Step 5/40
+
+   ✅ Step 1/40: Build project
+   ✅ Step 2/40: Check version
+   ⏭️ Step 3/40: Build packer image - Skipped
+   ✅ Step 4/40: Set IAM policies
+   ✅ Step 5/40: Initialize cluster
+   🔄 Step 6/40: Setup kubectl - Running..."
+
+...and so on until test completes
+```
+
+**The pattern is simple:**
+- System notifies → You respond immediately
+- Every notification = one message to user with all new steps
+- No gaps, no delays, no missed steps
 
 ### Reporting Format
 
-**1. Initial Status:**
+**1. Initial Status (when test starts):**
 ```
-Starting end-to-end tests with --cassandra flag
-Test scope: Cassandra + Core infrastructure
-Estimated duration: 15-20 minutes
-Test runner: Team member (or: Running directly)
-```
-
-**2. Step Updates:**
-
-Report key steps and milestones:
-```
-✓ Step 1/35: Build project - Complete (2m 15s)
-✓ Step 4/35: Initialize cluster - Complete (8m 30s)
-✓ Step 6/35: Wait for K3s - Cluster ready
-✓ Step 11/35: Setup Cassandra - Complete (3m 45s)
+Starting end-to-end tests with --spark flag
+Test scope: Spark + Cassandra + Core infrastructure
+Estimated duration: 25-35 minutes
+Running in background, will report each step as it progresses
 ```
 
-**3. Progress Milestones:**
+**2. After Every Step — Full Cumulative Report:**
 
-Every 5-10 steps or at key milestones:
+After each notification, output the complete list of all steps seen so far:
 ```
-Progress: 10/35 steps complete
-Current milestone: Cassandra setup starting...
-```
+Progress: Step 5/40
 
-**4. Failures:**
-
-Report immediately:
-```
-✗ Step 23/35: Test VictoriaMetrics - FAILED
-  Error: VictoriaMetrics pod not responding on port 8428
-
-Coordinating investigation...
+✅ Step 1/40: Build project
+✅ Step 2/40: Check version
+⏭️ Step 3/40: Build packer image - Skipped
+✅ Step 4/40: Set IAM policies
+✅ Step 5/40: Initialize cluster
+🔄 Step 6/40: Setup SSH config - Running...
 ```
 
-### Monitoring Patterns
+This lets the user see all progress at a glance without scrolling back.
 
-Test output patterns to watch for:
-- `Step N/TOTAL: <name>` → New step starting
-- `FAILED: Step N - <name>` → Step failed
-- `All tests passed successfully` → Success
-- `N step(s) FAILED` → Failure
-- `===` lines → Step boundaries
+**3. Failures (shown inline in the cumulative list):**
+```
+Progress: Step 23/40
 
-### Key Milestones to Report:
-- Build completed
-- Cluster initialized
-- K3s cluster ready
-- Database started
-- Observability stack deployed
-- Tests running
-- Test completion (pass/fail)
+✅ Step 1/40: Build project
+...
+✅ Step 22/40: Deploy VictoriaMetrics
+❌ Step 23/40: Test VictoriaMetrics - FAILED: pod not responding on port 8428
+🔄 Step 24/40: ... - Running...
 
-**Don't spam:** Report transitions and milestones, not every line of output.
+Checking logs for details...
+```
+
+**4. Long-Running Steps:**
+If a step takes >5 minutes, provide interim update with the same cumulative format, marking the running step with elapsed time:
+```
+🔄 Step 15/40: Wait for Cassandra - Running (5 minutes elapsed)
+```
+
+### Self-Check: Have You Missed Reporting Steps?
+
+**Before sending ANY message to the user, ask yourself:**
+
+1. "When did I last check the output file?"
+2. "What was the last step number I reported?"
+3. "Are there system notifications I haven't responded to?"
+
+**If you realize you've missed steps:**
+
+1. **IMMEDIATELY check the output file**
+2. **Find ALL steps since your last report**
+3. **Report them ALL in your next message**
+4. **Do NOT make excuses or explain why you missed them**
+5. **Just catch up and continue monitoring**
+
+**Example Recovery:**
+```
+[You realize you last reported step 5, but output shows steps 6-10 exist]
+
+Your next message (full cumulative list):
+"Progress: Step 10/40
+
+ ✅ Step 1/40: Build project
+ ✅ Step 2/40: Check version
+ ...
+ ✅ Step 5/40: Initialize cluster
+ ✅ Step 6/40: Setup kubectl
+ ✅ Step 7/40: Wait for K3s
+ ✅ Step 8/40: Verify cluster
+ ✅ Step 9/40: Verify VPC tags
+ ✅ Step 10/40: List hosts
+ 🔄 Step 11/40: ... - Running..."
+```
+
+**Prevention: After sending each message, immediately look for the NEXT system notification.**
+
+### Output Parsing Patterns
+
+Look for these patterns in the output:
+- `Step N/TOTAL: <name>` → New step starting (report immediately)
+- Line starting with `===` followed by success message → Step complete
+- `FAILED: Step N` → Step failed (report immediately)
+- `==========================================` → Step boundary
+- `All tests passed successfully` → All done (success)
+- `N step(s) FAILED` → Test run complete (failure)
+
+**ABSOLUTE RULE: Report EVERY step. No exceptions. No batching. No delays.**
+
+### Common Monitoring Failures and How to Avoid Them
+
+**Failure Pattern 1: "I started the test and then did nothing"**
+- ❌ Wrong: Start test, send one message, wait for user to ask
+- ✅ Right: Start test, send status, watch for notifications, respond to EACH one
+
+**Failure Pattern 2: "I only checked when the user asked"**
+- ❌ Wrong: Passive waiting, only react to user questions
+- ✅ Right: Active monitoring, system notifications trigger immediate action
+
+**Failure Pattern 3: "I batched multiple steps together"**
+- ❌ Wrong: Wait for several steps to complete, report them all at once
+- ✅ Right: Report steps as soon as each notification arrives
+
+**Failure Pattern 4: "I didn't realize the test was progressing"**
+- ❌ Wrong: Assume silence means nothing is happening
+- ✅ Right: System notifications tell you when output changes - respond immediately
+
+**Failure Pattern 5: "I reported some steps but skipped others"**
+- ❌ Wrong: Only report "important" steps or milestones
+- ✅ Right: EVERY step gets reported, no matter how small
+
+**How to Verify You're Monitoring Correctly:**
+
+After each message you send, ask yourself:
+1. "Did I just respond to a system notification?" → Should be YES
+2. "Did I report all steps since my last message?" → Should be YES
+3. "Am I actively waiting for the next notification?" → Should be YES
+
+If any answer is NO, you are failing to monitor correctly.
 
 ## Step 7: Handle Test Results and Auto-Debug
 
@@ -430,88 +580,12 @@ The failure log includes:
 - Kubernetes events
 - Disk usage
 
-**COORDINATE AUTOMATIC DEBUGGING:**
+**AUTO-DEBUG on failure:**
 
-When tests fail, **coordinate parallel investigation using your team**.
-
-### Agent Team Architecture (Preferred)
-
-**You have three agents working together:**
-
-1. **Test Runner Team Member** (already running):
-   - Completes test execution
-   - Reports final results: exit code, failed steps, failure log
-   - Provides test-level context
-
-2. **Investigation Team Member** (you assign when failure detected):
-   - Starts investigating immediately in parallel
-   - Checks live cluster state (read-only)
-   - Tasks:
-     * `kubectl get pods -A` - Check pod status
-     * `kubectl logs <pod> -n <namespace>` - Read logs
-     * `kubectl get events -A --sort-by='.lastTimestamp'` - Recent events
-     * `ssh -F sshConfig <node> "systemctl status <service>"` - Check services
-     * `ssh -F sshConfig <node> "journalctl -u <service> -n 100"` - Service logs
-     * Check resources: disk, memory, CPU
-     * Identify failure patterns
-
-3. **You (Main Agent - Coordinator)**:
-   - Receive test results from test runner
-   - Assign investigation to team member
-   - Receive investigation findings
-   - Synthesize both perspectives:
-     * Test execution failures (what tests failed)
-     * Live cluster state (why they failed)
-   - Present combined analysis to user
-
-**Investigation Team Member is Read-Only:**
-- ✅ CAN: Check status, read logs, inspect resources, SSH to nodes
-- ✅ CAN: Query K8s cluster, check services, view configs
-- ❌ CANNOT: Restart services, modify configs, delete files (`rm`)
-- ❌ CANNOT: Change cluster state or make modifications
-
-### Coordination Flow
-
-```
-Test Fails
-    ↓
-Test Runner → Reports to you: Failed steps, exit code, failure log
-    ↓
-You → Assign Investigation Team Member: Check live cluster state
-    ↓
-Investigation → Reports findings: Pod status, logs, resource state
-    ↓
-You → Synthesize:
-    * Test perspective (what failed)
-    * Cluster perspective (why it failed)
-    * Combined root cause analysis
-    ↓
-Present to User:
-    * Summary of failures
-    * Root cause
-    * Cluster state
-    * Recommended fixes
-```
-
-### Fallback (No Agent Teams)
-
-If agent teams not available, use Task tool to invoke debug-environment:
-
-```
-Use Task tool with:
-  subagent_type: "general-purpose"
-  description: "Debug failed e2e tests"
-  prompt: "Use the debug-environment skill to investigate the test failures. The e2e tests failed with N step(s) failing. The cluster is still running in the current directory. Please diagnose what went wrong."
-```
-
-### Final Report to User
-
-Present findings with:
-- **Test Results:** What steps failed, error messages
-- **Cluster Investigation:** Live state findings from investigation team member
-- **Root Cause Analysis:** Combined understanding from both perspectives
-- **Recommended Fixes:** Specific actions based on findings
-- **Next Steps:** Whether to tear down, fix and retest, or investigate further
+Invoke the `/debug-environment` skill to investigate the live cluster. Report:
+- Which steps failed and their error output
+- Root cause from debug findings
+- Recommended fixes
 
 ### Resume from Failed Step
 
@@ -551,14 +625,16 @@ Test Scope: <flags used>
 Duration: <total time>
 Result: <PASS/FAIL>
 
+All Steps:
+  ✅ Step 1/N: <step-name>
+  ✅ Step 2/N: <step-name>
+  ❌ Step 3/N: <step-name> - <brief reason if known>
+  ✅ Step 4/N: <step-name>
+  ... (all steps, every one)
+
 Steps Executed: <total>
 Steps Passed: <count>
 Steps Failed: <count>
-
-<If failures:>
-Failed Steps:
-  - Step N: <step-name> - <brief reason if known>
-  - Step M: <step-name> - <brief reason if known>
 
 Root Cause (from auto-debug):
 <Summary of findings from debug-environment skill>
@@ -669,6 +745,9 @@ Current approximate costs (per hour):
 
 # Build new AMI first (for packer changes)
 /e2e-test --build --cassandra
+
+# Clean old environment files before starting
+/e2e-test --clean --cassandra
 ```
 
 ### Development Workflow

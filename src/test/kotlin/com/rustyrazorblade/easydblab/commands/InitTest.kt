@@ -129,9 +129,7 @@ class InitTest : BaseKoinTest() {
 
             val output = outputHandler.messages.joinToString("\n")
             assertThat(output).contains("Writing setup_instance.sh")
-            assertThat(output).contains("sidecar config")
             assertThat(File("setup_instance.sh")).exists()
-            assertThat(File("cassandra/cassandra-sidecar.yaml")).exists()
         }
 
         @Test

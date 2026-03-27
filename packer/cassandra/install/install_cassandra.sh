@@ -90,8 +90,8 @@ set -x
 # Trap errors and report line number
 trap 'echo "ERROR: Installation failed at line $LINENO with exit code $?" >&2; exit 1' ERR
 
-# creating cassandra user
-sudo useradd -m cassandra
+# creating cassandra user with UID 999 to match the cassandra-sidecar container image
+sudo useradd -m -u 999 cassandra
 mkdir cassandra
 
 sudo mkdir -p /usr/local/cassandra

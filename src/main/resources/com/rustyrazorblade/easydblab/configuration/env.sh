@@ -175,7 +175,9 @@ curl() {
   if is-tailscale-connected; then
     command curl "$@"
   else
-    ALL_PROXY="socks5h://localhost:$SOCKS5_PROXY_PORT" command curl "$@"
+    ALL_PROXY="socks5h://localhost:$SOCKS5_PROXY_PORT" \
+    NO_PROXY="localhost,127.0.0.1" \
+    command curl "$@"
   fi
 }
 
@@ -266,7 +268,10 @@ start-socks5() {
   fi
 
   # Start SSH dynamic port forwarding (SOCKS5 proxy)
-  ssh -F "$SSH_CONFIG" -N -D "$port" control0 &
+  # Redirect stdin/stdout/stderr to /dev/null so the background process
+  # doesn't inherit any pipe file descriptors from the caller, which would
+  # block the pipe from closing if this is run inside a pipeline.
+  ssh -F "$SSH_CONFIG" -N -D "$port" control0 </dev/null >/dev/null 2>&1 &
   SOCKS5_PROXY_PID=$!
 
   # Wait a moment and verify the process is still running

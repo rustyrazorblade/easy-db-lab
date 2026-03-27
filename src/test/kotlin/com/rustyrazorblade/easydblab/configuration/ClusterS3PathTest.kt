@@ -280,15 +280,6 @@ class ClusterS3PathTest {
     }
 
     @Test
-    fun `cassandraConfig returns correct path`() {
-        val path = ClusterS3Path.root("my-bucket")
-        val cassandraConfigPath = path.cassandraConfig()
-
-        assertThat(cassandraConfigPath.toString())
-            .isEqualTo("s3://my-bucket/config/cassandra-config")
-    }
-
-    @Test
     fun `cassandraVersions returns correct path`() {
         val path = ClusterS3Path.root("my-bucket")
         val cassandraVersionsPath = path.cassandraVersions()

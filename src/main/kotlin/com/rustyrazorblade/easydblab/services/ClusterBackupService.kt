@@ -2,7 +2,6 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
-import com.rustyrazorblade.easydblab.configuration.cassandraConfig
 import com.rustyrazorblade.easydblab.configuration.cassandraPatch
 import com.rustyrazorblade.easydblab.configuration.cassandraVersions
 import com.rustyrazorblade.easydblab.configuration.envScript
@@ -29,7 +28,6 @@ import java.security.MessageDigest
  * - kubeconfig: s3://{bucket}/k3s/kubeconfig
  * - k8s manifests: s3://{bucket}/k8s/
  * - cassandra.patch.yaml: s3://{bucket}/config/cassandra.patch.yaml
- * - cassandra/ directory: s3://{bucket}/config/cassandra-config/
  * - cassandra_versions.yaml: s3://{bucket}/config/cassandra_versions.yaml
  * - env.sh: s3://{bucket}/config/env.sh
  * - environment.sh: s3://{bucket}/config/environment.sh
@@ -223,7 +221,6 @@ enum class BackupTarget(
     KUBECONFIG("kubeconfig", false, { it.kubeconfig() }, "Kubeconfig"),
     K8S_MANIFESTS("k8s", true, { it.k8s() }, "K8s manifests"),
     CASSANDRA_PATCH("cassandra.patch.yaml", false, { it.cassandraPatch() }, "Cassandra patch"),
-    CASSANDRA_CONFIG("cassandra", true, { it.cassandraConfig() }, "Cassandra config"),
     CASSANDRA_VERSIONS("cassandra_versions.yaml", false, { it.cassandraVersions() }, "Cassandra versions"),
     ENV_SCRIPT("env.sh", false, { it.envScript() }, "Env script"),
     ENVIRONMENT_SCRIPT("environment.sh", false, { it.environmentScript() }, "Environment script"),

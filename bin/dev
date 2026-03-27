@@ -211,7 +211,8 @@ cmd_build_analytics() {
     local container_id
     container_id=$(get_container_id)
     if [[ -z "$container_id" ]]; then
-        error "Dev container not running. Run '$(basename "$0") start' first."
+        info "Dev container not running. Starting it..."
+        cmd_start
     fi
     info "Building Cassandra Analytics dependencies..."
     devcontainer exec --workspace-folder "$WORKSPACE_FOLDER" bin/build-cassandra-analytics "$@"
@@ -222,12 +223,15 @@ cmd_test() {
     local container_id
     container_id=$(get_container_id)
     if [[ -z "$container_id" ]]; then
-        error "Dev container not running. Run '$(basename "$0") start' first."
+        info "Dev container not running. Starting it..."
+        cmd_start
     fi
 
     # Check if cassandra-analytics Maven artifacts exist inside the container
     local maven_artifact="/home/node/.m2/repository/org/apache/cassandra/cassandra-analytics-core_spark3_2.12/0.3-SNAPSHOT"
-    if ! devcontainer exec --workspace-folder "$WORKSPACE_FOLDER" test -d "$maven_artifact" 2>/dev/null; then
+    local artifact_check
+    artifact_check=$(devcontainer exec --workspace-folder "$WORKSPACE_FOLDER" bash -c "test -d '$maven_artifact' && echo found" 2>/dev/null || true)
+    if ! echo "$artifact_check" | grep -q "^found$"; then
         info "Cassandra Analytics not found - building automatically..."
         info "(This is a one-time setup, takes a few minutes)"
         cmd_build_analytics

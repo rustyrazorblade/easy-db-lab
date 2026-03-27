@@ -1,7 +1,7 @@
 package com.rustyrazorblade.easydblab.commands.cassandra
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
-import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.commands.PicoCommand
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
@@ -46,11 +47,21 @@ class UseCassandraTest : BaseKoinTest() {
                 ),
         )
 
+    // No-op CommandExecutor — skips DownloadConfig and UpdateConfig sub-commands.
+    // Used to isolate version state mutation from file I/O side effects.
+    private val noopCommandExecutor =
+        object : CommandExecutor {
+            override fun <T : PicoCommand> execute(commandFactory: () -> T): Int = 0
+
+            override fun <T : PicoCommand> schedule(commandFactory: () -> T) {}
+        }
+
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
                 single<ClusterStateManager> { mockClusterStateManager }
                 single { hostOperationsService }
+                single<CommandExecutor> { noopCommandExecutor }
             },
         )
 
@@ -63,23 +74,11 @@ class UseCassandraTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(testClusterState)
         whenever(mockClusterStateManager.exists()).thenReturn(true)
 
-        // UseCassandra chains to UpdateConfig which reads these files
+        // Some tests chain to UpdateConfig — create a patch file for them.
         File("cassandra.patch.yaml").writeText(
             """
             cluster_name: test-cluster
             num_tokens: 4
-            """.trimIndent(),
-        )
-
-        val sidecarDir = File(Constants.ConfigPaths.CASSANDRA_SIDECAR_CONFIG).parentFile
-        sidecarDir?.mkdirs()
-        File(Constants.ConfigPaths.CASSANDRA_SIDECAR_CONFIG).writeText(
-            """
-            cassandra_instances:
-              - host: 127.0.0.1
-            driver_parameters:
-              contact_points:
-                - "127.0.0.1:9042"
             """.trimIndent(),
         )
     }
@@ -87,7 +86,6 @@ class UseCassandraTest : BaseKoinTest() {
     @AfterEach
     fun cleanup() {
         File("cassandra.patch.yaml").delete()
-        File(Constants.ConfigPaths.CASSANDRA_SIDECAR_CONFIG).delete()
     }
 
     @Test

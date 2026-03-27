@@ -156,9 +156,6 @@ class DefaultMyService(...) : AbstractSystemDServiceManager(...), MyService {
 
 ## Examples
 
-### Simple Service (No Custom Logic)
-See `SidecarService` - it uses all default implementations.
-
 ### Service with Custom Behavior
 See `CassandraService` - overrides `restart()` to use a custom script and adds `waitForUpNormal()` method.
 

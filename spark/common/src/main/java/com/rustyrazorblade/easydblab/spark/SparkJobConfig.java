@@ -22,7 +22,8 @@ import java.util.Map;
  *   <li>{@code spark.easydblab.replicationFactor} - Keyspace replication (default: 3)</li>
  *   <li>{@code spark.easydblab.skipDdl} - Skip DDL creation (default: false)</li>
  *   <li>{@code spark.easydblab.compaction} - Compaction strategy (optional)</li>
- *   <li>{@code spark.easydblab.s3.bucket} - S3 bucket for S3 transport (optional)</li>
+ *   <li>{@code spark.easydblab.s3.bucket} - S3 write bucket for S3 transport (required for S3 bulk write)</li>
+ *   <li>{@code spark.easydblab.s3.readBuckets} - Per-DC read buckets (required for S3 bulk write), format: dc1:bucket1,dc2:bucket2</li>
  *   <li>{@code spark.easydblab.s3.endpoint} - S3 endpoint URL (optional)</li>
  * </ul>
  */
@@ -51,7 +52,27 @@ public class SparkJobConfig {
     public static final String OPT_NUMBER_SPLITS = "number_splits";
     public static final String OPT_DATA_TRANSPORT = "data_transport";
 
-    // S3 transport size constants
+    // Transport mode values
+    public static final String TRANSPORT_S3_COMPAT = "S3_COMPAT";
+    public static final String TRANSPORT_DIRECT = "DIRECT";
+
+    // S3 transport-specific options
+    public static final String OPT_DATA_TRANSPORT_EXTENSION_CLASS = "data_transport_extension_class";
+    public static final String OPT_STORAGE_CLIENT_ENDPOINT_OVERRIDE = "storage_client_endpoint_override";
+    public static final String OPT_STORAGE_CLIENT_MAX_CHUNK_SIZE = "storage_client_max_chunk_size_in_bytes";
+    public static final String OPT_MAX_SIZE_PER_SSTABLE_BUNDLE_S3 = "max_size_per_sstable_bundle_in_bytes_s3_transport";
+
+    /**
+     * S3 transport size constants.
+     *
+     * <p>These values are chosen based on AWS S3 limits and cassandra-analytics best practices:
+     * <ul>
+     *   <li>Chunk size: AWS S3 multipart upload part size minimum is 5MB, maximum is 5GB.
+     *       We use 100MB as a reasonable balance between upload parallelism and overhead.</li>
+     *   <li>Bundle size: AWS S3 multipart upload maximum object size is 5TB with up to 10,000 parts.
+     *       We use 5GB to keep bundles manageable for Sidecar download and import operations.</li>
+     * </ul>
+     */
     public static final long S3_MAX_CHUNK_SIZE_BYTES = 100L * 1024 * 1024;       // 100MB
     public static final long S3_MAX_SSTABLE_BUNDLE_BYTES = 5L * 1024 * 1024 * 1024; // 5GB
 
@@ -67,6 +88,15 @@ public class SparkJobConfig {
     public static final String PROP_SKIP_DDL = "spark.easydblab.skipDdl";
     public static final String PROP_COMPACTION = "spark.easydblab.compaction";
     public static final String PROP_S3_BUCKET = "spark.easydblab.s3.bucket";
+    /**
+     * Per-DC read bucket configuration for coordinated multi-cluster S3 bulk writes.
+     * Format: comma-separated {@code clusterId:bucketName} pairs.
+     * Example: {@code dc1:easy-db-lab-data-cluster1,dc2:easy-db-lab-data-cluster2}
+     *
+     * <p>Each DC is a separate easy-db-lab cluster. S3 replication copies SSTable bundles
+     * from the primary write bucket ({@link #PROP_S3_BUCKET}) to each DC's read bucket.
+     */
+    public static final String PROP_S3_READ_BUCKETS = "spark.easydblab.s3.readBuckets";
     public static final String PROP_S3_ENDPOINT = "spark.easydblab.s3.endpoint";
 
     private final String contactPoints;
@@ -201,25 +231,55 @@ public class SparkJobConfig {
         return null;
     }
 
-    private static int getIntProperty(SparkConf conf, String key, int defaultValue) {
-        if (conf.contains(key)) {
-            return Integer.parseInt(conf.get(key));
+    /**
+     * Generic property parser with error handling.
+     *
+     * @param conf SparkConf to read from
+     * @param key property key
+     * @param defaultValue value to return if property not set
+     * @param parser function to parse string to desired type
+     * @return parsed value or default
+     * @throws IllegalArgumentException if value cannot be parsed
+     */
+    private static <T> T getProperty(SparkConf conf, String key, T defaultValue,
+                                     java.util.function.Function<String, T> parser) {
+        if (!conf.contains(key)) {
+            return defaultValue;
         }
-        return defaultValue;
+
+        String value = conf.get(key);
+        try {
+            return parser.apply(value);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException(
+                "Invalid value for " + key + ": '" + value + "'. " +
+                "Expected a valid " + defaultValue.getClass().getSimpleName().toLowerCase() + ".", e);
+        }
+    }
+
+    private static int getIntProperty(SparkConf conf, String key, int defaultValue) {
+        return getProperty(conf, key, defaultValue, Integer::parseInt);
     }
 
     private static long getLongProperty(SparkConf conf, String key, long defaultValue) {
-        if (conf.contains(key)) {
-            return Long.parseLong(conf.get(key));
-        }
-        return defaultValue;
+        return getProperty(conf, key, defaultValue, Long::parseLong);
     }
 
     private static boolean getBooleanProperty(SparkConf conf, String key, boolean defaultValue) {
-        if (conf.contains(key)) {
-            return Boolean.parseBoolean(conf.get(key));
+        if (!conf.contains(key)) {
+            return defaultValue;
         }
-        return defaultValue;
+
+        String value = conf.get(key);
+        if ("true".equalsIgnoreCase(value)) {
+            return true;
+        } else if ("false".equalsIgnoreCase(value)) {
+            return false;
+        } else {
+            throw new IllegalArgumentException(
+                "Invalid value for " + key + ": '" + value + "'. " +
+                "Expected 'true' or 'false'.");
+        }
     }
 
     /**

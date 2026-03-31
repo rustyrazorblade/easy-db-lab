@@ -29,6 +29,7 @@ import io.ktor.server.routing.routing
 import io.ktor.server.sse.SSE
 import io.ktor.server.sse.sse
 import io.ktor.util.collections.ConcurrentMap
+import io.modelcontextprotocol.kotlin.sdk.server.ClientConnection
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.server.ServerOptions
 import io.modelcontextprotocol.kotlin.sdk.server.ServerSession
@@ -117,8 +118,8 @@ class McpServer(
     /**
      * Creates a handler for the get_server_status tool that returns current execution status and messages.
      */
-    private fun createStatusHandler(): (CallToolRequest) -> CallToolResult =
-        { _ ->
+    private fun createStatusHandler(): suspend (ClientConnection, CallToolRequest) -> CallToolResult =
+        { _, _ ->
             val isRunning = executionSemaphore.availablePermits() == 0
             val status =
                 when {
@@ -171,8 +172,8 @@ class McpServer(
      * Creates a tool handler for background execution with proper error handling and status
      * tracking.
      */
-    private fun createToolHandler(): (CallToolRequest) -> CallToolResult =
-        { request ->
+    private fun createToolHandler(): suspend (ClientConnection, CallToolRequest) -> CallToolResult =
+        { _, request ->
             // Try to acquire semaphore without blocking
             if (!executionSemaphore.tryAcquire()) {
                 // Another command is already running

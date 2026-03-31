@@ -1,3 +1,4 @@
+- **Clusters are ephemeral by design.** easy-db-lab spins up temporary test clusters that are destroyed after use. There is no production data, no long-lived deployments, and no users who need to migrate. **Do NOT warn about backwards compatibility** when reviewing PRs or planning changes — it is never a concern here.
 - This is a **general purpose database test tool**, not a Cassandra-specific tool. It supports Cassandra, ClickHouse, OpenSearch, and more. In user-facing text (docs, error messages, comments), use "database" or "db" instead of "Cassandra" unless referring to Cassandra-specific functionality. The `ServerType.Cassandra` / "db" node type is the generic database node — don't assume it's always Cassandra.
 - This is a command line tool.  The user interacts by reading the output.  Do not suggest replacing print statements with logging, because it breaks the UX.
 - **All user-facing output** uses `eventBus.emit(Event.Domain.Type(...))` with domain-specific typed events. Events are defined as sealed data classes in `events/Event.kt` across 28 domain interfaces. See [`events/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/events/CLAUDE.md).
@@ -117,7 +118,7 @@ See [`src/test/.../CLAUDE.md`](src/test/kotlin/com/rustyrazorblade/easydblab/CLA
 - Write new K8s configuration using fabric8. If there are configuration files, store them as a resource and load them with the TemplateService.
 - If you need to modify a K8s configuration, ask if you should migrate it to the new fabric8 based configs in `src/main/kotlin/com/rustyrazorblade/easydblab/configuration/`.
 - Check if the codebase already has a way of accomplishing something before writing new code.
-- When migrating code, it is not necessary to maintain backwards compatibility.
+- When migrating code, it is not necessary to maintain backwards compatibility. Clusters are ephemeral — there are no long-lived deployments that need a migration path.
 - Fail fast is usually preferred.
 - **Never disable functionality as a solution.** If something isn't working, fix the root cause. Adding flags to skip features, making things optional, or suggesting users disable components is not an acceptable solution. When there's a port conflict, assign a different port — don't disable the service. When a feature crashes, fix the crash — don't remove the feature. "Disable it" is never the answer.
 - **Never add memory limiters to OTel collectors or other observability components.** The `memory_limiter` processor causes data to be refused and dropped under load. The nodes have enough memory — let them use it.

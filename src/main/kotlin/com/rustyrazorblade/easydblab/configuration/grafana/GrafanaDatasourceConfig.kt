@@ -45,23 +45,13 @@ data class GrafanaDatasourceConfig(
                             uid = "VictoriaMetrics",
                             url = "http://localhost:8428",
                             isDefault = true,
+                            jsonData = mapOf("httpMethod" to "POST"),
                         ),
                         GrafanaDatasource(
                             name = "VictoriaLogs",
                             type = "victoriametrics-logs-datasource",
                             uid = "victorialogs",
                             url = "http://localhost:9428",
-                        ),
-                        GrafanaDatasource(
-                            name = "ClickHouse",
-                            type = "grafana-clickhouse-datasource",
-                            jsonData =
-                                mapOf(
-                                    "defaultDatabase" to "default",
-                                    "port" to "9000",
-                                    "protocol" to "native",
-                                    "host" to "db0",
-                                ),
                         ),
                         GrafanaDatasource(
                             name = "Tempo",

@@ -179,7 +179,7 @@ class MetricsCollector(
         const val SYSTEM_FILESYSTEM_QUERY =
             """100 * system_filesystem_usage_bytes{state="used"} / (system_filesystem_usage_bytes{state="used"} + system_filesystem_usage_bytes{state="free"})"""
 
-        // Cassandra queries — match Grafana cassandra-condensed.json dashboard
+        // Cassandra queries — match Grafana cassandra-overview.json dashboard
         @Suppress("ktlint:standard:max-line-length")
         const val CASSANDRA_READ_P99_QUERY =
             """histogram_quantile(0.99, sum(rate({__name__=~"org_apache_cassandra_metrics_client_request_latency_read_.+_bucket"}[1m])) by (le))"""

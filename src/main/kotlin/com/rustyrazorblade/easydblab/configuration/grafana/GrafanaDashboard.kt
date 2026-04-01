@@ -75,13 +75,6 @@ enum class GrafanaDashboard(
         jsonFileName = "profiling.json",
         optional = true,
     ),
-    CASSANDRA_CONDENSED(
-        configMapName = "grafana-dashboard-cassandra-condensed",
-        volumeName = "dashboard-cassandra-condensed",
-        mountPath = "/var/lib/grafana/dashboards/cassandra-condensed",
-        jsonFileName = "cassandra-condensed.json",
-        optional = true,
-    ),
     CASSANDRA_OVERVIEW(
         configMapName = "grafana-dashboard-cassandra-overview",
         volumeName = "dashboard-cassandra-overview",
@@ -94,6 +87,13 @@ enum class GrafanaDashboard(
         volumeName = "dashboard-log-investigation",
         mountPath = "/var/lib/grafana/dashboards/log-investigation",
         jsonFileName = "log-investigation.json",
+        optional = true,
+    ),
+    CLUSTER_COMPARISON(
+        configMapName = "grafana-dashboard-cluster-comparison",
+        volumeName = "dashboard-cluster-comparison",
+        mountPath = "/var/lib/grafana/dashboards/cluster-comparison",
+        jsonFileName = "cluster-comparison.json",
         optional = true,
     ),
 }

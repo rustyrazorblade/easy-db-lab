@@ -1,6 +1,8 @@
 ---
 name: grafana-dashboards
-description: Use when doing any work with Grafana dashboards - creating, modifying, debugging, or deploying. Covers the full architecture, file locations, naming conventions, and deployment pipeline.
+description: Use when doing any work with Grafana dashboards - creating, modifying, debugging, or deploying, including editing any .json file in the dashboards/ directory. Covers the full architecture, file locations, naming conventions, deployment pipeline, and design principles.
+triggers:
+  - pattern: "dashboards/*.json"
 ---
 
 # Grafana Dashboards
@@ -217,6 +219,135 @@ sum(rate(counter{job="my-job"}[1m])) by (instance)  # Aggregation
 ```
 
 **Common units:** `ops` (operations/sec), `s` (seconds), `bytes`, `percent`, `short` (plain number)
+
+---
+
+## Dashboard Design Principles
+
+### Layout — Drill Down
+
+Sections should go from high-level to detail as the user scrolls down. For a Cassandra database dashboard the standard order is:
+
+1. **Cluster Overview** — cluster-wide aggregates: throughput, errors, pending compactions, active tasks
+2. **Hardware / OS** — node-level system metrics (filtered to the relevant node type, see below)
+3. **Per-Node detail** — per-node latency, per-table metrics
+4. **Data Status** — SSTable counts, data size, compaction throughput, SSTables per read
+5. **Cassandra Internals** — thread pools, pending/blocked tasks, dropped messages, hinted handoff
+6. **JVM / Garbage Collection** — heap, GC time, application throughput
+
+### Node Filtering by Dashboard Context
+
+Hardware/OS panels should filter to the node type that is the subject of the dashboard — do not show control or unrelated nodes:
+
+- **Database dashboard** → `host_name=~"db.*"`
+- **App/stress dashboard** → `host_name=~"app.*"`
+
+Note: `node_role` label does **not** exist in this stack. Use `host_name` prefix matching only.
+
+Application-level metrics (e.g. `cassandra-easy-stress` throughput) can appear in a database dashboard — they describe the workload against the db nodes and belong in the Cluster Overview section.
+
+### Chart Types
+
+| Scenario | Chart type | Config |
+|----------|-----------|--------|
+| Cluster-wide aggregate (throughput, errors) | Stacked area | `fillOpacity: 80`, `lineWidth: 0`, `stacking.mode: "normal"` |
+| Per-node counts that add up (pending compactions) | Stacked bar | `drawStyle: "bars"`, `fillOpacity: 100`, `stacking.mode: "normal"` |
+| Per-node time series (latency, CPU) | Line | `fillOpacity: 0`, `lineWidth: 1` |
+
+### Latency
+
+**p99 and p999 only.** Never add p50, p75, p95, or p98 to latency panels. They add noise without insight.
+
+### Legend Order
+
+Put the most specific label first — cluster is secondary since single-cluster is the default view:
+
+- `{{host_name}} — {{cluster}}`
+- `{{pool_name}} — {{cluster}}`
+- `{{message_type}} — {{cluster}}`
+
+Never `{{cluster}} — {{host_name}}`.
+
+### MAAC Metric Types
+
+Cassandra metrics from the MAAC exporter are **summaries** (they have a `quantile` label, not `le` buckets). This means:
+
+- `histogram_quantile()` does **not** work on them — there are no `_bucket` series
+- Use `{quantile="0.99"}` directly to select a pre-computed percentile
+- `_count` and `_sum` suffixes are available for computing rates and means
+
+---
+
+## Querying VictoriaMetrics Directly
+
+Always verify metric names and label values against the live cluster before adding or modifying panels. Get the control node IP from `easy-db-lab status` or the cluster state file.
+
+**Base URL:** `http://<control-ip>:8428`
+
+### Discover available metrics
+
+```bash
+curl -s "http://<control-ip>:8428/api/v1/label/__name__/values" | python3 -c "
+import json, sys
+names = json.load(sys.stdin)['data']
+for n in sorted(n for n in names if 'keyword' in n.lower()):
+    print(n)
+"
+```
+
+### Check labels on a metric
+
+```bash
+curl -s "http://<control-ip>:8428/api/v1/query?query=my_metric_name" | python3 -c "
+import json, sys
+results = json.load(sys.stdin)['data']['result']
+print(f'Series: {len(results)}')
+if results:
+    print(json.dumps(results[0]['metric'], indent=2))
+"
+```
+
+### Check unique values for a label
+
+```bash
+curl -s "http://<control-ip>:8428/api/v1/label/host_name/values" | python3 -c "
+import json, sys; print(json.load(sys.stdin)['data'])
+"
+```
+
+### Spot-check a PromQL expression
+
+```bash
+curl -s "http://<control-ip>:8428/api/v1/query?query=rate(my_metric%7Bjob%3D%22cassandra-maac%22%7D%5B1m%5D)" | python3 -c "
+import json, sys
+r = json.load(sys.stdin)
+results = r['data']['result']
+print(f'{len(results)} series')
+for s in results[:3]:
+    print(s['metric'].get('host_name'), s['value'])
+"
+```
+
+### JSON manipulation
+
+Always use Python to edit dashboard JSON — string replacement risks duplicate keys or broken structure:
+
+```bash
+# Validate
+python3 -c "import json; json.load(open('dashboards/my-dashboard.json')); print('valid')"
+
+# Inspect a panel
+python3 -c "
+import json
+with open('dashboards/my-dashboard.json') as f:
+    d = json.load(f)
+p = next(p for p in d['panels'] if p.get('id') == 1)
+print(json.dumps(p, indent=2))
+"
+
+# After any structural edit, re-sort panels by position
+d['panels'].sort(key=lambda p: (p['gridPos']['y'], p['gridPos']['x']))
+```
 
 ---
 

@@ -31,7 +31,9 @@
           "labelSelector": "{hostname=~\"$hostname\"}",
           "queryType": "profile",
           "refId": "A",
-          "groupBy": ["hostname"]
+          "groupBy": [
+            "hostname"
+          ]
         }
       ],
       "title": "CPU Flame Graph",
@@ -59,7 +61,9 @@
           "labelSelector": "{hostname=~\"$hostname\"}",
           "queryType": "profile",
           "refId": "A",
-          "groupBy": ["hostname"]
+          "groupBy": [
+            "hostname"
+          ]
         }
       ],
       "title": "Memory Allocation Flame Graph",
@@ -87,7 +91,9 @@
           "labelSelector": "{hostname=~\"$hostname\"}",
           "queryType": "profile",
           "refId": "A",
-          "groupBy": ["hostname"]
+          "groupBy": [
+            "hostname"
+          ]
         }
       ],
       "title": "Lock Contention Flame Graph",
@@ -115,7 +121,9 @@
           "labelSelector": "{hostname=~\"$hostname\"}",
           "queryType": "profile",
           "refId": "A",
-          "groupBy": ["hostname"]
+          "groupBy": [
+            "hostname"
+          ]
         }
       ],
       "title": "Mutex Contention Flame Graph",
@@ -125,9 +133,38 @@
   "refresh": "",
   "schemaVersion": 38,
   "style": "dark",
-  "tags": ["profiling", "pyroscope", "flamegraph"],
+  "tags": [
+    "profiling",
+    "pyroscope",
+    "flamegraph"
+  ],
   "templating": {
     "list": [
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "definition": "label_values(up, cluster)",
+        "hide": 0,
+        "includeAll": true,
+        "allValue": ".*",
+        "label": "Cluster",
+        "multi": true,
+        "name": "cluster",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(up, cluster)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
       {
         "current": {},
         "datasource": {

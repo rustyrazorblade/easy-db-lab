@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.clusterLabelName
 import com.rustyrazorblade.easydblab.configuration.getHosts
 import com.rustyrazorblade.easydblab.configuration.toHost
 import com.rustyrazorblade.easydblab.services.HostOperationsService
@@ -96,7 +97,7 @@ class SetupInstance : PicoBaseCommand() {
 
         val cassandraHost = clusterState.getHosts(ServerType.Cassandra).first().private
         val controlNodeIp = clusterState.getHosts(ServerType.Control).first().private
-        val clusterName = clusterState.name
+        val clusterName = clusterState.clusterLabelName()
 
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Stress, hosts.hostList, parallel = true) { host ->
             val h = host.toHost()

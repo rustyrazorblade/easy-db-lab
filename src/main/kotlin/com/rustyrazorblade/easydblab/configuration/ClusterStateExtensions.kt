@@ -24,6 +24,12 @@ fun ClusterState.metricsConfigId(): String = "edl-$name-$clusterId".take(Constan
 fun ClusterState.dataBucketName(): String = "${Constants.S3.DATA_BUCKET_PREFIX}$clusterId"
 
 /**
+ * Returns the unique cluster identifier for metric labels: "{name}-{clusterId}"
+ * Used as the value of the `cluster` label on all OTel-scraped metrics.
+ */
+fun ClusterState.clusterLabelName(): String = "$name-$clusterId"
+
+/**
  * Get all instance IDs from all hosts for termination.
  */
 fun ClusterState.getAllInstanceIds(): List<String> = hosts.values.flatten().mapNotNull { it.instanceId.takeIf { id -> id.isNotEmpty() } }

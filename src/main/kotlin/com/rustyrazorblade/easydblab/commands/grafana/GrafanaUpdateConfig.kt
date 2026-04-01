@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.clusterLabelName
 import com.rustyrazorblade.easydblab.configuration.clusterPrefix
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuilder
@@ -175,7 +176,7 @@ class GrafanaUpdateConfig : PicoBaseCommand() {
                 "aws_region" to region,
                 "s3_bucket" to (clusterState.s3Bucket ?: ""),
                 "cluster_s3_prefix" to clusterState.clusterPrefix(),
-                "cluster_name" to (clusterState.initConfig?.name ?: "cluster"),
+                "cluster_name" to clusterState.clusterLabelName(),
             )
 
         log.info {

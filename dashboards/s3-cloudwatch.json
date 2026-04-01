@@ -75,9 +75,15 @@
         },
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "BytesDownloaded" },
+            "matcher": {
+              "id": "byName",
+              "options": "BytesDownloaded"
+            },
             "properties": [
-              { "id": "custom.transform", "value": "negative-Y" }
+              {
+                "id": "custom.transform",
+                "value": "negative-Y"
+              }
             ]
           }
         ]
@@ -91,7 +97,10 @@
       "id": 2,
       "options": {
         "legend": {
-          "calcs": ["mean", "max"],
+          "calcs": [
+            "mean",
+            "max"
+          ],
           "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
@@ -107,7 +116,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "aws_s3_bytes_downloaded_sum{dimension_BucketName=~\"$bucket\"}",
+          "expr": "aws_s3_bytes_downloaded_sum{dimension_BucketName=~\"$bucket\", cluster=~\"$cluster\"}",
           "legendFormat": "BytesDownloaded {{dimension_BucketName}}",
           "refId": "A"
         },
@@ -116,7 +125,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "aws_s3_bytes_uploaded_sum{dimension_BucketName=~\"$bucket\"}",
+          "expr": "aws_s3_bytes_uploaded_sum{dimension_BucketName=~\"$bucket\", cluster=~\"$cluster\"}",
           "legendFormat": "BytesUploaded {{dimension_BucketName}}",
           "refId": "B"
         }
@@ -199,7 +208,10 @@
       "id": 6,
       "options": {
         "legend": {
-          "calcs": ["mean", "max"],
+          "calcs": [
+            "mean",
+            "max"
+          ],
           "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
@@ -215,7 +227,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "aws_s3_get_requests_sum{dimension_BucketName=~\"$bucket\"}",
+          "expr": "aws_s3_get_requests_sum{dimension_BucketName=~\"$bucket\", cluster=~\"$cluster\"}",
           "legendFormat": "GetRequests {{dimension_BucketName}}",
           "refId": "A"
         },
@@ -224,7 +236,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "aws_s3_put_requests_sum{dimension_BucketName=~\"$bucket\"}",
+          "expr": "aws_s3_put_requests_sum{dimension_BucketName=~\"$bucket\", cluster=~\"$cluster\"}",
           "legendFormat": "PutRequests {{dimension_BucketName}}",
           "refId": "B"
         }
@@ -307,7 +319,10 @@
       "id": 10,
       "options": {
         "legend": {
-          "calcs": ["mean", "max"],
+          "calcs": [
+            "mean",
+            "max"
+          ],
           "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
@@ -323,7 +338,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "aws_s3_first_byte_latency_p99{dimension_BucketName=~\"$bucket\"}",
+          "expr": "aws_s3_first_byte_latency_p99{dimension_BucketName=~\"$bucket\", cluster=~\"$cluster\"}",
           "legendFormat": "FirstByteLatency p99 {{dimension_BucketName}}",
           "refId": "A"
         }
@@ -394,7 +409,10 @@
       "id": 12,
       "options": {
         "legend": {
-          "calcs": ["mean", "max"],
+          "calcs": [
+            "mean",
+            "max"
+          ],
           "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
@@ -410,7 +428,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "aws_s3_total_request_latency_p99{dimension_BucketName=~\"$bucket\"}",
+          "expr": "aws_s3_total_request_latency_p99{dimension_BucketName=~\"$bucket\", cluster=~\"$cluster\"}",
           "legendFormat": "TotalRequestLatency p99 {{dimension_BucketName}}",
           "refId": "A"
         }
@@ -484,9 +502,15 @@
         },
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "VolumeReadOps" },
+            "matcher": {
+              "id": "byName",
+              "options": "VolumeReadOps"
+            },
             "properties": [
-              { "id": "custom.transform", "value": "negative-Y" }
+              {
+                "id": "custom.transform",
+                "value": "negative-Y"
+              }
             ]
           }
         ]
@@ -500,7 +524,10 @@
       "id": 21,
       "options": {
         "legend": {
-          "calcs": ["mean", "max"],
+          "calcs": [
+            "mean",
+            "max"
+          ],
           "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
@@ -516,7 +543,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "aws_ebs_volume_read_ops_sum{dimension_VolumeId=~\"$volume\"}",
+          "expr": "aws_ebs_volume_read_ops_sum{dimension_VolumeId=~\"$volume\", cluster=~\"$cluster\"}",
           "legendFormat": "VolumeReadOps {{dimension_VolumeId}}",
           "refId": "A"
         },
@@ -525,7 +552,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "aws_ebs_volume_write_ops_sum{dimension_VolumeId=~\"$volume\"}",
+          "expr": "aws_ebs_volume_write_ops_sum{dimension_VolumeId=~\"$volume\", cluster=~\"$cluster\"}",
           "legendFormat": "VolumeWriteOps {{dimension_VolumeId}}",
           "refId": "B"
         }
@@ -587,9 +614,15 @@
         },
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "VolumeReadBytes" },
+            "matcher": {
+              "id": "byName",
+              "options": "VolumeReadBytes"
+            },
             "properties": [
-              { "id": "custom.transform", "value": "negative-Y" }
+              {
+                "id": "custom.transform",
+                "value": "negative-Y"
+              }
             ]
           }
         ]
@@ -603,7 +636,10 @@
       "id": 22,
       "options": {
         "legend": {
-          "calcs": ["mean", "max"],
+          "calcs": [
+            "mean",
+            "max"
+          ],
           "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
@@ -619,7 +655,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "aws_ebs_volume_read_bytes_sum{dimension_VolumeId=~\"$volume\"}",
+          "expr": "aws_ebs_volume_read_bytes_sum{dimension_VolumeId=~\"$volume\", cluster=~\"$cluster\"}",
           "legendFormat": "VolumeReadBytes {{dimension_VolumeId}}",
           "refId": "A"
         },
@@ -628,7 +664,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "aws_ebs_volume_write_bytes_sum{dimension_VolumeId=~\"$volume\"}",
+          "expr": "aws_ebs_volume_write_bytes_sum{dimension_VolumeId=~\"$volume\", cluster=~\"$cluster\"}",
           "legendFormat": "VolumeWriteBytes {{dimension_VolumeId}}",
           "refId": "B"
         }
@@ -699,7 +735,10 @@
       "id": 23,
       "options": {
         "legend": {
-          "calcs": ["mean", "max"],
+          "calcs": [
+            "mean",
+            "max"
+          ],
           "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
@@ -715,7 +754,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "aws_ebs_volume_queue_length_average{dimension_VolumeId=~\"$volume\"}",
+          "expr": "aws_ebs_volume_queue_length_average{dimension_VolumeId=~\"$volume\", cluster=~\"$cluster\"}",
           "legendFormat": "QueueLength {{dimension_VolumeId}}",
           "refId": "A"
         }
@@ -786,7 +825,10 @@
       "id": 24,
       "options": {
         "legend": {
-          "calcs": ["mean", "max"],
+          "calcs": [
+            "mean",
+            "max"
+          ],
           "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
@@ -802,7 +844,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "aws_ebs_burst_balance_average{dimension_VolumeId=~\"$volume\"}",
+          "expr": "aws_ebs_burst_balance_average{dimension_VolumeId=~\"$volume\", cluster=~\"$cluster\"}",
           "legendFormat": "BurstBalance {{dimension_VolumeId}}",
           "refId": "A"
         }
@@ -889,7 +931,9 @@
       "id": 31,
       "options": {
         "legend": {
-          "calcs": ["max"],
+          "calcs": [
+            "max"
+          ],
           "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
@@ -905,7 +949,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "aws_ec2_status_check_failed_instance_maximum{dimension_InstanceId=~\"$instance\"}",
+          "expr": "aws_ec2_status_check_failed_instance_maximum{dimension_InstanceId=~\"$instance\", cluster=~\"$cluster\"}",
           "legendFormat": "InstanceCheck {{dimension_InstanceId}}",
           "refId": "A"
         },
@@ -914,7 +958,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "aws_ec2_status_check_failed_system_maximum{dimension_InstanceId=~\"$instance\"}",
+          "expr": "aws_ec2_status_check_failed_system_maximum{dimension_InstanceId=~\"$instance\", cluster=~\"$cluster\"}",
           "legendFormat": "SystemCheck {{dimension_InstanceId}}",
           "refId": "B"
         }
@@ -997,7 +1041,9 @@
       "id": 33,
       "options": {
         "legend": {
-          "calcs": ["lastNotNull"],
+          "calcs": [
+            "lastNotNull"
+          ],
           "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
@@ -1013,7 +1059,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "aws_s3_bucket_size_bytes_average{dimension_BucketName=~\"$bucket\", dimension_StorageType=\"StandardStorage\"}",
+          "expr": "aws_s3_bucket_size_bytes_average{dimension_BucketName=~\"$bucket\", dimension_StorageType=\"StandardStorage\", cluster=~\"$cluster\"}",
           "legendFormat": "BucketSize {{dimension_BucketName}}",
           "refId": "A"
         }
@@ -1084,7 +1130,9 @@
       "id": 34,
       "options": {
         "legend": {
-          "calcs": ["lastNotNull"],
+          "calcs": [
+            "lastNotNull"
+          ],
           "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
@@ -1100,7 +1148,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "aws_s3_number_of_objects_average{dimension_BucketName=~\"$bucket\", dimension_StorageType=\"AllStorageTypes\"}",
+          "expr": "aws_s3_number_of_objects_average{dimension_BucketName=~\"$bucket\", dimension_StorageType=\"AllStorageTypes\", cluster=~\"$cluster\"}",
           "legendFormat": "NumberOfObjects {{dimension_BucketName}}",
           "refId": "A"
         }
@@ -1112,7 +1160,13 @@
   "refresh": "5m",
   "schemaVersion": 38,
   "style": "dark",
-  "tags": ["s3", "ec2", "ebs", "aws", "yace"],
+  "tags": [
+    "s3",
+    "ec2",
+    "ebs",
+    "aws",
+    "yace"
+  ],
   "templating": {
     "list": [
       {
@@ -1133,6 +1187,31 @@
         "regex": "",
         "skipUrlSync": false,
         "type": "datasource"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "definition": "label_values(up, cluster)",
+        "hide": 0,
+        "includeAll": true,
+        "allValue": ".*",
+        "label": "Cluster",
+        "multi": true,
+        "name": "cluster",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(up, cluster)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
       },
       {
         "current": {},
@@ -1197,6 +1276,20 @@
         "skipUrlSync": false,
         "sort": 1,
         "type": "query"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "VictoriaMetrics"
+        },
+        "filters": [],
+        "hide": 0,
+        "label": "Filters",
+        "name": "filters",
+        "skipUrlSync": false,
+        "type": "adhocfilters",
+        "applyMode": "auto",
+        "baseFilters": []
       }
     ]
   },

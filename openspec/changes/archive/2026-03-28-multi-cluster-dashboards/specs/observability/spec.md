@@ -44,10 +44,3 @@ All dashboards SHALL include a `cluster` multi-select variable and an ad hoc fil
 
 - **WHEN** Grafana loads its datasource configuration
 - **THEN** no datasource of type `grafana-clickhouse-datasource` SHALL be present
-
-#### Scenario: Cluster comparison dashboard appears in Grafana
-
-- **WHEN** `grafana update-config` is run
-- **THEN** a ConfigMap named `grafana-dashboard-cluster-comparison` SHALL be created
-- **AND** the dashboard SHALL be mounted at `/var/lib/grafana/dashboards/cluster-comparison`
-- **AND** the volume mount SHALL use `optional: true` so absence of the file does not block Grafana startup

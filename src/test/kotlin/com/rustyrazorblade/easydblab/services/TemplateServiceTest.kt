@@ -65,6 +65,7 @@ class TemplateServiceTest : BaseKoinTest() {
         val state =
             ClusterState(
                 name = clusterName,
+                clusterId = "test-id",
                 versions = mutableMapOf(),
                 hosts =
                     if (controlHost != null) {
@@ -88,7 +89,7 @@ class TemplateServiceTest : BaseKoinTest() {
 
         assertThat(variables).containsEntry("BUCKET_NAME", "my-test-bucket")
         assertThat(variables).containsEntry("AWS_REGION", "us-east-1")
-        assertThat(variables).containsEntry("CLUSTER_NAME", "test-cluster")
+        assertThat(variables).containsEntry("CLUSTER_NAME", "test-cluster-test-id")
         assertThat(variables).containsEntry("CONTROL_NODE_IP", "10.0.1.100")
     }
 

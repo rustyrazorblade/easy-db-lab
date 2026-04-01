@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.clusterLabelName
 import com.rustyrazorblade.easydblab.configuration.clusterPrefix
 import com.rustyrazorblade.easydblab.configuration.getControlHost
 import com.rustyrazorblade.easydblab.configuration.metricsConfigId
@@ -35,7 +36,7 @@ class TemplateService(
         return mapOf(
             "BUCKET_NAME" to state.dataBucket.ifBlank { state.s3Bucket ?: "" },
             "AWS_REGION" to region,
-            "CLUSTER_NAME" to (state.initConfig?.name ?: "cluster"),
+            "CLUSTER_NAME" to state.clusterLabelName(),
             "CONTROL_NODE_IP" to (controlHost?.privateIp ?: ""),
             "METRICS_FILTER_ID" to buildMetricsFilterId(state),
             "CLUSTER_S3_PREFIX" to buildClusterPrefix(state),

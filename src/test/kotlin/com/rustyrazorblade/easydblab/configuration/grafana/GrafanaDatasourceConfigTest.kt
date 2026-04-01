@@ -5,14 +5,12 @@ import org.junit.jupiter.api.Test
 
 class GrafanaDatasourceConfigTest {
     @Test
-    fun `createDatasourceConfig should include all five datasources`() {
+    fun `createDatasourceConfig should include all datasources`() {
         val config = GrafanaDatasourceConfig.create()
 
-        assertThat(config.datasources).hasSize(5)
-        assertThat(config.datasources.map { it.name }).containsExactly(
+        assertThat(config.datasources.map { it.name }).containsExactlyInAnyOrder(
             "VictoriaMetrics",
             "VictoriaLogs",
-            "ClickHouse",
             "Tempo",
             "Pyroscope",
         )

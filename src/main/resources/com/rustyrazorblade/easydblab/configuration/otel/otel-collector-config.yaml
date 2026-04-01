@@ -131,7 +131,7 @@ processors:
     send_batch_size: 1024
   resource/cluster:
     attributes:
-      - action: insert
+      - action: upsert
         key: cluster
         value: '${env:CLUSTER_NAME}'
   resourcedetection:
@@ -180,10 +180,10 @@ service:
       receivers: [hostmetrics, prometheus]
       processors: [resource/cluster, resourcedetection, k8sattributes, batch]
       exporters: [prometheusremotewrite]
-    # Remote metrics via OTLP (e.g., Spark nodes) — already have host.name and node_role
+    # Remote metrics via OTLP (e.g., Spark nodes) — stamp cluster label to match local metrics
     metrics/otlp:
       receivers: [otlp]
-      processors: [batch]
+      processors: [resource/cluster, batch]
       exporters: [prometheusremotewrite]
     logs/local:
       receivers: [filelog/system, filelog/tools, filelog/cassandra, filelog/clickhouse-server, filelog/clickhouse-keeper]

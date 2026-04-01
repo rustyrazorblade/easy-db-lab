@@ -127,7 +127,7 @@ class ClusterConfigurationServiceTest {
             val envFile = File(tempDir.toFile(), "env.sh")
             assertThat(envFile).exists()
             val content = envFile.readText()
-            assertThat(content).contains("CLUSTER_NAME=\"test-cluster\"")
+            assertThat(content).contains("CLUSTER_NAME=\"test-cluster-cluster-123\"")
         }
     }
 

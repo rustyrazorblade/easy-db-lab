@@ -1,0 +1,14 @@
+[Unit]
+Description=Continuous flamegraph profiler for Cassandra (uploads to Pyroscope each cycle)
+After=cassandra.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/flamegraph-to-pyroscope
+EnvironmentFile=-/etc/default/cassandra
+EnvironmentFile=-/etc/default/flamegraph-cassandra
+Restart=on-failure
+RestartSec=5
+
+# No [Install] section: this unit is started/stopped by the CLI
+# (easy-db-lab cassandra profile start/stop), not via systemctl enable.

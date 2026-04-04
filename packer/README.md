@@ -75,6 +75,63 @@ See [TESTING.md](TESTING.md) for comprehensive testing documentation including:
 - CI integration
 - Best practices
 
+## S3 Build Cache
+
+Packer scripts support an optional S3-backed binary cache to skip expensive compilation steps on repeat builds.
+
+Two scripts benefit from caching:
+- `base/install/install_bcc.sh` — caches compiled BCC artifacts (~15–20 min saved per cache hit)
+- `cassandra/install/install_cassandra.sh` — caches git-branch Cassandra builds (~20 min saved per cache hit)
+
+### Environment Variables
+
+| Variable | Description |
+|---|---|
+| `PACKER_CACHE_BUCKET` | S3 bucket name for the build cache. When unset or empty, cache operations are skipped and builds proceed normally. |
+| `PACKER_CACHE_SKIP` | Set to `1` to bypass both cache reads and writes. Useful for forced rebuilds or debugging. |
+
+### S3 Key Structure
+
+All cache entries are stored under the `packer-build-cache/` prefix within the bucket:
+
+| Artifact | Key Pattern | Example |
+|---|---|---|
+| BCC | `packer-build-cache/bcc/bcc-v{VERSION}-{ARCH}.tar.gz` | `packer-build-cache/bcc/bcc-v0.35.0-x86_64.tar.gz` |
+| Cassandra source build | `packer-build-cache/cassandra/{VERSION}-{GIT_SHA}.tar.gz` | `packer-build-cache/cassandra/trunk-a1b2c3d4e5f6.tar.gz` |
+
+### Required IAM Permissions
+
+The packer instance profile needs the following permissions on the cache bucket:
+
+```json
+{
+  "Effect": "Allow",
+  "Action": ["s3:GetObject", "s3:PutObject", "s3:HeadObject"],
+  "Resource": "arn:aws:s3:::{PACKER_CACHE_BUCKET}/packer-build-cache/*"
+}
+```
+
+### Cache Invalidation
+
+Cache entries are content-addressed (version + architecture for BCC; version + git SHA for Cassandra source builds), so they are automatically invalidated when the underlying inputs change.
+
+To manually invalidate a cache entry, delete the corresponding S3 object:
+
+```shell
+# Invalidate BCC cache for a specific version and architecture
+aws s3 rm "s3://${PACKER_CACHE_BUCKET}/packer-build-cache/bcc/bcc-v0.35.0-x86_64.tar.gz"
+
+# Invalidate a Cassandra source build cache entry
+aws s3 rm "s3://${PACKER_CACHE_BUCKET}/packer-build-cache/cassandra/trunk-a1b2c3d4e5f6.tar.gz"
+
+# List all cache entries
+aws s3 ls "s3://${PACKER_CACHE_BUCKET}/packer-build-cache/" --recursive
+```
+
+### Cache Behavior
+
+Cache operations are best-effort. If the bucket is unavailable, permissions are missing, or a download fails, the build falls back to compiling from scratch. A failed cache write never fails the build.
+
 ## Directory Structure
 
 ```

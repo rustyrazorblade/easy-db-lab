@@ -236,3 +236,11 @@ See `spec/PYROSCOPE.md` for full architecture details and debugging steps.
 - **`YaceManifestBuilder`** — builds YACE (Yet Another CloudWatch Exporter) ConfigMap + Deployment. Runs on control plane, scrapes AWS CloudWatch metrics for S3, EBS, EC2, and OpenSearch services. Exposes Prometheus metrics on port 5001, scraped by OTel collector. (EMR metrics removed — replaced by direct OTel collection on Spark nodes.)
 - **Config resource** — `yace-config.yaml` stored in `resources/.../configuration/yace/` with `__AWS_REGION__` template variable for region substitution.
 - **Auto-discovery** — uses tag-based auto-discovery with the `easy_cass_lab=1` tag to find cluster resources in CloudWatch.
+
+## inspektor-gadget Subpackage (`inspektorgadget/`)
+
+- **`InspektorGadgetManifestBuilder`** — builds inspektor-gadget ServiceAccount, ClusterRole, ClusterRoleBinding, and DaemonSet. Runs on all nodes with hostNetwork/hostPID/privileged for eBPF kernel-level tracing. The `ig` daemon runs with `--runtimes=containerd` for K3s compatibility. RBAC grants read access to pods, nodes, namespaces, and full access to gadget.kinvolk.io CRDs. No TemplateService needed. Image: `ghcr.io/inspektor-gadget/inspektor-gadget`.
+
+## Headlamp Subpackage (`headlamp/`)
+
+- **`HeadlampManifestBuilder`** — builds Headlamp Kubernetes web UI with the inspektor-gadget plugin. Creates ServiceAccount, ClusterRole (read-only access to all K8s resources), ClusterRoleBinding, ClusterIP Service, and Deployment. Runs on the control plane (port 4466) with hostNetwork and Recreate strategy. An init container (`node:20-alpine`) installs the `@inspektor-gadget/headlamp-plugin` npm package via `npx @kinvolk/headlamp-plugin install` into a shared emptyDir volume at `/headlamp/plugins`. No TemplateService needed. Image: `ghcr.io/headlamp-k8s/headlamp`.

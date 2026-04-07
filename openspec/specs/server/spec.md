@@ -48,3 +48,14 @@ The server MUST optionally collect and publish live metrics when a Redis connect
 
 - **GIVEN** the EASY_DB_LAB_REDIS_URL environment variable is set, **WHEN** the server starts, **THEN** the MetricsCollector polls VictoriaMetrics and publishes metric events to Redis pub/sub.
 - **GIVEN** the EASY_DB_LAB_REDIS_URL environment variable is not set, **WHEN** the server starts, **THEN** the server runs normally without metrics collection.
+
+### Requirement: Auto-shutdown CLI option
+The server command SHALL accept an `--auto-shutdown` flag that enables infrastructure watchdog behavior.
+
+#### Scenario: Flag not provided
+- **WHEN** the user starts the server without `--auto-shutdown`
+- **THEN** no watchdog is started and the server runs indefinitely
+
+#### Scenario: Flag provided
+- **WHEN** the user starts the server with `--auto-shutdown`
+- **THEN** the infrastructure watchdog service is started as a background service

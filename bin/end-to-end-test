@@ -584,7 +584,7 @@ step_cassandra_profile() {
     fi
     echo "=== Testing cassandra profile start/stop ==="
     # Use a 5-second interval with alloc profiling; start runs in background via systemd
-    easy-db-lab cassandra profile start --interval 5 -e alloc
+    easy-db-lab cassandra profile start --loop-interval 5 -e alloc
     echo "Profiling running, waiting 10 seconds for at least one upload cycle..."
     sleep 10
     easy-db-lab cassandra profile stop

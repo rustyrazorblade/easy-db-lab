@@ -2,7 +2,7 @@
 
 # flamegraph-to-pyroscope: Continuous profiling using async-profiler --loop, uploading to Pyroscope.
 #
-# Uses asprof's native --loop mode: profiles continuously, writing one collapsed-stack
+# Uses asprof's native --loop mode: profiles continuously, writing one JFR
 # file per interval. Each completed file is uploaded to Pyroscope and removed.
 # Runs until stopped (SIGTERM from systemd).
 #
@@ -46,7 +46,7 @@ upload_file() {
     until=$(stat -c %Y "$f")
     from=$((until - INTERVAL))
     curl -sf -X POST \
-        "${PYROSCOPE_ADDR}/ingest?name=${APP_NAME}&spyName=asyncprofiler&format=collapsed&from=${from}&until=${until}" \
+        "${PYROSCOPE_ADDR}/ingest?name=${APP_NAME}&spyName=asyncprofiler&format=jfr&from=${from}&until=${until}" \
         -H "Content-Type: text/plain" \
         --data-binary @"$f" \
         || echo "Upload failed at $(date -Iseconds), continuing..."
@@ -61,7 +61,7 @@ cleanup() {
         wait "$ASPROF_PID" 2>/dev/null || true
     fi
     # Upload any remaining completed files before exiting.
-    for f in "${OUTDIR}"/profile-*.collapsed; do
+    for f in "${OUTDIR}"/profile-*.jfr; do
         [ -f "$f" ] && upload_file "$f" || true
     done
     rm -rf "$OUTDIR"
@@ -80,16 +80,16 @@ echo "Starting continuous profiling (interval: ${INTERVAL}s, PID: $PID, app: $AP
 
 # Start async-profiler with --loop for native continuous profiling.
 # --loop <N>s: profile in a loop, writing one output file per interval, then reset.
-# %t in the filename is replaced with a timestamp so each interval gets a unique file.
-sudo "$ASPROF" --loop "${INTERVAL}s" -o collapsed \
-    -f "${OUTDIR}/profile-%t.collapsed" \
+# %t in the filename is replaced with a timestamp; .jfr extension sets the output format.
+sudo "$ASPROF" --loop "${INTERVAL}s" \
+    -f "${OUTDIR}/profile-%t.jfr" \
     "${EXTRA_ARGS[@]}" "$PID" &
 ASPROF_PID=$!
 
 # Poll for completed profile files and upload them.
 # Files are removed after upload so only unprocessed files remain at any time.
 while kill -0 "$ASPROF_PID" 2>/dev/null; do
-    for f in "${OUTDIR}"/profile-*.collapsed; do
+    for f in "${OUTDIR}"/profile-*.jfr; do
         [ -f "$f" ] && upload_file "$f" || true
     done
     sleep 5

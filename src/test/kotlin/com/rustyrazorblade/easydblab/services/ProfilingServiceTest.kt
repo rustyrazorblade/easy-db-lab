@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.ssh.Response
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
@@ -21,7 +22,7 @@ import org.mockito.kotlin.whenever
 
 class ProfilingServiceTest : BaseKoinTest() {
     private lateinit var mockRemoteOps: RemoteOperationsService
-    private lateinit var profilingService: ProfilingService
+    private lateinit var profilingService: DefaultProfilingService
     private val emittedEvents = mutableListOf<Event>()
 
     private val testHost =
@@ -43,7 +44,7 @@ class ProfilingServiceTest : BaseKoinTest() {
     @BeforeEach
     fun setupMocks() {
         mockRemoteOps = mock()
-        profilingService = getKoin().get()
+        profilingService = getKoin().get<ProfilingService>() as DefaultProfilingService
         emittedEvents.clear()
         getKoin().get<EventBus>().addListener(
             object : EventListener {
@@ -56,143 +57,168 @@ class ProfilingServiceTest : BaseKoinTest() {
         )
     }
 
-    @Test
-    fun `startProfiling should emit Starting then Started events on success`() {
-        val successResponse = Response(text = "", stderr = "")
-        whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
-            .thenReturn(successResponse)
+    @Nested
+    inner class BuildSystemdRunCommand {
+        @Test
+        fun `no args or interval produces minimal command`() {
+            val cmd = profilingService.buildSystemdRunCommand(emptyList(), null)
+            assertThat(cmd).isEqualTo(
+                "sudo systemd-run --unit=flamegraph-cassandra" +
+                    " -- /usr/local/bin/flamegraph-to-pyroscope",
+            )
+        }
 
-        val result = profilingService.startProfiling(testHost, listOf("-e", "alloc"))
+        @Test
+        fun `interval is passed as --interval flag`() {
+            val cmd = profilingService.buildSystemdRunCommand(emptyList(), interval = 30)
+            assertThat(cmd).isEqualTo(
+                "sudo systemd-run --unit=flamegraph-cassandra" +
+                    " -- /usr/local/bin/flamegraph-to-pyroscope --interval 30",
+            )
+        }
 
-        assertThat(result.isSuccess).isTrue()
-        assertThat(emittedEvents).hasSize(2)
-        assertThat(emittedEvents[0]).isInstanceOf(Event.Profiling.Starting::class.java)
-        assertThat(emittedEvents[1]).isInstanceOf(Event.Profiling.Started::class.java)
+        @Test
+        fun `asprof args are separated by double dash`() {
+            val cmd = profilingService.buildSystemdRunCommand(listOf("-e", "alloc"), null)
+            assertThat(cmd).isEqualTo(
+                "sudo systemd-run --unit=flamegraph-cassandra" +
+                    " -- /usr/local/bin/flamegraph-to-pyroscope -- -e alloc",
+            )
+        }
+
+        @Test
+        fun `interval and args together`() {
+            val cmd =
+                profilingService.buildSystemdRunCommand(
+                    listOf("-e", "cpu,alloc,lock"),
+                    interval = 5,
+                )
+            assertThat(cmd).isEqualTo(
+                "sudo systemd-run --unit=flamegraph-cassandra" +
+                    " -- /usr/local/bin/flamegraph-to-pyroscope" +
+                    " --interval 5 -- -e cpu,alloc,lock",
+            )
+        }
+
+        @Test
+        fun `args with special characters are shell-quoted`() {
+            val cmd =
+                profilingService.buildSystemdRunCommand(
+                    listOf("-e", "it's weird"),
+                    null,
+                )
+            assertThat(cmd).contains("-- -e 'it'\\''s weird'")
+        }
     }
 
-    @Test
-    fun `startProfiling with no extra args or interval should skip env file write and just start service`() {
-        val successResponse = Response(text = "", stderr = "")
-        whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
-            .thenReturn(successResponse)
+    @Nested
+    inner class StartProfiling {
+        @Test
+        fun `emits Starting then Started events on success`() {
+            val successResponse = Response(text = "", stderr = "")
+            whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
+                .thenReturn(successResponse)
 
-        val result = profilingService.startProfiling(testHost, emptyList())
+            val result = profilingService.startProfiling(testHost, listOf("-e", "alloc"))
 
-        assertThat(result.isSuccess).isTrue()
-        // Only one executeRemotely call: systemctl start (no env file write)
-        verify(mockRemoteOps).executeRemotely(
-            eq(testHost),
-            eq("sudo systemctl start flamegraph-cassandra"),
-            any(),
-            any(),
-        )
+            assertThat(result.isSuccess).isTrue()
+            assertThat(emittedEvents).hasSize(2)
+            assertThat(emittedEvents[0]).isInstanceOf(Event.Profiling.Starting::class.java)
+            assertThat(emittedEvents[1]).isInstanceOf(Event.Profiling.Started::class.java)
+        }
+
+        @Test
+        fun `passes systemd-run command to remote ops`() {
+            val successResponse = Response(text = "", stderr = "")
+            whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
+                .thenReturn(successResponse)
+
+            profilingService.startProfiling(testHost, listOf("-e", "alloc"), interval = 5)
+
+            val expectedCmd =
+                "sudo systemd-run --unit=flamegraph-cassandra" +
+                    " -- /usr/local/bin/flamegraph-to-pyroscope" +
+                    " --interval 5 -- -e alloc"
+            verify(mockRemoteOps).executeRemotely(
+                eq(testHost),
+                eq(expectedCmd),
+                any(),
+                any(),
+            )
+        }
+
+        @Test
+        fun `emits Starting then Error events on failure`() {
+            whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
+                .thenThrow(RuntimeException("SSH connection refused"))
+
+            val result = profilingService.startProfiling(testHost, emptyList())
+
+            assertThat(result.isFailure).isTrue()
+            assertThat(emittedEvents).hasSize(2)
+            assertThat(emittedEvents[0]).isInstanceOf(Event.Profiling.Starting::class.java)
+            val errorEvent = emittedEvents[1] as Event.Profiling.Error
+            assertThat(errorEvent.host).isEqualTo("db0")
+            assertThat(errorEvent.message).contains("SSH connection refused")
+        }
     }
 
-    @Test
-    fun `startProfiling should emit Starting then Error events on failure`() {
-        whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
-            .thenThrow(RuntimeException("SSH connection refused"))
+    @Nested
+    inner class Stop {
+        @Test
+        fun `emits Stopping then Stopped events on success`() {
+            val successResponse = Response(text = "", stderr = "")
+            whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
+                .thenReturn(successResponse)
 
-        val result = profilingService.startProfiling(testHost, emptyList())
+            val result = profilingService.stop(testHost)
 
-        assertThat(result.isFailure).isTrue()
-        assertThat(emittedEvents).hasSize(2)
-        assertThat(emittedEvents[0]).isInstanceOf(Event.Profiling.Starting::class.java)
-        val errorEvent = emittedEvents[1] as Event.Profiling.Error
-        assertThat(errorEvent.host).isEqualTo("db0")
-        assertThat(errorEvent.message).contains("SSH connection refused")
+            assertThat(result.isSuccess).isTrue()
+            assertThat(emittedEvents).hasSize(2)
+            assertThat(emittedEvents[0]).isInstanceOf(Event.Profiling.Stopping::class.java)
+            assertThat(emittedEvents[1]).isInstanceOf(Event.Profiling.Stopped::class.java)
+        }
+
+        @Test
+        fun `emits Stopping then Error events on failure`() {
+            whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
+                .thenThrow(RuntimeException("SSH timeout"))
+
+            val result = profilingService.stop(testHost)
+
+            assertThat(result.isFailure).isTrue()
+            assertThat(emittedEvents).hasSize(2)
+            assertThat(emittedEvents[0]).isInstanceOf(Event.Profiling.Stopping::class.java)
+            val errorEvent = emittedEvents[1] as Event.Profiling.Error
+            assertThat(errorEvent.host).isEqualTo("db0")
+            assertThat(errorEvent.message).contains("SSH timeout")
+        }
     }
 
-    @Test
-    fun `startProfiling with args should write env file with shell-quoted args`() {
-        val successResponse = Response(text = "", stderr = "")
-        whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
-            .thenReturn(successResponse)
+    @Nested
+    inner class IsRunning {
+        @Test
+        fun `returns true when service is active`() {
+            val response = Response(text = "active", stderr = "")
+            whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
+                .thenReturn(response)
 
-        profilingService.startProfiling(testHost, listOf("-e", "alloc"))
+            val result = profilingService.isRunning(testHost)
 
-        verify(mockRemoteOps).executeRemotely(
-            eq(testHost),
-            eq("printf '%s\\n' 'FLAMEGRAPH_EXTRA_ARGS=-e alloc' | sudo tee /etc/default/flamegraph-cassandra > /dev/null"),
-            any(),
-            any(),
-        )
-    }
+            assertThat(result.isSuccess).isTrue()
+            assertThat(result.getOrThrow()).isTrue()
+        }
 
-    @Test
-    fun `startProfiling with interval should write FLAMEGRAPH_INTERVAL to env file`() {
-        val successResponse = Response(text = "", stderr = "")
-        whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
-            .thenReturn(successResponse)
+        @Test
+        fun `returns false when service is inactive`() {
+            val response = Response(text = "inactive", stderr = "")
+            whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
+                .thenReturn(response)
 
-        profilingService.startProfiling(testHost, emptyList(), interval = 5)
+            val result = profilingService.isRunning(testHost)
 
-        verify(mockRemoteOps).executeRemotely(
-            eq(testHost),
-            eq("printf '%s\\n' FLAMEGRAPH_INTERVAL=5 | sudo tee /etc/default/flamegraph-cassandra > /dev/null"),
-            any(),
-            any(),
-        )
-    }
-
-    @Test
-    fun `startProfiling with interval and args should write both to env file`() {
-        val successResponse = Response(text = "", stderr = "")
-        whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
-            .thenReturn(successResponse)
-
-        profilingService.startProfiling(testHost, listOf("-e", "alloc"), interval = 5)
-
-        verify(mockRemoteOps).executeRemotely(
-            eq(testHost),
-            eq("printf '%s\\n' FLAMEGRAPH_INTERVAL=5 'FLAMEGRAPH_EXTRA_ARGS=-e alloc' | sudo tee /etc/default/flamegraph-cassandra > /dev/null"),
-            any(),
-            any(),
-        )
-    }
-
-    @Test
-    fun `stop should emit Stopping then Stopped events on success`() {
-        val successResponse = Response(text = "", stderr = "")
-        whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
-            .thenReturn(successResponse)
-
-        val result = profilingService.stop(testHost)
-
-        assertThat(result.isSuccess).isTrue()
-        assertThat(emittedEvents).hasSize(2)
-        assertThat(emittedEvents[0]).isInstanceOf(Event.Profiling.Stopping::class.java)
-        assertThat(emittedEvents[1]).isInstanceOf(Event.Profiling.Stopped::class.java)
-    }
-
-    @Test
-    fun `stop should execute systemctl stop command`() {
-        val successResponse = Response(text = "", stderr = "")
-        whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
-            .thenReturn(successResponse)
-
-        profilingService.stop(testHost)
-
-        verify(mockRemoteOps).executeRemotely(
-            eq(testHost),
-            eq("sudo systemctl stop flamegraph-cassandra"),
-            any(),
-            any(),
-        )
-    }
-
-    @Test
-    fun `stop should emit Stopping then Error events on failure`() {
-        whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
-            .thenThrow(RuntimeException("SSH timeout"))
-
-        val result = profilingService.stop(testHost)
-
-        assertThat(result.isFailure).isTrue()
-        assertThat(emittedEvents).hasSize(2)
-        assertThat(emittedEvents[0]).isInstanceOf(Event.Profiling.Stopping::class.java)
-        val errorEvent = emittedEvents[1] as Event.Profiling.Error
-        assertThat(errorEvent.host).isEqualTo("db0")
-        assertThat(errorEvent.message).contains("SSH timeout")
+            assertThat(result.isSuccess).isTrue()
+            assertThat(result.getOrThrow()).isFalse()
+        }
     }
 }

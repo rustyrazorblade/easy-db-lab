@@ -34,6 +34,8 @@ class ProfileStop : PicoBaseCommand() {
             return
         }
 
+        // Best-effort: failures on individual nodes emit Event.Profiling.Error
+        // but don't abort stopping on remaining nodes.
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, parallel = true) { host ->
             profilingService.stop(host.toHost())
         }

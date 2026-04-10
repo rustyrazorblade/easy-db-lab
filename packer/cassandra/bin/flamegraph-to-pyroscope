@@ -2,42 +2,55 @@
 
 # flamegraph-to-pyroscope: Continuous profiling using async-profiler --loop, uploading to Pyroscope.
 #
-# Uses asprof's native --loop mode: profiles continuously, writing one JFR
-# file per interval. Each completed file is uploaded to Pyroscope and removed.
-# Runs until stopped (SIGTERM from systemd).
+# Uses asprof's native --loop mode: profiles continuously, writing one JFR file per interval.
+# Each completed file is uploaded to Pyroscope and removed. Runs until stopped (SIGTERM).
 #
-# Configuration via /etc/default/flamegraph-cassandra:
-#   FLAMEGRAPH_INTERVAL=60              Profile duration per upload cycle (seconds)
-#   FLAMEGRAPH_EXTRA_ARGS="-e alloc -t" Extra asprof options (space-separated)
+# Usage: flamegraph-to-pyroscope [--interval N] [-- asprof-args...]
+#   --interval N   Loop duration in seconds per upload cycle (default: 60)
+#   --             Everything after is passed to asprof
+#
+# Examples:
+#   flamegraph-to-pyroscope
+#   flamegraph-to-pyroscope --interval 30
+#   flamegraph-to-pyroscope --interval 5 -- -e alloc -t
 #
 # The Cassandra PID is auto-detected via cassandra-pid.
+# PYROSCOPE_SERVER_ADDRESS is sourced from /etc/default/cassandra.
 
 set -e
 
 ASPROF=/usr/local/async-profiler/bin/asprof
-# Include hostname so each node's profile is stored separately in Pyroscope
 APP_NAME="cassandra.$(hostname)"
 OUTDIR=$(mktemp -d /tmp/flamegraph-XXXXXX)
 ASPROF_PID=""
+INTERVAL=60
+EXTRA_ARGS=()
+
+# Parse CLI args
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --interval)
+            INTERVAL="$2"
+            shift 2
+            ;;
+        --)
+            shift
+            EXTRA_ARGS=("$@")
+            break
+            ;;
+        *)
+            echo "Unknown option: $1" >&2
+            echo "Usage: flamegraph-to-pyroscope [--interval N] [-- asprof-args...]" >&2
+            exit 1
+            ;;
+    esac
+done
 
 # Source environment for Pyroscope address
 # shellcheck source=/dev/null
 [ -f /etc/default/cassandra ] && source /etc/default/cassandra
 
-# Source optional per-node profiler config (interval and extra args)
-# shellcheck source=/dev/null
-[ -f /etc/default/flamegraph-cassandra ] && source /etc/default/flamegraph-cassandra
-
 PYROSCOPE_ADDR="${PYROSCOPE_SERVER_ADDRESS:-http://localhost:4040}"
-INTERVAL="${FLAMEGRAPH_INTERVAL:-60}"
-
-# Build extra args array; empty if FLAMEGRAPH_EXTRA_ARGS is unset or blank.
-EXTRA_ARGS=()
-if [ -n "${FLAMEGRAPH_EXTRA_ARGS:-}" ]; then
-    # Word-split intentionally to expand space-separated options into array elements.
-    # shellcheck disable=SC2206
-    EXTRA_ARGS=($FLAMEGRAPH_EXTRA_ARGS)
-fi
 
 upload_file() {
     local f="$1"

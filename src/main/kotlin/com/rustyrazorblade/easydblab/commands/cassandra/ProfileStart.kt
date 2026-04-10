@@ -67,6 +67,8 @@ class ProfileStart : PicoBaseCommand() {
             return
         }
 
+        // Best-effort: failures on individual nodes emit Event.Profiling.Error
+        // but don't abort profiling on remaining nodes.
         val args = profilerArgs.toList()
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, parallel = true) { host ->
             profilingService.startProfiling(host.toHost(), args, loopInterval)

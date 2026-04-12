@@ -53,6 +53,12 @@ class DefaultProfilingService(
     ): Result<Unit> =
         runCatching {
             eventBus.emit(Event.Profiling.Starting(host.alias, args))
+            // systemd-run --unit=<name> fails if the unit already exists, so detect
+            // that case up front and emit a friendlier event instead of a raw systemd error.
+            if (isRunning(host).getOrDefault(false)) {
+                eventBus.emit(Event.Profiling.AlreadyRunning(host.alias))
+                return@runCatching
+            }
             remoteOps.executeRemotely(host, buildSystemdRunCommand(args, interval))
             log.info { "Continuous profiling started on ${host.alias}" }
             eventBus.emit(Event.Profiling.Started(host.alias))

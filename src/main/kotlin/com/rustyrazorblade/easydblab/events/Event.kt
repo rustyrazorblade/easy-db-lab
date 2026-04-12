@@ -5481,6 +5481,16 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Profiling.AlreadyRunning")
+        data class AlreadyRunning(
+            val host: String,
+        ) : Profiling {
+            override fun toDisplayString(): String = "Profiling is already running on $host — use `cassandra profile stop` first."
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
         @SerialName("Profiling.Error")
         data class Error(
             val host: String,

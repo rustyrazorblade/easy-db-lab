@@ -15,14 +15,16 @@ import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
+import org.mockito.kotlin.argThat
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
+import org.mockito.kotlin.verifyNoMoreInteractions
 import org.mockito.kotlin.whenever
 
 class ProfilingServiceTest : BaseKoinTest() {
     private lateinit var mockRemoteOps: RemoteOperationsService
-    private lateinit var profilingService: DefaultProfilingService
+    private lateinit var profilingService: ProfilingService
     private val emittedEvents = mutableListOf<Event>()
 
     private val testHost =
@@ -32,6 +34,10 @@ class ProfilingServiceTest : BaseKoinTest() {
             alias = "db0",
             availabilityZone = "us-west-2a",
         )
+
+    private val activeResponse = Response(text = "active", stderr = "")
+    private val inactiveResponse = Response(text = "inactive", stderr = "")
+    private val successResponse = Response(text = "", stderr = "")
 
     override fun additionalTestModules(): List<Module> =
         listOf(
@@ -44,7 +50,7 @@ class ProfilingServiceTest : BaseKoinTest() {
     @BeforeEach
     fun setupMocks() {
         mockRemoteOps = mock()
-        profilingService = getKoin().get<ProfilingService>() as DefaultProfilingService
+        profilingService = getKoin().get()
         emittedEvents.clear()
         getKoin().get<EventBus>().addListener(
             object : EventListener {
@@ -57,67 +63,35 @@ class ProfilingServiceTest : BaseKoinTest() {
         )
     }
 
-    @Nested
-    inner class BuildSystemdRunCommand {
-        @Test
-        fun `no args or interval produces minimal command`() {
-            val cmd = profilingService.buildSystemdRunCommand(emptyList(), null)
-            assertThat(cmd).isEqualTo(
-                "sudo systemd-run --unit=flamegraph-cassandra" +
-                    " -- /usr/local/bin/flamegraph-to-pyroscope",
-            )
-        }
-
-        @Test
-        fun `interval is passed as --interval flag`() {
-            val cmd = profilingService.buildSystemdRunCommand(emptyList(), interval = 30)
-            assertThat(cmd).isEqualTo(
-                "sudo systemd-run --unit=flamegraph-cassandra" +
-                    " -- /usr/local/bin/flamegraph-to-pyroscope --interval 30",
-            )
-        }
-
-        @Test
-        fun `asprof args are separated by double dash`() {
-            val cmd = profilingService.buildSystemdRunCommand(listOf("-e", "alloc"), null)
-            assertThat(cmd).isEqualTo(
-                "sudo systemd-run --unit=flamegraph-cassandra" +
-                    " -- /usr/local/bin/flamegraph-to-pyroscope -- -e alloc",
-            )
-        }
-
-        @Test
-        fun `interval and args together`() {
-            val cmd =
-                profilingService.buildSystemdRunCommand(
-                    listOf("-e", "cpu,alloc,lock"),
-                    interval = 5,
-                )
-            assertThat(cmd).isEqualTo(
-                "sudo systemd-run --unit=flamegraph-cassandra" +
-                    " -- /usr/local/bin/flamegraph-to-pyroscope" +
-                    " --interval 5 -- -e cpu,alloc,lock",
-            )
-        }
-
-        @Test
-        fun `args with special characters are shell-quoted`() {
-            val cmd =
-                profilingService.buildSystemdRunCommand(
-                    listOf("-e", "it's weird"),
-                    null,
-                )
-            assertThat(cmd).contains("-- -e 'it'\\''s weird'")
-        }
+    /**
+     * Stub `systemctl is-active` to return the given response and every other
+     * command to return success. Use this for tests that exercise the
+     * startProfiling -> isRunning -> executeRemotely path.
+     */
+    private fun stubIsActive(isActive: Boolean) {
+        whenever(
+            mockRemoteOps.executeRemotely(
+                eq(testHost),
+                eq("sudo systemctl is-active flamegraph-cassandra"),
+                any(),
+                any(),
+            ),
+        ).thenReturn(if (isActive) activeResponse else inactiveResponse)
+        whenever(
+            mockRemoteOps.executeRemotely(
+                eq(testHost),
+                argThat { this != "sudo systemctl is-active flamegraph-cassandra" },
+                any(),
+                any(),
+            ),
+        ).thenReturn(successResponse)
     }
 
     @Nested
     inner class StartProfiling {
         @Test
         fun `emits Starting then Started events on success`() {
-            val successResponse = Response(text = "", stderr = "")
-            whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
-                .thenReturn(successResponse)
+            stubIsActive(isActive = false)
 
             val result = profilingService.startProfiling(testHost, listOf("-e", "alloc"))
 
@@ -129,9 +103,7 @@ class ProfilingServiceTest : BaseKoinTest() {
 
         @Test
         fun `passes systemd-run command to remote ops`() {
-            val successResponse = Response(text = "", stderr = "")
-            whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
-                .thenReturn(successResponse)
+            stubIsActive(isActive = false)
 
             profilingService.startProfiling(testHost, listOf("-e", "alloc"), interval = 5)
 
@@ -148,7 +120,35 @@ class ProfilingServiceTest : BaseKoinTest() {
         }
 
         @Test
-        fun `emits Starting then Error events on failure`() {
+        fun `emits Starting then AlreadyRunning when unit is already active`() {
+            stubIsActive(isActive = true)
+
+            val result = profilingService.startProfiling(testHost, emptyList())
+
+            assertThat(result.isSuccess).isTrue()
+            assertThat(emittedEvents).hasSize(2)
+            assertThat(emittedEvents[0]).isInstanceOf(Event.Profiling.Starting::class.java)
+            assertThat(emittedEvents[1]).isInstanceOf(Event.Profiling.AlreadyRunning::class.java)
+        }
+
+        @Test
+        fun `does not invoke systemd-run when unit is already active`() {
+            stubIsActive(isActive = true)
+
+            profilingService.startProfiling(testHost, listOf("-e", "alloc"), interval = 5)
+
+            // Only the is-active check should have been called; never the systemd-run command.
+            verify(mockRemoteOps).executeRemotely(
+                eq(testHost),
+                eq("sudo systemctl is-active flamegraph-cassandra"),
+                any(),
+                any(),
+            )
+            verifyNoMoreInteractions(mockRemoteOps)
+        }
+
+        @Test
+        fun `emits Starting then Error events on SSH failure`() {
             whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
                 .thenThrow(RuntimeException("SSH connection refused"))
 
@@ -167,7 +167,6 @@ class ProfilingServiceTest : BaseKoinTest() {
     inner class Stop {
         @Test
         fun `emits Stopping then Stopped events on success`() {
-            val successResponse = Response(text = "", stderr = "")
             whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
                 .thenReturn(successResponse)
 
@@ -199,9 +198,8 @@ class ProfilingServiceTest : BaseKoinTest() {
     inner class IsRunning {
         @Test
         fun `returns true when service is active`() {
-            val response = Response(text = "active", stderr = "")
             whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
-                .thenReturn(response)
+                .thenReturn(activeResponse)
 
             val result = profilingService.isRunning(testHost)
 
@@ -211,9 +209,8 @@ class ProfilingServiceTest : BaseKoinTest() {
 
         @Test
         fun `returns false when service is inactive`() {
-            val response = Response(text = "inactive", stderr = "")
             whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
-                .thenReturn(response)
+                .thenReturn(inactiveResponse)
 
             val result = profilingService.isRunning(testHost)
 

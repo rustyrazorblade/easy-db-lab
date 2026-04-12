@@ -52,6 +52,16 @@ done
 
 PYROSCOPE_ADDR="${PYROSCOPE_SERVER_ADDRESS:-http://localhost:4040}"
 
+# Returns 0 if the file hasn't been modified in the last 2 seconds (considered complete).
+# Prevents uploading a file that asprof is still writing.
+file_is_stable() {
+    local f="$1"
+    local now mtime
+    now=$(date +%s)
+    mtime=$(stat -c %Y "$f")
+    [ $((now - mtime)) -ge 2 ]
+}
+
 upload_file() {
     local f="$1"
     local until from
@@ -60,7 +70,7 @@ upload_file() {
     from=$((until - INTERVAL))
     curl -sf -X POST \
         "${PYROSCOPE_ADDR}/ingest?name=${APP_NAME}&spyName=asyncprofiler&format=jfr&from=${from}&until=${until}" \
-        -H "Content-Type: text/plain" \
+        -H "Content-Type: application/octet-stream" \
         --data-binary @"$f" \
         || echo "Upload failed at $(date -Iseconds), continuing..."
     rm -f "$f"
@@ -99,11 +109,12 @@ sudo "$ASPROF" --loop "${INTERVAL}s" \
     "${EXTRA_ARGS[@]}" "$PID" &
 ASPROF_PID=$!
 
-# Poll for completed profile files and upload them.
+# Poll for completed profile files and upload them. Skip files modified in the last
+# 2 seconds so we never upload a JFR that asprof is still writing.
 # Files are removed after upload so only unprocessed files remain at any time.
 while kill -0 "$ASPROF_PID" 2>/dev/null; do
     for f in "${OUTDIR}"/profile-*.jfr; do
-        [ -f "$f" ] && upload_file "$f" || true
+        [ -f "$f" ] && file_is_stable "$f" && upload_file "$f" || true
     done
     sleep 5
 done

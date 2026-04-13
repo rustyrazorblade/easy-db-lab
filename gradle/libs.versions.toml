@@ -17,7 +17,7 @@ jackson-kotlin = "2.21.+"
 
 # Kotlinx Serialization
 kotlinx-serialization = "1.10.0"
-kaml = "0.77.0"
+kaml = "0.104.0"
 
 # Kotlinx Coroutines
 kotlinx-coroutines = "1.10.2"

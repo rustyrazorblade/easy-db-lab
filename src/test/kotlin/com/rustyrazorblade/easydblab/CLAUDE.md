@@ -157,8 +157,10 @@ The `K8sServiceIntegrationTest` runs K3s inside Docker via TestContainers. This 
 
 - **`withPrivilegedMode(true)`** — K3s needs full privileges to manage its own containers and networking.
 - **`withCgroupnsMode("host")`** — The host uses cgroup v2. Without sharing the host cgroup namespace, K3s fails during "Node controller sync" because it can't properly manage cgroup hierarchies for its internal containers.
+- **`withBinds(["/sys/fs/cgroup:/sys/fs/cgroup:rw"])`** — Explicitly mounts the cgroup filesystem read-write inside the K3s container. Required on Ubuntu 24.04 (cgroup v2 unified hierarchy) where K3s needs to write to cgroupfs to manage pod cgroups. Without this, K3s starts the Docker container but fails to write its kubeconfig (because cgroup initialization fails), causing all K8s API calls to fail with "server null".
 - **`withEnv("K3S_SNAPSHOTTER", "native")`** — In nested container environments, the default overlayfs snapshotter can fail because the outer container's filesystem may already be an overlay. The native snapshotter avoids this by using simple file copies instead.
 - **`withLogConsumer(Slf4jLogConsumer(...))`** — Forwards K3s container logs to SLF4J for debugging startup failures.
+- **`withStartupTimeout(Duration.ofMinutes(3))`** — K3s can take longer than the default 60s to fully initialize in CI environments.
 
 If K3s fails to start with `ContainerLaunchException`, check that the devcontainer itself is configured with `--privileged`, `--cgroupns=host`, and `/sys/fs/cgroup` mounted read-write (see `.devcontainer/devcontainer.json`).
 

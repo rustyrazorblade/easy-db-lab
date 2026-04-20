@@ -7,8 +7,8 @@ application {
 
 dependencies {
     // AWS SDK v2 for credential and region auto-detection
-    implementation("software.amazon.awssdk:auth:2.42.33")
-    implementation("software.amazon.awssdk:regions:2.42.33")
+    implementation("software.amazon.awssdk:auth:2.42.36")
+    implementation("software.amazon.awssdk:regions:2.42.36")
 
     // Test dependencies
     testImplementation(libs.bundles.testcontainers)
@@ -18,7 +18,7 @@ dependencies {
     testImplementation("org.apache.spark:spark-core_2.12:3.5.7")
     testImplementation("org.apache.spark:spark-sql_2.12:3.5.7")
     // AWS SDK S3 for LocalStack testing
-    testImplementation("software.amazon.awssdk:s3:2.42.33")
+    testImplementation("software.amazon.awssdk:s3:2.42.36")
 }
 
 tasks.test {

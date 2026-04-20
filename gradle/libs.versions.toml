@@ -12,7 +12,7 @@ logback = "1.5.32"
 kotlin-logging = "8.0.01"
 
 # Jackson
-jackson-dataformat = "2.21.1"
+jackson-dataformat = "2.21.2"
 jackson-kotlin = "2.21.+"
 
 # Kotlinx Serialization

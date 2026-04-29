@@ -9,7 +9,9 @@ import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.clickhouse.ClickHouseManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.clickhouseBackupsRoot
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.services.ClickHouseBackupService
 import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.PersistentVolumeConfig
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -55,6 +57,7 @@ class ClickHouseStart : PicoBaseCommand() {
     private val k8sService: K8sService by inject()
     private val userConfig: User by inject()
     private val clickHouseManifestBuilder: ClickHouseManifestBuilder by inject()
+    private val clickHouseBackupService: ClickHouseBackupService by inject()
 
     companion object {
         private const val DEFAULT_TIMEOUT_SECONDS = 300
@@ -78,6 +81,12 @@ class ClickHouseStart : PicoBaseCommand() {
     )
     var replicas: Int? = null
 
+    @Option(
+        names = ["--restore-from"],
+        description = ["Restore from a named backup after startup"],
+    )
+    var restoreFrom: String? = null
+
     override fun execute() {
         val clickHouseConfig =
             clusterState.clickHouseConfig
@@ -97,10 +106,24 @@ class ClickHouseStart : PicoBaseCommand() {
         eventBus.emit(Event.ClickHouse.CreatingPvs)
         createPersistentVolumes(controlNode, "clickhouse-keeper", "/mnt/db1/clickhouse/keeper", Constants.ClickHouse.KEEPER_REPLICAS)
         createPersistentVolumes(controlNode, "clickhouse", "/mnt/db1/clickhouse", actualReplicas)
-        val bucket = setupS3Secret(controlNode)
+        val s3Config = setupS3Secret(controlNode)
         applyManifestsAndConfigureCluster(controlNode, actualReplicas, replicasPerShard, clickHouseConfig)
         waitForPodsIfRequired(controlNode)
-        displayAccessInformation(dbHosts.first().privateIp, bucket)
+        displayAccessInformation(dbHosts.first().privateIp, s3Config.dataBucket)
+
+        val backupName = restoreFrom
+        if (backupName != null) {
+            val accountBucket =
+                requireNotNull(clusterState.s3Bucket) {
+                    "Account bucket not configured. Run 'easy-db-lab up' first."
+                }
+            clickHouseBackupService
+                .restore(
+                    controlHost = controlNode,
+                    backupName = backupName,
+                    accountBucket = accountBucket,
+                ).getOrThrow()
+        }
     }
 
     private fun getControlNode(): ClusterHost {
@@ -171,18 +194,32 @@ class ClickHouseStart : PicoBaseCommand() {
             }
     }
 
-    private fun setupS3Secret(controlNode: ClusterHost): String {
+    private data class S3Config(
+        val dataBucket: String,
+        val backupEndpointUrl: String,
+    )
+
+    private fun setupS3Secret(controlNode: ClusterHost): S3Config {
         val dataBucket = clusterState.dataBucket
         require(dataBucket.isNotBlank()) {
             "Data bucket not configured. Run 'easy-db-lab up' first."
         }
+        val accountBucket =
+            requireNotNull(clusterState.s3Bucket) {
+                "Account bucket not configured. Run 'easy-db-lab up' first."
+            }
         val s3Path = ClusterS3Path.root(dataBucket).resolve("clickhouse")
         val endpointUrl = s3Path.toEndpointUrl(userConfig.region)
+        val backupEndpointUrl = clickhouseBackupsRoot(accountBucket).toEndpointUrl(userConfig.region)
         log.info { "Creating S3 ConfigMap for s3_main storage policy" }
         k8sService
-            .createClickHouseS3ConfigMap(controlNode, Constants.ClickHouse.NAMESPACE, endpointUrl)
-            .getOrThrow()
-        return dataBucket
+            .createClickHouseS3ConfigMap(
+                controlHost = controlNode,
+                namespace = Constants.ClickHouse.NAMESPACE,
+                s3EndpointUrl = endpointUrl,
+                backupS3EndpointUrl = backupEndpointUrl,
+            ).getOrThrow()
+        return S3Config(dataBucket, backupEndpointUrl)
     }
 
     private fun applyManifestsAndConfigureCluster(

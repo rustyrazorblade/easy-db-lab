@@ -159,7 +159,11 @@ class DefaultCommandExecutor(
                 command.call()
             } catch (e: Exception) {
                 log.error(e) { "Command execution failed" }
-                eventBus.emit(Event.Command.ExecutionError(e.message ?: "Command execution failed"))
+                val causeChain =
+                    generateSequence(e as Throwable) { it.cause }
+                        .map { "${it::class.simpleName}: ${it.message}" }
+                        .joinToString("\n  caused by: ")
+                eventBus.emit(Event.Command.ExecutionError(causeChain))
                 Constants.ExitCodes.ERROR
             }
 

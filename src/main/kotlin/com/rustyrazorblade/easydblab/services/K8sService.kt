@@ -160,6 +160,7 @@ interface K8sStorageOperations {
         controlHost: ClusterHost,
         namespace: String,
         s3EndpointUrl: String,
+        backupS3EndpointUrl: String,
     ): Result<Unit>
 
     fun scaleStatefulSet(
@@ -198,12 +199,13 @@ interface K8sService :
     K8sManifestOperations,
     K8sJobOperations,
     K8sNamespaceOperations,
-    K8sStorageOperations
+    K8sStorageOperations,
+    K8sPodOperations
 
 /**
  * Default implementation of K8sService that delegates to focused operation classes.
  *
- * Each operation group (manifests, jobs, namespaces, storage) is implemented by a
+ * Each operation group (manifests, jobs, namespaces, storage, pod exec) is implemented by a
  * dedicated class, following the Single Responsibility Principle. This class composes
  * them via Kotlin's delegation pattern.
  *
@@ -229,4 +231,5 @@ class DefaultK8sService(
     K8sStorageOperations by DefaultK8sStorageOperations(
         clientProvider,
         eventBus,
-    )
+    ),
+    K8sPodOperations by DefaultK8sPodOperations(clientProvider)

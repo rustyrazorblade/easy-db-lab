@@ -24,6 +24,9 @@ import picocli.CommandLine.Spec
         ClickHouseStart::class,
         ClickHouseStatus::class,
         ClickHouseStop::class,
+        ClickHouseBackup::class,
+        ClickHouseRestore::class,
+        ClickHouseListBackups::class,
     ],
 )
 class ClickHouse : Runnable {

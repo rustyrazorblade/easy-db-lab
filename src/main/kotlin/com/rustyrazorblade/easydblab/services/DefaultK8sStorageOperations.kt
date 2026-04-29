@@ -26,10 +26,12 @@ class DefaultK8sStorageOperations(
         controlHost: ClusterHost,
         namespace: String,
         s3EndpointUrl: String,
+        backupS3EndpointUrl: String,
     ): Result<Unit> =
         runCatching {
             log.info { "Creating ClickHouse S3 ConfigMap in namespace $namespace" }
             log.info { "S3 endpoint: $s3EndpointUrl" }
+            log.info { "Backup S3 endpoint: $backupS3EndpointUrl" }
 
             clientProvider.createClient(controlHost).use { client ->
                 val existing =
@@ -56,6 +58,7 @@ class DefaultK8sStorageOperations(
                         .addToLabels("app.kubernetes.io/name", "clickhouse-server")
                         .endMetadata()
                         .addToData("CLICKHOUSE_S3_ENDPOINT", s3EndpointUrl)
+                        .addToData(Constants.ClickHouse.BACKUP_S3_ENDPOINT_ENV, backupS3EndpointUrl)
                         .build()
 
                 client

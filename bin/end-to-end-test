@@ -56,17 +56,18 @@ FAILURE_COUNT=0
 SPARK_JOB_RAN=false
 
 # Parse command line arguments (must be before cleanup trap setup)
-BUILD_IMAGE=false
-ENABLE_SPARK=false
-ENABLE_CASSANDRA=false
-ENABLE_CLICKHOUSE=false
-ENABLE_OPENSEARCH=false
-USE_EBS=false
-LIST_STEPS=false
-BREAKPOINTS=""
-START_STEP=""
-NO_TEARDOWN=false
-CLEAN=false
+export BUILD_IMAGE=false
+export ENABLE_SPARK=false
+export ENABLE_CASSANDRA=false
+export ENABLE_CLICKHOUSE=false
+export CLICKHOUSE_BACKUP_NAME="e2e-test-backup-$(date +%Y%m%d-%H%M%S)"
+export ENABLE_OPENSEARCH=false
+export USE_EBS=false
+export LIST_STEPS=false
+export BREAKPOINTS=""
+export START_STEP=""
+export NO_TEARDOWN=false
+export CLEAN=false
 while [[ $# -gt 0 ]]; do
   case $1 in
     --list-steps|-l)
@@ -980,6 +981,92 @@ EOF
     echo "=== ClickHouse S3 tier test completed ==="
 }
 
+step_clickhouse_backup() {
+    if [ "$ENABLE_CLICKHOUSE" != true ]; then
+        echo "=== Skipping ClickHouse backup (use --clickhouse to enable) ==="
+        return 0
+    fi
+    echo "=== Running ClickHouse backup: ${CLICKHOUSE_BACKUP_NAME} ==="
+    if ! easy-db-lab clickhouse backup "$CLICKHOUSE_BACKUP_NAME"; then
+        echo "ERROR: clickhouse backup command failed"
+        return 1
+    fi
+
+    local account_bucket
+    account_bucket=$(jq -r '.s3Bucket // empty' state.json)
+    if [ -z "$account_bucket" ]; then
+        echo "ERROR: s3Bucket not found in state.json"
+        return 1
+    fi
+
+    echo "=== Verifying backup metadata in S3 ==="
+    if aws s3 ls "s3://${account_bucket}/clickhouse-backups/${CLICKHOUSE_BACKUP_NAME}/backup-metadata.json" > /dev/null 2>&1; then
+        echo "  backup-metadata.json: OK"
+    else
+        echo "ERROR: backup-metadata.json not found at s3://${account_bucket}/clickhouse-backups/${CLICKHOUSE_BACKUP_NAME}/"
+        return 1
+    fi
+
+    echo "=== ClickHouse backup test passed ==="
+}
+
+step_clickhouse_backups_ls() {
+    if [ "$ENABLE_CLICKHOUSE" != true ]; then
+        echo "=== Skipping ClickHouse list-backups (use --clickhouse to enable) ==="
+        return 0
+    fi
+    echo "=== Listing ClickHouse backups ==="
+    local output
+    output=$(easy-db-lab clickhouse list-backups)
+    echo "$output"
+
+    if echo "$output" | grep -q "$CLICKHOUSE_BACKUP_NAME"; then
+        echo "  ${CLICKHOUSE_BACKUP_NAME} found in listing: OK"
+    else
+        echo "ERROR: ${CLICKHOUSE_BACKUP_NAME} not found in 'clickhouse list-backups' output"
+        return 1
+    fi
+
+    echo "=== ClickHouse list-backups test passed ==="
+}
+
+step_clickhouse_restore() {
+    if [ "$ENABLE_CLICKHOUSE" != true ]; then
+        echo "=== Skipping ClickHouse restore (use --clickhouse to enable) ==="
+        return 0
+    fi
+    echo "=== Testing ClickHouse restore ==="
+
+    echo "--- Dropping test table before restore ---"
+    clickhouse-query "DROP TABLE IF EXISTS test ON CLUSTER easy_db_lab SYNC"
+
+    echo "--- Restoring from ${CLICKHOUSE_BACKUP_NAME} ---"
+    easy-db-lab clickhouse restore "$CLICKHOUSE_BACKUP_NAME"
+
+    echo "--- Verifying restored data ---"
+    local row_count
+    row_count=$(clickhouse-query "SELECT COUNT(*) FROM test")
+    echo "Row count after restore: $row_count"
+    if [ "$row_count" = "1" ]; then
+        echo "  Data restored correctly: OK (1 row)"
+    else
+        echo "ERROR: Expected 1 row after restore, got: ${row_count:-<empty>}"
+        return 1
+    fi
+
+    echo "--- Cleaning up backup from S3 ---"
+    local account_bucket
+    account_bucket=$(jq -r '.s3Bucket // empty' state.json)
+    if [ -n "$account_bucket" ]; then
+        aws s3 rm --recursive "s3://${account_bucket}/clickhouse-backups/${CLICKHOUSE_BACKUP_NAME}/"
+        echo "  Deleted s3://${account_bucket}/clickhouse-backups/${CLICKHOUSE_BACKUP_NAME}/: OK"
+    else
+        echo "WARNING: s3Bucket not found in state.json, skipping backup cleanup"
+    fi
+
+    echo "=== ClickHouse restore test passed ==="
+}
+
 step_clickhouse_stop() {
     if [ "$ENABLE_CLICKHOUSE" != true ]; then
         echo "=== Skipping ClickHouse stop (use --clickhouse to enable) ==="
@@ -1335,6 +1422,9 @@ STEPS_WORKDIR=(
     "step_clickhouse_start:Start ClickHouse"
     "step_clickhouse_test:Test ClickHouse"
     "step_clickhouse_s3_tier_test:Test ClickHouse S3 tier policy"
+    "step_clickhouse_backup:Test ClickHouse backup"
+    "step_clickhouse_backups_ls:List ClickHouse backups"
+    "step_clickhouse_restore:Test ClickHouse restore"
     "step_clickhouse_stop:Stop ClickHouse"
     "step_opensearch_start:Start OpenSearch"
     "step_opensearch_test:Test OpenSearch"

@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.clickhouse
 import com.rustyrazorblade.easydblab.configuration.s3Path
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.services.ClickHouseBackupService
 import com.rustyrazorblade.easydblab.services.K8sService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
@@ -28,6 +29,7 @@ import picocli.CommandLine.Command
 class ClickHouseStatus : PicoBaseCommand() {
     private val log = KotlinLogging.logger {}
     private val k8sService: K8sService by inject()
+    private val clickHouseBackupService: ClickHouseBackupService by inject()
 
     override fun execute() {
         val controlHosts = clusterState.hosts[ServerType.Control]
@@ -70,6 +72,24 @@ class ClickHouseStatus : PicoBaseCommand() {
                     clickhouseKey = s3Path.clickhouse().getKey(),
                 ),
             )
+        }
+
+        val operations = clickHouseBackupService.getBackupOperations(controlNode).getOrElse { emptyList() }
+        if (operations.isEmpty()) {
+            eventBus.emit(Event.ClickHouse.Backup.BackupOperationsEmpty)
+        } else {
+            for (op in operations) {
+                eventBus.emit(
+                    Event.ClickHouse.Backup.BackupOperationEntry(
+                        name = op.name,
+                        status = op.status,
+                        startTime = op.startTime,
+                        bytesRead = op.bytesRead,
+                        totalSize = op.totalSize,
+                        error = op.error,
+                    ),
+                )
+            }
         }
     }
 }

@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.services.ClickHouseBackupService
 import com.rustyrazorblade.easydblab.services.K8sService
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -54,10 +55,14 @@ class ClickHouseStatusTest : BaseKoinTest() {
                         mockK8sService = it
                     }
                 }
-
                 single {
                     mock<ClusterStateManager>().also {
                         mockClusterStateManager = it
+                    }
+                }
+                single<ClickHouseBackupService> {
+                    mock<ClickHouseBackupService>().also {
+                        whenever(it.getBackupOperations(any())).thenReturn(Result.success(emptyList()))
                     }
                 }
             },

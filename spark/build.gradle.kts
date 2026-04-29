@@ -4,7 +4,31 @@ val sparkVersion = "3.5.7"
 val scalaVersion = "2.12"
 
 // Cassandra Analytics paths (only needed by bulk-writer modules)
-val analyticsDir = rootProject.projectDir.resolve(".cassandra-analytics")
+// In git worktrees, rootProject.projectDir is the worktree root, not the main repo root.
+// Read the .git file to find the main repo root so .cassandra-analytics is always resolved correctly.
+val gitFile = rootProject.projectDir.resolve(".git")
+val mainRepoRoot: File =
+    if (gitFile.isFile) {
+        val gitdirPath = File(gitFile.readText().trim().removePrefix("gitdir: ").trim())
+        gitdirPath.parentFile.parentFile.parentFile
+    } else {
+        rootProject.projectDir
+    }
+val analyticsDir = mainRepoRoot.resolve(".cassandra-analytics")
+val analyticsPropsFile = analyticsDir.resolve("gradle.properties")
+
+// Fail fast before dependency resolution when cassandra-analytics hasn't been built.
+// Registered once here (not per-subproject) to avoid duplicate errors.
+// doFirst cannot be used because classpath resolution happens before doFirst runs.
+gradle.taskGraph.whenReady {
+    val bulkWriterProjects = subprojects.filter { it.name.startsWith("bulk-writer") }
+    if (!analyticsPropsFile.exists() && allTasks.any { it.project in bulkWriterProjects }) {
+        throw GradleException(
+            "\n\ncassandra-analytics has not been built.\n" +
+                "Run: bin/build-cassandra-analytics\n",
+        )
+    }
+}
 
 // Common configuration for ALL subprojects
 subprojects {
@@ -27,6 +51,7 @@ subprojects {
 
     tasks.named<Test>("test") {
         finalizedBy(tasks.named("jacocoTestReport"))
+        environment("TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE", "/var/run/docker.sock")
     }
 
     tasks.named<JacocoReport>("jacocoTestReport") {
@@ -43,7 +68,6 @@ configure(subprojects.filter { it.name.startsWith("bulk-writer") }) {
     apply(plugin = "application")
     apply(plugin = "com.gradleup.shadow")
 
-    val analyticsPropsFile = analyticsDir.resolve("gradle.properties")
     val cassandraAnalyticsVersion: String = if (analyticsPropsFile.exists()) {
         analyticsPropsFile.readLines()
             .map { it.trim() }
@@ -55,15 +79,6 @@ configure(subprojects.filter { it.name.startsWith("bulk-writer") }) {
         // Placeholder during configuration phase; compileJava will fail with clear deps errors.
         // To build bulk-writer modules, run: bin/build-cassandra-analytics
         "0.0.0-NOT-BUILT"
-    }
-
-    // Fail fast with a clear message when trying to compile without cassandra-analytics
-    tasks.named("compileJava") {
-        doFirst {
-            if (!analyticsPropsFile.exists()) {
-                error("cassandra-analytics not built. Run: bin/build-cassandra-analytics")
-            }
-        }
     }
 
     dependencies {

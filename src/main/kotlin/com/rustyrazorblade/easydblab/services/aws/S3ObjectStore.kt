@@ -129,11 +129,12 @@ class S3ObjectStore(
         remotePath: ClusterS3Path,
         recursive: Boolean,
     ): List<ObjectStore.FileInfo> {
+        val prefix = if (recursive) remotePath.getKey() else "${remotePath.getKey()}/"
         val listRequest =
             ListObjectsV2Request
                 .builder()
                 .bucket(remotePath.bucket)
-                .prefix(remotePath.getKey())
+                .prefix(prefix)
                 .apply {
                     if (!recursive) {
                         delimiter("/")
@@ -150,6 +151,15 @@ class S3ObjectStore(
                         path = ClusterS3Path.fromKey(remotePath.bucket, s3Object.key()),
                         size = s3Object.size(),
                         lastModified = s3Object.lastModified().toString(),
+                    ),
+                )
+            }
+            response.commonPrefixes()?.forEach { prefix ->
+                results.add(
+                    ObjectStore.FileInfo(
+                        path = ClusterS3Path.fromKey(remotePath.bucket, prefix.prefix()),
+                        size = 0,
+                        lastModified = "",
                     ),
                 )
             }
@@ -331,6 +341,16 @@ class S3ObjectStore(
                 )
                 log.info { "Uploaded content (${bytes.size} bytes) to ${remotePath.toUri()}" }
             }.run()
+    }
+
+    override fun readContent(remotePath: ClusterS3Path): String {
+        val getRequest =
+            GetObjectRequest
+                .builder()
+                .bucket(remotePath.bucket)
+                .key(remotePath.getKey())
+                .build()
+        return s3Client.getObjectAsBytes(getRequest).asUtf8String()
     }
 
     override fun directoryExists(remotePath: ClusterS3Path): Boolean {

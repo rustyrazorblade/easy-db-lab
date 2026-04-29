@@ -81,6 +81,7 @@ class ClickHouseManifestBuilder(
      * @param s3CacheSize S3 cache size (e.g. "10Gi")
      * @param s3CacheOnWrite Whether to cache on write operations
      * @param s3TierMoveFactor Fraction of local disk free space that triggers move to S3 tier
+     * @param backupS3EndpointUrl HTTPS endpoint URL for the backup S3 path
      * @return List of all K8s resources
      */
     fun buildAllResources(

@@ -23,6 +23,9 @@ import kotlinx.serialization.Serializable
 private const val BACKUP_TABLE_SEPARATOR_LENGTH = 59
 private const val BACKUP_TABLE_HEADER_FORMAT = "%-30s  %10s  %15s"
 private const val BACKUP_TABLE_ROW_FORMAT = "%-30s  %10d  %15s"
+private const val CLICKHOUSE_BACKUP_TABLE_HEADER_FORMAT = "%-30s  %-20s  %10s  %20s"
+private const val CLICKHOUSE_BACKUP_TABLE_ROW_FORMAT = "%-30s  %-20s  %10d  %20s"
+private const val CLICKHOUSE_BACKUP_TABLE_SEPARATOR_LENGTH = 86
 
 @Serializable
 sealed interface Event {
@@ -4469,6 +4472,130 @@ sealed interface Event {
                   S3 cache on write: $s3CacheOnWrite
                   S3 tier move factor: $s3TierMoveFactor
                 """.trimIndent()
+        }
+
+        @Serializable
+        sealed interface Backup : ClickHouse {
+            @Serializable
+            @SerialName("ClickHouse.Backup.BackupStarting")
+            data class BackupStarting(
+                val name: String,
+            ) : Backup {
+                override fun toDisplayString(): String = "Starting ClickHouse backup '$name'..."
+            }
+
+            @Serializable
+            @SerialName("ClickHouse.Backup.BackupComplete")
+            data class BackupComplete(
+                val name: String,
+                val s3Path: String,
+            ) : Backup {
+                override fun toDisplayString(): String = "ClickHouse backup '$name' complete at $s3Path"
+            }
+
+            @Serializable
+            @SerialName("ClickHouse.Backup.BackupAlreadyExists")
+            data class BackupAlreadyExists(
+                val name: String,
+            ) : Backup {
+                override fun toDisplayString(): String = "Backup '$name' already exists"
+            }
+
+            @Serializable
+            @SerialName("ClickHouse.Backup.RestoreStarting")
+            data class RestoreStarting(
+                val name: String,
+            ) : Backup {
+                override fun toDisplayString(): String = "Restoring ClickHouse cluster from backup '$name'..."
+            }
+
+            @Serializable
+            @SerialName("ClickHouse.Backup.RestoreComplete")
+            data class RestoreComplete(
+                val name: String,
+            ) : Backup {
+                override fun toDisplayString(): String = "ClickHouse restore from '$name' complete"
+            }
+
+            @Serializable
+            @SerialName("ClickHouse.Backup.BackupNotFound")
+            data class BackupNotFound(
+                val name: String,
+            ) : Backup {
+                override fun toDisplayString(): String = "Backup '$name' not found"
+            }
+
+            @Serializable
+            @SerialName("ClickHouse.Backup.BackupListHeader")
+            data object BackupListHeader : Backup {
+                override fun toDisplayString(): String =
+                    buildString {
+                        appendLine(CLICKHOUSE_BACKUP_TABLE_HEADER_FORMAT.format("Name", "Source Cluster", "Size (bytes)", "Timestamp"))
+                        append("-".repeat(CLICKHOUSE_BACKUP_TABLE_SEPARATOR_LENGTH))
+                    }
+            }
+
+            @Serializable
+            @SerialName("ClickHouse.Backup.BackupListEmpty")
+            data object BackupListEmpty : Backup {
+                override fun toDisplayString(): String = "No ClickHouse backups found"
+            }
+
+            @Serializable
+            @SerialName("ClickHouse.Backup.BackupListEntry")
+            data class BackupListEntry(
+                val name: String,
+                val timestamp: String,
+                val sourceCluster: String,
+                val sizeBytes: Long,
+            ) : Backup {
+                override fun toDisplayString(): String =
+                    CLICKHOUSE_BACKUP_TABLE_ROW_FORMAT.format(name, sourceCluster, sizeBytes, timestamp)
+            }
+
+            @Serializable
+            @SerialName("ClickHouse.Backup.BackupStartedAsync")
+            data class BackupStartedAsync(
+                val name: String,
+            ) : Backup {
+                override fun toDisplayString(): String = "ClickHouse backup '$name' started in background"
+            }
+
+            @Serializable
+            @SerialName("ClickHouse.Backup.RestoreStartedAsync")
+            data class RestoreStartedAsync(
+                val name: String,
+            ) : Backup {
+                override fun toDisplayString(): String = "ClickHouse restore from '$name' started in background"
+            }
+
+            @Serializable
+            @SerialName("ClickHouse.Backup.BackupOperationsEmpty")
+            data object BackupOperationsEmpty : Backup {
+                override fun toDisplayString(): String = "No backup or restore operations found"
+            }
+
+            @Serializable
+            @SerialName("ClickHouse.Backup.BackupOperationEntry")
+            data class BackupOperationEntry(
+                val name: String,
+                val status: String,
+                val startTime: String,
+                val bytesRead: Long,
+                val totalSize: Long,
+                val error: String,
+            ) : Backup {
+                override fun toDisplayString(): String {
+                    val progress =
+                        if (totalSize > 0) {
+                            " ${bytesRead * 100 / totalSize}%"
+                        } else {
+                            ""
+                        }
+                    val errorSuffix = if (error.isNotBlank()) " ERROR: $error" else ""
+                    return "  %-50s  %-20s  %s%s%s".format(name, status, startTime, progress, errorSuffix)
+                }
+            }
         }
     }
 

@@ -144,6 +144,15 @@ interface ObjectStore {
     )
 
     /**
+     * Reads the content of a cloud storage file as a UTF-8 string.
+     *
+     * @param remotePath The cloud storage path to read from
+     * @return The file content as a string
+     * @throws Exception if the file doesn't exist or read fails (provider-specific)
+     */
+    fun readContent(remotePath: ClusterS3Path): String
+
+    /**
      * Checks if any files exist under a cloud storage prefix.
      *
      * @param remotePath The cloud storage path prefix to check

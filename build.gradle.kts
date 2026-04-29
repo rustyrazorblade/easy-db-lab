@@ -191,6 +191,11 @@ tasks.test {
     doFirst {
         environment("EASY_DB_LAB_PROFILE", "default")
         environment("TESTCONTAINERS_RYUK_DISABLED", "true")
+        // Rancher Desktop (and other Lima-based Docker runtimes) expose the Docker socket
+        // at a host-userspace path (e.g. ~/.rd/docker.sock) that cannot be bind-mounted
+        // inside containers from within the Lima VM. /var/run/docker.sock is the canonical
+        // path that resolves correctly inside the VM.
+        environment("TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE", "/var/run/docker.sock")
 
         println("========================================")
         println("Test Execution Configuration:")

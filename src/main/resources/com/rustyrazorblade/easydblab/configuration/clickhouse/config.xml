@@ -37,6 +37,11 @@
                 <max_size from_env="CLICKHOUSE_S3_CACHE_SIZE"/>
                 <cache_on_write_operations from_env="CLICKHOUSE_S3_CACHE_ON_WRITE"/>
             </s3>
+            <s3_backup>
+                <type>s3_plain</type>
+                <endpoint from_env="CLICKHOUSE_BACKUP_S3_ENDPOINT"/>
+                <use_environment_credentials>true</use_environment_credentials>
+            </s3_backup>
         </disks>
         <policies>
             <local>
@@ -93,6 +98,10 @@
             <!-- Shards are generated dynamically by ClickHouseStart -->
         </easy_db_lab>
     </remote_servers>
+
+    <backups>
+        <allowed_disk>s3_backup</allowed_disk>
+    </backups>
 
     <distributed_ddl>
         <path>/clickhouse/task_queue/ddl</path>

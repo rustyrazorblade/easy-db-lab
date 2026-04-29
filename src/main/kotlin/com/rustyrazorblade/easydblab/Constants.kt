@@ -229,10 +229,15 @@ object Constants {
         const val KEEPER_REPLICAS = 3
         const val PV_STORAGE_SIZE = "100Gi"
         const val S3_CONFIG_NAME = "clickhouse-s3-config"
+        const val BACKUP_S3_ENDPOINT_ENV = "CLICKHOUSE_BACKUP_S3_ENDPOINT"
+        const val BACKUP_METADATA_FILE = "backup-metadata.json"
+        const val PRIMARY_POD_NAME = "clickhouse-0"
+        const val CLUSTER_NAME = "easy_db_lab"
         const val DEFAULT_S3_CACHE_SIZE = "10Gi"
         const val DEFAULT_S3_CACHE_ON_WRITE = "true"
         const val DEFAULT_REPLICAS_PER_SHARD = 3
         const val DEFAULT_S3_TIER_MOVE_FACTOR = 0.2
+        const val DEFAULT_PASSWORD = "default"
     }
 
     // YACE (Yet Another CloudWatch Exporter) configuration

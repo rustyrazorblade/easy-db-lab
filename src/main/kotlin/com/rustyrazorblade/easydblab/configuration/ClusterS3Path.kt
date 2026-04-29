@@ -49,6 +49,7 @@ data class ClusterS3Path(
         internal const val PYROSCOPE_DIR = "pyroscope"
         internal const val VICTORIA_METRICS_DIR = "victoriametrics"
         internal const val VICTORIA_LOGS_DIR = "victorialogs"
+        internal const val CLICKHOUSE_BACKUPS_DIR = "clickhouse-backups"
 
         /**
          * Create a ClusterS3Path from ClusterState.

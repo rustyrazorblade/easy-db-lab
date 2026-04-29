@@ -20,6 +20,7 @@
 
 - [Cassandra](user-guide/installing-cassandra.md)
 - [ClickHouse](user-guide/clickhouse.md)
+  - [Backup and Restore](user-guide/clickhouse-backup-restore.md)
 - [OpenSearch](user-guide/opensearch.md)
 - [Spark](user-guide/spark.md)
 

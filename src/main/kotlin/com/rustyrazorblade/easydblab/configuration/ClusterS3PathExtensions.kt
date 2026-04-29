@@ -38,3 +38,7 @@ fun ClusterS3Path.victoriaMetrics(): ClusterS3Path = resolve(ClusterS3Path.VICTO
 
 /** Path for VictoriaLogs backups. */
 fun ClusterS3Path.victoriaLogs(): ClusterS3Path = resolve(ClusterS3Path.VICTORIA_LOGS_DIR)
+
+/** Root path for ClickHouse backups in the account bucket, decoupled from any cluster lifecycle. */
+fun clickhouseBackupsRoot(accountBucket: String): ClusterS3Path =
+    ClusterS3Path.root(accountBucket).resolve(ClusterS3Path.CLICKHOUSE_BACKUPS_DIR)

@@ -229,6 +229,22 @@ class S3ObjectStoreIntegrationTest {
 
             assertThat(objectStore.listFiles(s3Path)).isEmpty()
         }
+
+        @Test
+        fun `non-recursive listing returns immediate subdirectory prefixes`(
+            @TempDir tempDir: Path,
+        ) {
+            val file1 = tempDir.resolve("data.txt").toFile()
+            file1.writeText("content")
+            val prefix = ClusterS3Path.root(TEST_BUCKET).resolve("nonrecursive")
+            objectStore.uploadFile(file1, prefix.resolve("backup-a").resolve("data.txt"), showProgress = false)
+            objectStore.uploadFile(file1, prefix.resolve("backup-b").resolve("data.txt"), showProgress = false)
+
+            val dirs = objectStore.listFiles(prefix, recursive = false)
+
+            assertThat(dirs).hasSize(2)
+            assertThat(dirs.map { it.path.getFileName() }).containsExactlyInAnyOrder("backup-a", "backup-b")
+        }
     }
 
     @Nested

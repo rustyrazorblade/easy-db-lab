@@ -16,8 +16,17 @@ OTEL_AGENT="${APP_HOME}/build/install/easy-db-lab/agents/opentelemetry-javaagent
 
 # Start OTel collector
 if [ "${EASY_DB_LAB_SKIP_DOCKER}" != "1" ]; then
-    if ! docker compose -f "${APP_HOME}/docker-compose.yml" up -d > /dev/null 2>&1; then
-        echo "Failed to start OTel collector" >&2
+    COMPOSE_OUTPUT=$(docker compose -f "${APP_HOME}/docker-compose.yml" up -d 2>&1)
+    COMPOSE_EXIT=$?
+    if [ $COMPOSE_EXIT -ne 0 ]; then
+        echo "$COMPOSE_OUTPUT" >&2
+        if echo "$COMPOSE_OUTPUT" | grep -q "already in use"; then
+            echo "" >&2
+            echo "To resolve: remove the conflicting container(s), then retry:" >&2
+            echo "  docker rm -f easydblab-otel-collector easydblab-valkey" >&2
+        else
+            echo "Failed to start OTel collector" >&2
+        fi
         exit 1
     fi
 fi

@@ -31,6 +31,8 @@ Options:
 
 The default repo and branch are read from `spark/cassandra-analytics-source.properties`. CLI flags override the file. To switch to a different repo, update that file and re-run with `--force` to re-clone.
 
+**Getting the latest code from the remote**: The script skips all git operations if Maven artifacts already exist (the common case). It does not check whether the clone is up to date. To pull the latest from the configured repo/branch, either run with `--force` or manually `cd .cassandra-analytics && git pull` and then rebuild the spark modules.
+
 ## Building
 
 ```bash

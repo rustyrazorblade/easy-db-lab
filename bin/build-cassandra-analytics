@@ -16,9 +16,24 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 ANALYTICS_DIR="$PROJECT_ROOT/.cassandra-analytics"
 
-# Parse arguments
-FORCE_REBUILD=false
+# Read defaults from spark/cassandra-analytics-source.properties (committed config)
+CONFIG_FILE="$PROJECT_ROOT/spark/cassandra-analytics-source.properties"
+ANALYTICS_REPO="https://github.com/apache/cassandra-analytics.git"
 ANALYTICS_BRANCH="trunk"
+if [ -f "$CONFIG_FILE" ]; then
+    while IFS='=' read -r key value; do
+        key="${key// /}"
+        [[ "$key" == \#* || -z "$key" ]] && continue
+        value="${value# }"
+        case "$key" in
+            repo)   ANALYTICS_REPO="$value" ;;
+            branch) ANALYTICS_BRANCH="$value" ;;
+        esac
+    done < "$CONFIG_FILE"
+fi
+
+# Parse arguments (CLI flags override the config file)
+FORCE_REBUILD=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -30,13 +45,21 @@ while [[ $# -gt 0 ]]; do
             ANALYTICS_BRANCH="$2"
             shift 2
             ;;
+        --repo)
+            ANALYTICS_REPO="$2"
+            shift 2
+            ;;
         *)
             echo "Unknown option: $1"
-            echo "Usage: $0 [--force] [--branch <branch>]"
+            echo "Usage: $0 [--force] [--repo <url>] [--branch <branch>]"
             exit 1
             ;;
     esac
 done
+
+echo "=== cassandra-analytics source ==="
+echo "  repo:   $ANALYTICS_REPO"
+echo "  branch: $ANALYTICS_BRANCH"
 
 # Check if already built by looking for Maven artifacts (any version)
 MAVEN_ARTIFACT_BASE="$HOME/.m2/repository/org/apache/cassandra/cassandra-analytics-core_spark3_2.12"
@@ -50,11 +73,26 @@ echo "=== Building Apache Cassandra Analytics (requires JDK 11) ==="
 
 # Clone or update the repository
 if [ -d "$ANALYTICS_DIR" ]; then
-    echo "=== Updating existing clone ==="
-    (cd "$ANALYTICS_DIR" && git fetch origin && git checkout "$ANALYTICS_BRANCH" && git pull origin "$ANALYTICS_BRANCH" 2>/dev/null || true)
+    CURRENT_REMOTE="$(git -C "$ANALYTICS_DIR" remote get-url origin 2>/dev/null || true)"
+    if [ "$CURRENT_REMOTE" != "$ANALYTICS_REPO" ]; then
+        if [ "$FORCE_REBUILD" = true ]; then
+            echo "=== Remote changed ($CURRENT_REMOTE -> $ANALYTICS_REPO), re-cloning ==="
+            rm -rf "$ANALYTICS_DIR"
+            git clone --depth 1 --branch "$ANALYTICS_BRANCH" "$ANALYTICS_REPO" "$ANALYTICS_DIR"
+        else
+            echo "Error: existing clone uses a different remote."
+            echo "  current: $CURRENT_REMOTE"
+            echo "  wanted:  $ANALYTICS_REPO"
+            echo "Re-run with --force to re-clone from the new repo."
+            exit 1
+        fi
+    else
+        echo "=== Updating existing clone ==="
+        (cd "$ANALYTICS_DIR" && git fetch origin && git checkout "$ANALYTICS_BRANCH" && git pull origin "$ANALYTICS_BRANCH")
+    fi
 else
     echo "=== Cloning cassandra-analytics ==="
-    git clone --depth 1 --branch "$ANALYTICS_BRANCH" https://github.com/apache/cassandra-analytics.git "$ANALYTICS_DIR"
+    git clone --depth 1 --branch "$ANALYTICS_BRANCH" "$ANALYTICS_REPO" "$ANALYTICS_DIR"
 fi
 
 # Initialize SDKMAN

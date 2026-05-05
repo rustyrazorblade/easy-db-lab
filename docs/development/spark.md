@@ -26,7 +26,10 @@ bin/build-cassandra-analytics
 
 Options:
 - `--force` - Rebuild even if already built
+- `--repo <url>` - Clone from a different repo (e.g., a fork)
 - `--branch <branch>` - Use a specific branch (default: trunk)
+
+The default repo and branch are read from `spark/cassandra-analytics-source.properties`. CLI flags override the file. To switch to a different repo, update that file and re-run with `--force` to re-clone.
 
 ## Building
 

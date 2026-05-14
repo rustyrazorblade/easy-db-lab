@@ -31,12 +31,21 @@ class Hosts :
     private val clusterStateManager: ClusterStateManager by inject()
     private val clusterState by lazy { clusterStateManager.load() }
 
-    @Option(names = ["-c"], description = ["Show Cassandra as a comma delimited list"])
+    @Option(names = ["-c"], description = ["Show db nodes as a comma delimited list (deprecated: use --db)"])
     var cassandra: Boolean = false
 
+    @Option(names = ["--db"], description = ["Show db nodes as a comma delimited list"])
+    var db: Boolean = false
+
+    @Option(names = ["--app"], description = ["Show app nodes as a comma delimited list"])
+    var app: Boolean = false
+
+    @Option(names = ["--private"], description = ["Use private IPs (default: public)"])
+    var usePrivateIp: Boolean = false
+
     data class HostOutput(
-        val cassandra: List<Host>,
-        val stress: List<Host>,
+        val db: List<Host>,
+        val app: List<Host>,
         val control: List<Host>,
     )
 
@@ -46,20 +55,26 @@ class Hosts :
             return
         }
 
-        val output =
-            with(clusterState) {
-                HostOutput(
-                    getHosts(ServerType.Cassandra),
-                    getHosts(ServerType.Stress),
-                    getHosts(ServerType.Control),
-                )
-            }
+        val showDbCsv = cassandra || db
+        val showAppCsv = app
 
-        if (cassandra) {
+        if (showDbCsv) {
             val hosts = clusterState.getHosts(ServerType.Cassandra)
-            val csv = hosts.map { it.public }.joinToString(",")
+            val csv = hosts.map { if (usePrivateIp) it.private else it.public }.joinToString(",")
+            eventBus.emit(Event.Command.HostsCsvOutput(csv))
+        } else if (showAppCsv) {
+            val hosts = clusterState.getHosts(ServerType.Stress)
+            val csv = hosts.map { if (usePrivateIp) it.private else it.public }.joinToString(",")
             eventBus.emit(Event.Command.HostsCsvOutput(csv))
         } else {
+            val output =
+                with(clusterState) {
+                    HostOutput(
+                        db = getHosts(ServerType.Cassandra),
+                        app = getHosts(ServerType.Stress),
+                        control = getHosts(ServerType.Control),
+                    )
+                }
             context.yaml.writeValue(System.out, output)
         }
     }

@@ -105,7 +105,7 @@ fun AWS.createRoleWithS3Policy(roleName: String): String {
  * @param roleName The name of the IAM role to attach the policy to
  */
 fun AWS.attachS3Policy(roleName: String) {
-    val s3Policy = AWSPolicy.Inline.S3AccessWildcard.toJson()
+    val s3Policy = AWSPolicy.Inline.S3AccessWildcard(getAccountId()).toJson()
     val retryConfig = RetryUtil.createIAMRetryConfig()
     val retry = Retry.of("attach-s3-policy-$roleName", retryConfig)
 

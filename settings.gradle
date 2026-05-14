@@ -20,7 +20,7 @@ rootProject.name = 'easy-db-lab'
 include "core"
 include "spark:common"
 include "spark:bulk-writer-sidecar"
-include "spark:bulk-writer-s3"
+include "spark:bulk-writer-s3-iam"
 include "spark:connector-writer"
 include "spark:connector-read-write"
 

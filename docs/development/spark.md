@@ -8,7 +8,7 @@ All Spark modules live under `spark/` with shared configuration:
 
 - `spark/common/` — Shared config (`SparkJobConfig`), data generation (`BulkTestDataGenerator`), CQL setup
 - `spark/bulk-writer-sidecar/` — Cassandra Analytics, direct sidecar transport (`DirectBulkWriter`)
-- `spark/bulk-writer-s3/` — Cassandra Analytics, S3 staging transport (`S3BulkWriter`)
+- `spark/bulk-writer-s3-iam/` — Cassandra Analytics, S3 staging transport with IAM credentials (`IamBulkWriter`)
 - `spark/connector-writer/` — Standard Spark Cassandra Connector (`StandardConnectorWriter`)
 - `spark/connector-read-write/` — Read→transform→write example (`KeyValuePrefixCount`)
 
@@ -37,7 +37,7 @@ The default repo and branch are read from `spark/cassandra-analytics-source.prop
 
 ```bash
 # Build all Spark modules
-./gradlew :spark:bulk-writer-sidecar:shadowJar :spark:bulk-writer-s3:shadowJar \
+./gradlew :spark:bulk-writer-sidecar:shadowJar :spark:bulk-writer-s3-iam:shadowJar \
   :spark:connector-writer:shadowJar :spark:connector-read-write:shadowJar
 
 # Build individually

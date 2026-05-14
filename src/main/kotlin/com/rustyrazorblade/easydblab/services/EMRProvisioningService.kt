@@ -207,20 +207,20 @@ class DefaultEMRProvisioningService(
                 "OTEL_LOGS_EXPORTER" to "otlp",
                 "OTEL_METRICS_EXPORTER" to "otlp",
                 "OTEL_TRACES_EXPORTER" to "otlp",
+                "OTEL_EXPORTER_OTLP_PROTOCOL" to "grpc",
                 "OTEL_SERVICE_NAME" to "spark",
             )
 
         val properties =
-            mutableMapOf(
-                "spark.driver.extraJavaOptions" to extraJavaOptions,
-                "spark.executor.extraJavaOptions" to extraJavaOptions,
-            )
-
-        for ((key, value) in otelEnvVars) {
-            properties["spark.driverEnv.$key"] = value
-            properties["spark.executorEnv.$key"] = value
-            properties["spark.yarn.appMasterEnv.$key"] = value
-        }
+            buildMap {
+                put("spark.driver.extraJavaOptions", extraJavaOptions)
+                put("spark.executor.extraJavaOptions", extraJavaOptions)
+                for ((key, value) in otelEnvVars) {
+                    put("spark.driverEnv.$key", value)
+                    put("spark.executorEnv.$key", value)
+                    put("spark.yarn.appMasterEnv.$key", value)
+                }
+            }
 
         return EMRConfiguration(
             classification = "spark-defaults",

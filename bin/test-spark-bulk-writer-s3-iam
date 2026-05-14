@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+# End-to-end test: init cluster, start Cassandra, run IAM bulk writer Spark job.
+# Cluster topology (DCs and per-AZ sidecar contact points) is auto-discovered.
+# Run this manually — do not execute via Claude.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$PROJECT_ROOT"
+
+CLUSTER=iam-test
+: "${SIDECAR_IMAGE:?SIDECAR_IMAGE env var must be set}"
+
+CASSANDRA_VERSION="5.0"
+KEYSPACE="bulk_test"
+TABLE="data_$(date +%s)"
+MAIN_CLASS="com.rustyrazorblade.easydblab.spark.IamBulkWriter"
+JAR="spark/bulk-writer-s3-iam/build/libs/bulk-writer-s3-iam-all.jar"
+
+##############################################################################
+# STEP 1: Init the cluster
+##############################################################################
+echo "=== Initialising cluster ==="
+bin/easy-db-lab init \
+  -c 3 -s 0 \
+  -i m5.xlarge \
+  --ebs.type gp3 \
+  --spark.enable \
+  --spark.master.instance.type m5.xlarge \
+  --spark.worker.instance.type m5.xlarge \
+  --spark.worker.instance.count 2 \
+  --clean --up \
+  "$CLUSTER"
+
+##############################################################################
+# STEP 2: Set Cassandra version and apply config patch
+##############################################################################
+echo ""
+echo "=== Setting Cassandra $CASSANDRA_VERSION ==="
+bin/easy-db-lab cassandra use "$CASSANDRA_VERSION"
+
+echo ""
+echo "=== Uploading cassandra.patch.yaml ==="
+if [ ! -f cassandra.patch.yaml ]; then
+    echo "ERROR: cassandra.patch.yaml not found — was 'cassandra use' run?" >&2
+    exit 1
+fi
+grep -q "storage_compatibility_mode" cassandra.patch.yaml || echo "storage_compatibility_mode: NONE" >> cassandra.patch.yaml
+bin/easy-db-lab cassandra update-config cassandra.patch.yaml
+
+##############################################################################
+# STEP 3: Start Cassandra with custom sidecar image
+##############################################################################
+echo ""
+echo "=== Starting Cassandra ==="
+bin/easy-db-lab cassandra start --sidecar-image "$SIDECAR_IMAGE"
+
+##############################################################################
+# STEP 4: Build the spark JAR
+##############################################################################
+echo ""
+echo "=== Building IAM bulk writer JAR ==="
+./gradlew :spark:bulk-writer-s3-iam:shadowJar
+
+##############################################################################
+# STEP 5: Resolve contact points and S3 bucket from state
+##############################################################################
+echo ""
+echo "=== Resolving cluster config ==="
+CONTACT_POINTS=$(bin/easy-db-lab hosts --db --private)
+
+if [ -z "$CONTACT_POINTS" ]; then
+    echo "ERROR: no db nodes found — is the cluster healthy?" >&2
+    exit 1
+fi
+
+DATA_BUCKET=$(yq -r '.dataBucket' state.json)
+
+if [ -z "$DATA_BUCKET" ] || [ "$DATA_BUCKET" = "null" ]; then
+    echo "ERROR: could not read dataBucket from state.json" >&2
+    exit 1
+fi
+
+# With EC2Snitch the DC name is the AWS region
+LOCAL_DC="${LOCAL_DC:-us-west-2}"
+
+echo "Data bucket:    $DATA_BUCKET"
+echo "Contact points: $CONTACT_POINTS"
+echo "Local DC:       $LOCAL_DC"
+
+##############################################################################
+# STEP 6: Submit the Spark job
+# DC topology and sidecar contact points are auto-discovered from Cassandra.
+##############################################################################
+echo ""
+echo "=== Submitting IAM bulk writer Spark job ==="
+bin/easy-db-lab spark submit \
+  --jar "$JAR" \
+  --main-class "$MAIN_CLASS" \
+  --wait \
+  --conf "spark.easydblab.contactPoints=$CONTACT_POINTS" \
+  --conf "spark.easydblab.keyspace=$KEYSPACE" \
+  --conf "spark.easydblab.table=$TABLE" \
+  --conf "spark.easydblab.localDc=$LOCAL_DC" \
+  --conf "spark.easydblab.s3.bucket=$DATA_BUCKET"
+
+##############################################################################
+# STEP 7: Verify row count
+##############################################################################
+echo ""
+echo "=== Verifying row count ==="
+bin/easy-db-lab cassandra cql "select count(*) from $KEYSPACE.$TABLE"
+
+echo ""
+echo "=== Done ==="

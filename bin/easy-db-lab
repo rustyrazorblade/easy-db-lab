@@ -7,6 +7,14 @@ dir=$(dirname $0)
 APP_HOME="$(dirname "$dir")"
 APP_HOME=$(readlink -f $APP_HOME)
 
+# Load per-developer overrides from .env (gitignored). Shell env always wins.
+if [ -f "$APP_HOME/.env" ]; then
+    set -a
+    # shellcheck disable=SC1091
+    source "$APP_HOME/.env"
+    set +a
+fi
+
 EASY_DB_LAB_USER_DATA=~/.easy-db-lab/
 
 VERSION=$(grep '^version' "${APP_HOME}/gradle.properties" | cut -d '=' -f2)

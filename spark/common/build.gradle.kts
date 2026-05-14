@@ -2,19 +2,24 @@ plugins {
     `java-library`
 }
 
+val sparkVersion: String by extra
+val scalaVersion: String by extra
+
 dependencies {
     // Cassandra Driver for CQL setup
-    api("org.apache.cassandra:java-driver-core:4.19.2")
+    api(libs.cassandra.driver.core)
 
     // Test dependencies
     testImplementation(libs.bundles.testcontainers)
-    testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
+    testImplementation(libs.junit.jupiter.all)
     testRuntimeOnly(libs.junit.platform.launcher)
-    testImplementation("org.assertj:assertj-core:3.27.7")
+    testImplementation(libs.assertj.core)
+    // Java test classes use mockito-core directly (not mockito-kotlin)
+    testImplementation(libs.mockito.core)
     // Spark is compileOnly (provided on EMR), but needed for unit testing SparkJobConfig.
     // Version variables are set by spark/build.gradle.kts subprojects block.
-    testImplementation("org.apache.spark:spark-core_2.12:3.5.7")
-    testImplementation("org.apache.spark:spark-sql_2.12:3.5.7")
+    testImplementation("org.apache.spark:spark-core_${scalaVersion}:${sparkVersion}")
+    testImplementation("org.apache.spark:spark-sql_${scalaVersion}:${sparkVersion}")
 }
 
 tasks.test {

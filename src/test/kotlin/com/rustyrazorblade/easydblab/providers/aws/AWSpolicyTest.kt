@@ -39,7 +39,7 @@ class AWSpolicyTest {
     inner class InlinePolicies {
         @Test
         fun `S3AccessWildcard should generate valid policy with multiple statements`() {
-            val json = AWSPolicy.Inline.S3AccessWildcard.toJson()
+            val json = AWSPolicy.Inline.S3AccessWildcard("123456789012").toJson()
 
             // First statement for ListAllMyBuckets
             assertThat(json).contains(""""Action":"s3:ListAllMyBuckets"""")
@@ -49,6 +49,9 @@ class AWSpolicyTest {
             assertThat(json).contains(""""Action":"s3:*"""")
             assertThat(json).contains(""""arn:aws:s3:::easy-db-lab-*"""")
             assertThat(json).contains(""""arn:aws:s3:::easy-db-lab-*/*"""")
+
+            // ECR repo-level actions scoped to account
+            assertThat(json).contains(""""arn:aws:ecr:*:123456789012:repository/*"""")
 
             // Inline policies should not have Principal field
             assertThat(json).doesNotContain(""""Principal":""")

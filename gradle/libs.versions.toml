@@ -23,9 +23,10 @@ kaml = "0.104.0"
 kotlinx-coroutines = "1.10.2"
 
 # Testing
-jupiter = "5.5.2"
+jupiter = "5.10.2"
 assertj = "3.27.7"
 mockito-kotlin = "6.3.0"
+mockito = "5.23.0"
 testcontainers = "2.0.5"
 
 # CLI and UI
@@ -91,9 +92,12 @@ jackson-datatype-jsr310 = { module = "com.fasterxml.jackson.datatype:jackson-dat
 
 # Testing
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter-engine", version.ref = "jupiter" }
+junit-jupiter-all = { module = "org.junit.jupiter:junit-jupiter", version.ref = "jupiter" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
 assertj-core = { module = "org.assertj:assertj-core", version.ref = "assertj" }
 mockito-kotlin = { module = "org.mockito.kotlin:mockito-kotlin", version.ref = "mockito-kotlin" }
+# Java (non-Kotlin) test modules use mockito-core directly instead of mockito-kotlin
+mockito-core = { module = "org.mockito:mockito-core", version.ref = "mockito" }
 testcontainers-core = { module = "org.testcontainers:testcontainers", version.ref = "testcontainers" }
 testcontainers-junit = { module = "org.testcontainers:testcontainers-junit-jupiter", version.ref = "testcontainers" }
 testcontainers-cassandra = { module = "org.testcontainers:testcontainers-cassandra", version.ref = "testcontainers" }
@@ -128,6 +132,8 @@ awssdk-emr = { module = "software.amazon.awssdk:emr", version.ref = "awssdk" }
 awssdk-s3 = { module = "software.amazon.awssdk:s3", version.ref = "awssdk" }
 awssdk-sts = { module = "software.amazon.awssdk:sts", version.ref = "awssdk" }
 awssdk-opensearch = { module = "software.amazon.awssdk:opensearch", version.ref = "awssdk" }
+awssdk-regions = { module = "software.amazon.awssdk:regions", version.ref = "awssdk" }
+awssdk-ecr = { module = "software.amazon.awssdk:ecr", version.ref = "awssdk" }
 
 # Docker
 docker-java = { module = "com.github.docker-java:docker-java", version.ref = "docker-java" }
@@ -192,7 +198,7 @@ koin = ["koin-core"]
 koin-test = ["koin-test", "koin-test-junit5"]
 
 # AWS SDK bundle
-awssdk = ["awssdk-ec2", "awssdk-iam", "awssdk-emr", "awssdk-s3", "awssdk-sts", "awssdk-opensearch"]
+awssdk = ["awssdk-ec2", "awssdk-iam", "awssdk-emr", "awssdk-s3", "awssdk-sts", "awssdk-opensearch", "awssdk-ecr"]
 
 # Docker bundle
 docker = ["docker-java", "docker-java-transport-httpclient5"]

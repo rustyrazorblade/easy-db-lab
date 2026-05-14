@@ -30,6 +30,12 @@
 #   --ebs              Use EBS volumes.
 #   --no-teardown      Skip teardown prompt; exit with status (0=pass, 1=fail).
 #   --clean            Run 'easy-db-lab clean' and remove stale artifacts before starting.
+#   --stop-on-failure  Halt the run immediately after the first failing step.
+#
+# Environment variables (set in shell or .env):
+#   AWS_PROFILE              AWS profile for all CLI/SDK calls (required)
+#   SIDECAR_IMAGE            Custom Cassandra sidecar image (optional)
+#   EASY_DB_LAB_INSTANCE_TYPE  EC2 instance type for db nodes (default: c5d.2xlarge)
 #
 
 set -e  # Exit on any error
@@ -37,14 +43,19 @@ set -e  # Exit on any error
 # Store project root directory
 PROJECT_ROOT="$(pwd)"
 
+# Load per-developer overrides from .env (gitignored). Shell env always wins.
+if [ -f "$PROJECT_ROOT/.env" ]; then
+    set -a
+    # shellcheck disable=SC1091
+    source "$PROJECT_ROOT/.env"
+    set +a
+fi
+
 # Work directory is the same as project root (no temp directory)
 TEST_WORKDIR="$PROJECT_ROOT"
 
 # Prepend bin directory to PATH so easy-db-lab uses this worktree's version
 export PATH="$PROJECT_ROOT/bin:$PATH"
-
-# Use sandbox-admin AWS profile for S3 operations
-export AWS_PROFILE=sandbox-admin
 
 # Track current step for resume functionality
 CURRENT_STEP=0
@@ -68,6 +79,7 @@ export BREAKPOINTS=""
 export START_STEP=""
 export NO_TEARDOWN=false
 export CLEAN=false
+export STOP_ON_FAILURE=false
 while [[ $# -gt 0 ]]; do
   case $1 in
     --list-steps|-l)
@@ -122,9 +134,13 @@ while [[ $# -gt 0 ]]; do
       CLEAN=true
       shift
       ;;
+    --stop-on-failure)
+      STOP_ON_FAILURE=true
+      shift
+      ;;
     *)
       echo "Unknown option: $1"
-      echo "Usage: $0 [--list-steps|-l] [--break <steps>] [--start-step <N>] [--build] [--spark] [--cassandra] [--clickhouse] [--opensearch] [--all] [--ebs] [--no-teardown] [--clean]"
+      echo "Usage: $0 [--list-steps|-l] [--break <steps>] [--start-step <N>] [--build] [--spark] [--cassandra] [--clickhouse] [--opensearch] [--all] [--ebs] [--no-teardown] [--clean] [--stop-on-failure]"
       exit 1
       ;;
   esac
@@ -156,7 +172,7 @@ step_build_project() {
         # Pre-build cassandra-analytics with JDK 11 for bulk-writer
         echo "=== Pre-building Cassandra Analytics (JDK 11) ==="
         "$PROJECT_ROOT/bin/build-cassandra-analytics"
-        (cd "$PROJECT_ROOT" && ./gradlew clean shadowJar installDist :spark:connector-read-write:shadowJar :spark:bulk-writer-sidecar:shadowJar :spark:bulk-writer-s3:shadowJar :spark:connector-writer:shadowJar)
+        (cd "$PROJECT_ROOT" && ./gradlew clean shadowJar installDist :spark:connector-read-write:shadowJar :spark:bulk-writer-sidecar:shadowJar :spark:bulk-writer-s3-iam:shadowJar :spark:connector-writer:shadowJar)
     else
         (cd "$PROJECT_ROOT" && ./gradlew clean shadowJar installDist)
     fi
@@ -451,7 +467,12 @@ step_setup_cassandra() {
     easy-db-lab cassandra update-config
 
     echo "=== Starting Cassandra ==="
-    easy-db-lab cassandra start
+    if [ -n "${SIDECAR_IMAGE:-}" ]; then
+        echo "=== Using custom sidecar image: $SIDECAR_IMAGE ==="
+        easy-db-lab cassandra start --sidecar-image "$SIDECAR_IMAGE"
+    else
+        easy-db-lab cassandra start
+    fi
 }
 
 step_verify_cassandra_backup() {
@@ -614,7 +635,48 @@ step_check_sidecar() {
         return 0
     fi
     echo "=== Check Sidecar ==="
-    ssh db0 "curl -s http://$(easy-db-lab ip db0 --private):9043/api/v1/cassandra/schema" | jq 'keys'
+    local failed=0
+
+    echo "--- DaemonSet status ---"
+    kubectl get daemonset cassandra-sidecar
+
+    echo ""
+    echo "--- Waiting for sidecar pods to be ready (up to 120s) ---"
+    kubectl wait --for=condition=Ready pods -l 'app.kubernetes.io/name=cassandra-sidecar' --timeout=120s || true
+
+    echo ""
+    echo "--- Pod status ---"
+    kubectl get pods -l 'app.kubernetes.io/name=cassandra-sidecar' -o wide
+
+    # Show logs for any non-Running pods
+    while IFS= read -r line; do
+        local pod pod_status
+        pod=$(awk '{print $1}' <<< "$line")
+        pod_status=$(awk '{print $3}' <<< "$line")
+        if [ "$pod_status" != "Running" ]; then
+            echo ""
+            echo "--- Logs for $pod (status: $pod_status) ---"
+            kubectl logs "$pod" --tail=50
+            failed=1
+        fi
+    done < <(kubectl get pods -l 'app.kubernetes.io/name=cassandra-sidecar' --no-headers 2>/dev/null)
+
+    echo ""
+    echo "--- Health checks (port 9043) ---"
+    while IFS= read -r line; do
+        local node_alias node_ip http_code
+        node_alias=$(awk '{print $1}' <<< "$line")
+        node_ip=$(awk '{print $2}' <<< "$line")
+        http_code=$(ssh "$node_alias" "curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://$node_ip:9043/api/v1/cassandra/schema" 2>/dev/null || echo "000")
+        if [[ "$http_code" =~ ^2 ]]; then
+            echo "  $node_alias ($node_ip): OK (HTTP $http_code)"
+        else
+            echo "  $node_alias ($node_ip): FAILED (HTTP $http_code)"
+            failed=1
+        fi
+    done < <(jq -r '.hosts.Cassandra[] | .alias + " " + .privateIp' state.json)
+
+    return $failed
 }
 
 step_test_exec() {
@@ -847,33 +909,6 @@ step_bulk_writer_sidecar() {
         data_sidecar
 }
 
-step_bulk_writer_s3() {
-    echo "=== Skipping bulk writer S3 test (temporarily disabled) ==="
-    return 0
-    # TODO: re-enable when bulk writer S3 test is fixed
-    # if [ "$ENABLE_SPARK" != true ]; then
-    #     echo "=== Skipping bulk writer S3 test (use --spark to enable) ==="
-    #     return 0
-    # fi
-    # if [ "$ENABLE_CASSANDRA" != true ]; then
-    #     echo "=== Skipping bulk writer S3 test (use --cassandra to enable) ==="
-    #     return 0
-    # fi
-    #
-    # local data_bucket
-    # data_bucket=$(jq -r '.dataBucket // empty' state.json 2>/dev/null)
-    # if [ -z "$data_bucket" ]; then
-    #     echo "ERROR: dataBucket not found in state.json"
-    #     return 1
-    # fi
-    #
-    # submit_spark_writer "bulk writer (S3)" \
-    #     "$PROJECT_ROOT/spark/bulk-writer-s3/build/libs/bulk-writer-s3*.jar" \
-    #     com.rustyrazorblade.easydblab.spark.S3BulkWriter \
-    #     data_s3 \
-    #     --conf "spark.easydblab.s3.bucket=$data_bucket"
-}
-
 step_connector_writer() {
     if [ "$ENABLE_SPARK" != true ]; then
         echo "=== Skipping connector writer test (use --spark to enable) ==="
@@ -888,6 +923,27 @@ step_connector_writer() {
         "$PROJECT_ROOT/spark/connector-writer/build/libs/connector-writer*.jar" \
         com.rustyrazorblade.easydblab.spark.StandardConnectorWriter \
         data_connector
+}
+
+step_bulk_writer_iam() {
+    if [ "$ENABLE_SPARK" != true ]; then
+        echo "=== Skipping IAM bulk writer test (use --spark to enable) ==="
+        return 0
+    fi
+
+    local data_bucket
+    data_bucket=$(jq -r '.dataBucket // empty' state.json 2>/dev/null)
+    if [ -z "$data_bucket" ]; then
+        echo "ERROR: dataBucket not found in state.json — cannot determine S3 write bucket"
+        return 1
+    fi
+    echo "IAM bulk writer S3 bucket: $data_bucket"
+
+    submit_spark_writer "IAM bulk writer (S3/IAM transport)" \
+        "$PROJECT_ROOT/spark/bulk-writer-s3-iam/build/libs/bulk-writer-s3-iam*.jar" \
+        com.rustyrazorblade.easydblab.spark.IamBulkWriter \
+        data_iam \
+        --conf "spark.easydblab.s3.bucket=$data_bucket"
 }
 
 step_clickhouse_start() {
@@ -1416,8 +1472,8 @@ STEPS_WORKDIR=(
     "step_spark_submit:Submit Spark job"
     "step_spark_status:Check Spark status"
     "step_bulk_writer_sidecar:Test bulk writer (sidecar)"
-    "step_bulk_writer_s3:Test bulk writer (S3)"
     "step_connector_writer:Test connector writer"
+    "step_bulk_writer_iam:Test IAM bulk writer (S3/IAM transport)"
     "step_cassandra_start_stop:Cassandra start/stop cycle"
     "step_clickhouse_start:Start ClickHouse"
     "step_clickhouse_test:Test ClickHouse"
@@ -1556,6 +1612,10 @@ run_from_step() {
                 df -h 2>/dev/null || true
                 echo ""
             } >> "$FAILURE_LOG"
+            if [ "$STOP_ON_FAILURE" = true ]; then
+                echo ">>> --stop-on-failure is set — halting run"
+                return 1
+            fi
             echo ">>> Failure recorded — continuing to next step"
         fi
     done
@@ -1677,6 +1737,19 @@ fi
 # Change to work directory
 cd "$TEST_WORKDIR"
 echo "=== Work directory: $(pwd) ==="
+
+# Print key configuration so it's visible before any steps run
+echo ""
+echo "=== Configuration ==="
+if [ -n "${SIDECAR_IMAGE:-}" ]; then
+    echo "  SIDECAR_IMAGE: $SIDECAR_IMAGE"
+else
+    echo "  SIDECAR_IMAGE: (default — ghcr.io/apache/cassandra-sidecar:latest)"
+fi
+echo "  AWS_PROFILE:   ${AWS_PROFILE:-(not set)}"
+echo "  Instance type: ${EASY_DB_LAB_INSTANCE_TYPE:-c5d.2xlarge}"
+echo "==========================="
+echo ""
 
 # Run all steps except teardown (last step).
 # Teardown is handled by the cleanup trap — it prompts for confirmation

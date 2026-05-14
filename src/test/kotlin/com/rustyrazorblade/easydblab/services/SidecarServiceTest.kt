@@ -10,12 +10,17 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.core.module.dsl.factoryOf
+import org.koin.dsl.bind
 import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import software.amazon.awssdk.services.ecr.EcrClient
+import software.amazon.awssdk.services.ecr.model.AuthorizationData
+import software.amazon.awssdk.services.ecr.model.GetAuthorizationTokenResponse
+import java.util.Base64
 
 /**
  * Tests for DefaultSidecarService — K3s DaemonSet lifecycle operations.
@@ -23,6 +28,7 @@ import org.mockito.kotlin.whenever
 class SidecarServiceTest : BaseKoinTest() {
     private lateinit var mockK8sService: K8sService
     private lateinit var mockClusterStateManager: ClusterStateManager
+    private lateinit var mockEcrClient: EcrClient
     private lateinit var sidecarService: SidecarService
 
     private val testControlHost =
@@ -46,11 +52,10 @@ class SidecarServiceTest : BaseKoinTest() {
             module {
                 single { mockK8sService }
                 single { mockClusterStateManager }
+                single { mockEcrClient }
                 single { TemplateService(get(), get()) }
                 factoryOf(::SidecarManifestBuilder)
-                factory<SidecarService> {
-                    DefaultSidecarService(get(), get(), get())
-                }
+                factoryOf(::DefaultSidecarService) bind SidecarService::class
             },
         )
 
@@ -58,6 +63,7 @@ class SidecarServiceTest : BaseKoinTest() {
     fun setupMocks() {
         mockK8sService = mock()
         mockClusterStateManager = mock()
+        mockEcrClient = mock()
         sidecarService = getKoin().get()
 
         whenever(mockClusterStateManager.load()).thenReturn(testClusterState)
@@ -124,5 +130,20 @@ class SidecarServiceTest : BaseKoinTest() {
 
         assertThat(result.isFailure).isTrue()
         assertThat(result.exceptionOrNull()).hasMessageContaining("Rollout failed")
+    }
+
+    @Test
+    fun `deploy with ECR image creates pull secret before applying daemonset`() {
+        val authToken = Base64.getEncoder().encodeToString("AWS:test-ecr-password".toByteArray())
+        val authData = AuthorizationData.builder().authorizationToken(authToken).build()
+        val tokenResponse = GetAuthorizationTokenResponse.builder().authorizationData(authData).build()
+        whenever(mockEcrClient.getAuthorizationToken()).thenReturn(tokenResponse)
+
+        val ecrImage = "123456789012.dkr.ecr.us-west-2.amazonaws.com/my-repo/cassandra-sidecar:latest"
+        val result = sidecarService.deploy(testControlHost, ecrImage)
+
+        assertThat(result.isSuccess).isTrue()
+        // Secret + ConfigMap + DaemonSet = 3 resources
+        verify(mockK8sService, times(3)).applyResource(any(), any())
     }
 }

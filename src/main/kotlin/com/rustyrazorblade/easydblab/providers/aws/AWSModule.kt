@@ -29,6 +29,7 @@ import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
 import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.ec2.Ec2Client
+import software.amazon.awssdk.services.ecr.EcrClient
 import software.amazon.awssdk.services.emr.EmrClient
 import software.amazon.awssdk.services.iam.IamClient
 import software.amazon.awssdk.services.opensearch.OpenSearchClient
@@ -136,6 +137,16 @@ val awsModule =
         single {
             val overrideConfig = createClientOverrideConfig()
             OpenSearchClient
+                .builder()
+                .region(get<Region>())
+                .credentialsProvider(get<AwsCredentialsProvider>())
+                .overrideConfiguration(overrideConfig)
+                .build()
+        }
+
+        single {
+            val overrideConfig = createClientOverrideConfig()
+            EcrClient
                 .builder()
                 .region(get<Region>())
                 .credentialsProvider(get<AwsCredentialsProvider>())

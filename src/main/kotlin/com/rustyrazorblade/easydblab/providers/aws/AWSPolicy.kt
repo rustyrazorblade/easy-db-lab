@@ -138,7 +138,9 @@ sealed class AWSPolicy {
          * Attached to IAM roles to allow EC2 instances to access cluster data.
          * Also includes s3:ListAllMyBuckets for S3Manager web UI.
          */
-        data object S3AccessWildcard : Inline() {
+        data class S3AccessWildcard(
+            val accountId: String,
+        ) : Inline() {
             override fun toJson() =
                 IamPolicyDocument(
                     statement =
@@ -171,9 +173,22 @@ sealed class AWSPolicy {
                                             "tag:GetResources",
                                             "oam:ListSinks",
                                             "oam:ListAttachedLinks",
+                                            "ecr:GetAuthorizationToken",
                                         ),
                                     ),
                                 resource = IamPolicyResource.single("*"),
+                            ),
+                            IamPolicyStatement(
+                                effect = "Allow",
+                                action =
+                                    IamPolicyAction.multiple(
+                                        listOf(
+                                            "ecr:BatchCheckLayerAvailability",
+                                            "ecr:GetDownloadUrlForLayer",
+                                            "ecr:BatchGetImage",
+                                        ),
+                                    ),
+                                resource = IamPolicyResource.single("arn:aws:ecr:*:$accountId:repository/*"),
                             ),
                         ),
                 ).toJson()

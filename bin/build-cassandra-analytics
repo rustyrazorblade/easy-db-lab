@@ -9,7 +9,7 @@
 # Internal modules (five-zero, etc.) are built and available in build output.
 #
 
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -88,7 +88,12 @@ if [ -d "$ANALYTICS_DIR" ]; then
         fi
     else
         echo "=== Updating existing clone ==="
-        (cd "$ANALYTICS_DIR" && git fetch origin && git checkout "$ANALYTICS_BRANCH" && git pull origin "$ANALYTICS_BRANCH")
+        if [ "$FORCE_REBUILD" = true ]; then
+            echo "WARNING: --force will discard any local changes in $ANALYTICS_DIR"
+            (cd "$ANALYTICS_DIR" && git fetch origin && git checkout "$ANALYTICS_BRANCH" && git reset --hard "origin/$ANALYTICS_BRANCH")
+        else
+            (cd "$ANALYTICS_DIR" && git fetch origin && git checkout "$ANALYTICS_BRANCH" && git pull origin "$ANALYTICS_BRANCH")
+        fi
     fi
 else
     echo "=== Cloning cassandra-analytics ==="

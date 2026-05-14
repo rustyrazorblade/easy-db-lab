@@ -8,6 +8,7 @@ import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.EmptyDirVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.HostPathVolumeSourceBuilder
+import io.fabric8.kubernetes.api.model.LocalObjectReferenceBuilder
 import io.fabric8.kubernetes.api.model.SecurityContextBuilder
 import io.fabric8.kubernetes.api.model.VolumeMountBuilder
 import io.fabric8.kubernetes.api.model.apps.DaemonSetBuilder
@@ -38,8 +39,10 @@ class SidecarManifestBuilder(
         private const val PYROSCOPE_HOST_PATH = "/usr/local/pyroscope"
         private const val PYROSCOPE_MOUNT_PATH = "/usr/local/pyroscope"
         private const val CASSANDRA_DATA_PATH = "/mnt/db1/cassandra"
-
         private const val SIDECAR_CONFIG_PATH = "/conf/sidecar.yaml"
+        private const val SIDECAR_PORT = 9043
+        private const val READINESS_INITIAL_DELAY = 15
+        private const val READINESS_PERIOD = 10
     }
 
     /**
@@ -54,10 +57,11 @@ class SidecarManifestBuilder(
         image: String = DEFAULT_IMAGE,
         controlNodeIp: String,
         clusterName: String,
+        imagePullSecretName: String = "",
     ): List<HasMetadata> =
         listOf(
             buildConfigMap(),
-            buildDaemonSet(image, controlNodeIp, clusterName),
+            buildDaemonSet(image, controlNodeIp, clusterName, imagePullSecretName),
         )
 
     /**
@@ -92,6 +96,7 @@ class SidecarManifestBuilder(
         image: String,
         controlNodeIp: String,
         clusterName: String,
+        imagePullSecretName: String = "",
     ) = DaemonSetBuilder()
         .withNewMetadata()
         .withName(APP_LABEL)
@@ -110,6 +115,11 @@ class SidecarManifestBuilder(
         .addToNodeSelector("type", "db")
         .withHostNetwork(true)
         .withDnsPolicy("ClusterFirstWithHostNet")
+        .apply {
+            if (imagePullSecretName.isNotEmpty()) {
+                addToImagePullSecrets(LocalObjectReferenceBuilder().withName(imagePullSecretName).build())
+            }
+        }
         // Init container: substitute __HOST_IP__ with the node's actual IP
         .addNewInitContainer()
         .withName("config-init")
@@ -180,7 +190,15 @@ class SidecarManifestBuilder(
                 .withMountPath(PYROSCOPE_MOUNT_PATH)
                 .withReadOnly(true)
                 .build(),
-        ).endContainer()
+        ).withNewReadinessProbe()
+        .withNewHttpGet()
+        .withPath("/api/v1/cassandra/schema")
+        .withNewPort(SIDECAR_PORT)
+        .endHttpGet()
+        .withInitialDelaySeconds(READINESS_INITIAL_DELAY)
+        .withPeriodSeconds(READINESS_PERIOD)
+        .endReadinessProbe()
+        .endContainer()
         // Volumes
         .addNewVolume()
         .withName("config-template")

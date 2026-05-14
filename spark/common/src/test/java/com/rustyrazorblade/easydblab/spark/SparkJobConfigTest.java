@@ -87,19 +87,6 @@ class SparkJobConfigTest {
     }
 
     @Test
-    void load_missingKeyspace_throwsWithUsage() {
-        SparkConf conf = new SparkConf(false)
-            .set("spark.master", "local[1]")
-            .set("spark.app.name", "test")
-            .set(SparkJobConfig.PROP_CONTACT_POINTS, "host1")
-            .set(SparkJobConfig.PROP_LOCAL_DC, "dc1");
-
-        assertThatThrownBy(() -> SparkJobConfig.load(conf))
-            .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining(SparkJobConfig.PROP_KEYSPACE);
-    }
-
-    @Test
     void load_missingLocalDc_throwsWithUsage() {
         SparkConf conf = new SparkConf(false)
             .set("spark.master", "local[1]")

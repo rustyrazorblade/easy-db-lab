@@ -4,6 +4,8 @@ import org.apache.spark.SparkConf;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -13,7 +15,7 @@ import java.util.Map;
  * All configuration is passed via Spark properties (--conf):
  * <ul>
  *   <li>{@code spark.easydblab.contactPoints} - Comma-separated database hosts (required)</li>
- *   <li>{@code spark.easydblab.keyspace} - Target keyspace (required)</li>
+ *   <li>{@code spark.easydblab.keyspace} - Target keyspace (optional, default: easy_db_lab)</li>
  *   <li>{@code spark.easydblab.table} - Target table name (optional, default: data_&lt;timestamp&gt;)</li>
  *   <li>{@code spark.easydblab.localDc} - Local datacenter name (required)</li>
  *   <li>{@code spark.easydblab.rowCount} - Number of rows to write (default: 1000000)</li>
@@ -28,6 +30,8 @@ import java.util.Map;
  * </ul>
  */
 public class SparkJobConfig {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(SparkJobConfig.class);
 
     // Cassandra Analytics data sink format class
     public static final String CASSANDRA_DATA_SINK =
@@ -89,15 +93,24 @@ public class SparkJobConfig {
     public static final String PROP_COMPACTION = "spark.easydblab.compaction";
     public static final String PROP_S3_BUCKET = "spark.easydblab.s3.bucket";
     /**
-     * Per-DC read bucket configuration for coordinated multi-cluster S3 bulk writes.
-     * Format: comma-separated {@code clusterId:bucketName} pairs.
-     * Example: {@code dc1:easy-db-lab-data-cluster1,dc2:easy-db-lab-data-cluster2}
+     * Per-DC read bucket configuration for coordinated multi-DC S3 bulk writes.
+     * Format: comma-separated {@code dcName:bucketName} pairs.
+     * The DC name keys must exactly match the keys in {@code coordinated_write_config}.
+     * Example: {@code datacenter1:easy-db-lab-data-abc,datacenter2:easy-db-lab-data-def}
      *
-     * <p>Each DC is a separate easy-db-lab cluster. S3 replication copies SSTable bundles
-     * from the primary write bucket ({@link #PROP_S3_BUCKET}) to each DC's read bucket.
+     * <p>For cross-region deployments each DC has its own bucket populated via S3 CRR.
+     * For same-region deployments all DCs can share the write bucket.
      */
     public static final String PROP_S3_READ_BUCKETS = "spark.easydblab.s3.readBuckets";
     public static final String PROP_S3_ENDPOINT = "spark.easydblab.s3.endpoint";
+
+    /** Per-DC S3 read bucket override (optional; defaults to {@link #PROP_S3_BUCKET}). */
+    public static final String PROP_DC_S3_READ_BUCKET = "spark.easydblab.dc.%s.s3.readBucket";
+    /** Per-DC AWS region for the read bucket (optional; defaults to the write-bucket region). */
+    public static final String PROP_DC_S3_REGION = "spark.easydblab.dc.%s.s3.region";
+
+    /** Write option key for the per-DC coordinated write configuration JSON. */
+    public static final String OPT_COORDINATED_WRITE_CONFIG = "coordinated_write_config";
 
     private final String contactPoints;
     private final String keyspace;
@@ -138,7 +151,11 @@ public class SparkJobConfig {
      */
     public static SparkJobConfig load(SparkConf conf) {
         String contactPoints = getRequiredProperty(conf, PROP_CONTACT_POINTS);
-        String keyspace = getRequiredProperty(conf, PROP_KEYSPACE);
+        String keyspace = getOptionalPropertyWithDefault(conf, PROP_KEYSPACE, "easy_db_lab");
+        if (!conf.contains(PROP_KEYSPACE)) {
+            LOGGER.warn("No keyspace configured ({}), defaulting to 'easy_db_lab'. " +
+                "Set --conf {}=<keyspace> to write to a specific keyspace.", PROP_KEYSPACE, PROP_KEYSPACE);
+        }
         String localDc = getRequiredProperty(conf, PROP_LOCAL_DC);
 
         String table = getOptionalProperty(conf, PROP_TABLE);
@@ -170,7 +187,7 @@ public class SparkJobConfig {
      */
     public void setupSchema() {
         if (skipDdl) {
-            System.out.println("Skipping DDL creation (skipDdl=true), verifying table exists...");
+            LOGGER.info("skipDdl=true — skipping DDL creation, verifying table exists");
             try (CqlSetup cqlSetup = new CqlSetup(contactPoints, localDc)) {
                 cqlSetup.validateTableExists(keyspace, table);
             }
@@ -182,24 +199,23 @@ public class SparkJobConfig {
     }
 
     private void printConfig() {
-        StringBuilder sb = new StringBuilder("Configuration loaded:\n");
-        sb.append("  contactPoints: ").append(contactPoints).append('\n');
-        sb.append("  keyspace: ").append(keyspace).append('\n');
-        sb.append("  table: ").append(table).append('\n');
-        sb.append("  localDc: ").append(localDc).append('\n');
-        sb.append("  rowCount: ").append(rowCount).append('\n');
-        sb.append("  parallelism: ").append(parallelism).append('\n');
-        sb.append("  partitionCount: ").append(partitionCount).append('\n');
-        sb.append("  replicationFactor: ").append(replicationFactor).append('\n');
-        sb.append("  skipDdl: ").append(skipDdl).append('\n');
-        sb.append("  compaction: ").append(compaction != null ? compaction : "(default)");
+        LOGGER.info("Configuration loaded:");
+        LOGGER.info("  contactPoints:     {}", contactPoints);
+        LOGGER.info("  keyspace:          {}", keyspace);
+        LOGGER.info("  table:             {}", table);
+        LOGGER.info("  localDc:           {}", localDc);
+        LOGGER.info("  rowCount:          {}", rowCount);
+        LOGGER.info("  parallelism:       {}", parallelism);
+        LOGGER.info("  partitionCount:    {}", partitionCount);
+        LOGGER.info("  replicationFactor: {}", replicationFactor);
+        LOGGER.info("  skipDdl:           {}", skipDdl);
+        LOGGER.info("  compaction:        {}", compaction != null ? compaction : "(default)");
         if (s3Bucket != null) {
-            sb.append('\n').append("  s3Bucket: ").append(s3Bucket);
+            LOGGER.info("  s3Bucket:          {}", s3Bucket);
         }
         if (s3Endpoint != null) {
-            sb.append('\n').append("  s3Endpoint: ").append(s3Endpoint);
+            LOGGER.info("  s3Endpoint:        {}", s3Endpoint);
         }
-        System.out.println(sb);
     }
 
     private static String getRequiredProperty(SparkConf conf, String key) {
@@ -229,6 +245,10 @@ public class SparkJobConfig {
             return conf.get(key);
         }
         return null;
+    }
+
+    private static String getOptionalPropertyWithDefault(SparkConf conf, String key, String defaultValue) {
+        return conf.contains(key) ? conf.get(key) : defaultValue;
     }
 
     /**
@@ -288,8 +308,8 @@ public class SparkJobConfig {
      */
     public Dataset<Row> generateTestData(SparkSession spark) {
         DataGenerator dataGenerator = new BulkTestDataGenerator();
-        System.out.println("Generating " + rowCount + " rows across " +
-            partitionCount + " partitions with parallelism " + parallelism);
+        LOGGER.info("Generating {} rows across {} partitions with parallelism {}",
+            rowCount, partitionCount, parallelism);
         return dataGenerator.generate(spark, rowCount, parallelism, partitionCount);
     }
 

@@ -280,7 +280,7 @@ All Spark job modules live under the `spark/` directory and share unified config
 |--------|-------------|------------|-----------|-------------|
 | `common` | `:spark:common` | — | — | Shared config, data generation, CQL setup |
 | `bulk-writer-sidecar` | `:spark:bulk-writer-sidecar` | `DirectBulkWriter` | DIRECT | Streams SSTables directly to Sidecar |
-| `bulk-writer-s3` | `:spark:bulk-writer-s3` | `S3BulkWriter` | S3_COMPAT | Stages SSTables in S3, imports via Sidecar |
+| `bulk-writer-s3-iam` | `:spark:bulk-writer-s3-iam` | `IamBulkWriter` | S3_COMPAT | Stages SSTables in S3 via IAM credentials, imports via Sidecar |
 | `connector-writer` | `:spark:connector-writer` | `StandardConnectorWriter` | CQL | Standard writes via Cassandra native protocol |
 | `connector-read-write` | `:spark:connector-read-write` | `KeyValuePrefixCount` | CQL | Read→transform→write example |
 
@@ -302,7 +302,7 @@ Options:
 
 ```bash
 # Build all Spark modules
-./gradlew :spark:bulk-writer-sidecar:shadowJar :spark:bulk-writer-s3:shadowJar \
+./gradlew :spark:bulk-writer-sidecar:shadowJar :spark:bulk-writer-s3-iam:shadowJar \
   :spark:connector-writer:shadowJar :spark:connector-read-write:shadowJar
 
 # Or build individually
@@ -331,42 +331,23 @@ easy-db-lab spark submit \
 
 **Note:** Contact points should include the Sidecar port (9043).
 
-#### S3 Bulk Writer
+#### IAM S3 Bulk Writer
 
-Stages SSTables in S3, then imports via Sidecar:
+Stages SSTables in S3 using IAM instance profile credentials, then imports via Sidecar. Cluster topology is auto-discovered from the Cassandra driver — no manual DC configuration needed:
 
 ```bash
-# Get the S3 bucket from cluster state
-S3_BUCKET=$(jq -r '.dataBucket' state.json)
-
 easy-db-lab spark submit \
-  --jar spark/bulk-writer-s3/build/libs/bulk-writer-s3-*.jar \
-  --main-class com.rustyrazorblade.easydblab.spark.S3BulkWriter \
-  --conf spark.easydblab.contactPoints=host1:9043,host2:9043,host3:9043 \
-  --conf spark.easydblab.keyspace=bulk_test \
+  --jar spark/bulk-writer-s3-iam/build/libs/bulk-writer-s3-iam-all.jar \
+  --main-class com.rustyrazorblade.easydblab.spark.IamBulkWriter \
+  --conf spark.easydblab.contactPoints=host1,host2,host3 \
   --conf spark.easydblab.localDc=us-west-2 \
-  --conf spark.easydblab.s3.bucket=$S3_BUCKET \
+  --conf spark.easydblab.s3.bucket=my-bucket \
   --conf spark.easydblab.rowCount=10000000 \
   --conf spark.easydblab.parallelism=20 \
   --wait
 ```
 
-**Optional S3 endpoint override** (for testing with LocalStack or S3-compatible storage):
-
-```bash
-easy-db-lab spark submit \
-  --jar spark/bulk-writer-s3/build/libs/bulk-writer-s3-*.jar \
-  --main-class com.rustyrazorblade.easydblab.spark.S3BulkWriter \
-  --conf spark.easydblab.contactPoints=host1:9043,host2:9043,host3:9043 \
-  --conf spark.easydblab.keyspace=bulk_test \
-  --conf spark.easydblab.localDc=us-west-2 \
-  --conf spark.easydblab.s3.bucket=test-bucket \
-  --conf spark.easydblab.s3.endpoint=https://s3.custom.endpoint \
-  --conf spark.easydblab.rowCount=1000000 \
-  --wait
-```
-
-**Credentials:** The EMR instance profile (`EasyDBLabEMREC2Role`) provides S3 access automatically - no manual configuration needed.
+**Credentials:** Both the EMR executor and the Cassandra Sidecar authenticate independently via their attached IAM roles. No credentials are extracted or transmitted.
 
 #### Standard Connector Writer
 

@@ -46,6 +46,37 @@ ENABLE_CLAUDE=1 bin/dev start
 
 Run `bin/dev help` for all available commands.
 
+## Local Configuration (.env)
+
+Both `bin/easy-db-lab` and `bin/end-to-end-test` automatically load a `.env` file from the project root if one exists. This is the recommended way to set per-developer configuration without modifying committed scripts.
+
+### Setup
+
+```bash
+cp .env.example .env
+# Edit .env with your values
+```
+
+`.env` is listed in `.gitignore` and will never be committed.
+
+### Supported Variables
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `AWS_PROFILE` | Yes (for e2e tests) | — | AWS credentials profile from `~/.aws/config` |
+| `EASY_DB_LAB_INSTANCE_TYPE` | No | `c5d.2xlarge` | EC2 instance type for database nodes |
+| `SIDECAR_IMAGE` | No | `ghcr.io/apache/cassandra-sidecar:latest` | Custom Cassandra sidecar container image |
+
+Example `.env`:
+
+```bash
+AWS_PROFILE=sandbox-admin
+# SIDECAR_IMAGE=102382809497.dkr.ecr.us-west-2.amazonaws.com/rustyrazorblade/cassandra-sidecar
+# EASY_DB_LAB_INSTANCE_TYPE=c5d.4xlarge
+```
+
+Variables already exported in your shell always take precedence over `.env`.
+
 ## Building the Project
 
 Once inside the container (or with local tools installed):

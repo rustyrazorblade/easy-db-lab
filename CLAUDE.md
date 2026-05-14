@@ -22,7 +22,7 @@ The Gradle project has multiple modules:
 - **Root module** (`:`) — the main CLI application
 - **`spark/common`** — shared Spark config (`SparkJobConfig`), data generation, CQL setup
 - **`spark/bulk-writer-sidecar`** — Cassandra Analytics bulk writer, direct sidecar transport (requires cassandra-analytics built with JDK 11)
-- **`spark/bulk-writer-s3`** — Cassandra Analytics bulk writer, S3 staging transport (requires cassandra-analytics built with JDK 11)
+- **`spark/bulk-writer-s3-iam`** — Cassandra Analytics bulk writer, S3 staging transport with IAM instance profile credentials
 - **`spark/connector-writer`** — Standard Spark Cassandra Connector writer
 - **`spark/connector-read-write`** — Read→transform→write example using Spark Cassandra Connector
 

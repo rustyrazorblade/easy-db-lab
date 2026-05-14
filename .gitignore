@@ -165,3 +165,4 @@ clusters/
 .s3-fullpath
 .worktrees/
 .mcp-server.pid
+.claude/worktrees/

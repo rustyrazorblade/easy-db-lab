@@ -18,15 +18,17 @@ import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Storage transport extension for easy-db-lab S3 IAM bulk writes with multi-DC coordination.
@@ -67,6 +69,7 @@ public class EasyDbLabIamStorageExtension implements StorageTransportExtension {
 
     private static final String KEY_PREFIX = "bulkwrite";
     private static final long POLL_INTERVAL_MS = 5_000L;
+    private static final int REPLICATION_CHECK_THREADS = 32;
 
     static final class DcReadConfig {
         final String bucket;
@@ -86,14 +89,14 @@ public class EasyDbLabIamStorageExtension implements StorageTransportExtension {
     private int dcCount;
 
     private CoordinationSignalListener coordinationSignalListener;
-    private final AtomicReference<String> firstUploadedKey = new AtomicReference<>();
+    private final ConcurrentLinkedQueue<String> uploadedKeys = new ConcurrentLinkedQueue<>();
     private final AtomicInteger stagedDcCount = new AtomicInteger(0);
     private final AtomicInteger failedStagingDcCount = new AtomicInteger(0);
 
     @Override
     public void initialize(String jobId, SparkConf conf, boolean isOnDriver) {
         this.jobId = jobId;
-        firstUploadedKey.set(null);
+        uploadedKeys.clear();
         stagedDcCount.set(0);
         failedStagingDcCount.set(0);
 
@@ -192,7 +195,7 @@ public class EasyDbLabIamStorageExtension implements StorageTransportExtension {
 
     @Override
     public void onObjectPersisted(String bucket, String key, long sizeInBytes) {
-        firstUploadedKey.compareAndSet(null, key);
+        uploadedKeys.add(key);
         LOGGER.debug("[{}] Uploaded bundle: s3://{}/{} ({} bytes)", jobId, bucket, key, sizeInBytes);
     }
 
@@ -214,16 +217,35 @@ public class EasyDbLabIamStorageExtension implements StorageTransportExtension {
             return;
         }
 
-        final String probeKey = firstUploadedKey.get();
+        final List<String> keys = new ArrayList<>(uploadedKeys);
         final CoordinationSignalListener listener = coordinationSignalListener;
-        final CountDownLatch allDcsReady = new CountDownLatch(dcCount);
 
-        // One poller per DC + one coordinator that fires onStageReady after all pollers complete.
-        // pool.shutdown() stops new submissions but lets existing tasks run to completion.
-        // All threads are daemon threads: if the JVM exits before polling completes the threads
-        // are silently terminated. In practice the framework blocks on onStageReady, so this
-        // path is only reached if something interrupts the Spark driver.
-        ExecutorService pool = Executors.newFixedThreadPool(dcCount + 1, r -> {
+        if (keys.isEmpty()) {
+            LOGGER.warn("[{}] No bundles uploaded — signalling stage and import ready immediately", jobId);
+            listener.onStageReady(jobId);
+            listener.onImportReady(jobId);
+            return;
+        }
+
+        // Build one S3Client per DC that needs cross-region checking. DCs that share the write
+        // bucket skip polling entirely and don't need a client.
+        final Map<String, S3Client> dcClients = new LinkedHashMap<>();
+        for (Map.Entry<String, DcReadConfig> entry : dcReadConfigs.entrySet()) {
+            DcReadConfig cfg = entry.getValue();
+            if (!cfg.bucket.equals(writeBucket) || !cfg.region.equals(writeRegion)) {
+                dcClients.put(entry.getKey(), buildS3Client(cfg.region));
+            }
+        }
+
+        int totalTasks = keys.size() * dcCount;
+        final CountDownLatch latch = new CountDownLatch(totalTasks);
+        final AtomicBoolean anyFailed = new AtomicBoolean(false);
+
+        LOGGER.info("[{}] Checking replication of {} bundles across {} DCs ({} tasks, {} threads)",
+            jobId, keys.size(), dcCount, totalTasks, REPLICATION_CHECK_THREADS);
+
+        int poolSize = Math.min(totalTasks, REPLICATION_CHECK_THREADS);
+        ExecutorService pool = Executors.newFixedThreadPool(poolSize + 1, r -> {
             Thread t = new Thread(r);
             t.setDaemon(true);
             return t;
@@ -233,40 +255,51 @@ public class EasyDbLabIamStorageExtension implements StorageTransportExtension {
             for (Map.Entry<String, DcReadConfig> entry : dcReadConfigs.entrySet()) {
                 final String dcName = entry.getKey();
                 final DcReadConfig cfg = entry.getValue();
+                final S3Client s3 = dcClients.get(dcName);
 
-                pool.execute(() -> {
-                    Thread.currentThread().setName("s3-crr-poller-" + jobId + "-" + dcName);
-                    try {
-                        if (probeKey == null) {
-                            LOGGER.info("[{}] DC '{}' no objects uploaded — skipping replication check", jobId, dcName);
-                        } else if (cfg.bucket.equals(writeBucket) && cfg.region.equals(writeRegion)) {
-                            LOGGER.info("[{}] DC '{}' shares write bucket — ready immediately", jobId, dcName);
-                        } else {
-                            pollUntilReplicated(dcName, cfg, probeKey);
+                for (final String key : keys) {
+                    pool.execute(() -> {
+                        Thread.currentThread().setName("s3-crr-" + jobId + "-" + dcName);
+                        try {
+                            if (s3 == null) {
+                                LOGGER.debug("[{}] DC '{}' shares write bucket — key '{}' ready immediately",
+                                    jobId, dcName, key);
+                            } else {
+                                pollUntilReplicated(dcName, cfg, s3, key);
+                            }
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            anyFailed.set(true);
+                            LOGGER.error("[{}] Replication check interrupted for DC '{}' key '{}'",
+                                jobId, dcName, key, e);
+                        } catch (Exception e) {
+                            anyFailed.set(true);
+                            LOGGER.error("[{}] Replication check failed for DC '{}' key '{}'",
+                                jobId, dcName, key, e);
+                        } finally {
+                            latch.countDown();
                         }
-                        LOGGER.info("[{}] DC '{}' replication confirmed", jobId, dcName);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        LOGGER.error("[{}] Replication polling interrupted for DC '{}'", jobId, dcName, e);
-                    } catch (Exception e) {
-                        LOGGER.error("[{}] Replication polling failed for DC '{}': {}",
-                            jobId, dcName, e.getMessage(), e);
-                    } finally {
-                        allDcsReady.countDown();
-                    }
-                });
+                    });
+                }
             }
 
-            // Coordinator: wait for all DC pollers, then signal the framework once with the job ID.
+            // Coordinator: wait for all tasks, close clients, then signal or abort.
             pool.execute(() -> {
                 Thread.currentThread().setName("s3-crr-coordinator-" + jobId);
                 try {
-                    allDcsReady.await();
-                    LOGGER.info("[{}] All {} DCs confirmed replication — calling onStageReady", jobId, dcCount);
-                    listener.onStageReady(jobId);
+                    latch.await();
+                    if (anyFailed.get()) {
+                        LOGGER.error("[{}] One or more replication checks failed — not calling onStageReady", jobId);
+                    } else {
+                        LOGGER.info("[{}] All {} bundles confirmed in all {} DCs — calling onStageReady",
+                            jobId, keys.size(), dcCount);
+                        listener.onStageReady(jobId);
+                    }
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
-                    LOGGER.error("[{}] Coordinator interrupted waiting for DC replication", jobId, e);
+                    LOGGER.error("[{}] Coordinator interrupted waiting for replication checks", jobId, e);
+                } finally {
+                    dcClients.values().forEach(S3Client::close);
                 }
             });
         } finally {
@@ -274,27 +307,22 @@ public class EasyDbLabIamStorageExtension implements StorageTransportExtension {
         }
     }
 
-    private void pollUntilReplicated(String dcName, DcReadConfig cfg, String probeKey)
+    private void pollUntilReplicated(String dcName, DcReadConfig cfg, S3Client s3, String key)
             throws InterruptedException {
-        LOGGER.info("[{}] Waiting for S3 CRR to DC '{}' bucket '{}' (region: {})",
-            jobId, dcName, cfg.bucket, cfg.region);
+        LOGGER.debug("[{}] Waiting for DC '{}' bucket '{}' key '{}'", jobId, dcName, cfg.bucket, key);
 
-        try (S3Client s3 = buildS3Client(cfg.region)) {
-            HeadObjectRequest request = HeadObjectRequest.builder()
-                .bucket(cfg.bucket)
-                .key(probeKey)
-                .build();
+        HeadObjectRequest request = HeadObjectRequest.builder()
+            .bucket(cfg.bucket)
+            .key(key)
+            .build();
 
-            while (true) {
-                try {
-                    s3.headObject(request);
-                    LOGGER.info("[{}] DC '{}' read bucket confirmed (key: {})", jobId, dcName, probeKey);
-                    return;
-                } catch (NoSuchKeyException e) {
-                    LOGGER.debug("[{}] DC '{}' not yet replicated — retrying in {}ms",
-                        jobId, dcName, POLL_INTERVAL_MS);
-                    Thread.sleep(POLL_INTERVAL_MS);
-                }
+        while (true) {
+            try {
+                s3.headObject(request);
+                LOGGER.debug("[{}] DC '{}' confirmed key '{}'", jobId, dcName, key);
+                return;
+            } catch (NoSuchKeyException e) {
+                Thread.sleep(POLL_INTERVAL_MS);
             }
         }
     }

@@ -1,0 +1,122 @@
+#!/bin/bash
+
+# flamegraph-to-pyroscope: Continuous profiling using async-profiler --loop, uploading to Pyroscope.
+#
+# Uses asprof's native --loop mode: profiles continuously, writing one JFR file per interval.
+# Each completed file is uploaded to Pyroscope and removed. Runs until stopped (SIGTERM).
+#
+# Usage: flamegraph-to-pyroscope [--interval N] [-- asprof-args...]
+#   --interval N   Loop duration in seconds per upload cycle (default: 60)
+#   --             Everything after is passed to asprof
+#
+# Examples:
+#   flamegraph-to-pyroscope
+#   flamegraph-to-pyroscope --interval 30
+#   flamegraph-to-pyroscope --interval 5 -- -e alloc -t
+#
+# The Cassandra PID is auto-detected via cassandra-pid.
+# PYROSCOPE_SERVER_ADDRESS is sourced from /etc/default/cassandra.
+
+set -e
+
+ASPROF=/usr/local/async-profiler/bin/asprof
+APP_NAME="cassandra.$(hostname)"
+OUTDIR=$(mktemp -d /tmp/flamegraph-XXXXXX)
+ASPROF_PID=""
+INTERVAL=60
+EXTRA_ARGS=()
+
+# Parse CLI args
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --interval)
+            INTERVAL="$2"
+            shift 2
+            ;;
+        --)
+            shift
+            EXTRA_ARGS=("$@")
+            break
+            ;;
+        *)
+            echo "Unknown option: $1" >&2
+            echo "Usage: flamegraph-to-pyroscope [--interval N] [-- asprof-args...]" >&2
+            exit 1
+            ;;
+    esac
+done
+
+# Source environment for Pyroscope address
+# shellcheck source=/dev/null
+[ -f /etc/default/cassandra ] && source /etc/default/cassandra
+
+PYROSCOPE_ADDR="${PYROSCOPE_SERVER_ADDRESS:-http://localhost:4040}"
+
+# Returns 0 if the file hasn't been modified in the last 2 seconds (considered complete).
+# Prevents uploading a file that asprof is still writing.
+file_is_stable() {
+    local f="$1"
+    local now mtime
+    now=$(date +%s)
+    mtime=$(stat -c %Y "$f")
+    [ $((now - mtime)) -ge 2 ]
+}
+
+upload_file() {
+    local f="$1"
+    local until from
+    # Use file mtime as the end of the profiling interval.
+    until=$(stat -c %Y "$f")
+    from=$((until - INTERVAL))
+    curl -sf -X POST \
+        "${PYROSCOPE_ADDR}/ingest?name=${APP_NAME}&spyName=asyncprofiler&format=jfr&from=${from}&until=${until}" \
+        -H "Content-Type: application/octet-stream" \
+        --data-binary @"$f" \
+        || echo "Upload failed at $(date -Iseconds), continuing..."
+    rm -f "$f"
+    echo "Profile sent to Pyroscope ($(date -d @"${from}" -Iseconds) to $(date -d @"${until}" -Iseconds))"
+}
+
+cleanup() {
+    echo "Stopping profiler..."
+    if [ -n "$ASPROF_PID" ]; then
+        kill "$ASPROF_PID" 2>/dev/null || true
+        wait "$ASPROF_PID" 2>/dev/null || true
+    fi
+    # Upload any remaining completed files before exiting.
+    for f in "${OUTDIR}"/profile-*.jfr; do
+        [ -f "$f" ] && upload_file "$f" || true
+    done
+    rm -rf "$OUTDIR"
+}
+trap cleanup EXIT
+
+# Get the Cassandra PID
+PID=$(cassandra-pid)
+
+if [ -z "$PID" ] || [ "$PID" = "0" ]; then
+    echo "Error: Could not determine Cassandra PID" >&2
+    exit 1
+fi
+
+echo "Starting continuous profiling (interval: ${INTERVAL}s, PID: $PID, app: $APP_NAME)..."
+
+# Start async-profiler with --loop for native continuous profiling.
+# --loop <N>s: profile in a loop, writing one output file per interval, then reset.
+# %t in the filename is replaced with a timestamp; .jfr extension sets the output format.
+sudo "$ASPROF" --loop "${INTERVAL}s" \
+    -f "${OUTDIR}/profile-%t.jfr" \
+    "${EXTRA_ARGS[@]}" "$PID" &
+ASPROF_PID=$!
+
+# Poll for completed profile files and upload them. Skip files modified in the last
+# 2 seconds so we never upload a JFR that asprof is still writing.
+# Files are removed after upload so only unprocessed files remain at any time.
+while kill -0 "$ASPROF_PID" 2>/dev/null; do
+    for f in "${OUTDIR}"/profile-*.jfr; do
+        [ -f "$f" ] && file_is_stable "$f" && upload_file "$f" || true
+    done
+    sleep 5
+done
+
+wait "$ASPROF_PID" 2>/dev/null || true

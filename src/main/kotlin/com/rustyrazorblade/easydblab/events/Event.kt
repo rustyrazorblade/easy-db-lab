@@ -5558,6 +5558,70 @@ sealed interface Event {
     // Event.Ssh — SSH operations
     // =========================================================================
 
+    // =========================================================================
+    // Event.Profiling — async-profiler flamegraph operations
+    // =========================================================================
+
+    @Serializable
+    sealed interface Profiling : Event {
+        @Serializable
+        @SerialName("Profiling.Starting")
+        data class Starting(
+            val host: String,
+            val args: List<String>,
+        ) : Profiling {
+            override fun toDisplayString(): String {
+                val argsStr = if (args.isEmpty()) "(default options)" else args.joinToString(" ")
+                return "Starting profiler on $host with: $argsStr"
+            }
+        }
+
+        @Serializable
+        @SerialName("Profiling.Started")
+        data class Started(
+            val host: String,
+        ) : Profiling {
+            override fun toDisplayString(): String = "Continuous profiling started on $host."
+        }
+
+        @Serializable
+        @SerialName("Profiling.Stopping")
+        data class Stopping(
+            val host: String,
+        ) : Profiling {
+            override fun toDisplayString(): String = "Stopping profiler on $host..."
+        }
+
+        @Serializable
+        @SerialName("Profiling.Stopped")
+        data class Stopped(
+            val host: String,
+        ) : Profiling {
+            override fun toDisplayString(): String = "Profiler stopped on $host."
+        }
+
+        @Serializable
+        @SerialName("Profiling.AlreadyRunning")
+        data class AlreadyRunning(
+            val host: String,
+        ) : Profiling {
+            override fun toDisplayString(): String = "Profiling is already running on $host — use `cassandra profile stop` first."
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        @SerialName("Profiling.Error")
+        data class Error(
+            val host: String,
+            val message: String,
+        ) : Profiling {
+            override fun toDisplayString(): String = "Profiling failed on $host: $message"
+
+            override fun isError(): Boolean = true
+        }
+    }
+
     @Serializable
     sealed interface Ssh : Event {
         @Serializable

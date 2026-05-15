@@ -115,13 +115,19 @@ build {
   }
 
 
-  provisioner "shell" {
-    script = "install/install_bcc.sh"
-  }
-
-  # install AWS CLI v2
+  # install AWS CLI v2 (must run before install_bcc.sh which uses aws s3 cp for caching)
   provisioner "shell" {
     script = "install/install_awscli.sh"
+  }
+
+  # upload S3 cache helpers before any script that sources them
+  provisioner "file" {
+    source      = "../lib/s3_cache.sh"
+    destination = "/tmp/s3_cache.sh"
+  }
+
+  provisioner "shell" {
+    script = "install/install_bcc.sh"
   }
 
   # install k3s (disabled, not auto-started)

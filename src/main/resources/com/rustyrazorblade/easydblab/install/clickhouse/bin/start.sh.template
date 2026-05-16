@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export KUBECONFIG="${SCRIPT_DIR}/../../__KUBECONFIG__"
+
+echo "Creating PersistentVolumes for ClickHouse..."
+"${EASY_DB_LAB_EXEC}" platform create-pvs --workload clickhouse --size __STORAGE_SIZE__ --node-type db
+
+echo "Installing Altinity ClickHouse Operator..."
+helm repo add altinity https://docs.altinity.com/clickhouse-operator/ 2>/dev/null || true
+helm upgrade --install clickhouse-operator altinity/altinity-clickhouse-operator \
+  --namespace default \
+  --create-namespace \
+  --wait
+
+echo "Applying ClickHouseInstallation CR..."
+kubectl apply -f "${SCRIPT_DIR}/../clickhouseinstallation.yaml" --namespace default
+
+echo "Waiting for ClickHouse pods to become ready..."
+kubectl wait --for=condition=Ready pods \
+  -l clickhouse.altinity.com/chi=clickhouse \
+  --namespace default \
+  --timeout=300s
+
+echo "ClickHouse is ready."

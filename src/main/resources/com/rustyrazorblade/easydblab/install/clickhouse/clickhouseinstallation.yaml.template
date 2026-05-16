@@ -1,0 +1,57 @@
+apiVersion: clickhouse.altinity.com/v1
+kind: ClickHouseInstallation
+metadata:
+  name: clickhouse
+  namespace: default
+spec:
+  configuration:
+    clusters:
+      - name: clickhouse
+        layout:
+          shardsCount: 1
+          replicasCount: __REPLICAS__
+    files:
+      config.d/storage.xml: |
+        <clickhouse>
+          <storage_configuration>
+            <disks>
+              <local_disk>
+                <type>local</type>
+                <path>/var/lib/clickhouse/</path>
+              </local_disk>
+            </disks>
+            <policies>
+              <default>
+                <volumes>
+                  <main>
+                    <disk>local_disk</disk>
+                    <max_data_part_size_bytes>0</max_data_part_size_bytes>
+                    <move_factor>__S3_TIER_MOVE_FACTOR__</move_factor>
+                  </main>
+                </volumes>
+              </default>
+            </policies>
+          </storage_configuration>
+        </clickhouse>
+  templates:
+    podTemplates:
+      - name: clickhouse-pod
+        spec:
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: type
+                        operator: In
+                        values:
+                          - db
+    volumeClaimTemplates:
+      - name: data
+        spec:
+          storageClassName: __STORAGE_CLASS_WFC__
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: __STORAGE_SIZE__

@@ -93,6 +93,7 @@ class Status :
         displayOpenSearchSection()
         displayS3BucketSection()
         displayKubernetesSection()
+        displayWorkloadsSection()
         displayStressJobsSection()
         displayObservabilitySection()
         displayClickHouseSection()
@@ -339,6 +340,35 @@ class Status :
             onFailure = { e ->
                 log.debug(e) { "Failed to get Kubernetes pods" }
                 eventBus.emit(Event.Status.KubernetesConnectionError(e.message ?: "unknown error"))
+            },
+        )
+    }
+
+    private fun displayWorkloadsSection() {
+        val controlHost = clusterState.getControlHost() ?: return
+
+        val kubeconfigPath = getLocalKubeconfigPath(context.workingDirectory.absolutePath)
+        if (!File(kubeconfigPath).exists()) {
+            return
+        }
+
+        k8sService.listWorkloadPods(controlHost).fold(
+            onSuccess = { pods ->
+                val details =
+                    pods.map { pod ->
+                        Event.Status.WorkloadPodDetail(
+                            namespace = pod.namespace,
+                            name = pod.name,
+                            nodeName = pod.nodeName,
+                            ready = pod.ready,
+                            status = pod.status,
+                        )
+                    }
+                eventBus.emit(Event.Status.WorkloadsSection(details))
+            },
+            onFailure = { e ->
+                log.debug(e) { "Failed to list workload pods" }
+                eventBus.emit(Event.Status.WorkloadsError(e.message ?: "unknown error"))
             },
         )
     }

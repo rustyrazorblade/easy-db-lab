@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.clusterLabelName
 import com.rustyrazorblade.easydblab.configuration.clusterPrefix
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
@@ -97,6 +98,9 @@ class GrafanaUpdateConfig : PicoBaseCommand() {
         // Apply Pyroscope resources (requires directory setup via SSH first)
         applyPyroscopeResources(controlNode)
 
+        // Prepare Grafana data directory before applying Deployment
+        prepareGrafanaDirectory(controlNode)
+
         // Apply Grafana dashboards
         dashboardService.uploadDashboards(controlNode).getOrElse { exception ->
             error("Failed to upload dashboards: ${exception.message}")
@@ -156,6 +160,15 @@ class GrafanaUpdateConfig : PicoBaseCommand() {
         )
 
         applyFabric8Resources("Pyroscope", controlNode, pyroscopeManifestBuilder.buildAllResources())
+    }
+
+    private fun prepareGrafanaDirectory(controlNode: ClusterHost) {
+        eventBus.emit(Event.Grafana.GrafanaDirectoryPreparing)
+        remoteOps.executeRemotely(
+            controlNode.toHost(),
+            "sudo mkdir -p ${GrafanaManifestBuilder.GRAFANA_DATA_PATH} && " +
+                "sudo chown -R ${GrafanaManifestBuilder.GRAFANA_UID}:${GrafanaManifestBuilder.GRAFANA_UID} ${GrafanaManifestBuilder.GRAFANA_DATA_PATH}",
+        )
     }
 
     /**

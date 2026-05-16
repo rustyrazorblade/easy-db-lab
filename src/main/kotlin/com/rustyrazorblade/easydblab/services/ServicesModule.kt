@@ -26,6 +26,7 @@ import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.EMRService
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
+import okhttp3.OkHttpClient
 import org.koin.core.module.dsl.factoryOf
 import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.bind
@@ -70,7 +71,10 @@ val servicesModule =
         factoryOf(::VictoriaManifestBuilder)
         factoryOf(::YaceManifestBuilder)
         factoryOf(::DefaultGrafanaDashboardService) bind GrafanaDashboardService::class
+        single { OkHttpClient() }
         factoryOf(::TemplateService)
+        factoryOf(::InstallTemplateResolver)
+        factoryOf(::WorkloadStepExecutor)
         factory<VictoriaBackupService> { DefaultVictoriaBackupService(get(), get()) }
         factoryOf(::DefaultVictoriaStreamService) bind VictoriaStreamService::class
         singleOf(::DefaultVictoriaMetricsQueryService) bind VictoriaMetricsQueryService::class

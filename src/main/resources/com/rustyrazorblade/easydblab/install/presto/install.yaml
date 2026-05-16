@@ -1,0 +1,9 @@
+name: presto
+description: Scaffold Presto workload files (stateless, targets app nodes)
+collision-check: false
+args:
+  - flag: --workers
+    variable: WORKERS
+    description: "Number of Presto workers (default: app node count)"
+    type: int
+    default: "${APP_NODE_COUNT}"

@@ -1,0 +1,10 @@
+  nodeSelector:
+    type: db                        # or 'app' for app-pool workloads
+  persistence:
+    storageClass: local-storage-wfc
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+    - labelSelector:
+        matchLabels:
+          app: <your-workload>
+      topologyKey: kubernetes.io/hostname

@@ -166,3 +166,5 @@ clusters/
 .worktrees/
 .mcp-server.pid
 .claude/worktrees/
+/clickhouse/
+/presto/

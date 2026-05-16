@@ -1,0 +1,63 @@
+name: clickhouse
+description: Scaffold ClickHouse workload files using the Altinity operator
+version: "1.0.0"
+collision-check: true
+args:
+  - flag: --size
+    variable: STORAGE_SIZE
+    description: Storage size per node (e.g. 100Gi)
+    required: true
+    type: string
+  - flag: --replicas
+    variable: REPLICAS
+    description: Number of ClickHouse replicas (default: db node count)
+    type: int
+    default: "${DB_NODE_COUNT}"
+  - flag: --s3-cache
+    variable: S3_CACHE_SIZE
+    description: S3 disk cache size in GiB (default: 0, disabled)
+    type: int
+    default: "0"
+    suffix: "Gi"
+  - flag: --s3-cache-on-write
+    variable: S3_CACHE_ON_WRITE
+    description: Populate S3 disk cache on write
+    type: boolean
+    default: "false"
+  - flag: --s3-tier-move-factor
+    variable: S3_TIER_MOVE_FACTOR
+    description: S3 tier move factor
+    type: float
+    default: "0.1"
+
+install:
+  - type: helm-repo
+    name: altinity
+    url: https://docs.altinity.com/clickhouse-operator/
+  - type: helm
+    chart: altinity/altinity-clickhouse-operator
+    release: clickhouse-operator
+    namespace: kube-system
+  - type: platform-pvs
+    node-type: db
+
+start:
+  - type: manifest
+    template: clickhouseinstallation.yaml
+  - type: shell
+    script: |
+      kubectl wait --for=condition=Ready pods \
+        -l clickhouse.altinity.com/chi=clickhouse \
+        --namespace default \
+        --timeout=300s
+
+stop:
+  - type: delete
+    kind: ClickHouseInstallation
+    name: clickhouse
+    namespace: default
+
+uninstall:
+  - type: helm-uninstall
+    release: clickhouse-operator
+    namespace: kube-system

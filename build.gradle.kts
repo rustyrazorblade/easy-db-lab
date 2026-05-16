@@ -152,6 +152,8 @@ dependencies {
     testImplementation(libs.bundles.koin.test)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.bundles.testcontainers)
+    testImplementation(libs.fabric8.kubernetes.server.mock)
+    testImplementation(libs.okhttpMockwebserver)
 }
 
 kotlin {
@@ -337,7 +339,7 @@ kover {
 // Jib container image configuration
 jib {
     from {
-        image = "eclipse-temurin:21-jre"
+        image = "ghcr.io/rustyrazorblade/easy-db-lab-base:latest"
     }
     to {
         val imageTag = System.getProperty("jib.to.image.tag") ?: "latest"

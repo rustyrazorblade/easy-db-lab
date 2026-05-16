@@ -1,0 +1,214 @@
+package com.rustyrazorblade.easydblab.services
+
+import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Context
+import com.rustyrazorblade.easydblab.TestContextFactory
+import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Test
+import java.io.File
+
+class InstallTemplateResolverTest : BaseKoinTest() {
+    private lateinit var ctx: Context
+    private lateinit var resolver: InstallTemplateResolver
+
+    @BeforeEach
+    fun setupResolver() {
+        ctx = TestContextFactory.createTestContext(tempDir)
+        resolver = InstallTemplateResolver(ctx)
+    }
+
+    private fun createProfileTemplate(name: String): File {
+        val dir = File(File(ctx.profileDir, "install"), name)
+        dir.mkdirs()
+        File(dir, "start.sh.template").writeText("#!/bin/bash\necho __WORKLOAD_NAME__")
+        return dir
+    }
+
+    // ── listAvailableTemplates ──────────────────────────────────────────────
+
+    @Test
+    fun `lists built-in templates from classpath`() {
+        val templates = resolver.listAvailableTemplates()
+        assertThat(templates).contains("clickhouse", "presto")
+    }
+
+    @Test
+    fun `lists profile-directory templates alongside built-ins`() {
+        createProfileTemplate("mydb")
+
+        val templates = resolver.listAvailableTemplates()
+        assertThat(templates).contains("mydb", "clickhouse", "presto")
+    }
+
+    @Test
+    fun `profile template overrides built-in of same name in list`() {
+        createProfileTemplate("clickhouse")
+
+        val templates = resolver.listAvailableTemplates()
+        assertThat(templates.count { it == "clickhouse" }).isEqualTo(1)
+    }
+
+    @Test
+    fun `returns empty list when profile install dir does not exist`() {
+        // No profile templates created — should still return built-ins
+        val templates = resolver.listAvailableTemplates()
+        assertThat(templates).isNotEmpty()
+        assertThat(templates).doesNotContain("nonexistent")
+    }
+
+    // ── resolve by name ─────────────────────────────────────────────────────
+
+    @Test
+    fun `resolves profile directory template when it exists`() {
+        val dir = createProfileTemplate("mydb")
+
+        val source = resolver.resolve("mydb")
+        assertThat(source).isInstanceOf(InstallTemplateResolver.TemplateSource.ProfileDirectory::class.java)
+        assertThat((source as InstallTemplateResolver.TemplateSource.ProfileDirectory).dir).isEqualTo(dir)
+    }
+
+    @Test
+    fun `profile template takes priority over built-in of same name`() {
+        createProfileTemplate("clickhouse")
+
+        val source = resolver.resolve("clickhouse")
+        assertThat(source).isInstanceOf(InstallTemplateResolver.TemplateSource.ProfileDirectory::class.java)
+    }
+
+    @Test
+    fun `resolves built-in template when no profile override exists`() {
+        val source = resolver.resolve("clickhouse")
+        assertThat(source).isInstanceOf(InstallTemplateResolver.TemplateSource.Builtin::class.java)
+        assertThat((source as InstallTemplateResolver.TemplateSource.Builtin).name).isEqualTo("clickhouse")
+    }
+
+    @Test
+    fun `throws when template name is not found anywhere`() {
+        assertThatThrownBy { resolver.resolve("nonexistent-workload") }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("nonexistent-workload")
+    }
+
+    // ── resolveAdHoc ────────────────────────────────────────────────────────
+
+    @Test
+    fun `resolveAdHoc returns AdHoc source for existing directory`() {
+        val dir = File(tempDir, "my-templates").also { it.mkdirs() }
+
+        val source = resolver.resolveAdHoc(dir.toPath())
+        assertThat(source).isInstanceOf(InstallTemplateResolver.TemplateSource.AdHoc::class.java)
+        assertThat((source as InstallTemplateResolver.TemplateSource.AdHoc).dir).isEqualTo(dir)
+    }
+
+    @Test
+    fun `resolveAdHoc throws for non-existent path`() {
+        val missing = File(tempDir, "does-not-exist").toPath()
+        assertThatThrownBy { resolver.resolveAdHoc(missing) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+    }
+
+    @Test
+    fun `ad-hoc path is not included in listAvailableTemplates`() {
+        val templates = resolver.listAvailableTemplates()
+        // --from is never in the list regardless of what directories exist
+        assertThat(templates).doesNotContain("does-not-exist")
+    }
+
+    // ── listTemplateFiles ────────────────────────────────────────────────────
+
+    @Test
+    fun `listTemplateFiles returns only dot-template files for AdHoc source`() {
+        val dir = File(tempDir, "adhoc").also { it.mkdirs() }
+        File(dir, "start.sh.template").writeText("#!/bin/bash")
+        File(dir, "values.yaml.template").writeText("replicas: 1")
+        File(dir, "README.md").writeText("not a template")
+
+        val source = InstallTemplateResolver.TemplateSource.AdHoc(dir)
+        val files = resolver.listTemplateFiles(source)
+
+        assertThat(files).hasSize(2)
+        assertThat(files.map { it.name }).containsExactlyInAnyOrder("start.sh.template", "values.yaml.template")
+    }
+
+    @Test
+    fun `listTemplateFiles preserves relative path for files in subdirectories`() {
+        val dir = File(tempDir, "subdir-test").also { it.mkdirs() }
+        File(dir, "bin").mkdirs()
+        File(dir, "bin/start.sh.template").writeText("#!/bin/bash")
+        File(dir, "values.yaml.template").writeText("replicas: 1")
+
+        val source = InstallTemplateResolver.TemplateSource.AdHoc(dir)
+        val files = resolver.listTemplateFiles(source)
+
+        assertThat(files.map { it.name }).containsExactlyInAnyOrder("bin/start.sh.template", "values.yaml.template")
+    }
+
+    // ── loadInstallConfig ────────────────────────────────────────────────────
+
+    @Test
+    fun `loadInstallConfig returns null when install yaml is absent for AdHoc source`() {
+        val dir = File(tempDir, "no-config").also { it.mkdirs() }
+        val source = InstallTemplateResolver.TemplateSource.AdHoc(dir)
+        assertThat(resolver.loadInstallConfig(source)).isNull()
+    }
+
+    @Test
+    fun `loadInstallConfig parses install yaml from AdHoc source`() {
+        val dir = File(tempDir, "with-config").also { it.mkdirs() }
+        File(dir, "install.yaml").writeText("name: mydb\ndescription: My DB")
+        val source = InstallTemplateResolver.TemplateSource.AdHoc(dir)
+        val config = requireNotNull(resolver.loadInstallConfig(source))
+        assertThat(config.name).isEqualTo("mydb")
+        assertThat(config.description).isEqualTo("My DB")
+    }
+
+    @Test
+    fun `loadInstallConfig parses install yaml from ProfileDirectory source`() {
+        val profileDir = File(File(ctx.profileDir, "install"), "mydb").also { it.mkdirs() }
+        File(profileDir, "install.yaml").writeText("name: mydb\ncollision-check: true")
+        val source = InstallTemplateResolver.TemplateSource.ProfileDirectory(profileDir)
+        val config = requireNotNull(resolver.loadInstallConfig(source))
+        assertThat(config.collisionCheck).isTrue()
+    }
+
+    @Test
+    fun `loadInstallConfig returns null when install yaml is absent for ProfileDirectory source`() {
+        val profileDir = File(File(ctx.profileDir, "install"), "noconfig").also { it.mkdirs() }
+        val source = InstallTemplateResolver.TemplateSource.ProfileDirectory(profileDir)
+        assertThat(resolver.loadInstallConfig(source)).isNull()
+    }
+
+    @Test
+    fun `listTemplateFiles preserves relative path for ProfileDirectory source`() {
+        val profileDir = File(File(ctx.profileDir, "install"), "mydb").also { it.mkdirs() }
+        File(profileDir, "bin").mkdirs()
+        File(profileDir, "bin/start.sh.template").writeText("#!/bin/bash")
+        File(profileDir, "README.md.template").writeText("# readme")
+
+        val source = InstallTemplateResolver.TemplateSource.ProfileDirectory(profileDir)
+        val files = resolver.listTemplateFiles(source)
+
+        assertThat(files.map { it.name }).containsExactlyInAnyOrder("bin/start.sh.template", "README.md.template")
+    }
+
+    @Test
+    fun `listTemplateFiles returns real presto builtin templates from classpath`() {
+        val source = resolver.resolve("presto")
+        val files = resolver.listTemplateFiles(source)
+
+        assertThat(files).isNotEmpty
+        assertThat(files.map { it.name }).contains("values.yaml.template", "bin/start.sh.template")
+        assertThat(files.all { it.content.isNotEmpty() }).isTrue()
+    }
+
+    @Test
+    fun `loadInstallConfig returns real presto config from classpath`() {
+        val source = resolver.resolve("presto")
+        val config = resolver.loadInstallConfig(source)
+
+        requireNotNull(config) { "expected presto install.yaml to be present on classpath" }
+        assertThat(config.name).isEqualTo("presto")
+    }
+}

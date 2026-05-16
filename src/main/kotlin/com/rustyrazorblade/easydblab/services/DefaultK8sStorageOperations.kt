@@ -326,4 +326,59 @@ class DefaultK8sStorageOperations(
                 eventBus.emit(Event.K8s.StorageClassCreated)
             }
         }
+
+    override fun ensureLocalStorageWfcClass(controlHost: ClusterHost): Result<Unit> =
+        runCatching {
+            log.info { "Ensuring ${Constants.K8s.LOCAL_STORAGE_WFC_CLASS} StorageClass exists" }
+
+            clientProvider.createClient(controlHost).use { client ->
+                val existing =
+                    client
+                        .storage()
+                        .v1()
+                        .storageClasses()
+                        .withName(Constants.K8s.LOCAL_STORAGE_WFC_CLASS)
+                        .get()
+
+                if (existing != null) {
+                    log.info { "StorageClass ${Constants.K8s.LOCAL_STORAGE_WFC_CLASS} already exists" }
+                    return@runCatching
+                }
+
+                val storageClass =
+                    StorageClassBuilder()
+                        .withNewMetadata()
+                        .withName(Constants.K8s.LOCAL_STORAGE_WFC_CLASS)
+                        .endMetadata()
+                        .withProvisioner("kubernetes.io/no-provisioner")
+                        .withVolumeBindingMode("WaitForFirstConsumer")
+                        .withReclaimPolicy("Delete")
+                        .build()
+
+                client
+                    .storage()
+                    .v1()
+                    .storageClasses()
+                    .resource(storageClass)
+                    .create()
+
+                log.info { "Created StorageClass ${Constants.K8s.LOCAL_STORAGE_WFC_CLASS}" }
+                eventBus.emit(Event.K8s.StorageClassWfcCreated)
+            }
+        }
+
+    override fun clickHouseInstallationExists(
+        controlHost: ClusterHost,
+        namespace: String,
+    ): Result<Boolean> =
+        runCatching {
+            clientProvider.createClient(controlHost).use { client ->
+                client
+                    .genericKubernetesResources("clickhouse.altinity.com/v1", "ClickHouseInstallation")
+                    .inNamespace(namespace)
+                    .list()
+                    .items
+                    .isNotEmpty()
+            }
+        }
 }

@@ -1,0 +1,28 @@
+# ClickHouse on __WORKLOAD_NAME__ cluster
+
+Workload: ClickHouse via Altinity Operator
+Replicas: __REPLICAS__
+Storage per replica: __STORAGE_SIZE__ (StorageClass: __STORAGE_CLASS_WFC__)
+DB nodes: __DB_NODE_COUNT__
+Region: __REGION__
+
+## Quick start
+
+```bash
+./start.sh    # provision PVs, install operator, apply CR, wait for ready
+./stop.sh     # remove operator and CR (data retained on disk)
+```
+
+## Disk cleanup
+
+To wipe ClickHouse data from all db nodes:
+
+```bash
+easy-db-lab cleanup clickhouse
+```
+
+## S3 cache
+
+Cache size: __S3_CACHE_SIZE__
+Cache on write: __S3_CACHE_ON_WRITE__
+Tier move factor: __S3_TIER_MOVE_FACTOR__

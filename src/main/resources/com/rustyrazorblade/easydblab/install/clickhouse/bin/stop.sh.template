@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export KUBECONFIG="${SCRIPT_DIR}/../../__KUBECONFIG__"
+
+echo "Deleting ClickHouseInstallation CR..."
+kubectl delete -f "${SCRIPT_DIR}/../clickhouseinstallation.yaml" --namespace default --ignore-not-found
+
+echo "Waiting for ClickHouse pods to terminate..."
+kubectl wait --for=delete pods \
+  -l clickhouse.altinity.com/chi=clickhouse \
+  --namespace default \
+  --timeout=120s 2>/dev/null || true
+
+echo "Uninstalling Altinity ClickHouse Operator..."
+helm uninstall clickhouse-operator --namespace default --ignore-not-found
+
+echo "ClickHouse stopped. PersistentVolumes and data on disk are retained."
+echo "Run 'easy-db-lab cleanup clickhouse' to wipe /mnt/db1/clickhouse on all db nodes."

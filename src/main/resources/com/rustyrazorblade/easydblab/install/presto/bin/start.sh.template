@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WORKLOAD_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+export KUBECONFIG="${SCRIPT_DIR}/../../__KUBECONFIG__"
+
+# Build catalog values from values.yaml plus any installed workload catalogs.
+CATALOG_YAML=$(mktemp /tmp/presto-catalog-XXXXXX.yaml)
+trap 'rm -f "$CATALOG_YAML"' EXIT
+
+echo "catalog:" > "$CATALOG_YAML"
+for props in "${WORKLOAD_ROOT}"/*/presto-catalog.properties; do
+    [ -f "$props" ] || continue
+    catalog_name=$(basename "$(dirname "$props")")
+    echo "  ${catalog_name}: |" >> "$CATALOG_YAML"
+    sed 's/^/    /' "$props" >> "$CATALOG_YAML"
+done
+
+echo "Installing Presto..."
+helm repo add prestodb https://prestodb.github.io/presto-helm-charts 2>/dev/null || true
+helm upgrade --install presto prestodb/presto \
+  --namespace default \
+  --create-namespace \
+  --values "${SCRIPT_DIR}/../values.yaml" \
+  --values "$CATALOG_YAML" \
+  --wait
+
+echo "Waiting for Presto coordinator to become ready..."
+kubectl wait --for=condition=Ready pods \
+  -l app=presto,component=coordinator \
+  --namespace default \
+  --timeout=180s
+
+echo "Presto is ready. Workers: __WORKERS__"

@@ -591,6 +591,7 @@ class Up : PicoBaseCommand() {
         }
 
         if (appHosts.isNotEmpty()) {
+            eventBus.emit(Event.Provision.NodeLabeling(count = appHosts.size, nodeType = "app"))
             appHosts.forEachIndexed { index, host ->
                 k8sService
                     .labelNode(controlHost, host.alias, mapOf(Constants.NODE_ORDINAL_LABEL to index.toString()))
@@ -598,6 +599,7 @@ class Up : PicoBaseCommand() {
                         log.warn(exception) { "Failed to label app node ${host.alias} with ordinal $index" }
                     }
             }
+            eventBus.emit(Event.Provision.NodeLabelingComplete)
         }
     }
 

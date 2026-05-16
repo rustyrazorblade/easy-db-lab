@@ -40,7 +40,7 @@ class WorkloadInstallCommand(
             }
         }
 
-        val storageSize = argValues.remove("STORAGE_SIZE") ?: "0Gi"
+        val storageSize = argValues.remove("STORAGE_SIZE") ?: ""
         renderAndWrite(
             source = source,
             workloadName = config.name,

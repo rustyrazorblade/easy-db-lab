@@ -39,6 +39,12 @@ class PlatformCreatePvs : PicoBaseCommand() {
     )
     var nodeType: String = "db"
 
+    @Option(
+        names = ["--pvc-name"],
+        description = ["PVC template name to bind (default: data)"],
+    )
+    var pvcTemplateName: String = "data"
+
     override fun execute() {
         require(nodeType == "db" || nodeType == "app") {
             "node-type must be 'db' or 'app', got: $nodeType"
@@ -67,7 +73,7 @@ class PlatformCreatePvs : PicoBaseCommand() {
                         storageSize = size,
                         storageClass = Constants.K8s.LOCAL_STORAGE_WFC_CLASS,
                         namespace = Constants.K8s.NAMESPACE,
-                        volumeClaimTemplateName = "data",
+                        volumeClaimTemplateName = pvcTemplateName,
                     ),
             ).getOrElse { exception ->
                 error("Failed to create PVs for $workload: ${exception.message}")

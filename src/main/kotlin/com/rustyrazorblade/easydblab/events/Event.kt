@@ -3162,8 +3162,9 @@ sealed interface Event {
         @SerialName("Provision.NodeLabeling")
         data class NodeLabeling(
             val count: Int,
+            val nodeType: String = "db",
         ) : Provision {
-            override fun toDisplayString(): String = "Labeling $count db nodes with ordinals..."
+            override fun toDisplayString(): String = "Labeling $count $nodeType nodes with ordinals..."
         }
 
         @Serializable

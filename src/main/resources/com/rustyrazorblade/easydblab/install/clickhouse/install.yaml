@@ -10,12 +10,12 @@ args:
     type: string
   - flag: --replicas
     variable: REPLICAS
-    description: Number of ClickHouse replicas (default: db node count)
+    description: "Number of ClickHouse replicas (default: db node count)"
     type: int
     default: "${DB_NODE_COUNT}"
   - flag: --s3-cache
     variable: S3_CACHE_SIZE
-    description: S3 disk cache size in GiB (default: 0, disabled)
+    description: "S3 disk cache size in GiB (default: 0, disabled)"
     type: int
     default: "0"
     suffix: "Gi"

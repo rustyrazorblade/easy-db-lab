@@ -146,6 +146,10 @@ class CommandLineParser : KoinComponent {
                     // Execute PicoCommands through CommandExecutor for full lifecycle
                     // (requirements, execution, scheduled commands, backup)
                     if (currentParseResult != null) {
+                        if (currentParseResult.isUsageHelpRequested) {
+                            currentParseResult.commandSpec().commandLine().usage(System.out)
+                            return@IExecutionStrategy 0
+                        }
                         val cmd = currentParseResult.commandSpec().userObject()
                         if (cmd is PicoCommand) {
                             // Route ALL commands to CommandExecutor
@@ -181,6 +185,12 @@ class CommandLineParser : KoinComponent {
     init {
         registerDynamicInstallSubcommands()
         registerDynamicWorkloadSubcommands()
+        applyHelpOptionsToAll(commandLine)
+    }
+
+    private fun applyHelpOptionsToAll(cl: CommandLine) {
+        cl.commandSpec.mixinStandardHelpOptions(true)
+        cl.subcommands.values.forEach { applyHelpOptionsToAll(it) }
     }
 
     /**

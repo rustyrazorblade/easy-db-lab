@@ -7,6 +7,9 @@ spec:
   configuration:
     clusters:
       - name: clickhouse
+        templates:
+          podTemplate: clickhouse-pod
+          dataVolumeClaimTemplate: data
         layout:
           shardsCount: 1
           replicasCount: __REPLICAS__

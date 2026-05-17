@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
+import com.rustyrazorblade.easydblab.services.MetricsRegistryService
 import com.rustyrazorblade.easydblab.services.WorkloadStepExecutor
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -27,6 +28,7 @@ class WorkloadRunnerCommandTest : BaseKoinTest() {
     private val mockClusterStateManager: ClusterStateManager = mock()
     private val mockGrafanaDashboardService: GrafanaDashboardService = mock()
     private val mockWorkloadStepExecutor: WorkloadStepExecutor = mock()
+    private val mockMetricsRegistryService: MetricsRegistryService = mock()
 
     private lateinit var workingDir: File
 
@@ -57,6 +59,7 @@ class WorkloadRunnerCommandTest : BaseKoinTest() {
                 single<ClusterStateManager> { mockClusterStateManager }
                 single<GrafanaDashboardService> { mockGrafanaDashboardService }
                 single<WorkloadStepExecutor> { mockWorkloadStepExecutor }
+                single<MetricsRegistryService> { mockMetricsRegistryService }
             },
         )
 

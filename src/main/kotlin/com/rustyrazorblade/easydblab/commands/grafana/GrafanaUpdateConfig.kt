@@ -87,9 +87,10 @@ class GrafanaUpdateConfig : PicoBaseCommand() {
         createClusterConfigMap(controlNode, region)
 
         // Apply all Fabric8-built observability resources
-        val k8sClient = k8sClientProvider.createClient(controlNode)
-        val scrapeConfigs = otelManifestBuilder.listWorkloadScrapeConfigs(k8sClient)
-        k8sClient.close()
+        val scrapeConfigs =
+            k8sClientProvider.createClient(controlNode).use { client ->
+                otelManifestBuilder.listWorkloadScrapeConfigs(client)
+            }
         applyFabric8Resources("OTel Collector", controlNode, otelManifestBuilder.buildAllResources(scrapeConfigs))
         applyFabric8Resources("Fluent Bit Journald", controlNode, journaldOtelManifestBuilder.buildAllResources())
         applyFabric8Resources("ebpf_exporter", controlNode, ebpfExporterManifestBuilder.buildAllResources())

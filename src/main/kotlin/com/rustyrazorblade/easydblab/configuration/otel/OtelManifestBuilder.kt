@@ -172,9 +172,9 @@ class OtelManifestBuilder(
             |          metrics_path: '${config.path}'
             |          relabel_configs:
             |            - target_label: instance
-            |              replacement: '${dollar}{env:HOSTNAME}:${config.port}'
+            |              replacement: '$dollar{env:HOSTNAME}:${config.port}'
             |            - target_label: cluster
-            |              replacement: '${dollar}{env:CLUSTER_NAME}'
+            |              replacement: '$dollar{env:CLUSTER_NAME}'
             """.trimMargin()
         }
     }

@@ -32,6 +32,11 @@ kubectl patch deployment presto-coordinator \
   --type=strategic \
   -p='{"spec":{"template":{"spec":{"containers":[{"name":"presto-coordinator","ports":[{"containerPort":8080,"hostPort":8080,"protocol":"TCP"}]}]}}}}'
 
+echo "Waiting for coordinator rollout to complete..."
+kubectl rollout status deployment/presto-coordinator \
+  --namespace default \
+  --timeout=180s
+
 echo "Waiting for Presto coordinator to become ready..."
 kubectl wait --for=condition=Ready pods \
   -l app=presto,component=coordinator \

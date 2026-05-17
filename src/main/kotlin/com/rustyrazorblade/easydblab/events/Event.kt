@@ -516,7 +516,9 @@ sealed interface Event {
 
         @Serializable
         @SerialName("Cilium.InstallFailed")
-        data class InstallFailed(val error: String) : Cilium {
+        data class InstallFailed(
+            val error: String,
+        ) : Cilium {
             override fun toDisplayString(): String = "Failed to install Cilium: $error"
 
             override fun isError(): Boolean = true

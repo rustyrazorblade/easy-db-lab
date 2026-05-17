@@ -118,7 +118,7 @@ kubectl get pods -n default -l app=presto
 
 step "Verifying Presto coordinator is Ready"
 kubectl wait --for=condition=Ready \
-    pods -l "app=presto,role=coordinator" \
+    pods -l "app=presto,component=coordinator" \
     --namespace default \
     --timeout=300s
 

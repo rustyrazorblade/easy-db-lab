@@ -144,8 +144,20 @@ class WorkloadRunnerCommand(
             Event.Workload.ScriptFinished(workload = workloadName, script = phaseName, exitCode = processExitCode),
         )
 
-        if (phaseName == "start" && processExitCode == 0) {
-            installDashboards(emptyList())
+        if (processExitCode == 0) {
+            when (phaseName) {
+                "start" -> installDashboards(emptyList())
+                "stop" -> {
+                    val controlHost =
+                        clusterState.hosts[ServerType.Control]?.firstOrNull() ?: run {
+                            log.warn { "No control node found; skipping metrics deregistration for $workloadName" }
+                            return
+                        }
+                    metricsRegistryService
+                        .deregister(controlHost = controlHost, workloadName = workloadName)
+                        .onFailure { e -> log.warn(e) { "Failed to deregister metrics for $workloadName" } }
+                }
+            }
         }
     }
 

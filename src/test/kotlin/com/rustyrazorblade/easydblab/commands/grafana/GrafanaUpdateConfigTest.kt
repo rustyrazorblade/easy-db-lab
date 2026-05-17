@@ -16,9 +16,17 @@ import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.victoria.VictoriaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.yace.YaceManifestBuilder
 import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
+import com.rustyrazorblade.easydblab.services.K8sClientProvider
 import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.TemplateService
+import io.fabric8.kubernetes.api.model.ConfigMap
+import io.fabric8.kubernetes.api.model.ConfigMapList
 import io.fabric8.kubernetes.api.model.HasMetadata
+import io.fabric8.kubernetes.client.KubernetesClient
+import io.fabric8.kubernetes.client.dsl.AnyNamespaceOperation
+import io.fabric8.kubernetes.client.dsl.FilterWatchListDeletable
+import io.fabric8.kubernetes.client.dsl.MixedOperation
+import io.fabric8.kubernetes.client.dsl.Resource
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -40,6 +48,8 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
     private lateinit var mockDashboardService: GrafanaDashboardService
     private lateinit var mockClusterStateManager: ClusterStateManager
     private lateinit var mockK8sService: K8sService
+    private lateinit var mockK8sClientProvider: K8sClientProvider
+    private lateinit var mockK8sClient: KubernetesClient
 
     private val testControlHost =
         ClusterHost(
@@ -71,6 +81,12 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
                     }
                 }
 
+                single {
+                    mock<K8sClientProvider>().also {
+                        mockK8sClientProvider = it
+                    }
+                }
+
                 // Real TemplateService — never mock configuration classes
                 single { TemplateService(get(), get()) }
 
@@ -93,6 +109,22 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
         mockDashboardService = getKoin().get()
         mockClusterStateManager = getKoin().get()
         mockK8sService = getKoin().get()
+        mockK8sClientProvider = getKoin().get()
+
+        mockK8sClient = mock()
+        val mockConfigMapOps =
+            mock<MixedOperation<ConfigMap, ConfigMapList, Resource<ConfigMap>>>()
+        val mockAnyNsOps =
+            mock<AnyNamespaceOperation<ConfigMap, ConfigMapList, Resource<ConfigMap>>>()
+        val mockFiltered =
+            mock<FilterWatchListDeletable<ConfigMap, ConfigMapList, Resource<ConfigMap>>>()
+        val emptyConfigMapList = ConfigMapList().also { it.items = mutableListOf() }
+
+        whenever(mockK8sClient.configMaps()).thenReturn(mockConfigMapOps)
+        whenever(mockConfigMapOps.inAnyNamespace()).thenReturn(mockAnyNsOps)
+        whenever(mockAnyNsOps.withLabel(any<String>(), any<String>())).thenReturn(mockFiltered)
+        whenever(mockFiltered.list()).thenReturn(emptyConfigMapList)
+        whenever(mockK8sClientProvider.createClient(any())).thenReturn(mockK8sClient)
     }
 
     @Test

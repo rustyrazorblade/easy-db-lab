@@ -79,7 +79,10 @@ class CiliumInstallServiceTest : BaseKoinTest() {
 
         val installCmd = captor.secondValue
         assertThat(installCmd).contains("helm upgrade --install cilium")
+        assertThat(installCmd).contains("--version 1.19.4")
         assertThat(installCmd).contains("kubeProxyReplacement=true")
+        assertThat(installCmd).contains("k8sServiceHost=10.0.0.1")
+        assertThat(installCmd).contains("k8sServicePort=6443")
         assertThat(installCmd).contains("hubble.relay.enabled=true")
         assertThat(installCmd).contains("hubble.ui.enabled=true")
         assertThat(installCmd).contains("hubble.metrics.enabled")

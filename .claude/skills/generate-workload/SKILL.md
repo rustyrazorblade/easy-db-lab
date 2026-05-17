@@ -25,7 +25,12 @@ Use WebSearch and/or context7 to look up:
 - Common configuration values (replicas, storage size, node affinity)
 - Whether the workload is stateful (needs `platform-pvs`) or stateless
 
-Summarize findings in 3–5 bullet points before proposing.
+Also research:
+- **Metrics endpoint**: Does the workload expose a Prometheus metrics endpoint? If yes, what port and path (e.g. port 9363, path `/metrics`)?
+- **JVM-based?**: Is the workload written in Java/JVM? If yes, mark it as a `java-agent` candidate (OTel Java agent can auto-instrument it).
+- **Helm-native OTLP?**: Does the helm chart have built-in OpenTelemetry or OTLP export support (configurable via values)? If yes, it may be a `helm-native` candidate.
+
+Summarize findings in 3–5 bullet points before proposing, including the recommended `metrics` mode.
 
 ---
 
@@ -40,6 +45,10 @@ name: <kebab-case-name>
 description: <one-line description>
 version: "<chart-version>"
 collision-check: true          # true if start phase should guard against double-start
+metrics:                       # omit if workload has no metrics
+  type: scrape                 # scrape | java-agent | helm-native
+  port: 9363                   # required for scrape
+  path: /metrics               # required for scrape
 args:
   - flag: --size
     variable: STORAGE_SIZE
@@ -89,6 +98,30 @@ uninstall:
     release: <release-name>
     namespace: <namespace>
 ```
+
+### `metrics` block
+
+The optional `metrics` block declares how the workload's telemetry reaches the OTel collector. Three modes:
+
+```yaml
+# Workload exposes a Prometheus endpoint; OTel DaemonSet scrapes it via hostPort
+metrics:
+  type: scrape
+  port: 9363
+  path: /metrics
+
+# JVM-based workload; OTel Java agent (pre-installed at /usr/local/otel/opentelemetry-javaagent.jar)
+# pushes OTLP to localhost:4317 automatically
+metrics:
+  type: java-agent
+  service-name: my-workload
+
+# Workload has built-in OTLP support configured via helm values; no OTel config change needed
+metrics:
+  type: helm-native
+```
+
+When `type: scrape`, the workload's pod spec **must** declare a `hostPort` mapping for the metrics port so the OTel DaemonSet (running with `hostNetwork: true`) can reach it. Add the hostPort to the pod template in your `.yaml.template` file or to the helm values.
 
 ### Available step types
 
@@ -182,3 +215,6 @@ Next steps:
 - **Keep args minimal.** Only expose flags the user would actually tune at install time.
 - **Prefer `wait` over `shell` for readiness checks.** Only use `shell` for `kubectl wait` with label selectors (e.g. `clickhouse.altinity.com/chi=`) that can't be expressed with `kind`/`name`.
 - **Verify the generated `install.yaml` is parseable** before reporting completion — mentally trace through the schema to catch typos in step types or missing required fields.
+- **Metrics registration is automatic.** When `metrics.type: scrape`, easy-db-lab automatically creates the metrics ConfigMap and syncs the OTel collector after a successful `start`, and removes it after `stop`. Do NOT add `type: configmap` or `type: sync-otel` steps for this — they are handled by the runtime.
+- **Always include a `metrics` block** if the workload exposes metrics in any form. If unsure, research the workload's observability docs before proposing.
+- **Always add `hostPort` for scrape targets.** If `metrics.type: scrape`, the pod spec must expose the metrics port via `hostPort` or the OTel DaemonSet cannot reach it.

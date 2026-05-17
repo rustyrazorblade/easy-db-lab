@@ -490,6 +490,77 @@ class WorkloadInstallConfigTest {
         assertThat(config.isGuardedForPhase("install")).isFalse()
     }
 
+    // -------------------------------------------------------------------------
+    // Metrics block deserialization (task 2.5)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `parses scrape metrics with explicit path`() {
+        val config =
+            parse(
+                """
+                name: clickhouse
+                metrics:
+                  type: scrape
+                  port: 9363
+                  path: /metrics
+                """.trimIndent(),
+            )
+        val metrics = config.metrics as WorkloadMetrics.Scrape
+        assertThat(metrics.port).isEqualTo(9363)
+        assertThat(metrics.path).isEqualTo("/metrics")
+    }
+
+    @Test
+    fun `parses scrape metrics with default path`() {
+        val config =
+            parse(
+                """
+                name: mydb
+                metrics:
+                  type: scrape
+                  port: 9100
+                """.trimIndent(),
+            )
+        val metrics = config.metrics as WorkloadMetrics.Scrape
+        assertThat(metrics.port).isEqualTo(9100)
+        assertThat(metrics.path).isEqualTo("/metrics")
+    }
+
+    @Test
+    fun `parses java-agent metrics`() {
+        val config =
+            parse(
+                """
+                name: presto
+                metrics:
+                  type: java-agent
+                  service-name: presto
+                """.trimIndent(),
+            )
+        val metrics = config.metrics as WorkloadMetrics.JavaAgent
+        assertThat(metrics.serviceName).isEqualTo("presto")
+    }
+
+    @Test
+    fun `parses helm-native metrics`() {
+        val config =
+            parse(
+                """
+                name: mydb
+                metrics:
+                  type: helm-native
+                """.trimIndent(),
+            )
+        assertThat(config.metrics).isEqualTo(WorkloadMetrics.HelmNative)
+    }
+
+    @Test
+    fun `metrics absent when not declared`() {
+        val config = parse("name: mydb")
+        assertThat(config.metrics).isNull()
+    }
+
     @Test
     fun `dashboards list parses correctly`() {
         val config =

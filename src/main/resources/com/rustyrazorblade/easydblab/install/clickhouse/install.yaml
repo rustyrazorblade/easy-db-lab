@@ -2,6 +2,10 @@ name: clickhouse
 description: Scaffold ClickHouse workload files using the Altinity operator
 version: "1.0.0"
 collision-check: true
+metrics:
+  type: scrape
+  port: 9363
+  path: /metrics
 args:
   - flag: --size
     variable: STORAGE_SIZE

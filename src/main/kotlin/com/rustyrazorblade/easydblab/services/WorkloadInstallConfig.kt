@@ -9,6 +9,34 @@ import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.polymorphic
 import kotlinx.serialization.modules.subclass
 
+/**
+ * Declares how a workload's metrics reach the OTel collector.
+ *
+ * - [Scrape]: workload exposes a Prometheus endpoint; OTel DaemonSet scrapes it via hostPort
+ * - [JavaAgent]: JVM workload uses the OTel Java agent JAR at /usr/local/otel/opentelemetry-javaagent.jar
+ * - [HelmNative]: workload has built-in telemetry via helm values; no OTel config change needed
+ */
+@Serializable
+sealed class WorkloadMetrics {
+    @Serializable
+    @SerialName("scrape")
+    data class Scrape(
+        val port: Int,
+        val path: String = "/metrics",
+    ) : WorkloadMetrics()
+
+    @Serializable
+    @SerialName("java-agent")
+    data class JavaAgent(
+        @SerialName("service-name")
+        val serviceName: String,
+    ) : WorkloadMetrics()
+
+    @Serializable
+    @SerialName("helm-native")
+    data object HelmNative : WorkloadMetrics()
+}
+
 @Serializable
 data class WorkloadInstallConfig(
     val name: String,
@@ -20,6 +48,7 @@ data class WorkloadInstallConfig(
     val phaseGuards: Map<String, Boolean> = emptyMap(),
     val dashboards: List<DashboardRef> = emptyList(),
     val args: List<WorkloadArgSpec> = emptyList(),
+    val metrics: WorkloadMetrics? = null,
     val install: List<InstallStep> = emptyList(),
     val start: List<InstallStep> = emptyList(),
     val stop: List<InstallStep> = emptyList(),

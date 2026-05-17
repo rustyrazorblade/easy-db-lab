@@ -485,6 +485,45 @@ sealed interface Event {
     }
 
     // =========================================================================
+    // Event.Cilium — Cilium CNI operations
+    // =========================================================================
+
+    @Serializable
+    sealed interface Cilium : Event {
+        @Serializable
+        @SerialName("Cilium.Installing")
+        data object Installing : Cilium {
+            override fun toDisplayString(): String = "Installing Cilium CNI..."
+        }
+
+        @Serializable
+        @SerialName("Cilium.RepoAdding")
+        data object RepoAdding : Cilium {
+            override fun toDisplayString(): String = "Adding Cilium helm repo..."
+        }
+
+        @Serializable
+        @SerialName("Cilium.Installing.Chart")
+        data object InstallingChart : Cilium {
+            override fun toDisplayString(): String = "Installing Cilium chart (waiting for DaemonSet ready)..."
+        }
+
+        @Serializable
+        @SerialName("Cilium.Installed")
+        data object Installed : Cilium {
+            override fun toDisplayString(): String = "Cilium CNI installed successfully"
+        }
+
+        @Serializable
+        @SerialName("Cilium.InstallFailed")
+        data class InstallFailed(val error: String) : Cilium {
+            override fun toDisplayString(): String = "Failed to install Cilium: $error"
+
+            override fun isError(): Boolean = true
+        }
+    }
+
+    // =========================================================================
     // Event.K8s — Kubernetes operations
     // =========================================================================
 
@@ -5841,6 +5880,29 @@ sealed interface Event {
             override fun toDisplayString(): String = "[$workload] $phase step ${stepIndex + 1} ($stepType) failed: $error"
 
             override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        @SerialName("Workload.MetricsRegistered")
+        data class MetricsRegistered(
+            val workload: String,
+            val port: Int,
+        ) : Workload {
+            override fun toDisplayString(): String = "[$workload] metrics registered on port $port"
+        }
+
+        @Serializable
+        @SerialName("Workload.MetricsDeregistered")
+        data class MetricsDeregistered(
+            val workload: String,
+        ) : Workload {
+            override fun toDisplayString(): String = "[$workload] metrics deregistered"
+        }
+
+        @Serializable
+        @SerialName("Workload.OtelSynced")
+        data object OtelSynced : Workload {
+            override fun toDisplayString(): String = "OTel collector config synced"
         }
     }
 

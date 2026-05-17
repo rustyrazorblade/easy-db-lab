@@ -22,6 +22,7 @@ import com.rustyrazorblade.easydblab.configuration.victoria.VictoriaManifestBuil
 import com.rustyrazorblade.easydblab.configuration.yace.YaceManifestBuilder
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
+import com.rustyrazorblade.easydblab.services.K8sClientProvider
 import com.rustyrazorblade.easydblab.services.K8sService
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -56,6 +57,7 @@ class GrafanaUpdateConfig : PicoBaseCommand() {
     private val dashboardService: GrafanaDashboardService by inject()
     private val user: User by inject()
     private val k8sService: K8sService by inject()
+    private val k8sClientProvider: K8sClientProvider by inject()
     private val otelManifestBuilder: OtelManifestBuilder by inject()
     private val journaldOtelManifestBuilder: JournaldOtelManifestBuilder by inject()
     private val ebpfExporterManifestBuilder: EbpfExporterManifestBuilder by inject()
@@ -85,7 +87,10 @@ class GrafanaUpdateConfig : PicoBaseCommand() {
         createClusterConfigMap(controlNode, region)
 
         // Apply all Fabric8-built observability resources
-        applyFabric8Resources("OTel Collector", controlNode, otelManifestBuilder.buildAllResources())
+        val k8sClient = k8sClientProvider.createClient(controlNode)
+        val scrapeConfigs = otelManifestBuilder.listWorkloadScrapeConfigs(k8sClient)
+        k8sClient.close()
+        applyFabric8Resources("OTel Collector", controlNode, otelManifestBuilder.buildAllResources(scrapeConfigs))
         applyFabric8Resources("Fluent Bit Journald", controlNode, journaldOtelManifestBuilder.buildAllResources())
         applyFabric8Resources("ebpf_exporter", controlNode, ebpfExporterManifestBuilder.buildAllResources())
         applyFabric8Resources("VictoriaMetrics/Logs", controlNode, victoriaManifestBuilder.buildAllResources())

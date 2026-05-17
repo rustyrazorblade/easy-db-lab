@@ -37,6 +37,18 @@ spec:
     podTemplates:
       - name: clickhouse-pod
         spec:
+          containers:
+            - name: clickhouse
+              ports:
+                - name: http
+                  containerPort: 8123
+                  hostPort: 8123
+                - name: native
+                  containerPort: 9000
+                  hostPort: 9000
+                - name: metrics
+                  containerPort: 9363
+                  hostPort: 9363
           affinity:
             nodeAffinity:
               requiredDuringSchedulingIgnoredDuringExecution:

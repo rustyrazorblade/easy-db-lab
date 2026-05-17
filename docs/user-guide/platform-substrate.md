@@ -121,6 +121,63 @@ Files without `.template` suffix are copied verbatim.
 
 Place templates in `~/.easy-db-lab/profiles/<profile>/install/<name>/` to make them discoverable via `install --list`. Profile templates take priority over built-in templates with the same name.
 
+## Port Exposure Model
+
+K8s workloads installed via `install.yaml` use **standard pod networking** (not `hostNetwork`). Client ports and metrics ports are exposed via `hostPort` mappings so they are accessible on each EC2 instance's network interface.
+
+### Why hostPort?
+
+The OTel collector DaemonSet runs with `hostNetwork: true` so it can scrape both host processes (Cassandra/MAAC at `localhost:9000`) and workload metrics endpoints. For the DaemonSet to reach a pod's metrics port, the pod must expose it via `hostPort` — that makes the port appear on the host network namespace as `localhost:<port>`.
+
+### Port Remapping
+
+When a workload's native port conflicts with a host process, a different `hostPort` is assigned. Example: a ScyllaDB pod using CQL port 9042 would conflict with Cassandra on the host, so it maps `containerPort: 9042 → hostPort: 9142`.
+
+### Port Assignments
+
+| Workload | Protocol | containerPort | hostPort | Notes |
+|---|---|---|---|---|
+| ClickHouse | HTTP | 8123 | 8123 | Query interface |
+| ClickHouse | Native TCP | 9000 | 9000 | Client protocol |
+| ClickHouse | Prometheus | 9363 | 9363 | OTel scrape target |
+| Presto | HTTP | 8080 | 8080 | Coordinator query interface |
+
+When adding a new workload, choose a `hostPort` that does not conflict with any host process or existing workload in the table above.
+
+## Workload Observability
+
+Each workload declares its metrics mode in `install.yaml`:
+
+```yaml
+metrics:
+  type: scrape     # Prometheus endpoint — OTel DaemonSet scrapes it
+  port: 9363
+  path: /metrics
+```
+
+Three modes are supported:
+
+| Mode | How metrics reach the OTel collector |
+|---|---|
+| `scrape` | OTel DaemonSet scrapes a Prometheus endpoint via hostPort |
+| `java-agent` | OTel Java agent inside the JVM pushes OTLP to `localhost:4317` |
+| `helm-native` | Workload has built-in OTLP support configured via helm values |
+
+### Metrics Registration Lifecycle
+
+When a workload with `type: scrape` starts successfully, easy-db-lab:
+
+1. Creates a ConfigMap `easydblab-metrics-<workload>` in the `default` namespace labeled `easydblab.com/workload-metrics=true` containing the job name, port, and path.
+2. Regenerates the OTel collector ConfigMap to include a new Prometheus scrape job for the workload.
+3. Applies the updated OTel ConfigMap so the running collector picks it up.
+
+When the workload stops:
+
+1. Deletes the `easydblab-metrics-<workload>` ConfigMap.
+2. Regenerates and applies the OTel collector ConfigMap without the workload's scrape job.
+
+This is fully automatic — no manual OTel configuration is required when starting or stopping workloads.
+
 ## Verifying the Substrate
 
 ```bash

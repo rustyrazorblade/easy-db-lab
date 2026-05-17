@@ -1,6 +1,9 @@
 name: presto
 description: Scaffold Presto workload files (stateless, targets app nodes)
 collision-check: false
+metrics:
+  type: java-agent
+  service-name: presto
 args:
   - flag: --workers
     variable: WORKERS

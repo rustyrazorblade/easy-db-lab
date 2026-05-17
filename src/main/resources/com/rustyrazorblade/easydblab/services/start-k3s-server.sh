@@ -28,7 +28,7 @@ else
 
     # Run airgap installation in server mode
     INSTALL_K3S_SKIP_DOWNLOAD=true \
-    INSTALL_K3S_EXEC='server --write-kubeconfig-mode=644' \
+    INSTALL_K3S_EXEC='server --write-kubeconfig-mode=644 --flannel-backend=none --disable-network-policy' \
     /usr/local/bin/install-k3s.sh
 
     echo "✓ K3s server installed successfully"

@@ -23,6 +23,7 @@ import com.rustyrazorblade.easydblab.providers.aws.DiscoveredInstance
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import com.rustyrazorblade.easydblab.providers.aws.VpcNetworkingConfig
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
+import com.rustyrazorblade.easydblab.services.CiliumInstallService
 import com.rustyrazorblade.easydblab.services.ClusterConfigurationService
 import com.rustyrazorblade.easydblab.services.ClusterProvisioningService
 import com.rustyrazorblade.easydblab.services.CommandExecutor
@@ -83,6 +84,7 @@ class Up : PicoBaseCommand() {
     private val clusterProvisioningService: ClusterProvisioningService by inject()
     private val clusterConfigurationService: ClusterConfigurationService by inject()
     private val k3sClusterService: K3sClusterService by inject()
+    private val ciliumInstallService: CiliumInstallService by inject()
     private val k8sService: K8sService by inject()
     private val registryService: RegistryService by inject()
     private val commandExecutor: CommandExecutor by inject()
@@ -540,6 +542,10 @@ class Up : PicoBaseCommand() {
             result.errors.forEach { (operation, error) ->
                 log.error(error) { "K3s setup failed: $operation" }
             }
+        }
+
+        ciliumInstallService.install(controlHosts.first().toHost()).getOrElse { e ->
+            log.error(e) { "Cilium installation failed" }
         }
 
         // Label db and app nodes with ordinals for StatefulSet pod-to-node pinning

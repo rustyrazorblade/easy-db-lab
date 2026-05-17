@@ -18,15 +18,6 @@ receivers:
   prometheus:
     config:
       scrape_configs:
-        - job_name: 'clickhouse'
-          scrape_interval: 5s
-          static_configs:
-            - targets: ['localhost:9363']
-          relabel_configs:
-            - target_label: instance
-              replacement: '${env:HOSTNAME}:9363'
-            - target_label: cluster
-              replacement: '${env:CLUSTER_NAME}'
         - job_name: 'beyla'
           scrape_interval: 15s
           static_configs:
@@ -64,6 +55,16 @@ receivers:
               replacement: '${env:HOSTNAME}:5001'
             - target_label: cluster
               replacement: '${env:CLUSTER_NAME}'
+        - job_name: 'hubble'
+          scrape_interval: 15s
+          static_configs:
+            - targets: ['localhost:9965']
+          relabel_configs:
+            - target_label: instance
+              replacement: '${env:HOSTNAME}:9965'
+            - target_label: cluster
+              replacement: '${env:CLUSTER_NAME}'
+__WORKLOAD_SCRAPE_JOBS__
   filelog/system:
     include:
       - /var/log/**/*.log

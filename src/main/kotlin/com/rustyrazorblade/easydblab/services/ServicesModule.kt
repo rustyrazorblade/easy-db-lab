@@ -45,6 +45,7 @@ val servicesModule =
         singleOf(::DefaultResourceManager) bind ResourceManager::class
 
         factoryOf(::DefaultCassandraService) bind CassandraService::class
+        factoryOf(::DefaultCiliumInstallService) bind CiliumInstallService::class
         factoryOf(::DefaultClickHouseConfigService) bind ClickHouseConfigService::class
         factoryOf(::DefaultTailscaleService) bind TailscaleService::class
 
@@ -75,6 +76,8 @@ val servicesModule =
         factoryOf(::TemplateService)
         factoryOf(::InstallTemplateResolver)
         factoryOf(::WorkloadStepExecutor)
+        factoryOf(::DefaultOtelSyncService) bind OtelSyncService::class
+        factoryOf(::DefaultMetricsRegistryService) bind MetricsRegistryService::class
         factory<VictoriaBackupService> { DefaultVictoriaBackupService(get(), get()) }
         factoryOf(::DefaultVictoriaStreamService) bind VictoriaStreamService::class
         singleOf(::DefaultVictoriaMetricsQueryService) bind VictoriaMetricsQueryService::class

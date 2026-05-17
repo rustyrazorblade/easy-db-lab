@@ -6,8 +6,10 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.DashboardRef
 import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
 import com.rustyrazorblade.easydblab.services.InstallStep
+import com.rustyrazorblade.easydblab.services.MetricsRegistryService
 import com.rustyrazorblade.easydblab.services.TemplateVariables
 import com.rustyrazorblade.easydblab.services.WorkloadInstallConfig
+import com.rustyrazorblade.easydblab.services.WorkloadMetrics
 import com.rustyrazorblade.easydblab.services.WorkloadStepExecutor
 import com.rustyrazorblade.easydblab.services.installConfigYaml
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -21,6 +23,7 @@ class WorkloadRunnerCommand(
 ) : PicoBaseCommand() {
     private val grafanaDashboardService: GrafanaDashboardService by inject()
     private val workloadStepExecutor: WorkloadStepExecutor by inject()
+    private val metricsRegistryService: MetricsRegistryService by inject()
 
     private var processExitCode: Int = 0
 
@@ -94,8 +97,25 @@ class WorkloadRunnerCommand(
             .onSuccess {
                 processExitCode = 0
                 eventBus.emit(Event.Workload.ScriptFinished(workload = workloadName, script = phaseName, exitCode = 0))
-                if (phaseName == "start") {
-                    installDashboards(config.dashboards)
+                when (phaseName) {
+                    "start" -> {
+                        val scrape = config.metrics as? WorkloadMetrics.Scrape
+                        if (scrape != null) {
+                            metricsRegistryService
+                                .register(
+                                    controlHost = controlHost,
+                                    workloadName = workloadName,
+                                    port = scrape.port,
+                                    path = scrape.path,
+                                ).onFailure { e -> log.warn(e) { "Failed to register metrics for $workloadName" } }
+                        }
+                        installDashboards(config.dashboards)
+                    }
+                    "stop" -> {
+                        metricsRegistryService
+                            .deregister(controlHost = controlHost, workloadName = workloadName)
+                            .onFailure { e -> log.warn(e) { "Failed to deregister metrics for $workloadName" } }
+                    }
                 }
             }.onFailure { error ->
                 processExitCode = 1

@@ -23,6 +23,7 @@ import com.rustyrazorblade.easydblab.providers.aws.DiscoveredInstance
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import com.rustyrazorblade.easydblab.providers.aws.VpcNetworkingConfig
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
+import com.rustyrazorblade.easydblab.services.CiliumInstallService
 import com.rustyrazorblade.easydblab.services.ClusterConfigurationService
 import com.rustyrazorblade.easydblab.services.ClusterProvisioningService
 import com.rustyrazorblade.easydblab.services.CommandExecutor
@@ -83,6 +84,7 @@ class Up : PicoBaseCommand() {
     private val clusterProvisioningService: ClusterProvisioningService by inject()
     private val clusterConfigurationService: ClusterConfigurationService by inject()
     private val k3sClusterService: K3sClusterService by inject()
+    private val ciliumInstallService: CiliumInstallService by inject()
     private val k8sService: K8sService by inject()
     private val registryService: RegistryService by inject()
     private val commandExecutor: CommandExecutor by inject()
@@ -542,51 +544,69 @@ class Up : PicoBaseCommand() {
             }
         }
 
-        // Label db nodes with ordinals for StatefulSet pod-to-node pinning
-        labelDbNodesWithOrdinals(controlHosts.first())
+        ciliumInstallService.install(controlHosts.first().toHost()).getOrElse { e ->
+            log.error(e) { "Cilium installation failed" }
+        }
 
-        // Ensure local-storage StorageClass exists for Local PVs
+        // Label db and app nodes with ordinals for StatefulSet pod-to-node pinning
+        labelNodesWithOrdinals(controlHosts.first())
+
+        // Ensure StorageClasses exist for Local PVs
         k8sService
             .ensureLocalStorageClass(controlHosts.first())
             .getOrElse { exception ->
                 log.warn(exception) { "Failed to create local-storage StorageClass" }
+            }
+        k8sService
+            .ensureLocalStorageWfcClass(controlHosts.first())
+            .getOrElse { exception ->
+                log.warn(exception) { "Failed to create local-storage-wfc StorageClass" }
             }
 
         commandExecutor.execute { GrafanaUpdateConfig() }
     }
 
     /**
-     * Labels db nodes with ordinal values for StatefulSet pod-to-node pinning,
+     * Labels db and app nodes with ordinal values for StatefulSet pod-to-node pinning,
      * and labels the control node with type=control for OTel k8sattributes processor.
      *
-     * This enables databases (ClickHouse, Kafka, etc.) to guarantee that pod X runs on node X
+     * This enables workloads (ClickHouse, Presto, etc.) to guarantee that pod X runs on node X
      * by using Local PersistentVolumes with node affinity.
      */
-    private fun labelDbNodesWithOrdinals(controlHost: ClusterHost) {
-        val dbHosts = workingState.hosts[ServerType.Cassandra] ?: emptyList()
-
+    private fun labelNodesWithOrdinals(controlHost: ClusterHost) {
         // Label control node with type=control (db and app nodes get this via K3s agent config)
         k8sService.labelNode(controlHost, controlHost.alias, mapOf("type" to "control")).getOrElse { exception ->
             log.warn(exception) { "Failed to label control node ${controlHost.alias} with type=control" }
         }
 
+        val dbHosts = workingState.hosts[ServerType.Cassandra] ?: emptyList()
+        val appHosts = workingState.hosts[ServerType.Stress] ?: emptyList()
+
         if (dbHosts.isEmpty()) {
             log.warn { "No db nodes found, skipping db node labeling" }
-            return
-        }
-
-        eventBus.emit(Event.Provision.NodeLabeling(dbHosts.size))
-
-        dbHosts.forEachIndexed { index, host ->
-            val nodeName = host.alias
-            val labels = mapOf(Constants.NODE_ORDINAL_LABEL to index.toString())
-
-            k8sService.labelNode(controlHost, nodeName, labels).getOrElse { exception ->
-                log.warn(exception) { "Failed to label node $nodeName with ordinal $index" }
+        } else {
+            eventBus.emit(Event.Provision.NodeLabeling(dbHosts.size))
+            dbHosts.forEachIndexed { index, host ->
+                k8sService
+                    .labelNode(controlHost, host.alias, mapOf(Constants.NODE_ORDINAL_LABEL to index.toString()))
+                    .getOrElse { exception ->
+                        log.warn(exception) { "Failed to label db node ${host.alias} with ordinal $index" }
+                    }
             }
+            eventBus.emit(Event.Provision.NodeLabelingComplete)
         }
 
-        eventBus.emit(Event.Provision.NodeLabelingComplete)
+        if (appHosts.isNotEmpty()) {
+            eventBus.emit(Event.Provision.NodeLabeling(count = appHosts.size, nodeType = "app"))
+            appHosts.forEachIndexed { index, host ->
+                k8sService
+                    .labelNode(controlHost, host.alias, mapOf(Constants.NODE_ORDINAL_LABEL to index.toString()))
+                    .getOrElse { exception ->
+                        log.warn(exception) { "Failed to label app node ${host.alias} with ordinal $index" }
+                    }
+            }
+            eventBus.emit(Event.Provision.NodeLabelingComplete)
+        }
     }
 
     /**

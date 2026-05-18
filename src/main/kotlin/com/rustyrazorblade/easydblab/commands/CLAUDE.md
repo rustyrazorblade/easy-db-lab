@@ -59,15 +59,17 @@ commands/
 ├── aws/                   # AWS-specific commands (e.g., PruneAMIs)
 ├── clickhouse/            # ClickHouse commands
 ├── grafana/               # Grafana commands
+├── install/               # Workload scaffold commands (install clickhouse, install presto, --from)
 ├── logs/                  # Log import/listing commands
 ├── metrics/               # Metrics import/listing commands
 ├── opensearch/            # OpenSearch commands
+├── platform/              # Platform substrate commands (platform create-pvs, platform info)
 ├── spark/                 # Spark commands
 ├── tailscale/             # Tailscale VPN commands
 ├── mixins/                # Reusable PicoCLI mixins
 ├── converters/            # Type converters for PicoCLI
 ├── formatters/            # Output formatters
-└── *.kt                   # Top-level commands (Up, Down, Init, Start, Stop, Server, Repl, etc.)
+└── *.kt                   # Top-level commands (Up, Down, Init, Start, Stop, Server, Repl, Cleanup, etc.)
 ```
 
 ## Creating New Commands
@@ -121,6 +123,31 @@ parentCommand.addSubcommand("child", ChildCommand(context))
 commandLine.addSubcommand("parent", parentCommand)
 ```
 
+## Dynamic Subcommands (install and workload runner)
+
+Two groups of subcommands are registered dynamically at startup by `CommandLineParser` — do **not**
+hand-code Kotlin classes for these:
+
+### install &lt;workload&gt; subcommands
+
+`registerDynamicInstallSubcommands()` scans all available `install.yaml` files (classpath + profile
+dir) and registers a `install <workload>` subcommand for each via `WorkloadInstallCommandFactory`.
+Flags, defaults, and collision detection are declared in `install.yaml` — no Kotlin needed.
+
+To add a new installable workload: create `src/main/resources/.../install/<name>/install.yaml` and
+template files (including `bin/start.sh.template`, `bin/stop.sh.template`). No code changes needed.
+
+### &lt;workload&gt; start/stop subcommands
+
+`registerDynamicWorkloadSubcommands()` scans `context.workingDirectory` for directories that
+contain a `bin/` subdirectory with at least one executable script. Each such directory becomes a
+top-level subcommand group (`easy-db-lab clickhouse`); each script becomes a subcommand
+(`easy-db-lab clickhouse start`).
+
+Scripts are run by `WorkloadRunnerCommand` with cluster state variables injected as environment
+variables. Dashboard JSON files in `<workload>/dashboards/` are installed into Grafana
+automatically after a successful `start`.
+
 ## Annotations
 
 - `@McpCommand` — expose command as an MCP tool in the server (must also add to `McpToolRegistry`)
@@ -162,6 +189,7 @@ Commands should delegate to these services:
 | `ClickHouseConfigService` | ClickHouse configuration |
 | `SparkService` | Spark job submission (EMR) |
 | `TemplateService` | K8s manifest template substitution |
+| `InstallTemplateResolver` | Resolves install templates from profile dir, classpath, or `--from` path |
 | `ObjectStore` | S3 file operations |
 | `RemoteOperationsService` | SSH execution (use sparingly, prefer domain services) |
 

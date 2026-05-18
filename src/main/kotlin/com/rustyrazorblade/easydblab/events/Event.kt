@@ -485,6 +485,47 @@ sealed interface Event {
     }
 
     // =========================================================================
+    // Event.Cilium — Cilium CNI operations
+    // =========================================================================
+
+    @Serializable
+    sealed interface Cilium : Event {
+        @Serializable
+        @SerialName("Cilium.Installing")
+        data object Installing : Cilium {
+            override fun toDisplayString(): String = "Installing Cilium CNI..."
+        }
+
+        @Serializable
+        @SerialName("Cilium.RepoAdding")
+        data object RepoAdding : Cilium {
+            override fun toDisplayString(): String = "Adding Cilium helm repo..."
+        }
+
+        @Serializable
+        @SerialName("Cilium.Installing.Chart")
+        data object InstallingChart : Cilium {
+            override fun toDisplayString(): String = "Installing Cilium chart (waiting for DaemonSet ready)..."
+        }
+
+        @Serializable
+        @SerialName("Cilium.Installed")
+        data object Installed : Cilium {
+            override fun toDisplayString(): String = "Cilium CNI installed successfully"
+        }
+
+        @Serializable
+        @SerialName("Cilium.InstallFailed")
+        data class InstallFailed(
+            val error: String,
+        ) : Cilium {
+            override fun toDisplayString(): String = "Failed to install Cilium: $error"
+
+            override fun isError(): Boolean = true
+        }
+    }
+
+    // =========================================================================
     // Event.K8s — Kubernetes operations
     // =========================================================================
 
@@ -632,6 +673,12 @@ sealed interface Event {
         @SerialName("K8s.StorageClassCreated")
         data object StorageClassCreated : K8s {
             override fun toDisplayString(): String = "Created local-storage StorageClass"
+        }
+
+        @Serializable
+        @SerialName("K8s.StorageClassWfcCreated")
+        data object StorageClassWfcCreated : K8s {
+            override fun toDisplayString(): String = "Created local-storage-wfc StorageClass"
         }
     }
 
@@ -2087,6 +2134,20 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Grafana.GrafanaDirectoryPreparing")
+        data object GrafanaDirectoryPreparing : Grafana {
+            override fun toDisplayString(): String = "Preparing Grafana data directory..."
+        }
+
+        @Serializable
+        @SerialName("Grafana.DashboardInstalled")
+        data class DashboardInstalled(
+            val title: String,
+        ) : Grafana {
+            override fun toDisplayString(): String = "Installed Grafana dashboard: $title"
+        }
+
+        @Serializable
         @SerialName("Grafana.WorkloadsRestarting")
         data object WorkloadsRestarting : Grafana {
             override fun toDisplayString(): String = "Restarting observability workloads to pick up new configs..."
@@ -3142,8 +3203,9 @@ sealed interface Event {
         @SerialName("Provision.NodeLabeling")
         data class NodeLabeling(
             val count: Int,
+            val nodeType: String = "db",
         ) : Provision {
-            override fun toDisplayString(): String = "Labeling $count db nodes with ordinals..."
+            override fun toDisplayString(): String = "Labeling $count $nodeType nodes with ordinals..."
         }
 
         @Serializable
@@ -4025,6 +4087,48 @@ sealed interface Event {
         @SerialName("Status.CassandraNoNodes")
         data object CassandraNoNodes : Status {
             override fun toDisplayString(): String = "\n=== CASSANDRA VERSION ===\n(no Cassandra nodes configured)"
+        }
+
+        @Serializable
+        @SerialName("Status.WorkloadPodDetail")
+        data class WorkloadPodDetail(
+            val namespace: String,
+            val name: String,
+            val nodeName: String,
+            val ready: String,
+            val status: String,
+        )
+
+        @Serializable
+        @SerialName("Status.WorkloadsSection")
+        data class WorkloadsSection(
+            val pods: List<WorkloadPodDetail>,
+        ) : Status {
+            override fun toDisplayString(): String =
+                buildString {
+                    appendLine("")
+                    appendLine("=== WORKLOADS ===")
+                    if (pods.isEmpty()) {
+                        append("(no workload pods running)")
+                    } else {
+                        val byNamespace = pods.groupBy { it.namespace }
+                        byNamespace.forEach { (namespace, nsPods) ->
+                            appendLine("[$namespace]")
+                            appendLine("  %-40s %-20s %-8s %s".format("NAME", "NODE", "READY", "STATUS"))
+                            nsPods.forEach { pod ->
+                                appendLine("  %-40s %-20s %-8s %s".format(pod.name, pod.nodeName, pod.ready, pod.status))
+                            }
+                        }
+                    }
+                }.trimEnd()
+        }
+
+        @Serializable
+        @SerialName("Status.WorkloadsError")
+        data class WorkloadsError(
+            val error: String,
+        ) : Status {
+            override fun toDisplayString(): String = "\n=== WORKLOADS ===\n(unable to list workload pods: $error)"
         }
     }
 
@@ -5599,6 +5703,231 @@ sealed interface Event {
             val remoteDir: String,
         ) : Ssh {
             override fun toDisplayString(): String = "Uploading directory $localDir to $remoteDir"
+        }
+    }
+
+    // =========================================================================
+    // Event.Platform — Platform substrate operations (StorageClass, PVs, info)
+    // =========================================================================
+
+    @Serializable
+    sealed interface Platform : Event {
+        @Serializable
+        @SerialName("Platform.CreatingPvs")
+        data class CreatingPvs(
+            val workload: String,
+            val nodeType: String,
+            val count: Int,
+            val size: String,
+        ) : Platform {
+            override fun toDisplayString(): String = "Creating $count PVs ($size each) for '$workload' on $nodeType nodes..."
+        }
+
+        @Serializable
+        @SerialName("Platform.PvsCreated")
+        data class PvsCreated(
+            val workload: String,
+            val count: Int,
+        ) : Platform {
+            override fun toDisplayString(): String = "Created $count PVs for '$workload'"
+        }
+
+        @Serializable
+        @SerialName("Platform.Info")
+        data class Info(
+            val storageClasses: List<String>,
+            val dbNodeCount: Int,
+            val appNodeCount: Int,
+            val nodeOrdinalLabel: String,
+            val exampleHelmValues: String,
+        ) : Platform {
+            override fun toDisplayString(): String =
+                """
+                |Platform substrate info:
+                |  StorageClasses: ${storageClasses.joinToString(", ")}
+                |  DB nodes: $dbNodeCount  (nodeSelector: type=db)
+                |  App nodes: $appNodeCount  (nodeSelector: type=app)
+                |  Ordinal label: $nodeOrdinalLabel
+                |
+                |Example helm values:
+                |$exampleHelmValues
+                """.trimMargin()
+        }
+    }
+
+    // =========================================================================
+    // Event.Install — Workload scaffold generation
+    // =========================================================================
+
+    @Serializable
+    sealed interface Install : Event {
+        @Serializable
+        @SerialName("Install.ArtifactWritten")
+        data class ArtifactWritten(
+            val workload: String,
+            val filePath: String,
+        ) : Install {
+            override fun toDisplayString(): String = "  Written: $filePath"
+        }
+
+        @Serializable
+        @SerialName("Install.ScaffoldComplete")
+        data class ScaffoldComplete(
+            val workload: String,
+            val outputDir: String,
+        ) : Install {
+            override fun toDisplayString(): String = "Scaffold written to $outputDir — run ./$workload/start.sh to deploy"
+        }
+
+        @Serializable
+        @SerialName("Install.UnresolvedVariables")
+        data class UnresolvedVariables(
+            val workload: String,
+            val variables: List<String>,
+        ) : Install {
+            override fun toDisplayString(): String =
+                "Warning: unresolved template variables in '$workload': ${variables.joinToString(", ")}"
+        }
+
+        @Serializable
+        @SerialName("Install.CollisionDetected")
+        data class CollisionDetected(
+            val workload: String,
+        ) : Install {
+            override fun toDisplayString(): String =
+                "Warning: '$workload' appears to already be deployed. Use --force to overwrite scaffold."
+        }
+
+        @Serializable
+        @SerialName("Install.TemplatesListed")
+        data class TemplatesListed(
+            val templates: List<com.rustyrazorblade.easydblab.services.WorkloadInstallConfig>,
+        ) : Install {
+            override fun toDisplayString(): String {
+                if (templates.isEmpty()) return "No install templates found."
+                val nameWidth = templates.maxOf { it.name.length }
+                val versionWidth = templates.maxOf { it.version.length }
+                val rows =
+                    templates.joinToString("\n") { config ->
+                        buildString {
+                            append("  ")
+                            append(config.name.padEnd(nameWidth))
+                            if (versionWidth > 0) {
+                                append("  ")
+                                append(config.version.padEnd(versionWidth))
+                            }
+                            if (config.description.isNotEmpty()) {
+                                append("  ")
+                                append(config.description)
+                            }
+                        }
+                    }
+                return "Available install templates:\n$rows"
+            }
+        }
+    }
+
+    // =========================================================================
+    // Event.Workload — Workload script execution
+    // =========================================================================
+
+    @Serializable
+    sealed interface Workload : Event {
+        @Serializable
+        @SerialName("Workload.ScriptStarted")
+        data class ScriptStarted(
+            val workload: String,
+            val script: String,
+        ) : Workload {
+            override fun toDisplayString(): String = "[$workload] running $script..."
+        }
+
+        @Serializable
+        @SerialName("Workload.ScriptFinished")
+        data class ScriptFinished(
+            val workload: String,
+            val script: String,
+            val exitCode: Int,
+        ) : Workload {
+            override fun toDisplayString(): String =
+                if (exitCode == 0) {
+                    "[$workload] $script completed"
+                } else {
+                    "[$workload] $script exited with code $exitCode"
+                }
+
+            override fun isError(): Boolean = exitCode != 0
+        }
+
+        @Serializable
+        @SerialName("Workload.StepStarted")
+        data class StepStarted(
+            val workload: String,
+            val phase: String,
+            val stepType: String,
+            val stepIndex: Int,
+        ) : Workload {
+            override fun toDisplayString(): String = "[$workload] $phase step ${stepIndex + 1}: $stepType"
+        }
+
+        @Serializable
+        @SerialName("Workload.StepFailed")
+        data class StepFailed(
+            val workload: String,
+            val phase: String,
+            val stepType: String,
+            val stepIndex: Int,
+            val error: String,
+        ) : Workload {
+            override fun toDisplayString(): String = "[$workload] $phase step ${stepIndex + 1} ($stepType) failed: $error"
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        @SerialName("Workload.MetricsRegistered")
+        data class MetricsRegistered(
+            val workload: String,
+            val port: Int,
+        ) : Workload {
+            override fun toDisplayString(): String = "[$workload] metrics registered on port $port"
+        }
+
+        @Serializable
+        @SerialName("Workload.MetricsDeregistered")
+        data class MetricsDeregistered(
+            val workload: String,
+        ) : Workload {
+            override fun toDisplayString(): String = "[$workload] metrics deregistered"
+        }
+
+        @Serializable
+        @SerialName("Workload.OtelSynced")
+        data object OtelSynced : Workload {
+            override fun toDisplayString(): String = "OTel collector config synced"
+        }
+    }
+
+    // =========================================================================
+    // Event.Cleanup — Workload disk wipe operations
+    // =========================================================================
+
+    @Serializable
+    sealed interface Cleanup : Event {
+        @Serializable
+        @SerialName("Cleanup.JobCreated")
+        data class JobCreated(
+            val workload: String,
+        ) : Cleanup {
+            override fun toDisplayString(): String = "Cleanup job created for '$workload'"
+        }
+
+        @Serializable
+        @SerialName("Cleanup.Complete")
+        data class Complete(
+            val workload: String,
+        ) : Cleanup {
+            override fun toDisplayString(): String = "Cleanup complete for '$workload'"
         }
     }
 

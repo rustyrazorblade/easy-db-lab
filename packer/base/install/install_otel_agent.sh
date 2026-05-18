@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 echo "=== Running: install_otel_agent.sh ==="
 

@@ -280,7 +280,11 @@ The cluster runs a full observability stack on the control node. When modifying 
 
 All observability K8s resources are built programmatically using Fabric8 manifest builders in `configuration/` subpackages. No raw YAML files remain in the core observability stack. See [`configuration/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/configuration/CLAUDE.md) for detailed builder documentation.
 
+**CNI**: K3s uses Cilium (not Flannel) with Hubble enabled for L7 network visibility and Prometheus metrics at `localhost:9965`.
+
 **Collectors** (run on cluster nodes): OTel Collector, Fluent Bit (journald), Grafana Alloy (eBPF profiling), Beyla (L7 RED metrics), ebpf_exporter (TCP/block I/O/VFS), YACE (CloudWatch), MAAC agent (Cassandra metrics)
+
+**Dynamic OTel config**: `OtelManifestBuilder.buildConfigMap()` accepts `List<WorkloadScrapeConfig>` and injects one Prometheus scrape job per running workload. Workloads register by writing `easydblab-metrics-<workload>` ConfigMaps (label: `easydblab.com/workload-metrics=true`). `MetricsRegistryService` creates/deletes these ConfigMaps; `OtelSyncService` reads them all and regenerates the OTel collector ConfigMap. Both are called automatically by `WorkloadRunnerCommand` on successful `start`/`stop`.
 
 **Storage backends** (control node): VictoriaMetrics (metrics, port 8428), VictoriaLogs (logs, port 9428), Tempo (traces, port 3200), Pyroscope (profiles, port 4040)
 

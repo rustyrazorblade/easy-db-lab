@@ -27,6 +27,7 @@
 #   --cassandra        Enable Cassandra-related steps.
 #   --clickhouse       Enable ClickHouse-related steps.
 #   --opensearch       Enable OpenSearch-related steps.
+#   --presto           Enable Presto-related steps.
 #   --ebs              Use EBS volumes.
 #   --no-teardown      Skip teardown prompt; exit with status (0=pass, 1=fail).
 #   --clean            Run 'easy-db-lab clean' and remove stale artifacts before starting.
@@ -73,6 +74,7 @@ export ENABLE_CASSANDRA=false
 export ENABLE_CLICKHOUSE=false
 export CLICKHOUSE_BACKUP_NAME="e2e-test-backup-$(date +%Y%m%d-%H%M%S)"
 export ENABLE_OPENSEARCH=false
+export ENABLE_PRESTO=false
 export USE_EBS=false
 export LIST_STEPS=false
 export BREAKPOINTS=""
@@ -111,11 +113,16 @@ while [[ $# -gt 0 ]]; do
       ENABLE_OPENSEARCH=true
       shift
       ;;
+    --presto)
+      ENABLE_PRESTO=true
+      shift
+      ;;
     --all)
       ENABLE_SPARK=true
       ENABLE_CASSANDRA=true
       ENABLE_CLICKHOUSE=true
       ENABLE_OPENSEARCH=true
+      ENABLE_PRESTO=true
       shift
       ;;
     --ebs)
@@ -140,7 +147,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     *)
       echo "Unknown option: $1"
-      echo "Usage: $0 [--list-steps|-l] [--break <steps>] [--start-step <N>] [--build] [--spark] [--cassandra] [--clickhouse] [--opensearch] [--all] [--ebs] [--no-teardown] [--clean] [--stop-on-failure]"
+      echo "Usage: $0 [--list-steps|-l] [--break <steps>] [--start-step <N>] [--build] [--spark] [--cassandra] [--clickhouse] [--opensearch] [--presto] [--all] [--ebs] [--no-teardown] [--clean] [--stop-on-failure]"
       exit 1
       ;;
   esac
@@ -1201,6 +1208,36 @@ step_opensearch_stop() {
     easy-db-lab opensearch stop --force
 }
 
+step_presto_install() {
+    if [ "$ENABLE_PRESTO" != true ]; then
+        echo "=== Skipping Presto install (use --presto to enable) ==="
+        return 0
+    fi
+    echo "=== Scaffolding Presto workload files ==="
+    easy-db-lab install presto
+}
+
+step_presto_start() {
+    if [ "$ENABLE_PRESTO" != true ]; then
+        echo "=== Skipping Presto start (use --presto to enable) ==="
+        return 0
+    fi
+    echo "=== Starting Presto ==="
+    easy-db-lab presto start
+
+    echo "=== Verifying Presto pods ==="
+    kubectl get pods -n default -l app=presto
+}
+
+step_presto_stop() {
+    if [ "$ENABLE_PRESTO" != true ]; then
+        echo "=== Skipping Presto stop (use --presto to enable) ==="
+        return 0
+    fi
+    echo "=== Stopping Presto ==="
+    easy-db-lab presto stop
+}
+
 step_generate_s3_traffic() {
     echo "=== Generating S3 traffic for CloudWatch metrics ==="
 
@@ -1485,6 +1522,9 @@ STEPS_WORKDIR=(
     "step_opensearch_start:Start OpenSearch"
     "step_opensearch_test:Test OpenSearch"
     "step_opensearch_stop:Stop OpenSearch"
+    "step_presto_install:Install Presto"
+    "step_presto_start:Start Presto"
+    "step_presto_stop:Stop Presto"
     "step_generate_s3_traffic:Generate S3 traffic for metrics"
     "step_test_observability:Test observability stack"
     "step_test_dashboards:Validate Grafana dashboards"

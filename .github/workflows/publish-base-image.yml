@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - 'docker/base.Dockerfile'
+      - 'docker/Dockerfile'
   schedule:
     - cron: '0 6 * * 1'  # Every Monday at 06:00 UTC
   workflow_dispatch:
@@ -35,7 +35,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: docker/base.Dockerfile
+          file: docker/Dockerfile
           push: true
           tags: ghcr.io/rustyrazorblade/easy-db-lab-base:latest
           cache-from: type=gha

@@ -191,6 +191,7 @@ object Constants {
         const val NAMESPACE = "default"
         const val MANIFEST_DIR = "k8s"
         const val LOCAL_STORAGE_CLASS = "local-storage"
+        const val LOCAL_STORAGE_WFC_CLASS = "local-storage-wfc"
         const val GRAFANA_PORT = 3000
         const val VICTORIAMETRICS_PORT = 8428
         const val VICTORIALOGS_PORT = 9428
@@ -206,6 +207,8 @@ object Constants {
         const val OTEL_HEALTH_PORT = 13133
         const val TEMPO_OTLP_GRPC_PORT = 4320
         const val TEMPO_OTLP_HTTP_PORT = 4321
+        const val CLEANUP_JOB_TTL_SECONDS = 300
+        const val DB_MOUNT_PATH = "/mnt/db1"
     }
 
     // OpenSearch configuration

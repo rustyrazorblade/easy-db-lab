@@ -1,0 +1,17 @@
+server:
+  workers: __WORKERS__
+
+coordinator:
+  nodeSelector:
+    type: app
+
+worker:
+  nodeSelector:
+    type: app
+  replicas: __WORKERS__
+
+catalog:
+  cassandra: |-
+    connector.name=cassandra
+    cassandra.contact-points=__DB_NODE_IPS__
+    cassandra.native-protocol-port=9042

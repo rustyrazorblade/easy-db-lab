@@ -1,0 +1,127 @@
+#!/bin/bash
+#
+# Presto integration test: installs Cassandra 5 and Presto on an existing
+# cluster and verifies Presto is running.
+#
+# By default only the Cassandra + Presto steps run against an already-up
+# cluster. Use --provision to create a fresh cluster first, and --teardown
+# to destroy it when done.
+#
+# Usage:
+#   bin/test-presto [--provision] [--teardown] [--no-build]
+#
+# Flags:
+#   -p, --provision   Init and bring up a fresh cluster before running the test.
+#   -t, --teardown    Destroy the cluster after the test (or on failure).
+#   --no-build        Skip the ./gradlew installDist step.
+#
+# Environment variables:
+#   AWS_PROFILE                  AWS profile for all CLI/SDK calls (required)
+#   EASY_DB_LAB_INSTANCE_TYPE    EC2 instance type (default: c5d.2xlarge)
+#
+
+set -euo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+if [ -f "$PROJECT_ROOT/.env" ]; then
+    set -a
+    # shellcheck disable=SC1091
+    source "$PROJECT_ROOT/.env"
+    set +a
+fi
+
+export PATH="$PROJECT_ROOT/bin:$PATH"
+
+PROVISION=false
+TEARDOWN=false
+BUILD=true
+
+for arg in "$@"; do
+    case "$arg" in
+        -p|--provision)  PROVISION=true ;;
+        -t|--teardown)   TEARDOWN=true ;;
+        --no-build)      BUILD=false ;;
+        *)
+            echo "Unknown flag: $arg"
+            echo "Usage: $0 [-p] [-t] [--no-build]"
+            exit 1
+            ;;
+    esac
+done
+
+INSTANCE_TYPE="${EASY_DB_LAB_INSTANCE_TYPE:-c5d.2xlarge}"
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+step() {
+    echo ""
+    echo "══════════════════════════════════════════════"
+    echo "  $*"
+    echo "══════════════════════════════════════════════"
+}
+
+do_teardown() {
+    step "Tearing down cluster"
+    easy-db-lab down --yes || true
+}
+
+# ── Build ─────────────────────────────────────────────────────────────────────
+
+if [ "$BUILD" = true ]; then
+    step "Building project"
+    (cd "$PROJECT_ROOT" && ./gradlew installDist)
+fi
+
+# ── Provision ─────────────────────────────────────────────────────────────────
+
+if [ "$PROVISION" = true ]; then
+    step "Initializing cluster (1 db node, 1 app node, $INSTANCE_TYPE)"
+    easy-db-lab init -c 1 -s 1 -i "$INSTANCE_TYPE" presto-test --clean --up
+fi
+
+# shellcheck disable=SC1091
+source env.sh
+
+if [ "$TEARDOWN" = true ]; then
+    trap do_teardown EXIT
+fi
+
+# ── K3s readiness ─────────────────────────────────────────────────────────────
+
+step "Waiting for K3s nodes to be Ready"
+kubectl wait --for=condition=Ready nodes --all --timeout=120s
+kubectl get nodes
+
+# ── Cassandra 5 ───────────────────────────────────────────────────────────────
+
+step "Configuring Cassandra 5.0"
+easy-db-lab cassandra use 5.0
+easy-db-lab cassandra update-config
+
+step "Starting Cassandra"
+easy-db-lab cassandra start
+
+step "Verifying Cassandra"
+ssh db0 nodetool status
+
+# ── Presto ────────────────────────────────────────────────────────────────────
+
+step "Installing Presto workload"
+easy-db-lab install presto
+
+step "Starting Presto"
+easy-db-lab presto start
+
+step "Verifying Presto pods"
+kubectl get pods -n default -l app=presto
+
+step "Verifying Presto coordinator is Ready"
+kubectl wait --for=condition=Ready \
+    pods -l "app=presto,component=coordinator" \
+    --namespace default \
+    --timeout=300s
+
+step "Presto test PASSED"
+
+# ── Teardown is handled by the EXIT trap if --teardown was passed ─────────────

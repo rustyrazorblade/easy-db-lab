@@ -26,6 +26,7 @@ import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.EMRService
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
+import okhttp3.OkHttpClient
 import org.koin.core.module.dsl.factoryOf
 import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.bind
@@ -44,6 +45,7 @@ val servicesModule =
         singleOf(::DefaultResourceManager) bind ResourceManager::class
 
         factoryOf(::DefaultCassandraService) bind CassandraService::class
+        factoryOf(::DefaultCiliumInstallService) bind CiliumInstallService::class
         factoryOf(::DefaultClickHouseConfigService) bind ClickHouseConfigService::class
         factoryOf(::DefaultTailscaleService) bind TailscaleService::class
 
@@ -70,7 +72,12 @@ val servicesModule =
         factoryOf(::VictoriaManifestBuilder)
         factoryOf(::YaceManifestBuilder)
         factoryOf(::DefaultGrafanaDashboardService) bind GrafanaDashboardService::class
+        single { OkHttpClient() }
         factoryOf(::TemplateService)
+        factoryOf(::InstallTemplateResolver)
+        factoryOf(::WorkloadStepExecutor)
+        factoryOf(::DefaultOtelSyncService) bind OtelSyncService::class
+        factoryOf(::DefaultMetricsRegistryService) bind MetricsRegistryService::class
         factory<VictoriaBackupService> { DefaultVictoriaBackupService(get(), get()) }
         factoryOf(::DefaultVictoriaStreamService) bind VictoriaStreamService::class
         singleOf(::DefaultVictoriaMetricsQueryService) bind VictoriaMetricsQueryService::class

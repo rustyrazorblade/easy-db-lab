@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.kubernetes.WorkloadPod
 
 interface K8sPodOperations {
     fun execInPod(
@@ -9,4 +10,6 @@ interface K8sPodOperations {
         podName: String,
         command: List<String>,
     ): Result<String>
+
+    fun listWorkloadPods(controlHost: ClusterHost): Result<List<WorkloadPod>>
 }

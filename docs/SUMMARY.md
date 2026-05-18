@@ -13,6 +13,7 @@
 - [Cluster Setup](user-guide/cluster-setup.md)
 - [Tutorial](user-guide/tutorial.md)
 - [Kubernetes](user-guide/kubernetes.md)
+- [Platform Substrate](user-guide/platform-substrate.md)
 - [Network Connectivity](user-guide/network-connectivity.md)
 - [Shell Aliases](user-guide/shell-aliases.md)
 
@@ -21,6 +22,8 @@
 - [Cassandra](user-guide/installing-cassandra.md)
 - [ClickHouse](user-guide/clickhouse.md)
   - [Backup and Restore](user-guide/clickhouse-backup-restore.md)
+  - [Install via Kubernetes](user-guide/install-clickhouse.md)
+- [Presto](user-guide/install-presto.md)
 - [OpenSearch](user-guide/opensearch.md)
 - [Spark](user-guide/spark.md)
 

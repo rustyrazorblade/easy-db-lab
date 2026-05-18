@@ -39,6 +39,17 @@ data class KubernetesPod(
 )
 
 /**
+ * Represents a workload pod (pod in a non-system namespace)
+ */
+data class WorkloadPod(
+    val namespace: String,
+    val name: String,
+    val nodeName: String,
+    val ready: String,
+    val status: String,
+)
+
+/**
  * Represents a Kubernetes Node
  *
  * @property name The name of the node

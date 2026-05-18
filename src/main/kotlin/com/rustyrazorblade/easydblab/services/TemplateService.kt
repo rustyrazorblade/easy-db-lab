@@ -10,6 +10,8 @@ import com.rustyrazorblade.easydblab.configuration.metricsConfigId
 import org.apache.commons.text.StringSubstitutor
 import java.io.File
 
+private val UNRESOLVED_VAR_PATTERN = Regex("""__([A-Z][A-Z0-9_]*)__""")
+
 /**
  * Service for template placeholder substitution using `__KEY__` delimiters.
  *
@@ -56,6 +58,28 @@ class TemplateService(
         val name = state.initConfig?.name ?: "cluster"
         val id = state.clusterId
         return "pyroscope.$name-$id"
+    }
+
+    /**
+     * Renders a workload template string substituting all [TemplateVariables].
+     *
+     * @param templateContent Raw template content with `__VAR__` placeholders
+     * @param vars Workload-specific variable values
+     * @param onUnresolved Called with names of any placeholders that remain unsubstituted;
+     *   callers should emit [com.rustyrazorblade.easydblab.events.Event.Install.UnresolvedVariables]
+     * @return Rendered content
+     */
+    fun renderWorkloadTemplate(
+        templateContent: String,
+        vars: TemplateVariables,
+        extraVars: Map<String, String> = emptyMap(),
+        onUnresolved: (List<String>) -> Unit = {},
+    ): String {
+        val allVars = vars.toMap() + extraVars
+        val rendered = StringSubstitutor(allVars, "__", "__").replace(templateContent)
+        val unresolved = UNRESOLVED_VAR_PATTERN.findAll(rendered).map { it.groupValues[1] }.toList()
+        if (unresolved.isNotEmpty()) onUnresolved(unresolved)
+        return rendered
     }
 
     /**

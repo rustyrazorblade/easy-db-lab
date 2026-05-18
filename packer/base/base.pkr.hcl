@@ -139,6 +139,11 @@ build {
     script = "install/install_k9s.sh"
   }
 
+  # install OpenTelemetry Java agent for workload instrumentation
+  provisioner "shell" {
+    script = "install/install_otel_agent.sh"
+  }
+
   provisioner "shell" {
     inline = [
       "sudo apt install openjdk-8-jdk openjdk-8-dbg openjdk-11-jdk openjdk-11-dbg openjdk-17-jdk openjdk-17-dbg openjdk-21-jdk openjdk-21-dbg -y",

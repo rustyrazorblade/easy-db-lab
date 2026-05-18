@@ -190,6 +190,13 @@ interface K8sStorageOperations {
     ): Result<Unit>
 
     fun ensureLocalStorageClass(controlHost: ClusterHost): Result<Unit>
+
+    fun ensureLocalStorageWfcClass(controlHost: ClusterHost): Result<Unit>
+
+    fun clickHouseInstallationExists(
+        controlHost: ClusterHost,
+        namespace: String,
+    ): Result<Boolean>
 }
 
 /**

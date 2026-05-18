@@ -9,6 +9,7 @@ import io.fabric8.kubernetes.api.model.ContainerBuilder
 import io.fabric8.kubernetes.api.model.EnvVar
 import io.fabric8.kubernetes.api.model.EnvVarBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
+import io.fabric8.kubernetes.api.model.HostPathVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.PodSecurityContextBuilder
 import io.fabric8.kubernetes.api.model.Volume
 import io.fabric8.kubernetes.api.model.VolumeBuilder
@@ -42,6 +43,10 @@ class GrafanaManifestBuilder(
         private const val DATASOURCES_VOLUME = "datasources"
         private const val DASHBOARDS_CONFIG_VOLUME = "dashboards-config"
         private const val DATA_VOLUME = "data"
+        const val GRAFANA_DATA_PATH = "/mnt/db1/grafana"
+
+        @Suppress("MagicNumber")
+        const val GRAFANA_UID = 472
 
         @Suppress("MagicNumber")
         private const val FS_GROUP = 472L
@@ -280,9 +285,12 @@ class GrafanaManifestBuilder(
             listOf(
                 VolumeBuilder()
                     .withName(DATA_VOLUME)
-                    .withNewEmptyDir()
-                    .endEmptyDir()
-                    .build(),
+                    .withHostPath(
+                        HostPathVolumeSourceBuilder()
+                            .withPath(GRAFANA_DATA_PATH)
+                            .withType("DirectoryOrCreate")
+                            .build(),
+                    ).build(),
             )
     }
 

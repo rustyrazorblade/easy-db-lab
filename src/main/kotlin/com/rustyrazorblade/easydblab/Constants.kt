@@ -316,6 +316,7 @@ object Constants {
         const val AUTH_KEY_EXPIRY_SECONDS = 604800
         const val DAEMON_STARTUP_DELAY_MS = 2000L
         const val DEFAULT_DEVICE_TAG = "tag:easy-db-lab"
+        const val STATUS_TIMEOUT_SECONDS = 5L
     }
 
     // Container Registry configuration

@@ -1,10 +1,20 @@
 package com.rustyrazorblade.easydblab.driver
 
+import com.datastax.oss.driver.api.core.CqlSession
+import com.datastax.oss.driver.api.core.CqlSessionBuilder
 import com.datastax.oss.driver.api.core.config.DefaultDriverOption
 import com.datastax.oss.driver.api.core.config.DriverConfigLoader
 import com.datastax.oss.driver.api.core.config.DriverExecutionProfile
 import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.mockito.kotlin.any
+import org.mockito.kotlin.doReturn
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
+import org.mockito.kotlin.spy
+import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
 import java.time.Duration
 
 /**
@@ -141,5 +151,44 @@ class CqlSessionFactoryConfigTest {
                 DefaultDriverOption.CONNECTION_POOL_REMOTE_SIZE,
             ),
         ).isEqualTo(1)
+    }
+}
+
+class DefaultCqlSessionFactoryTest {
+    private val mockSession = mock<CqlSession>()
+    private val mockDirectBuilder = mock<CqlSessionBuilder>()
+    private val mockSocksBuilder = mock<SocksProxySessionBuilder>()
+
+    @BeforeEach
+    fun setup() {
+        whenever(mockDirectBuilder.withConfigLoader(any())).thenReturn(mockDirectBuilder)
+        whenever(mockDirectBuilder.addContactPoint(any())).thenReturn(mockDirectBuilder)
+        whenever(mockDirectBuilder.build()).thenReturn(mockSession)
+
+        whenever(mockSocksBuilder.withConfigLoader(any())).thenReturn(mockSocksBuilder)
+        whenever(mockSocksBuilder.addContactPoint(any())).thenReturn(mockSocksBuilder)
+        whenever(mockSocksBuilder.build()).thenReturn(mockSession)
+    }
+
+    @Test
+    fun `createDirectSession uses plain builder not SocksProxySessionBuilder`() {
+        val factory = spy(DefaultCqlSessionFactory())
+        doReturn(mockDirectBuilder).whenever(factory).newDirectBuilder()
+
+        factory.createDirectSession(listOf("10.0.0.1"), "dc1")
+
+        verify(factory).newDirectBuilder()
+        verify(factory, never()).newProxiedBuilder(any(), any())
+    }
+
+    @Test
+    fun `createSession uses SocksProxySessionBuilder not plain builder`() {
+        val factory = spy(DefaultCqlSessionFactory())
+        doReturn(mockSocksBuilder).whenever(factory).newProxiedBuilder(any(), any())
+
+        factory.createSession(listOf("10.0.0.1"), "dc1", 1080)
+
+        verify(factory).newProxiedBuilder("127.0.0.1", 1080)
+        verify(factory, never()).newDirectBuilder()
     }
 }

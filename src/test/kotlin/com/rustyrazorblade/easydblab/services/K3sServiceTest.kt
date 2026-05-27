@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
@@ -41,7 +42,8 @@ class K3sServiceTest : BaseKoinTest() {
             module {
                 single<RemoteOperationsService> { mockRemoteOps }
                 single<SocksProxyService> { mockSocksProxyService }
-                factory<K3sService> { DefaultK3sService(get(), get(), get()) }
+                single<ClusterStateManager> { mock() }
+                factory<K3sService> { DefaultK3sService(get(), get(), get(), get()) }
             },
         )
 

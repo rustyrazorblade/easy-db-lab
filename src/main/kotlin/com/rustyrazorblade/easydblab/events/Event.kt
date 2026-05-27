@@ -3197,6 +3197,8 @@ sealed interface Event {
             val grafanaPort: Int,
             val victoriaMetricsPort: Int,
             val victoriaLogsPort: Int,
+            val tempoPort: Int,
+            val pyroscopePort: Int,
         ) : Provision {
             override fun toDisplayString(): String =
                 """
@@ -3205,6 +3207,8 @@ sealed interface Event {
                 |  Grafana:         http://$controlNodeIp:$grafanaPort
                 |  VictoriaMetrics: http://$controlNodeIp:$victoriaMetricsPort
                 |  VictoriaLogs:    http://$controlNodeIp:$victoriaLogsPort
+                |  Tempo:           http://$controlNodeIp:$tempoPort
+                |  Pyroscope:       http://$controlNodeIp:$pyroscopePort
                 |
                 """.trimMargin()
         }

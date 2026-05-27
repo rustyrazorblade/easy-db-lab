@@ -202,6 +202,9 @@ data class ClusterState(
     var tailscaleAuthKeyId: String? = null,
     // Counter for stress job naming and port assignment
     var stressJobCounter: Int = 0,
+    // Whether Tailscale was active on the local machine at init time.
+    // When true, all cluster connections bypass the SOCKS proxy and use private IPs directly.
+    var tailscaleActive: Boolean = false,
 ) {
     /**
      * Returns true when the db nodes are running Cassandra (not ClickHouse or another database).

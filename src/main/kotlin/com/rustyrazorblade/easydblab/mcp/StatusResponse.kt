@@ -153,6 +153,8 @@ data class ObservabilityAccess(
     val grafana: String,
     val victoriaMetrics: String,
     val victoriaLogs: String,
+    val tempo: String,
+    val pyroscope: String,
 )
 
 @Serializable

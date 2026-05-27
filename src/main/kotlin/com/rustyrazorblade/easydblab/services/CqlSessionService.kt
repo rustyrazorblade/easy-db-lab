@@ -30,7 +30,7 @@ interface CqlSessionService : AutoCloseable {
 /**
  * Default implementation using Java Driver v4.
  *
- * Always uses SOCKS proxy for reliable connections to Cassandra.
+ * Uses direct connection when Tailscale is active, SOCKS proxy otherwise.
  *
  * The session is cached for reuse in REPL/Server mode.
  * Registers with [ResourceManager] when session is created for centralized cleanup.
@@ -52,6 +52,7 @@ class DefaultCqlSessionService(
     private var cachedSession: CqlSession? = null
     private var cachedDatacenter: String? = null
     private var registeredWithResourceManager = false
+    private var proxyStarted = false
 
     override fun execute(cql: String): Result<String> =
         runCatching {
@@ -67,13 +68,15 @@ class DefaultCqlSessionService(
         }
 
     override fun close() {
-        log.debug { "Closing CqlSession and SOCKS proxy" }
+        log.debug { "Closing CqlSession" }
         cachedSession?.close()
         cachedSession = null
         cachedDatacenter = null
         registeredWithResourceManager = false
-        // Also stop the SOCKS proxy to allow the JVM to exit
-        socksProxyService.stop()
+        if (proxyStarted) {
+            socksProxyService.stop()
+            proxyStarted = false
+        }
     }
 
     private fun getOrCreateSession(): CqlSession {
@@ -82,14 +85,9 @@ class DefaultCqlSessionService(
 
         require(cassandraHosts.isNotEmpty()) { "No Cassandra hosts found in cluster state" }
 
-        // Use the datacenter from the first host or default to region
         val datacenter =
             clusterState.initConfig?.region
                 ?: error("No region/datacenter found in cluster state")
-
-        // Ensure SOCKS proxy is running
-        val gatewayHost = cassandraHosts.first()
-        socksProxyService.ensureRunning(gatewayHost)
 
         // Return cached session if valid
         cachedSession?.let { session ->
@@ -99,18 +97,24 @@ class DefaultCqlSessionService(
             session.close()
         }
 
-        // Get all private IPs
         val contactPoints = cassandraHosts.map { it.privateIp }
 
-        // Create session through SOCKS proxy
-        val proxyPort = socksProxyService.getLocalPort()
-        log.info { "Creating new CqlSession through SOCKS proxy on port $proxyPort" }
-        val session = sessionFactory.createSession(contactPoints, datacenter, proxyPort)
+        val session =
+            if (clusterState.tailscaleActive) {
+                log.info { "Creating new CqlSession via direct connection (Tailscale active)" }
+                sessionFactory.createDirectSession(contactPoints, datacenter)
+            } else {
+                val gatewayHost = cassandraHosts.first()
+                socksProxyService.ensureRunning(gatewayHost)
+                proxyStarted = true
+                val proxyPort = socksProxyService.getLocalPort()
+                log.info { "Creating new CqlSession through SOCKS proxy on port $proxyPort" }
+                sessionFactory.createSession(contactPoints, datacenter, proxyPort)
+            }
 
         cachedSession = session
         cachedDatacenter = datacenter
 
-        // Register with ResourceManager for centralized cleanup (only once)
         if (!registeredWithResourceManager) {
             resourceManager.register(this)
             registeredWithResourceManager = true

@@ -482,6 +482,8 @@ class StatusCache(
                 grafana = "http://$controlIp:${Constants.K8s.GRAFANA_PORT}",
                 victoriaMetrics = "http://$controlIp:${Constants.K8s.VICTORIAMETRICS_PORT}",
                 victoriaLogs = "http://$controlIp:${Constants.K8s.VICTORIALOGS_PORT}",
+                tempo = "http://$controlIp:${Constants.K8s.TEMPO_PORT}",
+                pyroscope = "http://$controlIp:${Constants.K8s.PYROSCOPE_PORT}",
             )
 
         val clickhouse = buildClickHouseAccess(state, controlHost, instanceStates)

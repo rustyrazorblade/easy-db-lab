@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.proxy
 
+import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.services.ResourceManager
 import org.koin.dsl.module
 
@@ -8,7 +9,7 @@ import org.koin.dsl.module
  *
  * Provides:
  * - SocksProxyService as a singleton (manages proxy lifecycle across requests in server mode)
- * - HttpClientFactory for creating HTTP clients that use the SOCKS proxy
+ * - HttpClientFactory for creating HTTP clients (direct or SOCKS-proxied based on tailscaleActive)
  *
  * Note: SSHConnectionProvider must be provided by sshModule
  */
@@ -19,10 +20,13 @@ val proxyModule =
         // Port is dynamically selected at startup to avoid conflicts.
         single<SocksProxyService> { MinaSocksProxyService(get()) }
 
-        // HTTP client factory - uses SOCKS proxy for accessing private endpoints
-        // Registered with ResourceManager so the cached OkHttpClient is cleaned up on exit
+        // HTTP client factory - routes via SOCKS proxy or directly depending on tailscaleActive.
+        // Registered with ResourceManager so the cached OkHttpClient is cleaned up on exit.
         single<HttpClientFactory> {
-            ProxiedHttpClientFactory(get()).also { factory ->
+            ProxiedHttpClientFactory(
+                socksProxyService = get(),
+                clusterStateManager = get<ClusterStateManager>(),
+            ).also { factory ->
                 get<ResourceManager>().register(factory)
             }
         }

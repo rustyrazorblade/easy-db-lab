@@ -22,16 +22,17 @@ interface KubernetesClientFactory {
 }
 
 /**
- * Kubernetes client factory that configures SOCKS5 proxy for access to private clusters.
+ * Kubernetes client factory that routes K8s API traffic through a SOCKS5 proxy or directly,
+ * depending on whether Tailscale was active at init time.
  *
- * This is used when accessing K3s clusters running on private IPs through an SSH tunnel.
- *
- * @property proxyHost The SOCKS5 proxy host (typically "localhost")
+ * @property proxyHost The SOCKS5 proxy host (typically "127.0.0.1")
  * @property proxyPort The SOCKS5 proxy port
+ * @property tailscaleActive Whether Tailscale was active at init time; skips proxy when true
  */
 class ProxiedKubernetesClientFactory(
-    private val proxyHost: String = "localhost",
+    private val proxyHost: String = "127.0.0.1",
     private val proxyPort: Int,
+    private val tailscaleActive: Boolean,
 ) : KubernetesClientFactory {
     companion object {
         private const val CONNECTION_TIMEOUT_MS = 30000
@@ -39,15 +40,13 @@ class ProxiedKubernetesClientFactory(
     }
 
     override fun createClient(kubeconfigPath: Path): KubernetesClient {
-        // Load kubeconfig from file
         val kubeconfigContent = kubeconfigPath.toFile().readText()
         val config = Config.fromKubeconfig(kubeconfigContent)
 
-        // Configure SOCKS5 proxy for HTTPS (K8s API uses HTTPS on port 6443)
-        val proxyUrl = "socks5://$proxyHost:$proxyPort"
-        config.httpsProxy = proxyUrl
+        if (!tailscaleActive) {
+            config.httpsProxy = "socks5://$proxyHost:$proxyPort"
+        }
 
-        // Increase timeouts for SOCKS proxy connections (default 10s is too short)
         config.connectionTimeout = CONNECTION_TIMEOUT_MS
         config.requestTimeout = REQUEST_TIMEOUT_MS
 

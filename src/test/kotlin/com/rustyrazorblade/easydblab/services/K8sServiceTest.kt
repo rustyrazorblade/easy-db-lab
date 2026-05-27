@@ -2,6 +2,8 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -10,6 +12,7 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 
@@ -22,6 +25,7 @@ import org.mockito.kotlin.whenever
  */
 class K8sServiceTest : BaseKoinTest() {
     private lateinit var mockSocksProxyService: SocksProxyService
+    private lateinit var mockClusterStateManager: ClusterStateManager
     private lateinit var k8sService: K8sService
 
     private val testClusterHost =
@@ -37,7 +41,8 @@ class K8sServiceTest : BaseKoinTest() {
         listOf(
             module {
                 single<SocksProxyService> { mockSocksProxyService }
-                single { K8sClientProvider(get()) }
+                single<ClusterStateManager> { mockClusterStateManager }
+                single { K8sClientProvider(get(), get()) }
                 factory<K8sService> { DefaultK8sService(get(), get()) }
             },
         )
@@ -45,6 +50,8 @@ class K8sServiceTest : BaseKoinTest() {
     @BeforeEach
     fun setupMocks() {
         mockSocksProxyService = mock()
+        mockClusterStateManager = mock()
+        whenever(mockClusterStateManager.load()).thenReturn(ClusterState(name = "test", versions = mutableMapOf()))
 
         k8sService = getKoin().get()
     }
@@ -52,7 +59,19 @@ class K8sServiceTest : BaseKoinTest() {
     // ========== SOCKS PROXY TESTS ==========
 
     @Test
-    fun `applyManifests should always use SOCKS proxy`() {
+    fun `applyManifests skips SOCKS proxy when tailscaleActive is true`() {
+        whenever(mockClusterStateManager.load()).thenReturn(
+            ClusterState(name = "test", versions = mutableMapOf(), tailscaleActive = true),
+        )
+        val manifestDir = createTestManifestDir()
+
+        k8sService.applyManifests(testClusterHost, manifestDir)
+
+        verify(mockSocksProxyService, never()).ensureRunning(any())
+    }
+
+    @Test
+    fun `applyManifests uses SOCKS proxy when tailscaleActive is false`() {
         // Given
         val manifestDir = createTestManifestDir()
         whenever(mockSocksProxyService.getLocalPort()).thenReturn(1080)
@@ -81,7 +100,7 @@ class K8sServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `getObservabilityStatus should always use SOCKS proxy`() {
+    fun `getObservabilityStatus uses SOCKS proxy when tailscaleActive is false`() {
         // Given
         whenever(mockSocksProxyService.getLocalPort()).thenReturn(1080)
 
@@ -108,7 +127,7 @@ class K8sServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `deleteObservability should always use SOCKS proxy`() {
+    fun `deleteObservability uses SOCKS proxy when tailscaleActive is false`() {
         // Given
         whenever(mockSocksProxyService.getLocalPort()).thenReturn(1080)
 
@@ -135,7 +154,7 @@ class K8sServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `waitForPodsReady should always use SOCKS proxy`() {
+    fun `waitForPodsReady uses SOCKS proxy when tailscaleActive is false`() {
         // Given
         whenever(mockSocksProxyService.getLocalPort()).thenReturn(1080)
 

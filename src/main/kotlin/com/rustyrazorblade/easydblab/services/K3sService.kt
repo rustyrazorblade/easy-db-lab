@@ -5,6 +5,7 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kubernetes.DefaultKubernetesService
@@ -116,6 +117,7 @@ interface K3sService : SystemDServiceManager {
 class DefaultK3sService(
     remoteOps: RemoteOperationsService,
     private val socksProxyService: SocksProxyService,
+    private val clusterStateManager: ClusterStateManager,
     eventBus: EventBus,
 ) : AbstractSystemDServiceManager("k3s", remoteOps, eventBus),
     K3sService {
@@ -220,17 +222,7 @@ class DefaultK3sService(
         kubeconfigPath: Path,
     ): Result<List<KubernetesJob>> =
         runCatching {
-            socksProxyService.ensureRunning(controlHost)
-
-            val clientFactory =
-                ProxiedKubernetesClientFactory(
-                    proxyHost = "localhost",
-                    proxyPort = socksProxyService.getLocalPort(),
-                )
-            val kubeService = DefaultKubernetesService(clientFactory, kubeconfigPath)
-
-            // List all jobs
-            kubeService.listJobs().getOrThrow()
+            kubernetesService(controlHost, kubeconfigPath).listJobs().getOrThrow()
         }
 
     override fun listPods(
@@ -238,18 +230,25 @@ class DefaultK3sService(
         kubeconfigPath: Path,
     ): Result<List<KubernetesPod>> =
         runCatching {
-            socksProxyService.ensureRunning(controlHost)
-
-            val clientFactory =
-                ProxiedKubernetesClientFactory(
-                    proxyHost = "localhost",
-                    proxyPort = socksProxyService.getLocalPort(),
-                )
-            val kubeService = DefaultKubernetesService(clientFactory, kubeconfigPath)
-
-            // List all pods
-            kubeService.listPods().getOrThrow()
+            kubernetesService(controlHost, kubeconfigPath).listPods().getOrThrow()
         }
+
+    private fun kubernetesService(
+        controlHost: ClusterHost,
+        kubeconfigPath: Path,
+    ): DefaultKubernetesService {
+        val tailscaleActive = clusterStateManager.load().tailscaleActive
+        if (!tailscaleActive) {
+            socksProxyService.ensureRunning(controlHost)
+        }
+        val clientFactory =
+            ProxiedKubernetesClientFactory(
+                proxyHost = "127.0.0.1",
+                proxyPort = if (!tailscaleActive) socksProxyService.getLocalPort() else 0,
+                tailscaleActive = tailscaleActive,
+            )
+        return DefaultKubernetesService(clientFactory, kubeconfigPath)
+    }
 
     /**
      * Uploads a script from classpath resources to a remote host.

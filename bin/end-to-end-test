@@ -475,6 +475,23 @@ step_setup_cassandra() {
     fi
 }
 
+step_test_cql_connection() {
+    if [ "$ENABLE_CASSANDRA" != true ]; then
+        echo "=== Skipping CQL connection test (use --cassandra to enable) ==="
+        return 0
+    fi
+    echo "=== Testing direct CQL connection via system.local ==="
+    local output
+    output=$(easy-db-lab cassandra cql "SELECT cluster_name, release_version FROM system.local")
+    echo "$output"
+    if echo "$output" | grep -q "cluster_name"; then
+        echo "=== CQL connection test passed ==="
+    else
+        echo "ERROR: CQL query did not return expected system.local data"
+        return 1
+    fi
+}
+
 step_verify_cassandra_backup() {
     if [ "$ENABLE_CASSANDRA" != true ]; then
         echo "=== Skipping Cassandra backup verification (use --cassandra to enable) ==="
@@ -1462,6 +1479,7 @@ STEPS_WORKDIR=(
     "step_test_mcp_server:Test server status endpoint"
     "step_verify_s3_backup:Verify S3 backup"
     "step_setup_cassandra:Setup Cassandra"
+    "step_test_cql_connection:Test CQL connection"
     "step_verify_cassandra_backup:Verify Cassandra backup"
     "step_verify_restore:Verify restore from VPC"
     "step_test_ssh_nodetool:Test SSH and nodetool"

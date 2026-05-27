@@ -394,10 +394,12 @@ class Status :
 
         eventBus.emit(
             Event.Provision.ObservabilityAccessInfo(
-                controlHost.privateIp,
-                Constants.K8s.GRAFANA_PORT,
-                Constants.K8s.VICTORIAMETRICS_PORT,
-                Constants.K8s.VICTORIALOGS_PORT,
+                controlNodeIp = controlHost.privateIp,
+                grafanaPort = Constants.K8s.GRAFANA_PORT,
+                victoriaMetricsPort = Constants.K8s.VICTORIAMETRICS_PORT,
+                victoriaLogsPort = Constants.K8s.VICTORIALOGS_PORT,
+                tempoPort = Constants.K8s.TEMPO_PORT,
+                pyroscopePort = Constants.K8s.PYROSCOPE_PORT,
             ),
         )
     }

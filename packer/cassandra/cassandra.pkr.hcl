@@ -154,6 +154,12 @@ build {
     destination = "/tmp/cassandra.in.sh"
   }
 
+  # upload S3 cache helpers before install_cassandra.sh which sources them
+  provisioner "file" {
+    source      = "../lib/s3_cache.sh"
+    destination = "/tmp/s3_cache.sh"
+  }
+
   provisioner "shell" {
     environment_vars = [
       # we need this to be set because install_cassandra checks for it and exits if it's not there

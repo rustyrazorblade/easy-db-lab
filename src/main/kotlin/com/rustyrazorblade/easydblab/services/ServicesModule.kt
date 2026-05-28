@@ -44,6 +44,7 @@ val servicesModule =
         singleOf(::DefaultResourceManager) bind ResourceManager::class
 
         factoryOf(::DefaultCassandraService) bind CassandraService::class
+        factoryOf(::DefaultProfilingService) bind ProfilingService::class
         factoryOf(::DefaultClickHouseConfigService) bind ClickHouseConfigService::class
         factoryOf(::DefaultTailscaleService) bind TailscaleService::class
 

@@ -12,6 +12,7 @@ import com.rustyrazorblade.easydblab.configuration.getHosts
 import com.rustyrazorblade.easydblab.configuration.toHost
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.HostOperationsService
+import com.rustyrazorblade.easydblab.shell.shellQuote
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Mixin
@@ -123,18 +124,6 @@ class ExecRun : PicoBaseCommand() {
                 .last()
         val epoch = System.currentTimeMillis() / Constants.Time.MILLIS_PER_SECOND
         return "$toolName-$epoch"
-    }
-
-    /**
-     * Shell-quotes a string if it contains characters that need escaping.
-     * Wraps in single quotes with proper escaping of embedded single quotes.
-     */
-    internal fun String.shellQuote(): String {
-        if (isEmpty()) return "''"
-        // If it only contains safe characters, no quoting needed
-        if (matches(Regex("[a-zA-Z0-9_./:=@%+,-]+"))) return this
-        // Wrap in single quotes, escaping any embedded single quotes
-        return "'" + replace("'", "'\\''") + "'"
     }
 
     internal fun buildSystemdRunCommand(

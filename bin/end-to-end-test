@@ -637,6 +637,19 @@ step_cassandra_start_stop() {
     easy-db-lab cassandra restart
 }
 
+step_cassandra_profile() {
+    if [ "$ENABLE_CASSANDRA" != true ]; then
+        echo "=== Skipping Cassandra profile test (use --cassandra to enable) ==="
+        return 0
+    fi
+    echo "=== Testing cassandra profile start/stop ==="
+    # Use a 5-second interval with alloc profiling; start runs in background via systemd
+    easy-db-lab cassandra profile start --loop-interval 5 -e alloc
+    echo "Profiling running, waiting 10 seconds for at least one upload cycle..."
+    sleep 10
+    easy-db-lab cassandra profile stop
+}
+
 step_test_ssh_nodetool() {
     if [ "$ENABLE_CASSANDRA" != true ]; then
         echo "=== Skipping SSH nodetool test (use --cassandra to enable) ==="
@@ -1493,6 +1506,7 @@ STEPS_WORKDIR=(
     "step_connector_writer:Test connector writer"
     "step_bulk_writer_iam:Test IAM bulk writer (S3/IAM transport)"
     "step_cassandra_start_stop:Cassandra start/stop cycle"
+    "step_cassandra_profile:Test cassandra profile command"
     "step_clickhouse_start:Start ClickHouse"
     "step_clickhouse_test:Test ClickHouse"
     "step_clickhouse_s3_tier_test:Test ClickHouse S3 tier policy"

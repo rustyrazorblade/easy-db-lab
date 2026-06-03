@@ -1,7 +1,10 @@
 package com.rustyrazorblade.easydblab.commands.install
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.commands.kit.KitSqlCommand
+import com.rustyrazorblade.easydblab.services.KitCapability
 import com.rustyrazorblade.easydblab.services.KitConfig
+import com.rustyrazorblade.easydblab.services.KitEndpoint
 import com.rustyrazorblade.easydblab.services.installConfigYaml
 import io.github.oshai.kotlinlogging.KotlinLogging
 import picocli.CommandLine
@@ -9,6 +12,16 @@ import picocli.CommandLine.Model.CommandSpec
 import java.io.File
 import java.util.concurrent.Callable
 
+/**
+ * Builds PicoCLI subcommand groups for installed kits.
+ *
+ * For each kit directory found in the cluster workspace, this factory constructs a
+ * [CommandLine] group containing lifecycle phase commands (start, stop, etc.), a status
+ * command, and any commands generated from the kit's declared capabilities (e.g. `sql`).
+ *
+ * Capability commands are registered alongside script-based and typed-phase commands —
+ * they are additive and do not conflict.
+ */
 class KitRunnerCommandFactory {
     fun buildKitGroup(
         kitName: String,
@@ -28,7 +41,56 @@ class KitRunnerCommandFactory {
         }
         groupCL.addSubcommand("status", buildStatusCommand(kitName, kitDir, installConfig))
 
+        buildCapabilityCommands(kitName, installConfig).forEach { (name, cmdLine) ->
+            if (name !in groupCL.subcommands.keys) {
+                groupCL.addSubcommand(name, cmdLine)
+            }
+        }
+
         return groupCL
+    }
+
+    /**
+     * Builds a [CommandLine] for each recognised capability declared in the kit config.
+     * Unknown capability types are logged and skipped — kits with future capability types
+     * remain functional; only the unknown command is absent.
+     */
+    private fun buildCapabilityCommands(
+        kitName: String,
+        kitConfig: KitConfig,
+    ): List<Pair<String, CommandLine>> =
+        kitConfig.capabilities.mapNotNull { cap ->
+            when (cap.type) {
+                "sql" -> buildSqlCapabilityCommand(kitName, kitConfig, cap)
+                else -> {
+                    log.debug { "Kit '$kitName': unknown capability type '${cap.type}', skipping" }
+                    null
+                }
+            }
+        }
+
+    private fun buildSqlCapabilityCommand(
+        kitName: String,
+        kitConfig: KitConfig,
+        cap: KitCapability,
+    ): Pair<String, CommandLine>? {
+        val jdbcEndpoint = kitConfig.endpoints.firstOrNull { it.type == KitEndpoint.EndpointType.JDBC }
+        if (jdbcEndpoint == null) {
+            log.warn { "Kit '$kitName' declares sql capability but has no jdbc endpoint — skipping sql command" }
+            return null
+        }
+        val (commandName, description) = cap.commandEntry(kitName)
+        val command =
+            KitSqlCommand(
+                kitName = kitName,
+                endpoint = jdbcEndpoint,
+                user = cap.user,
+                driverClass = cap.driverClass,
+            )
+        val spec = CommandSpec.forAnnotatedObject(command, CommandLine.defaultFactory()).name(commandName)
+        spec.usageMessage().description(description)
+        spec.mixinStandardHelpOptions(true)
+        return commandName to CommandLine(spec)
     }
 
     private fun loadInstallConfig(
@@ -100,6 +162,7 @@ class KitRunnerCommandFactory {
     }
 }
 
+/** Root command for a kit group — prints usage when invoked with no subcommand. */
 class KitGroupCommand : Callable<Int> {
     lateinit var spec: CommandSpec
 

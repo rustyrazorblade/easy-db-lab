@@ -268,4 +268,114 @@ class KitRunnerCommandFactoryTest : BaseKoinTest() {
         assertThat(groupCl.subcommands["status"]?.commandSpec?.userObject())
             .isInstanceOf(KitStatusCommand::class.java)
     }
+
+    // -------------------------------------------------------------------------
+    // Capability command registration
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `sql capability with jdbc endpoint registers sql subcommand`() {
+        writeKitYaml(
+            """
+            name: presto
+            endpoints:
+              - name: "JDBC"
+                node-type: app
+                port: 8080
+                type: jdbc
+                scheme: presto
+                path: /cassandra
+            capabilities:
+              - type: sql
+                user: easy-db-lab
+                driver-class: com.facebook.presto.jdbc.PrestoDriver
+            """.trimIndent(),
+        )
+
+        val groupCl = factory.buildKitGroup("presto", kitDir)
+        assertThat(groupCl.subcommands.keys).contains("sql")
+    }
+
+    @Test
+    fun `sql capability without jdbc endpoint does not register sql subcommand`() {
+        writeKitYaml(
+            """
+            name: mydb
+            endpoints:
+              - name: "HTTP"
+                node-type: app
+                port: 8080
+                type: http
+            capabilities:
+              - type: sql
+                user: test
+            """.trimIndent(),
+        )
+
+        val groupCl = factory.buildKitGroup("mydb", kitDir)
+        assertThat(groupCl.subcommands.keys).doesNotContain("sql")
+    }
+
+    @Test
+    fun `unknown capability type is ignored and does not throw`() {
+        writeKitYaml(
+            """
+            name: mydb
+            endpoints:
+              - name: "JDBC"
+                node-type: app
+                port: 8080
+                type: jdbc
+                scheme: presto
+            capabilities:
+              - type: tpch-load
+                user: test
+            """.trimIndent(),
+        )
+
+        val groupCl = factory.buildKitGroup("mydb", kitDir)
+        assertThat(groupCl.subcommands.keys).doesNotContain("tpch-load")
+    }
+
+    @Test
+    fun `capability commands coexist with lifecycle phases`() {
+        writeKitYaml(
+            """
+            name: presto
+            endpoints:
+              - name: "JDBC"
+                node-type: app
+                port: 8080
+                type: jdbc
+                scheme: presto
+            start:
+              - type: shell
+                script: echo start
+            stop:
+              - type: shell
+                script: echo stop
+            capabilities:
+              - type: sql
+                user: easy-db-lab
+            """.trimIndent(),
+        )
+
+        val groupCl = factory.buildKitGroup("presto", kitDir)
+        assertThat(groupCl.subcommands.keys).contains("start", "stop", "status", "sql")
+    }
+
+    @Test
+    fun `no capabilities block produces no extra subcommands`() {
+        writeKitYaml(
+            """
+            name: mydb
+            start:
+              - type: shell
+                script: echo start
+            """.trimIndent(),
+        )
+
+        val groupCl = factory.buildKitGroup("mydb", kitDir)
+        assertThat(groupCl.subcommands.keys).doesNotContain("sql")
+    }
 }

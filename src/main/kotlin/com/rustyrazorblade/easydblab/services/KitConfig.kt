@@ -113,6 +113,43 @@ enum class KitType {
     APP,
 }
 
+/**
+ * Declares a database capability for a kit, which causes a CLI command to be registered
+ * automatically under the kit's subcommand group.
+ *
+ * Known types: "sql". Unknown [type] values are ignored during command registration —
+ * the factory filters to recognised types via the [type] field. Using a flat data class
+ * (rather than a sealed class with kaml polymorphism) allows unknown future types to be
+ * parsed from kit.yaml without error.
+ *
+ * Example kit.yaml fragment:
+ * ```yaml
+ * capabilities:
+ *   - type: sql
+ *     user: easy-db-lab
+ *     driver-class: com.facebook.presto.jdbc.PrestoDriver
+ * ```
+ */
+@Serializable
+data class KitCapability(
+    val type: String = "",
+    val user: String = "",
+    @SerialName("driver-class") val driverClass: String = "",
+) {
+    /**
+     * Returns the (commandName, description) pair for this capability.
+     * Both [KitInfo] and [KitRunnerCommandFactory] use this as the single source of truth
+     * so display and registration stay in sync when new capability types are added.
+     */
+    fun commandEntry(kitName: String): Pair<String, String> {
+        require(type.isNotBlank()) { "Capability type must not be blank" }
+        return when (type) {
+            "sql" -> "sql" to "Execute SQL against $kitName"
+            else -> error("Unknown capability type: '$type'")
+        }
+    }
+}
+
 @Serializable
 data class KitConfig(
     val name: String,
@@ -133,6 +170,7 @@ data class KitConfig(
     val restore: List<InstallStep> = emptyList(),
     val hooks: KitHooks? = null,
     val type: KitType? = null,
+    val capabilities: List<KitCapability> = emptyList(),
 ) {
     fun stepsForPhase(phaseName: String): List<InstallStep> =
         when (phaseName) {

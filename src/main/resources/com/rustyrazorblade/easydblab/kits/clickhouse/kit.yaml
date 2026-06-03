@@ -20,6 +20,12 @@ endpoints:
     node-type: db
     port: 30900
     type: native
+  - name: "JDBC"
+    node-type: db
+    port: 30123
+    type: jdbc
+    scheme: clickhouse
+    path: /default?compress=0
 args:
   - flag: --clickhouse-version
     variable: CLICKHOUSE_VERSION
@@ -172,3 +178,8 @@ uninstall:
   - type: helm-uninstall
     release: clickhouse-operator
     namespace: kube-system
+
+
+capabilities:
+  - type: sql
+    user: default

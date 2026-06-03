@@ -41,3 +41,15 @@ The system SHALL configure an `s3_backup` disk of type `s3_plain` in the ClickHo
 
 - **WHEN** the user runs `clickhouse start`, **THEN** the system injects `CLICKHOUSE_BACKUP_S3_ENDPOINT` into the ClickHouse ConfigMap, pointing to `https://<account-bucket>.s3.<region>.amazonaws.com/clickhouse-backups/`
 - **WHEN** a ClickHouse pod has the `s3_backup` disk configured, **THEN** `BACKUP DATABASE default TO Disk('s3_backup', 'name/')` executes without explicit credentials, using the EC2 IAM role
+
+### REQ-CH-005: SQL Execution
+
+The `clickhouse sql` command SHALL execute SQL statements against a running ClickHouse cluster.
+SQL execution is provided via the `sql` capability declared in `clickhouse/kit.yaml` — see REQ-KCAP-002.
+
+**Scenarios:**
+
+- **WHEN** the user runs `clickhouse sql "SELECT count(*) FROM default.events"`,
+  **THEN** the query is submitted via JDBC and results are displayed in tabular format.
+- **WHEN** the user runs `clickhouse sql --file query.sql`, **THEN** the SQL from the file is executed.
+- **WHEN** no db nodes exist in cluster state, **THEN** an error is emitted before any connection is made.

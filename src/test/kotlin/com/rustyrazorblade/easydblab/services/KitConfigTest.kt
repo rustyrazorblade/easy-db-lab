@@ -821,4 +821,63 @@ class KitConfigTest {
         val config = parse("name: mydb")
         assertThat(config.stepsForPhase("start")).isEmpty()
     }
+
+    // -------------------------------------------------------------------------
+    // capabilities deserialization
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `capabilities defaults to empty list when not declared`() {
+        val config = parse("name: mydb")
+        assertThat(config.capabilities).isEmpty()
+    }
+
+    @Test
+    fun `parses sql capability with all fields`() {
+        val config =
+            parse(
+                """
+                name: mydb
+                capabilities:
+                  - type: sql
+                    user: easy-db-lab
+                    driver-class: com.facebook.presto.jdbc.PrestoDriver
+                """.trimIndent(),
+            )
+        assertThat(config.capabilities).hasSize(1)
+        val cap = config.capabilities[0]
+        assertThat(cap.type).isEqualTo("sql")
+        assertThat(cap.user).isEqualTo("easy-db-lab")
+        assertThat(cap.driverClass).isEqualTo("com.facebook.presto.jdbc.PrestoDriver")
+    }
+
+    @Test
+    fun `parses sql capability with defaults`() {
+        val config =
+            parse(
+                """
+                name: mydb
+                capabilities:
+                  - type: sql
+                """.trimIndent(),
+            )
+        val cap = config.capabilities[0]
+        assertThat(cap.user).isEmpty()
+        assertThat(cap.driverClass).isEmpty()
+    }
+
+    @Test
+    fun `unknown capability type parses without error`() {
+        val config =
+            parse(
+                """
+                name: mydb
+                capabilities:
+                  - type: tpch-load
+                    user: test
+                """.trimIndent(),
+            )
+        assertThat(config.capabilities).hasSize(1)
+        assertThat(config.capabilities[0].type).isEqualTo("tpch-load")
+    }
 }

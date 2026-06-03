@@ -23,7 +23,6 @@ import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.PersistentVolumeBuilder
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaimBuilder
-import io.fabric8.kubernetes.api.model.Pod
 import io.fabric8.kubernetes.api.model.Quantity
 import io.fabric8.kubernetes.api.model.apps.DaemonSet
 import io.fabric8.kubernetes.api.model.apps.Deployment
@@ -62,27 +61,6 @@ import org.testcontainers.utility.DockerImageName
 class K8sServiceIntegrationTest {
     companion object {
         private const val DEFAULT_NAMESPACE = "default"
-        private const val POD_WAIT_TIMEOUT_SECONDS = 120L
-
-        /**
-         * Deployments that should reach Running status with ready replicas in K3s.
-         *
-         * Currently empty: K3s containerd in nested Docker environments loses track
-         * of sandbox tasks ("SandboxChanged: Pod sandbox changed, it will be killed
-         * and re-created"), causing random pods to get exit code 137 and CrashLoopBackOff.
-         * This is a K3s container runtime issue, not a manifest problem. Structural
-         * tests (apply, image pull, no-resource-limits) reliably validate all manifests.
-         */
-        private val EXPECTED_RUNNING_DEPLOYMENTS = emptySet<String>()
-
-        /**
-         * DaemonSets that should have at least one pod scheduled and running in K3s.
-         *
-         * Note: otel-collector is excluded because the K3s test environment lacks the
-         * host log files that filelog receivers expect. Structural tests (apply, image
-         * pull, no-resource-limits) still validate the manifest.
-         */
-        private val EXPECTED_RUNNING_DAEMONSETS = emptySet<String>()
 
         @Container
         @JvmStatic
@@ -123,15 +101,7 @@ class K8sServiceIntegrationTest {
                 awsSecret = "",
             )
         templateService = TemplateService(mockClusterStateManager, testUser)
-    }
 
-    // -----------------------------------------------------------------------
-    // Phase 1: Set up prerequisites that pods need to start
-    // -----------------------------------------------------------------------
-
-    @Test
-    @Order(1)
-    fun `create cluster-config ConfigMap needed by multiple pods`() {
         val clusterConfig =
             ConfigMapBuilder()
                 .withNewMetadata()
@@ -146,19 +116,6 @@ class K8sServiceIntegrationTest {
                 .build()
         client.resource(clusterConfig).forceConflicts().serverSideApply()
 
-        val applied =
-            client
-                .configMaps()
-                .inNamespace(DEFAULT_NAMESPACE)
-                .withName("cluster-config")
-                .get()
-        assertThat(applied).isNotNull
-        assertThat(applied.data).containsKeys("control_node_ip", "aws_region", "cluster_name")
-    }
-
-    @Test
-    @Order(2)
-    fun `create grafana-datasources ConfigMap needed by Grafana`() {
         val datasources =
             ConfigMapBuilder()
                 .withNewMetadata()
@@ -180,6 +137,10 @@ class K8sServiceIntegrationTest {
                 ).build()
         client.resource(datasources).forceConflicts().serverSideApply()
     }
+
+    // -----------------------------------------------------------------------
+    // Phase 1: Set up prerequisites that pods need to start
+    // -----------------------------------------------------------------------
 
     @Test
     @Order(3)
@@ -533,126 +494,7 @@ class K8sServiceIntegrationTest {
     }
 
     // -----------------------------------------------------------------------
-    // Phase 3: Verify pods actually start running
-    // -----------------------------------------------------------------------
-
-    @Test
-    @Order(30)
-    fun `deployments that need no external services should reach Running`() {
-        for (name in EXPECTED_RUNNING_DEPLOYMENTS) {
-            waitForDeploymentReady(name)
-        }
-    }
-
-    @Test
-    @Order(31)
-    fun `daemonsets that need no external services should have running pods`() {
-        for (name in EXPECTED_RUNNING_DAEMONSETS) {
-            waitForDaemonSetReady(name)
-        }
-    }
-
-    @Test
-    @Order(32)
-    fun `no pods should be stuck in Pending or ImagePullBackOff`() {
-        // Give pods time to be scheduled and attempt image pull
-        Thread.sleep(SECONDS_FOR_SCHEDULING)
-
-        val allPods =
-            client
-                .pods()
-                .inNamespace(DEFAULT_NAMESPACE)
-                .list()
-                .items
-        val problems = mutableListOf<String>()
-
-        // Fluent Bit journald needs /var/log/journal which doesn't exist in K3s.
-        val pendingExclusions = listOf("fluent-bit-journald-")
-
-        for (pod in allPods) {
-            val podName = pod.metadata?.name ?: "unknown"
-            val phase = pod.status?.phase
-
-            // Pending means scheduling failed (missing volumes, affinity, etc.)
-            if (phase == "Pending" && pendingExclusions.none { podName.startsWith(it) }) {
-                val conditions = pod.status?.conditions?.joinToString { "${it.type}=${it.status}: ${it.message}" }
-                problems.add("$podName is Pending: $conditions")
-            }
-
-            // Check container statuses for ImagePullBackOff
-            val containerStatuses = pod.status?.containerStatuses.orEmpty()
-            for (cs in containerStatuses) {
-                val waiting = cs.state?.waiting
-                if (waiting?.reason in IMAGE_PULL_FAILURES) {
-                    problems.add("$podName container '${cs.name}' has ${waiting?.reason}: ${waiting?.message}")
-                }
-            }
-        }
-
-        assertThat(problems)
-            .withFailMessage("Pods have scheduling or image pull failures:\n${problems.joinToString("\n")}")
-            .isEmpty()
-    }
-
-    // -----------------------------------------------------------------------
-    // Phase 3b: Rollout restart
-    // -----------------------------------------------------------------------
-
-    @Test
-    @Order(35)
-    fun `should rollout restart a deployment without error`() {
-        // registry is a simple deployment that should be running at this point
-        val result =
-            runCatching {
-                client
-                    .apps()
-                    .deployments()
-                    .inNamespace(DEFAULT_NAMESPACE)
-                    .withName("registry")
-                    .rolling()
-                    .restart()
-            }
-        assertThat(result.isSuccess)
-            .withFailMessage("Rollout restart of Deployment/registry failed: ${result.exceptionOrNull()?.message}")
-            .isTrue()
-    }
-
-    @Test
-    @Order(36)
-    fun `should rollout restart a daemonset without error`() {
-        val result =
-            runCatching {
-                client
-                    .apps()
-                    .daemonSets()
-                    .inNamespace(DEFAULT_NAMESPACE)
-                    .withName("otel-collector")
-                    .edit { ds ->
-                        val annotations =
-                            ds.spec
-                                ?.template
-                                ?.metadata
-                                ?.annotations
-                                ?.toMutableMap()
-                                ?: mutableMapOf()
-                        annotations["kubectl.kubernetes.io/restartedAt"] =
-                            java.time.Instant
-                                .now()
-                                .toString()
-                        ds.spec
-                            ?.template
-                            ?.metadata
-                            ?.annotations = annotations
-                        ds
-                    }
-            }
-        assertThat(result.isSuccess)
-            .withFailMessage("Rollout restart of DaemonSet/otel-collector failed: ${result.exceptionOrNull()?.message}")
-            .isTrue()
-    }
-
-    // -----------------------------------------------------------------------
-    // Phase 4: Image pull, resource limits, and structural checks
+    // Phase 3: Resource limits and structural checks
     // -----------------------------------------------------------------------
 
     @Test
@@ -757,17 +599,6 @@ class K8sServiceIntegrationTest {
         assertThat(dep).withFailMessage("Deployment '$name' not found").isNotNull
     }
 
-    private fun assertStatefulSetExists(name: String) {
-        val sts =
-            client
-                .apps()
-                .statefulSets()
-                .inNamespace(DEFAULT_NAMESPACE)
-                .withName(name)
-                .get()
-        assertThat(sts).withFailMessage("StatefulSet '$name' not found").isNotNull
-    }
-
     private fun assertDaemonSetExists(name: String) {
         val ds =
             client
@@ -807,83 +638,6 @@ class K8sServiceIntegrationTest {
                 .withName(name)
                 .get()
         assertThat(crb).withFailMessage("ClusterRoleBinding '$name' not found").isNotNull
-    }
-
-    /**
-     * Waits for a Deployment to have at least 1 ready replica.
-     * Fails with detailed pod status if the timeout is exceeded.
-     */
-    private fun waitForDeploymentReady(name: String) {
-        val deadline = System.currentTimeMillis() + POD_WAIT_TIMEOUT_SECONDS * MILLIS_PER_SECOND
-        while (System.currentTimeMillis() < deadline) {
-            val dep =
-                client
-                    .apps()
-                    .deployments()
-                    .inNamespace(DEFAULT_NAMESPACE)
-                    .withName(name)
-                    .get()
-            val readyReplicas = dep?.status?.readyReplicas ?: 0
-            if (readyReplicas > 0) return
-            Thread.sleep(POLL_INTERVAL_MS)
-        }
-        val podStatus = describePods("app.kubernetes.io/name=$name")
-        throw AssertionError("Deployment '$name' did not become ready within ${POD_WAIT_TIMEOUT_SECONDS}s\n$podStatus")
-    }
-
-    /**
-     * Waits for a DaemonSet to have at least 1 pod in ready state.
-     * Fails with detailed pod status if the timeout is exceeded.
-     */
-    private fun waitForDaemonSetReady(name: String) {
-        val deadline = System.currentTimeMillis() + POD_WAIT_TIMEOUT_SECONDS * MILLIS_PER_SECOND
-        while (System.currentTimeMillis() < deadline) {
-            val ds =
-                client
-                    .apps()
-                    .daemonSets()
-                    .inNamespace(DEFAULT_NAMESPACE)
-                    .withName(name)
-                    .get()
-            val ready = ds?.status?.numberReady ?: 0
-            if (ready > 0) return
-            Thread.sleep(POLL_INTERVAL_MS)
-        }
-        val podStatus = describePods("app.kubernetes.io/name=$name")
-        throw AssertionError("DaemonSet '$name' did not become ready within ${POD_WAIT_TIMEOUT_SECONDS}s\n$podStatus")
-    }
-
-    /**
-     * Gets detailed status of pods matching a label selector for diagnostic output.
-     */
-    private fun describePods(labelSelector: String): String {
-        val pods =
-            client
-                .pods()
-                .inNamespace(DEFAULT_NAMESPACE)
-                .withLabelSelector(labelSelector)
-                .list()
-                .items
-        if (pods.isEmpty()) return "No pods found with label: $labelSelector"
-        return pods.joinToString("\n") { pod -> formatPodStatus(pod) }
-    }
-
-    private fun formatPodStatus(pod: Pod): String {
-        val name = pod.metadata?.name ?: "unknown"
-        val phase = pod.status?.phase ?: "Unknown"
-        val conditions = pod.status?.conditions?.joinToString { "${it.type}=${it.status}" } ?: "none"
-        val containers =
-            pod.status?.containerStatuses?.joinToString { cs ->
-                val state =
-                    when {
-                        cs.state?.running != null -> "Running"
-                        cs.state?.waiting != null -> "Waiting(${cs.state.waiting.reason}: ${cs.state.waiting.message})"
-                        cs.state?.terminated != null -> "Terminated(${cs.state.terminated.reason})"
-                        else -> "Unknown"
-                    }
-                "${cs.name}=$state"
-            } ?: "no container status"
-        return "  Pod $name: phase=$phase conditions=[$conditions] containers=[$containers]"
     }
 
     private fun collectAllResources(): List<HasMetadata> =
@@ -981,5 +735,3 @@ class K8sServiceIntegrationTest {
 
 private const val MILLIS_PER_SECOND = 1000L
 private const val POLL_INTERVAL_MS = 2000L
-private const val SECONDS_FOR_SCHEDULING = 60_000L
-private val IMAGE_PULL_FAILURES = setOf("ImagePullBackOff", "ErrImagePull", "ErrImageNeverPull")

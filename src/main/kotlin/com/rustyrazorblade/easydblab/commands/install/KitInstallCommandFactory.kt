@@ -25,7 +25,14 @@ class KitInstallCommandFactory(
         val command = KitInstallCommand(config, source)
         val spec = CommandSpec.wrapWithoutInspection(command).name(config.name)
         spec.usageMessage().description(config.description)
-        spec.mixinStandardHelpOptions(true)
+        spec.add(
+            OptionSpec
+                .builder("--help", "-h")
+                .usageHelp(true)
+                .type(Boolean::class.java)
+                .description("Show this help message and exit.")
+                .build(),
+        )
 
         if (config.collisionCheck) {
             spec.add(forceOptionSpec(command))

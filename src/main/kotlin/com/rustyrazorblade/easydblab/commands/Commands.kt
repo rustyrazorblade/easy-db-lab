@@ -43,7 +43,7 @@ class Commands :
         // Print options (skip standard help options at root level for brevity)
         val options =
             spec.options().filter { opt ->
-                !opt.hidden() && opt.longestName() !in listOf("--help", "--version", "-h", "-V")
+                !opt.hidden() && !opt.usageHelp() && !opt.versionHelp()
             }
 
         for (opt in options) {

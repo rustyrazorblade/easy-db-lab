@@ -25,10 +25,6 @@ import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.EMRService
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
-import com.rustyrazorblade.easydblab.services.clickhouse.ClickHouseService
-import com.rustyrazorblade.easydblab.services.clickhouse.DefaultClickHouseService
-import com.rustyrazorblade.easydblab.services.presto.DefaultPrestoService
-import com.rustyrazorblade.easydblab.services.presto.PrestoService
 import okhttp3.OkHttpClient
 import org.koin.core.module.dsl.factoryOf
 import org.koin.core.module.dsl.singleOf
@@ -92,10 +88,6 @@ val servicesModule =
 
         // Kit command scanner — discovers @KitCommand-annotated classes across all JARs
         singleOf(::DefaultKitCommandScanner) bind KitCommandScanner::class
-
-        // SQL services — execute queries via JDBC for each kit
-        single<PrestoService> { DefaultPrestoService(get()) }
-        single<ClickHouseService> { DefaultClickHouseService(get()) }
 
         // Cluster configuration service for writing config files
         factoryOf(::DefaultClusterConfigurationService) bind ClusterConfigurationService::class

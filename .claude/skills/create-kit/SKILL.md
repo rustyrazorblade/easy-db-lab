@@ -1,16 +1,16 @@
 ---
-name: generate-workload
+name: create-kit
 description: Interactively generate a new workload install.yaml with typed lifecycle steps. Researches the workload's helm chart, CRDs, and readiness conditions, proposes a draft for review, refines with user feedback, and writes files only on explicit approval.
 user-invocable: true
 ---
 
-# generate-workload
+# create-kit
 
 Generate a new workload definition for easy-db-lab using the typed install.yaml format.
 
 ## Input
 
-The argument after `/generate-workload` is the workload name (e.g. "ScyllaDB", "Kafka", "Redis").
+The argument after `/create-kit` is the workload name (e.g. "ScyllaDB", "Kafka", "Redis").
 If no argument is provided, ask the user what workload they want to add.
 
 ---

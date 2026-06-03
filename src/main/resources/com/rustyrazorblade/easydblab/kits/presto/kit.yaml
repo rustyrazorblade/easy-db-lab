@@ -19,7 +19,6 @@ endpoints:
     port: 8080
     type: jdbc
     scheme: presto
-    path: /cassandra
 args:
   - flag: --workers
     variable: WORKERS
@@ -31,3 +30,7 @@ hooks:
     script: bin/update-catalogs.sh
   post-workload-stop:
     script: bin/update-catalogs.sh
+capabilities:
+  - type: sql
+    user: easy-db-lab
+    driver-class: com.facebook.presto.jdbc.PrestoDriver

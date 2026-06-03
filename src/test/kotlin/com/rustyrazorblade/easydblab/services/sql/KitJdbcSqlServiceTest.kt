@@ -1,10 +1,11 @@
-package com.rustyrazorblade.easydblab.services.presto
+package com.rustyrazorblade.easydblab.services.sql
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.services.KitEndpoint
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -18,10 +19,10 @@ import java.sql.ResultSetMetaData
 import java.sql.Statement
 
 /**
- * Tests for [DefaultPrestoService]. Uses mock JDBC objects to verify query
- * execution and result mapping without a real cluster.
+ * Tests for [KitJdbcSqlService]. Verifies node resolution from cluster state and
+ * correct JDBC result mapping without a real cluster or database.
  */
-class PrestoServiceTest : BaseKoinTest() {
+class KitJdbcSqlServiceTest : BaseKoinTest() {
     private lateinit var mockClusterStateManager: ClusterStateManager
 
     private val appHost =
@@ -32,12 +33,30 @@ class PrestoServiceTest : BaseKoinTest() {
             availabilityZone = "us-west-2a",
         )
 
+    private val dbHost =
+        ClusterHost(
+            publicIp = "54.0.0.3",
+            privateIp = "10.0.1.20",
+            alias = "db0",
+            availabilityZone = "us-west-2a",
+        )
+
     private val controlHost =
         ClusterHost(
             publicIp = "54.0.0.2",
             privateIp = "10.0.1.1",
             alias = "control0",
             availabilityZone = "us-west-2a",
+        )
+
+    private val prestoJdbcEndpoint =
+        KitEndpoint(
+            name = "JDBC",
+            nodeType = "app",
+            port = 8080,
+            type = KitEndpoint.EndpointType.JDBC,
+            scheme = "presto",
+            path = "/cassandra",
         )
 
     override fun additionalTestModules(): List<Module> =
@@ -56,7 +75,6 @@ class PrestoServiceTest : BaseKoinTest() {
         ClusterState(
             name = "test",
             versions = mutableMapOf(),
-            tailscaleActive = true,
             hosts =
                 mapOf(
                     ServerType.Stress to listOf(appHost),
@@ -64,10 +82,15 @@ class PrestoServiceTest : BaseKoinTest() {
                 ),
         )
 
-    private fun buildService(connection: Connection): DefaultPrestoService =
-        DefaultPrestoService(
-            clusterStateManager = getKoin().get(),
-            connectionFactory = { _, _ -> connection },
+    private fun stateWithDbNode(): ClusterState =
+        ClusterState(
+            name = "test",
+            versions = mutableMapOf(),
+            hosts =
+                mapOf(
+                    ServerType.Cassandra to listOf(dbHost),
+                    ServerType.Control to listOf(controlHost),
+                ),
         )
 
     private fun mockResultSet(
@@ -80,9 +103,6 @@ class PrestoServiceTest : BaseKoinTest() {
 
         val rs = mock<ResultSet>()
         whenever(rs.metaData).thenReturn(meta)
-
-        val rowIterator = rows.iterator()
-        whenever(rs.next()).thenAnswer { rowIterator.hasNext().also { if (it) rowIterator.next() } }
 
         var currentRow = listOf<String>()
         val trackingIterator = rows.iterator()
@@ -101,6 +121,18 @@ class PrestoServiceTest : BaseKoinTest() {
         return rs
     }
 
+    private fun buildService(
+        endpoint: KitEndpoint = prestoJdbcEndpoint,
+        user: String = "easy-db-lab",
+        connection: Connection,
+    ): KitJdbcSqlService =
+        KitJdbcSqlService(
+            clusterStateManager = getKoin().get(),
+            endpoint = endpoint,
+            user = user,
+            connectionFactory = { _, _ -> connection },
+        )
+
     @Test
     fun `executes query and returns columns and rows`() {
         whenever(mockClusterStateManager.load()).thenReturn(stateWithAppNode())
@@ -111,7 +143,7 @@ class PrestoServiceTest : BaseKoinTest() {
         val conn = mock<Connection>()
         whenever(conn.createStatement()).thenReturn(stmt)
 
-        val result = buildService(conn).execute("SELECT count(*) FROM t").getOrThrow()
+        val result = buildService(connection = conn).execute("SELECT count(*) FROM t").getOrThrow()
 
         assertThat(result.columns).containsExactly("count")
         assertThat(result.rows).hasSize(1)
@@ -128,7 +160,7 @@ class PrestoServiceTest : BaseKoinTest() {
         val conn = mock<Connection>()
         whenever(conn.createStatement()).thenReturn(stmt)
 
-        val result = buildService(conn).execute("SELECT id, name FROM users").getOrThrow()
+        val result = buildService(connection = conn).execute("SELECT id, name FROM users").getOrThrow()
 
         assertThat(result.columns).containsExactly("id", "name")
         assertThat(result.rows).hasSize(2)
@@ -137,7 +169,7 @@ class PrestoServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `null values are represented as NULL string`() {
+    fun `null column values are represented as NULL string`() {
         whenever(mockClusterStateManager.load()).thenReturn(stateWithAppNode())
 
         val meta = mock<ResultSetMetaData>()
@@ -155,19 +187,18 @@ class PrestoServiceTest : BaseKoinTest() {
             }
         }
         whenever(rs.getString(1)).thenReturn(null)
-
         val stmt = mock<Statement>()
         whenever(stmt.executeQuery(org.mockito.kotlin.any())).thenReturn(rs)
         val conn = mock<Connection>()
         whenever(conn.createStatement()).thenReturn(stmt)
 
-        val result = buildService(conn).execute("SELECT null").getOrThrow()
+        val result = buildService(connection = conn).execute("SELECT null").getOrThrow()
 
         assertThat(result.rows[0][0]).isEqualTo("NULL")
     }
 
     @Test
-    fun `no app nodes returns failure before connecting`() {
+    fun `no nodes of endpoint node type returns failure before connecting`() {
         whenever(mockClusterStateManager.load()).thenReturn(
             ClusterState(
                 name = "test",
@@ -178,8 +209,10 @@ class PrestoServiceTest : BaseKoinTest() {
 
         var connectionAttempted = false
         val service =
-            DefaultPrestoService(
+            KitJdbcSqlService(
                 clusterStateManager = getKoin().get(),
+                endpoint = prestoJdbcEndpoint,
+                user = "easy-db-lab",
                 connectionFactory = { _, _ ->
                     connectionAttempted = true
                     mock()
@@ -188,9 +221,9 @@ class PrestoServiceTest : BaseKoinTest() {
 
         val result = service.execute("SELECT 1")
 
-        assertThat(result.isFailure).isTrue
+        assertThat(result.isFailure).isTrue()
         assertThat(result.exceptionOrNull()?.message).contains("No app nodes")
-        assertThat(connectionAttempted).isFalse
+        assertThat(connectionAttempted).isFalse()
     }
 
     @Test
@@ -198,14 +231,68 @@ class PrestoServiceTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(stateWithAppNode())
 
         val service =
-            DefaultPrestoService(
+            KitJdbcSqlService(
                 clusterStateManager = getKoin().get(),
+                endpoint = prestoJdbcEndpoint,
+                user = "easy-db-lab",
                 connectionFactory = { _, _ -> throw java.sql.SQLException("Connection refused") },
             )
 
         val result = service.execute("SELECT 1")
 
-        assertThat(result.isFailure).isTrue
+        assertThat(result.isFailure).isTrue()
         assertThat(result.exceptionOrNull()?.message).contains("Connection refused")
+    }
+
+    @Test
+    fun `endpoint formatUrl is used to build the connection URL`() {
+        whenever(mockClusterStateManager.load()).thenReturn(stateWithAppNode())
+
+        var capturedUrl: String? = null
+        val service =
+            KitJdbcSqlService(
+                clusterStateManager = getKoin().get(),
+                endpoint = prestoJdbcEndpoint,
+                user = "easy-db-lab",
+                connectionFactory = { url, _ ->
+                    capturedUrl = url
+                    throw RuntimeException("stop here")
+                },
+            )
+
+        service.execute("SELECT 1")
+
+        assertThat(capturedUrl).isEqualTo("jdbc:presto://10.0.1.10:8080/cassandra")
+    }
+
+    @Test
+    fun `resolves db node type from endpoint node-type field`() {
+        whenever(mockClusterStateManager.load()).thenReturn(stateWithDbNode())
+
+        val clickhouseEndpoint =
+            KitEndpoint(
+                name = "JDBC",
+                nodeType = "db",
+                port = 30123,
+                type = KitEndpoint.EndpointType.JDBC,
+                scheme = "clickhouse",
+                path = "/default?compress=0",
+            )
+
+        var capturedUrl: String? = null
+        val service =
+            KitJdbcSqlService(
+                clusterStateManager = getKoin().get(),
+                endpoint = clickhouseEndpoint,
+                user = "default",
+                connectionFactory = { url, _ ->
+                    capturedUrl = url
+                    throw RuntimeException("stop here")
+                },
+            )
+
+        service.execute("SELECT 1")
+
+        assertThat(capturedUrl).isEqualTo("jdbc:clickhouse://10.0.1.20:30123/default?compress=0")
     }
 }

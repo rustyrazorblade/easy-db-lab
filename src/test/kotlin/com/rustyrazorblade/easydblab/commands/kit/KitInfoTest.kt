@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.commands.kit
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.services.InstallTemplateResolver
+import com.rustyrazorblade.easydblab.services.KitCapability
 import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.TemplateService
 import org.assertj.core.api.Assertions.assertThat
@@ -141,6 +142,21 @@ class KitInfoTest : BaseKoinTest() {
         val output = KitInfo.buildInfoText(syntheticConfig, listOf("bin/start.sh.template", "bin/stop.sh.template"))
         assertThat(output).contains("Start the workload")
         assertThat(output).contains("Stop the workload")
+    }
+
+    @Test
+    fun `capability commands appear in command list`() {
+        val config = KitConfig(name = "mykit", capabilities = listOf(KitCapability(type = "sql")))
+        val commands = KitInfo.buildCommandList(config, emptySet(), emptyList())
+        val entry = commands.find { it.first == "sql" }
+        assertThat(entry).isNotNull
+        assertThat(entry!!.second).isEqualTo("Execute SQL against mykit")
+    }
+
+    @Test
+    fun `capability commands absent when capabilities list is empty`() {
+        val commands = KitInfo.buildCommandList(syntheticConfig, syntheticScripts, emptyList())
+        assertThat(commands.map { it.first }).doesNotContain("sql")
     }
 
     @Test

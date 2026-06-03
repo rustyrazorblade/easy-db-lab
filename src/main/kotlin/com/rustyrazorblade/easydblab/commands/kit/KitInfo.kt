@@ -92,6 +92,11 @@ class KitInfo : BaseInstallCommand() {
             // Kotlin commands contributed via @KitCommand
             result.addAll(annotatedCommands)
 
+            // Commands derived from kit.yaml capabilities (e.g. sql)
+            config.capabilities
+                .filter { it.type.isNotBlank() }
+                .forEach { result.add(it.commandEntry(config.name)) }
+
             return result.sortedBy { it.first }
         }
 

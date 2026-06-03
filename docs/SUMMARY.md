@@ -10,9 +10,10 @@
 # User Guide
 
 - [Tutorial](user-guide/tutorial.md)
-- [Cassandra](user-guide/installing-cassandra.md)
-- [OpenSearch](user-guide/opensearch.md)
-- [Spark](user-guide/spark.md)
+- [Legacy](user-guide/legacy.md)
+  - [Cassandra](user-guide/installing-cassandra.md)
+  - [OpenSearch](user-guide/opensearch.md)
+  - [Spark](user-guide/spark.md)
 - [Kits](user-guide/kits.md)
   - [ClickHouse](user-guide/clickhouse.md)
     - [Backup & Restore](user-guide/clickhouse-backup-restore.md)

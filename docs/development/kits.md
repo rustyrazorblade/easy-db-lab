@@ -1,6 +1,6 @@
 # Kit Development Guide
 
-This guide covers how to build a kit for easy-db-lab — from the `config.yaml` structure
+This guide covers how to build a kit for easy-db-lab — from the `kit.yaml` structure
 through lifecycle phases, metrics collection, hooks, and Grafana dashboard provisioning.
 
 ## What is a Kit?
@@ -17,14 +17,14 @@ directory. The `<name> start`, `<name> stop`, etc. subcommands then drive it.
 
 ```
 install/<name>/
-├── config.yaml              # Required: kit definition
+├── kit.yaml              # Required: kit definition
 ├── bin/                     # Optional: legacy shell scripts (start.sh, stop.sh, ...)
 ├── dashboards/              # Optional: Grafana dashboard JSON files
 ├── <name>.yaml.template     # Optional: K8s manifest templates for typed steps
 └── METRICS.md               # Optional but recommended: documents exposed metrics
 ```
 
-## config.yaml Reference
+## kit.yaml Reference
 
 ```yaml
 name: myworkload
@@ -60,7 +60,7 @@ args:
 hooks:
   post-workload-start:
     script: bin/update-catalogs.sh
-    kits: []            # optional: only fire when these kits start
+    workloads: []       # optional: only fire when these kits start
   post-workload-stop:
     script: bin/update-catalogs.sh
 
@@ -241,10 +241,10 @@ All scripts and shell steps receive the following environment variables:
 | `EASY_DB_LAB_EXEC` | Path to the `easy-db-lab` binary |
 | `BACKUP_NAME` | First positional argument (backup and restore phases only) |
 
-Args declared in `config.yaml` under `args:` are also injected using their `variable` name. For
+Args declared in `kit.yaml` under `args:` are also injected using their `variable` name. For
 example, `--workers` with `variable: WORKERS` becomes `$WORKERS`.
 
-Default values in `config.yaml` can reference any of the variables above using `${VAR}` syntax:
+Default values in `kit.yaml` can reference any of the variables above using `${VAR}` syntax:
 ```yaml
 default: "${APP_NODE_COUNT}"
 ```
@@ -299,7 +299,7 @@ context of the *declaring* kit, not the triggering one.
 hooks:
   post-workload-start:
     script: bin/update-catalogs.sh
-    kits: [cassandra]   # optional: only fire when cassandra starts
+    workloads: [cassandra]   # optional: only fire when cassandra starts
   post-workload-stop:
     script: bin/update-catalogs.sh
 ```
@@ -321,7 +321,7 @@ After a successful `start`, easy-db-lab installs dashboards into Grafana via the
 **Auto-discovery** (default): any `.json` files in `dashboards/` are installed automatically.
 Files are installed in alphabetical order into a Grafana folder named after the kit.
 
-**Explicit list** (optional): declare dashboard paths in `config.yaml` to control selection or
+**Explicit list** (optional): declare dashboard paths in `kit.yaml` to control selection or
 order:
 ```yaml
 dashboards:
@@ -395,7 +395,7 @@ the full observability data flow.
 
 ## Adding a New Kit
 
-1. Create `src/main/resources/com/rustyrazorblade/easydblab/kits/<name>/config.yaml`
+1. Create `src/main/resources/com/rustyrazorblade/easydblab/kits/<name>/kit.yaml`
 2. Add lifecycle steps — start with `start` and `stop` at minimum
 3. Add a `metrics` block if the kit exposes Prometheus metrics
 4. Add a `METRICS.md` documenting the available metrics
@@ -404,4 +404,4 @@ the full observability data flow.
 7. Test `<name> start` and `<name> stop` against a real cluster
 
 No Kotlin code is required. The install and kit runner commands register dynamically from
-the `config.yaml` files at startup.
+the `kit.yaml` files at startup.

@@ -69,19 +69,25 @@ helm uninstall presto
 
 ## Automatic Catalog Management
 
-Presto maintains its own catalog configuration. When any other kit starts or stops, Presto
-automatically re-renders its catalog config to reflect the current set of running kits.
+Presto has built-in support for two catalogs that wire up automatically:
 
-For example, starting Cassandra:
+- **Cassandra** — uses the Cassandra connector, pointing at the cluster's Cassandra nodes
+- **ClickHouse** — uses the ClickHouse JDBC connector, pointing at the cluster's ClickHouse nodes
+
+When either of those kits starts or stops, Presto detects the change via a `post-workload-start`
+/ `post-workload-stop` hook and re-renders its catalog configuration automatically. No restart
+of Presto is needed.
 
 ```bash
+# Start Cassandra — Presto wires up the cassandra catalog automatically
 easy-db-lab cassandra start
-# Presto's post-workload-start hook fires automatically
-# update-catalogs.sh re-renders catalogs based on RUNNING_KITS
-# helm upgrade applies the updated catalog config
+
+# Start ClickHouse — Presto wires up the clickhouse catalog automatically
+easy-db-lab kit install clickhouse
+easy-db-lab clickhouse start
 ```
 
-You do not need to restart Presto or manually update any config when adding or removing kits.
+You do not need to restart Presto or manually update any config when adding or removing either kit.
 
 ## Node Placement
 

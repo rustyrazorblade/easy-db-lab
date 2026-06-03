@@ -162,6 +162,14 @@ The `K8sServiceIntegrationTest` runs K3s inside Docker via TestContainers. This 
 
 If K3s fails to start with `ContainerLaunchException`, check that the devcontainer itself is configured with `--privileged`, `--cgroupns=host`, and `/sys/fs/cgroup` mounted read-write (see `.devcontainer/devcontainer.json`).
 
+## Test Data Quality
+
+**Never assert specific content from real kit files in behaviour tests.** Kit YAML files evolve — commands get added, removed, or renamed. Tests that check `assertThat(output).contains("presto start")` or `assertThat(output).contains("clickhouse backup")` will break whenever a kit changes, even though the code under test is correct.
+
+**Rule**: Tests that verify *rendering logic* (formatting, ordering, labels, annotations) must use synthetic data — a `KitConfig` constructed inline, a hand-crafted `Set<String>` of script names, a `List<Pair<String, String>>` of annotated commands. Only tests verifying that a specific kit's *metadata* (name, version, description, endpoints, args) is correctly parsed may read real kit files.
+
+**Ordering assertions belong on the data, not the rendered output.** If a list should be sorted, assert on the `List<String>` of names directly (e.g. via `buildCommandList()`), not by searching for strings in a rendered block of text.
+
 ## Key Rules
 
 - **Always** use AssertJ assertions (`assertThat`), not JUnit assertions

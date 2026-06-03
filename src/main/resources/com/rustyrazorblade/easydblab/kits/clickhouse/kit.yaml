@@ -1,0 +1,174 @@
+name: clickhouse
+type: db
+description: Scaffold ClickHouse workload files using the Altinity operator
+version: "1.0.0"
+collision-check: true
+metrics:
+  type: scrape
+  port: 30936
+  path: /metrics
+runtime:
+  type: pods
+  selector: "clickhouse.altinity.com/chi=clickhouse"
+  namespace: default
+endpoints:
+  - name: "HTTP"
+    node-type: db
+    port: 30123
+    type: http
+  - name: "Native"
+    node-type: db
+    port: 30900
+    type: native
+args:
+  - flag: --clickhouse-version
+    variable: CLICKHOUSE_VERSION
+    description: "ClickHouse server image version (e.g. 25.4, 24.8)"
+    type: string
+    default: "latest"
+  - flag: --size
+    variable: STORAGE_SIZE
+    description: Storage size per node (e.g. 100Gi)
+    type: string
+    default: "10Ti"
+  - flag: --replicas
+    variable: REPLICAS
+    description: "Number of ClickHouse replicas (default: db node count)"
+    type: int
+    default: "${DB_NODE_COUNT}"
+  - flag: --s3-cache
+    variable: S3_CACHE_SIZE
+    description: "NVMe cache size for S3-backed storage policies (e.g. 10Gi, 50Gi)"
+    type: string
+    default: "10Gi"
+  - flag: --s3-cache-on-write
+    variable: S3_CACHE_ON_WRITE
+    description: Populate S3 disk cache on write
+    type: boolean
+    default: "true"
+  - flag: --s3-tier-move-factor
+    variable: S3_TIER_MOVE_FACTOR
+    description: S3 tier move factor
+    type: float
+    default: "0.2"
+
+install:
+  - type: helm-repo
+    name: altinity
+    url: https://docs.altinity.com/clickhouse-operator/
+  - type: helm
+    chart: altinity/altinity-clickhouse-operator
+    release: clickhouse-operator
+    namespace: kube-system
+
+start:
+  - type: platform-pvs
+    node-type: db
+  - type: manifest
+    template: clickhouse-keeper.yaml
+  - type: shell
+    script: |
+      echo "Waiting for ClickHouse Keeper pods to be created..."
+      until kubectl get pods -l clickhouse-keeper.altinity.com/chk=clickhouse-keeper -n default --no-headers 2>/dev/null | grep -q .; do sleep 5; done
+      echo "Keeper pods found, waiting for Ready..."
+      kubectl wait --for=condition=Ready pods \
+        -l clickhouse-keeper.altinity.com/chk=clickhouse-keeper \
+        --namespace default \
+        --timeout=300s
+  - type: manifest
+    template: clickhouseinstallation.yaml
+  - type: shell
+    script: |
+      echo "Waiting for ClickHouse pod to be created..."
+      until kubectl get pods -l clickhouse.altinity.com/chi=clickhouse -n default --no-headers 2>/dev/null | grep -q .; do sleep 5; done
+      echo "Pod exists, waiting for Ready..."
+      kubectl wait --for=condition=Ready pods \
+        -l clickhouse.altinity.com/chi=clickhouse \
+        --namespace default \
+        --timeout=300s
+  - type: manifest
+    template: nodeport-service.yaml
+
+stop:
+  - type: delete
+    kind: ClickHouseInstallation
+    name: clickhouse
+    namespace: default
+  - type: delete
+    kind: Service
+    name: clickhouse-nodeport
+    namespace: default
+
+backup:
+  - type: shell
+    script: |
+      if [ -z "${BACKUP_NAME}" ]; then
+        echo "Error: backup name required. Usage: easy-db-lab clickhouse backup --name <name>" >&2
+        exit 1
+      fi
+      POD=$(kubectl get pods -n default -l clickhouse.altinity.com/chi=clickhouse -o jsonpath='{.items[0].metadata.name}')
+      if [ -z "$POD" ]; then
+        echo "Error: no ClickHouse pod found" >&2
+        exit 1
+      fi
+      # Pre-check: fail fast if a backup with this name already exists in S3.
+      # Avoids a cryptic BACKUP_ALREADY_EXISTS error from ClickHouse.
+      S3_CHECK="s3://${ACCOUNT_BUCKET}/clickhouse-backups/${BACKUP_NAME}/.backup"
+      if aws s3 ls "${S3_CHECK}" --region "${REGION}" 2>/dev/null | grep -q .; then
+        echo "Error: backup '${BACKUP_NAME}' already exists in S3." >&2
+        echo "  Delete it:  aws s3 rm s3://${ACCOUNT_BUCKET}/clickhouse-backups/${BACKUP_NAME}/ --recursive --region ${REGION}" >&2
+        echo "  Or choose a different name: easy-db-lab clickhouse backup --name <new-name>" >&2
+        exit 1
+      fi
+      kubectl exec -n default "$POD" -- clickhouse-client --query \
+        "BACKUP DATABASE default TO Disk('s3_backup', '${BACKUP_NAME}/')"
+
+restore:
+  - type: shell
+    script: |
+      if [ -z "${BACKUP_NAME}" ]; then
+        echo "Error: backup name required. Usage: easy-db-lab clickhouse restore --name <name>" >&2
+        exit 1
+      fi
+      POD=$(kubectl get pods -n default -l clickhouse.altinity.com/chi=clickhouse -o jsonpath='{.items[0].metadata.name}')
+      if [ -z "$POD" ]; then
+        echo "Error: no ClickHouse pod found" >&2
+        exit 1
+      fi
+      # Pre-restore ZK cleanup: drop stale replica entries left by DROP TABLE (without SYNC).
+      # If a table was dropped without cleaning ZK metadata, RESTORE fails with
+      # REPLICA_ALREADY_EXISTS when it tries to recreate the table in Keeper.
+      # We iterate ZK shard paths and drop replicas for tables that no longer exist locally.
+      echo "Cleaning up stale ZK replica paths..."
+      SHARD_PATHS=$(kubectl exec -n default "$POD" -- clickhouse-client --query \
+        "SELECT concat(path, '/', name) FROM system.zookeeper WHERE path='/clickhouse/tables'" 2>/dev/null || true)
+      for SHARD_PATH in $SHARD_PATHS; do
+        TABLES=$(kubectl exec -n default "$POD" -- clickhouse-client --query \
+          "SELECT name FROM system.zookeeper WHERE path='${SHARD_PATH}'" 2>/dev/null || true)
+        for TABLE in $TABLES; do
+          TABLE_PATH="${SHARD_PATH}/${TABLE}"
+          LOCAL_EXISTS=$(kubectl exec -n default "$POD" -- clickhouse-client --query \
+            "SELECT count() FROM system.replicas WHERE zookeeper_path='${TABLE_PATH}'" 2>/dev/null || echo "0")
+          if [ "${LOCAL_EXISTS}" = "0" ]; then
+            REPLICAS=$(kubectl exec -n default "$POD" -- clickhouse-client --query \
+              "SELECT name FROM system.zookeeper WHERE path='${TABLE_PATH}/replicas'" 2>/dev/null || true)
+            for REPLICA in $REPLICAS; do
+              echo "  Dropping stale ZK replica: ${REPLICA} from ${TABLE_PATH}"
+              kubectl exec -n default "$POD" -- clickhouse-client --query \
+                "SYSTEM DROP REPLICA '${REPLICA}' FROM ZKPATH '${TABLE_PATH}'" 2>/dev/null || true
+            done
+          fi
+        done
+      done
+      kubectl exec -n default "$POD" -- clickhouse-client --query \
+        "RESTORE DATABASE default FROM Disk('s3_backup', '${BACKUP_NAME}/')"
+
+uninstall:
+  - type: delete
+    kind: ClickHouseKeeperInstallation
+    name: clickhouse-keeper
+    namespace: default
+  - type: platform-pvs-delete
+  - type: helm-uninstall
+    release: clickhouse-operator
+    namespace: kube-system

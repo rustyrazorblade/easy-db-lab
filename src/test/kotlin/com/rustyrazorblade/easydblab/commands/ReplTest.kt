@@ -62,7 +62,7 @@ class ReplTest : BaseKoinTest() {
 
         // Verify top-level commands exist
         val subcommands = cmd.subcommands.keys
-        assertThat(subcommands).contains("status", "cassandra", "spark", "clickhouse")
+        assertThat(subcommands).contains("status", "cassandra", "spark")
 
         // Verify nested commands exist
         val cassandraCmd = cmd.subcommands["cassandra"]
@@ -94,7 +94,6 @@ class ReplTest : BaseKoinTest() {
                 "up",
                 "cassandra",
                 "spark",
-                "clickhouse",
                 "opensearch",
                 "aws",
             ),

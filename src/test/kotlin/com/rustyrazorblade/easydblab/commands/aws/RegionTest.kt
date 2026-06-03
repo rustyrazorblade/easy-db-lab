@@ -4,64 +4,52 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
-import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
-import com.rustyrazorblade.easydblab.output.OutputHandler
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
+import java.io.ByteArrayOutputStream
+import java.io.PrintStream
 
 class RegionTest : BaseKoinTest() {
     private lateinit var mockClusterStateManager: ClusterStateManager
-    private lateinit var outputHandler: BufferedOutputHandler
+    private val stdout = ByteArrayOutputStream()
+    private val originalOut = System.out
 
-    override fun additionalTestModules(): List<Module> =
-        listOf(
-            module {
-                single<ClusterStateManager> { mockClusterStateManager }
-            },
-        )
+    override fun additionalTestModules(): List<Module> = listOf(module { single<ClusterStateManager> { mockClusterStateManager } })
 
     @BeforeEach
-    fun setupMocks() {
+    fun setup() {
         mockClusterStateManager = mock()
-        outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
+        System.setOut(PrintStream(stdout))
+    }
+
+    @AfterEach
+    fun restoreStdout() {
+        System.setOut(originalOut)
+        stdout.reset()
     }
 
     @Test
     fun `execute outputs region from cluster state`() {
-        val state =
-            ClusterState(
-                name = "test-cluster",
-                versions = mutableMapOf(),
-                initConfig = InitConfig(region = "us-east-1"),
-            )
-        whenever(mockClusterStateManager.load()).thenReturn(state)
-
-        val command = Region()
-        command.execute()
-
-        val output = outputHandler.messages.joinToString("\n")
-        assertThat(output).isEqualTo("us-east-1")
+        whenever(mockClusterStateManager.load()).thenReturn(
+            ClusterState(name = "test-cluster", versions = mutableMapOf(), initConfig = InitConfig(region = "us-east-1")),
+        )
+        Region().execute()
+        assertThat(stdout.toString().trim()).isEqualTo("us-east-1")
     }
 
     @Test
     fun `execute errors when no region configured`() {
-        val state =
-            ClusterState(
-                name = "test-cluster",
-                versions = mutableMapOf(),
-                initConfig = null,
-            )
-        whenever(mockClusterStateManager.load()).thenReturn(state)
-
-        val command = Region()
-
-        assertThatThrownBy { command.execute() }
+        whenever(mockClusterStateManager.load()).thenReturn(
+            ClusterState(name = "test-cluster", versions = mutableMapOf(), initConfig = null),
+        )
+        assertThatThrownBy { Region().execute() }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("No region configured")
     }

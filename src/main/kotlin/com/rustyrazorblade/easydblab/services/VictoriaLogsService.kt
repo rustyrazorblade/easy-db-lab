@@ -167,8 +167,8 @@ class DefaultVictoriaLogsService(
         val map: Map<String, Any?> = mapper.readValue(json)
 
         return LogEntry(
-            timestamp = map["_time"]?.toString() ?: map["timestamp"]?.toString() ?: "",
-            message = map["_msg"]?.toString() ?: map["message"]?.toString() ?: "",
+            timestamp = (map["_time"]?.toString() ?: map["timestamp"]?.toString()).orEmpty(),
+            message = (map["_msg"]?.toString() ?: map["message"]?.toString()).orEmpty(),
             source = map["source"]?.toString(),
             host = map["host"]?.toString(),
             unit = map["unit"]?.toString(),

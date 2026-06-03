@@ -6,13 +6,18 @@ import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.services.aws.AWSResourceSetupService
 import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
+import java.io.ByteArrayOutputStream
+import java.io.PrintStream
 
 class ShowIamPoliciesTest : BaseKoinTest() {
     private lateinit var outputHandler: BufferedOutputHandler
+    private val stdout = ByteArrayOutputStream()
+    private val originalOut = System.out
 
     override fun additionalTestModules(): List<Module> =
         listOf(
@@ -24,6 +29,13 @@ class ShowIamPoliciesTest : BaseKoinTest() {
     @BeforeEach
     fun setup() {
         outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
+        System.setOut(PrintStream(stdout))
+    }
+
+    @AfterEach
+    fun restoreStdout() {
+        System.setOut(originalOut)
+        stdout.reset()
     }
 
     @Test
@@ -31,9 +43,8 @@ class ShowIamPoliciesTest : BaseKoinTest() {
         val command = ShowIamPolicies()
         command.execute()
 
-        val output = outputHandler.messages.joinToString("\n")
         // STS mock returns account ID "123456789012"
-        assertThat(output).contains("123456789012")
+        assertThat(stdout.toString()).contains("123456789012")
     }
 
     @Test
@@ -42,8 +53,7 @@ class ShowIamPoliciesTest : BaseKoinTest() {
         command.policyName = "ec2"
         command.execute()
 
-        val output = outputHandler.messages.joinToString("\n")
-        assertThat(output).containsIgnoringCase("ec2")
+        assertThat(stdout.toString()).containsIgnoringCase("ec2")
     }
 
     @Test

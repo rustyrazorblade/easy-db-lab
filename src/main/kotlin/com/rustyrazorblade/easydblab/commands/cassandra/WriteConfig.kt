@@ -4,7 +4,6 @@ import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.TriggerBackup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.configuration.getHosts
 import com.rustyrazorblade.easydblab.events.Event
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option

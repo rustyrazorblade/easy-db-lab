@@ -8,8 +8,6 @@ import com.rustyrazorblade.easydblab.commands.converters.PicoServerTypeConverter
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.configuration.getHosts
-import com.rustyrazorblade.easydblab.configuration.toHost
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import org.koin.core.component.inject
@@ -99,13 +97,9 @@ class ExecRun : PicoBaseCommand() {
                 // Read output from systemd journal after foreground execution
                 val journalCmd = "sudo journalctl --unit=$systemdUnit --no-pager --output=cat"
                 val logOutput = remoteOps.executeRemotely(host, journalCmd, output = false, secret = false)
-                eventBus.emit(Event.Command.HostExecHeader(host.alias))
-                if (logOutput.text.isNotEmpty()) {
-                    eventBus.emit(Event.Command.HostExecOutput(logOutput.text))
-                }
-                if (logOutput.stderr.isNotEmpty()) {
-                    eventBus.emit(Event.Command.HostExecStderr(logOutput.stderr))
-                }
+                println("=== ${host.alias} ===")
+                if (logOutput.text.isNotEmpty()) println(logOutput.text)
+                if (logOutput.stderr.isNotEmpty()) println(logOutput.stderr)
             }
         } catch (e: Exception) {
             eventBus.emit(Event.Command.HostExecError(host.alias, e.message ?: e::class.simpleName ?: "Unknown error"))

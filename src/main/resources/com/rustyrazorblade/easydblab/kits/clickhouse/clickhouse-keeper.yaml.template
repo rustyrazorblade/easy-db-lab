@@ -1,0 +1,26 @@
+apiVersion: "clickhouse-keeper.altinity.com/v1"
+kind: "ClickHouseKeeperInstallation"
+metadata:
+  name: clickhouse-keeper
+  namespace: default
+spec:
+  configuration:
+    clusters:
+      - name: keeper
+        layout:
+          replicasCount: __REPLICAS__
+  templates:
+    podTemplates:
+      - name: clickhouse-keeper-pod
+        spec:
+          affinity:
+            nodeAffinity:
+              # Run Keeper on db nodes co-located with ClickHouse so the quorum
+              # is on the same machines as the data it coordinates.
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: type
+                        operator: In
+                        values:
+                          - db

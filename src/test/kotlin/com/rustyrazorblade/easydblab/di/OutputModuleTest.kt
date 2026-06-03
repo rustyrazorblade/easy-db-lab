@@ -1,30 +1,20 @@
 package com.rustyrazorblade.easydblab.di
 
+import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.output.CompositeOutputHandler
 import com.rustyrazorblade.easydblab.output.ConsoleOutputHandler
 import com.rustyrazorblade.easydblab.output.LoggerOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import org.assertj.core.api.Assertions.assertThat
-import org.junit.jupiter.api.AfterEach
-import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import org.koin.core.context.startKoin
-import org.koin.core.context.stopKoin
-import org.koin.test.KoinTest
+import org.koin.core.module.Module
+import org.koin.core.qualifier.named
 import org.koin.test.inject
 
-class OutputModuleTest : KoinTest {
-    @BeforeEach
-    fun setup() {
-        startKoin {
-            modules(outputModule)
-        }
-    }
+class OutputModuleTest : BaseKoinTest() {
+    override fun coreTestModules(): List<Module> = emptyList()
 
-    @AfterEach
-    fun tearDown() {
-        stopKoin()
-    }
+    override fun additionalTestModules(): List<Module> = listOf(outputModule)
 
     @Test
     fun `default OutputHandler should be CompositeOutputHandler with Logger and Console handlers`() {
@@ -42,22 +32,14 @@ class OutputModuleTest : KoinTest {
 
     @Test
     fun `named console handler should be ConsoleOutputHandler instance`() {
-        val consoleHandler: OutputHandler by inject(
-            qualifier =
-                org.koin.core.qualifier
-                    .named("console"),
-        )
+        val consoleHandler: OutputHandler by inject(qualifier = named("console"))
 
         assertThat(consoleHandler).isInstanceOf(ConsoleOutputHandler::class.java)
     }
 
     @Test
     fun `named logger handler should be LoggerOutputHandler instance`() {
-        val loggerHandler: OutputHandler by inject(
-            qualifier =
-                org.koin.core.qualifier
-                    .named("logger"),
-        )
+        val loggerHandler: OutputHandler by inject(qualifier = named("logger"))
 
         assertThat(loggerHandler).isInstanceOf(LoggerOutputHandler::class.java)
     }

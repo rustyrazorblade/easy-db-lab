@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.services.SparkService
 import com.rustyrazorblade.easydblab.services.VictoriaLogsService
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
@@ -19,12 +20,16 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import software.amazon.awssdk.services.emr.model.StepState
+import java.io.ByteArrayOutputStream
+import java.io.PrintStream
 import java.time.Instant
 
 class SparkLogsTest : BaseKoinTest() {
     private lateinit var mockSparkService: SparkService
     private lateinit var mockVictoriaLogsService: VictoriaLogsService
     private lateinit var outputHandler: BufferedOutputHandler
+    private val stdout = ByteArrayOutputStream()
+    private val originalOut = System.out
 
     private val testClusterInfo =
         EMRClusterInfo(
@@ -47,8 +52,15 @@ class SparkLogsTest : BaseKoinTest() {
         mockSparkService = mock()
         mockVictoriaLogsService = mock()
         outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
+        System.setOut(PrintStream(stdout))
 
         whenever(mockSparkService.validateCluster()).thenReturn(Result.success(testClusterInfo))
+    }
+
+    @AfterEach
+    fun restoreStdout() {
+        System.setOut(originalOut)
+        stdout.reset()
     }
 
     @Nested
@@ -130,7 +142,7 @@ class SparkLogsTest : BaseKoinTest() {
             command.stepId = "s-TEST"
             command.execute()
 
-            val output = outputHandler.messages.joinToString("\n")
+            val output = stdout.toString()
             assertThat(output).contains("Step started")
             assertThat(output).contains("Found 2 log entries")
         }

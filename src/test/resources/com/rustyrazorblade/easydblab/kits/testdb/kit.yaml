@@ -1,0 +1,14 @@
+name: testdb
+description: Minimal shell workload for integration testing only
+version: "1.0.0"
+args:
+  - flag: --size
+    variable: STORAGE_SIZE
+    description: Storage size per node
+    required: true
+    type: string
+  - flag: --replicas
+    variable: REPLICAS
+    description: Number of replicas
+    type: int
+    default: "${DB_NODE_COUNT}"

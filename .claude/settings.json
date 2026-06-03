@@ -1,0 +1,6 @@
+{
+  "enabledPlugins": {
+    "cassandra-expert@rustyrazorblade-plugins": true,
+    "easy-db-lab@rustyrazorblade-plugins": true
+  }
+}

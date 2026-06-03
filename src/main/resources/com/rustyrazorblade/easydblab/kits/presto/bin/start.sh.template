@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export KUBECONFIG="${SCRIPT_DIR}/../../__KUBECONFIG__"
+
+echo "Installing Presto..."
+helm repo add prestodb https://prestodb.github.io/presto-helm-charts 2>/dev/null || true
+
+# Install and configure catalogs in one step (update-catalogs.sh owns the helm install)
+"${SCRIPT_DIR}/update-catalogs.sh"
+
+PYROSCOPE_OPTS="-javaagent:/usr/local/pyroscope/pyroscope.jar -Dpyroscope.application.name=presto -Dpyroscope.server.address=http://${CONTROL_HOST_PRIVATE}:4040 -Dpyroscope.format=jfr -Dpyroscope.profiler.event=cpu -Dpyroscope.profiler.alloc=512k -Dpyroscope.profiler.lock=10ms"
+
+echo "Patching coordinator: hostPorts + Pyroscope profiling agent..."
+PORTS_RAW=$(kubectl get deployment presto-coordinator -n default \
+  -o jsonpath='{.spec.template.spec.containers[?(@.name=="coordinator")].ports}')
+PORTS_JSON=$(echo "${PORTS_RAW:-[]}" \
+  | jq -c 'map(if .containerPort == 8080 then . + {"hostPort": 8080} elif .containerPort == 9090 then . + {"hostPort": 9090} else . end)')
+COORD_PATCH=$(jq -n \
+  --argjson ports "$PORTS_JSON" \
+  --arg opts "${PYROSCOPE_OPTS} -Dpyroscope.labels=cluster=${CLUSTER_NAME},component=coordinator" \
+  '{spec:{template:{spec:{
+    volumes:[{name:"pyroscope-agent",hostPath:{path:"/usr/local/pyroscope"}}],
+    containers:[{name:"coordinator",ports:$ports,env:[{name:"JAVA_TOOL_OPTIONS",value:$opts}],
+      volumeMounts:[{name:"pyroscope-agent",mountPath:"/usr/local/pyroscope",readOnly:true}]}]
+  }}}}')
+kubectl patch deployment presto-coordinator \
+  --namespace default \
+  --type=strategic \
+  -p="$COORD_PATCH"
+
+echo "Patching worker: Pyroscope profiling agent..."
+WORKER_PATCH=$(jq -n \
+  --arg opts "${PYROSCOPE_OPTS} -Dpyroscope.labels=cluster=${CLUSTER_NAME},component=worker" \
+  '{spec:{template:{spec:{
+    volumes:[{name:"pyroscope-agent",hostPath:{path:"/usr/local/pyroscope"}}],
+    containers:[{name:"worker",env:[{name:"JAVA_TOOL_OPTIONS",value:$opts}],
+      volumeMounts:[{name:"pyroscope-agent",mountPath:"/usr/local/pyroscope",readOnly:true}]}]
+  }}}}')
+kubectl patch deployment presto-worker \
+  --namespace default \
+  --type=strategic \
+  -p="$WORKER_PATCH"
+
+echo "Waiting for coordinator rollout to complete..."
+kubectl rollout status deployment/presto-coordinator \
+  --namespace default \
+  --timeout=180s
+
+echo "Waiting for worker rollout to complete..."
+kubectl rollout status deployment/presto-worker \
+  --namespace default \
+  --timeout=180s
+
+echo "Waiting for Presto coordinator to become ready..."
+kubectl wait --for=condition=Ready pods \
+  -l app.kubernetes.io/name=presto,app.kubernetes.io/component=coordinator \
+  --namespace default \
+  --timeout=180s
+
+echo "Presto is ready. Workers: __WORKERS__"

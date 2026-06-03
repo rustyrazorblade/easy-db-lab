@@ -3,8 +3,6 @@ package com.rustyrazorblade.easydblab.commands.tailscale
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
-import com.rustyrazorblade.easydblab.configuration.getControlHost
-import com.rustyrazorblade.easydblab.configuration.toHost
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.TailscaleService
 import org.koin.core.component.inject

@@ -58,12 +58,12 @@ class ContainerExecutor(
         } catch (e: com.github.dockerjava.api.exception.DockerException) {
             val errorMsg = "Docker error starting container: $containerId"
             log.error(e) { errorMsg }
-            eventBus.emit(Event.Docker.ContainerStartError(e.message ?: ""))
+            eventBus.emit(Event.Docker.ContainerStartError(e.message.orEmpty()))
             throw DockerException("Failed to start container $containerId", e)
         } catch (e: IOException) {
             val errorMsg = "IO error starting container: $containerId"
             log.error(e) { errorMsg }
-            eventBus.emit(Event.Docker.ContainerStartError(e.message ?: ""))
+            eventBus.emit(Event.Docker.ContainerStartError(e.message.orEmpty()))
             throw DockerException("IO error starting container $containerId", e)
         }
 
@@ -117,10 +117,10 @@ class ContainerExecutor(
                 }.run()
         } catch (e: DockerException) {
             log.error(e) { "Docker error while removing container $containerId" }
-            eventBus.emit(Event.Docker.ContainerRemoveError(e.message ?: ""))
+            eventBus.emit(Event.Docker.ContainerRemoveError(e.message.orEmpty()))
         } catch (e: RuntimeException) {
             log.error(e) { "Runtime error while removing container $containerId" }
-            eventBus.emit(Event.Docker.ContainerRemoveError(e.message ?: ""))
+            eventBus.emit(Event.Docker.ContainerRemoveError(e.message.orEmpty()))
         }
     }
 }

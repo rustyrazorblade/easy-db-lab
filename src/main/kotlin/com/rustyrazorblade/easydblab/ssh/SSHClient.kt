@@ -306,13 +306,10 @@ class SSHClient(
      */
     override fun getScpClient(): CloseableScpClient =
         synchronized(operationLock) {
-            // Return cached client if available, otherwise create new one
-            if (cachedScpClient == null) {
-                val creator = ScpClientCreator.instance()
-                val client = creator.createScpClient(session)
-                cachedScpClient = CloseableScpClient.singleSessionInstance(client)
-            }
-            return@synchronized cachedScpClient!!
+            return@synchronized cachedScpClient
+                ?: CloseableScpClient
+                    .singleSessionInstance(ScpClientCreator.instance().createScpClient(session))
+                    .also { cachedScpClient = it }
         }
 
     // Cache SCP client to prevent resource leaks

@@ -7,15 +7,11 @@ import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
-import org.junit.jupiter.api.AfterEach
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertFalse
-import org.junit.jupiter.api.Assertions.assertTrue
+import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.assertThrows
-import org.koin.core.context.startKoin
-import org.koin.core.context.stopKoin
+import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
@@ -23,26 +19,13 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 
-/**
- * Integration tests for Docker class covering more complex scenarios.
- */
-class DockerIntegrationTest {
-    private lateinit var mockContext: Context
-    private lateinit var mockDockerClient: DockerClientInterface
-    private lateinit var mockUserIdProvider: UserIdProvider
-    private lateinit var bufferedOutputHandler: BufferedOutputHandler
-    private lateinit var docker: Docker
-    private lateinit var mockContainerCreationCommand: ContainerCreationCommand
-    private lateinit var mockContainerResponse: com.github.dockerjava.api.command.CreateContainerResponse
-    private lateinit var mockContainerState: InspectContainerResponse.ContainerState
-    private lateinit var mockInspectContainerResponse: InspectContainerResponse
+class DockerIntegrationTest : BaseKoinTest() {
+    val bufferedOutputHandler = BufferedOutputHandler()
 
-    @BeforeEach
-    fun setup() {
-        bufferedOutputHandler = BufferedOutputHandler()
+    override fun coreTestModules(): List<Module> = emptyList()
 
-        // Create a test-specific Koin module that uses our bufferedOutputHandler
-        val testModule =
+    override fun additionalTestModules(): List<Module> =
+        listOf(
             module {
                 factory<OutputHandler> { bufferedOutputHandler }
                 single {
@@ -63,12 +46,20 @@ class DockerIntegrationTest {
                     )
                     eventBus
                 }
-            }
+            },
+        )
 
-        startKoin {
-            modules(testModule)
-        }
+    private lateinit var mockContext: Context
+    private lateinit var mockDockerClient: DockerClientInterface
+    private lateinit var mockUserIdProvider: UserIdProvider
+    private lateinit var docker: Docker
+    private lateinit var mockContainerCreationCommand: ContainerCreationCommand
+    private lateinit var mockContainerResponse: com.github.dockerjava.api.command.CreateContainerResponse
+    private lateinit var mockContainerState: InspectContainerResponse.ContainerState
+    private lateinit var mockInspectContainerResponse: InspectContainerResponse
 
+    @BeforeEach
+    fun setup() {
         mockContext = mock()
         mockDockerClient = mock()
         mockUserIdProvider = mock()
@@ -95,152 +86,93 @@ class DockerIntegrationTest {
         docker = Docker(mockContext, mockDockerClient, mockUserIdProvider)
     }
 
-    @AfterEach
-    fun teardown() {
-        stopKoin()
-    }
-
     @Test
     fun `exists returns false when image is missing`() {
-        // Given
         whenever(mockDockerClient.listImages("test", "latest")).thenReturn(emptyList())
 
-        // When
-        val result = docker.exists("test", "latest")
-
-        // Then
-        assertFalse(result)
+        assertThat(docker.exists("test", "latest")).isFalse()
         verify(mockDockerClient).listImages("test", "latest")
     }
 
     @Test
     fun `exists returns true when image exists`() {
-        // Given
-        val mockImages = listOf(mock<com.github.dockerjava.api.model.Image>())
-        whenever(mockDockerClient.listImages("test", "latest")).thenReturn(mockImages)
+        whenever(mockDockerClient.listImages("test", "latest")).thenReturn(listOf(mock()))
 
-        // When
-        val result = docker.exists("test", "latest")
-
-        // Then
-        assertTrue(result)
+        assertThat(docker.exists("test", "latest")).isTrue()
         verify(mockDockerClient).listImages("test", "latest")
     }
 
     @Test
     fun `addEnv validates blank environment variables`() {
-        // When/Then
-        assertThrows<IllegalArgumentException> {
-            docker.addEnv("")
-        }
+        assertThatThrownBy { docker.addEnv("") }
+            .isInstanceOf(IllegalArgumentException::class.java)
     }
 
     @Test
     fun `addEnv adds multiple environment variables correctly`() {
-        // When
-        val result =
-            docker
-                .addEnv("VAR1=value1")
-                .addEnv("VAR2=value2")
-                .addEnv("VAR3=value3")
+        val result = docker.addEnv("VAR1=value1").addEnv("VAR2=value2").addEnv("VAR3=value3")
+        assertThat(result).isEqualTo(docker)
 
-        // Then
-        assertEquals(docker, result)
-
-        // Set up mocks for container run
         whenever(mockContainerState.running).thenReturn(false)
         whenever(mockContainerState.exitCodeLong).thenReturn(0L)
-
-        // Run container to verify env vars are passed
         docker.runContainer("test:latest", mutableListOf("echo"), "")
 
-        // Verify env vars were set
         val envCaptor = argumentCaptor<Array<String>>()
         verify(mockContainerCreationCommand).withEnv(envCaptor.capture())
-        val envArray = envCaptor.firstValue
-        assertTrue(envArray.contains("VAR1=value1"))
-        assertTrue(envArray.contains("VAR2=value2"))
-        assertTrue(envArray.contains("VAR3=value3"))
+        assertThat(envCaptor.firstValue).contains("VAR1=value1", "VAR2=value2", "VAR3=value3")
     }
 
     @Test
     fun `runContainer validates empty command list`() {
-        // When/Then
-        assertThrows<IllegalArgumentException> {
-            docker.runContainer("test:latest", mutableListOf(), "")
-        }
+        assertThatThrownBy { docker.runContainer("test:latest", mutableListOf(), "") }
+            .isInstanceOf(IllegalArgumentException::class.java)
     }
 
     @Test
     fun `runContainer validates blank image tag`() {
-        // When/Then
-        assertThrows<IllegalArgumentException> {
-            docker.runContainer("", mutableListOf("echo"), "")
-        }
+        assertThatThrownBy { docker.runContainer("", mutableListOf("echo"), "") }
+            .isInstanceOf(IllegalArgumentException::class.java)
     }
 
     @Test
     fun `runContainer with invalid user ID fails`() {
-        // Given
         whenever(mockUserIdProvider.getUserId()).thenReturn(-1)
 
-        // When/Then
-        assertThrows<IllegalStateException> {
-            docker.runContainer("test:latest", mutableListOf("echo"), "")
-        }
+        assertThatThrownBy { docker.runContainer("test:latest", mutableListOf("echo"), "") }
+            .isInstanceOf(IllegalStateException::class.java)
     }
 
     @Test
     fun `runContainer with working directory sets it correctly`() {
-        // Given
         whenever(mockContainerState.running).thenReturn(false)
         whenever(mockContainerState.exitCodeLong).thenReturn(0L)
 
-        // When
         docker.runContainer("test:latest", mutableListOf("pwd"), "/workspace")
 
-        // Then
         verify(mockContainerCreationCommand).withWorkingDir("/workspace")
-        val hasExpectedMessage =
-            bufferedOutputHandler.messages.any { msg ->
-                msg.contains("Setting working directory inside container to /workspace")
-            }
-        assertTrue(hasExpectedMessage)
+        assertThat(bufferedOutputHandler.messages)
+            .anyMatch { it.contains("Setting working directory inside container to /workspace") }
     }
 
     @Test
     fun `ContainerCreationCommand validates blank working directory`() {
-        // Given
         val mockCreateCmd = mock<com.github.dockerjava.api.command.CreateContainerCmd>()
         val command = ContainerCreationCommand(mockCreateCmd)
 
-        // When/Then
-        assertThrows<IllegalArgumentException> {
-            command.withWorkingDir("")
-        }
+        assertThatThrownBy { command.withWorkingDir("") }
+            .isInstanceOf(IllegalArgumentException::class.java)
     }
 
     @Test
     fun `VolumeMapping validates blank paths`() {
-        // When/Then
-        assertThrows<IllegalArgumentException> {
-            VolumeMapping("", "/dest", AccessMode.rw)
-        }
-
-        assertThrows<IllegalArgumentException> {
-            VolumeMapping("/source", "", AccessMode.rw)
-        }
+        assertThatThrownBy { VolumeMapping("", "/dest", AccessMode.rw) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+        assertThatThrownBy { VolumeMapping("/source", "", AccessMode.rw) }
+            .isInstanceOf(IllegalArgumentException::class.java)
     }
 
     @Test
     fun `DefaultUserIdProvider returns valid user ID`() {
-        // Given
-        val provider = DefaultUserIdProvider()
-
-        // When
-        val userId = provider.getUserId()
-
-        // Then
-        assertTrue(userId >= 0)
+        assertThat(DefaultUserIdProvider().getUserId()).isGreaterThanOrEqualTo(0)
     }
 }

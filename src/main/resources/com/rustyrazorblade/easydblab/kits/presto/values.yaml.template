@@ -1,0 +1,16 @@
+server:
+  workers: __WORKERS__
+
+coordinator:
+  nodeSelector:
+    type: app
+
+worker:
+  nodeSelector:
+    type: app
+  replicas: __WORKERS__
+
+metrics:
+  enabled: true
+  port: 9090
+

@@ -156,13 +156,6 @@ interface K8sNamespaceOperations {
  * Operations for managing Kubernetes storage resources.
  */
 interface K8sStorageOperations {
-    fun createClickHouseS3ConfigMap(
-        controlHost: ClusterHost,
-        namespace: String,
-        s3EndpointUrl: String,
-        backupS3EndpointUrl: String,
-    ): Result<Unit>
-
     fun scaleStatefulSet(
         controlHost: ClusterHost,
         namespace: String,
@@ -189,7 +182,14 @@ interface K8sStorageOperations {
         config: PersistentVolumeConfig,
     ): Result<Unit>
 
+    fun deleteLocalPersistentVolumes(
+        controlHost: ClusterHost,
+        dbName: String,
+    ): Result<Unit>
+
     fun ensureLocalStorageClass(controlHost: ClusterHost): Result<Unit>
+
+    fun ensureLocalStorageWfcClass(controlHost: ClusterHost): Result<Unit>
 }
 
 /**

@@ -6,15 +6,11 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.configuration.ClusterState
-import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
-import com.rustyrazorblade.easydblab.configuration.clusterPrefix
-import com.rustyrazorblade.easydblab.configuration.metricsConfigId
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredResources
 import com.rustyrazorblade.easydblab.providers.aws.TeardownMode
 import com.rustyrazorblade.easydblab.providers.aws.TeardownResult
-import com.rustyrazorblade.easydblab.services.ClickHouseBackupService
 import com.rustyrazorblade.easydblab.services.TailscaleService
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
@@ -83,16 +79,9 @@ class Down : PicoBaseCommand() {
     )
     var retentionDays: Int = 1
 
-    @CommandLine.Option(
-        names = ["--clickhouse.backup"],
-        description = ["Back up ClickHouse data before teardown"],
-    )
-    var clickhouseBackup: String? = null
-
     private val teardownService: AwsInfrastructureService by inject()
     private val s3BucketService: AwsS3BucketService by inject()
     private val tailscaleService: TailscaleService by inject()
-    private val clickHouseBackupService: ClickHouseBackupService by inject()
     private val user: User by inject()
     private val log = KotlinLogging.logger {}
 
@@ -107,28 +96,6 @@ class Down : PicoBaseCommand() {
     )
 
     override fun execute() {
-        val backupName = clickhouseBackup
-        if (backupName != null) {
-            val state = clusterStateManager.load()
-            check(state.clickHouseConfig != null) {
-                "ClickHouse is not deployed in this cluster. Cannot run ClickHouse backup before teardown."
-            }
-            val accountBucket =
-                requireNotNull(state.s3Bucket) {
-                    "Account bucket not configured. Cannot run ClickHouse backup before teardown."
-                }
-            val controlHost =
-                state.hosts[ServerType.Control]?.firstOrNull()
-                    ?: error("No control nodes found. Cannot run ClickHouse backup before teardown.")
-            clickHouseBackupService
-                .backup(
-                    controlHost = controlHost,
-                    backupName = backupName,
-                    accountBucket = accountBucket,
-                    clusterName = state.name,
-                ).getOrThrow()
-        }
-
         val mode = determineTeardownMode()
 
         eventBus.emit(Event.Teardown.Starting)
@@ -153,7 +120,7 @@ class Down : PicoBaseCommand() {
      */
     private fun determineTeardownMode(): TeardownMode =
         when {
-            vpcId != null -> TeardownMode.SpecificVpc(vpcId!!)
+            vpcId != null -> TeardownMode.SpecificVpc(requireNotNull(vpcId))
             teardownAll -> TeardownMode.AllTagged
             teardownPacker -> TeardownMode.PackerInfrastructure
             else -> TeardownMode.CurrentCluster

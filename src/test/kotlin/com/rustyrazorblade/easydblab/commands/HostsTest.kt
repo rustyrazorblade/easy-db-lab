@@ -9,16 +9,21 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
+import java.io.ByteArrayOutputStream
+import java.io.PrintStream
 
 class HostsTest : BaseKoinTest() {
     private lateinit var mockClusterStateManager: ClusterStateManager
     private lateinit var outputHandler: BufferedOutputHandler
+    private val stdout = ByteArrayOutputStream()
+    private val originalOut = System.out
 
     private val testCassandraHost =
         ClusterHost(
@@ -71,6 +76,13 @@ class HostsTest : BaseKoinTest() {
     fun setupMocks() {
         mockClusterStateManager = mock()
         outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
+        System.setOut(PrintStream(stdout))
+    }
+
+    @AfterEach
+    fun restoreStdout() {
+        System.setOut(originalOut)
+        stdout.reset()
     }
 
     @Test
@@ -93,8 +105,7 @@ class HostsTest : BaseKoinTest() {
         command.cassandra = true
         command.execute()
 
-        val output = outputHandler.messages.joinToString("\n")
-        assertThat(output).contains("54.1.2.3")
+        assertThat(stdout.toString()).contains("54.1.2.3")
     }
 
     @Test

@@ -1,0 +1,12 @@
+#!/bin/bash
+# __STORAGE_SIZE__ and __REPLICAS__ are substituted at install time.
+# CLUSTER_NAME, REGION, BUCKET_NAME, ACCOUNT_BUCKET are injected as env vars at runtime.
+cat > testdb-params.txt <<EOF
+CLUSTER_NAME=${CLUSTER_NAME}
+STORAGE_SIZE=__STORAGE_SIZE__
+REPLICAS=__REPLICAS__
+REGION=${REGION}
+BUCKET_NAME=${BUCKET_NAME}
+ACCOUNT_BUCKET=${ACCOUNT_BUCKET}
+KIT_NAME=${KIT_NAME}
+EOF

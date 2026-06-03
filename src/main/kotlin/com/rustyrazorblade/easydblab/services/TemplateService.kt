@@ -3,12 +3,10 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
-import com.rustyrazorblade.easydblab.configuration.clusterLabelName
-import com.rustyrazorblade.easydblab.configuration.clusterPrefix
-import com.rustyrazorblade.easydblab.configuration.getControlHost
-import com.rustyrazorblade.easydblab.configuration.metricsConfigId
 import org.apache.commons.text.StringSubstitutor
 import java.io.File
+
+private val UNRESOLVED_VAR_PATTERN = Regex("""__([A-Z][A-Z0-9_]*)__""")
 
 /**
  * Service for template placeholder substitution using `__KEY__` delimiters.
@@ -34,10 +32,10 @@ class TemplateService(
         val region = state.initConfig?.region ?: user.region
         val controlHost = state.getControlHost()
         return mapOf(
-            "BUCKET_NAME" to state.dataBucket.ifBlank { state.s3Bucket ?: "" },
+            "BUCKET_NAME" to state.dataBucket.ifBlank { state.s3Bucket.orEmpty() },
             "AWS_REGION" to region,
             "CLUSTER_NAME" to state.clusterLabelName(),
-            "CONTROL_NODE_IP" to (controlHost?.privateIp ?: ""),
+            "CONTROL_NODE_IP" to (controlHost?.privateIp.orEmpty()),
             "METRICS_FILTER_ID" to buildMetricsFilterId(state),
             "CLUSTER_S3_PREFIX" to buildClusterPrefix(state),
             "PYROSCOPE_STORAGE_PREFIX" to buildPyroscopeStoragePrefix(state),
@@ -56,6 +54,19 @@ class TemplateService(
         val name = state.initConfig?.name ?: "cluster"
         val id = state.clusterId
         return "pyroscope.$name-$id"
+    }
+
+    fun renderKitTemplate(
+        templateContent: String,
+        vars: TemplateVariables,
+        extraVars: Map<String, String> = emptyMap(),
+        onUnresolved: (List<String>) -> Unit = {},
+    ): String {
+        val allVars = vars.toMap() + extraVars
+        val rendered = StringSubstitutor(allVars, "__", "__").replace(templateContent)
+        val unresolved = UNRESOLVED_VAR_PATTERN.findAll(rendered).map { it.groupValues[1] }.toList()
+        if (unresolved.isNotEmpty()) onUnresolved(unresolved)
+        return rendered
     }
 
     /**

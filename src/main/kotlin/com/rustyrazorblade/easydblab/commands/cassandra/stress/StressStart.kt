@@ -81,12 +81,11 @@ class StressStart : PicoBaseCommand() {
 
         // Generate job name
         val fullJobName =
-            if (jobName != null) {
-                jobName!!
-            } else {
-                val workloadName = extractWorkloadName(stressArgs)
-                "$workloadName-$counter"
-            }
+            jobName
+                ?: run {
+                    val workloadName = extractWorkloadName(stressArgs)
+                    "$workloadName-$counter"
+                }
         log.info { "Job name: $fullJobName" }
 
         val args = buildStressArgs(contactPoints)

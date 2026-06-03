@@ -232,16 +232,16 @@ class SetupProfile : PicoBaseCommand() {
         User(
             email = credentials.email,
             region = credentials.region,
-            keyName = existingConfig["keyName"] as? String ?: "",
+            keyName = (existingConfig["keyName"] as? String).orEmpty(),
             awsProfile = credentials.awsProfile,
             awsAccessKey = credentials.awsAccessKey,
             awsSecret = credentials.awsSecret,
-            axonOpsOrg = existingConfig["axonOpsOrg"] as? String ?: "",
-            axonOpsKey = existingConfig["axonOpsKey"] as? String ?: "",
-            tailscaleClientId = existingConfig["tailscaleClientId"] as? String ?: "",
-            tailscaleClientSecret = existingConfig["tailscaleClientSecret"] as? String ?: "",
+            axonOpsOrg = (existingConfig["axonOpsOrg"] as? String).orEmpty(),
+            axonOpsKey = (existingConfig["axonOpsKey"] as? String).orEmpty(),
+            tailscaleClientId = (existingConfig["tailscaleClientId"] as? String).orEmpty(),
+            tailscaleClientSecret = (existingConfig["tailscaleClientSecret"] as? String).orEmpty(),
             tailscaleTag = existingConfig["tailscaleTag"] as? String ?: Constants.Tailscale.DEFAULT_DEVICE_TAG,
-            s3Bucket = existingConfig["s3Bucket"] as? String ?: "",
+            s3Bucket = (existingConfig["s3Bucket"] as? String).orEmpty(),
         )
 
     /**
@@ -300,12 +300,12 @@ class SetupProfile : PicoBaseCommand() {
         userConfig.axonOpsOrg =
             promptForUpdate(
                 "AxonOps Org",
-                existingConfig["axonOpsOrg"] as? String ?: "",
+                (existingConfig["axonOpsOrg"] as? String).orEmpty(),
             )
         userConfig.axonOpsKey =
             promptForUpdate(
                 "AxonOps Key",
-                existingConfig["axonOpsKey"] as? String ?: "",
+                (existingConfig["axonOpsKey"] as? String).orEmpty(),
                 secret = true,
             )
 
@@ -314,12 +314,12 @@ class SetupProfile : PicoBaseCommand() {
         userConfig.tailscaleClientId =
             promptForUpdate(
                 "Tailscale OAuth Client ID",
-                existingConfig["tailscaleClientId"] as? String ?: "",
+                (existingConfig["tailscaleClientId"] as? String).orEmpty(),
             )
         userConfig.tailscaleClientSecret =
             promptForUpdate(
                 "Tailscale OAuth Client Secret",
-                existingConfig["tailscaleClientSecret"] as? String ?: "",
+                (existingConfig["tailscaleClientSecret"] as? String).orEmpty(),
                 secret = true,
             )
 

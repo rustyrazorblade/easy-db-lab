@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WORKLOAD_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+CATALOGS_DIR="${SCRIPT_DIR}/../catalogs"
+CATALOG_YAML="${SCRIPT_DIR}/../.catalogs-override.yaml"
+export KUBECONFIG="${SCRIPT_DIR}/../../__KUBECONFIG__"
+
+catalog_content=""
+
+# Add a catalog entry from a properties file
+add_catalog() {
+    local name="$1"
+    local props_file="$2"
+    catalog_content+="  ${name}: |"$'\n'
+    while IFS= read -r line; do
+        catalog_content+="    ${line}"$'\n'
+    done < "$props_file"
+}
+
+# Natively supported workloads: check catalogs/ directory
+if [ -n "${RUNNING_KITS:-}" ]; then
+    IFS=',' read -ra workloads <<< "$RUNNING_KITS"
+    for workload in "${workloads[@]}"; do
+        props="${CATALOGS_DIR}/${workload}.properties"
+        if [ -f "$props" ]; then
+            echo "Adding catalog for running workload: $workload"
+            add_catalog "$workload" "$props"
+        fi
+    done
+fi
+
+# Custom --from workloads: scan sibling directories for presto-catalog.properties
+for props in "${WORKLOAD_ROOT}"/*/presto-catalog.properties; do
+    [ -f "$props" ] || continue
+    workload=$(basename "$(dirname "$props")")
+    echo "Adding catalog from custom workload: $workload"
+    add_catalog "$workload" "$props"
+done
+
+# Write override file and run helm upgrade
+if [ -n "$catalog_content" ]; then
+    printf "catalog:\n%s" "$catalog_content" > "$CATALOG_YAML"
+    helm upgrade --install presto prestodb/presto \
+      --namespace default \
+      --create-namespace \
+      --values "${SCRIPT_DIR}/../values.yaml" \
+      --values "$CATALOG_YAML" \
+      --wait
+else
+    helm upgrade --install presto prestodb/presto \
+      --namespace default \
+      --create-namespace \
+      --values "${SCRIPT_DIR}/../values.yaml" \
+      --wait
+fi
+
+echo "Presto catalog update complete."

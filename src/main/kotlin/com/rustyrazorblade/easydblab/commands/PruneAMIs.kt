@@ -47,7 +47,6 @@ class PruneAMIs : PicoBaseCommand() {
 
     override fun execute() {
         eventBus.emit(Event.Ami.PruningStarting(pattern, type, keep))
-        eventBus.emit(Event.Ami.Separator)
 
         val preview = service.pruneAMIs(namePattern = pattern, keepCount = keep, dryRun = true, typeFilter = type)
 
@@ -75,7 +74,6 @@ class PruneAMIs : PicoBaseCommand() {
                     },
                 ),
             )
-            eventBus.emit(Event.Ami.Separator)
         }
     }
 
@@ -122,7 +120,7 @@ class PruneAMIs : PicoBaseCommand() {
         val response = readlnOrNull()?.trim()?.lowercase() ?: "n"
         val shouldDelete = response == "y" || response == "yes"
         if (!shouldDelete) {
-            eventBus.emit(Event.Ami.Skipped)
+            println("  - Skipped")
             return false
         }
         try {
@@ -130,7 +128,7 @@ class PruneAMIs : PicoBaseCommand() {
             for (snapshotId in ami.snapshotIds) {
                 service.deleteSnapshot(snapshotId)
             }
-            eventBus.emit(Event.Ami.Deleted)
+            println("  ✓ Deleted")
             return true
         } catch (e: Exception) {
             eventBus.emit(Event.Ami.DeleteFailed(e.message ?: "unknown error"))

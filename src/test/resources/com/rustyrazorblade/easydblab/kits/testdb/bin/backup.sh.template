@@ -1,0 +1,7 @@
+#!/bin/bash
+# Verify BACKUP_NAME is passed through as a positional arg.
+cat > testdb-backup-params.txt <<EOF
+BACKUP_NAME=${BACKUP_NAME}
+CLUSTER_NAME=${CLUSTER_NAME}
+ACCOUNT_BUCKET=${ACCOUNT_BUCKET}
+EOF

@@ -36,10 +36,6 @@ import com.rustyrazorblade.easydblab.commands.cassandra.stress.StressLogs
 import com.rustyrazorblade.easydblab.commands.cassandra.stress.StressStart
 import com.rustyrazorblade.easydblab.commands.cassandra.stress.StressStatus
 import com.rustyrazorblade.easydblab.commands.cassandra.stress.StressStop
-import com.rustyrazorblade.easydblab.commands.clickhouse.ClickHouseInit
-import com.rustyrazorblade.easydblab.commands.clickhouse.ClickHouseStart
-import com.rustyrazorblade.easydblab.commands.clickhouse.ClickHouseStatus
-import com.rustyrazorblade.easydblab.commands.clickhouse.ClickHouseStop
 import com.rustyrazorblade.easydblab.commands.exec.ExecList
 import com.rustyrazorblade.easydblab.commands.exec.ExecRun
 import com.rustyrazorblade.easydblab.commands.exec.ExecStop
@@ -108,12 +104,6 @@ val commandsModule =
 
         // Grafana subcommands
         factory { GrafanaUpdateConfig() }
-
-        // ClickHouse subcommands
-        factory { ClickHouseInit() }
-        factory { ClickHouseStart() }
-        factory { ClickHouseStatus() }
-        factory { ClickHouseStop() }
 
         // OpenSearch subcommands
         factory { OpenSearchStart() }

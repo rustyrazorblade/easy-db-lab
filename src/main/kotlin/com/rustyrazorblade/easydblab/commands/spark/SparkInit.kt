@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.commands.spark
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
@@ -60,6 +61,12 @@ class SparkInit : PicoBaseCommand() {
     )
     var workerCount: Int = DEFAULT_SPARK_WORKER_COUNT
 
+    @Option(
+        names = ["--release-label"],
+        description = ["EMR release label (e.g. emr-spark-8.0.0)"],
+    )
+    var releaseLabel: String = Constants.EMR.DEFAULT_RELEASE_LABEL
+
     override fun execute() {
         val state = clusterStateManager.load()
 
@@ -87,13 +94,17 @@ class SparkInit : PicoBaseCommand() {
                 "ClusterId" to state.clusterId,
             )
 
+        val initConfig =
+            requireNotNull(state.initConfig) { "Cluster must be initialized before running spark init" }
+
         val emrCluster =
             emrProvisioningService.provisionEmrCluster(
                 EmrClusterProvisioningConfig(
-                    clusterName = state.initConfig!!.name,
+                    clusterName = initConfig.name,
                     masterInstanceType = masterInstanceType,
                     workerInstanceType = workerInstanceType,
                     workerCount = workerCount,
+                    releaseLabel = releaseLabel,
                     subnetId = infrastructure.subnetIds.first(),
                     securityGroupId = securityGroupId,
                     keyName = user.keyName,
@@ -104,7 +115,7 @@ class SparkInit : PicoBaseCommand() {
 
         state.updateEmrCluster(emrCluster)
         state.initConfig =
-            state.initConfig!!.copy(
+            initConfig.copy(
                 sparkEnabled = true,
                 sparkMasterInstanceType = masterInstanceType,
                 sparkWorkerInstanceType = workerInstanceType,
@@ -114,7 +125,7 @@ class SparkInit : PicoBaseCommand() {
 
         eventBus.emit(Event.Emr.ClusterProvisioned(emrCluster.clusterId))
         emrCluster.masterPublicDns?.let {
-            eventBus.emit(Event.Emr.MasterDns(it))
+            println("Master DNS: $it")
         }
     }
 }

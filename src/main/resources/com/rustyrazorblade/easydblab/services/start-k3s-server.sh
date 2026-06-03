@@ -1,8 +1,14 @@
 #!/bin/bash
 
-set -e
+set -euo pipefail
 
 echo "=== Starting K3s Server ==="
+
+# Parse flags
+NO_FLANNEL=false
+for arg in "$@"; do
+    [ "$arg" = "--flannel-backend=none" ] && NO_FLANNEL=true
+done
 
 # Relocate K3s data directory to NVMe storage if available
 # This prevents the root EBS volume from filling up with container images
@@ -26,9 +32,15 @@ if systemctl list-unit-files k3s.service --no-pager --no-legend 2>/dev/null | gr
 else
     echo "Installing k3s in server mode..."
 
-    # Run airgap installation in server mode
+    if [ "$NO_FLANNEL" = "true" ]; then
+        echo "Custom CNI mode: disabling built-in Flannel"
+        K3S_EXEC_ARGS='server --write-kubeconfig-mode=644 --flannel-backend=none --disable-network-policy'
+    else
+        K3S_EXEC_ARGS='server --write-kubeconfig-mode=644'
+    fi
+
     INSTALL_K3S_SKIP_DOWNLOAD=true \
-    INSTALL_K3S_EXEC='server --write-kubeconfig-mode=644' \
+    INSTALL_K3S_EXEC="$K3S_EXEC_ARGS" \
     /usr/local/bin/install-k3s.sh
 
     echo "✓ K3s server installed successfully"

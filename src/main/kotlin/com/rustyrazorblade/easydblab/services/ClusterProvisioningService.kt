@@ -324,6 +324,7 @@ class DefaultClusterProvisioningService(
                             masterInstanceType = servicesConfig.initConfig.sparkMasterInstanceType,
                             workerInstanceType = servicesConfig.initConfig.sparkWorkerInstanceType,
                             workerCount = servicesConfig.initConfig.sparkWorkerCount,
+                            releaseLabel = servicesConfig.initConfig.sparkReleaseLabel,
                             subnetId = servicesConfig.subnetId,
                             securityGroupId = servicesConfig.securityGroupId,
                             keyName = instanceConfig.userConfig.keyName,

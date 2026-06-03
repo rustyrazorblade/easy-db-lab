@@ -24,7 +24,10 @@ data class ClusterHost(
     val alias: String,
     val availabilityZone: String,
     val instanceId: String = "",
-)
+) {
+    /** Converts to the legacy [Host] type used by SSH/remote operations. */
+    fun toHost(): Host = Host(public = publicIp, private = privateIp, alias = alias, availabilityZone = availabilityZone)
+}
 
 /**
  * Infrastructure status tracking
@@ -77,7 +80,7 @@ data class InitConfig(
     val cassandraInstances: Int = 3,
     val stressInstances: Int = 0,
     val instanceType: String = "r3.2xlarge",
-    val stressInstanceType: String = "c7i.2xlarge",
+    val stressInstanceType: String = "c6id.2xlarge",
     val azs: List<String> = listOf(),
     val ami: String = "",
     val region: String = "us-west-2",
@@ -96,12 +99,14 @@ data class InitConfig(
     val sparkMasterInstanceType: String = "m5.xlarge",
     val sparkWorkerInstanceType: String = "m5.xlarge",
     val sparkWorkerCount: Int = 3,
+    val sparkReleaseLabel: String = Constants.EMR.DEFAULT_RELEASE_LABEL,
     val opensearchEnabled: Boolean = false,
     val opensearchInstanceType: String = "t3.small.search",
     val opensearchInstanceCount: Int = 1,
     val opensearchVersion: String = "2.11",
     val opensearchEbsSize: Int = 100,
     val cidr: String = Constants.Vpc.DEFAULT_CIDR,
+    val ciliumEnabled: Boolean = false,
 ) {
     companion object {
         /**
@@ -139,25 +144,17 @@ data class InitConfig(
                 sparkMasterInstanceType = init.spark.masterInstanceType,
                 sparkWorkerInstanceType = init.spark.workerInstanceType,
                 sparkWorkerCount = init.spark.workerCount,
+                sparkReleaseLabel = init.spark.releaseLabel,
                 opensearchEnabled = init.opensearch.enable,
                 opensearchInstanceType = init.opensearch.instanceType,
                 opensearchInstanceCount = init.opensearch.instanceCount,
                 opensearchVersion = init.opensearch.version,
                 opensearchEbsSize = init.opensearch.ebsSize,
                 cidr = init.cidr,
+                ciliumEnabled = init.cilium,
             )
     }
 }
-
-/**
- * ClickHouse-specific configuration stored in cluster state.
- */
-data class ClickHouseConfig(
-    val s3CacheSize: String = Constants.ClickHouse.DEFAULT_S3_CACHE_SIZE,
-    val s3CacheOnWrite: String = Constants.ClickHouse.DEFAULT_S3_CACHE_ON_WRITE,
-    val replicasPerShard: Int = Constants.ClickHouse.DEFAULT_REPLICAS_PER_SHARD,
-    val s3TierMoveFactor: Double = Constants.ClickHouse.DEFAULT_S3_TIER_MOVE_FACTOR,
-)
 
 /**
  * Pure data class representing cluster state.
@@ -196,8 +193,6 @@ data class ClusterState(
     // SHA-256 hashes of backed-up configuration files for incremental backup
     // Maps BackupTarget enum name to hex-encoded hash
     var backupHashes: Map<String, String> = emptyMap(),
-    // ClickHouse-specific configuration
-    var clickHouseConfig: ClickHouseConfig? = null,
     // Tailscale auth key ID for cleanup on teardown
     var tailscaleAuthKeyId: String? = null,
     // Counter for stress job naming and port assignment
@@ -205,13 +200,13 @@ data class ClusterState(
     // Whether Tailscale was active on the local machine at init time.
     // When true, all cluster connections bypass the SOCKS proxy and use private IPs directly.
     var tailscaleActive: Boolean = false,
+    // Names of kits that are currently started (K8s kits + EC2 services like cassandra)
+    var runningKits: Set<String> = emptySet(),
 ) {
     /**
-     * Returns true when the db nodes are running Cassandra (not ClickHouse or another database).
-     * The db nodes use ServerType.Cassandra regardless of which database is deployed,
-     * so we check for the absence of database-specific configs to determine if it's Cassandra.
+     * Returns true when the db nodes are provisioned with Cassandra hosts.
      */
-    fun isRunningCassandra(): Boolean = !hosts[ServerType.Cassandra].isNullOrEmpty() && clickHouseConfig == null
+    fun isRunningCassandra(): Boolean = !hosts[ServerType.Cassandra].isNullOrEmpty()
 
     /**
      * Update hosts
@@ -255,14 +250,6 @@ data class ClusterState(
     }
 
     /**
-     * Update ClickHouse configuration
-     */
-    fun updateClickHouseConfig(config: ClickHouseConfig) {
-        this.clickHouseConfig = config
-        this.lastAccessedAt = Instant.now()
-    }
-
-    /**
      * Mark infrastructure as UP
      */
     fun markInfrastructureUp() {
@@ -277,21 +264,49 @@ data class ClusterState(
         this.infrastructureStatus = InfrastructureStatus.DOWN
         this.lastAccessedAt = Instant.now()
     }
-}
 
-/**
- * Extension function to create a ClusterS3Path from ClusterState.
- * Provides convenient access to S3 paths for this environment's bucket.
- *
- * Example:
- * ```
- * val manager = ClusterStateManager()
- * val state = manager.load()
- * val s3Path = state.s3Path()
- * val jarPath = s3Path.spark().resolve("myapp.jar")
- * ```
- *
- * @return A ClusterS3Path for this cluster's S3 bucket
- * @throws IllegalStateException if s3Bucket is not configured
- */
-fun ClusterState.s3Path(): ClusterS3Path = ClusterS3Path.from(this)
+    /** Returns the cluster prefix path for S3: "clusters/{name}-{clusterId}". No trailing slash. */
+    fun clusterPrefix(): String = "${Constants.S3.CLUSTERS_PREFIX}/$name-$clusterId"
+
+    /** Returns the S3 metrics config ID: "edl-{name}-{clusterId}", truncated to API limit. */
+    fun metricsConfigId(): String = "edl-$name-$clusterId".take(Constants.S3.MAX_METRICS_CONFIG_ID_LENGTH)
+
+    /** Returns the per-cluster data bucket name: "easy-db-lab-data-{clusterId}". */
+    fun dataBucketName(): String = "${Constants.S3.DATA_BUCKET_PREFIX}$clusterId"
+
+    /** Returns the unique cluster label for OTel metric tagging: "{name}-{clusterId}". */
+    fun clusterLabelName(): String = "$name-$clusterId"
+
+    /** Returns all instance IDs across all host types (non-blank only). */
+    fun getAllInstanceIds(): List<String> = hosts.values.flatten().mapNotNull { it.instanceId.takeIf { id -> id.isNotEmpty() } }
+
+    /** Returns true when infrastructure status is UP. */
+    fun isInfrastructureUp(): Boolean = infrastructureStatus == InfrastructureStatus.UP
+
+    /** Returns the first control host, or null if none exists. */
+    fun getControlHost(): ClusterHost? = hosts[ServerType.Control]?.firstOrNull()
+
+    /** Returns hosts of [serverType] mapped to the legacy [Host] type. */
+    fun getHosts(serverType: ServerType): List<Host> = hosts[serverType]?.map { it.toHost() } ?: emptyList()
+
+    /**
+     * Returns true when the stored hosts match [currentHosts] by alias and public IP.
+     * Used to detect topology changes between runs.
+     */
+    fun validateHostsMatch(currentHosts: Map<ServerType, List<ClusterHost>>): Boolean {
+        if (hosts.keys != currentHosts.keys) return false
+        return hosts.all { (serverType, storedHosts) ->
+            val current = currentHosts[serverType] ?: return false
+            if (storedHosts.size != current.size) return false
+            storedHosts.sortedBy { it.alias }.zip(current.sortedBy { it.alias }).all { (stored, curr) ->
+                stored.alias == curr.alias && stored.publicIp == curr.publicIp
+            }
+        }
+    }
+
+    /**
+     * Returns the S3 path abstraction for this cluster's account bucket.
+     * @throws IllegalStateException if s3Bucket is not configured
+     */
+    fun s3Path(): ClusterS3Path = ClusterS3Path.from(this)
+}

@@ -1,0 +1,39 @@
+#!/usr/bin/env zsh
+# Creates an easy-db-lab wrapper script in a cluster workspace directory.
+#
+# Usage: bin/create-easy-db-lab-wrapper <dir>
+#
+# The generated wrapper sets JAVA_HOME to the highest-installed Java 21
+# found via SDKMAN, changes into the workspace directory, and execs
+# bin/easy-db-lab. Every invocation of the wrapper automatically runs from
+# the correct working directory with the correct JDK.
+
+DIR="${1:?Usage: $0 <dir>}"
+
+WORKTREE_ROOT=$(cd "$(dirname "$0")/.." && pwd)
+
+DIR=$(cd "$DIR" && pwd)
+
+source "$HOME/.sdkman/bin/sdkman-init.sh"
+
+JAVA21_ID=$(ls "$HOME/.sdkman/candidates/java/" | grep "^21\." | sort -V | tail -1)
+if [[ -z "$JAVA21_ID" ]]; then
+    echo "error: no Java 21 installation found in SDKMAN" >&2
+    exit 1
+fi
+
+JAVA21=$(sdk home java "$JAVA21_ID")
+
+WRAPPER="$DIR/easy-db-lab"
+
+cat > "$WRAPPER" <<EOF
+#!/usr/bin/env bash
+export JAVA_HOME="$JAVA21"
+cd "$DIR"
+exec "$WORKTREE_ROOT/bin/easy-db-lab" "\$@"
+EOF
+
+chmod +x "$WRAPPER"
+echo "created: $WRAPPER"
+echo "  java:    $JAVA21"
+echo "  workdir: $DIR"

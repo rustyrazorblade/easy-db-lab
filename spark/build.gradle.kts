@@ -1,20 +1,10 @@
 // Shared configuration for all Spark submodules
 
-val sparkVersion = "3.5.7"
-val scalaVersion = "2.12"
+val sparkVersion = "4.0.1"
+val scalaVersion = "2.13"
 
 // Cassandra Analytics paths (only needed by bulk-writer modules)
-// In git worktrees, rootProject.projectDir is the worktree root, not the main repo root.
-// Read the .git file to find the main repo root so .cassandra-analytics is always resolved correctly.
-val gitFile = rootProject.projectDir.resolve(".git")
-val mainRepoRoot: File =
-    if (gitFile.isFile) {
-        val gitdirPath = File(gitFile.readText().trim().removePrefix("gitdir: ").trim())
-        gitdirPath.parentFile.parentFile.parentFile
-    } else {
-        rootProject.projectDir
-    }
-val analyticsDir = mainRepoRoot.resolve(".cassandra-analytics")
+val analyticsDir = rootProject.projectDir.resolve(".cassandra-analytics")
 val analyticsPropsFile = analyticsDir.resolve("gradle.properties")
 
 // Fail fast before dependency resolution when cassandra-analytics hasn't been built.
@@ -85,9 +75,9 @@ configure(subprojects.filter { it.name.startsWith("bulk-writer") }) {
         "implementation"(project(":spark:common"))
 
         // Cassandra Analytics - published modules (from local Maven)
-        "implementation"("org.apache.cassandra:cassandra-analytics-core_spark3_$scalaVersion:$cassandraAnalyticsVersion")
-        "implementation"("org.apache.cassandra:cassandra-bridge_spark3_$scalaVersion:$cassandraAnalyticsVersion")
-        "implementation"("org.apache.cassandra:cassandra-analytics-spark-converter_spark3_$scalaVersion:$cassandraAnalyticsVersion")
+        "implementation"("org.apache.cassandra:cassandra-analytics-core_$scalaVersion:$cassandraAnalyticsVersion")
+        "implementation"("org.apache.cassandra:cassandra-bridge_$scalaVersion:$cassandraAnalyticsVersion")
+        "implementation"("org.apache.cassandra:cassandra-analytics-spark-converter_$scalaVersion:$cassandraAnalyticsVersion")
 
         // Cassandra Analytics - internal modules not published to Maven.
         // These JARs are built from source by bin/dev build-analytics (requires JDK 11).

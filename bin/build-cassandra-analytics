@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env zsh
 #
 # Pre-build Apache Cassandra Analytics
 #
@@ -9,9 +9,9 @@
 # Internal modules (five-zero, etc.) are built and available in build output.
 #
 
-set -euo pipefail
+set -e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 ANALYTICS_DIR="$PROJECT_ROOT/.cassandra-analytics"
@@ -69,7 +69,7 @@ if [ -d "$MAVEN_ARTIFACT_BASE" ] && [ "$(find "$MAVEN_ARTIFACT_BASE" -name '*.ja
     exit 0
 fi
 
-echo "=== Building Apache Cassandra Analytics (requires JDK 11) ==="
+echo "=== Building Apache Cassandra Analytics (requires JDK 17) ==="
 
 # Clone or update the repository
 if [ -d "$ANALYTICS_DIR" ]; then
@@ -108,10 +108,10 @@ else
     exit 1
 fi
 
-# Switch to JDK 11 (required by cassandra-analytics)
-echo "=== Switching to JDK 11 via SDKMAN ==="
-sdk use java 11.0.25-tem || {
-    echo "Error: JDK 11 not found. Install with: sdk install java 11.0.25-tem"
+# Switch to JDK 17 (required by cassandra-analytics)
+echo "=== Switching to JDK 17 via SDKMAN ==="
+sdk use java 17.0.19-amzn || {
+    echo "Error: JDK 11 not found. Install with: sdk install java 17.0.19-amzn"
     exit 1
 }
 

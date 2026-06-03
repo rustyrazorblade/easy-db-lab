@@ -47,7 +47,7 @@ class SparkJobs : PicoBaseCommand() {
                     error(error.message ?: "Failed to validate EMR cluster")
                 }
 
-        eventBus.emit(Event.Emr.ListingJobs(clusterInfo.clusterId))
+        println("Listing jobs for cluster ${clusterInfo.clusterId}")
 
         // Get job list
         val jobs =
@@ -63,7 +63,7 @@ class SparkJobs : PicoBaseCommand() {
         }
 
         // Display jobs in a formatted table
-        eventBus.emit(Event.Emr.JobsTable(formatJobsTable(jobs)))
+        println(formatJobsTable(jobs))
     }
 
     /**

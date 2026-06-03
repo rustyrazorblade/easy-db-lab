@@ -1,0 +1,33 @@
+name: presto
+type: app
+description: Scaffold Presto workload files (stateless, targets app nodes)
+collision-check: false
+metrics:
+  type: scrape
+  port: 9090
+runtime:
+  type: helm
+  release: presto
+  namespace: default
+endpoints:
+  - name: "Presto UI"
+    node-type: app
+    port: 8080
+    type: http
+  - name: "JDBC"
+    node-type: app
+    port: 8080
+    type: jdbc
+    scheme: presto
+    path: /cassandra
+args:
+  - flag: --workers
+    variable: WORKERS
+    description: "Number of Presto workers (default: app node count)"
+    type: int
+    default: "${APP_NODE_COUNT}"
+hooks:
+  post-workload-start:
+    script: bin/update-catalogs.sh
+  post-workload-stop:
+    script: bin/update-catalogs.sh

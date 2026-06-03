@@ -32,7 +32,7 @@ class Vpcs : PicoBaseCommand() {
             val tags = vpcService.getVpcTags(vpcId)
             val name = tags["Name"] ?: "(unnamed)"
             val clusterId = tags["ClusterId"] ?: "(no cluster id)"
-            eventBus.emit(Event.Command.VpcListItem(name, vpcId, clusterId))
+            println("$name $vpcId $clusterId")
         }
     }
 }

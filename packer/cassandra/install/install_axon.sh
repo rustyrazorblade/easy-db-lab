@@ -88,3 +88,9 @@ sudo usermod -aG axonops cassandra
 # Disable axon-agent from auto-starting on boot
 # The service should be manually started via the StartAxonOps command
 sudo systemctl disable axon-agent
+
+# The axon-agent package installs /etc/sudoers.d/axonops with wildcard arguments
+# which are not valid in sudoers and cause parse warnings. Replace with explicit commands.
+sudo tee /etc/sudoers.d/axonops > /dev/null << 'EOF'
+axonops ALL=NOPASSWD: /sbin/service cassandra start, /sbin/service cassandra stop, /sbin/service cassandra restart, /sbin/service cassandra status, /usr/bin/systemctl start cassandra, /usr/bin/systemctl stop cassandra, /usr/bin/systemctl restart cassandra, /usr/bin/systemctl status cassandra, /usr/bin/systemctl is-active cassandra, /usr/bin/systemctl enable cassandra, /usr/bin/systemctl disable cassandra
+EOF

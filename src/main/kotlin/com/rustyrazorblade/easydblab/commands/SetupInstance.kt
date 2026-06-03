@@ -5,9 +5,6 @@ import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.configuration.clusterLabelName
-import com.rustyrazorblade.easydblab.configuration.getHosts
-import com.rustyrazorblade.easydblab.configuration.toHost
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command

@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.configuration.otel
 
+import com.charleskorn.kaml.Yaml
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
@@ -12,12 +13,16 @@ import io.fabric8.kubernetes.api.model.VolumeMountBuilder
 import io.fabric8.kubernetes.api.model.apps.DaemonSetBuilder
 import io.fabric8.kubernetes.api.model.rbac.ClusterRoleBindingBuilder
 import io.fabric8.kubernetes.api.model.rbac.ClusterRoleBuilder
+import io.fabric8.kubernetes.client.KubernetesClient
+import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.serialization.builtins.ListSerializer
 
 /**
  * Builds all OpenTelemetry Collector K8s resources as typed Fabric8 objects.
  *
  * Creates a DaemonSet that runs on all nodes with hostNetwork, collecting
- * host metrics, Prometheus scrapes (ClickHouse, Beyla, ebpf_exporter, MAAC),
+ * host metrics, Prometheus scrapes (Beyla, ebpf_exporter, MAAC, YACE, Hubble),
+ * plus dynamic per-workload scrape jobs from the metrics registry ConfigMaps,
  * file-based logs (system, Cassandra, ClickHouse), and OTLP.
  * Exports to VictoriaMetrics, VictoriaLogs, and Tempo.
  *
@@ -30,6 +35,7 @@ class OtelManifestBuilder(
     private val templateService: TemplateService,
 ) {
     companion object {
+        private val log = KotlinLogging.logger {}
         private const val NAMESPACE = "default"
         private const val APP_LABEL = "otel-collector"
         private const val CONFIGMAP_NAME = "otel-collector-config"
@@ -41,19 +47,45 @@ class OtelManifestBuilder(
         private const val LIVENESS_PERIOD = 30
         private const val READINESS_INITIAL_DELAY = 5
         private const val READINESS_PERIOD = 10
+        private const val WORKLOAD_METRICS_LABEL = "easydblab.com/workload-metrics"
+        private const val SCRAPE_INTERVAL = "15s"
+    }
+
+    /**
+     * Reads the metrics registry — all ConfigMaps labeled `easydblab.com/workload-metrics=true` —
+     * and returns one [WorkloadScrapeConfig] per running workload.
+     */
+    fun listWorkloadScrapeConfigs(client: KubernetesClient): List<WorkloadScrapeConfig> {
+        val configMaps =
+            client
+                .configMaps()
+                .inAnyNamespace()
+                .withLabel(WORKLOAD_METRICS_LABEL, "true")
+                .list()
+                .items
+        log.debug { "Found ${configMaps.size} workload metrics ConfigMaps" }
+        return configMaps.mapNotNull { cm ->
+            val data = cm.data ?: return@mapNotNull null
+            val jobName = data["job-name"] ?: return@mapNotNull null
+            val port = data["port"]?.toIntOrNull() ?: return@mapNotNull null
+            val path = data["path"] ?: "/metrics"
+            WorkloadScrapeConfig(jobName = jobName, port = port, path = path)
+        }
     }
 
     /**
      * Builds all OTel Collector K8s resources in apply order.
      *
+     * @param scrapeConfigs Dynamic per-workload scrape targets from the metrics registry.
+     *   Pass the result of [listWorkloadScrapeConfigs] to include currently-running workloads.
      * @return List of: ServiceAccount, ClusterRole, ClusterRoleBinding, ConfigMap, DaemonSet
      */
-    fun buildAllResources(): List<HasMetadata> =
+    fun buildAllResources(scrapeConfigs: List<WorkloadScrapeConfig> = emptyList()): List<HasMetadata> =
         listOf(
             buildServiceAccount(),
             buildClusterRole(),
             buildClusterRoleBinding(),
-            buildConfigMap(),
+            buildConfigMap(scrapeConfigs),
             buildDaemonSet(),
         )
 
@@ -109,9 +141,12 @@ class OtelManifestBuilder(
             .build()
 
     /**
-     * Builds the OTel Collector ConfigMap containing the collector config.
+     * Builds the OTel Collector ConfigMap, merging static infrastructure scrape jobs
+     * with dynamic per-workload scrape jobs from the metrics registry.
+     *
+     * @param scrapeConfigs Workload scrape targets to inject (from [listWorkloadScrapeConfigs])
      */
-    fun buildConfigMap() =
+    fun buildConfigMap(scrapeConfigs: List<WorkloadScrapeConfig> = emptyList()) =
         ConfigMapBuilder()
             .withNewMetadata()
             .withName(CONFIGMAP_NAME)
@@ -124,8 +159,40 @@ class OtelManifestBuilder(
                     .fromResource(
                         OtelManifestBuilder::class.java,
                         "otel-collector-config.yaml",
-                    ).substitute(),
+                    ).substitute(mapOf("KIT_SCRAPE_JOBS" to buildDynamicScrapeJobsYaml(scrapeConfigs))),
             ).build()
+
+    private fun buildDynamicScrapeJobsYaml(configs: List<WorkloadScrapeConfig>): String {
+        if (configs.isEmpty()) return ""
+        val jobs =
+            configs.map { config ->
+                PrometheusScrapeJob(
+                    jobName = config.jobName,
+                    scrapeInterval = SCRAPE_INTERVAL,
+                    staticConfigs = listOf(PrometheusStaticConfig(targets = listOf("localhost:${config.port}"))),
+                    metricsPath = config.path,
+                    relabelConfigs =
+                        listOf(
+                            PrometheusRelabelConfig(
+                                targetLabel = "instance",
+                                replacement = "\${env:HOSTNAME}:${config.port}",
+                            ),
+                            PrometheusRelabelConfig(
+                                targetLabel = "cluster",
+                                replacement = "\${env:CLUSTER_NAME}",
+                            ),
+                        ),
+                )
+            }
+        // 8-space indent matches the depth of `- job_name:` entries under
+        // `receivers.prometheus.config.scrape_configs` in otel-collector-config.yaml.
+        // If the scrape_configs indentation changes, this must change too.
+        return Yaml()
+            .encodeToString(ListSerializer(PrometheusScrapeJob.serializer()), jobs)
+            .trimEnd()
+            .lines()
+            .joinToString("\n") { line -> if (line.isEmpty()) "" else "        $line" }
+    }
 
     /**
      * Builds the OTel Collector DaemonSet.

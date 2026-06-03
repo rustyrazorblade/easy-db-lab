@@ -6,10 +6,6 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.AWSPolicy
-import com.rustyrazorblade.easydblab.providers.aws.createEMREC2Role
-import com.rustyrazorblade.easydblab.providers.aws.createRoleWithS3Policy
-import com.rustyrazorblade.easydblab.providers.aws.createServiceRole
-import com.rustyrazorblade.easydblab.providers.aws.validateRoleSetup
 
 /**
  * Service responsible for ensuring AWS IAM resources are set up
@@ -191,7 +187,7 @@ class AWSResourceSetupService(
                 This may be due to AWS eventual consistency. Please wait a few seconds and try again.
                 """.trimIndent()
             eventBus.emit(Event.AwsSetup.ValidationFailed(errorMsg))
-            throw IllegalStateException(errorMsg)
+            error(errorMsg)
         }
 
         eventBus.emit(Event.AwsSetup.Complete)

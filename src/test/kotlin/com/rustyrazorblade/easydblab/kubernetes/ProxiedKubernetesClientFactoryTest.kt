@@ -1,13 +1,21 @@
 package com.rustyrazorblade.easydblab.kubernetes
 
+import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.whenever
 import java.io.File
 
 class ProxiedKubernetesClientFactoryTest {
     @TempDir
     lateinit var tempDir: File
+
+    private val socksProxyService: SocksProxyService =
+        mock<SocksProxyService>().also {
+            whenever(it.getLocalPort()).thenReturn(1080)
+        }
 
     private val minimalKubeconfig =
         """
@@ -42,7 +50,7 @@ class ProxiedKubernetesClientFactoryTest {
         val factory =
             ProxiedKubernetesClientFactory(
                 proxyHost = "127.0.0.1",
-                proxyPort = 1080,
+                socksProxyService = socksProxyService,
                 tailscaleActive = true,
             )
 
@@ -56,7 +64,7 @@ class ProxiedKubernetesClientFactoryTest {
         val factory =
             ProxiedKubernetesClientFactory(
                 proxyHost = "127.0.0.1",
-                proxyPort = 1080,
+                socksProxyService = socksProxyService,
                 tailscaleActive = false,
             )
 

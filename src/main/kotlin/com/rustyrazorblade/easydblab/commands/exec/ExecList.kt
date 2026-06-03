@@ -6,8 +6,6 @@ import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.converters.PicoServerTypeConverter
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.configuration.toHost
-import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -49,7 +47,7 @@ class ExecList : PicoBaseCommand() {
                         )
                     val output = result.text.trim()
                     if (output.isNotEmpty()) {
-                        eventBus.emit(Event.Command.ToolList(h.alias, output))
+                        println("=== ${h.alias} ===\n$output")
                     }
                 } catch (_: Exception) {
                     // Host may not be reachable, skip silently

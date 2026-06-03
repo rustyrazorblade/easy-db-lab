@@ -1,0 +1,22 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>CyclomaticComplexMethod:DefaultK8sNamespaceOperations.kt$DefaultK8sNamespaceOperations$private fun describePodState(pod: io.fabric8.kubernetes.api.model.Pod): String</ID>
+    <ID>EmptyFunctionBlock:CiliumInstallServiceIntegrationTest.kt$CiliumInstallServiceIntegrationTest.&lt;no name provided>${}</ID>
+    <ID>EmptyFunctionBlock:CiliumServiceTest.kt$CiliumServiceTest.&lt;no name provided>${}</ID>
+    <ID>EmptyFunctionBlock:MetricsRegistryServiceTest.kt$MetricsRegistryServiceTest.&lt;no name provided>${}</ID>
+    <ID>EmptyFunctionBlock:StatusCacheTest.kt$StatusCacheTest.&lt;no name provided>${}</ID>
+    <ID>EmptyFunctionBlock:UseCassandraTest.kt$UseCassandraTest.&lt;no name provided>${}</ID>
+    <ID>InstanceOfCheckForException:CommandExecutor.kt$DefaultCommandExecutor$e as Throwable</ID>
+    <ID>LargeClass:K8sServiceIntegrationTest.kt$K8sServiceIntegrationTest</ID>
+    <ID>LargeClass:KitConfigTest.kt$KitConfigTest</ID>
+    <ID>LongMethod:DefaultK8sNamespaceOperations.kt$DefaultK8sNamespaceOperations$private fun deleteBySelector( client: KubernetesClient, namespace: String, labelSelector: String, )</ID>
+    <ID>LongMethod:K8sServiceIntegrationTest.kt$K8sServiceIntegrationTest$@Test @Order(23) fun `PV with stale claimRef should rebind after clearing UID`()</ID>
+    <ID>LoopWithTooManyJumpStatements:CommandLineParser.kt$CommandLineParser$for</ID>
+    <ID>LoopWithTooManyJumpStatements:DefaultK8sNamespaceOperations.kt$DefaultK8sNamespaceOperations$while</ID>
+    <ID>NestedBlockDepth:CommandLineParser.kt$UninstalledKitHintHandler$@Suppress("TooGenericExceptionCaught") override fun handleParseException( ex: CommandLine.ParameterException, args: Array&lt;String>, ): Int</ID>
+    <ID>SpreadOperator:DefaultK8sPodOperations.kt$DefaultK8sPodOperations$(*command.toTypedArray())</ID>
+    <ID>UnusedPrivateMember:K8sServiceIntegrationTest.kt$K8sServiceIntegrationTest$private fun assertStatefulSetExists(name: String)</ID>
+  </CurrentIssues>
+</SmellBaseline>

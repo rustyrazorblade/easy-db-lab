@@ -74,7 +74,7 @@ class UserConfigProvider(
         log.debug { "Loading user config from $userConfigFile" }
 
         if (!userConfigFile.exists()) {
-            throw IllegalStateException(
+            error(
                 "User configuration file not found: $userConfigFile\n" +
                     "Please run 'easy-db-lab setup-profile' to create your profile.",
             )

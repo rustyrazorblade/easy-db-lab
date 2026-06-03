@@ -1,0 +1,3 @@
+connector.name=cassandra
+cassandra.contact-points=__DB_NODE_IPS__
+cassandra.native-protocol-port=9042

@@ -45,6 +45,8 @@ object Constants {
         // Log display settings
         const val STDERR_TAIL_LINES = 100
 
+        const val DEFAULT_RELEASE_LABEL = "emr-spark-8.0.0"
+
         // S3 prefix for EMR logs
         const val S3_LOG_PREFIX = "spark/emr-logs/"
 
@@ -191,6 +193,7 @@ object Constants {
         const val NAMESPACE = "default"
         const val MANIFEST_DIR = "k8s"
         const val LOCAL_STORAGE_CLASS = "local-storage"
+        const val LOCAL_STORAGE_WFC_CLASS = "local-storage-wfc"
         const val GRAFANA_PORT = 3000
         const val VICTORIAMETRICS_PORT = 8428
         const val VICTORIALOGS_PORT = 9428
@@ -206,6 +209,8 @@ object Constants {
         const val OTEL_HEALTH_PORT = 13133
         const val TEMPO_OTLP_GRPC_PORT = 4320
         const val TEMPO_OTLP_HTTP_PORT = 4321
+        const val CLEANUP_JOB_TTL_SECONDS = 300
+        const val DB_MOUNT_PATH = "/mnt/db1"
     }
 
     // OpenSearch configuration
@@ -220,24 +225,30 @@ object Constants {
         const val DOMAIN_NAME_MAX_LENGTH = 28 // AWS OpenSearch domain names must be 3-28 lowercase chars
     }
 
+    // Kit configuration
+    object Kit {
+        const val CONFIG_FILE = "kit.yaml"
+
+        // Lifecycle phase names
+        const val PHASE_INSTALL = "install"
+        const val PHASE_START = "start"
+        const val PHASE_STOP = "stop"
+        const val PHASE_UNINSTALL = "uninstall"
+        const val PHASE_BACKUP = "backup"
+        const val PHASE_RESTORE = "restore"
+
+        // File written by kit install to record the resolved arg values; read by subsequent
+        // phases (start, stop, etc.) so they use the installed values instead of kit defaults.
+        const val RESOLVED_ARGS_FILE = "kit-resolved-args.env"
+
+        val SHELL_VAR_PATTERN = Regex("""\$\{(\w+)}""")
+    }
+
     // ClickHouse configuration
     object ClickHouse {
         const val NAMESPACE = "default"
         const val HTTP_PORT = 8123
         const val NATIVE_PORT = 9000
-        const val MINIMUM_NODES_REQUIRED = 3
-        const val KEEPER_REPLICAS = 3
-        const val PV_STORAGE_SIZE = "100Gi"
-        const val S3_CONFIG_NAME = "clickhouse-s3-config"
-        const val BACKUP_S3_ENDPOINT_ENV = "CLICKHOUSE_BACKUP_S3_ENDPOINT"
-        const val BACKUP_METADATA_FILE = "backup-metadata.json"
-        const val PRIMARY_POD_NAME = "clickhouse-0"
-        const val CLUSTER_NAME = "easy_db_lab"
-        const val DEFAULT_S3_CACHE_SIZE = "10Gi"
-        const val DEFAULT_S3_CACHE_ON_WRITE = "true"
-        const val DEFAULT_REPLICAS_PER_SHARD = 3
-        const val DEFAULT_S3_TIER_MOVE_FACTOR = 0.2
-        const val DEFAULT_PASSWORD = "default"
     }
 
     // YACE (Yet Another CloudWatch Exporter) configuration

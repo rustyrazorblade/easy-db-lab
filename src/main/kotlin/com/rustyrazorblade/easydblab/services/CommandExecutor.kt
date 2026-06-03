@@ -148,8 +148,6 @@ class DefaultCommandExecutor(
      * 3. Handle post-success actions
      */
     private fun executeWithLifecycle(command: PicoCommand): Int {
-        val commandName = command::class.simpleName ?: "Unknown"
-
         // 1. Check requirements (may exit process on failure or run setup)
         checkRequirements(command)
 

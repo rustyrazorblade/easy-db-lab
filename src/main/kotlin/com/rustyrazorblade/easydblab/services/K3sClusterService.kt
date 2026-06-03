@@ -3,7 +3,6 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.configuration.toHost
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -60,6 +59,13 @@ data class K3sClusterConfig(
     val kubeconfigPath: Path,
     val hostFilter: String = "",
     val clusterState: ClusterState? = null,
+    // When true, K3s starts with --flannel-backend=none so a custom CNI (e.g. Cilium) can be used.
+    // When false (default), K3s uses built-in Flannel and nodes become Ready without extra setup.
+    val useCustomCni: Boolean = false,
+    // Called after the server is ready and kubeconfig is downloaded, before agents join.
+    // Use this to install the CNI (e.g. Cilium) so workers join into a cluster that already
+    // has working networking — avoiding the CNI bootstrap deadlock.
+    val onServerReady: (() -> Unit)? = null,
 )
 
 /**
@@ -136,7 +142,7 @@ class DefaultK3sClusterService(
         val errors = mutableMapOf<String, Exception>()
         val controlHost = config.controlHost
 
-        val serverFailure = startK3sServer(controlHost, errors)
+        val serverFailure = startK3sServer(controlHost, errors, config.useCustomCni)
         if (serverFailure != null) return serverFailure
 
         val nodeToken =
@@ -144,6 +150,22 @@ class DefaultK3sClusterService(
                 ?: return K3sSetupResult(serverStarted = true, errors = errors)
 
         val (kubeconfigWritten, kubeconfigBackedUp) = downloadAndBackupKubeconfig(config, controlHost, errors)
+
+        config.onServerReady?.let { callback ->
+            log.info { "K3s server ready — running pre-agent hook (e.g. CNI install)" }
+            runCatching { callback() }
+                .onFailure { error ->
+                    log.error(error) { "Pre-agent hook failed" }
+                    errors["pre-agent hook"] = Exception(error.message, error)
+                    return K3sSetupResult(
+                        serverStarted = true,
+                        nodeToken = nodeToken,
+                        kubeconfigWritten = kubeconfigWritten,
+                        kubeconfigBackedUp = kubeconfigBackedUp,
+                        errors = errors,
+                    )
+                }
+        }
 
         val serverUrl = "https://${controlHost.privateIp}:$K3S_SERVER_PORT"
         val agentResults = setupAgents(config, serverUrl, nodeToken)
@@ -164,11 +186,12 @@ class DefaultK3sClusterService(
     private fun startK3sServer(
         controlHost: ClusterHost,
         errors: MutableMap<String, Exception>,
+        useCustomCni: Boolean,
     ): K3sSetupResult? {
         eventBus.emit(Event.K3s.ServerStarting(controlHost.alias))
-        val result = k3sService.start(controlHost.toHost())
+        val result = k3sService.startServer(controlHost.toHost(), useCustomCni)
         if (result.isFailure) {
-            val error = result.exceptionOrNull()!!
+            val error = checkNotNull(result.exceptionOrNull()) { "Result.isFailure but exceptionOrNull() was null" }
             log.error(error) { "Failed to start K3s server on ${controlHost.alias}" }
             eventBus.emit(Event.K3s.ServerStartFailed(error.message ?: "unknown error"))
             errors["K3s server start"] = Exception(error.message, error)
@@ -184,7 +207,7 @@ class DefaultK3sClusterService(
     ): String? {
         val tokenResult = k3sService.getNodeToken(controlHost.toHost())
         if (tokenResult.isFailure) {
-            val error = tokenResult.exceptionOrNull()!!
+            val error = checkNotNull(tokenResult.exceptionOrNull()) { "Result.isFailure but exceptionOrNull() was null" }
             log.error(error) { "Failed to retrieve K3s node token from ${controlHost.alias}" }
             eventBus.emit(Event.K3s.NodeTokenFailed(error.message ?: "unknown error"))
             errors["K3s node token retrieval"] = Exception(error.message, error)
@@ -320,7 +343,7 @@ class DefaultK3sClusterService(
         // Configure agent
         val configResult = k3sAgentService.configure(host, serverUrl, nodeToken, nodeLabels)
         if (configResult.isFailure) {
-            val error = configResult.exceptionOrNull()!!
+            val error = checkNotNull(configResult.exceptionOrNull()) { "Result.isFailure but exceptionOrNull() was null" }
             log.error(error) { "Failed to configure K3s agent on ${host.alias}" }
             eventBus.emit(Event.K3s.AgentConfigFailed(host.alias, error.message ?: "unknown error"))
             return AgentSetupResult(
@@ -333,7 +356,7 @@ class DefaultK3sClusterService(
         // Start agent
         val startResult = k3sAgentService.start(host)
         if (startResult.isFailure) {
-            val error = startResult.exceptionOrNull()!!
+            val error = checkNotNull(startResult.exceptionOrNull()) { "Result.isFailure but exceptionOrNull() was null" }
             log.error(error) { "Failed to start K3s agent on ${host.alias}" }
             eventBus.emit(Event.K3s.AgentStartFailed(host.alias, error.message ?: "unknown error"))
             return AgentSetupResult(

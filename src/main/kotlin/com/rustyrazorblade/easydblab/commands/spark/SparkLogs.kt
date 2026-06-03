@@ -88,8 +88,8 @@ class SparkLogs : PicoBaseCommand() {
         if (logs.isEmpty()) {
             eventBus.emit(Event.Emr.StepNoLogsFound(targetStepId))
         } else {
-            eventBus.emit(Event.Emr.StepLogsOutput(logs.joinToString("\n")))
-            eventBus.emit(Event.Emr.StepLogsCount(logs.size))
+            println(logs.joinToString("\n"))
+            println("\nFound ${logs.size} log entries.")
         }
     }
 

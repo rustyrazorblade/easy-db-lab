@@ -5,20 +5,22 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.output.OutputHandler
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
-import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.mock
-import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import java.io.ByteArrayOutputStream
+import java.io.PrintStream
 
 class IpTest : BaseKoinTest() {
-    private lateinit var mockOutputHandler: OutputHandler
     private lateinit var mockClusterStateManager: ClusterStateManager
+    private val stdout = ByteArrayOutputStream()
+    private val originalOut = System.out
 
     private val testHosts =
         mapOf(
@@ -51,14 +53,6 @@ class IpTest : BaseKoinTest() {
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
-                // Mock OutputHandler to capture output
-                single {
-                    mock<OutputHandler>().also {
-                        mockOutputHandler = it
-                    }
-                }
-
-                // Mock ClusterStateManager with test data
                 single {
                     mock<ClusterStateManager>().also {
                         mockClusterStateManager = it
@@ -76,16 +70,25 @@ class IpTest : BaseKoinTest() {
             },
         )
 
+    @BeforeEach
+    fun captureStdout() {
+        System.setOut(PrintStream(stdout))
+    }
+
+    @AfterEach
+    fun restoreStdout() {
+        System.setOut(originalOut)
+        stdout.reset()
+    }
+
+    private fun capturedOutput() = stdout.toString().trim()
+
     @Test
     fun `returns public IP by default`() {
         val command = Ip()
         command.host = "db0"
-
         command.execute()
-
-        val captor = argumentCaptor<String>()
-        verify(mockOutputHandler).handleMessage(captor.capture())
-        assertThat(captor.firstValue).isEqualTo("54.1.2.3")
+        assertThat(capturedOutput()).isEqualTo("54.1.2.3")
     }
 
     @Test
@@ -93,12 +96,8 @@ class IpTest : BaseKoinTest() {
         val command = Ip()
         command.host = "db0"
         command.publicIp = true
-
         command.execute()
-
-        val captor = argumentCaptor<String>()
-        verify(mockOutputHandler).handleMessage(captor.capture())
-        assertThat(captor.firstValue).isEqualTo("54.1.2.3")
+        assertThat(capturedOutput()).isEqualTo("54.1.2.3")
     }
 
     @Test
@@ -106,12 +105,8 @@ class IpTest : BaseKoinTest() {
         val command = Ip()
         command.host = "db0"
         command.privateIp = true
-
         command.execute()
-
-        val captor = argumentCaptor<String>()
-        verify(mockOutputHandler).handleMessage(captor.capture())
-        assertThat(captor.firstValue).isEqualTo("10.0.1.100")
+        assertThat(capturedOutput()).isEqualTo("10.0.1.100")
     }
 
     @Test
@@ -119,12 +114,8 @@ class IpTest : BaseKoinTest() {
         val command = Ip()
         command.host = "app0"
         command.privateIp = true
-
         command.execute()
-
-        val captor = argumentCaptor<String>()
-        verify(mockOutputHandler).handleMessage(captor.capture())
-        assertThat(captor.firstValue).isEqualTo("10.0.2.100")
+        assertThat(capturedOutput()).isEqualTo("10.0.2.100")
     }
 
     @Test
@@ -132,19 +123,14 @@ class IpTest : BaseKoinTest() {
         val command = Ip()
         command.host = "db1"
         command.privateIp = true
-
         command.execute()
-
-        val captor = argumentCaptor<String>()
-        verify(mockOutputHandler).handleMessage(captor.capture())
-        assertThat(captor.firstValue).isEqualTo("10.0.1.101")
+        assertThat(capturedOutput()).isEqualTo("10.0.1.101")
     }
 
     @Test
     fun `throws error when host not found`() {
         val command = Ip()
         command.host = "nonexistent"
-
         assertThatThrownBy { command.execute() }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("Host not found: nonexistent")
@@ -154,7 +140,6 @@ class IpTest : BaseKoinTest() {
     fun `throws error when no host alias provided`() {
         val command = Ip()
         command.host = ""
-
         assertThatThrownBy { command.execute() }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("Host not found:")

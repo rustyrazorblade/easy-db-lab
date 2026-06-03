@@ -6,7 +6,20 @@
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
   "id": null,
-  "links": [],
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": false,
+      "tags": [],
+      "targetBlank": true,
+      "title": "Pyroscope UI",
+      "tooltip": "Open Pyroscope native UI",
+      "type": "link",
+      "url": "__PYROSCOPE_URL__"
+    }
+  ],
   "liveNow": false,
   "panels": [
     {
@@ -28,8 +41,8 @@
             "uid": "pyroscope"
           },
           "profileTypeId": "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
-          "labelSelector": "{hostname=~\"$hostname\"}",
-          "queryType": "profile",
+          "labelSelector": "{service_name=\"$application\",hostname=~\"$hostname\"}",
+          "queryType": "both",
           "refId": "A",
           "groupBy": [
             "hostname"
@@ -58,8 +71,8 @@
             "uid": "pyroscope"
           },
           "profileTypeId": "memory:alloc_in_new_tlab_bytes:bytes:space:bytes",
-          "labelSelector": "{hostname=~\"$hostname\"}",
-          "queryType": "profile",
+          "labelSelector": "{service_name=\"$application\",hostname=~\"$hostname\"}",
+          "queryType": "both",
           "refId": "A",
           "groupBy": [
             "hostname"
@@ -88,8 +101,8 @@
             "uid": "pyroscope"
           },
           "profileTypeId": "block:contentions:count:block:count",
-          "labelSelector": "{hostname=~\"$hostname\"}",
-          "queryType": "profile",
+          "labelSelector": "{service_name=\"$application\",hostname=~\"$hostname\"}",
+          "queryType": "both",
           "refId": "A",
           "groupBy": [
             "hostname"
@@ -118,8 +131,8 @@
             "uid": "pyroscope"
           },
           "profileTypeId": "mutex:delay:nanoseconds:mutex:count",
-          "labelSelector": "{hostname=~\"$hostname\"}",
-          "queryType": "profile",
+          "labelSelector": "{service_name=\"$application\",hostname=~\"$hostname\"}",
+          "queryType": "both",
           "refId": "A",
           "groupBy": [
             "hostname"
@@ -143,21 +156,21 @@
       {
         "current": {},
         "datasource": {
-          "type": "prometheus",
-          "uid": "${datasource}"
+          "type": "grafana-pyroscope-datasource",
+          "uid": "pyroscope"
         },
-        "definition": "label_values(up, cluster)",
+        "definition": "label_values(service_name)",
         "hide": 0,
-        "includeAll": true,
-        "allValue": ".*",
-        "label": "Cluster",
-        "multi": true,
-        "name": "cluster",
+        "includeAll": false,
+        "label": "Application",
+        "multi": false,
+        "name": "application",
         "options": [],
         "query": {
-          "qryType": 1,
-          "query": "label_values(up, cluster)",
-          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+          "profileTypeId": "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
+          "refId": "PyroscopeVariableQueryEditor-VariableQuery",
+          "type": "labelValue",
+          "labelName": "service_name"
         },
         "refresh": 2,
         "regex": "",
@@ -173,16 +186,18 @@
         },
         "definition": "label_values(hostname)",
         "hide": 0,
-        "includeAll": false,
+        "includeAll": true,
+        "allValue": ".*",
         "label": "Hostname",
-        "multi": false,
+        "multi": true,
         "name": "hostname",
         "options": [],
         "query": {
           "profileTypeId": "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
           "refId": "PyroscopeVariableQueryEditor-VariableQuery",
           "type": "labelValue",
-          "labelName": "hostname"
+          "labelName": "hostname",
+          "labelSelector": "{service_name=\"$application\"}"
         },
         "refresh": 2,
         "regex": "",

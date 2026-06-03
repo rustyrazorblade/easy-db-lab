@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -e
+set -euo pipefail
 
 echo "=== Starting K3s Agent ==="
 
@@ -15,6 +15,19 @@ SERVER_URL="$1"
 NODE_TOKEN="$2"
 
 echo "Server URL: $SERVER_URL"
+
+# Relocate K3s data directory to NVMe storage if available
+# This prevents the root EBS volume from filling up with container images
+if mountpoint -q /mnt/db1 && [ ! -L /var/lib/rancher/k3s ]; then
+    echo "Relocating K3s data to NVMe at /mnt/db1/k3s..."
+    mkdir -p /mnt/db1/k3s
+    if [ -d /var/lib/rancher/k3s ]; then
+        cp -a /var/lib/rancher/k3s/. /mnt/db1/k3s/
+        rm -rf /var/lib/rancher/k3s
+    fi
+    ln -s /mnt/db1/k3s /var/lib/rancher/k3s
+    echo "K3s data relocated to NVMe"
+fi
 
 # Note: Registry TLS configuration is handled by configure_registry_tls.sh
 # which runs before K3s startup to configure /etc/rancher/k3s/registries.yaml with HTTPS

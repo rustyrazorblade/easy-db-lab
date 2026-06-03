@@ -5,8 +5,6 @@ import com.rustyrazorblade.easydblab.commands.spark.SparkSubmit
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.EMRClusterInfo
-import com.rustyrazorblade.easydblab.configuration.s3Path
-import com.rustyrazorblade.easydblab.configuration.spark
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.SparkService
 import org.assertj.core.api.Assertions.assertThat

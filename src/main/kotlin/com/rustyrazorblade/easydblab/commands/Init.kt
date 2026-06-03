@@ -97,7 +97,7 @@ class Init : PicoBaseCommand() {
         names = ["--stress-instance", "-si", "--si"],
         description = ["Stress Instance Type. Set EASY_DB_LAB_STRESS_INSTANCE_TYPE to set a default."],
     )
-    var stressInstanceType: String = System.getenv("EASY_DB_LAB_STRESS_INSTANCE_TYPE") ?: "c7i.2xlarge"
+    var stressInstanceType: String = System.getenv("EASY_DB_LAB_STRESS_INSTANCE_TYPE") ?: "c6id.2xlarge"
 
     @Option(
         names = ["--azs", "--az", "-z"],
@@ -116,7 +116,7 @@ class Init : PicoBaseCommand() {
         names = ["--ami"],
         description = ["AMI. Set EASY_DB_LAB_AMI to override the default."],
     )
-    var ami: String = System.getenv("EASY_DB_LAB_AMI") ?: ""
+    var ami: String = System.getenv("EASY_DB_LAB_AMI").orEmpty()
 
     @Option(
         names = ["--open"],
@@ -199,6 +199,12 @@ class Init : PicoBaseCommand() {
     )
     var cidr: String = Constants.Vpc.DEFAULT_CIDR
 
+    @Option(
+        names = ["--cilium"],
+        description = ["Install Cilium CNI instead of the default Flannel CNI"],
+    )
+    var cilium = false
+
     override fun execute() {
         validateParameters()
 
@@ -212,9 +218,10 @@ class Init : PicoBaseCommand() {
 
         // Only set VPC ID if user explicitly provided one via --vpc
         // Otherwise, VPC will be created during 'up'
-        if (existingVpcId != null) {
-            eventBus.emit(Event.Setup.ExistingVpc(existingVpcId!!))
-            clusterState.vpcId = existingVpcId
+        val vpc = existingVpcId
+        if (vpc != null) {
+            eventBus.emit(Event.Setup.ExistingVpc(vpc))
+            clusterState.vpcId = vpc
             clusterStateManager.save(clusterState)
         }
 

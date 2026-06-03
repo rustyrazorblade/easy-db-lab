@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilde
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
+import okhttp3.OkHttpClient
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -90,6 +91,7 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
                 mockManifestBuilder,
                 com.rustyrazorblade.easydblab.events
                     .EventBus(),
+                mock<OkHttpClient>(),
             )
         val result = service.createDatasourcesConfigMap(testControlHost)
 
@@ -106,7 +108,7 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
     @Test
     fun `uploadDashboards builds and applies all resources`() {
         val resources = buildTestResources()
-        whenever(mockManifestBuilder.buildAllResources()).thenReturn(resources)
+        whenever(mockManifestBuilder.buildAllResources(any())).thenReturn(resources)
         whenever(mockK8sService.createConfigMap(any(), any(), any(), any(), any()))
             .thenReturn(Result.success(Unit))
         whenever(mockK8sService.applyResource(any(), any()))
@@ -118,6 +120,7 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
                 mockManifestBuilder,
                 com.rustyrazorblade.easydblab.events
                     .EventBus(),
+                mock<OkHttpClient>(),
             )
         val result = service.uploadDashboards(testControlHost)
 
@@ -141,6 +144,7 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
                 mockManifestBuilder,
                 com.rustyrazorblade.easydblab.events
                     .EventBus(),
+                mock<OkHttpClient>(),
             )
         val result = service.uploadDashboards(testControlHost)
 
@@ -151,7 +155,7 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
     @Test
     fun `uploadDashboards fails when applyResource fails`() {
         val resources = buildTestResources()
-        whenever(mockManifestBuilder.buildAllResources()).thenReturn(resources)
+        whenever(mockManifestBuilder.buildAllResources(any())).thenReturn(resources)
         whenever(mockK8sService.createConfigMap(any(), any(), any(), any(), any()))
             .thenReturn(Result.success(Unit))
         whenever(mockK8sService.applyResource(any(), any()))
@@ -163,6 +167,7 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
                 mockManifestBuilder,
                 com.rustyrazorblade.easydblab.events
                     .EventBus(),
+                mock<OkHttpClient>(),
             )
         val result = service.uploadDashboards(testControlHost)
 

@@ -1,0 +1,13 @@
+# Presto on __KIT_NAME__ cluster
+
+Workload: Presto — stateless, targets app nodes
+Workers: __WORKERS__
+App nodes: __APP_NODE_COUNT__
+Region: __REGION__
+
+## Quick start
+
+```bash
+./start.sh    # install Presto via Helm, wait for ready
+./stop.sh     # uninstall Presto (no persistent data)
+```

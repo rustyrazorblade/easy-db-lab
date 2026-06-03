@@ -6,7 +6,6 @@ import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.configuration.getHosts
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import org.koin.core.component.KoinComponent
@@ -61,11 +60,11 @@ class Hosts :
         if (showDbCsv) {
             val hosts = clusterState.getHosts(ServerType.Cassandra)
             val csv = hosts.map { if (usePrivateIp) it.private else it.public }.joinToString(",")
-            eventBus.emit(Event.Command.HostsCsvOutput(csv))
+            println(csv)
         } else if (showAppCsv) {
             val hosts = clusterState.getHosts(ServerType.Stress)
             val csv = hosts.map { if (usePrivateIp) it.private else it.public }.joinToString(",")
-            eventBus.emit(Event.Command.HostsCsvOutput(csv))
+            println(csv)
         } else {
             val output =
                 with(clusterState) {

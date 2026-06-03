@@ -7,11 +7,10 @@ import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
-import com.rustyrazorblade.easydblab.configuration.getControlHost
-import com.rustyrazorblade.easydblab.configuration.toHost
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.CassandraService
 import com.rustyrazorblade.easydblab.services.HostOperationsService
+import com.rustyrazorblade.easydblab.services.KitHookExecutor
 import com.rustyrazorblade.easydblab.services.SidecarService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -34,6 +33,7 @@ class Start : PicoBaseCommand() {
     private val cassandraService: CassandraService by inject()
     private val sidecarService: SidecarService by inject()
     private val hostOperationsService: HostOperationsService by inject()
+    private val kitHookExecutor: KitHookExecutor by inject()
 
     companion object {
         private const val DEFAULT_SLEEP_BETWEEN_STARTS_SECONDS = 120L
@@ -83,5 +83,8 @@ class Start : PicoBaseCommand() {
         if (axonOpsWorkbenchFile.exists()) {
             eventBus.emit(Event.Cassandra.AxonOpsWorkbenchInfo(userConfig.axonOpsOrg))
         }
+
+        clusterStateManager.addRunningWorkload("cassandra")
+        kitHookExecutor.firePostKitStart("cassandra")
     }
 }

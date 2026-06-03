@@ -57,4 +57,18 @@ class ClusterStateManager(
         save(state)
         return state.stressJobCounter
     }
+
+    fun addRunningWorkload(name: String) {
+        val state = load()
+        state.runningKits = state.runningKits + name
+        state.lastAccessedAt = Instant.now()
+        save(state)
+    }
+
+    fun removeRunningWorkload(name: String) {
+        val state = load()
+        state.runningKits = state.runningKits - name
+        state.lastAccessedAt = Instant.now()
+        save(state)
+    }
 }

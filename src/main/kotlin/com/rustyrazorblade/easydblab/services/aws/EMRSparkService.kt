@@ -5,8 +5,6 @@ import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.EMRClusterInfo
-import com.rustyrazorblade.easydblab.configuration.emrLogs
-import com.rustyrazorblade.easydblab.configuration.s3Path
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
@@ -201,7 +199,7 @@ class EMRSparkService(
 
     @Suppress("TooGenericExceptionCaught")
     private fun queryVictoriaLogs(stepId: String) {
-        eventBus.emit(Event.Emr.SparkLogHeader)
+        println("\n=== Step Logs ===")
         try {
             Thread.sleep(Constants.EMR.LOG_INGESTION_WAIT_MS)
 
@@ -213,19 +211,19 @@ class EMRSparkService(
                 .query(query = query, timeRange = "1h", limit = Constants.EMR.MAX_LOG_LINES)
                 .onSuccess { logs ->
                     if (logs.isEmpty()) {
-                        eventBus.emit(Event.Emr.SparkNoLogsInstruction(stepId))
+                        println("No logs found yet. Try: easy-db-lab spark logs --step-id $stepId")
                     } else {
-                        logs.forEach { eventBus.emit(Event.Emr.SparkLogLine(it)) }
-                        eventBus.emit(Event.Emr.SparkLogCount(logs.size))
+                        logs.forEach { println(it) }
+                        println("\nFound ${logs.size} log entries.")
                     }
                 }.onFailure { e ->
                     eventBus.emit(Event.Emr.SparkLogError(e.message ?: "Unknown error"))
-                    eventBus.emit(Event.Emr.SparkLogInstruction(stepId))
+                    println("Try: easy-db-lab spark logs --step-id $stepId")
                 }
         } catch (e: Exception) {
             log.warn { "Failed to query Victoria Logs: ${e.message}" }
             eventBus.emit(Event.Emr.SparkLogQueryFailed)
-            eventBus.emit(Event.Emr.SparkLogInstruction(stepId))
+            println("Try: easy-db-lab spark logs --step-id $stepId")
         }
     }
 
@@ -252,11 +250,11 @@ class EMRSparkService(
             downloadStepLogs(clusterId, stepId)
                 .onFailure { e ->
                     eventBus.emit(Event.Emr.SparkLogDownloadFailed(e.message ?: "Unknown error"))
-                    eventBus.emit(Event.Emr.SparkDebugInstructions(manualDebugCommands))
+                    println(manualDebugCommands)
                 }
         } catch (e: Exception) {
             log.warn { "Failed to download step logs: ${e.message}" }
-            eventBus.emit(Event.Emr.SparkDebugInstructions(manualDebugCommands))
+            println(manualDebugCommands)
         }
     }
 
@@ -560,9 +558,8 @@ class EMRSparkService(
     ) {
         val s3Bucket = clusterState.s3Bucket ?: "UNKNOWN_BUCKET"
         val emrLogsPath = "${Constants.EMR.S3_LOG_PREFIX}$clusterId/steps/$stepId/"
-        eventBus.emit(
-            Event.Emr.SparkDebugInstructions(
-                """
+        println(
+            """
                 |
                 |No logs were available. EMR logs typically take 30-60 seconds to upload after job completion.
                 |
@@ -575,8 +572,7 @@ class EMRSparkService(
                 |
                 |  # View stderr directly from S3 (once available)
                 |  aws s3 cp s3://$s3Bucket/${emrLogsPath}stderr.gz - | gunzip
-                """.trimMargin(),
-            ),
+            """.trimMargin(),
         )
     }
 
@@ -585,7 +581,7 @@ class EMRSparkService(
         if (Files.exists(stderrFile)) {
             val stderrContent = Files.readString(stderrFile)
             if (stderrContent.isNotBlank()) {
-                eventBus.emit(Event.Emr.SparkStderrHeader(Constants.EMR.STDERR_TAIL_LINES))
+                println("\n=== stderr (last ${Constants.EMR.STDERR_TAIL_LINES} lines) ===")
                 val lines = stderrContent.lines()
                 val lastLines =
                     if (lines.size > Constants.EMR.STDERR_TAIL_LINES) {
@@ -593,8 +589,8 @@ class EMRSparkService(
                     } else {
                         lines
                     }
-                lastLines.forEach { eventBus.emit(Event.Emr.SparkStderrLine(it)) }
-                eventBus.emit(Event.Emr.SparkStderrFooter)
+                lastLines.forEach { println(it) }
+                println("=== end stderr ===\n")
             }
         }
     }

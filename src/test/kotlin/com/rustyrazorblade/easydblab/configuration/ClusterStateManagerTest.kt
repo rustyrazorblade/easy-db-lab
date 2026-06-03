@@ -36,6 +36,48 @@ class ClusterStateManagerTest {
     }
 
     @Test
+    fun `addRunningWorkload adds name and persists`(
+        @TempDir tempDir: File,
+    ) {
+        val stateFile = File(tempDir, "state.json")
+        val manager = ClusterStateManager(stateFile)
+        manager.save(ClusterState(name = "test-cluster", versions = mutableMapOf()))
+
+        manager.addRunningWorkload("clickhouse")
+        manager.addRunningWorkload("presto")
+
+        val reloaded = ClusterStateManager(stateFile).load()
+        assertThat(reloaded.runningKits).containsExactlyInAnyOrder("clickhouse", "presto")
+    }
+
+    @Test
+    fun `removeRunningWorkload removes name and persists`(
+        @TempDir tempDir: File,
+    ) {
+        val stateFile = File(tempDir, "state.json")
+        val manager = ClusterStateManager(stateFile)
+        val state = ClusterState(name = "test-cluster", versions = mutableMapOf(), runningKits = mutableSetOf("clickhouse", "presto"))
+        manager.save(state)
+
+        manager.removeRunningWorkload("clickhouse")
+
+        val reloaded = ClusterStateManager(stateFile).load()
+        assertThat(reloaded.runningKits).containsExactly("presto")
+    }
+
+    @Test
+    fun `runningKits round-trips through JSON with empty set`(
+        @TempDir tempDir: File,
+    ) {
+        val stateFile = File(tempDir, "state.json")
+        val manager = ClusterStateManager(stateFile)
+        manager.save(ClusterState(name = "test-cluster", versions = mutableMapOf()))
+
+        val reloaded = ClusterStateManager(stateFile).load()
+        assertThat(reloaded.runningKits).isEmpty()
+    }
+
+    @Test
     fun `incrementStressJobCounter should update lastAccessedAt`(
         @TempDir tempDir: File,
     ) {

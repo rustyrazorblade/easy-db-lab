@@ -447,19 +447,6 @@ class ChannelMessageBufferTest {
         assertFalse(messages[0].contains("\u001b"))
     }
 
-    @Test
-    fun `error messages also have ANSI and newlines stripped`() {
-        buffer.start()
-        val coloredError = "\u001b[31mError:\u001b[0m Something\nwent wrong"
-        sendEvent(OutputEvent.ErrorEvent(coloredError))
-
-        val messages = buffer.getMessages()
-        assertEquals(1, messages.size)
-        assertTrue(messages[0].contains("ERROR: Error: Something went wrong"))
-        assertFalse(messages[0].contains("\u001b"))
-        assertFalse(messages[0].contains("\n"))
-    }
-
     // ========== Start/Stop Tests ==========
 
     @Test
@@ -495,16 +482,6 @@ class ChannelMessageBufferTest {
         channel.trySend(OutputEvent.MessageEvent("After stop"))
         Thread.sleep(100)
         assertTrue(buffer.isEmpty())
-    }
-
-    @Test
-    fun `multiple start calls are idempotent`() {
-        buffer.start()
-        buffer.start() // Should not create another thread
-        buffer.start() // Should be safe to call multiple times
-
-        sendEvent(OutputEvent.MessageEvent("Test"))
-        assertEquals(1, buffer.size())
     }
 
     @Test

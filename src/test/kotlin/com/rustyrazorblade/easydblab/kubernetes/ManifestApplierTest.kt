@@ -1,8 +1,15 @@
 package com.rustyrazorblade.easydblab.kubernetes
 
+import io.fabric8.kubernetes.api.model.HasMetadata
+import io.fabric8.kubernetes.client.KubernetesClient
+import io.fabric8.kubernetes.client.dsl.NamespaceableResource
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.mockito.kotlin.any
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
 import java.nio.file.Path
 
 /**
@@ -41,7 +48,11 @@ class ManifestApplierTest {
     }
 
     @Test
-    fun `applyManifest should throw for unsupported kind`() {
+    fun `applyManifest should use generic client for unknown kind`() {
+        val mockResource = mock<NamespaceableResource<HasMetadata>>()
+        val mockClient = mock<KubernetesClient>()
+        whenever(mockClient.resource(any<String>())).thenReturn(mockResource)
+
         val yaml =
             """
             apiVersion: v1
@@ -53,13 +64,9 @@ class ManifestApplierTest {
         val file = tempDir.resolve("unsupported.yaml").toFile()
         file.writeText(yaml)
 
-        assertThatThrownBy {
-            ManifestApplier.applyManifest(
-                createNullClient(),
-                file,
-            )
-        }.isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("Unsupported resource kind")
+        ManifestApplier.applyManifest(mockClient, file)
+
+        verify(mockResource).serverSideApply()
     }
 
     @Test
@@ -118,7 +125,11 @@ class ManifestApplierTest {
     }
 
     @Test
-    fun `applyYaml should throw for unsupported kind`() {
+    fun `applyYaml should use generic client for unknown kind`() {
+        val mockResource = mock<NamespaceableResource<HasMetadata>>()
+        val mockClient = mock<KubernetesClient>()
+        whenever(mockClient.resource(any<String>())).thenReturn(mockResource)
+
         val yaml =
             """
             apiVersion: v1
@@ -127,9 +138,9 @@ class ManifestApplierTest {
               name: test
             """.trimIndent()
 
-        assertThatThrownBy { ManifestApplier.applyYaml(createNullClient(), yaml) }
-            .isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("Unsupported resource kind")
+        ManifestApplier.applyYaml(mockClient, yaml)
+
+        verify(mockResource).serverSideApply()
     }
 
     /**

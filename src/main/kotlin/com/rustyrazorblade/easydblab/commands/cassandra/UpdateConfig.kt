@@ -7,7 +7,6 @@ import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.configuration.toHost
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.HostOperationsService
@@ -69,13 +68,19 @@ class UpdateConfig : PicoBaseCommand() {
             tmp.deleteExisting()
             val resolvedVersion = remoteOps.getRemoteVersion(it, version)
 
-            // Execute patch-config and handle errors
+            // Execute patch-config and handle errors.
+            // Check stdout for the success marker — stderr may contain sudo warnings (e.g. sudoers
+            // parse warnings from third-party packages) that are harmless but non-empty.
             val patchResult = remoteOps.executeRemotely(it, "/usr/local/bin/patch-config $file")
             if (patchResult.stderr.isNotEmpty()) {
                 eventBus.emit(Event.Cassandra.PatchStderr(patchResult.stderr))
-                error("Failed to patch configuration on ${it.alias}: ${patchResult.stderr}")
             }
             eventBus.emit(Event.Cassandra.PatchOutput(patchResult.text))
+            if (!patchResult.text.contains("Successfully patched")) {
+                val reason = patchResult.stderr.ifEmpty { patchResult.text }.trim()
+                eventBus.emit(Event.Cassandra.PatchFailed(it.alias, reason))
+                error("patch-config failed on ${it.alias}: $reason")
+            }
 
             // Create a temporary directory on the remote filesystem using mktemp
             val tempDir =

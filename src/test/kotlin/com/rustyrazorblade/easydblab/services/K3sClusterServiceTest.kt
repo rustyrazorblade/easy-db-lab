@@ -68,7 +68,7 @@ class K3sClusterServiceTest {
         @Test
         fun `should return failure when server start fails`() {
             val config = createConfig()
-            whenever(k3sService.start(any())).thenReturn(Result.failure(RuntimeException("Server start failed")))
+            whenever(k3sService.startServer(any(), any())).thenReturn(Result.failure(RuntimeException("Server start failed")))
 
             val result = service.setupCluster(config)
 
@@ -81,7 +81,7 @@ class K3sClusterServiceTest {
         @Test
         fun `should return failure when token retrieval fails`() {
             val config = createConfig()
-            whenever(k3sService.start(any())).thenReturn(Result.success(Unit))
+            whenever(k3sService.startServer(any(), any())).thenReturn(Result.success(Unit))
             whenever(k3sService.getNodeToken(any()))
                 .thenReturn(Result.failure(RuntimeException("Token retrieval failed")))
 
@@ -417,7 +417,7 @@ class K3sClusterServiceTest {
     // Helper methods
 
     private fun setupSuccessfulServerStart() {
-        whenever(k3sService.start(any())).thenReturn(Result.success(Unit))
+        whenever(k3sService.startServer(any(), any())).thenReturn(Result.success(Unit))
         whenever(k3sService.getNodeToken(any())).thenReturn(Result.success("test-token-12345"))
         whenever(k3sService.downloadAndConfigureKubeconfig(any(), any())).thenReturn(Result.success(Unit))
     }

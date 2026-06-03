@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export KUBECONFIG="${SCRIPT_DIR}/../../__KUBECONFIG__"
+
+echo "Stopping Presto..."
+kubectl scale deployment presto-coordinator presto-worker \
+  --replicas=0 \
+  --namespace default
+
+echo "Presto stopped."

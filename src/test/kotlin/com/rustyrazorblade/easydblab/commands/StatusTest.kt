@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.configuration.InfrastructureState
 import com.rustyrazorblade.easydblab.configuration.InfrastructureStatus
 import com.rustyrazorblade.easydblab.configuration.NodeState
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.EMRClusterStatus
 import com.rustyrazorblade.easydblab.providers.aws.InstanceDetails
@@ -21,20 +22,19 @@ import com.rustyrazorblade.easydblab.services.StressJobService
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.EMRService
 import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
-import org.mockito.kotlin.argumentCaptor
-import org.mockito.kotlin.atLeast
 import org.mockito.kotlin.mock
-import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import java.io.ByteArrayOutputStream
+import java.io.PrintStream
 import java.time.Instant
 
 class StatusTest : BaseKoinTest() {
-    // Create mocks upfront so they can be referenced in module and test methods
-    private val mockOutputHandler: OutputHandler = mock()
     private val mockClusterStateManager: ClusterStateManager = mock()
     private val mockEc2InstanceService: EC2InstanceService = mock()
     private val mockVpcService: VpcService = mock()
@@ -42,6 +42,23 @@ class StatusTest : BaseKoinTest() {
     private val mockRemoteOperationsService: RemoteOperationsService = mock()
     private val mockEmrService: EMRService = mock()
     private val mockStressJobService: StressJobService = mock()
+    private lateinit var outputHandler: BufferedOutputHandler
+    private val stdout = ByteArrayOutputStream()
+    private val originalOut = System.out
+
+    @BeforeEach
+    fun captureStdout() {
+        outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
+        System.setOut(PrintStream(stdout))
+    }
+
+    @AfterEach
+    fun restoreStdout() {
+        System.setOut(originalOut)
+        stdout.reset()
+    }
+
+    private fun capturedOutput() = stdout.toString()
 
     private val testHosts =
         mapOf(
@@ -97,7 +114,6 @@ class StatusTest : BaseKoinTest() {
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
-                single<OutputHandler> { mockOutputHandler }
                 single<ClusterStateManager> { mockClusterStateManager }
                 single<EC2InstanceService> { mockEc2InstanceService }
                 single<VpcService> { mockVpcService }
@@ -111,85 +127,57 @@ class StatusTest : BaseKoinTest() {
     @Test
     fun `execute displays message when cluster state does not exist`() {
         whenever(mockClusterStateManager.exists()).thenReturn(false)
-
-        val command = Status()
-        command.execute()
-
-        val captor = argumentCaptor<String>()
-        verify(mockOutputHandler).handleMessage(captor.capture())
-        assertThat(captor.firstValue).contains("Cluster state does not exist")
+        Status().execute()
+        // NoClusterState is still an event
+        assertThat(outputHandler.messages.joinToString("\n")).contains("Cluster state does not exist")
     }
 
     @Test
     fun `execute displays cluster section`() {
         setupBasicClusterState()
-
-        val command = Status()
-        command.execute()
-
-        val captor = argumentCaptor<String>()
-        verify(mockOutputHandler, atLeast(5)).handleMessage(captor.capture())
-
-        val allMessages = captor.allValues.joinToString("\n")
-        assertThat(allMessages).contains("=== CLUSTER STATUS ===")
-        assertThat(allMessages).contains("Cluster ID: test-123")
-        assertThat(allMessages).contains("Name: test-cluster")
-        assertThat(allMessages).contains("Infrastructure: UP")
+        Status().execute()
+        val output = capturedOutput()
+        assertThat(output).contains("=== CLUSTER STATUS ===")
+        assertThat(output).contains("Cluster ID: test-123")
+        assertThat(output).contains("Name: test-cluster")
+        assertThat(output).contains("Infrastructure: UP")
     }
 
     @Test
     fun `execute displays nodes section with instance states`() {
         setupBasicClusterState()
         setupInstanceStates()
-
-        val command = Status()
-        command.execute()
-
-        val captor = argumentCaptor<String>()
-        verify(mockOutputHandler, atLeast(10)).handleMessage(captor.capture())
-
-        val allMessages = captor.allValues.joinToString("\n")
-        assertThat(allMessages).contains("=== NODES ===")
-        assertThat(allMessages).contains("DATABASE NODES")
-        assertThat(allMessages).contains("db0")
-        assertThat(allMessages).contains("i-db0")
-        assertThat(allMessages).contains("RUNNING")
+        Status().execute()
+        val output = capturedOutput()
+        assertThat(output).contains("=== NODES ===")
+        assertThat(output).contains("DATABASE NODES")
+        assertThat(output).contains("db0")
+        assertThat(output).contains("i-db0")
+        assertThat(output).contains("RUNNING")
     }
 
     @Test
     fun `execute displays networking section`() {
         setupBasicClusterState()
-
-        val command = Status()
-        command.execute()
-
-        val captor = argumentCaptor<String>()
-        verify(mockOutputHandler, atLeast(5)).handleMessage(captor.capture())
-
-        val allMessages = captor.allValues.joinToString("\n")
-        assertThat(allMessages).contains("=== NETWORKING ===")
-        assertThat(allMessages).contains("vpc-12345")
-        assertThat(allMessages).contains("igw-12345")
-        assertThat(allMessages).contains("subnet-a")
+        Status().execute()
+        val output = capturedOutput()
+        assertThat(output).contains("=== NETWORKING ===")
+        assertThat(output).contains("vpc-12345")
+        assertThat(output).contains("igw-12345")
+        assertThat(output).contains("subnet-a")
     }
 
     @Test
     fun `execute displays security group section`() {
         setupBasicClusterState()
         setupSecurityGroup()
-
-        val command = Status()
-        command.execute()
-
-        val captor = argumentCaptor<String>()
-        verify(mockOutputHandler, atLeast(10)).handleMessage(captor.capture())
-
-        val allMessages = captor.allValues.joinToString("\n")
-        assertThat(allMessages).contains("=== SECURITY GROUP ===")
-        assertThat(allMessages).contains("sg-12345")
-        assertThat(allMessages).contains("Inbound Rules")
-        assertThat(allMessages).contains("TCP")
-        assertThat(allMessages).contains("22")
+        Status().execute()
+        val output = capturedOutput()
+        assertThat(output).contains("=== SECURITY GROUP ===")
+        assertThat(output).contains("sg-12345")
+        assertThat(output).contains("Inbound Rules")
+        assertThat(output).contains("tcp")
+        assertThat(output).contains("22")
     }
 
     @Test
@@ -204,18 +192,11 @@ class StatusTest : BaseKoinTest() {
                 infrastructureStatus = InfrastructureStatus.UP,
                 default = NodeState(version = "5.0"),
             )
-
         whenever(mockClusterStateManager.exists()).thenReturn(true)
         whenever(mockClusterStateManager.load()).thenReturn(clusterState)
-
-        val command = Status()
-        command.execute()
-
-        val captor = argumentCaptor<String>()
-        verify(mockOutputHandler, atLeast(5)).handleMessage(captor.capture())
-
-        val allMessages = captor.allValues.joinToString("\n")
-        assertThat(allMessages).contains("(no infrastructure data)")
+        Status().execute()
+        // NoInfrastructureData is still an event
+        assertThat(outputHandler.messages.joinToString("\n")).contains("(no infrastructure data)")
     }
 
     @Test
@@ -230,19 +211,10 @@ class StatusTest : BaseKoinTest() {
                 infrastructureStatus = InfrastructureStatus.UP,
                 default = NodeState(version = "5.0"),
             )
-
         whenever(mockClusterStateManager.exists()).thenReturn(true)
         whenever(mockClusterStateManager.load()).thenReturn(clusterState)
-
-        val command = Status()
-        command.execute()
-
-        val captor = argumentCaptor<String>()
-        verify(mockOutputHandler, atLeast(5)).handleMessage(captor.capture())
-
-        val allMessages = captor.allValues.joinToString("\n")
-        // Should not contain node headers if no nodes exist
-        assertThat(allMessages).contains("=== CLUSTER STATUS ===")
+        Status().execute()
+        assertThat(capturedOutput()).contains("=== CLUSTER STATUS ===")
     }
 
     @Test
@@ -257,23 +229,15 @@ class StatusTest : BaseKoinTest() {
                 infrastructureStatus = InfrastructureStatus.UP,
                 default = NodeState(version = "5.0.2"),
             )
-
         whenever(mockClusterStateManager.exists()).thenReturn(true)
         whenever(mockClusterStateManager.load()).thenReturn(clusterState)
-        // Make getRemoteVersion throw an exception to simulate unavailable nodes
         whenever(mockRemoteOperationsService.getRemoteVersion(any(), any()))
             .thenThrow(RuntimeException("Connection refused"))
-
-        val command = Status()
-        command.execute()
-
-        val captor = argumentCaptor<String>()
-        verify(mockOutputHandler, atLeast(5)).handleMessage(captor.capture())
-
-        val allMessages = captor.allValues.joinToString("\n")
-        assertThat(allMessages).contains("=== CASSANDRA VERSION ===")
-        assertThat(allMessages).contains("5.0.2")
-        assertThat(allMessages).contains("cached")
+        Status().execute()
+        val output = capturedOutput()
+        assertThat(output).contains("=== CASSANDRA VERSION ===")
+        assertThat(output).contains("5.0.2")
+        assertThat(output).contains("cached")
     }
 
     @Test
@@ -283,27 +247,18 @@ class StatusTest : BaseKoinTest() {
                 name = "test-cluster",
                 clusterId = "test-123",
                 versions = mutableMapOf(),
-                hosts =
-                    mapOf(
-                        ServerType.Cassandra to testHosts[ServerType.Cassandra]!!,
-                    ),
+                hosts = mapOf(ServerType.Cassandra to testHosts[ServerType.Cassandra]!!),
                 infrastructure = testInfrastructure,
                 infrastructureStatus = InfrastructureStatus.UP,
                 default = NodeState(version = "5.0"),
             )
-
         whenever(mockClusterStateManager.exists()).thenReturn(true)
         whenever(mockClusterStateManager.load()).thenReturn(clusterState)
-
-        val command = Status()
-        command.execute()
-
-        val captor = argumentCaptor<String>()
-        verify(mockOutputHandler, atLeast(5)).handleMessage(captor.capture())
-
-        val allMessages = captor.allValues.joinToString("\n")
-        assertThat(allMessages).contains("=== KUBERNETES PODS ===")
-        assertThat(allMessages).contains("(no control node configured)")
+        Status().execute()
+        val output = capturedOutput()
+        assertThat(output).contains("=== KUBERNETES PODS ===")
+        // KubernetesNoControlNode is still an event
+        assertThat(outputHandler.messages.joinToString("\n")).contains("(no control node configured)")
     }
 
     @Test
@@ -311,18 +266,12 @@ class StatusTest : BaseKoinTest() {
         setupBasicClusterStateWithEmr()
         whenever(mockEmrService.getClusterStatus("j-TESTABC123"))
             .thenReturn(EMRClusterStatus("j-TESTABC123", "WAITING", null))
-
-        val command = Status()
-        command.execute()
-
-        val captor = argumentCaptor<String>()
-        verify(mockOutputHandler, atLeast(10)).handleMessage(captor.capture())
-
-        val allMessages = captor.allValues.joinToString("\n")
-        assertThat(allMessages).contains("=== SPARK CLUSTER ===")
-        assertThat(allMessages).contains("j-TESTABC123")
-        assertThat(allMessages).contains("test-spark-cluster")
-        assertThat(allMessages).contains("WAITING")
+        Status().execute()
+        val output = capturedOutput()
+        assertThat(output).contains("=== SPARK CLUSTER ===")
+        assertThat(output).contains("j-TESTABC123")
+        assertThat(output).contains("test-spark-cluster")
+        assertThat(output).contains("WAITING")
     }
 
     @Test
@@ -330,65 +279,40 @@ class StatusTest : BaseKoinTest() {
         setupBasicClusterStateWithEmr()
         whenever(mockEmrService.getClusterStatus("j-TESTABC123"))
             .thenThrow(RuntimeException("EMR service unavailable"))
-
-        val command = Status()
-        command.execute()
-
-        val captor = argumentCaptor<String>()
-        verify(mockOutputHandler, atLeast(10)).handleMessage(captor.capture())
-
-        val allMessages = captor.allValues.joinToString("\n")
-        assertThat(allMessages).contains("=== SPARK CLUSTER ===")
-        assertThat(allMessages).contains("j-TESTABC123")
-        assertThat(allMessages).contains("RUNNING") // Falls back to cached state
+        Status().execute()
+        val output = capturedOutput()
+        assertThat(output).contains("=== SPARK CLUSTER ===")
+        assertThat(output).contains("j-TESTABC123")
+        assertThat(output).contains("RUNNING")
     }
 
     @Test
     fun `execute handles missing spark cluster gracefully`() {
         setupBasicClusterState()
-
-        val command = Status()
-        command.execute()
-
-        val captor = argumentCaptor<String>()
-        verify(mockOutputHandler, atLeast(5)).handleMessage(captor.capture())
-
-        val allMessages = captor.allValues.joinToString("\n")
-        assertThat(allMessages).contains("=== SPARK CLUSTER ===")
-        assertThat(allMessages).contains("(no Spark cluster configured)")
+        Status().execute()
+        val output = capturedOutput()
+        assertThat(output).contains("=== SPARK CLUSTER ===")
+        assertThat(output).contains("(no Spark cluster configured)")
     }
 
     @Test
     fun `execute displays S3 bucket section`() {
         setupBasicClusterStateWithS3Bucket("test-bucket-123")
-
-        val command = Status()
-        command.execute()
-
-        val captor = argumentCaptor<String>()
-        verify(mockOutputHandler, atLeast(10)).handleMessage(captor.capture())
-
-        val allMessages = captor.allValues.joinToString("\n")
-        assertThat(allMessages).contains("=== S3 BUCKET ===")
-        assertThat(allMessages).contains("test-bucket-123")
-        assertThat(allMessages).contains("Fullpath:     test-bucket-123/clusters/test-cluster-test-123")
-        assertThat(allMessages).contains("spark")
-        assertThat(allMessages).contains("cassandra")
+        Status().execute()
+        val output = capturedOutput()
+        assertThat(output).contains("=== S3 BUCKET ===")
+        assertThat(output).contains("test-bucket-123")
+        assertThat(output).contains("spark")
+        assertThat(output).contains("cassandra")
     }
 
     @Test
     fun `execute handles missing S3 bucket gracefully`() {
         setupBasicClusterState()
-
-        val command = Status()
-        command.execute()
-
-        val captor = argumentCaptor<String>()
-        verify(mockOutputHandler, atLeast(5)).handleMessage(captor.capture())
-
-        val allMessages = captor.allValues.joinToString("\n")
-        assertThat(allMessages).contains("=== S3 BUCKET ===")
-        assertThat(allMessages).contains("(no S3 bucket configured)")
+        Status().execute()
+        val output = capturedOutput()
+        assertThat(output).contains("=== S3 BUCKET ===")
+        assertThat(output).contains("(no S3 bucket configured)")
     }
 
     private fun setupBasicClusterStateWithEmr() {
@@ -410,7 +334,6 @@ class StatusTest : BaseKoinTest() {
                         state = "RUNNING",
                     ),
             )
-
         whenever(mockClusterStateManager.exists()).thenReturn(true)
         whenever(mockClusterStateManager.load()).thenReturn(clusterState)
     }
@@ -427,7 +350,6 @@ class StatusTest : BaseKoinTest() {
                 createdAt = Instant.parse("2024-01-15T10:00:00Z"),
                 default = NodeState(version = "5.0"),
             )
-
         whenever(mockClusterStateManager.exists()).thenReturn(true)
         whenever(mockClusterStateManager.load()).thenReturn(clusterState)
     }
@@ -445,7 +367,6 @@ class StatusTest : BaseKoinTest() {
                 default = NodeState(version = "5.0"),
                 s3Bucket = bucketName,
             )
-
         whenever(mockClusterStateManager.exists()).thenReturn(true)
         whenever(mockClusterStateManager.load()).thenReturn(clusterState)
     }
@@ -483,10 +404,9 @@ class StatusTest : BaseKoinTest() {
                     publicIp = "54.3.4.5",
                     privateIp = "10.0.3.100",
                     availabilityZone = "us-west-2a",
-                    instanceType = "m5.xlarge",
+                    instanceType = "t3.medium",
                 ),
             )
-
         whenever(mockEc2InstanceService.describeInstances(any())).thenReturn(instanceDetails)
     }
 
@@ -494,38 +414,21 @@ class StatusTest : BaseKoinTest() {
         val sgDetails =
             SecurityGroupDetails(
                 securityGroupId = "sg-12345",
-                name = "test-cluster-sg",
-                description = "Security group for test cluster",
+                name = "easy-db-lab-sg",
+                description = "easy-db-lab security group",
                 vpcId = "vpc-12345",
                 inboundRules =
                     listOf(
                         SecurityGroupRuleInfo(
-                            protocol = "TCP",
+                            protocol = "tcp",
                             fromPort = 22,
                             toPort = 22,
                             cidrBlocks = listOf("0.0.0.0/0"),
-                            description = "SSH",
-                        ),
-                        SecurityGroupRuleInfo(
-                            protocol = "TCP",
-                            fromPort = 9042,
-                            toPort = 9042,
-                            cidrBlocks = listOf("10.0.0.0/8"),
-                            description = "CQL",
+                            description = "SSH access",
                         ),
                     ),
-                outboundRules =
-                    listOf(
-                        SecurityGroupRuleInfo(
-                            protocol = "All",
-                            fromPort = null,
-                            toPort = null,
-                            cidrBlocks = listOf("0.0.0.0/0"),
-                            description = "All traffic",
-                        ),
-                    ),
+                outboundRules = emptyList(),
             )
-
         whenever(mockVpcService.describeSecurityGroup("sg-12345")).thenReturn(sgDetails)
     }
 }

@@ -5,11 +5,10 @@ import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.configuration.getControlHost
-import com.rustyrazorblade.easydblab.configuration.toHost
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.CassandraService
 import com.rustyrazorblade.easydblab.services.HostOperationsService
+import com.rustyrazorblade.easydblab.services.KitHookExecutor
 import com.rustyrazorblade.easydblab.services.SidecarService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -30,6 +29,7 @@ class Stop : PicoBaseCommand() {
     private val cassandraService: CassandraService by inject()
     private val sidecarService: SidecarService by inject()
     private val hostOperationsService: HostOperationsService by inject()
+    private val kitHookExecutor: KitHookExecutor by inject()
 
     @Mixin
     var hosts = HostsMixin()
@@ -42,6 +42,8 @@ class Stop : PicoBaseCommand() {
         }
 
         stopSidecar()
+        clusterStateManager.removeRunningWorkload("cassandra")
+        kitHookExecutor.firePostKitStop("cassandra")
     }
 
     private fun stopSidecar() {

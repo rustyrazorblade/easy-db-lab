@@ -133,7 +133,6 @@ You can override any of the standard operations for service-specific behavior:
 
 ```kotlin
 override fun restart(host: Host): Result<Unit> = runCatching {
-    outputHandler.handleMessage("Custom restart for ${host.alias}...")
     remoteOps.executeRemotely(host, "/custom/restart-script")
     log.info { "Custom restart completed on ${host.alias}" }
 }
@@ -165,9 +164,9 @@ All methods return `Result<T>` types for explicit error handling:
 
 ```kotlin
 myService.start(host).onSuccess {
-    println("Service started successfully")
+    log.info { "Service started successfully on ${host.alias}" }
 }.onFailure { exception ->
-    println("Failed to start service: ${exception.message}")
+    log.warn(exception) { "Failed to start service on ${host.alias}" }
 }
 ```
 
@@ -175,6 +174,5 @@ myService.start(host).onSuccess {
 
 1. **Use Result Types**: Never throw exceptions directly - wrap operations in `runCatching {}`
 2. **Log Appropriately**: Use `log.info` for successful operations, `log.debug` for status checks
-3. **User-Facing Output**: Use `outputHandler.handleMessage()` for user feedback
-4. **Test Thoroughly**: Test both success and failure scenarios
+3. **Test Thoroughly**: Test both success and failure scenarios
 5. **Document Custom Behavior**: Clearly document any overridden methods or custom logic

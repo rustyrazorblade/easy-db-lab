@@ -1,10 +1,13 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.kubernetes.WorkloadPod
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.ByteArrayOutputStream
 
 private val log = KotlinLogging.logger {}
+
+private val SYSTEM_NAMESPACES = setOf("kube-system", "kube-public", "kube-node-lease")
 
 class DefaultK8sPodOperations(
     private val clientProvider: K8sClientProvider,
@@ -39,6 +42,30 @@ class DefaultK8sPodOperations(
                 } finally {
                     execWatch.close()
                 }
+            }
+        }
+
+    override fun listWorkloadPods(controlHost: ClusterHost): Result<List<WorkloadPod>> =
+        runCatching {
+            clientProvider.createClient(controlHost).use { client ->
+                client
+                    .pods()
+                    .inAnyNamespace()
+                    .list()
+                    .items
+                    .filter { it.metadata.namespace !in SYSTEM_NAMESPACES }
+                    .map { pod ->
+                        val containerStatuses = pod.status?.containerStatuses ?: emptyList()
+                        val readyCount = containerStatuses.count { it.ready }
+                        val totalCount = containerStatuses.size
+                        WorkloadPod(
+                            namespace = pod.metadata.namespace,
+                            name = pod.metadata.name,
+                            nodeName = pod.spec?.nodeName.orEmpty(),
+                            ready = "$readyCount/$totalCount",
+                            status = pod.status?.phase ?: "Unknown",
+                        )
+                    }
             }
         }
 }

@@ -46,6 +46,22 @@ interface K3sService : SystemDServiceManager {
     fun getNodeToken(host: Host): Result<String>
 
     /**
+     * Starts the K3s server with optional custom CNI configuration.
+     *
+     * When useCustomCni is true, K3s starts with --flannel-backend=none so a custom CNI
+     * (e.g. Cilium) can be installed. When false, built-in Flannel is used and nodes
+     * become Ready without any additional CNI setup.
+     *
+     * @param host The control node where the K3s server should run
+     * @param useCustomCni Whether to disable Flannel and use a custom CNI instead
+     * @return Result indicating success or failure
+     */
+    fun startServer(
+        host: Host,
+        useCustomCni: Boolean,
+    ): Result<Unit>
+
+    /**
      * Downloads and configures the K3s kubeconfig for local kubectl access.
      *
      * This method:
@@ -143,22 +159,26 @@ class DefaultK3sService(
      * @param host The control node where the K3s server should run
      * @return Result indicating success or failure
      */
-    override fun start(host: Host): Result<Unit> =
+    override fun startServer(
+        host: Host,
+        useCustomCni: Boolean,
+    ): Result<Unit> =
         runCatching {
-            log.debug { "Starting K3s server on ${host.alias}" }
+            log.debug { "Starting K3s server on ${host.alias} (useCustomCni=$useCustomCni)" }
 
-            // Upload the startup script from classpath resources
             uploadScript(host, SERVER_SCRIPT_RESOURCE, SERVER_SCRIPT_PATH)
 
-            // Call the uploaded script to install and start k3s
+            val args = if (useCustomCni) "--flannel-backend=none" else ""
             remoteOps.executeRemotely(
                 host,
-                "sudo $SERVER_SCRIPT_PATH",
+                "sudo $SERVER_SCRIPT_PATH $args".trim(),
                 output = true,
             )
 
             log.info { "Successfully started K3s server on ${host.alias}" }
         }
+
+    override fun start(host: Host): Result<Unit> = startServer(host, useCustomCni = false)
 
     override fun getNodeToken(host: Host): Result<String> =
         runCatching {
@@ -244,7 +264,7 @@ class DefaultK3sService(
         val clientFactory =
             ProxiedKubernetesClientFactory(
                 proxyHost = "127.0.0.1",
-                proxyPort = if (!tailscaleActive) socksProxyService.getLocalPort() else 0,
+                socksProxyService = socksProxyService,
                 tailscaleActive = tailscaleActive,
             )
         return DefaultKubernetesService(clientFactory, kubeconfigPath)

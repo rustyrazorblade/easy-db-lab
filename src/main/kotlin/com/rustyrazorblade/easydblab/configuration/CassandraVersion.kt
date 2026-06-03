@@ -42,7 +42,7 @@ data class CassandraVersion(
 ) {
     companion object {
         private val objectMapper = ObjectMapper(YAMLFactory()).registerKotlinModule()
-        private var logger = KotlinLogging.logger {}
+        private val logger = KotlinLogging.logger {}
 
         fun loadFromFile(filePath: Path): List<CassandraVersion> {
             val fileContent = Files.readString(filePath)

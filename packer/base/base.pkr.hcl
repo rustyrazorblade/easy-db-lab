@@ -35,7 +35,7 @@ source "amazon-ebs" "ubuntu" {
   region        = "${var.region}"
   source_ami_filter {
     filters = {
-      name                = "ubuntu/images/*ubuntu-noble-24.04-${var.arch}-server-*"
+      name                = "ubuntu/images/*ubuntu-resolute-26.04-${var.arch}-server-*"
       root-device-type    = "ebs"
       virtualization-type = "hvm"
     }
@@ -139,9 +139,27 @@ build {
     script = "install/install_k9s.sh"
   }
 
+  # install helm, kubectl, and cilium CLI (used by easy-db-lab services via SSH)
+  provisioner "shell" {
+    script = "install/install_helm.sh"
+  }
+
+  provisioner "shell" {
+    script = "install/install_kubectl.sh"
+  }
+
+  provisioner "shell" {
+    script = "install/install_cilium_cli.sh"
+  }
+
+  # install OpenTelemetry Java agent for workload instrumentation
+  provisioner "shell" {
+    script = "install/install_otel_agent.sh"
+  }
+
   provisioner "shell" {
     inline = [
-      "sudo apt install openjdk-8-jdk openjdk-8-dbg openjdk-11-jdk openjdk-11-dbg openjdk-17-jdk openjdk-17-dbg openjdk-21-jdk openjdk-21-dbg -y",
+      "sudo DEBIAN_FRONTEND=noninteractive apt install -y openjdk-8-jdk openjdk-8-dbg openjdk-11-jdk openjdk-11-dbg openjdk-17-jdk openjdk-17-dbg openjdk-21-jdk openjdk-21-dbg",
       "sudo update-java-alternatives -s /usr/lib/jvm/java-1.11.0-openjdk-${var.arch}",
       "sudo sed -i '/hl jexec.*/d' /usr/lib/jvm/.java-1.8.0-openjdk-${var.arch}.jinfo"
     ]

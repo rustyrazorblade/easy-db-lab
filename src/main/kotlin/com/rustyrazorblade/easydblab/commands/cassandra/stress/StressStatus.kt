@@ -52,9 +52,10 @@ class StressStatus : PicoBaseCommand() {
                 }
 
         // Filter by name if specified
+        val nameFilter = jobName
         val filteredJobs =
-            if (jobName != null) {
-                jobs.filter { it.name.contains(jobName!!) }
+            if (nameFilter != null) {
+                jobs.filter { it.name.contains(nameFilter) }
             } else {
                 jobs
             }

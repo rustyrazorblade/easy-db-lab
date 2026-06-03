@@ -56,9 +56,9 @@ class ShowIamPolicies : PicoBaseCommand() {
         filtered.forEach { policy ->
             if (policyName.isBlank()) {
                 // Show all policies with headers for readability
-                eventBus.emit(Event.Command.IamPolicyHeader(policy.name))
+                println("\n=== ${policy.name} ===\n")
             }
-            eventBus.emit(Event.Command.IamPolicyBody(policy.body))
+            println(policy.body)
         }
     }
 }

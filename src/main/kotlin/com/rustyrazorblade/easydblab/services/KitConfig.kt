@@ -1,0 +1,227 @@
+package com.rustyrazorblade.easydblab.services
+
+import com.charleskorn.kaml.PolymorphismStyle
+import com.charleskorn.kaml.Yaml
+import com.charleskorn.kaml.YamlConfiguration
+import com.rustyrazorblade.easydblab.Constants
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.modules.SerializersModule
+import kotlinx.serialization.modules.polymorphic
+import kotlinx.serialization.modules.subclass
+
+/**
+ * Declares how a kit's metrics reach the OTel collector.
+ *
+ * - [Scrape]: kit exposes a Prometheus endpoint; OTel DaemonSet scrapes it via hostPort
+ * - [JavaAgent]: JVM kit uses the OTel Java agent JAR at /usr/local/otel/opentelemetry-javaagent.jar
+ * - [HelmNative]: kit has built-in telemetry via helm values; no OTel config change needed
+ */
+@Serializable
+sealed class KitMetrics {
+    @Serializable
+    @SerialName("scrape")
+    data class Scrape(
+        val port: Int,
+        val path: String = "/metrics",
+    ) : KitMetrics()
+
+    @Serializable
+    @SerialName("java-agent")
+    data class JavaAgent(
+        @SerialName("service-name")
+        val serviceName: String,
+    ) : KitMetrics()
+
+    @Serializable
+    @SerialName("helm-native")
+    data object HelmNative : KitMetrics()
+}
+
+@Serializable
+data class KitEndpoint(
+    val name: String,
+    @SerialName("node-type")
+    val nodeType: String,
+    val port: Int,
+    val type: EndpointType,
+    val scheme: String = "",
+    val path: String = "",
+) {
+    @Serializable
+    enum class EndpointType {
+        @SerialName("http")
+        HTTP,
+
+        @SerialName("https")
+        HTTPS,
+
+        @SerialName("jdbc")
+        JDBC,
+
+        @SerialName("native")
+        NATIVE,
+
+        @SerialName("cql")
+        CQL,
+    }
+
+    /** Formats a connection URL for this endpoint using [ip] as the host address. */
+    fun formatUrl(ip: String): String =
+        when (type) {
+            EndpointType.HTTP -> "http://$ip:$port$path"
+            EndpointType.HTTPS -> "https://$ip:$port$path"
+            EndpointType.JDBC -> "jdbc:$scheme://$ip:$port$path"
+            EndpointType.NATIVE, EndpointType.CQL -> "$ip:$port"
+        }
+}
+
+@Serializable
+data class KitRuntime(
+    val type: RuntimeType,
+    val release: String = "",
+    val selector: String = "",
+    val name: String = "",
+    val namespace: String = "default",
+) {
+    @Serializable
+    enum class RuntimeType {
+        @SerialName("helm")
+        HELM,
+
+        @SerialName("deployment")
+        DEPLOYMENT,
+
+        @SerialName("statefulset")
+        STATEFULSET,
+
+        @SerialName("pods")
+        PODS,
+    }
+}
+
+/**
+ * Declares the primary node pool a kit targets.
+ * Used to validate cluster topology before install.
+ */
+@Serializable
+enum class KitType {
+    @SerialName("db")
+    DB,
+
+    @SerialName("app")
+    APP,
+}
+
+@Serializable
+data class KitConfig(
+    val name: String,
+    val description: String = "",
+    val version: String = "",
+    @SerialName("collision-check")
+    val collisionCheck: Boolean = false,
+    val dashboards: List<DashboardRef> = emptyList(),
+    val args: List<KitArgSpec> = emptyList(),
+    val metrics: KitMetrics? = null,
+    val endpoints: List<KitEndpoint> = emptyList(),
+    val runtime: KitRuntime? = null,
+    val install: List<InstallStep> = emptyList(),
+    val start: List<InstallStep> = emptyList(),
+    val stop: List<InstallStep> = emptyList(),
+    val uninstall: List<InstallStep> = emptyList(),
+    val backup: List<InstallStep> = emptyList(),
+    val restore: List<InstallStep> = emptyList(),
+    val hooks: KitHooks? = null,
+    val type: KitType? = null,
+) {
+    fun stepsForPhase(phaseName: String): List<InstallStep> =
+        when (phaseName) {
+            Constants.Kit.PHASE_INSTALL -> install
+            Constants.Kit.PHASE_START -> start
+            Constants.Kit.PHASE_STOP -> stop
+            Constants.Kit.PHASE_UNINSTALL -> uninstall
+            Constants.Kit.PHASE_BACKUP -> backup
+            Constants.Kit.PHASE_RESTORE -> restore
+            // Return an empty list for unknown phases (e.g., script-only phases like
+            // 'update-catalogs'). KitRunnerCommand falls through to findScriptFile() when
+            // the typed step list is empty. We previously threw here, but that was
+            // undocumented behavior that broke any script-only phase not in this fixed list.
+            else -> emptyList()
+        }
+}
+
+@Serializable
+data class DashboardRef(
+    val path: String,
+    val name: String = "",
+)
+
+@Serializable
+data class KitHook(
+    val script: String,
+    val workloads: List<String> = emptyList(),
+)
+
+@Serializable
+data class KitHooks(
+    @SerialName("post-workload-start")
+    val postWorkloadStart: KitHook? = null,
+    @SerialName("post-workload-stop")
+    val postWorkloadStop: KitHook? = null,
+)
+
+@Serializable
+data class KitArgSpec(
+    val flag: String,
+    val variable: String,
+    val description: String = "",
+    val required: Boolean = false,
+    val type: ArgType = ArgType.STRING,
+    val default: String = "",
+) {
+    @Serializable
+    enum class ArgType {
+        @SerialName("string")
+        STRING,
+
+        @SerialName("boolean")
+        BOOLEAN,
+
+        @SerialName("float")
+        FLOAT,
+
+        @SerialName("int")
+        INT,
+    }
+}
+
+private val installStepModule =
+    SerializersModule {
+        polymorphic(InstallStep::class) {
+            subclass(InstallStep.HelmRepo::class)
+            subclass(InstallStep.Helm::class)
+            subclass(InstallStep.HelmUninstall::class)
+            subclass(InstallStep.Namespace::class)
+            subclass(InstallStep.Manifest::class)
+            subclass(InstallStep.ManifestUrl::class)
+            subclass(InstallStep.Kustomize::class)
+            subclass(InstallStep.Wait::class)
+            subclass(InstallStep.Delete::class)
+            subclass(InstallStep.PlatformPvs::class)
+            subclass(InstallStep.PlatformPvsDelete::class)
+            subclass(InstallStep.ConfigMap::class)
+            subclass(InstallStep.Label::class)
+            subclass(InstallStep.Exec::class)
+            subclass(InstallStep.Shell::class)
+        }
+    }
+
+internal val installConfigYaml =
+    Yaml(
+        serializersModule = installStepModule,
+        configuration =
+            YamlConfiguration(
+                polymorphismStyle = PolymorphismStyle.Property,
+                polymorphismPropertyName = "type",
+            ),
+    )

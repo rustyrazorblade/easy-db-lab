@@ -43,6 +43,9 @@ class SidecarManifestBuilder(
         private const val SIDECAR_PORT = 9043
         private const val READINESS_INITIAL_DELAY = 15
         private const val READINESS_PERIOD = 10
+        private const val LIVENESS_INITIAL_DELAY = 60
+        private const val LIVENESS_PERIOD = 20
+        private const val LIVENESS_FAILURE_THRESHOLD = 3
     }
 
     /**
@@ -198,6 +201,15 @@ class SidecarManifestBuilder(
         .withInitialDelaySeconds(READINESS_INITIAL_DELAY)
         .withPeriodSeconds(READINESS_PERIOD)
         .endReadinessProbe()
+        .withNewLivenessProbe()
+        .withNewHttpGet()
+        .withPath("/api/v1/cassandra/schema")
+        .withNewPort(SIDECAR_PORT)
+        .endHttpGet()
+        .withInitialDelaySeconds(LIVENESS_INITIAL_DELAY)
+        .withPeriodSeconds(LIVENESS_PERIOD)
+        .withFailureThreshold(LIVENESS_FAILURE_THRESHOLD)
+        .endLivenessProbe()
         .endContainer()
         // Volumes
         .addNewVolume()

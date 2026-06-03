@@ -98,9 +98,10 @@ Set `EASY_DB_LAB_REDIS_URL=redis://host:port/channel` to enable Redis pub/sub. E
 
 ## Migration Status
 
-**Migration complete.** All production code uses domain-specific typed events — there are zero `Event.Message` or `Event.Error` usages in production code. Every user-facing output goes through a typed event with structured data fields. `Event.Message` and `Event.Error` are retained in `Event.kt` only for test convenience.
+**Migration complete.** All production code uses domain-specific typed events — there are zero `Event.Message` or `Event.Error` usages in production code. `Event.Message` and `Event.Error` are retained in `Event.kt` only for test convenience.
 
 ### Design Rules
+- **Events represent domain facts — things that happened.** Use events for lifecycle transitions: something started, stopped, failed, was created. Do NOT use events for status displays, tabular output, or informational strings. If you're showing "current state" rather than "something happened", use `println()` directly.
 - **Data-only constructors**: Event fields carry structured data, NOT pre-formatted display strings. `toDisplayString()` constructs human-readable output internally.
 - **`data object` for no-data events**: Events with no meaningful fields use `data object` (e.g., `data object CreatingPvs : ClickHouse`).
 - **Error events**: Override `isError() = true` so `ConsoleEventListener` routes to stderr.

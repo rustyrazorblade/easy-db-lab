@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.configuration
 
-import com.rustyrazorblade.easydblab.configuration.clickhouseBackupsRoot
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -396,7 +395,7 @@ class ClusterS3PathTest {
 
     @Test
     fun `clickhouseBackupsRoot produces account-level path not under clusters prefix`() {
-        val path = clickhouseBackupsRoot("easy-db-lab-account-bucket")
+        val path = ClusterS3Path.clickhouseBackupsRoot("easy-db-lab-account-bucket")
 
         assertThat(path.toString()).isEqualTo("s3://easy-db-lab-account-bucket/clickhouse-backups")
         assertThat(path.toString()).doesNotContain("clusters/")
@@ -406,7 +405,7 @@ class ClusterS3PathTest {
 
     @Test
     fun `clickhouseBackupsRoot can be resolved to a named backup`() {
-        val path = clickhouseBackupsRoot("my-bucket").resolve("my-backup-2024")
+        val path = ClusterS3Path.clickhouseBackupsRoot("my-bucket").resolve("my-backup-2024")
 
         assertThat(path.toString()).isEqualTo("s3://my-bucket/clickhouse-backups/my-backup-2024")
         assertThat(path.getFileName()).isEqualTo("my-backup-2024")

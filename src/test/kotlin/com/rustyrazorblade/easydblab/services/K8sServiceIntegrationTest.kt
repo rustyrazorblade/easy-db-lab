@@ -7,7 +7,6 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.clickhouse.ClickHouseManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboard
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
@@ -357,33 +356,6 @@ class K8sServiceIntegrationTest {
         assertDeploymentExists("grafana")
     }
 
-    @Test
-    @Order(22)
-    fun `should apply ClickHouse resources`() {
-        // Create ClickHouse data directories
-        k3s.execInContainer("mkdir", "-p", "/mnt/db1/clickhouse")
-        k3s.execInContainer("mkdir", "-p", "/mnt/db1/clickhouse-keeper")
-
-        val builder = ClickHouseManifestBuilder(DefaultClickHouseConfigService())
-        val resources =
-            builder.buildAllResources(
-                totalReplicas = 3,
-                replicasPerShard = 3,
-                s3CacheSize = "10Gi",
-                s3CacheOnWrite = "true",
-            )
-        applyAndVerify(resources)
-
-        assertConfigMapExists("clickhouse-keeper-config", "keeper_config.xml")
-        assertConfigMapExists("clickhouse-server-config", "config.xml")
-        assertConfigMapExists("clickhouse-cluster-config", "replicas-per-shard")
-        assertServiceExists("clickhouse-keeper")
-        assertServiceExists("clickhouse")
-        assertServiceExists("clickhouse-client")
-        assertStatefulSetExists("clickhouse-keeper")
-        assertStatefulSetExists("clickhouse")
-    }
-
     // -----------------------------------------------------------------------
     // Phase 2b: PV lifecycle — verify stale claimRef recycling works
     // -----------------------------------------------------------------------
@@ -394,7 +366,7 @@ class K8sServiceIntegrationTest {
         val pvName = "pv-lifecycle-test"
         val pvcName = "pvc-lifecycle-test"
 
-        // 1. Create a local-storage PV pre-bound to a PVC name (like ClickHouseStart does)
+        // 1. Create a local-storage PV pre-bound to a PVC name (simulating workload start)
         val pv =
             PersistentVolumeBuilder()
                 .withNewMetadata()
@@ -594,10 +566,8 @@ class K8sServiceIntegrationTest {
                 .items
         val problems = mutableListOf<String>()
 
-        // ClickHouse Keeper/Server use required pod anti-affinity (one pod per node)
-        // and the K3s test has only 1 node, so 2 of 3 keeper pods will always be Pending.
         // Fluent Bit journald needs /var/log/journal which doesn't exist in K3s.
-        val pendingExclusions = listOf("clickhouse-keeper-", "clickhouse-", "fluent-bit-journald-")
+        val pendingExclusions = listOf("fluent-bit-journald-")
 
         for (pod in allPods) {
             val podName = pod.metadata?.name ?: "unknown"
@@ -927,13 +897,7 @@ class K8sServiceIntegrationTest {
             BeylaManifestBuilder(templateService).buildAllResources() +
             PyroscopeManifestBuilder(templateService).buildAllResources() +
             YaceManifestBuilder(templateService).buildAllResources() +
-            GrafanaManifestBuilder(templateService).buildAllResources() +
-            ClickHouseManifestBuilder(DefaultClickHouseConfigService()).buildAllResources(
-                totalReplicas = 3,
-                replicasPerShard = 3,
-                s3CacheSize = "10Gi",
-                s3CacheOnWrite = "true",
-            )
+            GrafanaManifestBuilder(templateService).buildAllResources()
 
     private fun waitForPvcBound(
         pvcName: String,

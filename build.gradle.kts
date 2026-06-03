@@ -146,12 +146,18 @@ dependencies {
 
     // Cassandra Driver
     implementation(libs.cassandra.driver.core)
+    implementation(libs.presto.jdbc)
+    implementation(libs.clickhouse.jdbc)
 
     // Testing
+    testImplementation(libs.archunit.junit5)
+    testImplementation(libs.kotlin.reflect)
     testImplementation(libs.bundles.testing)
     testImplementation(libs.bundles.koin.test)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.bundles.testcontainers)
+    testImplementation(libs.fabric8.kubernetes.server.mock)
+    testImplementation(libs.okhttpMockwebserver)
 }
 
 kotlin {
@@ -168,6 +174,19 @@ sourceSets {
     }
 }
 
+// Apply consistent test logging to every test task in every subproject.
+allprojects {
+    tasks.withType<Test> {
+        testLogging {
+            events("passed", "skipped", "failed", "standardError")
+            showExceptions = true
+            showCauses = true
+            showStackTraces = true
+            exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        }
+    }
+}
+
 tasks.test {
     useJUnitPlatform()
 
@@ -177,16 +196,10 @@ tasks.test {
         html.required.set(true)
     }
 
-    // Configure parallel test execution
+    // Single JVM so @Isolated / @ResourceLock can serialise TestContainers tests across classes.
+    // Within-JVM class-level parallelism is configured via junit-platform.properties.
+    maxParallelForks = 1
     val processors = Runtime.getRuntime().availableProcessors()
-    maxParallelForks = (processors / 2).coerceAtLeast(1)
-
-    // Show test execution times and detailed output
-    testLogging {
-        events("passed", "skipped", "failed", "standardOut", "standardError")
-        showCauses = true
-        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
-    }
 
     doFirst {
         environment("EASY_DB_LAB_PROFILE", "default")
@@ -279,6 +292,17 @@ tasks.named("installDist") {
 
 tasks.assemble {
     mustRunAfter(tasks.clean)
+}
+
+detekt {
+    baseline = file("config/detekt/baseline.xml")
+}
+
+tasks.named<io.gitlab.arturbosch.detekt.Detekt>("detektMain") {
+    baseline.set(file("config/detekt/baseline-main.xml"))
+}
+tasks.named<io.gitlab.arturbosch.detekt.Detekt>("detektTest") {
+    baseline.set(file("config/detekt/baseline-test.xml"))
 }
 
 // Kover code coverage configuration

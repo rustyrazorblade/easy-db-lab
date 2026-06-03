@@ -6,7 +6,7 @@ import com.rustyrazorblade.easydblab.Constants
  * Configuration for creating an EMR cluster.
  *
  * @property clusterName Name of the EMR cluster
- * @property releaseLabel EMR release version (e.g., "emr-7.9.0")
+ * @property releaseLabel EMR release version (e.g., "emr-spark-8.0.0")
  * @property logUri S3 URI for EMR logs (e.g., "s3://bucket/emr-logs/")
  * @property subnetId Subnet ID where the cluster will be launched
  * @property ec2KeyName SSH key pair name for cluster instances
@@ -23,7 +23,7 @@ import com.rustyrazorblade.easydblab.Constants
  */
 data class EMRClusterConfig(
     val clusterName: String,
-    val releaseLabel: String = "emr-7.9.0",
+    val releaseLabel: String = Constants.EMR.DEFAULT_RELEASE_LABEL,
     val logUri: String,
     val subnetId: SubnetId,
     val ec2KeyName: String,

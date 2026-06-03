@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.services.CassandraService
 import com.rustyrazorblade.easydblab.services.HostOperationsService
+import com.rustyrazorblade.easydblab.services.KitHookExecutor
 import com.rustyrazorblade.easydblab.services.SidecarService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -26,6 +27,7 @@ class StopTest : BaseKoinTest() {
     private lateinit var mockSidecarService: SidecarService
     private lateinit var mockClusterStateManager: ClusterStateManager
     private lateinit var hostOperationsService: HostOperationsService
+    private lateinit var mockKitHookExecutor: KitHookExecutor
     private lateinit var outputHandler: BufferedOutputHandler
 
     private val testCassandraHost =
@@ -65,6 +67,7 @@ class StopTest : BaseKoinTest() {
                 single<SidecarService> { mockSidecarService }
                 single<ClusterStateManager> { mockClusterStateManager }
                 single { hostOperationsService }
+                single<KitHookExecutor> { mockKitHookExecutor }
             },
         )
 
@@ -73,6 +76,7 @@ class StopTest : BaseKoinTest() {
         mockCassandraService = mock()
         mockSidecarService = mock()
         mockClusterStateManager = mock()
+        mockKitHookExecutor = mock()
         hostOperationsService = HostOperationsService(mockClusterStateManager)
         outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
 

@@ -24,11 +24,13 @@ The system MUST use the per-cluster data bucket for ClickHouse S3 storage.
 
 ### REQ-CH-003: Lifecycle Management
 
-The system MUST support starting, stopping, and checking status of ClickHouse deployments.
+The system MUST support installing, starting, stopping, and uninstalling ClickHouse deployments. Stopping MUST preserve data; data is only deleted on uninstall. Starting after a stop MUST resume the existing dataset without any additional user steps.
 
 **Scenarios:**
 
-- **GIVEN** a deployed ClickHouse cluster, **WHEN** the user stops it, **THEN** the K8s resources are removed.
+- **WHEN** the user runs `clickhouse stop`, **THEN** the ClickHouseInstallation and NodePort service are deleted, but PVs and on-disk data remain.
+- **WHEN** data is written to ClickHouse, `clickhouse stop` is run, and then `clickhouse start` is run again, **THEN** the previously written data is accessible without any restore step.
+- **WHEN** `clickhouse start` is run after a fresh install with no prior starts, **THEN** PVs are created and the ClickHouseInstallation is deployed successfully.
 - **GIVEN** a running ClickHouse cluster, **WHEN** the user checks status, **THEN** the deployment state is displayed.
 
 ### REQ-CH-004: S3 Backup Disk Configured at Startup

@@ -33,8 +33,8 @@ class Packer(
     private val user: User by inject()
     private val awsCredentialsManager by lazy { AWSCredentialsManager(context.profileDir, user) }
 
-    private var containerWorkingDir = Constants.Paths.LOCAL_MOUNT
-    private var logger = KotlinLogging.logger {}
+    private val containerWorkingDir = Constants.Paths.LOCAL_MOUNT
+    private val logger = KotlinLogging.logger {}
     private var release = false
 
     companion object {
@@ -101,7 +101,7 @@ class Packer(
 
         val args = commands.toMutableList()
 
-        var localPackerPath = context.packerHome + directory
+        val localPackerPath = context.packerHome + directory
 
         require(directory.isNotBlank()) { "Directory cannot be blank" }
 
@@ -131,7 +131,7 @@ class Packer(
         // mount credentials
         // get the main process and go up a directory
         val packerDir = VolumeMapping(tempDir.absolutePath, containerWorkingDir, AccessMode.ro)
-        var creds = Constants.Paths.CREDENTIALS_MOUNT
+        val creds = Constants.Paths.CREDENTIALS_MOUNT
 
         // Packer builds can take 30+ minutes, especially when building from source
         val packerTimeout = Duration.ofMinutes(PACKER_TIMEOUT_MINUTES)

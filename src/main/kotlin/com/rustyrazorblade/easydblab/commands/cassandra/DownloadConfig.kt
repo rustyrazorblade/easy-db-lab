@@ -4,7 +4,6 @@ import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.configuration.getHosts
 import io.github.oshai.kotlinlogging.KotlinLogging
 import picocli.CommandLine.Command
 import picocli.CommandLine.Mixin

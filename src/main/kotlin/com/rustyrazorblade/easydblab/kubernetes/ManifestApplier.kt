@@ -1,12 +1,25 @@
 package com.rustyrazorblade.easydblab.kubernetes
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import com.charleskorn.kaml.Yaml
+import com.charleskorn.kaml.YamlConfiguration
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.serialization.Serializable
 import java.io.ByteArrayInputStream
 import java.io.File
+
+@Serializable
+private data class K8sManifestMeta(
+    val name: String = "unknown",
+)
+
+@Serializable
+private data class K8sManifestHeader(
+    val kind: String? = null,
+    val metadata: K8sManifestMeta = K8sManifestMeta(),
+)
+
+private val lenientYaml = Yaml(configuration = YamlConfiguration(strictMode = false))
 
 /**
  * Utility for applying Kubernetes manifests using typed loaders.
@@ -20,42 +33,26 @@ import java.io.File
  */
 object ManifestApplier {
     private val log = KotlinLogging.logger {}
-    private val yamlMapper = ObjectMapper(YAMLFactory()).registerKotlinModule()
 
     /**
      * Apply a manifest file to the cluster using server-side apply.
      * Supports multi-document YAML files (documents separated by ---).
-     *
-     * @param client Kubernetes client
-     * @param file Manifest file to apply
-     * @throws IllegalStateException if the resource kind is not supported
      */
     @Suppress("TooGenericExceptionCaught")
     fun applyManifest(
         client: KubernetesClient,
         file: File,
     ) {
-        val yamlContent = file.readText()
-        val documents = parseYamlDocuments(yamlContent)
-
+        val documents = splitDocuments(file.readText())
         log.info { "Processing ${file.name} with ${documents.size} document(s)" }
-
-        for ((index, document) in documents.withIndex()) {
-            val kind =
-                document["kind"] as? String
-                    ?: error("Document ${index + 1} in ${file.name} missing 'kind' field")
-
-            @Suppress("UNCHECKED_CAST")
-            val metadata = document["metadata"] as? Map<String, Any>
-            val resourceName = metadata?.get("name") as? String ?: "unknown"
-
-            val documentYaml = yamlMapper.writeValueAsString(document)
-
+        for ((index, docYaml) in documents.withIndex()) {
+            val header = lenientYaml.decodeFromString(K8sManifestHeader.serializer(), docYaml)
+            val kind = header.kind ?: error("Document ${index + 1} in ${file.name} missing 'kind' field")
+            val resourceName = header.metadata.name
             log.info { "Applying document ${index + 1}/${documents.size}: $kind '$resourceName' from ${file.name}" }
-            log.debug { "YAML content:\n$documentYaml" }
-
+            log.debug { "YAML content:\n$docYaml" }
             try {
-                applySingleDocument(client, documentYaml, kind)
+                applySingleDocument(client, docYaml, kind)
                 log.info { "Successfully applied $kind '$resourceName'" }
             } catch (e: Exception) {
                 log.error(e) { "Failed to apply $kind '$resourceName': ${e.message}" }
@@ -65,50 +62,26 @@ object ManifestApplier {
     }
 
     /**
-     * Parse a YAML file that may contain multiple documents.
-     * Returns a list of parsed documents as Maps.
-     *
-     * @param yamlContent YAML content (may contain multiple documents separated by ---)
-     * @return List of parsed documents
-     */
-    @Suppress("UNCHECKED_CAST")
-    private fun parseYamlDocuments(yamlContent: String): List<Map<String, Any>> {
-        val factory = YAMLFactory()
-        val parser = factory.createParser(yamlContent)
-        val documents = mutableListOf<Map<String, Any>>()
-
-        while (parser.nextToken() != null) {
-            val doc = yamlMapper.readValue(parser, Map::class.java) as? Map<String, Any>
-            if (doc != null) {
-                documents.add(doc)
-            }
-        }
-        return documents
-    }
-
-    /**
      * Apply YAML content to the cluster using server-side apply.
      * Supports multi-document YAML (documents separated by ---).
-     *
-     * @param client Kubernetes client
-     * @param yamlContent YAML content to apply
-     * @throws IllegalStateException if the resource kind is not supported
      */
     fun applyYaml(
         client: KubernetesClient,
         yamlContent: String,
     ) {
-        val documents = parseYamlDocuments(yamlContent)
-
-        for ((index, document) in documents.withIndex()) {
-            val kind =
-                document["kind"] as? String
-                    ?: error("Document ${index + 1} missing 'kind' field")
-
-            val documentYaml = yamlMapper.writeValueAsString(document)
-            applySingleDocument(client, documentYaml, kind)
+        val documents = splitDocuments(yamlContent)
+        for ((index, docYaml) in documents.withIndex()) {
+            val header = lenientYaml.decodeFromString(K8sManifestHeader.serializer(), docYaml)
+            val kind = header.kind ?: error("Document ${index + 1} missing 'kind' field")
+            applySingleDocument(client, docYaml, kind)
         }
     }
+
+    private fun splitDocuments(yamlContent: String): List<String> =
+        yamlContent
+            .split(Regex("(?m)^---\\s*$"))
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
 
     private fun applySingleDocument(
         client: KubernetesClient,
@@ -126,7 +99,9 @@ object ManifestApplier {
                 "StatefulSet" -> applyStatefulSet(client, stream)
                 "Secret" -> applySecret(client, stream)
                 "Job" -> applyJob(client, stream)
-                else -> error("Unsupported resource kind: $kind")
+                // Generic fallback for CRDs and any other resource kind Fabric8 doesn't have a
+                // typed client for. client.resource() handles any HasMetadata via the generic API.
+                else -> client.resource(yamlContent).serverSideApply()
             }
         }
     }

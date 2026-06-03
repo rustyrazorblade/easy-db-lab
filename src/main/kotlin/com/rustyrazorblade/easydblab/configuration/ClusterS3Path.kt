@@ -106,6 +106,9 @@ data class ClusterS3Path(
             val keySegments = segments.drop(1)
             return ClusterS3Path(bucket, keySegments)
         }
+
+        /** Root path for ClickHouse backups in the account bucket, decoupled from any cluster lifecycle. */
+        fun clickhouseBackupsRoot(accountBucket: String): ClusterS3Path = root(accountBucket).resolve(CLICKHOUSE_BACKUPS_DIR)
     }
 
     // Core Path-like methods
@@ -202,4 +205,68 @@ data class ClusterS3Path(
      * @return The S3 key (path after bucket name)
      */
     fun getKey(): String = segments.joinToString("/")
+
+    // ── Technology-specific path helpers ───────────────────────────────────────
+
+    /** Path for Cassandra data and backups. */
+    fun cassandra(): ClusterS3Path = resolve(CASSANDRA_DIR)
+
+    /** Path for ClickHouse data. */
+    fun clickhouse(): ClusterS3Path = resolve(CLICKHOUSE_DIR)
+
+    /** Path for Spark JARs and data. */
+    fun spark(): ClusterS3Path = resolve(SPARK_DIR)
+
+    /** Path for EMR logs. */
+    fun emrLogs(): ClusterS3Path = resolve(SPARK_DIR).resolve(EMR_LOGS_DIR)
+
+    /** Path for backups. */
+    fun backups(): ClusterS3Path = resolve(BACKUPS_DIR)
+
+    /** Path for log aggregation. */
+    fun logs(): ClusterS3Path = resolve(LOGS_DIR)
+
+    /** Path for general data storage. */
+    fun data(): ClusterS3Path = resolve(DATA_DIR)
+
+    /** Path for Tempo trace storage. */
+    fun tempo(): ClusterS3Path = resolve(TEMPO_DIR)
+
+    /** Path for Pyroscope profile storage. */
+    fun pyroscope(): ClusterS3Path = resolve(PYROSCOPE_DIR)
+
+    /** Path for VictoriaMetrics backups. */
+    fun victoriaMetrics(): ClusterS3Path = resolve(VICTORIA_METRICS_DIR)
+
+    /** Path for VictoriaLogs backups. */
+    fun victoriaLogs(): ClusterS3Path = resolve(VICTORIA_LOGS_DIR)
+
+    // ── Config file path helpers ────────────────────────────────────────────────
+
+    /** Path for K3s kubeconfig file. */
+    fun kubeconfig(): ClusterS3Path = resolve(CONFIG_DIR).resolve(KUBECONFIG_FILE)
+
+    /** Path for Kubernetes manifests directory. */
+    fun k8s(): ClusterS3Path = resolve(CONFIG_DIR).resolve(K8S_DIR)
+
+    /** Path for cluster configuration files directory. */
+    fun config(): ClusterS3Path = resolve(CONFIG_DIR)
+
+    /** Path for Cassandra patch configuration file. */
+    fun cassandraPatch(): ClusterS3Path = resolve(CONFIG_DIR).resolve(CASSANDRA_PATCH_FILE)
+
+    /** Path for cassandra_versions.yaml file. */
+    fun cassandraVersions(): ClusterS3Path = resolve(CONFIG_DIR).resolve(CASSANDRA_VERSIONS_FILE)
+
+    /** Path for env.sh (main environment script with SSH aliases, kubectl, etc.). */
+    fun envScript(): ClusterS3Path = resolve(CONFIG_DIR).resolve(ENV_SCRIPT_FILE)
+
+    /** Path for environment.sh (stress environment variables). */
+    fun environmentScript(): ClusterS3Path = resolve(CONFIG_DIR).resolve(ENVIRONMENT_FILE)
+
+    /** Path for setup_instance.sh file. */
+    fun setupInstanceScript(): ClusterS3Path = resolve(CONFIG_DIR).resolve(SETUP_INSTANCE_FILE)
+
+    /** Path for state.json file. */
+    fun stateJson(): ClusterS3Path = resolve(CONFIG_DIR).resolve(STATE_JSON_FILE)
 }

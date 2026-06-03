@@ -38,10 +38,11 @@ class MinaSocksProxyService(
     override fun ensureRunning(gatewayHost: ClusterHost): SocksProxyState =
         lock.withLock {
             // Already running to same host? Return existing state
-            if (isRunningInternal() && state?.gatewayHost?.alias == gatewayHost.alias) {
-                state!!.connectionCount.incrementAndGet()
-                log.debug { "Proxy already running to ${gatewayHost.alias}, reusing (connections: ${state!!.connectionCount.get()})" }
-                return@withLock state!!
+            val runningState = state
+            if (isRunningInternal() && runningState?.gatewayHost?.alias == gatewayHost.alias) {
+                checkNotNull(runningState).connectionCount.incrementAndGet()
+                log.debug { "Proxy already running to ${gatewayHost.alias}, reusing (connections: ${runningState.connectionCount.get()})" }
+                return@withLock runningState
             }
 
             // Running to different host? Stop first
@@ -55,11 +56,12 @@ class MinaSocksProxyService(
 
     override fun start(gatewayHost: ClusterHost): SocksProxyState =
         lock.withLock {
+            val existingState = state
             if (isRunningInternal()) {
-                if (state?.gatewayHost?.alias != gatewayHost.alias) {
-                    error("Proxy already running to ${state?.gatewayHost?.alias}, cannot start to ${gatewayHost.alias}")
+                if (existingState?.gatewayHost?.alias != gatewayHost.alias) {
+                    error("Proxy already running to ${existingState?.gatewayHost?.alias}, cannot start to ${gatewayHost.alias}")
                 }
-                return@withLock state!!
+                return@withLock checkNotNull(existingState)
             }
             return@withLock startInternal(gatewayHost)
         }
@@ -89,18 +91,19 @@ class MinaSocksProxyService(
         log.info { "Dynamic port forwarding bound to: $boundAddress" }
 
         session = clientSession
-        state =
+        val newState =
             SocksProxyState(
                 localPort = port,
                 gatewayHost = gatewayHost,
                 startTime = Instant.now(),
             )
+        state = newState
 
         // Verify the proxy is accepting connections
         verifyProxyAcceptingConnections(port)
 
         log.info { "SOCKS5 proxy started successfully on 127.0.0.1:$port via gateway ${gatewayHost.publicIp}" }
-        return state!!
+        return newState
     }
 
     /**

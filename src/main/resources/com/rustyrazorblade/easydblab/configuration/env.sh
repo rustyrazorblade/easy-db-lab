@@ -170,6 +170,24 @@ kubectl() {
   fi
 }
 
+# helm wrapper - uses proxy only when Tailscale is not connected
+helm() {
+  if is-tailscale-connected; then
+    command helm "$@"
+  else
+    HTTPS_PROXY="socks5://localhost:$SOCKS5_PROXY_PORT" command helm "$@"
+  fi
+}
+
+# cilium wrapper - uses proxy only when Tailscale is not connected
+cilium() {
+  if is-tailscale-connected; then
+    command cilium "$@"
+  else
+    HTTPS_PROXY="socks5://localhost:$SOCKS5_PROXY_PORT" command cilium "$@"
+  fi
+}
+
 # curl wrapper - uses proxy only when Tailscale is not connected
 curl() {
   if is-tailscale-connected; then

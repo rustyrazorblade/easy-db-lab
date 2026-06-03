@@ -1,107 +1,73 @@
 # ClickHouse Backup and Restore
 
-easy-db-lab provides commands to back up ClickHouse data to S3 and restore it to a new cluster. Backups are stored at the account level — independent of any individual cluster — so you can restore data into a freshly created cluster after the original cluster is torn down.
+easy-db-lab provides `backup` and `restore` commands for ClickHouse workloads. Backups are stored in your account-level S3 bucket, outside the per-cluster prefix, so they survive cluster teardown and can be restored into a new cluster.
 
-## How Backups Work
+## How It Works
 
-Backups are stored under `s3://<account-bucket>/clickhouse-backups/<backup-name>/` in your account-level S3 bucket. Because this path is outside the cluster prefix, backups survive cluster teardown.
+ClickHouse's native `BACKUP`/`RESTORE` SQL is used. The backup destination is a named disk (`s3_backup`) configured in the ClickHouseInstallation CR, which points to:
 
-Each backup contains:
+```
+s3://<account-bucket>/clickhouse-backups/<backup-name>/
+```
 
-- All tables in the `default` database, exported using the ClickHouse `BACKUP DATABASE default` command
-- A `backup-metadata.json` file recording the backup name, creation timestamp, source cluster name, and total size
+The S3 disk uses IAM instance profile credentials — no AWS keys are stored anywhere in the cluster configuration.
+
+## IAM Requirements
+
+The EC2 instance profile used by your cluster nodes must have the following permissions on the account-level S3 bucket:
+
+```json
+{
+  "Effect": "Allow",
+  "Action": ["s3:PutObject", "s3:GetObject", "s3:DeleteObject", "s3:ListBucket"],
+  "Resource": [
+    "arn:aws:s3:::<account-bucket>/clickhouse-backups/*",
+    "arn:aws:s3:::<account-bucket>"
+  ]
+}
+```
+
+This is handled automatically by the easy-db-lab IAM setup — no manual configuration is needed for standard clusters.
 
 ## Creating a Backup
-
-To back up the running ClickHouse cluster:
 
 ```bash
 easy-db-lab clickhouse backup <backup-name>
 ```
 
-The backup name must be unique. If a backup with that name already exists, the command fails immediately without overwriting the existing data.
+This discovers the primary ClickHouse pod and runs:
+
+```sql
+BACKUP DATABASE default ON CLUSTER clickhouse TO Disk('s3_backup', '<backup-name>/');
+```
 
 **Example:**
 
 ```bash
-easy-db-lab clickhouse backup my-experiment-2024-01
+easy-db-lab clickhouse backup pre-migration-snapshot
 ```
-
-## Listing Available Backups
-
-To see all available backups in your account bucket:
-
-```bash
-easy-db-lab clickhouse list-backups
-```
-
-This displays a table of backups sorted by creation time (newest first), including the backup name, size, and timestamp.
 
 ## Restoring a Backup
-
-To restore a backup to a running ClickHouse cluster:
 
 ```bash
 easy-db-lab clickhouse restore <backup-name>
 ```
 
-**Example:**
+This discovers the primary ClickHouse pod and runs:
 
-```bash
-easy-db-lab clickhouse restore my-experiment-2024-01
-```
-
-The restore command runs `RESTORE DATABASE default` inside the ClickHouse pod. Existing tables with conflicting names will cause the restore to fail; drop or rename them first if needed.
-
-## Restoring When Starting a Cluster
-
-You can combine cluster startup and restore in a single step using `--restore-from`:
-
-```bash
-easy-db-lab clickhouse start --restore-from <backup-name>
-```
-
-This starts ClickHouse and immediately restores the named backup once the pods are ready. This is the typical workflow for recreating a cluster with existing data:
-
-```bash
-# 1. Tear down the old cluster (backup already exists from a previous run)
-easy-db-lab down
-
-# 2. Create a fresh cluster
-easy-db-lab up
-
-# 3. Deploy ClickHouse and restore from the backup in one step
-easy-db-lab clickhouse start --restore-from my-experiment-2024-01
-```
-
-## Backing Up Before Cluster Teardown
-
-To automatically create a backup when tearing down a cluster, use the `--clickhouse.backup` option with `down`:
-
-```bash
-easy-db-lab down --clickhouse.backup <backup-name>
+```sql
+RESTORE DATABASE default ON CLUSTER clickhouse FROM Disk('s3_backup', '<backup-name>/');
 ```
 
 **Example:**
 
 ```bash
-easy-db-lab down --clickhouse.backup my-experiment-2024-01
+easy-db-lab clickhouse restore pre-migration-snapshot
 ```
 
-This creates the backup before shutting down the cluster so you can restore it later.
+> **Note:** The restore command does not drop existing tables first. If tables with conflicting names exist, the restore will fail. Drop or truncate the conflicting tables before restoring.
 
 ## Common Workflows
-
-### Persist Data Across Cluster Rebuilds
-
-```bash
-# Back up before tearing down
-easy-db-lab down --clickhouse.backup my-dataset
-
-# Later, create a new cluster and restore
-easy-db-lab up
-easy-db-lab clickhouse start --restore-from my-dataset
-```
 
 ### Snapshot Before a Destructive Operation
 
@@ -116,8 +82,16 @@ easy-db-lab clickhouse backup pre-migration-snapshot
 easy-db-lab clickhouse restore pre-migration-snapshot
 ```
 
-### Check What Backups Are Available
+### Persist Data Across Cluster Rebuilds
 
 ```bash
-easy-db-lab clickhouse list-backups
+# Back up before tearing down
+easy-db-lab clickhouse backup my-dataset
+easy-db-lab down
+
+# Create a new cluster and restore
+easy-db-lab up
+easy-db-lab clickhouse install --size 100Gi
+easy-db-lab clickhouse start
+easy-db-lab clickhouse restore my-dataset
 ```

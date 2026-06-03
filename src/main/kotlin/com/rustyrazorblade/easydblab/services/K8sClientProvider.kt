@@ -27,7 +27,6 @@ class K8sClientProvider(
         if (!tailscaleActive) {
             socksProxyService.ensureRunning(controlHost)
         }
-        val proxyPort = if (!tailscaleActive) socksProxyService.getLocalPort() else 0
 
         val kubeconfigPath = Path.of(Constants.K3s.LOCAL_KUBECONFIG)
         log.debug { "Using kubeconfig=$kubeconfigPath tailscale=$tailscaleActive" }
@@ -35,7 +34,7 @@ class K8sClientProvider(
         val clientFactory =
             ProxiedKubernetesClientFactory(
                 proxyHost = "127.0.0.1",
-                proxyPort = proxyPort,
+                socksProxyService = socksProxyService,
                 tailscaleActive = tailscaleActive,
             )
 

@@ -128,9 +128,10 @@ class McpServer(
                     else -> "idle"
                 }
 
+            val startTime = commandStartTime
             val runtimeSeconds =
-                if (commandStartTime != null) {
-                    (System.currentTimeMillis() - commandStartTime!!) /
+                if (startTime != null) {
+                    (System.currentTimeMillis() - startTime) /
                         Constants.Time.MILLIS_PER_SECOND
                 } else {
                     0
@@ -211,7 +212,7 @@ class McpServer(
                     } catch (e: RuntimeException) {
                         log.error(e) { "Error in background execution of tool ${request.name}" }
                         eventBus.emit(
-                            Event.Mcp.BackgroundToolFailed(request.name, e.message ?: ""),
+                            Event.Mcp.BackgroundToolFailed(request.name, e.message.orEmpty()),
                         )
                     } finally {
                         executionSemaphore.release()
@@ -321,7 +322,7 @@ class McpServer(
         if (!redisUrl.isNullOrBlank()) {
             metricsCollector =
                 MetricsCollector(victoriaMetricsQueryService, clusterStateManager, eventBus)
-            metricsCollector!!.start()
+                    .also { it.start() }
             log.info { "MetricsCollector started (Redis configured)" }
         } else {
             log.debug { "MetricsCollector not started (Redis not configured)" }

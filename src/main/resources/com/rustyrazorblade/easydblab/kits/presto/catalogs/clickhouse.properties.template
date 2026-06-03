@@ -1,0 +1,4 @@
+connector.name=clickhouse
+clickhouse.connection-url=jdbc:clickhouse://clickhouse-clickhouse.default.svc.cluster.local:8123/default
+clickhouse.connection-user=default
+clickhouse.connection-password=

@@ -478,7 +478,7 @@ potential-bugs:
   UnreachableCatchBlock:
     active: true
   UnreachableCode:
-    active: true
+    active: false  # false-positive: detekt incorrectly flags ?: return / ?: return@forEach guards
   UnsafeCallOnNullableType:
     active: true
     excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/androidUnitTest/**', '**/androidInstrumentedTest/**', '**/jsTest/**', '**/iosTest/**']

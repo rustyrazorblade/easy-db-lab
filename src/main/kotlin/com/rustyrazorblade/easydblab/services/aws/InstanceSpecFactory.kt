@@ -74,11 +74,9 @@ class DefaultInstanceSpecFactory : InstanceSpecFactory {
     ): List<InstanceSpec> {
         val ebsConfig = createEbsConfig(initConfig)
 
-        if (!dbHasInstanceStore && ebsConfig == null) {
-            throw IllegalArgumentException(
-                "Instance type ${initConfig.instanceType} has no local instance store. " +
-                    "You must specify --ebs.type (e.g., --ebs.type gp3) to attach an EBS volume for data storage.",
-            )
+        require(dbHasInstanceStore || ebsConfig != null) {
+            "Instance type ${initConfig.instanceType} has no local instance store. " +
+                "You must specify --ebs.type (e.g., --ebs.type gp3) to attach an EBS volume for data storage."
         }
 
         val existingCassandraCount = existingInstances[ServerType.Cassandra]?.size ?: 0

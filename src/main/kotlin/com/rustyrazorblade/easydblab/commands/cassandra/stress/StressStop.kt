@@ -97,7 +97,7 @@ class StressStop : PicoBaseCommand() {
             eventBus.emit(Event.Stress.BulkDeleted(deleted))
         } else {
             // Delete specific job
-            val name = jobName!!
+            val name = requireNotNull(jobName) { "jobName is required when --all is not specified" }
             deleteJobAndConfigMap(controlNode, name)
             eventBus.emit(Event.Stress.SingleDeleted(name))
         }

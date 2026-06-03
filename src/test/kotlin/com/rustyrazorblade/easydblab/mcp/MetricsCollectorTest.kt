@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.mcp
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
-import com.rustyrazorblade.easydblab.configuration.ClickHouseConfig
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -106,19 +105,14 @@ class MetricsCollectorTest : BaseKoinTest() {
     }
 
     @Test
-    fun `does not emit CassandraSnapshot when cluster is ClickHouse`() {
-        val clickHouseState =
+    fun `does not emit CassandraSnapshot when no Cassandra hosts configured`() {
+        val noCassandraState =
             ClusterState(
                 name = "test-cluster",
                 versions = mutableMapOf(),
-                hosts =
-                    mapOf(
-                        ServerType.Control to listOf(testControlHost),
-                        ServerType.Cassandra to listOf(testDbHost),
-                    ),
-                clickHouseConfig = ClickHouseConfig(),
+                hosts = mapOf(ServerType.Control to listOf(testControlHost)),
             )
-        whenever(mockClusterStateManager.load()).thenReturn(clickHouseState)
+        whenever(mockClusterStateManager.load()).thenReturn(noCassandraState)
         setupSystemMetrics()
 
         triggerCollection()

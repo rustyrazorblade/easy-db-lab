@@ -2,7 +2,6 @@ package com.rustyrazorblade.easydblab.kubernetes
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
-import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import org.koin.dsl.module
 import java.nio.file.Paths
 
@@ -22,7 +21,7 @@ val kubernetesModule =
             val tailscaleActive = get<ClusterStateManager>().load().tailscaleActive
             ProxiedKubernetesClientFactory(
                 proxyHost = "127.0.0.1",
-                proxyPort = get<SocksProxyService>().getLocalPort(),
+                socksProxyService = get(),
                 tailscaleActive = tailscaleActive,
             )
         }

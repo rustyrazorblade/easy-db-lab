@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.kubernetes
 
+import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import io.fabric8.kubernetes.client.Config
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientBuilder
@@ -26,12 +27,12 @@ interface KubernetesClientFactory {
  * depending on whether Tailscale was active at init time.
  *
  * @property proxyHost The SOCKS5 proxy host (typically "127.0.0.1")
- * @property proxyPort The SOCKS5 proxy port
+ * @property socksProxyService Injected so getLocalPort() is called at createClient() time, not at construction
  * @property tailscaleActive Whether Tailscale was active at init time; skips proxy when true
  */
 class ProxiedKubernetesClientFactory(
     private val proxyHost: String = "127.0.0.1",
-    private val proxyPort: Int,
+    private val socksProxyService: SocksProxyService,
     private val tailscaleActive: Boolean,
 ) : KubernetesClientFactory {
     companion object {
@@ -44,7 +45,7 @@ class ProxiedKubernetesClientFactory(
         val config = Config.fromKubeconfig(kubeconfigContent)
 
         if (!tailscaleActive) {
-            config.httpsProxy = "socks5://$proxyHost:$proxyPort"
+            config.httpsProxy = "socks5://$proxyHost:${socksProxyService.getLocalPort()}"
         }
 
         config.connectionTimeout = CONNECTION_TIMEOUT_MS

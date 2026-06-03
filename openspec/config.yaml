@@ -19,6 +19,8 @@ context: |
   ## Architecture
   Commands (PicoCLI) → Services → External Systems (K8s, AWS, Filesystem)
   All user-facing output via eventBus.emit() with domain-specific typed events.
+  Follow SOLID principles: single responsibility per class, depend on abstractions not concretions,
+  prefer small focused interfaces, open for extension closed for modification.
 
   ## Domain
   AWS-based database lab provisioning targeting Cassandra, ClickHouse, and OpenSearch.

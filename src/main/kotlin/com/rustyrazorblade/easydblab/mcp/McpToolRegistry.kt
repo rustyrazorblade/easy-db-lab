@@ -125,7 +125,7 @@ open class McpToolRegistry : KoinComponent {
             ToolResult(content = listOf("Tool executed successfully"))
         } catch (e: Exception) {
             log.error(e) { "Error executing command $name" }
-            eventBus.emit(Event.Mcp.ToolExecutionFailed(name, e.message ?: ""))
+            eventBus.emit(Event.Mcp.ToolExecutionFailed(name, e.message.orEmpty()))
             ToolResult(content = listOf("Error executing command: ${e.message}"), isError = true)
         }
 

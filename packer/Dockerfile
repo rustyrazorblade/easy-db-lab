@@ -1,6 +1,6 @@
 # Test environment for packer scripts
-# Mimics Ubuntu 24.04 AMI environment used by packer
-FROM ubuntu:24.04
+# Mimics Ubuntu 26.04 (Resolute) AMI environment used by packer
+FROM ubuntu:26.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -18,7 +18,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Create ubuntu user (matches packer SSH user) and add to docker group
-# Ubuntu 24.04 may already have ubuntu user, so check first
+# Ubuntu 26.04 may already have ubuntu user, so check first
 # Ensure docker group exists immediately before adding user to it to avoid caching issues
 RUN id -u ubuntu &>/dev/null || useradd -m -s /bin/bash ubuntu && \
     echo "ubuntu ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \

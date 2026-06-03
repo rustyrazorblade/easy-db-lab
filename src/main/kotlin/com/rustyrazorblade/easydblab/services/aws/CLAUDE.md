@@ -45,7 +45,6 @@ All AWS services follow this constructor pattern:
 ```kotlin
 class ServiceName(
     private val awsSdkClient: AwsSdkClient,  // AWS SDK client (from Koin)
-    private val outputHandler: OutputHandler, // User-facing output (from Koin)
 ) {
     companion object {
         private val log = KotlinLogging.logger {}
@@ -54,8 +53,8 @@ class ServiceName(
 ```
 
 Key conventions:
-- User feedback via `outputHandler.handleMessage()`
 - Internal logging via `KotlinLogging`
+- User-facing output via `eventBus.emit()` — see root `CLAUDE.md` for output conventions
 - Retry logic via `RetryUtil` from `providers.aws` (never custom loops)
 - Fail fast — let exceptions propagate
 - Use `Result<T>` for expected failures (ObjectStore)

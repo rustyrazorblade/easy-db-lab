@@ -87,20 +87,16 @@ class PromptLoader {
         resourceName: String,
         content: String,
     ): List<String> {
-        if (!content.startsWith(FRONTMATTER_DELIMITER)) {
-            throw IllegalArgumentException(
-                "Resource $resourceName does not contain valid YAML frontmatter. " +
-                    "Expected to start with '$FRONTMATTER_DELIMITER'",
-            )
+        require(content.startsWith(FRONTMATTER_DELIMITER)) {
+            "Resource $resourceName does not contain valid YAML frontmatter. " +
+                "Expected to start with '$FRONTMATTER_DELIMITER'"
         }
 
         val parts = content.substring(FRONTMATTER_DELIMITER.length).split(FRONTMATTER_DELIMITER, limit = 2)
 
-        if (parts.size < 2) {
-            throw IllegalArgumentException(
-                "Resource $resourceName does not contain properly closed YAML frontmatter. " +
-                    "Expected closing '$FRONTMATTER_DELIMITER'",
-            )
+        require(parts.size >= 2) {
+            "Resource $resourceName does not contain properly closed YAML frontmatter. " +
+                "Expected closing '$FRONTMATTER_DELIMITER'"
         }
 
         return parts

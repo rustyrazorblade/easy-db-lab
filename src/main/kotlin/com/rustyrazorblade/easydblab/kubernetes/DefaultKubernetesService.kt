@@ -73,6 +73,23 @@ class DefaultKubernetesService(
             log.warn(e) { "Failed to list pods" }
         }
 
+    override fun listPodsByLabel(
+        labelSelector: String,
+        namespace: String,
+    ): Result<List<KubernetesPod>> =
+        runCatching {
+            log.debug { "Listing pods with selector '$labelSelector' in namespace $namespace" }
+            client
+                .pods()
+                .inNamespace(namespace)
+                .withLabelSelector(labelSelector)
+                .list()
+                .items
+                .map { it.toKubernetesPod() }
+        }.onFailure { e ->
+            log.warn(e) { "Failed to list pods with selector $labelSelector" }
+        }
+
     override fun getNodes(): Result<List<KubernetesNode>> =
         runCatching {
             log.debug { "Getting cluster nodes" }
@@ -108,11 +125,14 @@ private fun Job.toKubernetesJob(): KubernetesJob {
     val completions = spec?.completions ?: 1
     val completionsStr = "$succeeded/$completions"
 
+    val activeCount = status?.active
+    val succeededCount = status?.succeeded
+    val failedCount = status?.failed
     val jobStatus =
         when {
-            status?.active != null && status?.active!! > 0 -> "Running"
-            status?.succeeded != null && status?.succeeded!! > 0 -> "Completed"
-            status?.failed != null && status?.failed!! > 0 -> "Failed"
+            activeCount != null && activeCount > 0 -> "Running"
+            succeededCount != null && succeededCount > 0 -> "Completed"
+            failedCount != null && failedCount > 0 -> "Failed"
             else -> "Unknown"
         }
 

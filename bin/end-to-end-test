@@ -27,10 +27,12 @@
 #   --cassandra        Enable Cassandra-related steps.
 #   --clickhouse       Enable ClickHouse-related steps.
 #   --opensearch       Enable OpenSearch-related steps.
+#   --presto           Enable Presto-related steps.
 #   --ebs              Use EBS volumes.
 #   --no-teardown      Skip teardown prompt; exit with status (0=pass, 1=fail).
 #   --clean            Run 'easy-db-lab clean' and remove stale artifacts before starting.
 #   --stop-on-failure  Halt the run immediately after the first failing step.
+#   --publish-events   Start Docker (OTel collector + Valkey) and publish CLI telemetry.
 #
 # Environment variables (set in shell or .env):
 #   AWS_PROFILE              AWS profile for all CLI/SDK calls (required)
@@ -73,6 +75,7 @@ export ENABLE_CASSANDRA=false
 export ENABLE_CLICKHOUSE=false
 export CLICKHOUSE_BACKUP_NAME="e2e-test-backup-$(date +%Y%m%d-%H%M%S)"
 export ENABLE_OPENSEARCH=false
+export ENABLE_PRESTO=false
 export USE_EBS=false
 export LIST_STEPS=false
 export BREAKPOINTS=""
@@ -80,6 +83,7 @@ export START_STEP=""
 export NO_TEARDOWN=false
 export CLEAN=false
 export STOP_ON_FAILURE=false
+export PUBLISH_EVENTS=false
 while [[ $# -gt 0 ]]; do
   case $1 in
     --list-steps|-l)
@@ -111,11 +115,17 @@ while [[ $# -gt 0 ]]; do
       ENABLE_OPENSEARCH=true
       shift
       ;;
+    --presto)
+      ENABLE_PRESTO=true
+      ENABLE_CASSANDRA=true
+      shift
+      ;;
     --all)
       ENABLE_SPARK=true
       ENABLE_CASSANDRA=true
       ENABLE_CLICKHOUSE=true
       ENABLE_OPENSEARCH=true
+      ENABLE_PRESTO=true
       shift
       ;;
     --ebs)
@@ -138,9 +148,13 @@ while [[ $# -gt 0 ]]; do
       STOP_ON_FAILURE=true
       shift
       ;;
+    --publish-events)
+      PUBLISH_EVENTS=true
+      shift
+      ;;
     *)
       echo "Unknown option: $1"
-      echo "Usage: $0 [--list-steps|-l] [--break <steps>] [--start-step <N>] [--build] [--spark] [--cassandra] [--clickhouse] [--opensearch] [--all] [--ebs] [--no-teardown] [--clean] [--stop-on-failure]"
+      echo "Usage: $0 [--list-steps|-l] [--break <steps>] [--start-step <N>] [--build] [--spark] [--cassandra] [--clickhouse] [--opensearch] [--presto] [--all] [--ebs] [--no-teardown] [--clean] [--stop-on-failure] [--publish-events]"
       exit 1
       ;;
   esac
@@ -968,8 +982,8 @@ step_clickhouse_start() {
         echo "=== Skipping ClickHouse deployment (use --clickhouse to enable) ==="
         return 0
     fi
-    echo "=== Initializing ClickHouse configuration ==="
-    easy-db-lab clickhouse init
+    echo "=== Installing ClickHouse kit ==="
+    easy-db-lab install clickhouse
 
     echo "=== Deploying ClickHouse cluster ==="
     easy-db-lab clickhouse start
@@ -1216,6 +1230,36 @@ step_opensearch_stop() {
     fi
     echo "=== Stopping OpenSearch domain ==="
     easy-db-lab opensearch stop --force
+}
+
+step_presto_install() {
+    if [ "$ENABLE_PRESTO" != true ]; then
+        echo "=== Skipping Presto install (use --presto to enable) ==="
+        return 0
+    fi
+    echo "=== Scaffolding Presto workload files ==="
+    easy-db-lab install presto
+}
+
+step_presto_start() {
+    if [ "$ENABLE_PRESTO" != true ]; then
+        echo "=== Skipping Presto start (use --presto to enable) ==="
+        return 0
+    fi
+    echo "=== Starting Presto ==="
+    easy-db-lab presto start
+
+    echo "=== Verifying Presto pods ==="
+    kubectl get pods -n default -l app.kubernetes.io/name=presto
+}
+
+step_presto_stop() {
+    if [ "$ENABLE_PRESTO" != true ]; then
+        echo "=== Skipping Presto stop (use --presto to enable) ==="
+        return 0
+    fi
+    echo "=== Stopping Presto ==="
+    easy-db-lab presto stop
 }
 
 step_generate_s3_traffic() {
@@ -1503,6 +1547,9 @@ STEPS_WORKDIR=(
     "step_opensearch_start:Start OpenSearch"
     "step_opensearch_test:Test OpenSearch"
     "step_opensearch_stop:Stop OpenSearch"
+    "step_presto_install:Install Presto"
+    "step_presto_start:Start Presto"
+    "step_presto_stop:Stop Presto"
     "step_generate_s3_traffic:Generate S3 traffic for metrics"
     "step_test_observability:Test observability stack"
     "step_test_dashboards:Validate Grafana dashboards"
@@ -1731,19 +1778,19 @@ if [ "$CLEAN" = true ]; then
     echo "=== Clean complete ==="
 fi
 
-# Skip per-invocation rebuild and docker compose in easy-db-lab — we just built above
+# Skip per-invocation rebuild in easy-db-lab — we just built above
 export EASY_DB_LAB_SKIP_BUILD=1
 
-# Start Docker services once upfront (Redis, OTel collector), then skip per-invocation restarts
-docker compose -f "$PROJECT_ROOT/docker-compose.yml" up -d --wait
-
-# Discover the dynamically assigned OTLP port and export for test execution
-OTEL_PORT=$(docker compose -f "$PROJECT_ROOT/docker-compose.yml" port otel-collector 4317 2>/dev/null | cut -d: -f2)
-export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:${OTEL_PORT}"
-export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
-echo "OpenTelemetry OTLP endpoint: $OTEL_EXPORTER_OTLP_ENDPOINT (protocol: grpc)"
-
-export EASY_DB_LAB_SKIP_DOCKER=1
+# Enable Docker (OTel collector + Valkey) when --publish-events is requested.
+# Start containers once via a cheap command, then disable so subsequent invocations skip docker compose.
+if [ "$PUBLISH_EVENTS" = true ]; then
+    export EASY_DB_LAB_USE_DOCKER=1
+    easy-db-lab version > /dev/null
+    export EASY_DB_LAB_USE_DOCKER=0
+    echo "=== Event publishing enabled ==="
+else
+    echo "=== Event publishing disabled (use --publish-events to enable) ==="
+fi
 
 # Kill any stale easy-db-lab server processes before tests begin
 stale_pids=$(pgrep -f "easy-db-lab.*server" 2>/dev/null || true)

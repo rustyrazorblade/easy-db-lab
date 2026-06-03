@@ -22,56 +22,6 @@ class DefaultK8sStorageOperations(
     private val clientProvider: K8sClientProvider,
     private val eventBus: EventBus,
 ) : K8sStorageOperations {
-    override fun createClickHouseS3ConfigMap(
-        controlHost: ClusterHost,
-        namespace: String,
-        s3EndpointUrl: String,
-        backupS3EndpointUrl: String,
-    ): Result<Unit> =
-        runCatching {
-            log.info { "Creating ClickHouse S3 ConfigMap in namespace $namespace" }
-            log.info { "S3 endpoint: $s3EndpointUrl" }
-            log.info { "Backup S3 endpoint: $backupS3EndpointUrl" }
-
-            clientProvider.createClient(controlHost).use { client ->
-                val existing =
-                    client
-                        .configMaps()
-                        .inNamespace(namespace)
-                        .withName(Constants.ClickHouse.S3_CONFIG_NAME)
-                        .get()
-
-                if (existing != null) {
-                    log.info { "Deleting existing ConfigMap ${Constants.ClickHouse.S3_CONFIG_NAME}" }
-                    client
-                        .configMaps()
-                        .inNamespace(namespace)
-                        .withName(Constants.ClickHouse.S3_CONFIG_NAME)
-                        .delete()
-                }
-
-                val configMap =
-                    ConfigMapBuilder()
-                        .withNewMetadata()
-                        .withName(Constants.ClickHouse.S3_CONFIG_NAME)
-                        .withNamespace(namespace)
-                        .addToLabels("app.kubernetes.io/name", "clickhouse-server")
-                        .endMetadata()
-                        .addToData("CLICKHOUSE_S3_ENDPOINT", s3EndpointUrl)
-                        .addToData(Constants.ClickHouse.BACKUP_S3_ENDPOINT_ENV, backupS3EndpointUrl)
-                        .build()
-
-                client
-                    .configMaps()
-                    .inNamespace(namespace)
-                    .resource(configMap)
-                    .create()
-                log.info { "Created ConfigMap ${Constants.ClickHouse.S3_CONFIG_NAME}" }
-            }
-
-            eventBus.emit(Event.K8s.ClickHouseS3ConfigMapCreated)
-        }
-
     override fun scaleStatefulSet(
         controlHost: ClusterHost,
         namespace: String,
@@ -182,8 +132,7 @@ class DefaultK8sStorageOperations(
 
             clientProvider.createClient(controlHost).use { client ->
                 for (ordinal in 0 until config.count) {
-                    val pvcName = "${config.volumeClaimTemplateName}-${config.dbName}-$ordinal"
-                    val pvName = pvcName
+                    val pvName = "${config.volumeClaimTemplateName}-${config.dbName}-$ordinal"
 
                     val existing = client.persistentVolumes().withName(pvName).get()
                     if (existing != null) {
@@ -206,10 +155,6 @@ class DefaultK8sStorageOperations(
                             .withNewLocal()
                             .withPath(config.localPath)
                             .endLocal()
-                            .withNewClaimRef()
-                            .withName(pvcName)
-                            .withNamespace(config.namespace)
-                            .endClaimRef()
                             .withNewNodeAffinity()
                             .withNewRequired()
                             .addNewNodeSelectorTerm()
@@ -225,10 +170,25 @@ class DefaultK8sStorageOperations(
                             .build()
 
                     client.persistentVolumes().resource(pv).create()
-                    log.info { "Created PV $pvName pre-bound to PVC $pvcName on node ordinal $ordinal" }
+                    log.info { "Created PV $pvName on node ordinal $ordinal" }
                 }
 
                 eventBus.emit(Event.K8s.LocalPvsCreated(config.count, config.dbName))
+            }
+        }
+
+    override fun deleteLocalPersistentVolumes(
+        controlHost: ClusterHost,
+        dbName: String,
+    ): Result<Unit> =
+        runCatching {
+            clientProvider.createClient(controlHost).use { client ->
+                val deleted =
+                    client
+                        .persistentVolumes()
+                        .withLabel("app.kubernetes.io/name", dbName)
+                        .delete()
+                eventBus.emit(Event.K8s.LocalPvsDeleted(count = deleted.size, dbName = dbName))
             }
         }
 
@@ -324,6 +284,46 @@ class DefaultK8sStorageOperations(
 
                 log.info { "Created StorageClass ${Constants.K8s.LOCAL_STORAGE_CLASS}" }
                 eventBus.emit(Event.K8s.StorageClassCreated)
+            }
+        }
+
+    override fun ensureLocalStorageWfcClass(controlHost: ClusterHost): Result<Unit> =
+        runCatching {
+            log.info { "Ensuring ${Constants.K8s.LOCAL_STORAGE_WFC_CLASS} StorageClass exists" }
+
+            clientProvider.createClient(controlHost).use { client ->
+                val existing =
+                    client
+                        .storage()
+                        .v1()
+                        .storageClasses()
+                        .withName(Constants.K8s.LOCAL_STORAGE_WFC_CLASS)
+                        .get()
+
+                if (existing != null) {
+                    log.info { "StorageClass ${Constants.K8s.LOCAL_STORAGE_WFC_CLASS} already exists" }
+                    return@runCatching
+                }
+
+                val storageClass =
+                    StorageClassBuilder()
+                        .withNewMetadata()
+                        .withName(Constants.K8s.LOCAL_STORAGE_WFC_CLASS)
+                        .endMetadata()
+                        .withProvisioner("kubernetes.io/no-provisioner")
+                        .withVolumeBindingMode("WaitForFirstConsumer")
+                        .withReclaimPolicy("Delete")
+                        .build()
+
+                client
+                    .storage()
+                    .v1()
+                    .storageClasses()
+                    .resource(storageClass)
+                    .create()
+
+                log.info { "Created StorageClass ${Constants.K8s.LOCAL_STORAGE_WFC_CLASS}" }
+                eventBus.emit(Event.K8s.StorageClassWfcCreated)
             }
         }
 }

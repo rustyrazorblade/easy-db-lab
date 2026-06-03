@@ -5,7 +5,6 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.clickhouse.ClickHouseManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuilder
@@ -26,6 +25,11 @@ import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.EMRService
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
+import com.rustyrazorblade.easydblab.services.clickhouse.ClickHouseService
+import com.rustyrazorblade.easydblab.services.clickhouse.DefaultClickHouseService
+import com.rustyrazorblade.easydblab.services.presto.DefaultPrestoService
+import com.rustyrazorblade.easydblab.services.presto.PrestoService
+import okhttp3.OkHttpClient
 import org.koin.core.module.dsl.factoryOf
 import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.bind
@@ -44,7 +48,9 @@ val servicesModule =
         singleOf(::DefaultResourceManager) bind ResourceManager::class
 
         factoryOf(::DefaultCassandraService) bind CassandraService::class
-        factoryOf(::DefaultClickHouseConfigService) bind ClickHouseConfigService::class
+        factory<CiliumService> { DefaultCiliumService(get(), get()) }
+        factory<HelmService> { DefaultHelmService(get()) }
+        factory<KubectlService> { DefaultKubectlService(get()) }
         factoryOf(::DefaultTailscaleService) bind TailscaleService::class
 
         // CQL session factory and service - singleton for session caching in REPL/Server mode
@@ -56,8 +62,6 @@ val servicesModule =
         factoryOf(::DefaultK3sAgentService) bind K3sAgentService::class
         singleOf(::K8sClientProvider)
         factoryOf(::DefaultK8sService) bind K8sService::class bind K8sPodOperations::class
-        factoryOf(::DefaultClickHouseBackupService) bind ClickHouseBackupService::class
-        factoryOf(::ClickHouseManifestBuilder)
         factoryOf(::BeylaManifestBuilder)
         factoryOf(::EbpfExporterManifestBuilder)
         factoryOf(::GrafanaManifestBuilder)
@@ -70,7 +74,13 @@ val servicesModule =
         factoryOf(::VictoriaManifestBuilder)
         factoryOf(::YaceManifestBuilder)
         factoryOf(::DefaultGrafanaDashboardService) bind GrafanaDashboardService::class
+        single { OkHttpClient() }
         factoryOf(::TemplateService)
+        factoryOf(::InstallTemplateResolver)
+        factoryOf(::WorkloadStepExecutor)
+        factory<KitHookExecutor> { DefaultKitHookExecutor(get(), get(), get()) }
+        factoryOf(::DefaultOtelSyncService) bind OtelSyncService::class
+        factoryOf(::DefaultMetricsRegistryService) bind MetricsRegistryService::class
         factory<VictoriaBackupService> { DefaultVictoriaBackupService(get(), get()) }
         factoryOf(::DefaultVictoriaStreamService) bind VictoriaStreamService::class
         singleOf(::DefaultVictoriaMetricsQueryService) bind VictoriaMetricsQueryService::class
@@ -79,6 +89,13 @@ val servicesModule =
         factoryOf(::DefaultSidecarService) bind SidecarService::class
         singleOf(::DefaultStressJobService) bind StressJobService::class
         singleOf(::HostOperationsService)
+
+        // Kit command scanner — discovers @KitCommand-annotated classes across all JARs
+        singleOf(::DefaultKitCommandScanner) bind KitCommandScanner::class
+
+        // SQL services — execute queries via JDBC for each kit
+        single<PrestoService> { DefaultPrestoService(get()) }
+        single<ClickHouseService> { DefaultClickHouseService(get()) }
 
         // Cluster configuration service for writing config files
         factoryOf(::DefaultClusterConfigurationService) bind ClusterConfigurationService::class

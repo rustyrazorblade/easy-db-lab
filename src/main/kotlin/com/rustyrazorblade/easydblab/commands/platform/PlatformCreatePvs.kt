@@ -1,0 +1,77 @@
+package com.rustyrazorblade.easydblab.commands.platform
+
+import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
+import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.services.K8sService
+import com.rustyrazorblade.easydblab.services.PersistentVolumeConfig
+import org.koin.core.component.inject
+import picocli.CommandLine.Command
+import picocli.CommandLine.Option
+
+@RequireProfileSetup
+@Command(
+    name = "create-pvs",
+    description = ["Create per-kit local PersistentVolumes on cluster nodes"],
+)
+class PlatformCreatePvs : PicoBaseCommand() {
+    private val k8sService: K8sService by inject()
+
+    @Option(
+        names = ["--kit"],
+        description = ["Kit name (used as PV name prefix and disk path component)"],
+        required = true,
+    )
+    lateinit var kit: String
+
+    @Option(
+        names = ["--size"],
+        description = ["Storage size per PV (e.g. 100Gi, 500Gi)"],
+        required = true,
+    )
+    lateinit var size: String
+
+    @Option(
+        names = ["--node-type"],
+        description = ["Node pool to create PVs on: db or app (default: db)"],
+    )
+    var nodeType: String = "db"
+
+    @Option(
+        names = ["--pvc-name"],
+        description = ["PVC template name to bind (default: data)"],
+    )
+    var pvcTemplateName: String = "data"
+
+    override fun execute() {
+        val serverType = ServerType.from(nodeType)
+        val controlHost =
+            clusterState.getControlHost()
+                ?: error("No control node found. Is the cluster running?")
+        val targetHosts = clusterState.hosts[serverType].orEmpty()
+        check(targetHosts.isNotEmpty()) { "No $nodeType nodes found in cluster state." }
+
+        eventBus.emit(Event.Platform.CreatingPvs(kit = kit, nodeType = nodeType, count = targetHosts.size, size = size))
+
+        k8sService
+            .createLocalPersistentVolumes(
+                controlHost = controlHost,
+                config =
+                    PersistentVolumeConfig(
+                        dbName = kit,
+                        localPath = "${Constants.K8s.DB_MOUNT_PATH}/$kit",
+                        count = targetHosts.size,
+                        storageSize = size,
+                        storageClass = Constants.K8s.LOCAL_STORAGE_WFC_CLASS,
+                        namespace = Constants.K8s.NAMESPACE,
+                        volumeClaimTemplateName = pvcTemplateName,
+                    ),
+            ).getOrElse { exception ->
+                error("Failed to create PVs for $kit: ${exception.message}")
+            }
+
+        eventBus.emit(Event.Platform.PvsCreated(kit = kit, count = targetHosts.size))
+    }
+}

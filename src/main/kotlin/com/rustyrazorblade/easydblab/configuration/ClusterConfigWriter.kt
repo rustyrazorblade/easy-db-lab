@@ -116,19 +116,3 @@ object ClusterConfigWriter {
         writer.flush()
     }
 }
-
-/**
- * Converts ClusterHost to Host for compatibility with existing code.
- */
-fun ClusterHost.toHost(): Host =
-    Host(
-        public = publicIp,
-        private = privateIp,
-        alias = alias,
-        availabilityZone = availabilityZone,
-    )
-
-/**
- * Retrieves hosts as the legacy Host type for compatibility.
- */
-fun ClusterState.getHosts(serverType: ServerType): List<Host> = hosts[serverType]?.map { it.toHost() } ?: emptyList()

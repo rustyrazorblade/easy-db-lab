@@ -24,22 +24,16 @@ OTEL_AGENT="${APP_HOME}/build/install/easy-db-lab/agents/opentelemetry-javaagent
 
 # Start OTel collector (opt-in: set EASY_DB_LAB_USE_DOCKER=1 to enable)
 if [ "${EASY_DB_LAB_USE_DOCKER}" = "1" ]; then
-    COMPOSE_OUTPUT=$(docker compose -f "${APP_HOME}/docker-compose.yml" up -d 2>&1)
+    COMPOSE_OUTPUT=$(docker compose -p easy-db-lab -f "${APP_HOME}/docker-compose.yml" up -d 2>&1)
     COMPOSE_EXIT=$?
     if [ $COMPOSE_EXIT -ne 0 ]; then
         echo "$COMPOSE_OUTPUT" >&2
-        if echo "$COMPOSE_OUTPUT" | grep -q "already in use"; then
-            echo "" >&2
-            echo "To resolve: remove the conflicting container(s), then retry:" >&2
-            echo "  docker rm -f easydblab-otel-collector easydblab-valkey" >&2
-        else
-            echo "Failed to start OTel collector" >&2
-        fi
+        echo "Failed to start OTel collector" >&2
         exit 1
     fi
 
     # Discover the dynamically assigned port
-    OTEL_PORT=$(docker compose -f "${APP_HOME}/docker-compose.yml" port otel-collector 4317 2>/dev/null | cut -d: -f2)
+    OTEL_PORT=$(docker compose -p easy-db-lab -f "${APP_HOME}/docker-compose.yml" port otel-collector 4317 2>/dev/null | cut -d: -f2)
     export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:${OTEL_PORT}"
     export EASY_DB_LAB_REDIS_URL="redis://localhost:6399/easydblab-events"
 fi

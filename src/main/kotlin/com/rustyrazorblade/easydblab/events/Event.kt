@@ -23,9 +23,6 @@ import kotlinx.serialization.Serializable
 private const val BACKUP_TABLE_SEPARATOR_LENGTH = 59
 private const val BACKUP_TABLE_HEADER_FORMAT = "%-30s  %10s  %15s"
 private const val BACKUP_TABLE_ROW_FORMAT = "%-30s  %10d  %15s"
-private const val CLICKHOUSE_BACKUP_TABLE_HEADER_FORMAT = "%-30s  %-20s  %10s  %20s"
-private const val CLICKHOUSE_BACKUP_TABLE_ROW_FORMAT = "%-30s  %-20s  %10d  %20s"
-private const val CLICKHOUSE_BACKUP_TABLE_SEPARATOR_LENGTH = 86
 
 @Serializable
 sealed interface Event {
@@ -239,6 +236,17 @@ sealed interface Event {
             val stderr: String,
         ) : Cassandra {
             override fun toDisplayString(): String = "patch-config stderr: $stderr"
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        @SerialName("Cassandra.PatchFailed")
+        data class PatchFailed(
+            val host: String,
+            val reason: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String = "ERROR: patch-config failed on $host: $reason"
 
             override fun isError(): Boolean = true
         }
@@ -485,6 +493,41 @@ sealed interface Event {
     }
 
     // =========================================================================
+    // Event.Cilium — Cilium CNI operations
+    // =========================================================================
+
+    @Serializable
+    sealed interface Cilium : Event {
+        @Serializable
+        @SerialName("Cilium.Installing")
+        data object Installing : Cilium {
+            override fun toDisplayString(): String = "Installing Cilium CNI..."
+        }
+
+        @Serializable
+        @SerialName("Cilium.Installing.Chart")
+        data object InstallingChart : Cilium {
+            override fun toDisplayString(): String = "Installing Cilium chart (waiting for DaemonSet ready)..."
+        }
+
+        @Serializable
+        @SerialName("Cilium.Installed")
+        data object Installed : Cilium {
+            override fun toDisplayString(): String = "Cilium CNI installed successfully"
+        }
+
+        @Serializable
+        @SerialName("Cilium.InstallFailed")
+        data class InstallFailed(
+            val error: String,
+        ) : Cilium {
+            override fun toDisplayString(): String = "Failed to install Cilium: $error"
+
+            override fun isError(): Boolean = true
+        }
+    }
+
+    // =========================================================================
     // Event.K8s — Kubernetes operations
     // =========================================================================
 
@@ -597,12 +640,6 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("K8s.ClickHouseS3ConfigMapCreated")
-        data object ClickHouseS3ConfigMapCreated : K8s {
-            override fun toDisplayString(): String = "Created ClickHouse S3 ConfigMap"
-        }
-
-        @Serializable
         @SerialName("K8s.StatefulSetScaled")
         data class StatefulSetScaled(
             val name: String,
@@ -629,9 +666,24 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("K8s.LocalPvsDeleted")
+        data class LocalPvsDeleted(
+            val count: Int,
+            val dbName: String,
+        ) : K8s {
+            override fun toDisplayString(): String = "Deleted $count Local PVs for $dbName"
+        }
+
+        @Serializable
         @SerialName("K8s.StorageClassCreated")
         data object StorageClassCreated : K8s {
             override fun toDisplayString(): String = "Created local-storage StorageClass"
+        }
+
+        @Serializable
+        @SerialName("K8s.StorageClassWfcCreated")
+        data object StorageClassWfcCreated : K8s {
+            override fun toDisplayString(): String = "Created local-storage-wfc StorageClass"
         }
     }
 
@@ -1223,28 +1275,6 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("Emr.SparkLogHeader")
-        data object SparkLogHeader : Emr {
-            override fun toDisplayString(): String = "\n=== Step Logs ==="
-        }
-
-        @Serializable
-        @SerialName("Emr.SparkLogLine")
-        data class SparkLogLine(
-            val line: String,
-        ) : Emr {
-            override fun toDisplayString(): String = line
-        }
-
-        @Serializable
-        @SerialName("Emr.SparkLogCount")
-        data class SparkLogCount(
-            val count: Int,
-        ) : Emr {
-            override fun toDisplayString(): String = "\nFound $count log entries."
-        }
-
-        @Serializable
         @SerialName("Emr.SparkLogError")
         data class SparkLogError(
             val error: String,
@@ -1252,14 +1282,6 @@ sealed interface Event {
             override fun toDisplayString(): String = "Could not query logs: $error"
 
             override fun isError(): Boolean = true
-        }
-
-        @Serializable
-        @SerialName("Emr.SparkLogInstruction")
-        data class SparkLogInstruction(
-            val stepId: String,
-        ) : Emr {
-            override fun toDisplayString(): String = "Try: easy-db-lab spark logs --step-id $stepId"
         }
 
         @Serializable
@@ -1305,36 +1327,6 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("Emr.SparkDebugInstructions")
-        data class SparkDebugInstructions(
-            val commands: String,
-        ) : Emr {
-            override fun toDisplayString(): String = commands
-        }
-
-        @Serializable
-        @SerialName("Emr.SparkStderrHeader")
-        data class SparkStderrHeader(
-            val lineCount: Int,
-        ) : Emr {
-            override fun toDisplayString(): String = "\n=== stderr (last $lineCount lines) ==="
-        }
-
-        @Serializable
-        @SerialName("Emr.SparkStderrLine")
-        data class SparkStderrLine(
-            val line: String,
-        ) : Emr {
-            override fun toDisplayString(): String = line
-        }
-
-        @Serializable
-        @SerialName("Emr.SparkStderrFooter")
-        data object SparkStderrFooter : Emr {
-            override fun toDisplayString(): String = "=== end stderr ===\n"
-        }
-
-        @Serializable
         @SerialName("Emr.EmrLogsDownloading")
         data class EmrLogsDownloading(
             val path: String,
@@ -1371,14 +1363,6 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("Emr.SparkNoLogsInstruction")
-        data class SparkNoLogsInstruction(
-            val stepId: String,
-        ) : Emr {
-            override fun toDisplayString(): String = "No logs found yet. Try: easy-db-lab spark logs --step-id $stepId"
-        }
-
-        @Serializable
         @SerialName("Emr.SparkLogQueryFailed")
         data object SparkLogQueryFailed : Emr {
             override fun toDisplayString(): String = "Could not query logs automatically."
@@ -1388,14 +1372,6 @@ sealed interface Event {
         @SerialName("Emr.DownloadingStepLogsHeader")
         data object DownloadingStepLogsHeader : Emr {
             override fun toDisplayString(): String = "\n=== Downloading Step Logs ==="
-        }
-
-        @Serializable
-        @SerialName("Emr.UsingS3Jar")
-        data class UsingS3Jar(
-            val jarPath: String,
-        ) : Emr {
-            override fun toDisplayString(): String = "Using S3 JAR: $jarPath"
         }
 
         @Serializable
@@ -1424,33 +1400,9 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("Emr.MasterDns")
-        data class MasterDns(
-            val dns: String,
-        ) : Emr {
-            override fun toDisplayString(): String = "Master DNS: $dns"
-        }
-
-        @Serializable
-        @SerialName("Emr.ListingJobs")
-        data class ListingJobs(
-            val clusterId: String,
-        ) : Emr {
-            override fun toDisplayString(): String = "Listing jobs for cluster: $clusterId"
-        }
-
-        @Serializable
         @SerialName("Emr.NoJobsFound")
         data object NoJobsFound : Emr {
             override fun toDisplayString(): String = "No jobs found on cluster."
-        }
-
-        @Serializable
-        @SerialName("Emr.JobsTable")
-        data class JobsTable(
-            val table: String,
-        ) : Emr {
-            override fun toDisplayString(): String = table
         }
 
         @Serializable
@@ -1508,22 +1460,6 @@ sealed interface Event {
                 |  - Logs may take a few minutes to be ingested from S3
                 |  - Try increasing the time range with --since 1d
                 """.trimMargin()
-        }
-
-        @Serializable
-        @SerialName("Emr.StepLogsOutput")
-        data class StepLogsOutput(
-            val logs: String,
-        ) : Emr {
-            override fun toDisplayString(): String = logs
-        }
-
-        @Serializable
-        @SerialName("Emr.StepLogsCount")
-        data class StepLogsCount(
-            val count: Int,
-        ) : Emr {
-            override fun toDisplayString(): String = "\nFound $count log entries."
         }
 
         @Serializable
@@ -2084,6 +2020,20 @@ sealed interface Event {
         @SerialName("Grafana.PyroscopeDirectoryPreparing")
         data object PyroscopeDirectoryPreparing : Grafana {
             override fun toDisplayString(): String = "Preparing Pyroscope data directory..."
+        }
+
+        @Serializable
+        @SerialName("Grafana.GrafanaDirectoryPreparing")
+        data object GrafanaDirectoryPreparing : Grafana {
+            override fun toDisplayString(): String = "Preparing Grafana data directory..."
+        }
+
+        @Serializable
+        @SerialName("Grafana.DashboardInstalled")
+        data class DashboardInstalled(
+            val title: String,
+        ) : Grafana {
+            override fun toDisplayString(): String = "Installed Grafana dashboard: $title"
         }
 
         @Serializable
@@ -3142,8 +3092,9 @@ sealed interface Event {
         @SerialName("Provision.NodeLabeling")
         data class NodeLabeling(
             val count: Int,
+            val nodeType: String = "db",
         ) : Provision {
-            override fun toDisplayString(): String = "Labeling $count db nodes with ordinals..."
+            override fun toDisplayString(): String = "Labeling $count $nodeType nodes with ordinals..."
         }
 
         @Serializable
@@ -3243,22 +3194,6 @@ sealed interface Event {
                 |
                 |S3 Manager:
                 |  Web UI: http://$controlNodeIp:$s3ManagerPort/buckets/$bucket/$key/
-                """.trimMargin()
-        }
-
-        @Serializable
-        @SerialName("Provision.S3ManagerClickHouseAccessInfo")
-        data class S3ManagerClickHouseAccessInfo(
-            val controlNodeIp: String,
-            val s3ManagerPort: Int,
-            val bucket: String,
-            val clickhouseKey: String,
-        ) : Provision {
-            override fun toDisplayString(): String =
-                """
-                |
-                |S3 Manager:
-                |  ClickHouse Data: http://$controlNodeIp:$s3ManagerPort/buckets/$bucket/$clickhouseKey/
                 """.trimMargin()
         }
 
@@ -3364,30 +3299,6 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("Command.HostExecHeader")
-        data class HostExecHeader(
-            val host: String,
-        ) : Command {
-            override fun toDisplayString(): String = "=== $host ==="
-        }
-
-        @Serializable
-        @SerialName("Command.HostExecOutput")
-        data class HostExecOutput(
-            val output: String,
-        ) : Command {
-            override fun toDisplayString(): String = output
-        }
-
-        @Serializable
-        @SerialName("Command.HostExecStderr")
-        data class HostExecStderr(
-            val stderr: String,
-        ) : Command {
-            override fun toDisplayString(): String = stderr
-        }
-
-        @Serializable
         @SerialName("Command.HostExecError")
         data class HostExecError(
             val host: String,
@@ -3416,15 +3327,6 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("Command.ToolList")
-        data class ToolList(
-            val host: String,
-            val units: String,
-        ) : Command {
-            override fun toDisplayString(): String = "=== $host ===\n$units"
-        }
-
-        @Serializable
         @SerialName("Command.ToolStopError")
         data class ToolStopError(
             val host: String,
@@ -3447,112 +3349,15 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("Command.ReplWelcome")
-        data object ReplWelcome : Command {
-            override fun toDisplayString(): String =
-                "easy-db-lab interactive shell. Type 'help' for commands, TAB for completion.\n" +
-                    "Press Alt+S to toggle command description tips.\n"
-        }
-
-        @Serializable
-        @SerialName("Command.IpAddress")
-        data class IpAddress(
-            val ip: String,
-        ) : Command {
-            override fun toDisplayString(): String = ip
-        }
-
-        @Serializable
-        @SerialName("Command.RegionName")
-        data class RegionName(
-            val region: String,
-        ) : Command {
-            override fun toDisplayString(): String = region
-        }
-
-        @Serializable
-        @SerialName("Command.CommandDescription")
-        data class CommandDescription(
-            val name: String,
-            val description: String,
-            val indent: String,
-        ) : Command {
-            override fun toDisplayString(): String = "$indent$name - $description"
-        }
-
-        @Serializable
-        @SerialName("Command.CommandOptionHelp")
-        data class CommandOptionHelp(
-            val names: String,
-            val paramLabel: String,
-            val isRequired: Boolean,
-            val description: String,
-            val indent: String,
-        ) : Command {
-            override fun toDisplayString(): String {
-                val required = if (isRequired) " (required)" else ""
-                return "$indent    $names$paramLabel$required - $description"
-            }
-        }
-
-        @Serializable
-        @SerialName("Command.CommandPositionalHelp")
-        data class CommandPositionalHelp(
-            val paramLabel: String,
-            val isRequired: Boolean,
-            val description: String,
-            val indent: String,
-        ) : Command {
-            override fun toDisplayString(): String {
-                val required = if (isRequired) " (required)" else ""
-                return "$indent    <$paramLabel>$required - $description"
-            }
-        }
-
-        @Serializable
-        @SerialName("Command.S3BucketName")
-        data class S3BucketName(
-            val bucket: String,
-        ) : Command {
-            override fun toDisplayString(): String = bucket
-        }
-
-        @Serializable
-        @SerialName("Command.HostsCsvOutput")
-        data class HostsCsvOutput(
-            val csv: String,
-        ) : Command {
-            override fun toDisplayString(): String = csv
-        }
-
-        @Serializable
         @SerialName("Command.HostsNoClusterState")
         data object HostsNoClusterState : Command {
             override fun toDisplayString(): String = "Cluster state does not exist yet, most likely easy-db-lab up has not been run."
         }
 
         @Serializable
-        @SerialName("Command.VersionOutput")
-        data class VersionOutput(
-            val version: String,
-        ) : Command {
-            override fun toDisplayString(): String = version
-        }
-
-        @Serializable
         @SerialName("Command.ArtifactsNotEmpty")
         data object ArtifactsNotEmpty : Command {
             override fun toDisplayString(): String = "Not deleting artifacts directory, it contains artifacts."
-        }
-
-        @Serializable
-        @SerialName("Command.VpcListItem")
-        data class VpcListItem(
-            val name: String,
-            val vpcId: String,
-            val clusterId: String,
-        ) : Command {
-            override fun toDisplayString(): String = "$name $vpcId $clusterId"
         }
 
         @Serializable
@@ -3570,49 +3375,11 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("Command.UploadKeysFiles")
-        data class UploadKeysFiles(
-            val files: String,
-        ) : Command {
-            override fun toDisplayString(): String = "Files: $files"
-        }
-
-        @Serializable
-        @SerialName("Command.UploadKeysStarting")
-        data object UploadKeysStarting : Command {
-            override fun toDisplayString(): String = "Uploading the following keys:"
-        }
-
-        @Serializable
-        @SerialName("Command.UploadKeysBody")
-        data class UploadKeysBody(
-            val keys: String,
-        ) : Command {
-            override fun toDisplayString(): String = keys
-        }
-
-        @Serializable
         @SerialName("Command.IamPoliciesNotFound")
         data class IamPoliciesNotFound(
             val policyName: String,
         ) : Command {
             override fun toDisplayString(): String = "No policies found matching: $policyName"
-        }
-
-        @Serializable
-        @SerialName("Command.IamPolicyHeader")
-        data class IamPolicyHeader(
-            val name: String,
-        ) : Command {
-            override fun toDisplayString(): String = "\n=== $name ===\n"
-        }
-
-        @Serializable
-        @SerialName("Command.IamPolicyBody")
-        data class IamPolicyBody(
-            val body: String,
-        ) : Command {
-            override fun toDisplayString(): String = body
         }
 
         @Serializable
@@ -3652,152 +3419,9 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("Status.ClusterInfo")
-        data class ClusterInfo(
-            val clusterId: String,
-            val name: String,
-            val createdAt: String,
-            val infrastructureStatus: String,
-        ) : Status {
-            override fun toDisplayString(): String =
-                """
-                |
-                |=== CLUSTER STATUS ===
-                |Cluster ID: $clusterId
-                |Name: $name
-                |Created: $createdAt
-                |Infrastructure: $infrastructureStatus
-                """.trimMargin()
-        }
-
-        @Serializable
-        @SerialName("Status.NodeDetail")
-        data class NodeDetail(
-            val alias: String,
-            val instanceId: String,
-            val publicIp: String,
-            val privateIp: String,
-            val availabilityZone: String,
-            val state: String,
-        )
-
-        @Serializable
-        @SerialName("Status.NodesSection")
-        data class NodesSection(
-            val databaseNodes: List<NodeDetail>,
-            val appNodes: List<NodeDetail>,
-            val controlNodes: List<NodeDetail>,
-        ) : Status {
-            override fun toDisplayString(): String =
-                buildString {
-                    appendLine("")
-                    appendLine("=== NODES ===")
-                    formatNodeGroup("DATABASE NODES", databaseNodes)
-                    formatNodeGroup("APP NODES", appNodes)
-                    formatNodeGroup("CONTROL NODES", controlNodes)
-                }.trimEnd()
-
-            private fun StringBuilder.formatNodeGroup(
-                header: String,
-                nodes: List<NodeDetail>,
-            ) {
-                if (nodes.isEmpty()) return
-                appendLine("")
-                appendLine("$header:")
-                nodes.forEach { node ->
-                    appendLine(
-                        "  %-12s %-20s %-16s %-16s %-12s %s".format(
-                            node.alias,
-                            node.instanceId.ifEmpty { "(no id)" },
-                            "${node.publicIp} (public)",
-                            "${node.privateIp} (private)",
-                            node.availabilityZone,
-                            node.state.uppercase(),
-                        ),
-                    )
-                }
-            }
-        }
-
-        @Serializable
-        @SerialName("Status.NetworkingInfo")
-        data class NetworkingInfo(
-            val vpcId: String,
-            val internetGatewayId: String?,
-            val subnetIds: List<String>,
-            val routeTableId: String?,
-        ) : Status {
-            override fun toDisplayString(): String =
-                """
-                |
-                |=== NETWORKING ===
-                |VPC:              $vpcId
-                |Internet Gateway: ${internetGatewayId ?: "(none)"}
-                |Subnets:          ${subnetIds.joinToString(", ")}
-                |Route Tables:     ${routeTableId ?: "(default)"}
-                """.trimMargin()
-        }
-
-        @Serializable
         @SerialName("Status.NoInfrastructureData")
         data object NoInfrastructureData : Status {
             override fun toDisplayString(): String = "\n=== NETWORKING ===\n(no infrastructure data)"
-        }
-
-        @Serializable
-        @SerialName("Status.SecurityRuleDetail")
-        data class SecurityRuleDetail(
-            val protocol: String,
-            val fromPort: Int?,
-            val toPort: Int?,
-            val cidrBlocks: List<String>,
-            val description: String?,
-        )
-
-        @Serializable
-        @SerialName("Status.SecurityGroupInfo")
-        data class SecurityGroupInfo(
-            val sgId: String,
-            val name: String,
-            val inboundRules: List<SecurityRuleDetail>,
-            val outboundRules: List<SecurityRuleDetail>,
-        ) : Status {
-            override fun toDisplayString(): String =
-                buildString {
-                    appendLine("")
-                    appendLine("=== SECURITY GROUP ===")
-                    appendLine("Security Group: $sgId ($name)")
-                    appendLine("")
-                    appendLine("Inbound Rules:")
-                    formatRules(inboundRules)
-                    appendLine("")
-                    appendLine("Outbound Rules:")
-                    formatRules(outboundRules)
-                }.trimEnd()
-
-            private fun StringBuilder.formatRules(rules: List<SecurityRuleDetail>) {
-                if (rules.isEmpty()) {
-                    appendLine("  (none)")
-                    return
-                }
-                rules.forEach { rule ->
-                    val portRange =
-                        when {
-                            rule.fromPort == null && rule.toPort == null -> "All"
-                            rule.fromPort == rule.toPort -> "${rule.fromPort}"
-                            else -> "${rule.fromPort}-${rule.toPort}"
-                        }
-                    val cidrs = rule.cidrBlocks.joinToString(", ").ifEmpty { "(none)" }
-                    val description = rule.description ?: ""
-                    appendLine("  %-6s %-8s %-20s %s".format(rule.protocol, portRange, cidrs, description))
-                }
-            }
-        }
-
-        @Serializable
-        @SerialName("Status.NoSecurityGroup")
-        data object NoSecurityGroup : Status {
-            override fun toDisplayString(): String = "\n=== SECURITY GROUP ===\n(no security group configured)"
         }
 
         @Serializable
@@ -3806,138 +3430,6 @@ sealed interface Event {
             val sgId: String,
         ) : Status {
             override fun toDisplayString(): String = "\n=== SECURITY GROUP ===\nSecurity Group: $sgId (unable to fetch details)"
-        }
-
-        @Serializable
-        @SerialName("Status.SparkClusterInfo")
-        data class SparkClusterInfo(
-            val clusterId: String,
-            val clusterName: String,
-            val state: String,
-            val masterPublicDns: String?,
-        ) : Status {
-            override fun toDisplayString(): String =
-                buildString {
-                    appendLine("")
-                    appendLine("=== SPARK CLUSTER ===")
-                    appendLine("Cluster ID:   $clusterId")
-                    appendLine("Name:         $clusterName")
-                    appendLine("State:        $state")
-                    if (masterPublicDns != null) {
-                        append("Master DNS:   $masterPublicDns")
-                    }
-                }.trimEnd()
-        }
-
-        @Serializable
-        @SerialName("Status.NoSparkCluster")
-        data object NoSparkCluster : Status {
-            override fun toDisplayString(): String = "\n=== SPARK CLUSTER ===\n(no Spark cluster configured)"
-        }
-
-        @Serializable
-        @SerialName("Status.OpenSearchInfo")
-        data class OpenSearchInfo(
-            val domainName: String,
-            val domainId: String?,
-            val state: String,
-            val endpoint: String?,
-            val dashboardsEndpoint: String?,
-        ) : Status {
-            override fun toDisplayString(): String =
-                buildString {
-                    appendLine("")
-                    appendLine("=== OPENSEARCH DOMAIN ===")
-                    appendLine("Domain Name:  $domainName")
-                    if (domainId != null) appendLine("Domain ID:    $domainId")
-                    appendLine("State:        $state")
-                    if (endpoint != null) appendLine("Endpoint:     https://$endpoint")
-                    if (dashboardsEndpoint != null) append("Dashboards:   $dashboardsEndpoint")
-                }.trimEnd()
-        }
-
-        @Serializable
-        @SerialName("Status.NoOpenSearchDomain")
-        data object NoOpenSearchDomain : Status {
-            override fun toDisplayString(): String = "\n=== OPENSEARCH DOMAIN ===\n(no OpenSearch domain configured)"
-        }
-
-        @Serializable
-        @SerialName("Status.S3BucketInfo")
-        data class S3BucketInfo(
-            val bucket: String,
-            val fullPath: String,
-            val cassandraPath: String,
-            val clickhousePath: String,
-            val sparkPath: String,
-            val emrLogsPath: String,
-        ) : Status {
-            override fun toDisplayString(): String =
-                """
-                |
-                |=== S3 BUCKET ===
-                |Bucket:       $bucket
-                |Fullpath:     $fullPath
-                |Cassandra:    $cassandraPath
-                |ClickHouse:   $clickhousePath
-                |Spark:        $sparkPath
-                |EMR Logs:     $emrLogsPath
-                """.trimMargin()
-        }
-
-        @Serializable
-        @SerialName("Status.NoS3Bucket")
-        data object NoS3Bucket : Status {
-            override fun toDisplayString(): String = "\n=== S3 BUCKET ===\n(no S3 bucket configured)"
-        }
-
-        @Serializable
-        @SerialName("Status.PodDetail")
-        data class PodDetail(
-            val namespace: String,
-            val name: String,
-            val ready: String,
-            val status: String,
-            val restarts: Int,
-            val age: String,
-        )
-
-        @Serializable
-        @SerialName("Status.KubernetesPodsSection")
-        data class KubernetesPodsSection(
-            val pods: List<PodDetail>,
-        ) : Status {
-            override fun toDisplayString(): String =
-                buildString {
-                    appendLine("")
-                    appendLine("=== KUBERNETES PODS ===")
-                    if (pods.isEmpty()) {
-                        append("(no pods running)")
-                    } else {
-                        appendLine(
-                            "%-14s %-40s %-8s %-10s %-10s %s".format(
-                                "NAMESPACE",
-                                "NAME",
-                                "READY",
-                                "STATUS",
-                                "RESTARTS",
-                                "AGE",
-                            ),
-                        )
-                        pods.forEach { pod ->
-                            appendLine(
-                                "%-14s %-40s %-8s %-10s %-10s %s".format(
-                                    pod.namespace,
-                                    pod.name,
-                                    pod.ready,
-                                    pod.status,
-                                    pod.restarts.toString(),
-                                    pod.age,
-                                ),
-                            )
-                        }
-                    }
-                }.trimEnd()
         }
 
         @Serializable
@@ -3961,35 +3453,6 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("Status.StressJobDetail")
-        data class StressJobDetail(
-            val name: String,
-            val status: String,
-            val completions: String,
-            val age: String,
-        )
-
-        @Serializable
-        @SerialName("Status.StressJobsSection")
-        data class StressJobsSection(
-            val jobs: List<StressJobDetail>,
-        ) : Status {
-            override fun toDisplayString(): String =
-                buildString {
-                    appendLine("")
-                    appendLine("=== STRESS JOBS ===")
-                    if (jobs.isEmpty()) {
-                        append("(no stress jobs running)")
-                    } else {
-                        appendLine("%-40s %-12s %-12s %s".format("NAME", "STATUS", "COMPLETIONS", "AGE"))
-                        jobs.forEach { job ->
-                            appendLine("%-40s %-12s %-12s %s".format(job.name, job.status, job.completions, job.age))
-                        }
-                    }
-                }.trimEnd()
-        }
-
-        @Serializable
         @SerialName("Status.StressJobsNoControlNode")
         data object StressJobsNoControlNode : Status {
             override fun toDisplayString(): String = "\n=== STRESS JOBS ===\n(no control node configured)"
@@ -4010,25 +3473,18 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("Status.CassandraVersionLive")
-        data class CassandraVersionLive(
-            val version: String,
-        ) : Status {
-            override fun toDisplayString(): String = "\n=== CASSANDRA VERSION ===\nVersion: $version (all nodes)"
-        }
-
-        @Serializable
-        @SerialName("Status.CassandraVersionCached")
-        data class CassandraVersionCached(
-            val version: String,
-        ) : Status {
-            override fun toDisplayString(): String = "\n=== CASSANDRA VERSION ===\nVersion: $version (cached - nodes unavailable)"
-        }
-
-        @Serializable
         @SerialName("Status.CassandraNoNodes")
         data object CassandraNoNodes : Status {
             override fun toDisplayString(): String = "\n=== CASSANDRA VERSION ===\n(no Cassandra nodes configured)"
+        }
+
+        // Value type used by WorkloadsSection.pods — not a standalone event.
+        @Serializable
+        @SerialName("Status.WorkloadsError")
+        data class WorkloadsError(
+            val error: String,
+        ) : Status {
+            override fun toDisplayString(): String = "\n=== WORKLOADS ===\n(unable to list workload pods: $error)"
         }
     }
 
@@ -4275,23 +3731,11 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("Ami.Deleted")
-        data object Deleted : Ami {
-            override fun toDisplayString(): String = "  ✓ Deleted"
-        }
-
-        @Serializable
         @SerialName("Ami.DeleteFailed")
         data class DeleteFailed(
             val error: String,
         ) : Ami {
             override fun toDisplayString(): String = "  ✗ Error deleting: $error"
-        }
-
-        @Serializable
-        @SerialName("Ami.Skipped")
-        data object Skipped : Ami {
-            override fun toDisplayString(): String = "  - Skipped"
         }
 
         @Serializable
@@ -4355,251 +3799,6 @@ sealed interface Event {
                 """.trimMargin()
 
             override fun isError(): Boolean = true
-        }
-
-        @Serializable
-        @SerialName("Ami.Separator")
-        data object Separator : Ami {
-            override fun toDisplayString(): String = ""
-        }
-    }
-
-    // =========================================================================
-    // Event.ClickHouse — ClickHouse operations
-    // =========================================================================
-
-    @Serializable
-    sealed interface ClickHouse : Event {
-        @Serializable
-        @SerialName("ClickHouse.Deploying")
-        data class Deploying(
-            val shardCount: Int,
-            val replicasPerShard: Int,
-            val actualReplicas: Int,
-        ) : ClickHouse {
-            override fun toDisplayString(): String =
-                "Deploying ClickHouse: $shardCount shards x $replicasPerShard replicas = $actualReplicas nodes"
-        }
-
-        @Serializable
-        @SerialName("ClickHouse.CreatingPvs")
-        data object CreatingPvs : ClickHouse {
-            override fun toDisplayString(): String = "Creating Local PersistentVolumes for ClickHouse..."
-        }
-
-        @Serializable
-        @SerialName("ClickHouse.WaitingPodsReady")
-        data object WaitingPodsReady : ClickHouse {
-            override fun toDisplayString(): String = "Waiting for ClickHouse pods to be ready (this may take a few minutes)..."
-        }
-
-        @Serializable
-        @SerialName("ClickHouse.DeploySuccess")
-        data class DeploySuccess(
-            val bucket: String,
-            val s3CacheSize: String,
-            val dbNodeIp: String,
-            val httpPort: Int,
-            val nativePort: Int,
-        ) : ClickHouse {
-            override fun toDisplayString(): String =
-                """
-                |
-                |ClickHouse cluster deployed successfully!
-                |
-                |Storage policies available:
-                |  - local: Local disk storage
-                |  - s3_main: S3 with local cache (bucket: $bucket, cache: $s3CacheSize)
-                |
-                |Example - Create a distributed replicated table:
-                |
-                |  -- Create local replicated table on all nodes
-                |  CREATE TABLE events_local ON CLUSTER easy_db_lab (
-                |      id UInt64,
-                |      timestamp DateTime,
-                |      data String
-                |  ) ENGINE = ReplicatedMergeTree('/clickhouse/tables/{shard}/events', '{replica}')
-                |  ORDER BY (timestamp, id)
-                |  SETTINGS storage_policy = 's3_main';
-                |
-                |  -- Create distributed table for querying across all shards
-                |  CREATE TABLE events ON CLUSTER easy_db_lab AS events_local
-                |  ENGINE = Distributed(easy_db_lab, default, events_local, rand());
-                |
-                |HTTP Interface: http://$dbNodeIp:$httpPort
-                |Native Protocol: $dbNodeIp:$nativePort
-                |
-                |Connect with: clickhouse-client --host $dbNodeIp
-                """.trimMargin()
-        }
-
-        @Serializable
-        @SerialName("ClickHouse.StatusOutput")
-        data class StatusOutput(
-            val status: String,
-        ) : ClickHouse {
-            override fun toDisplayString(): String = "ClickHouse Cluster Status:\n\n$status"
-        }
-
-        @Serializable
-        @SerialName("ClickHouse.StopConfirmRequired")
-        data object StopConfirmRequired : ClickHouse {
-            override fun toDisplayString(): String =
-                "This will delete the ClickHouse cluster and all its data.\nUse --force to confirm deletion."
-        }
-
-        @Serializable
-        @SerialName("ClickHouse.Stopping")
-        data object Stopping : ClickHouse {
-            override fun toDisplayString(): String = "Stopping ClickHouse cluster..."
-        }
-
-        @Serializable
-        @SerialName("ClickHouse.Stopped")
-        data object Stopped : ClickHouse {
-            override fun toDisplayString(): String = "ClickHouse cluster stopped and removed successfully."
-        }
-
-        @Serializable
-        @SerialName("ClickHouse.ConfigSaved")
-        data class ConfigSaved(
-            val replicasPerShard: Int,
-            val s3CacheSize: String,
-            val s3CacheOnWrite: String,
-            val s3TierMoveFactor: Double,
-        ) : ClickHouse {
-            override fun toDisplayString(): String =
-                """
-                ClickHouse configuration saved.
-                  Replicas per shard: $replicasPerShard
-                  S3 cache size: $s3CacheSize
-                  S3 cache on write: $s3CacheOnWrite
-                  S3 tier move factor: $s3TierMoveFactor
-                """.trimIndent()
-        }
-
-        @Serializable
-        sealed interface Backup : ClickHouse {
-            @Serializable
-            @SerialName("ClickHouse.Backup.BackupStarting")
-            data class BackupStarting(
-                val name: String,
-            ) : Backup {
-                override fun toDisplayString(): String = "Starting ClickHouse backup '$name'..."
-            }
-
-            @Serializable
-            @SerialName("ClickHouse.Backup.BackupComplete")
-            data class BackupComplete(
-                val name: String,
-                val s3Path: String,
-            ) : Backup {
-                override fun toDisplayString(): String = "ClickHouse backup '$name' complete at $s3Path"
-            }
-
-            @Serializable
-            @SerialName("ClickHouse.Backup.BackupAlreadyExists")
-            data class BackupAlreadyExists(
-                val name: String,
-            ) : Backup {
-                override fun toDisplayString(): String = "Backup '$name' already exists"
-            }
-
-            @Serializable
-            @SerialName("ClickHouse.Backup.RestoreStarting")
-            data class RestoreStarting(
-                val name: String,
-            ) : Backup {
-                override fun toDisplayString(): String = "Restoring ClickHouse cluster from backup '$name'..."
-            }
-
-            @Serializable
-            @SerialName("ClickHouse.Backup.RestoreComplete")
-            data class RestoreComplete(
-                val name: String,
-            ) : Backup {
-                override fun toDisplayString(): String = "ClickHouse restore from '$name' complete"
-            }
-
-            @Serializable
-            @SerialName("ClickHouse.Backup.BackupNotFound")
-            data class BackupNotFound(
-                val name: String,
-            ) : Backup {
-                override fun toDisplayString(): String = "Backup '$name' not found"
-            }
-
-            @Serializable
-            @SerialName("ClickHouse.Backup.BackupListHeader")
-            data object BackupListHeader : Backup {
-                override fun toDisplayString(): String =
-                    buildString {
-                        appendLine(CLICKHOUSE_BACKUP_TABLE_HEADER_FORMAT.format("Name", "Source Cluster", "Size (bytes)", "Timestamp"))
-                        append("-".repeat(CLICKHOUSE_BACKUP_TABLE_SEPARATOR_LENGTH))
-                    }
-            }
-
-            @Serializable
-            @SerialName("ClickHouse.Backup.BackupListEmpty")
-            data object BackupListEmpty : Backup {
-                override fun toDisplayString(): String = "No ClickHouse backups found"
-            }
-
-            @Serializable
-            @SerialName("ClickHouse.Backup.BackupListEntry")
-            data class BackupListEntry(
-                val name: String,
-                val timestamp: String,
-                val sourceCluster: String,
-                val sizeBytes: Long,
-            ) : Backup {
-                override fun toDisplayString(): String =
-                    CLICKHOUSE_BACKUP_TABLE_ROW_FORMAT.format(name, sourceCluster, sizeBytes, timestamp)
-            }
-
-            @Serializable
-            @SerialName("ClickHouse.Backup.BackupStartedAsync")
-            data class BackupStartedAsync(
-                val name: String,
-            ) : Backup {
-                override fun toDisplayString(): String = "ClickHouse backup '$name' started in background"
-            }
-
-            @Serializable
-            @SerialName("ClickHouse.Backup.RestoreStartedAsync")
-            data class RestoreStartedAsync(
-                val name: String,
-            ) : Backup {
-                override fun toDisplayString(): String = "ClickHouse restore from '$name' started in background"
-            }
-
-            @Serializable
-            @SerialName("ClickHouse.Backup.BackupOperationsEmpty")
-            data object BackupOperationsEmpty : Backup {
-                override fun toDisplayString(): String = "No backup or restore operations found"
-            }
-
-            @Serializable
-            @SerialName("ClickHouse.Backup.BackupOperationEntry")
-            data class BackupOperationEntry(
-                val name: String,
-                val status: String,
-                val startTime: String,
-                val bytesRead: Long,
-                val totalSize: Long,
-                val error: String,
-            ) : Backup {
-                override fun toDisplayString(): String {
-                    val progress =
-                        if (totalSize > 0) {
-                            " ${bytesRead * 100 / totalSize}%"
-                        } else {
-                            ""
-                        }
-                    val errorSuffix = if (error.isNotBlank()) " ERROR: $error" else ""
-                    return "  %-50s  %-20s  %s%s%s".format(name, status, startTime, progress, errorSuffix)
-                }
-            }
         }
     }
 
@@ -5607,6 +4806,198 @@ sealed interface Event {
     }
 
     // =========================================================================
+    // Event.Platform — Platform substrate operations (StorageClass, PVs, info)
+    // =========================================================================
+
+    @Serializable
+    sealed interface Platform : Event {
+        @Serializable
+        @SerialName("Platform.CreatingPvs")
+        data class CreatingPvs(
+            val kit: String,
+            val nodeType: String,
+            val count: Int,
+            val size: String,
+        ) : Platform {
+            override fun toDisplayString(): String = "Creating $count PVs ($size each) for '$kit' on $nodeType nodes..."
+        }
+
+        @Serializable
+        @SerialName("Platform.PvsCreated")
+        data class PvsCreated(
+            val kit: String,
+            val count: Int,
+        ) : Platform {
+            override fun toDisplayString(): String = "Created $count PVs for '$kit'"
+        }
+    }
+
+    // =========================================================================
+    // Event.Install — Kit scaffold generation
+    // =========================================================================
+
+    @Serializable
+    sealed interface Install : Event {
+        @Serializable
+        @SerialName("Install.ScaffoldComplete")
+        data class ScaffoldComplete(
+            val kit: String,
+            val outputDir: String,
+        ) : Install {
+            override fun toDisplayString(): String = "Scaffold written to $outputDir — run 'easy-db-lab $kit start' to deploy"
+        }
+
+        @Serializable
+        @SerialName("Install.UnresolvedVariables")
+        data class UnresolvedVariables(
+            val kit: String,
+            val variables: List<String>,
+        ) : Install {
+            override fun toDisplayString(): String = "Warning: unresolved template variables in '$kit': ${variables.joinToString(", ")}"
+        }
+
+        @Serializable
+        @SerialName("Install.CollisionDetected")
+        data class CollisionDetected(
+            val kit: String,
+        ) : Install {
+            override fun toDisplayString(): String = "Warning: '$kit' appears to already be deployed. Use --force to overwrite scaffold."
+        }
+
+        @Serializable
+        data class TemplateDetail(
+            val name: String,
+            val version: String,
+            val description: String,
+        )
+
+        // =========================================================================
+    }
+
+    // Event.Kit — Kit script execution
+    // =========================================================================
+
+    @Serializable
+    sealed interface Kit : Event {
+        @Serializable
+        @SerialName("Kit.ScriptStarted")
+        data class ScriptStarted(
+            val kit: String,
+            val script: String,
+        ) : Kit {
+            override fun toDisplayString(): String = "[$kit] running $script..."
+        }
+
+        @Serializable
+        @SerialName("Kit.ScriptFinished")
+        data class ScriptFinished(
+            val kit: String,
+            val script: String,
+            val exitCode: Int,
+        ) : Kit {
+            override fun toDisplayString(): String =
+                if (exitCode == 0) {
+                    "[$kit] $script completed"
+                } else {
+                    "[$kit] $script exited with code $exitCode"
+                }
+
+            override fun isError(): Boolean = exitCode != 0
+        }
+
+        @Serializable
+        @SerialName("Kit.StepStarted")
+        data class StepStarted(
+            val kit: String,
+            val phase: String,
+            val stepType: String,
+            val stepIndex: Int,
+        ) : Kit {
+            override fun toDisplayString(): String = "[$kit] $phase step ${stepIndex + 1}: $stepType"
+        }
+
+        @Serializable
+        @SerialName("Kit.StepFailed")
+        data class StepFailed(
+            val kit: String,
+            val phase: String,
+            val stepType: String,
+            val stepIndex: Int,
+            val error: String,
+        ) : Kit {
+            override fun toDisplayString(): String = "[$kit] $phase step ${stepIndex + 1} ($stepType) failed: $error"
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        @SerialName("Kit.MetricsRegistered")
+        data class MetricsRegistered(
+            val kit: String,
+            val port: Int,
+        ) : Kit {
+            override fun toDisplayString(): String = "[$kit] metrics registered on port $port"
+        }
+
+        @Serializable
+        @SerialName("Kit.MetricsDeregistered")
+        data class MetricsDeregistered(
+            val kit: String,
+        ) : Kit {
+            override fun toDisplayString(): String = "[$kit] metrics deregistered"
+        }
+
+        @Serializable
+        @SerialName("Kit.HookFailed")
+        data class HookFailed(
+            val kit: String,
+            val hook: String,
+            val reason: String,
+        ) : Kit {
+            override fun toDisplayString(): String = "[$kit] hook '$hook' failed after all retries: $reason"
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        @SerialName("Kit.RequirementNotMet")
+        data class RequirementNotMet(
+            val kit: String,
+            val nodeType: String,
+        ) : Kit {
+            override fun toDisplayString(): String =
+                "Cannot install '$kit': requires at least one $nodeType node, but none exist in this cluster. " +
+                    "Re-provision with --$nodeType-instances > 0."
+
+            override fun isError(): Boolean = true
+        }
+    }
+
+    // =========================================================================
+    // Event.Cleanup — Kit disk wipe operations
+    // =========================================================================
+
+    @Serializable
+    sealed interface Cleanup : Event {
+        @Serializable
+        @SerialName("Cleanup.NodeCleaned")
+        data class NodeCleaned(
+            val kit: String,
+            val node: String,
+        ) : Cleanup {
+            override fun toDisplayString(): String = "Cleaned $node for '$kit'"
+        }
+
+        @Serializable
+        @SerialName("Cleanup.Complete")
+        data class Complete(
+            val kit: String,
+        ) : Cleanup {
+            override fun toDisplayString(): String = "Cleanup complete for '$kit'"
+        }
+    }
+
+    // =========================================================================
     // Event.Server — Server lifecycle events
     // =========================================================================
 
@@ -5618,6 +5009,57 @@ sealed interface Event {
             val vpcName: String,
         ) : Server {
             override fun toDisplayString(): String = "Infrastructure gone: VPC '$vpcName' no longer exists. Shutting down server."
+        }
+    }
+
+    // =========================================================================
+    // Event.Sql — shared SQL query execution events (used by all SQL kit commands)
+    // =========================================================================
+
+    @Serializable
+    sealed interface Sql : Event {
+        @Serializable
+        @SerialName("Sql.QueryOutput")
+        data class QueryOutput(
+            val columns: List<String>,
+            val rows: List<List<String>>,
+        ) : Sql {
+            override fun toDisplayString(): String {
+                if (columns.isEmpty()) return "(0 rows)"
+                val widths =
+                    columns.mapIndexed { i, col ->
+                        maxOf(col.length, rows.maxOfOrNull { row -> row.getOrElse(i) { "" }.length } ?: 0)
+                    }
+                return buildString {
+                    appendLine(columns.mapIndexed { i, col -> " ${col.padEnd(widths[i])} " }.joinToString("|"))
+                    appendLine(widths.joinToString("+") { "-".repeat(it + 2) })
+                    rows.forEach { row ->
+                        appendLine(row.mapIndexed { i, cell -> " ${cell.padEnd(widths[i])} " }.joinToString("|"))
+                    }
+                    val count = rows.size
+                    append("($count ${if (count == 1) "row" else "rows"})")
+                }
+            }
+        }
+
+        @Serializable
+        @SerialName("Sql.QueryError")
+        data class QueryError(
+            val message: String,
+        ) : Sql {
+            override fun toDisplayString(): String = "Error: $message"
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        @SerialName("Sql.FileNotFound")
+        data class FileNotFound(
+            val path: String,
+        ) : Sql {
+            override fun toDisplayString(): String = "File not found: $path"
+
+            override fun isError(): Boolean = true
         }
     }
 }

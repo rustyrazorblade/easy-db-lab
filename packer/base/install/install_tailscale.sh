@@ -1,13 +1,13 @@
 #!/bin/bash
 # Install Tailscale VPN client
 # Tailscale is installed but NOT auto-started - the daemon is started on-demand via easy-db-lab commands
-set -e
+set -euo pipefail
 
 echo "=== Installing Tailscale ==="
 
 # Add Tailscale's official GPG key and repository
-curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg | sudo tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null
-curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.tailscale-keyring.list | sudo tee /etc/apt/sources.list.d/tailscale.list
+curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/resolute.noarmor.gpg | sudo tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null
+curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/resolute.tailscale-keyring.list | sudo tee /etc/apt/sources.list.d/tailscale.list
 
 # Install tailscale
 sudo apt-get update

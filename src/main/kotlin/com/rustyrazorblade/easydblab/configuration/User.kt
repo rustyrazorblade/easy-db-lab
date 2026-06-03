@@ -65,7 +65,7 @@ data class User(
             operation: String,
         ) {
             eventBus.emit(
-                Event.Setup.AwsPermissionError(operation, exception.message ?: ""),
+                Event.Setup.AwsPermissionError(operation, exception.message.orEmpty()),
             )
 
             val policies = getRequiredIAMPolicies("ACCOUNT_ID")

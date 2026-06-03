@@ -37,16 +37,18 @@ class Cql : PicoBaseCommand() {
     var file: File? = null
 
     override fun execute() {
+        val localFile = file
+        val localStatement = statement
         val cql =
             when {
-                file != null -> {
-                    if (!file!!.exists()) {
-                        eventBus.emit(Event.Cassandra.CqlFileNotFound(file!!.absolutePath))
+                localFile != null -> {
+                    if (!localFile.exists()) {
+                        eventBus.emit(Event.Cassandra.CqlFileNotFound(localFile.absolutePath))
                         return
                     }
-                    file!!.readText()
+                    localFile.readText()
                 }
-                statement != null -> statement!!
+                localStatement != null -> localStatement
                 else -> {
                     eventBus.emit(Event.Cassandra.CqlUsage)
                     return

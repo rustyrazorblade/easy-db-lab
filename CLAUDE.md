@@ -1,10 +1,13 @@
 - **Clusters are ephemeral by design.** easy-db-lab spins up temporary test clusters that are destroyed after use. There is no production data, no long-lived deployments, and no users who need to migrate. **Do NOT warn about backwards compatibility** when reviewing PRs or planning changes — it is never a concern here.
 - This is a **general purpose database test tool**, not a Cassandra-specific tool. It supports Cassandra, ClickHouse, OpenSearch, and more. In user-facing text (docs, error messages, comments), use "database" or "db" instead of "Cassandra" unless referring to Cassandra-specific functionality. The `ServerType.Cassandra` / "db" node type is the generic database node — don't assume it's always Cassandra.
 - This is a command line tool.  The user interacts by reading the output.  Do not suggest replacing print statements with logging, because it breaks the UX.
-- **All user-facing output** uses `eventBus.emit(Event.Domain.Type(...))` with domain-specific typed events. Events are defined as sealed data classes in `events/Event.kt` across 28 domain interfaces. See [`events/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/events/CLAUDE.md).
-- **Do NOT use `Event.Message` or `Event.Error`** — these generic types exist only for test convenience. All production output must use domain-specific typed events with structured data fields.
+- **Structured user-facing output** uses `eventBus.emit(Event.Domain.Type(...))` with domain-specific typed events. Events are defined as sealed data classes in `events/Event.kt` across 28 domain interfaces. See [`events/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/events/CLAUDE.md). **Events are for things an external system would need to be aware of** — lifecycle transitions, state changes, failures. If an MCP client or Redis subscriber would have no reason to care, it is not an event.
+- **For pure informational output** with no associated event type (e.g. help text, plain status lines), use Kotlin's `println()`. **Never use `System.out` directly** — `println()` is the idiomatic Kotlin equivalent and writes to stdout.
+- **Read-only display commands** (`info`, `list`, `show`, `describe`, and equivalents) produce pure output — no state changes, no domain facts occurred. Use `println()` directly in `execute()`; do **not** model the output as an event. A useful heuristic: if the command's name is a noun or `show`/`info`/`list`/`describe`, it almost certainly belongs in this category. Examples: `kit info`, `kit list`.
+- **Do NOT use `Event.Message` or `Event.Error`** — these generic types exist only for test convenience. When emitting events, always use domain-specific typed events with structured data fields.
 - Do not add logging frameworks to command classes unless there is a specific internal debugging need separate from user output.
 - When logging is needed, use: `import io.github.oshai.kotlinlogging.KotlinLogging` and create a logger with `private val log = KotlinLogging.logger {}`
+- **Never use Python for JSON parsing in shell scripts.** Use `jq` instead.
 
 ## Project Organization
 
@@ -21,7 +24,7 @@ The project follows a layered architecture:
 The Gradle project has multiple modules:
 - **Root module** (`:`) — the main CLI application
 - **`spark/common`** — shared Spark config (`SparkJobConfig`), data generation, CQL setup
-- **`spark/bulk-writer-sidecar`** — Cassandra Analytics bulk writer, direct sidecar transport (requires cassandra-analytics built with JDK 11)
+- **`spark/bulk-writer-sidecar`** — Cassandra Analytics bulk writer, direct sidecar transport (requires cassandra-analytics built with JDK 17)
 - **`spark/bulk-writer-s3-iam`** — Cassandra Analytics bulk writer, S3 staging transport with IAM instance profile credentials
 - **`spark/connector-writer`** — Standard Spark Cassandra Connector writer
 - **`spark/connector-read-write`** — Read→transform→write example using Spark Cassandra Connector
@@ -104,11 +107,13 @@ See [`src/test/.../CLAUDE.md`](src/test/kotlin/com/rustyrazorblade/easydblab/CLA
 ### Code Style
 
 - Do not use wildcard imports.
+- **Always add class-level KDoc comments.** Every class, object, and interface must have a doc comment explaining what it is and why it exists — not just what it does mechanically.
+- **Never use positional CLI parameters (`@CommandLine.Parameters`) for kit install args.** Kit args (declared in `kit.yaml`) must be named options (`@CommandLine.Option`) because they are passed through to kit scripts as environment variables — positional args break that pipeline. Regular commands (e.g. `kit info <name>`, `cassandra use <version>`) may use `@Parameters` where a single positional argument improves UX.
 - Always ensure files end with a newline.
 - Use AssertJ assertions, not JUnit assertions.
 - For serialization, use kotlinx.serialization, not Jackson. Jackson usage in this codebase is deprecated.
 - Constants and magic numbers should be stored in `com.rustyrazorblade.easydblab.Constants`.
-- When outputting multiple lines to the console, use a multiline block instead of multiple calls to `outputHandler.handleMessage`.
+- When outputting multiple lines to the console via `println()`, use a multiline string block instead of multiple `println()` calls. When using events, a single event with structured fields is always preferred over multiple events.
 - When making changes, use the detekt plugin to determine if there are any code quality regressions.
 
 ### Architecture
@@ -123,6 +128,7 @@ See [`src/test/.../CLAUDE.md`](src/test/kotlin/com/rustyrazorblade/easydblab/CLA
 - **Never disable functionality as a solution.** If something isn't working, fix the root cause. Adding flags to skip features, making things optional, or suggesting users disable components is not an acceptable solution. When there's a port conflict, assign a different port — don't disable the service. When a feature crashes, fix the crash — don't remove the feature. "Disable it" is never the answer.
 - **Never add memory limiters to OTel collectors or other observability components.** The `memory_limiter` processor causes data to be refused and dropped under load. The nodes have enough memory — let them use it.
 - **Configuration problems require configuration fixes.** If a service can't connect to a dependency, the fix is to provide the correct endpoint/credentials, not to make the dependency optional.
+- **`RemoteOperationsService` is for commands that run on the remote control node** — filesystem operations, service management (systemd), node-level configuration, and all cluster API tooling (helm, kubectl, cilium). These tools are baked into the AMI and run on the control node via SSH. Use `RemoteOperationsService.executeRemotely()` with `KUBECONFIG=${Constants.K3s.REMOTE_KUBECONFIG}` prefixed on each command. Do NOT use `ProcessBuilder` or local CLI invocations for cluster operations — the tools are not installed on the developer's machine.
 
 ### Testing
 
@@ -138,6 +144,8 @@ See [`src/test/.../CLAUDE.md`](src/test/kotlin/com/rustyrazorblade/easydblab/CLA
   - Mock dependencies to simulate specific failure modes you need to test
   - **Prefer TestContainers** over mocks for anything that interacts with external state (databases, Redis, K8s). TestContainers give more predictable results and increase real code coverage.
   - Do NOT mock classes that have no side effects (e.g., `TemplateService`, data transformations, pure functions) — use the real implementation.
+- **Mocking `RemoteOperationsService` is appropriate for services that execute remote CLI tools** (helm, kubectl, cilium). These tools run on the control node via SSH — there is no local binary to run. Verify the correct command string is passed via `argumentCaptor`. See `HelmServiceTest`, `KubectlServiceTest`, `CiliumServiceTest` for the pattern.
+- **Never mock `K8sService` or `RemoteOperationsService` to test K8s manifest application.** Use K3s TestContainers so the resources are actually applied to a real cluster. See `K8sServiceIntegrationTest` for the pattern.
 
 ### Workflow & Planning
 
@@ -153,6 +161,48 @@ See [`src/test/.../CLAUDE.md`](src/test/kotlin/com/rustyrazorblade/easydblab/CLA
 - Activate kotlin and java for context7.
 - Activate the serena MCP server.
 
+### Lab Test Plans
+
+Lab test plans created with `/easy-db-lab:plan` are stored in `test-plans/` in the worktree root. Name them descriptively (e.g. `cassandra-5.0-validation-3node.md`). When the `/easy-db-lab:run` skill writes or references `plan.md`, use `test-plans/<descriptive-name>.md` instead.
+
+Test plans are executed exclusively via `easy-db-lab.*` plugin skills — **never via `bin/test` or the `run-test` skill**:
+- `/easy-db-lab:plan` — create a new plan
+- `/easy-db-lab:run test-plans/<name>.md` — execute a plan
+
+### Cluster Workspace Directories
+
+**CRITICAL:** Every test run must have its own workspace directory under `clusters/`. All `easy-db-lab` commands — `init`, `up`, `cassandra`, `presto`, `down`, everything — must be run from inside that directory. The tool writes `state.json`, `env.sh`, `sshConfig`, `kubeconfig`, and config files into the current directory. Running from the wrong directory will corrupt state or silently target the wrong cluster.
+
+Each workspace gets an `easy-db-lab` wrapper script generated by `bin/create-easy-db-lab-wrapper`. The wrapper sets the correct `JAVA_HOME` (Java 21 via SDKMAN) and `cd`s into the workspace directory automatically — no manual `cd` or Java ceremony needed.
+
+**Every test plan written to `test-plans/` must use this pattern as its first step:**
+
+```bash
+CLUSTER_DIR="clusters/<test-name>-$(date +%Y%m%d-%H%M%S)"
+mkdir -p "$CLUSTER_DIR"
+bin/create-easy-db-lab-wrapper "$CLUSTER_DIR"
+EDB="$CLUSTER_DIR/easy-db-lab"
+```
+
+All subsequent commands use `$EDB` directly — no `cd`, no path prefix:
+
+```bash
+$EDB init ...
+$EDB cassandra start
+$EDB down --auto-approve
+```
+
+For multi-DC plans, create a wrapper per DC directory:
+
+```bash
+CLUSTER_BASE="clusters/<test-name>-$(date +%Y%m%d-%H%M%S)"
+mkdir -p "$CLUSTER_BASE/dc1" "$CLUSTER_BASE/dc2"
+bin/create-easy-db-lab-wrapper "$CLUSTER_BASE/dc1"
+bin/create-easy-db-lab-wrapper "$CLUSTER_BASE/dc2"
+DC1="$CLUSTER_BASE/dc1/easy-db-lab"
+DC2="$CLUSTER_BASE/dc2/easy-db-lab"
+```
+
 ## Development Setup
 
 ### Java Version Management (SDKMAN)
@@ -163,7 +213,7 @@ The devcontainer uses SDKMAN to manage Java versions:
 
 SDKMAN is pre-configured in the devcontainer with both versions installed and Java 21 as the default.
 
-**Why two versions?** The `bulk-writer` module depends on `cassandra-analytics` which requires JDK 11 to build. The `bin/build-cassandra-analytics` script automatically switches to JDK 11 for that build.
+**Why two versions?** The `bulk-writer` module depends on `cassandra-analytics` which requires JDK 17 to build. The `bin/build-cassandra-analytics` script automatically switches to JDK 17 for that build.
 
 **Common commands:**
 ```bash
@@ -174,7 +224,7 @@ java -version
 sdk list java
 
 # Temporarily use a different version (current shell only)
-sdk use java 11.0.25-tem
+sdk use java 17.0.19-amzn
 
 # Switch default version permanently
 sdk default java 21.0.5-tem
@@ -192,7 +242,7 @@ bin/dev build-analytics
 bin/dev build-analytics --force
 ```
 
-This clones the cassandra-analytics repo, builds with JDK 11, and publishes artifacts to the local Maven repository (`~/.m2/repository`).
+This clones the cassandra-analytics repo, builds with JDK 17, and publishes artifacts to the local Maven repository (`~/.m2/repository`).
 
 ### Pre-commit Hook Installation
 
@@ -280,7 +330,11 @@ The cluster runs a full observability stack on the control node. When modifying 
 
 All observability K8s resources are built programmatically using Fabric8 manifest builders in `configuration/` subpackages. No raw YAML files remain in the core observability stack. See [`configuration/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/configuration/CLAUDE.md) for detailed builder documentation.
 
+**CNI**: K3s uses Cilium (not Flannel) with Hubble enabled for L7 network visibility and Prometheus metrics at `localhost:9965`.
+
 **Collectors** (run on cluster nodes): OTel Collector, Fluent Bit (journald), Grafana Alloy (eBPF profiling), Beyla (L7 RED metrics), ebpf_exporter (TCP/block I/O/VFS), YACE (CloudWatch), MAAC agent (Cassandra metrics)
+
+**Dynamic OTel config**: `OtelManifestBuilder.buildConfigMap()` accepts `List<WorkloadScrapeConfig>` and injects one Prometheus scrape job per running kit. Kits register by writing `easydblab-metrics-<kit>` ConfigMaps (label: `easydblab.com/workload-metrics=true`). `MetricsRegistryService` creates/deletes these ConfigMaps; `OtelSyncService` reads them all and regenerates the OTel collector ConfigMap. Both are called automatically by `KitRunnerCommand` on successful `start`/`stop`.
 
 **Storage backends** (control node): VictoriaMetrics (metrics, port 8428), VictoriaLogs (logs, port 9428), Tempo (traces, port 3200), Pyroscope (profiles, port 4040)
 

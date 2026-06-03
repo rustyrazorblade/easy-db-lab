@@ -1,0 +1,649 @@
+{
+  "__inputs": [],
+  "__requires": [],
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 300,
+      "title": "System",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "percentunit" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 1 },
+      "id": 301,
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "avg by (host_name) (1 - rate(system_cpu_time_seconds_total{state=\"idle\",cluster=~\"$cluster\"}[$__rate_interval]))",
+          "legendFormat": "{{host_name}}"
+        }
+      ],
+      "title": "CPU Utilization",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "bytes" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 1 },
+      "id": 302,
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "system_memory_usage_bytes{state=\"used\",cluster=~\"$cluster\"}",
+          "legendFormat": "{{host_name}} used"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "system_memory_usage_bytes{state=\"free\",cluster=~\"$cluster\"}",
+          "legendFormat": "{{host_name}} free"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "system_memory_usage_bytes{state=\"cached\",cluster=~\"$cluster\"}",
+          "legendFormat": "{{host_name}} cached"
+        }
+      ],
+      "title": "Memory Usage",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "Bps" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 1 },
+      "id": 303,
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "rate(system_disk_io_bytes_total{direction=\"read\",cluster=~\"$cluster\"}[$__rate_interval])",
+          "legendFormat": "{{host_name}} read"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "rate(system_disk_io_bytes_total{direction=\"write\",cluster=~\"$cluster\"}[$__rate_interval])",
+          "legendFormat": "{{host_name}} write"
+        }
+      ],
+      "title": "Disk I/O",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "Bps" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 1 },
+      "id": 304,
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "rate(system_network_io_bytes_total{direction=\"receive\",cluster=~\"$cluster\"}[$__rate_interval])",
+          "legendFormat": "{{host_name}} rx"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "rate(system_network_io_bytes_total{direction=\"transmit\",cluster=~\"$cluster\"}[$__rate_interval])",
+          "legendFormat": "{{host_name}} tx"
+        }
+      ],
+      "title": "Network I/O",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "short" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
+      "id": 305,
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "system_cpu_load_average_1m{cluster=~\"$cluster\"}",
+          "legendFormat": "{{host_name}} 1m"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "system_cpu_load_average_5m{cluster=~\"$cluster\"}",
+          "legendFormat": "{{host_name}} 5m"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "system_cpu_load_average_15m{cluster=~\"$cluster\"}",
+          "legendFormat": "{{host_name}} 15m"
+        }
+      ],
+      "title": "Load Average",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "Bps" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
+      "id": 306,
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "rate(system_disk_io_bytes_total{direction=\"read\",device!~\"loop.*|.*p[0-9]+\",cluster=~\"$cluster\"}[$__rate_interval])",
+          "legendFormat": "{{host_name}} {{device}} read"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "rate(system_disk_io_bytes_total{direction=\"write\",device!~\"loop.*|.*p[0-9]+\",cluster=~\"$cluster\"}[$__rate_interval])",
+          "legendFormat": "{{host_name}} {{device}} write"
+        }
+      ],
+      "title": "Disk I/O (per device)",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 },
+      "id": 100,
+      "title": "Query Throughput",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "short" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 19 },
+      "id": 1,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "com_facebook_presto_execution_QueryManager_RunningQueries{cluster=~\"$cluster\",job=\"presto\"}",
+          "legendFormat": "Running"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "com_facebook_presto_execution_QueryManager_QueuedQueries{cluster=~\"$cluster\",job=\"presto\"}",
+          "legendFormat": "Queued"
+        }
+      ],
+      "title": "Running / Queued Queries",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "ops" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 19 },
+      "id": 2,
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "com_facebook_presto_dispatcher_DispatchManager_CompletedQueries_OneMinute_Rate{cluster=~\"$cluster\",job=\"presto\"}",
+          "legendFormat": "Completed/s (1m)"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "com_facebook_presto_execution_QueryManager_FailedQueries_OneMinute_Rate{cluster=~\"$cluster\",job=\"presto\"}",
+          "legendFormat": "Failed/s (1m)"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "rate(com_facebook_presto_dispatcher_DispatchManager_AbandonedQueries_TotalCount{cluster=~\"$cluster\",job=\"presto\"}[$__rate_interval])",
+          "legendFormat": "Abandoned/s"
+        }
+      ],
+      "title": "Query Throughput (1m rate)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "short" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 19 },
+      "id": 3,
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "com_facebook_presto_execution_executor_TaskExecutor_BlockedSplits{cluster=~\"$cluster\",job=\"presto\"}",
+          "legendFormat": "Blocked Splits"
+        }
+      ],
+      "title": "Blocked Splits",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 },
+      "id": 101,
+      "title": "Per-Query Data Rates",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "Bps" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
+      "id": 9,
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "com_facebook_presto_execution_QueryManager_WallInputBytesRate_OneMinute_P50{cluster=~\"$cluster\",job=\"presto\"}",
+          "legendFormat": "p50"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "com_facebook_presto_execution_QueryManager_WallInputBytesRate_OneMinute_P95{cluster=~\"$cluster\",job=\"presto\"}",
+          "legendFormat": "p95"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "com_facebook_presto_execution_QueryManager_WallInputBytesRate_OneMinute_P99{cluster=~\"$cluster\",job=\"presto\"}",
+          "legendFormat": "p99"
+        }
+      ],
+      "title": "Wall Input Bytes/s per Query (distribution)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "Bps" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 28 },
+      "id": 10,
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "com_facebook_presto_execution_QueryManager_CpuInputByteRate_AllTime_P50{cluster=~\"$cluster\",job=\"presto\"}",
+          "legendFormat": "p50"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "com_facebook_presto_execution_QueryManager_CpuInputByteRate_AllTime_P95{cluster=~\"$cluster\",job=\"presto\"}",
+          "legendFormat": "p95"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "com_facebook_presto_execution_QueryManager_CpuInputByteRate_AllTime_P99{cluster=~\"$cluster\",job=\"presto\"}",
+          "legendFormat": "p99"
+        }
+      ],
+      "title": "CPU Input Bytes/s per Query (distribution)",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 36 },
+      "id": 102,
+      "title": "Aggregate Data Throughput",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "Bps" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 37 },
+      "id": 11,
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "com_facebook_presto_execution_QueryManager_WallInputBytesRate_OneMinute_Total{cluster=~\"$cluster\",job=\"presto\"}",
+          "legendFormat": "Wall Input Bytes/s (1m total)"
+        }
+      ],
+      "title": "Total Wall Input Data Rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "Bps" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 37 },
+      "id": 12,
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "com_facebook_presto_execution_QueryManager_CpuInputByteRate_AllTime_Total{cluster=~\"$cluster\",job=\"presto\"}",
+          "legendFormat": "CPU Input Bytes/s (all-time total)"
+        }
+      ],
+      "title": "Total CPU Input Data Rate",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 45 },
+      "id": 103,
+      "title": "Worker Threads & Splits",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "short" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 46 },
+      "id": 13,
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "com_facebook_presto_execution_executor_TaskExecutor_RunnerThreads{cluster=~\"$cluster\",job=\"presto\"}",
+          "legendFormat": "Runner Threads"
+        }
+      ],
+      "title": "Worker Runner Threads",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "short" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 46 },
+      "id": 14,
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "com_facebook_presto_execution_executor_TaskExecutor_WaitingSplits{cluster=~\"$cluster\",job=\"presto\"}",
+          "legendFormat": "Waiting"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "com_facebook_presto_execution_executor_TaskExecutor_RunningSplits{cluster=~\"$cluster\",job=\"presto\"}",
+          "legendFormat": "Running"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "com_facebook_presto_execution_executor_TaskExecutor_BlockedSplits{cluster=~\"$cluster\",job=\"presto\"}",
+          "legendFormat": "Blocked"
+        }
+      ],
+      "title": "Splits by State",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 54 },
+      "id": 104,
+      "title": "Spill",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "bytes" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 55 },
+      "id": 15,
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "com_facebook_presto_spiller_SpillerStats_TotalSpilledBytes{cluster=~\"$cluster\",job=\"presto\"}",
+          "legendFormat": "Total Spilled"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "com_facebook_presto_spiller_SpillerStats_TotalSpilledBytesRead{cluster=~\"$cluster\",job=\"presto\"}",
+          "legendFormat": "Total Read Back"
+        }
+      ],
+      "title": "Cumulative Spill Bytes",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "Bps" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 55 },
+      "id": 16,
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "rate(com_facebook_presto_spiller_SpillerStats_TotalSpilledBytes{cluster=~\"$cluster\",job=\"presto\"}[$__rate_interval])",
+          "legendFormat": "Spill Write Rate"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "rate(com_facebook_presto_spiller_SpillerStats_TotalSpilledBytesRead{cluster=~\"$cluster\",job=\"presto\"}[$__rate_interval])",
+          "legendFormat": "Spill Read Rate"
+        }
+      ],
+      "title": "Spill Rate",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 63 },
+      "id": 105,
+      "title": "Memory",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "bytes" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 64 },
+      "id": 4,
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "jvm_memory_bytes_used{cluster=~\"$cluster\",job=\"presto\",area=\"heap\"}",
+          "legendFormat": "Heap Used"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "jvm_memory_bytes_max{cluster=~\"$cluster\",job=\"presto\",area=\"heap\"}",
+          "legendFormat": "Heap Max"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "jvm_memory_pool_bytes_used{cluster=~\"$cluster\",job=\"presto\",pool=\"G1 Old Gen\"}",
+          "legendFormat": "G1 Old Gen Used"
+        }
+      ],
+      "title": "JVM Heap",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "bytes" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 64 },
+      "id": 5,
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "com_facebook_presto_memory_ClusterMemoryManager_ClusterUserMemoryReservation{cluster=~\"$cluster\",job=\"presto\"}",
+          "legendFormat": "User Memory Reserved"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "com_facebook_presto_memory_ClusterMemoryManager_ClusterTotalMemoryReservation{cluster=~\"$cluster\",job=\"presto\"}",
+          "legendFormat": "Total Memory Reserved"
+        }
+      ],
+      "title": "Cluster Memory Reservation",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 72 },
+      "id": 106,
+      "title": "JVM / CPU",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "s" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 73 },
+      "id": 6,
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "rate(jvm_gc_collection_seconds_sum{cluster=~\"$cluster\",job=\"presto\",gc=\"G1 Young Generation\"}[$__rate_interval])",
+          "legendFormat": "Young GC pause rate"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "rate(jvm_gc_collection_seconds_sum{cluster=~\"$cluster\",job=\"presto\",gc=\"G1 Old Generation\"}[$__rate_interval])",
+          "legendFormat": "Old GC pause rate"
+        }
+      ],
+      "title": "GC Pause Rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "percentunit" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 73 },
+      "id": 7,
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "rate(process_cpu_seconds_total{cluster=~\"$cluster\",job=\"presto\"}[$__rate_interval])",
+          "legendFormat": "CPU usage"
+        }
+      ],
+      "title": "Coordinator CPU Usage",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "s" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 81 },
+      "id": 8,
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "rate(jvm_gc_collection_seconds_sum{cluster=~\"$cluster\",job=\"presto\",gc=\"G1 Young Generation\"}[$__rate_interval]) / rate(jvm_gc_collection_seconds_count{cluster=~\"$cluster\",job=\"presto\",gc=\"G1 Young Generation\"}[$__rate_interval])",
+          "legendFormat": "Young Gen avg pause"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "expr": "rate(jvm_gc_collection_seconds_sum{cluster=~\"$cluster\",job=\"presto\",gc=\"G1 Old Generation\"}[$__rate_interval]) / rate(jvm_gc_collection_seconds_count{cluster=~\"$cluster\",job=\"presto\",gc=\"G1 Old Generation\"}[$__rate_interval])",
+          "legendFormat": "Old Gen avg pause"
+        }
+      ],
+      "title": "Avg GC Pause Duration",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 89 },
+      "id": 200,
+      "title": "Profiling",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "grafana-pyroscope-datasource", "uid": "pyroscope" },
+      "gridPos": { "h": 20, "w": 24, "x": 0, "y": 90 },
+      "id": 201,
+      "targets": [
+        {
+          "datasource": { "type": "grafana-pyroscope-datasource", "uid": "pyroscope" },
+          "profileTypeId": "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
+          "labelSelector": "{service_name=\"presto\"}",
+          "queryType": "both",
+          "refId": "A",
+          "groupBy": ["component"]
+        }
+      ],
+      "title": "CPU Flame Graph",
+      "type": "flamegraph"
+    },
+    {
+      "datasource": { "type": "grafana-pyroscope-datasource", "uid": "pyroscope" },
+      "gridPos": { "h": 20, "w": 24, "x": 0, "y": 110 },
+      "id": 202,
+      "targets": [
+        {
+          "datasource": { "type": "grafana-pyroscope-datasource", "uid": "pyroscope" },
+          "profileTypeId": "memory:alloc_in_new_tlab_bytes:bytes:space:bytes",
+          "labelSelector": "{service_name=\"presto\"}",
+          "queryType": "both",
+          "refId": "A",
+          "groupBy": ["component"]
+        }
+      ],
+      "title": "Memory Allocation Flame Graph",
+      "type": "flamegraph"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "tags": ["presto", "workload"],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+        "definition": "label_values(up, cluster)",
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "name": "cluster",
+        "options": [],
+        "query": { "query": "label_values(up, cluster)", "refId": "StandardVariableQuery" },
+        "refresh": 2,
+        "sort": 1,
+        "type": "query",
+        "label": "Cluster"
+      }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Presto",
+  "uid": "presto-workload",
+  "version": 1
+}

@@ -94,7 +94,7 @@ class SparkSubmit : PicoBaseCommand() {
                 require(objectStore.fileExists(s3Path)) {
                     "JAR file does not exist in S3: $jarPath"
                 }
-                eventBus.emit(Event.Emr.UsingS3Jar(jarPath))
+                println("Using S3 JAR: $jarPath")
                 jarPath
             } else {
                 uploadJarToS3(jarPath)

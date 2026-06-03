@@ -7,20 +7,19 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.clusterLabelName
-import com.rustyrazorblade.easydblab.configuration.clusterPrefix
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.toHost
 import com.rustyrazorblade.easydblab.configuration.victoria.VictoriaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.yace.YaceManifestBuilder
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
+import com.rustyrazorblade.easydblab.services.K8sClientProvider
 import com.rustyrazorblade.easydblab.services.K8sService
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -55,6 +54,7 @@ class GrafanaUpdateConfig : PicoBaseCommand() {
     private val dashboardService: GrafanaDashboardService by inject()
     private val user: User by inject()
     private val k8sService: K8sService by inject()
+    private val k8sClientProvider: K8sClientProvider by inject()
     private val otelManifestBuilder: OtelManifestBuilder by inject()
     private val journaldOtelManifestBuilder: JournaldOtelManifestBuilder by inject()
     private val ebpfExporterManifestBuilder: EbpfExporterManifestBuilder by inject()
@@ -84,7 +84,11 @@ class GrafanaUpdateConfig : PicoBaseCommand() {
         createClusterConfigMap(controlNode, region)
 
         // Apply all Fabric8-built observability resources
-        applyFabric8Resources("OTel Collector", controlNode, otelManifestBuilder.buildAllResources())
+        val scrapeConfigs =
+            k8sClientProvider.createClient(controlNode).use { client ->
+                otelManifestBuilder.listWorkloadScrapeConfigs(client)
+            }
+        applyFabric8Resources("OTel Collector", controlNode, otelManifestBuilder.buildAllResources(scrapeConfigs))
         applyFabric8Resources("Fluent Bit Journald", controlNode, journaldOtelManifestBuilder.buildAllResources())
         applyFabric8Resources("ebpf_exporter", controlNode, ebpfExporterManifestBuilder.buildAllResources())
         applyFabric8Resources("VictoriaMetrics/Logs", controlNode, victoriaManifestBuilder.buildAllResources())
@@ -96,6 +100,9 @@ class GrafanaUpdateConfig : PicoBaseCommand() {
 
         // Apply Pyroscope resources (requires directory setup via SSH first)
         applyPyroscopeResources(controlNode)
+
+        // Prepare Grafana data directory before applying Deployment
+        prepareGrafanaDirectory(controlNode)
 
         // Apply Grafana dashboards
         dashboardService.uploadDashboards(controlNode).getOrElse { exception ->
@@ -156,6 +163,15 @@ class GrafanaUpdateConfig : PicoBaseCommand() {
         )
 
         applyFabric8Resources("Pyroscope", controlNode, pyroscopeManifestBuilder.buildAllResources())
+    }
+
+    private fun prepareGrafanaDirectory(controlNode: ClusterHost) {
+        eventBus.emit(Event.Grafana.GrafanaDirectoryPreparing)
+        remoteOps.executeRemotely(
+            controlNode.toHost(),
+            "sudo mkdir -p ${GrafanaManifestBuilder.GRAFANA_DATA_PATH} && " +
+                "sudo chown -R ${GrafanaManifestBuilder.GRAFANA_UID}:${GrafanaManifestBuilder.GRAFANA_UID} ${GrafanaManifestBuilder.GRAFANA_DATA_PATH}",
+        )
     }
 
     /**

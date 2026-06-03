@@ -5,7 +5,6 @@ import com.rustyrazorblade.easydblab.commands.Status
 import com.rustyrazorblade.easydblab.commands.cassandra.Start
 import com.rustyrazorblade.easydblab.commands.cassandra.UpdateConfig
 import com.rustyrazorblade.easydblab.commands.cassandra.stress.StressStart
-import com.rustyrazorblade.easydblab.commands.clickhouse.ClickHouseStart
 import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearchStart
 import com.rustyrazorblade.easydblab.commands.spark.SparkSubmit
 import org.assertj.core.api.Assertions.assertThat
@@ -60,14 +59,6 @@ class McpToolNamespacingTest : BaseKoinTest() {
         val toolName = registry.generateToolName(command, "update-config")
 
         assertThat(toolName).isEqualTo("cassandra_update_config")
-    }
-
-    @Test
-    fun `clickhouse namespace is correct`() {
-        val command = ClickHouseStart()
-        val toolName = registry.generateToolName(command, "start")
-
-        assertThat(toolName).isEqualTo("clickhouse_start")
     }
 
     @Test

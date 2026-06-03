@@ -6,9 +6,6 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.EMRClusterState
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.emr.OtelBootstrapResource
-import com.rustyrazorblade.easydblab.configuration.emrLogs
-import com.rustyrazorblade.easydblab.configuration.s3Path
-import com.rustyrazorblade.easydblab.configuration.spark
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.BootstrapAction
@@ -40,6 +37,7 @@ data class EmrClusterProvisioningConfig(
     val masterInstanceType: String,
     val workerInstanceType: String,
     val workerCount: Int,
+    val releaseLabel: String = Constants.EMR.DEFAULT_RELEASE_LABEL,
     val subnetId: String,
     val securityGroupId: String,
     val keyName: String,
@@ -89,6 +87,7 @@ class DefaultEMRProvisioningService(
         val emrConfig =
             EMRClusterConfig(
                 clusterName = "${config.clusterName}-spark",
+                releaseLabel = config.releaseLabel,
                 logUri = s3Path.emrLogs().toString(),
                 subnetId = config.subnetId,
                 ec2KeyName = config.keyName,

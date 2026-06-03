@@ -1,13 +1,14 @@
 package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
-import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
-import com.rustyrazorblade.easydblab.output.OutputHandler
 import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import picocli.CommandLine
 import picocli.CommandLine.Command
+import java.io.ByteArrayOutputStream
+import java.io.PrintStream
 
 @Command(name = "test-root", description = ["Test root command"])
 class TestRootCommand : Runnable {
@@ -17,11 +18,18 @@ class TestRootCommand : Runnable {
 }
 
 class CommandsTest : BaseKoinTest() {
-    private lateinit var outputHandler: BufferedOutputHandler
+    private val stdout = ByteArrayOutputStream()
+    private val originalOut = System.out
 
     @BeforeEach
     fun setup() {
-        outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
+        System.setOut(PrintStream(stdout))
+    }
+
+    @AfterEach
+    fun restoreStdout() {
+        System.setOut(originalOut)
+        stdout.reset()
     }
 
     @Test
@@ -36,7 +44,7 @@ class CommandsTest : BaseKoinTest() {
 
         commandsCmd.execute()
 
-        val output = outputHandler.messages.joinToString("\n")
+        val output = stdout.toString()
         assertThat(output).contains("test-root")
         assertThat(output).contains("commands")
     }
@@ -65,7 +73,7 @@ class CommandsTest : BaseKoinTest() {
 
         commandsCmd.execute()
 
-        val output = outputHandler.messages.joinToString("\n")
+        val output = stdout.toString()
         assertThat(output).contains("sub")
         assertThat(output).contains("--verbose")
     }

@@ -49,7 +49,7 @@ We use packer to create a single AMI with the following:
 The following must be set up before using this project:
 
 * [Setup AWS Account API Credentials](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html)
-* [Install Docker Locally](https://www.docker.com/products/docker-desktop/) for Packer and Terraform
+* [Install Docker Locally](https://www.docker.com/products/docker-desktop/) for Packer
 
 ## AWS Account Setup
 
@@ -153,7 +153,7 @@ docker run --rm \
 - Mount your AWS credentials (`~/.aws`) as read-only for authentication
 - Mount your SSH keys (`~/.ssh`) as read-only for instance access
 - Mount a working directory (`$(pwd):/workspace`) for storing cluster state and configuration
-- Mount the Docker socket to allow the tool to use Docker for Terraform/Packer operations
+- Mount the Docker socket to allow the tool to use Docker for Packer operations
 - For convenience, create a shell alias:
 
 ```shell
@@ -176,14 +176,13 @@ easy-db-lab init my-cluster --cassandra 5.0
 
 When using the container version, note the following:
 - The `build-image` command requires access to your AWS credentials and Docker socket
-- Terraform state is stored in the working directory (mount `/workspace` to persist it)
 - SSH keys must be mounted and accessible inside the container for instance access
 - Performance may be slightly slower than native installation due to container overhead
-- The container runs with root privileges to access the Docker socket (required for Terraform/Packer operations)
+- The container runs with root privileges to access the Docker socket (required for Packer operations)
 
 #### Security Note
 
-The container requires root privileges to access the Docker socket, which is necessary for Terraform and Packer operations. For improved security:
+The container requires root privileges to access the Docker socket, which is necessary for Packer operations. For improved security:
 - Use Docker socket access control (e.g., Docker socket proxy) in production environments
 - Run containers only in isolated environments
 - Never use with untrusted inputs

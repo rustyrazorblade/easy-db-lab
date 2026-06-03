@@ -117,8 +117,8 @@ data class DiscoveredInstance(
      */
     fun toClusterHost(): ClusterHost =
         ClusterHost(
-            publicIp = publicIp ?: "",
-            privateIp = privateIp ?: "",
+            publicIp = publicIp.orEmpty(),
+            privateIp = privateIp.orEmpty(),
             alias = alias,
             availabilityZone = availabilityZone,
             instanceId = instanceId,

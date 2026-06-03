@@ -1,0 +1,130 @@
+apiVersion: clickhouse.altinity.com/v1
+kind: ClickHouseInstallation
+metadata:
+  name: clickhouse
+  namespace: default
+spec:
+  configuration:
+    users:
+      # Allow connections from the VPC CIDR and the K3s pod CIDR (10.42.0.0/16).
+      # Uses 10.0.0.0/8 to cover both: the VPC CIDR (10.0.x.x, set via --cidr) and the
+      # K3s pod CIDR (10.42.0.0/16). Cilium SNATs NodePort traffic to the pod gateway IP
+      # (10.42.x.0), not the node VPC IP, so the VPC CIDR alone is insufficient.
+      default/networks/ip: "10.0.0.0/8"
+    zookeeper:
+      # Reference the ClickHouseKeeperInstallation (CHK) by name. The operator discovers
+      # all keeper replica endpoints automatically and configures ClickHouse with them,
+      # enabling ReplicatedMergeTree tables and ON CLUSTER DDL.
+      keeper:
+        name: clickhouse-keeper
+    clusters:
+      - name: clickhouse
+        templates:
+          podTemplate: clickhouse-pod
+          dataVolumeClaimTemplate: data
+        layout:
+          shardsCount: 1
+          replicasCount: __REPLICAS__
+    files:
+      config.d/disable-integrity-check.xml: |
+        <clickhouse>
+          <skip_binary_checksum_checks>true</skip_binary_checksum_checks>
+        </clickhouse>
+      config.d/backups.xml: |
+        <clickhouse>
+          <backups>
+            <allowed_disk>s3_backup</allowed_disk>
+          </backups>
+        </clickhouse>
+      config.d/prometheus.xml: |
+        <clickhouse>
+          <prometheus>
+            <endpoint>/metrics</endpoint>
+            <port>9363</port>
+            <metrics>true</metrics>
+            <events>true</events>
+            <asynchronous_metrics>true</asynchronous_metrics>
+          </prometheus>
+        </clickhouse>
+      config.d/storage.xml: |
+        <clickhouse>
+          <storage_configuration>
+            <disks>
+              <local_disk>
+                <type>local</type>
+                <path>/var/lib/clickhouse/local_disk/</path>
+                <keep_free_space_bytes>1073741824</keep_free_space_bytes>
+              </local_disk>
+              <s3_disk>
+                <type>s3</type>
+                <endpoint>https://__BUCKET_NAME__.s3.__REGION__.amazonaws.com/clickhouse/</endpoint>
+                <use_environment_credentials>1</use_environment_credentials>
+                <metadata_path>/var/lib/clickhouse/disks/s3_disk/</metadata_path>
+              </s3_disk>
+              <s3>
+                <type>cache</type>
+                <disk>s3_disk</disk>
+                <path>/var/lib/clickhouse/disks/s3/</path>
+                <max_size>__S3_CACHE_SIZE__</max_size>
+                <cache_on_write_operations>__S3_CACHE_ON_WRITE__</cache_on_write_operations>
+              </s3>
+              <s3_backup>
+                <type>s3_plain</type>
+                <endpoint>https://__ACCOUNT_BUCKET__.s3.__REGION__.amazonaws.com/clickhouse-backups/</endpoint>
+                <use_environment_credentials>1</use_environment_credentials>
+              </s3_backup>
+            </disks>
+            <policies>
+              <default>
+                <volumes>
+                  <main>
+                    <disk>local_disk</disk>
+                  </main>
+                </volumes>
+              </default>
+              <s3_main>
+                <volumes>
+                  <main>
+                    <disk>s3</disk>
+                  </main>
+                </volumes>
+              </s3_main>
+              <s3_tier>
+                <volumes>
+                  <hot>
+                    <disk>local_disk</disk>
+                  </hot>
+                  <cold>
+                    <disk>s3</disk>
+                  </cold>
+                </volumes>
+                <move_factor>__S3_TIER_MOVE_FACTOR__</move_factor>
+              </s3_tier>
+            </policies>
+          </storage_configuration>
+        </clickhouse>
+  templates:
+    podTemplates:
+      - name: clickhouse-pod
+        spec:
+          containers:
+            - name: clickhouse
+              image: clickhouse/clickhouse-server:__CLICKHOUSE_VERSION__
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: type
+                        operator: In
+                        values:
+                          - db
+    volumeClaimTemplates:
+      - name: data
+        spec:
+          storageClassName: __STORAGE_CLASS_WFC__
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: __STORAGE_SIZE__

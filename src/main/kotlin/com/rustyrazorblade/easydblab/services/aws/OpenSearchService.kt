@@ -11,7 +11,6 @@ import com.rustyrazorblade.easydblab.providers.aws.IamPolicyPrincipal
 import com.rustyrazorblade.easydblab.providers.aws.IamPolicyResource
 import com.rustyrazorblade.easydblab.providers.aws.IamPolicyStatement
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
-import com.rustyrazorblade.easydblab.providers.aws.ensureOpenSearchServiceLinkedRole
 import io.github.oshai.kotlinlogging.KotlinLogging
 import software.amazon.awssdk.services.opensearch.OpenSearchClient
 import software.amazon.awssdk.services.opensearch.model.ClusterConfig

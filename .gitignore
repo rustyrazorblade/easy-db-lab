@@ -158,7 +158,7 @@ site/
 .cassandra-analytics/
 spark/bulk-writer-sidecar/libs/*.jar
 spark/bulk-writer-s3/libs/*.jar
-clusters/
+/clusters/
 
 # Claude Code config (mounted in devcontainer)
 .devcontainer/claude/
@@ -170,3 +170,8 @@ clusters/
 # async-profiler binary and output
 profiles/
 .async-profiler/
+
+/clickhouse/
+/presto/
+.claude/scheduled_tasks*
+

@@ -46,8 +46,11 @@ The system MUST support a SOCKS5 proxy via SSH dynamic port forwarding as an alt
 
 **Scenarios:**
 
-- **GIVEN** a running cluster without Tailscale, **WHEN** a component needs to reach internal cluster services (e.g., CQL, HTTP APIs), **THEN** a SOCKS proxy is established through an SSH tunnel to a cluster node.
+- **GIVEN** a provisioned cluster with infrastructure UP and Tailscale not enabled, **WHEN** any CLI command is invoked, **THEN** the SOCKS5 proxy is started (or reused if already running) before any command logic executes.
+- **GIVEN** the SOCKS5 proxy OS process has been killed since the last invocation, **WHEN** any CLI command is invoked next, **THEN** the proxy is automatically restarted without user intervention.
 - **GIVEN** the REPL or server is running, **WHEN** the proxy is needed, **THEN** it persists for the lifetime of the session rather than per-command.
+- **GIVEN** Tailscale is enabled for the cluster, **WHEN** any CLI command is invoked, **THEN** the SOCKS5 proxy is not started and connections use direct private IP access.
+- **GIVEN** a running cluster, **WHEN** the user sources `env.sh`, **THEN** `SOCKS5_PROXY_PORT` is populated from the state file written by the CLI so shell wrappers (kubectl, helm, curl) use the correct port.
 
 ### REQ-NET-006: Host Discovery
 

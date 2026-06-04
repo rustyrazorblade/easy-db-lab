@@ -52,7 +52,6 @@ class DefaultCqlSessionService(
     private var cachedSession: CqlSession? = null
     private var cachedDatacenter: String? = null
     private var registeredWithResourceManager = false
-    private var proxyStarted = false
 
     override fun execute(cql: String): Result<String> =
         runCatching {
@@ -73,10 +72,6 @@ class DefaultCqlSessionService(
         cachedSession = null
         cachedDatacenter = null
         registeredWithResourceManager = false
-        if (proxyStarted) {
-            socksProxyService.stop()
-            proxyStarted = false
-        }
     }
 
     private fun getOrCreateSession(): CqlSession {
@@ -100,13 +95,10 @@ class DefaultCqlSessionService(
         val contactPoints = cassandraHosts.map { it.privateIp }
 
         val session =
-            if (clusterState.tailscaleActive) {
+            if (clusterState.isTailscaleEnabled()) {
                 log.info { "Creating new CqlSession via direct connection (Tailscale active)" }
                 sessionFactory.createDirectSession(contactPoints, datacenter)
             } else {
-                val gatewayHost = cassandraHosts.first()
-                socksProxyService.ensureRunning(gatewayHost)
-                proxyStarted = true
                 val proxyPort = socksProxyService.getLocalPort()
                 log.info { "Creating new CqlSession through SOCKS proxy on port $proxyPort" }
                 sessionFactory.createSession(contactPoints, datacenter, proxyPort)

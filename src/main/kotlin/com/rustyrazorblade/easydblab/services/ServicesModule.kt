@@ -22,6 +22,7 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
+import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.EMRService
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
@@ -155,6 +156,7 @@ val servicesModule =
                 ),
                 get<ResourceManager>(),
                 get<EventBus>(),
+                get<SocksProxyService>(),
             )
         }
     }

@@ -23,8 +23,6 @@ import picocli.CommandLine.Option
 import picocli.CommandLine.Parameters
 import java.io.File
 import java.time.LocalDate
-import java.util.concurrent.CompletableFuture
-import java.util.concurrent.TimeUnit
 import kotlin.system.exitProcess
 
 /**
@@ -188,6 +186,12 @@ class Init : PicoBaseCommand() {
     var clean = false
 
     @Option(
+        names = ["--no-tailscale"],
+        description = ["Disable Tailscale even if credentials are configured in profile"],
+    )
+    var noTailscale = false
+
+    @Option(
         names = ["--vpc"],
         description = ["Use an existing VPC ID instead of creating a new one"],
     )
@@ -281,7 +285,7 @@ class Init : PicoBaseCommand() {
                 name = name,
                 versions = mutableMapOf(),
                 initConfig = InitConfig.fromInit(this, userConfig.region),
-                tailscaleActive = detectLocalTailscale(),
+                tailscaleActive = userConfig.isTailscaleEnabled() && !noTailscale,
             )
         clusterStateManager.save(state)
         return state
@@ -314,28 +318,3 @@ class Init : PicoBaseCommand() {
         )
     }
 }
-
-/**
- * Parses the JSON output of `tailscale status --json` and returns true if BackendState is "Running".
- * Exposed as an internal function so it can be tested independently of the process invocation.
- */
-internal fun parseTailscaleOutput(json: String): Boolean = json.contains("\"BackendState\":\"Running\"")
-
-/**
- * Detects whether Tailscale is running on the local machine by invoking `tailscale status --json`.
- * Returns false if the binary is not installed, the process fails, or Tailscale is not connected.
- */
-internal fun detectLocalTailscale(): Boolean =
-    runCatching {
-        val process =
-            ProcessBuilder("tailscale", "status", "--json")
-                .redirectErrorStream(true)
-                .start()
-        val outputFuture = CompletableFuture.supplyAsync { process.inputStream.bufferedReader().readText() }
-        if (!process.waitFor(Constants.Tailscale.STATUS_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
-            process.destroyForcibly()
-            outputFuture.cancel(true)
-            return@runCatching false
-        }
-        parseTailscaleOutput(outputFuture.get())
-    }.getOrDefault(false)

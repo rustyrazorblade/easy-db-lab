@@ -4,12 +4,15 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.TriggerBackup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
+import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.InfrastructureStatus
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
+import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -38,6 +41,7 @@ class CommandExecutorTest : BaseKoinTest() {
     private lateinit var mockUserConfigProvider: UserConfigProvider
     private lateinit var mockDockerClientProvider: DockerClientProvider
     private lateinit var mockResourceManager: ResourceManager
+    private lateinit var mockSocksProxyService: SocksProxyService
     private lateinit var mockUserConfig: User
     private lateinit var commandExecutor: DefaultCommandExecutor
 
@@ -52,6 +56,7 @@ class CommandExecutorTest : BaseKoinTest() {
                 single<UserConfigProvider> { mockUserConfigProvider }
                 single<DockerClientProvider> { mockDockerClientProvider }
                 single<ResourceManager> { mockResourceManager }
+                single<SocksProxyService> { mockSocksProxyService }
                 single<User> { mockUserConfig }
             },
         )
@@ -64,6 +69,7 @@ class CommandExecutorTest : BaseKoinTest() {
         mockUserConfigProvider = mock()
         mockDockerClientProvider = mock()
         mockResourceManager = mock()
+        mockSocksProxyService = mock()
         mockUserConfig = mock()
 
         // Default: profile is already set up
@@ -80,6 +86,7 @@ class CommandExecutorTest : BaseKoinTest() {
                     ),
                 resourceManager = mockResourceManager,
                 eventBus = EventBus(),
+                socksProxyService = mockSocksProxyService,
             )
     }
 
@@ -303,6 +310,68 @@ class CommandExecutorTest : BaseKoinTest() {
         // Then
         assertThat(exitCode).isEqualTo(0)
         verify(mockBackupRestoreService).backupChanged(any(), any())
+    }
+
+    // ========== PROXY STARTUP TESTS ==========
+
+    @Test
+    fun `executeTopLevel starts proxy when infra is UP and Tailscale is disabled`() {
+        // Given
+        val controlHost =
+            ClusterHost(
+                publicIp = "1.2.3.4",
+                privateIp = "10.0.0.1",
+                alias = "control0",
+                availabilityZone = "us-west-2a",
+            )
+        val state =
+            ClusterState(
+                name = "test",
+                versions = mutableMapOf(),
+                infrastructureStatus = InfrastructureStatus.UP,
+                tailscaleActive = false,
+                hosts = mapOf(com.rustyrazorblade.easydblab.configuration.ServerType.Control to listOf(controlHost)),
+            )
+        whenever(mockClusterStateManager.exists()).thenReturn(true)
+        whenever(mockClusterStateManager.load()).thenReturn(state)
+
+        // When
+        commandExecutor.executeTopLevel(TestCommand { })
+
+        // Then
+        verify(mockSocksProxyService).ensureRunning(controlHost)
+    }
+
+    @Test
+    fun `executeTopLevel skips proxy when Tailscale is enabled`() {
+        // Given
+        val state =
+            ClusterState(
+                name = "test",
+                versions = mutableMapOf(),
+                infrastructureStatus = InfrastructureStatus.UP,
+                tailscaleActive = true,
+            )
+        whenever(mockClusterStateManager.exists()).thenReturn(true)
+        whenever(mockClusterStateManager.load()).thenReturn(state)
+
+        // When
+        commandExecutor.executeTopLevel(TestCommand { })
+
+        // Then
+        verify(mockSocksProxyService, never()).ensureRunning(any())
+    }
+
+    @Test
+    fun `executeTopLevel skips proxy when no state file exists`() {
+        // Given
+        whenever(mockClusterStateManager.exists()).thenReturn(false)
+
+        // When
+        commandExecutor.executeTopLevel(TestCommand { })
+
+        // Then
+        verify(mockSocksProxyService, never()).ensureRunning(any())
     }
 
     // ========== TEST COMMAND HELPERS ==========

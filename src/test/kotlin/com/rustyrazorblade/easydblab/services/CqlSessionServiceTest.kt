@@ -85,7 +85,7 @@ class CqlSessionServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `starts SOCKS proxy and uses proxied session when tailscaleActive is false`() {
+    fun `uses proxied session with port from SocksProxyService when tailscaleActive is false`() {
         whenever(mockClusterStateManager.load()).thenReturn(stateWith(tailscaleActive = false))
 
         val service =
@@ -98,44 +98,8 @@ class CqlSessionServiceTest : BaseKoinTest() {
 
         service.execute("SELECT now() FROM system.local")
 
-        verify(mockSocksProxy).ensureRunning(testHost)
+        verify(mockSocksProxy).getLocalPort()
         verify(mockSessionFactory).createSession(any(), any(), any())
         verify(mockSessionFactory, never()).createDirectSession(any(), any())
-    }
-
-    @Test
-    fun `does not stop SOCKS proxy on close when tailscaleActive is true`() {
-        whenever(mockClusterStateManager.load()).thenReturn(stateWith(tailscaleActive = true))
-
-        val service =
-            DefaultCqlSessionService(
-                socksProxyService = mockSocksProxy,
-                clusterStateManager = mockClusterStateManager,
-                sessionFactory = mockSessionFactory,
-                resourceManager = mockResourceManager,
-            )
-
-        service.execute("SELECT now() FROM system.local")
-        service.close()
-
-        verify(mockSocksProxy, never()).stop()
-    }
-
-    @Test
-    fun `stops SOCKS proxy on close when tailscaleActive is false`() {
-        whenever(mockClusterStateManager.load()).thenReturn(stateWith(tailscaleActive = false))
-
-        val service =
-            DefaultCqlSessionService(
-                socksProxyService = mockSocksProxy,
-                clusterStateManager = mockClusterStateManager,
-                sessionFactory = mockSessionFactory,
-                resourceManager = mockResourceManager,
-            )
-
-        service.execute("SELECT now() FROM system.local")
-        service.close()
-
-        verify(mockSocksProxy).stop()
     }
 }

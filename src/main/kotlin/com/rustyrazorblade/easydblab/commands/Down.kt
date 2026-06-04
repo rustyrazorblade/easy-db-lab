@@ -1,7 +1,5 @@
 package com.rustyrazorblade.easydblab.commands
 
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import com.fasterxml.jackson.module.kotlin.readValue
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
@@ -11,10 +9,12 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredResources
 import com.rustyrazorblade.easydblab.providers.aws.TeardownMode
 import com.rustyrazorblade.easydblab.providers.aws.TeardownResult
+import com.rustyrazorblade.easydblab.proxy.Socks5ProxyStateFile
 import com.rustyrazorblade.easydblab.services.TailscaleService
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.serialization.json.Json
 import org.koin.core.component.inject
 import picocli.CommandLine
 import java.io.File
@@ -85,26 +85,21 @@ class Down : PicoBaseCommand() {
     private val user: User by inject()
     private val log = KotlinLogging.logger {}
 
-    data class Socks5ProxyState(
-        val pid: Int,
-        val port: Int,
-        val controlHost: String,
-        val controlIP: String,
-        val clusterName: String,
-        val startTime: String,
-        val sshConfig: String,
-    )
-
     override fun execute() {
         val mode = determineTeardownMode()
 
         eventBus.emit(Event.Teardown.Starting)
 
-        // Cleanup local resources first
-        cleanupSocks5Proxy()
+        // Clear JVM SOCKS proxy settings before teardown so all AWS SDK calls go directly
+        // to public AWS endpoints. The control node (and its SSH tunnel) will be terminated
+        // during teardown, which would break mid-flight proxy connections. AWS API calls
+        // never need the proxy — only private cluster network access does.
+        clearProxySystemProperties()
 
-        // Execute the teardown based on mode
         val result = executeTeardown(mode)
+
+        // Kill the proxy process and remove its state file after AWS operations complete.
+        cleanupSocks5Proxy()
 
         // Only clear cluster state on successful teardown to preserve VPC ID for retries
         if (result.success && (mode == TeardownMode.CurrentCluster || mode is TeardownMode.SpecificVpc)) {
@@ -299,6 +294,16 @@ class Down : PicoBaseCommand() {
     }
 
     /**
+     * Removes JVM SOCKS proxy system properties so teardown AWS SDK calls go directly
+     * to public AWS endpoints without routing through the SSH tunnel.
+     */
+    private fun clearProxySystemProperties() {
+        System.clearProperty("socksProxyHost")
+        System.clearProperty("socksProxyPort")
+        log.debug { "Cleared JVM SOCKS proxy system properties for teardown" }
+    }
+
+    /**
      * Cleanup SOCKS5 proxy if it exists.
      */
     @Suppress("TooGenericExceptionCaught")
@@ -309,8 +314,7 @@ class Down : PicoBaseCommand() {
         }
 
         try {
-            val mapper = jacksonObjectMapper()
-            val proxyState = mapper.readValue<Socks5ProxyState>(proxyStateFile)
+            val proxyState = Json.decodeFromString<Socks5ProxyStateFile>(proxyStateFile.readText())
 
             // Try to kill the process
             try {

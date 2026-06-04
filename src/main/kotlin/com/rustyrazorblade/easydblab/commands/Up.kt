@@ -19,6 +19,7 @@ import com.rustyrazorblade.easydblab.providers.aws.DiscoveredInstance
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import com.rustyrazorblade.easydblab.providers.aws.VpcNetworkingConfig
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
+import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.services.CiliumService
 import com.rustyrazorblade.easydblab.services.ClusterConfigurationService
 import com.rustyrazorblade.easydblab.services.ClusterProvisioningService
@@ -83,6 +84,7 @@ class Up : PicoBaseCommand() {
     private val ciliumService: CiliumService by inject()
     private val k8sService: K8sService by inject()
     private val registryService: RegistryService by inject()
+    private val socksProxyService: SocksProxyService by inject()
     private val commandExecutor: CommandExecutor by inject()
 
     // Working copy loaded during execute() - modified and saved
@@ -480,6 +482,7 @@ class Up : PicoBaseCommand() {
         } else {
             commandExecutor.execute { SetupInstance() }
             startTailscaleIfConfigured()
+            startProxyIfNeeded()
             startK3sOnAllNodes()
 
             if (userConfig.axonOpsKey.isNotBlank() && userConfig.axonOpsOrg.isNotBlank()) {
@@ -490,12 +493,27 @@ class Up : PicoBaseCommand() {
     }
 
     /**
+     * Starts the SOCKS5 proxy to the control node when Tailscale is not active.
+     *
+     * Proxy and Tailscale are mutually exclusive networking paths to the private cluster.
+     * Both are started at the same point so that subsequent K3s setup, kubectl, and
+     * fabric8 operations can reach the cluster API without Tailscale.
+     */
+    private fun startProxyIfNeeded() {
+        if (workingState.isTailscaleEnabled()) return
+        val controlHost = workingState.hosts[ServerType.Control]?.firstOrNull() ?: return
+        log.info { "Starting SOCKS5 proxy to ${controlHost.alias} for K8s API access" }
+        socksProxyService.ensureRunning(controlHost)
+    }
+
+    /**
      * Starts Tailscale VPN on the control node if credentials are configured.
      *
      * This enables secure remote access to the cluster through Tailscale's VPN.
      * If Tailscale fails to start, a warning is logged but the up command continues.
      */
     private fun startTailscaleIfConfigured() {
+        if (!workingState.isTailscaleEnabled()) return
         if (userConfig.tailscaleClientId.isNotBlank() && userConfig.tailscaleClientSecret.isNotBlank()) {
             eventBus.emit(Event.Provision.TailscaleStarting)
             try {

@@ -169,6 +169,8 @@ Test plans are executed exclusively via `easy-db-lab.*` plugin skills — **neve
 - `/easy-db-lab:plan` — create a new plan
 - `/easy-db-lab:run test-plans/<name>.md` — execute a plan
 
+When using the `/easy-db-lab:plan` skill, use `bin/easy-db-lab` in the project directory.
+
 ### Cluster Workspace Directories
 
 **CRITICAL:** Every test run must have its own workspace directory under `clusters/`. All `easy-db-lab` commands — `init`, `up`, `cassandra`, `presto`, `down`, everything — must be run from inside that directory. The tool writes `state.json`, `env.sh`, `sshConfig`, `kubeconfig`, and config files into the current directory. Running from the wrong directory will corrupt state or silently target the wrong cluster.

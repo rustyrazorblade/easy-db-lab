@@ -2,9 +2,9 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.proxy.HttpClientFactory
-import com.rustyrazorblade.easydblab.proxy.SocksProxyService
-import com.rustyrazorblade.easydblab.proxy.SocksProxyState
 import okhttp3.Call
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
@@ -19,7 +19,6 @@ import org.mockito.kotlin.argThat
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
-import java.time.Instant
 
 /**
  * Tests for VictoriaStreamService.
@@ -27,9 +26,9 @@ import java.time.Instant
  * Uses mocked OkHttp clients to verify URL construction and error handling.
  */
 class VictoriaStreamServiceTest {
-    private lateinit var mockSocksProxyService: SocksProxyService
     private lateinit var mockHttpClientFactory: HttpClientFactory
     private lateinit var mockProxiedClient: OkHttpClient
+    private lateinit var mockClusterStateManager: ClusterStateManager
     private lateinit var service: DefaultVictoriaStreamService
 
     private val testControlHost =
@@ -43,20 +42,14 @@ class VictoriaStreamServiceTest {
 
     @BeforeEach
     fun setup() {
-        mockSocksProxyService = mock()
         mockHttpClientFactory = mock()
         mockProxiedClient = mock()
+        mockClusterStateManager = mock()
+        whenever(mockClusterStateManager.load()).thenReturn(ClusterState(name = "test", versions = mutableMapOf(), tailscaleActive = false))
 
-        val proxyState =
-            SocksProxyState(
-                localPort = 1080,
-                gatewayHost = testControlHost,
-                startTime = Instant.now(),
-            )
-        whenever(mockSocksProxyService.ensureRunning(any())).thenReturn(proxyState)
         whenever(mockHttpClientFactory.createClient()).thenReturn(mockProxiedClient)
 
-        service = DefaultVictoriaStreamService(mockSocksProxyService, mockHttpClientFactory)
+        service = DefaultVictoriaStreamService(mockHttpClientFactory, mockClusterStateManager)
     }
 
     @Test
@@ -121,17 +114,6 @@ class VictoriaStreamServiceTest {
 
         assertThat(result.isFailure).isTrue()
         assertThat(result.exceptionOrNull()?.message).contains("Source returned HTTP 500")
-    }
-
-    @Test
-    fun `streamMetrics ensures socks proxy is running`() {
-        val mockCall = mock<Call>()
-        whenever(mockProxiedClient.newCall(any())).thenReturn(mockCall)
-        whenever(mockCall.execute()).thenThrow(RuntimeException("Connection refused"))
-
-        service.streamMetrics(testControlHost, "http://target:8428")
-
-        verify(mockSocksProxyService).ensureRunning(testControlHost)
     }
 
     @Test

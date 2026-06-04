@@ -34,7 +34,7 @@ if [ -f "$CLUSTER_DIR/kubeconfig" ]; then
     if is-tailscale-connected; then
       command k9s --kubeconfig "$KUBECONFIG" "$@"
     else
-      HTTPS_PROXY="socks5://localhost:$SOCKS5_PROXY_PORT" command k9s --kubeconfig "$KUBECONFIG" "$@"
+      HTTPS_PROXY="socks5://localhost:$(_socks5_port)" command k9s --kubeconfig "$KUBECONFIG" "$@"
     fi
   }
 fi
@@ -132,7 +132,16 @@ c-flame-sepworker() {
 # SOCKS5 proxy functions
 # Global variable to store SOCKS5 proxy PID
 SOCKS5_PROXY_PID=""
-SOCKS5_PROXY_PORT=1080
+
+# Reads the proxy port from the state file written by the easy-db-lab CLI each time it is called.
+# Falls back to 1080 if the file does not exist yet (e.g., before first command run).
+_socks5_port() {
+    if [ -f "$CLUSTER_DIR/.socks5-proxy-state" ] && command -v jq &>/dev/null; then
+        jq -r '.port // 1080' "$CLUSTER_DIR/.socks5-proxy-state" 2>/dev/null
+    else
+        echo 1080
+    fi
+}
 
 # Check if Tailscale is connected on control node
 # Returns 0 (true) if connected, 1 (false) otherwise
@@ -154,9 +163,9 @@ is-tailscale-connected() {
 # Proxy wrapper for commands that need to access internal network (10.x.x.x)
 # Usage: with-proxy curl http://10.0.1.50:8080/api
 with-proxy() {
-  ALL_PROXY="socks5h://localhost:$SOCKS5_PROXY_PORT" \
-  HTTP_PROXY="socks5h://localhost:$SOCKS5_PROXY_PORT" \
-  HTTPS_PROXY="socks5h://localhost:$SOCKS5_PROXY_PORT" \
+  ALL_PROXY="socks5h://localhost:$(_socks5_port)" \
+  HTTP_PROXY="socks5h://localhost:$(_socks5_port)" \
+  HTTPS_PROXY="socks5h://localhost:$(_socks5_port)" \
   NO_PROXY="localhost,127.0.0.1" \
   "$@"
 }
@@ -166,7 +175,7 @@ kubectl() {
   if is-tailscale-connected; then
     command kubectl "$@"
   else
-    HTTPS_PROXY="socks5://localhost:$SOCKS5_PROXY_PORT" command kubectl "$@"
+    HTTPS_PROXY="socks5://localhost:$(_socks5_port)" command kubectl "$@"
   fi
 }
 
@@ -175,7 +184,7 @@ helm() {
   if is-tailscale-connected; then
     command helm "$@"
   else
-    HTTPS_PROXY="socks5://localhost:$SOCKS5_PROXY_PORT" command helm "$@"
+    HTTPS_PROXY="socks5://localhost:$(_socks5_port)" command helm "$@"
   fi
 }
 
@@ -184,7 +193,7 @@ cilium() {
   if is-tailscale-connected; then
     command cilium "$@"
   else
-    HTTPS_PROXY="socks5://localhost:$SOCKS5_PROXY_PORT" command cilium "$@"
+    HTTPS_PROXY="socks5://localhost:$(_socks5_port)" command cilium "$@"
   fi
 }
 
@@ -193,7 +202,7 @@ curl() {
   if is-tailscale-connected; then
     command curl "$@"
   else
-    ALL_PROXY="socks5h://localhost:$SOCKS5_PROXY_PORT" \
+    ALL_PROXY="socks5h://localhost:$(_socks5_port)" \
     NO_PROXY="localhost,127.0.0.1" \
     command curl "$@"
   fi
@@ -204,9 +213,9 @@ skopeo() {
   if is-tailscale-connected; then
     command skopeo "$@"
   else
-    ALL_PROXY="socks5h://localhost:$SOCKS5_PROXY_PORT" \
-    HTTP_PROXY="socks5h://localhost:$SOCKS5_PROXY_PORT" \
-    HTTPS_PROXY="socks5h://localhost:$SOCKS5_PROXY_PORT" \
+    ALL_PROXY="socks5h://localhost:$(_socks5_port)" \
+    HTTP_PROXY="socks5h://localhost:$(_socks5_port)" \
+    HTTPS_PROXY="socks5h://localhost:$(_socks5_port)" \
     NO_PROXY="localhost,127.0.0.1" \
     command skopeo "$@"
   fi
@@ -214,7 +223,7 @@ skopeo() {
 
 # Start SOCKS5 proxy via SSH dynamic port forwarding
 start-socks5() {
-  local port=${1:-$SOCKS5_PROXY_PORT}
+  local port=${1:-$(_socks5_port)}
   local proxy_state_file="$CLUSTER_DIR/.socks5-proxy-state"
 
   echo "Starting SOCKS5 proxy..."
@@ -389,13 +398,13 @@ socks5-status() {
     echo "$SSH_PIDS" | while read line; do
       local pid=$(echo "$line" | awk '{print $2}')
       local port=$(echo "$line" | grep -oE '\-D [0-9]+' | awk '{print $2}')
-      echo "  - SOCKS5 proxy active on localhost:${port:-$SOCKS5_PROXY_PORT} [SSH PID: $pid]"
+      echo "  - SOCKS5 proxy active on localhost:${port:-$(_socks5_port)} [SSH PID: $pid]"
     done
-  elif lsof -Pi :$SOCKS5_PROXY_PORT -sTCP:LISTEN -t >/dev/null 2>&1; then
+  elif lsof -Pi :$(_socks5_port) -sTCP:LISTEN -t >/dev/null 2>&1; then
     echo -e "${NC_BOLD}Active SOCKS5 proxy (non-SSH):${NC}"
-    local PID=$(lsof -Pi :$SOCKS5_PROXY_PORT -sTCP:LISTEN -t 2>/dev/null | head -1)
+    local PID=$(lsof -Pi :$(_socks5_port) -sTCP:LISTEN -t 2>/dev/null | head -1)
     local COMMAND=$(ps -p "$PID" -o comm= 2>/dev/null)
-    echo "  - SOCKS5 proxy active on localhost:$SOCKS5_PROXY_PORT [${COMMAND:-Unknown} PID: $PID]"
+    echo "  - SOCKS5 proxy active on localhost:$(_socks5_port) [${COMMAND:-Unknown} PID: $PID]"
     echo "  - This may be managed by easy-db-lab in MCP mode"
   else
     echo "  - No active SOCKS5 proxy found."
@@ -419,10 +428,6 @@ clickhouse-query() {
   curl -s -u "default:default" "http://${control_ip}:8123/" -d "$query"
 }
 
-# Conditionally start SOCKS5 proxy based on Tailscale status
-if is-tailscale-connected; then
-  echo -e "${NC_BOLD}[INFO]${NC} Tailscale VPN is connected - skipping SOCKS5 proxy."
-  echo "  Direct network access to VPC resources is available."
-else
-  start-socks5
-fi
+# SOCKS5 proxy is started automatically by the easy-db-lab CLI before each command.
+# _socks5_port() reads the current port from the state file on each invocation.
+# Use 'with-proxy <command>' for ad-hoc commands, or 'socks5-status' to check the proxy.

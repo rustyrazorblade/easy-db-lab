@@ -23,6 +23,6 @@
 
 ## 4. Validation
 
-- [ ] 4.1 Run `./gradlew ktlintFormat && ./gradlew test && ./gradlew detekt`
-- [ ] 4.2 Confirm kit appears in `easy-db-lab kit list` output after build
-- [ ] 4.3 Confirm `easy-db-lab starrocks --help` shows install/start/stop/uninstall subcommands
+- [x] 4.1 Run `./gradlew ktlintFormat && ./gradlew test && ./gradlew detekt`
+- [x] 4.2 Confirm kit appears in `easy-db-lab kit list` output after build
+- [x] 4.3 Confirm `easy-db-lab starrocks --help` shows install/start/stop/uninstall subcommands

@@ -1,0 +1,139 @@
+name: ignite3
+type: db
+description: Apache Ignite 3 distributed database with configurable storage profiles
+version: "1.0.0"
+collision-check: true
+
+runtime:
+  type: pods
+  selector: "app=ignite"
+  namespace: default
+
+endpoints:
+  - name: "REST"
+    node-type: db
+    port: 30300
+    type: http
+  - name: "JDBC"
+    node-type: db
+    port: 30800
+    type: jdbc
+    scheme: "ignite:thin"
+
+args:
+  - flag: --replicas
+    variable: REPLICAS
+    description: "Number of Ignite 3 server nodes (default: db node count)"
+    type: int
+    default: "${DB_NODE_COUNT}"
+  - flag: --storage
+    variable: STORAGE_PROFILE
+    description: "Storage profile: aimem (volatile), aipersist (in-memory+disk), rocksdb (disk-based LSM)"
+    type: string
+    default: "aipersist"
+  - flag: --version
+    variable: IGNITE_VERSION
+    description: "Apache Ignite 3 Docker image version"
+    type: string
+    default: "3.1.0"
+
+start:
+  - type: shell
+    script: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      echo "Creating Ignite 3 ConfigMap..."
+      # Build comma-separated node address list for static IP finder
+      NODE_LIST=""
+      for i in $(seq 0 $((REPLICAS - 1))); do
+        NODE_LIST="${NODE_LIST}\"ignite-cluster-${i}.ignite-svc-headless.default.svc.cluster.local:3344\", "
+      done
+      NODE_LIST="${NODE_LIST%, }"
+      CONF_FILE=$(mktemp /tmp/ignite-config.XXXXXX.conf)
+      # printf avoids heredoc quoting issues and correctly embeds the node list
+      printf '{ network: { port: 3344, nodeFinder: { netClusterNodes: [%s] } }, storage: { profiles: [{ name: default, engine: %s }] } }' \
+        "${NODE_LIST}" "${STORAGE_PROFILE}" > "${CONF_FILE}"
+      kubectl create configmap ignite-config \
+        --namespace default \
+        --from-file=ignite-config.conf="${CONF_FILE}" \
+        --dry-run=client -o yaml | kubectl apply -f -
+      rm -f "${CONF_FILE}"
+      echo "ConfigMap created."
+
+  - type: manifest
+    template: services.yaml
+
+  - type: manifest
+    template: statefulset.yaml
+
+  - type: shell
+    script: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      echo "Waiting for Ignite 3 pods to be created..."
+      until kubectl get pods -l app=ignite -n default --no-headers 2>/dev/null | grep -q .; do sleep 5; done
+      echo "Pods found, waiting for Ready..."
+      kubectl wait --for=condition=Ready pods \
+        -l app=ignite \
+        --namespace default \
+        --timeout=300s
+
+  - type: manifest
+    template: cluster-init-job.yaml
+
+  - type: wait
+    kind: job
+    name: cluster-init
+    condition: Complete
+    namespace: default
+    timeout: 120s
+
+  - type: manifest
+    template: nodeport-service.yaml
+
+  - type: shell
+    script: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      echo "Configuring OTLP metrics exporter..."
+      # NodePort 30300 is reachable from the local machine via Tailscale private IP
+      curl -s -f -X PATCH "http://${CONTROL_HOST_PRIVATE}:30300/management/v1/configuration/cluster" \
+        -H "Content-Type: application/json" \
+        -d "{\"ignite\":{\"metrics\":{\"exporters\":{\"otel\":{\"exporterName\":\"otlp\",\"endpoint\":\"http://${CONTROL_HOST_PRIVATE}:4318/v1/metrics\",\"protocol\":\"http/protobuf\"}}}}}"
+      echo "OTLP metrics configured."
+
+stop:
+  - type: delete
+    kind: StatefulSet
+    name: ignite-cluster
+    namespace: default
+  - type: delete
+    kind: Service
+    name: ignite-nodeport
+    namespace: default
+  - type: delete
+    kind: Job
+    name: cluster-init
+    namespace: default
+  - type: delete
+    kind: ConfigMap
+    name: ignite-config
+    namespace: default
+
+uninstall:
+  - type: delete
+    kind: Service
+    name: ignite-svc-headless
+    namespace: default
+  - type: shell
+    script: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      echo "Deleting Ignite 3 PersistentVolumeClaims..."
+      kubectl delete pvc -l app=ignite --namespace default --ignore-not-found=true
+      echo "PVCs deleted."
+
+capabilities:
+  - type: sql
+    user: ""
+    driver-class: org.apache.ignite.jdbc.IgniteJdbcDriver

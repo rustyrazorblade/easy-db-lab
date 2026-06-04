@@ -2,7 +2,6 @@ package com.rustyrazorblade.easydblab.proxy
 
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import java.time.Instant
-import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * State of an active SOCKS5 proxy connection
@@ -16,18 +15,17 @@ data class SocksProxyState(
     val localPort: Int,
     val gatewayHost: ClusterHost,
     val startTime: Instant,
-    val connectionCount: AtomicInteger = AtomicInteger(0),
 )
 
 /**
  * Service interface for managing a SOCKS5 proxy via SSH dynamic port forwarding.
  *
- * Supports two usage modes:
- * - CLI mode: Start proxy -> use -> stop (per-command lifecycle)
- * - Server mode (MCP): Start proxy once -> reuse across multiple requests -> stop on shutdown
+ * The proxy is an OS process that persists across JVM restarts until `down` is called.
+ * [ensureRunning] checks for a reusable existing process before starting a new one.
+ * When the proxy starts, JVM system properties are set so all Java socket-layer clients
+ * route through the tunnel automatically.
  *
- * The implementation is thread-safe and gateway-agnostic, meaning it can connect
- * to any SSH-accessible host (not hardcoded to a specific node type).
+ * The implementation is thread-safe and gateway-agnostic.
  */
 interface SocksProxyService {
     /**
@@ -49,12 +47,6 @@ interface SocksProxyService {
      * @throws IllegalStateException if already running to a different host
      */
     fun start(gatewayHost: ClusterHost): SocksProxyState
-
-    /**
-     * Stop the proxy and release resources.
-     * Safe to call multiple times.
-     */
-    fun stop()
 
     /**
      * Check if proxy is currently running and healthy.

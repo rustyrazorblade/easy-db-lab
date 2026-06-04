@@ -6,7 +6,6 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesService
-import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.services.HelmService
 import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitRuntime
@@ -35,7 +34,6 @@ class KitStatusCommand(
     private val installConfig: KitConfig,
 ) : PicoBaseCommand() {
     private val helmService: HelmService by inject()
-    private val socksProxyService: SocksProxyService by inject()
     private val kubeconfigPath = Paths.get(context.workingDirectory.absolutePath, Constants.K3s.LOCAL_KUBECONFIG)
     private val kubeService: KubernetesService by inject { parametersOf(kubeconfigPath.toString()) }
 
@@ -46,8 +44,6 @@ class KitStatusCommand(
                     println("Status:    Unknown (no control node in cluster state)")
                     return
                 }
-
-        socksProxyService.ensureRunning(controlHost)
 
         val state =
             if (installConfig.runtime != null) {

@@ -209,6 +209,12 @@ data class ClusterState(
     fun isRunningCassandra(): Boolean = !hosts[ServerType.Cassandra].isNullOrEmpty()
 
     /**
+     * Returns true when Tailscale was configured at init time and cluster connections bypass the SOCKS proxy.
+     * Reads the stored [tailscaleActive] field from state.json.
+     */
+    fun isTailscaleEnabled(): Boolean = tailscaleActive
+
+    /**
      * Update hosts
      */
     fun updateHosts(hosts: Map<ServerType, List<ClusterHost>>) {

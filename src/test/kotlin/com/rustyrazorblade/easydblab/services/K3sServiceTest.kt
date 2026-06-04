@@ -4,7 +4,6 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
-import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.ssh.Response
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -26,7 +25,6 @@ import org.mockito.kotlin.whenever
  */
 class K3sServiceTest : BaseKoinTest() {
     private lateinit var mockRemoteOps: RemoteOperationsService
-    private lateinit var mockSocksProxyService: SocksProxyService
     private lateinit var k3sService: K3sService
 
     private val testHost =
@@ -41,16 +39,14 @@ class K3sServiceTest : BaseKoinTest() {
         listOf(
             module {
                 single<RemoteOperationsService> { mockRemoteOps }
-                single<SocksProxyService> { mockSocksProxyService }
                 single<ClusterStateManager> { mock() }
-                factory<K3sService> { DefaultK3sService(get(), get(), get(), get()) }
+                factory<K3sService> { DefaultK3sService(get(), get(), get()) }
             },
         )
 
     @BeforeEach
     fun setupMocks() {
         mockRemoteOps = mock()
-        mockSocksProxyService = mock()
         k3sService = getKoin().get()
     }
 

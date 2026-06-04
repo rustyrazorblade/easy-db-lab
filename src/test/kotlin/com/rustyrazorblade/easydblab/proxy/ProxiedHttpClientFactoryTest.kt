@@ -1,47 +1,34 @@
 package com.rustyrazorblade.easydblab.proxy
 
-import com.rustyrazorblade.easydblab.configuration.ClusterState
-import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
-import org.mockito.kotlin.mock
-import org.mockito.kotlin.whenever
 
 class ProxiedHttpClientFactoryTest {
-    private val mockSocksProxy: SocksProxyService = mock()
-    private val mockClusterStateManager: ClusterStateManager = mock()
-
-    private fun stateWith(tailscaleActive: Boolean) =
-        ClusterState(name = "test", versions = mutableMapOf(), tailscaleActive = tailscaleActive)
-
     @Test
-    fun `createClient returns client with no proxy when tailscaleActive is true`() {
-        whenever(mockClusterStateManager.load()).thenReturn(stateWith(tailscaleActive = true))
-
-        val factory =
-            ProxiedHttpClientFactory(
-                socksProxyService = mockSocksProxy,
-                clusterStateManager = mockClusterStateManager,
-            )
+    fun `createClient returns a non-null OkHttpClient`() {
+        val factory = ProxiedHttpClientFactory()
         val client = factory.createClient()
-
-        assertThat(client.proxy).isNull()
+        assertThat(client).isNotNull()
         factory.close()
     }
 
     @Test
-    fun `createClient returns SOCKS-proxied client when tailscaleActive is false`() {
-        whenever(mockClusterStateManager.load()).thenReturn(stateWith(tailscaleActive = false))
-        whenever(mockSocksProxy.getLocalPort()).thenReturn(1080)
+    fun `createClient returns the same cached instance on multiple calls`() {
+        val factory = ProxiedHttpClientFactory()
+        val client1 = factory.createClient()
+        val client2 = factory.createClient()
+        assertThat(client1).isSameAs(client2)
+        factory.close()
+    }
 
-        val factory =
-            ProxiedHttpClientFactory(
-                socksProxyService = mockSocksProxy,
-                clusterStateManager = mockClusterStateManager,
-            )
-        val client = factory.createClient()
-
-        assertThat(client.proxy).isNotNull()
+    @Test
+    fun `close releases the cached client`() {
+        val factory = ProxiedHttpClientFactory()
+        factory.createClient()
+        factory.close()
+        // After close, a new call returns a fresh client
+        val newClient = factory.createClient()
+        assertThat(newClient).isNotNull()
         factory.close()
     }
 }

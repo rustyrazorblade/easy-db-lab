@@ -45,6 +45,12 @@ data class User(
     // Profile-level S3 bucket for shared resources (AMIs, base images, etc.)
     var s3Bucket: String = "",
 ) {
+    /**
+     * Returns true when Tailscale credentials are configured in this profile.
+     * Used by [Init] to determine whether to enable Tailscale routing for the cluster.
+     */
+    fun isTailscaleEnabled(): Boolean = tailscaleClientId.isNotBlank() && tailscaleClientSecret.isNotBlank()
+
     companion object {
         val log = KotlinLogging.logger {}
 

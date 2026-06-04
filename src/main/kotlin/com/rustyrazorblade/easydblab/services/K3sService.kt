@@ -13,7 +13,6 @@ import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import com.rustyrazorblade.easydblab.kubernetes.ProxiedKubernetesClientFactory
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
-import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import io.github.oshai.kotlinlogging.KLogger
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
@@ -132,7 +131,6 @@ interface K3sService : SystemDServiceManager {
  */
 class DefaultK3sService(
     remoteOps: RemoteOperationsService,
-    private val socksProxyService: SocksProxyService,
     private val clusterStateManager: ClusterStateManager,
     eventBus: EventBus,
 ) : AbstractSystemDServiceManager("k3s", remoteOps, eventBus),
@@ -257,16 +255,7 @@ class DefaultK3sService(
         controlHost: ClusterHost,
         kubeconfigPath: Path,
     ): DefaultKubernetesService {
-        val tailscaleActive = clusterStateManager.load().tailscaleActive
-        if (!tailscaleActive) {
-            socksProxyService.ensureRunning(controlHost)
-        }
-        val clientFactory =
-            ProxiedKubernetesClientFactory(
-                proxyHost = "127.0.0.1",
-                socksProxyService = socksProxyService,
-                tailscaleActive = tailscaleActive,
-            )
+        val clientFactory = ProxiedKubernetesClientFactory()
         return DefaultKubernetesService(clientFactory, kubeconfigPath)
     }
 

@@ -3,7 +3,6 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.proxy.HttpClientFactory
-import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -68,15 +67,14 @@ interface VictoriaMetricsQueryService {
 }
 
 class DefaultVictoriaMetricsQueryService(
-    private val socksProxyService: SocksProxyService,
     private val httpClientFactory: HttpClientFactory,
+    private val clusterStateManager: com.rustyrazorblade.easydblab.configuration.ClusterStateManager,
 ) : VictoriaMetricsQueryService {
     override fun query(
         controlHost: ClusterHost,
         promql: String,
     ): Result<List<PromQueryResult>> =
         runCatching {
-            socksProxyService.ensureRunning(controlHost)
             val httpClient = httpClientFactory.createClient()
 
             val encodedQuery = URLEncoder.encode(promql, StandardCharsets.UTF_8)

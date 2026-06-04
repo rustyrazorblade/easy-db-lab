@@ -1,14 +1,9 @@
-package com.rustyrazorblade.easydblab.commands
+package com.rustyrazorblade.easydblab.configuration
 
-import com.rustyrazorblade.easydblab.configuration.User
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 
-/**
- * Tests for profile-based Tailscale detection via [User.isTailscaleEnabled].
- * The old runtime `tailscale status --json` detection was replaced by credential checks.
- */
-class TailscaleDetectionTest {
+class UserTailscaleTest {
     private fun user(
         clientId: String = "",
         clientSecret: String = "",
@@ -24,18 +19,18 @@ class TailscaleDetectionTest {
     )
 
     @Test
-    fun `isTailscaleEnabled returns true when both credentials are present`() {
-        assertThat(user("ts-client-id", "ts-client-secret").isTailscaleEnabled()).isTrue()
+    fun `isTailscaleEnabled returns true when both credentials are non-blank`() {
+        assertThat(user(clientId = "client-id", clientSecret = "client-secret").isTailscaleEnabled()).isTrue()
     }
 
     @Test
     fun `isTailscaleEnabled returns false when clientId is blank`() {
-        assertThat(user("", "ts-client-secret").isTailscaleEnabled()).isFalse()
+        assertThat(user(clientId = "", clientSecret = "client-secret").isTailscaleEnabled()).isFalse()
     }
 
     @Test
     fun `isTailscaleEnabled returns false when clientSecret is blank`() {
-        assertThat(user("ts-client-id", "").isTailscaleEnabled()).isFalse()
+        assertThat(user(clientId = "client-id", clientSecret = "").isTailscaleEnabled()).isFalse()
     }
 
     @Test

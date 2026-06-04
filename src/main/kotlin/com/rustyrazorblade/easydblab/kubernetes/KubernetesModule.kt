@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.kubernetes
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import org.koin.dsl.module
 import java.nio.file.Paths
 
@@ -9,21 +8,14 @@ import java.nio.file.Paths
  * Koin module for Kubernetes-related dependency injection.
  *
  * Provides:
- * - KubernetesClientFactory: Creates K8s API clients, direct or SOCKS-proxied based on tailscaleActive
- * - KubernetesService: High-level service for K8s operations
- *
- * Note: Requires SocksProxyService from proxyModule and expects kubeconfig
- * to be downloaded to the local filesystem.
+ * - [KubernetesClientFactory]: Creates K8s API clients. When the SOCKS5 proxy is active,
+ *   the proxy port is read from the JVM system property `socksProxyPort`.
+ * - [KubernetesService]: High-level service for K8s operations.
  */
 val kubernetesModule =
     module {
         factory<KubernetesClientFactory> {
-            val tailscaleActive = get<ClusterStateManager>().load().tailscaleActive
-            ProxiedKubernetesClientFactory(
-                proxyHost = "127.0.0.1",
-                socksProxyService = get(),
-                tailscaleActive = tailscaleActive,
-            )
+            ProxiedKubernetesClientFactory()
         }
 
         // Kubernetes service - factory because it holds state (API client) tied to proxy session

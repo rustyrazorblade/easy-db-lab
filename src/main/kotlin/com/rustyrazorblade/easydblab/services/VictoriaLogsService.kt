@@ -88,12 +88,11 @@ class DefaultVictoriaLogsService(
             }
             val controlHost = controlHosts.first()
 
-            // Ensure SOCKS proxy is running
-            socksProxyService.ensureRunning(controlHost)
+            // Ensure SOCKS proxy is running when Tailscale is not active
+            if (!clusterState.isTailscaleEnabled()) {
+                socksProxyService.ensureRunning(controlHost)
+            }
 
-            // Create HTTP client through SOCKS proxy
-            val proxyPort = socksProxyService.getLocalPort()
-            log.info { "Using proxied HTTP client on port $proxyPort" }
             val httpClient = httpClientFactory.createClient()
 
             // Build the request URL

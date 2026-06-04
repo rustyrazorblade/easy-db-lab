@@ -3,7 +3,6 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.proxy.HttpClientFactory
-import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -67,8 +66,8 @@ interface VictoriaStreamService {
  * and direct connection for target.
  */
 class DefaultVictoriaStreamService(
-    private val socksProxyService: SocksProxyService,
     private val httpClientFactory: HttpClientFactory,
+    private val clusterStateManager: com.rustyrazorblade.easydblab.configuration.ClusterStateManager,
 ) : VictoriaStreamService {
     companion object {
         private const val HTTP_NO_CONTENT = 204
@@ -81,6 +80,7 @@ class DefaultVictoriaStreamService(
     private val directClient: OkHttpClient by lazy {
         OkHttpClient
             .Builder()
+            .proxy(java.net.Proxy.NO_PROXY) // bypass system proxy — this connects to external (non-cluster) URLs
             .connectTimeout(STREAM_TIMEOUT_MINUTES, TimeUnit.MINUTES)
             .readTimeout(STREAM_TIMEOUT_MINUTES, TimeUnit.MINUTES)
             .writeTimeout(STREAM_TIMEOUT_MINUTES, TimeUnit.MINUTES)
@@ -93,7 +93,6 @@ class DefaultVictoriaStreamService(
         match: String,
     ): Result<StreamResult> =
         runCatching {
-            socksProxyService.ensureRunning(controlHost)
             val proxiedClient = httpClientFactory.createClient()
 
             val encodedMatch = URLEncoder.encode(match, StandardCharsets.UTF_8)
@@ -113,7 +112,6 @@ class DefaultVictoriaStreamService(
         query: String,
     ): Result<StreamResult> =
         runCatching {
-            socksProxyService.ensureRunning(controlHost)
             val proxiedClient = httpClientFactory.createClient()
 
             val encodedQuery = URLEncoder.encode(query, StandardCharsets.UTF_8)

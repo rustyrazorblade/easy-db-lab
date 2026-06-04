@@ -1,21 +1,15 @@
 package com.rustyrazorblade.easydblab.kubernetes
 
-import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
-import org.mockito.kotlin.mock
-import org.mockito.kotlin.whenever
 import java.io.File
 
 class ProxiedKubernetesClientFactoryTest {
     @TempDir
     lateinit var tempDir: File
-
-    private val socksProxyService: SocksProxyService =
-        mock<SocksProxyService>().also {
-            whenever(it.getLocalPort()).thenReturn(1080)
-        }
 
     private val minimalKubeconfig =
         """
@@ -45,29 +39,28 @@ class ProxiedKubernetesClientFactoryTest {
         return file.toPath()
     }
 
-    @Test
-    fun `httpsProxy is null on client config when tailscaleActive is true`() {
-        val factory =
-            ProxiedKubernetesClientFactory(
-                proxyHost = "127.0.0.1",
-                socksProxyService = socksProxyService,
-                tailscaleActive = true,
-            )
+    @BeforeEach
+    fun clearSystemProperties() {
+        System.clearProperty("socksProxyPort")
+    }
 
+    @AfterEach
+    fun restoreSystemProperties() {
+        System.clearProperty("socksProxyPort")
+    }
+
+    @Test
+    fun `httpsProxy is null when socksProxyPort system property is not set`() {
+        val factory = ProxiedKubernetesClientFactory()
         factory.createClient(writeKubeconfig()).use { client ->
             assertThat(client.configuration.httpsProxy).isNull()
         }
     }
 
     @Test
-    fun `httpsProxy is set on client config when tailscaleActive is false`() {
-        val factory =
-            ProxiedKubernetesClientFactory(
-                proxyHost = "127.0.0.1",
-                socksProxyService = socksProxyService,
-                tailscaleActive = false,
-            )
-
+    fun `httpsProxy is set to socks5 when socksProxyPort system property is present`() {
+        System.setProperty("socksProxyPort", "1080")
+        val factory = ProxiedKubernetesClientFactory()
         factory.createClient(writeKubeconfig()).use { client ->
             assertThat(client.configuration.httpsProxy).isEqualTo("socks5://127.0.0.1:1080")
         }

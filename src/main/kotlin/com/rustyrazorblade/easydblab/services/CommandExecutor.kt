@@ -13,6 +13,7 @@ import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
+import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
@@ -86,6 +87,7 @@ class DefaultCommandExecutor(
     private val requirementCheckDeps: RequirementCheckDeps,
     private val resourceManager: ResourceManager,
     private val eventBus: EventBus,
+    private val socksProxyService: SocksProxyService,
 ) : CommandExecutor,
     KoinComponent {
     // Lazy injection - only resolves when first accessed (defers AWS dependency chain)
@@ -107,12 +109,21 @@ class DefaultCommandExecutor(
      * Execute a command with full lifecycle, then process any scheduled commands.
      * This is the entry point for top-level command execution (called by CommandLineParser).
      *
+     * Starts the SOCKS5 proxy eagerly before executing any command, when the cluster is
+     * provisioned, infrastructure is UP, and Tailscale is not enabled. This guarantees the
+     * proxy is always available before any service needs it, and automatically restarts it
+     * if the process was killed between invocations.
+     *
      * @param command The command to execute
      * @return Exit code (0 for success, non-zero for failure)
      */
     fun executeTopLevel(command: PicoCommand): Int {
         // VPC reconstruction from environment variable (if set)
         handleVpcReconstructionFromEnv()
+
+        // Eagerly start SOCKS5 proxy when cluster is provisioned and Tailscale is not active.
+        // ensureRunning is idempotent — it reuses the existing OS process if it is still alive.
+        ensureProxyRunning()
 
         try {
             val exitCode = executeWithLifecycle(command)
@@ -138,6 +149,32 @@ class DefaultCommandExecutor(
                 log.debug { "Non-interactive mode: cleaning up resources" }
                 resourceManager.closeAll()
             }
+        }
+    }
+
+    /**
+     * Starts the SOCKS5 proxy if the cluster is provisioned, infrastructure is UP,
+     * and Tailscale is not active. Failures are logged as warnings and do not abort
+     * the command — the proxy may not be reachable during teardown or partial failures.
+     */
+    @Suppress("TooGenericExceptionCaught")
+    private fun ensureProxyRunning() {
+        if (!clusterStateManager.exists()) return
+        val state =
+            try {
+                clusterStateManager.load()
+            } catch (e: Exception) {
+                log.debug(e) { "Could not load cluster state for proxy startup check" }
+                return
+            }
+        if (!state.isInfrastructureUp()) return
+        if (state.isTailscaleEnabled()) return
+        val controlHost = state.getControlHost() ?: return
+
+        try {
+            socksProxyService.ensureRunning(controlHost)
+        } catch (e: Exception) {
+            log.warn(e) { "SOCKS5 proxy startup failed — proceeding without proxy" }
         }
     }
 

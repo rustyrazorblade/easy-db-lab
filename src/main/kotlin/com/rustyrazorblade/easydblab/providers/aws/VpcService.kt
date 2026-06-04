@@ -204,6 +204,13 @@ interface VpcDiscoveryOperations {
      * Finds active network interfaces in a VPC.
      */
     fun findActiveNetworkInterfacesInVpc(vpcId: VpcId): List<NetworkInterfaceId>
+
+    /**
+     * Returns the CIDR blocks of all VPCs in the target region.
+     *
+     * Used to find an available CIDR block when auto-selecting a non-conflicting VPC CIDR.
+     */
+    fun listAllVpcCidrs(): List<String>
 }
 
 /**

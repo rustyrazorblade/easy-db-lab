@@ -122,6 +122,29 @@ class InitTest : BaseKoinTest() {
         }
 
         @Test
+        fun `execute stores explicit cidr in state`() {
+            val command = Init()
+            command.clean = true
+            command.cidr = "172.16.0.0/16"
+            command.execute()
+
+            verify(mockClusterStateManager).save(
+                argThat { initConfig?.cidr == "172.16.0.0/16" },
+            )
+        }
+
+        @Test
+        fun `execute stores null cidr when --cidr is omitted`() {
+            val command = Init()
+            command.clean = true
+            command.execute()
+
+            verify(mockClusterStateManager).save(
+                argThat { initConfig?.cidr == null },
+            )
+        }
+
+        @Test
         fun `execute extracts resource files`() {
             val command = Init()
             command.clean = true

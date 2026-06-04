@@ -789,6 +789,15 @@ class EC2VpcService(
         return eniIds
     }
 
+    override fun listAllVpcCidrs(): List<String> {
+        log.info { "Listing CIDR blocks for all VPCs in region" }
+        val vpcs =
+            RetryUtil.withAwsRetry("list-all-vpc-cidrs") {
+                ec2Client.describeVpcs(DescribeVpcsRequest.builder().build()).vpcs()
+            }
+        return vpcs.mapNotNull { it.cidrBlock() }
+    }
+
     override fun waitForNetworkInterfacesCleared(
         vpcId: VpcId,
         timeoutMs: Long,

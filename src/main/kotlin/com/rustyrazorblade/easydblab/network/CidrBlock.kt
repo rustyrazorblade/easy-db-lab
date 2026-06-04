@@ -81,6 +81,32 @@ value class CidrBlock(
         /** Number of octets in an IPv4 address */
         private const val IPV4_OCTET_COUNT = 4
 
+        /** Maximum second octet value when scanning for available 10.X.0.0/16 blocks */
+        private const val MAX_SECOND_OCTET = 254
+
+        /**
+         * Selects the first available `10.X.0.0/16` CIDR not already used by an existing VPC.
+         *
+         * Scans second octets 0–254 in order and returns the first that does not appear in any
+         * of the provided CIDR strings. Only `10.x.x.x` CIDRs in [existingCidrs] are considered.
+         *
+         * @param existingCidrs CIDR blocks of all VPCs already present in the region
+         * @throws IllegalStateException if all second octets 0–254 are occupied
+         */
+        fun selectAvailable(existingCidrs: List<String>): CidrBlock {
+            val usedOctets =
+                existingCidrs
+                    .filter { it.startsWith("10.") }
+                    .mapNotNull { it.split(".").getOrNull(1)?.toIntOrNull() }
+                    .toSet()
+            val secondOctet =
+                (0..MAX_SECOND_OCTET).firstOrNull { it !in usedOctets }
+                    ?: error(
+                        "No available CIDR blocks in 10.x.0.0/16 range — all second octets 0–254 are in use",
+                    )
+            return CidrBlock("10.$secondOctet.0.0/16")
+        }
+
         /**
          * Validates whether a string is a valid IPv4 CIDR block.
          *

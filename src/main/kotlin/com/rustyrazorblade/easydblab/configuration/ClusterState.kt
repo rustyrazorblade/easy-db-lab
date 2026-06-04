@@ -105,7 +105,7 @@ data class InitConfig(
     val opensearchInstanceCount: Int = 1,
     val opensearchVersion: String = "2.11",
     val opensearchEbsSize: Int = 100,
-    val cidr: String = Constants.Vpc.DEFAULT_CIDR,
+    val cidr: String? = null,
     val ciliumEnabled: Boolean = false,
 ) {
     companion object {

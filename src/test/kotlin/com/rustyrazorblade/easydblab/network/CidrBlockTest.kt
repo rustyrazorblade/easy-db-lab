@@ -68,4 +68,41 @@ class CidrBlockTest {
         assertThat(CidrBlock.DEFAULT.value).isEqualTo(Constants.Vpc.DEFAULT_CIDR)
         assertThat(CidrBlock.DEFAULT.subnetCidr(0)).isEqualTo("10.0.1.0/24")
     }
+
+    @Test
+    fun `selectAvailable returns first unused second octet as 10-x-0-0 slash 16`() {
+        val existing = listOf("10.0.0.0/16", "10.1.0.0/16")
+        assertThat(CidrBlock.selectAvailable(existing).value).isEqualTo("10.2.0.0/16")
+    }
+
+    @Test
+    fun `selectAvailable skips gaps and returns first available`() {
+        val existing = listOf("10.0.0.0/16", "10.2.0.0/16", "10.3.0.0/16")
+        assertThat(CidrBlock.selectAvailable(existing).value).isEqualTo("10.1.0.0/16")
+    }
+
+    @Test
+    fun `selectAvailable ignores non-10-x VPC CIDRs`() {
+        val existing = listOf("172.16.0.0/16", "192.168.0.0/16")
+        assertThat(CidrBlock.selectAvailable(existing).value).isEqualTo("10.0.0.0/16")
+    }
+
+    @Test
+    fun `selectAvailable ignores CIDRs with non-integer second octet`() {
+        val existing = listOf("10.abc.0.0/16")
+        assertThat(CidrBlock.selectAvailable(existing).value).isEqualTo("10.0.0.0/16")
+    }
+
+    @Test
+    fun `selectAvailable returns 10-0-0-0 slash 16 when no existing VPCs`() {
+        assertThat(CidrBlock.selectAvailable(emptyList()).value).isEqualTo("10.0.0.0/16")
+    }
+
+    @Test
+    fun `selectAvailable throws when all second octets 0-254 are taken`() {
+        val existing = (0..254).map { "10.$it.0.0/16" }
+        assertThatThrownBy { CidrBlock.selectAvailable(existing) }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("No available CIDR blocks")
+    }
 }

@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.commands
 
 import com.fasterxml.jackson.annotation.JsonIgnore
-import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.converters.PicoAZConverter
@@ -199,9 +198,9 @@ class Init : PicoBaseCommand() {
 
     @Option(
         names = ["--cidr"],
-        description = ["VPC CIDR block (default: 10.0.0.0/16). Must be /20 or larger."],
+        description = ["VPC CIDR block (e.g. 10.2.0.0/16). Must be /20 or larger. Omit to auto-select a non-conflicting block."],
     )
-    var cidr: String = Constants.Vpc.DEFAULT_CIDR
+    var cidr: String? = null
 
     @Option(
         names = ["--cilium"],
@@ -248,8 +247,7 @@ class Init : PicoBaseCommand() {
         require(ebsSize > 0) { "EBS size must be positive" }
         require(ebsIops >= 0) { "EBS IOPS cannot be negative" }
         require(ebsThroughput >= 0) { "EBS throughput cannot be negative" }
-        // Validate CIDR block format and prefix length
-        CidrBlock(cidr)
+        cidr?.let { CidrBlock(it) }
     }
 
     private fun checkExistingFiles() {

@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: ignite-cluster
+  namespace: default
+spec:
+  replicas: __REPLICAS__
+  serviceName: ignite-svc-headless
+  selector:
+    matchLabels:
+      app: ignite
+  template:
+    metadata:
+      labels:
+        app: ignite
+    spec:
+      # Allow enough time for Ignite to flush WAL and checkpoints on shutdown
+      terminationGracePeriodSeconds: 300
+      containers:
+        - name: ignite-node
+          image: apache/ignite3:__IGNITE_VERSION__
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: IGNITE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: IGNITE_WORK_DIR
+              value: /ai3-work
+          ports:
+            - name: rest
+              containerPort: 10300
+            - name: thin-client
+              containerPort: 10800
+            - name: discovery
+              containerPort: 3344
+          volumeMounts:
+            - name: config-vol
+              mountPath: /opt/ignite/etc/ignite-config.conf
+              subPath: ignite-config.conf
+            - name: persistence
+              mountPath: /ai3-work
+      volumes:
+        - name: config-vol
+          configMap:
+            name: ignite-config
+  volumeClaimTemplates:
+    - metadata:
+        name: persistence
+        labels:
+          app: ignite
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 10Gi
+        volumeMode: Filesystem

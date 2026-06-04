@@ -66,6 +66,7 @@ jedis = "7.4.0"
 classgraph = "4.8.184"
 presto-jdbc = "0.289"
 clickhouse-jdbc = "0.7.2"
+ignite3 = "3.1.0"
 resilience4j = "2.4.0"
 fabric8-kubernetes = "7.5.0"
 
@@ -184,6 +185,7 @@ fabric8-kubernetes-server-mock = { module = "io.fabric8:kubernetes-server-mock",
 cassandra-driver-core = { module = "org.apache.cassandra:java-driver-core", version.ref = "cassandra-driver" }
 presto-jdbc = { module = "com.facebook.presto:presto-jdbc", version.ref = "presto-jdbc" }
 clickhouse-jdbc = { module = "com.clickhouse:clickhouse-jdbc", version.ref = "clickhouse-jdbc" }
+ignite3-jdbc = { module = "org.apache.ignite:ignite-jdbc", version.ref = "ignite3" }
 
 
 [bundles]

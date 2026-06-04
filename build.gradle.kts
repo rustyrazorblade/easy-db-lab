@@ -148,6 +148,7 @@ dependencies {
     implementation(libs.cassandra.driver.core)
     implementation(libs.presto.jdbc)
     implementation(libs.clickhouse.jdbc)
+    implementation(libs.ignite3.jdbc)
 
     // Testing
     testImplementation(libs.archunit.junit5)

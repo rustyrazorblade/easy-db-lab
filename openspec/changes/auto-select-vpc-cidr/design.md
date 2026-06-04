@@ -2,7 +2,7 @@
 
 Currently `Init.cidr` defaults to `Constants.Vpc.DEFAULT_CIDR` (`"10.0.0.0/16"`). This string is stored in `InitConfig.cidr` (in `state.json`) and passed to `AwsInfrastructureService.ensureInfrastructure()` → `vpcService.createVpc()`. Multiple users sharing an AWS account each create a VPC with the same block, producing routing conflicts in a Tailscale mesh.
 
-The VPC is not created at `init` time — it is created during `up`. This means CIDR auto-selection naturally belongs in the `up` path, specifically in `AwsInfrastructureService` before calling `createVpc`. There is no need to make AWS calls during `init`.
+The VPC is not created at `init` time — it is created during `up`. This means CIDR auto-selection naturally belongs in the `up` path. There is no need to make AWS calls during `init`.
 
 ## Goals / Non-Goals
 
@@ -24,11 +24,11 @@ The VPC is not created at `init` time — it is created during `up`. This means 
 
 `Init.validateParameters()` only validates the CIDR when it is non-null (i.e., when `--cidr` was explicitly provided). When null, there is nothing to validate at init time.
 
-### Decision 2: Auto-selection lives in `AwsInfrastructureService`
+### Decision 2: Auto-selection lives in `Up.resolveCidr()`
 
-The selection requires an AWS API call (`describeVpcs`), and `AwsInfrastructureService` already holds `vpcService`. Placing it here keeps the command layer thin and avoids adding any AWS dependency to `Init`.
+`Up.kt` already holds `vpcService` directly and is the only caller of both `createVpc` and `setupVpcNetworking`. Placing selection here avoids threading a resolver through `AwsInfrastructureService` for a concern specific to the `up` flow.
 
-The resolved CIDR is used in-place; it does not need to be written back to state because `AwsInfrastructureService` receives it through `VpcNetworkingConfig` which is constructed just before VPC creation.
+The resolved CIDR is persisted back to `InitConfig` in state before VPC creation. This ensures that a re-run after a partial failure (e.g. VPC created but instances failed) picks the same block rather than re-querying and potentially selecting a different one.
 
 ### Decision 3: New `VpcDiscoveryOperations.listAllVpcCidrs()` method
 

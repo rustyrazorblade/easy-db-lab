@@ -85,6 +85,8 @@ data class TemplateVariables(
                 dbNodeIps = dbNodes.joinToString(",") { it.privateIp },
                 appNodeIps = appNodes.joinToString(",") { it.privateIp },
                 runningKits = state.runningKits.joinToString(","),
+                // cidr is null until 'up' resolves and persists it; DEFAULT_CIDR is a safe
+                // fallback because templates using VPC_CIDR only execute post-up
                 vpcCidr = state.initConfig?.cidr ?: Constants.Vpc.DEFAULT_CIDR,
             )
         }

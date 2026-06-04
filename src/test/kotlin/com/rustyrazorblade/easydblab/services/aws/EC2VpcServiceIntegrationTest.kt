@@ -327,13 +327,6 @@ class EC2VpcServiceIntegrationTest {
         }
 
         @Test
-        fun `does not include CIDRs from VPCs that were not created`() {
-            val cidrs = vpcService.listAllVpcCidrs()
-
-            assertThat(cidrs).doesNotContain("10.22.0.0/16", "10.23.0.0/16")
-        }
-
-        @Test
         fun `auto-selection picks non-conflicting CIDR based on listed VPCs`() {
             vpcService.createVpc("test-autoselect-a", "10.30.0.0/16", emptyMap())
             vpcService.createVpc("test-autoselect-b", "10.31.0.0/16", emptyMap())

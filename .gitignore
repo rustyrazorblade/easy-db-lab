@@ -155,6 +155,7 @@ site/
 .claude/settings.local.json
 
 # Cassandra Analytics build artifacts (see bin/build-cassandra-analytics)
+.cassandra-analytics
 .cassandra-analytics/
 spark/bulk-writer-sidecar/libs/*.jar
 spark/bulk-writer-s3/libs/*.jar

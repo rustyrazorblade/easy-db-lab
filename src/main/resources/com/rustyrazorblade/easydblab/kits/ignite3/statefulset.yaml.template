@@ -27,6 +27,26 @@ spec:
                   fieldPath: metadata.name
             - name: IGNITE_WORK_DIR
               value: /ai3-work
+            - name: HOST_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: JAVA_TOOL_OPTIONS
+              value: "-javaagent:/usr/local/otel/opentelemetry-javaagent.jar"
+            - name: OTEL_SERVICE_NAME
+              value: "ignite3"
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "cluster.name=__CLUSTER_NAME__"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://$(HOST_IP):4317"
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: "grpc"
+            - name: OTEL_TRACES_EXPORTER
+              value: "otlp"
+            - name: OTEL_METRICS_EXPORTER
+              value: "none"
+            - name: OTEL_LOGS_EXPORTER
+              value: "none"
           ports:
             - name: rest
               containerPort: 10300
@@ -40,10 +60,16 @@ spec:
               subPath: ignite-config.conf
             - name: persistence
               mountPath: /ai3-work
+            - name: otel-agent
+              mountPath: /usr/local/otel
+              readOnly: true
       volumes:
         - name: config-vol
           configMap:
             name: ignite-config
+        - name: otel-agent
+          hostPath:
+            path: /usr/local/otel
   volumeClaimTemplates:
     - metadata:
         name: persistence

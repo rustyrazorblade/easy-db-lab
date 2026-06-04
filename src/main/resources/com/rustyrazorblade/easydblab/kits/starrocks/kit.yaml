@@ -32,6 +32,10 @@ capabilities:
     user: root
     driver-class: com.mysql.cj.jdbc.Driver
 
+dashboards:
+  - path: dashboards/starrocks.json
+    name: StarRocks Overview
+
 install:
   - type: helm-repo
     name: starrocks

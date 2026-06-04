@@ -1,0 +1,333 @@
+{
+  "title": "StarRocks Overview",
+  "uid": "starrocks-overview",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "label": "DataSource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "selected": true, "text": "VictoriaMetrics", "value": "VictoriaMetrics" },
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "refresh": 1
+      },
+      {
+        "name": "cluster",
+        "label": "Cluster",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "definition": "label_values(starrocks_fe_query_total, cluster)",
+        "query": { "query": "label_values(starrocks_fe_query_total, cluster)", "refId": "StandardVariableQuery" },
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "refresh": 1,
+        "sort": 0,
+        "allValue": ".*"
+      },
+      {
+        "name": "interval",
+        "label": "Interval",
+        "type": "interval",
+        "query": "30s,1m,5m,10m,30m,1h",
+        "current": { "selected": true, "text": "5m", "value": "5m" },
+        "hide": 0,
+        "auto": false
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Overview",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "FE Nodes Alive",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 0, "y": 1, "w": 4, "h": 4 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none", "textMode": "auto" },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": 0 }, { "color": "green", "value": 1 }] }, "mappings": [] } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "count(up{job=\"starrocks\", cluster=~\"$cluster\"} == 1)", "legendFormat": "Alive", "refId": "A" }]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "QPS",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 4, "y": 1, "w": 4, "h": 4 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area", "textMode": "auto" },
+      "fieldConfig": { "defaults": { "unit": "reqps", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }] } } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum(rate(starrocks_fe_query_total{job=\"starrocks\", cluster=~\"$cluster\"}[$interval]))", "legendFormat": "QPS", "refId": "A" }]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Error Rate",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 8, "y": 1, "w": 4, "h": 4 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area", "textMode": "auto" },
+      "fieldConfig": { "defaults": { "unit": "reqps", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }, { "color": "red", "value": 0.01 }] } } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum(rate(starrocks_fe_query_err{job=\"starrocks\", cluster=~\"$cluster\"}[$interval]))", "legendFormat": "Errors/s", "refId": "A" }]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Active Queries",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 12, "y": 1, "w": 4, "h": 4 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "textMode": "auto" },
+      "fieldConfig": { "defaults": { "unit": "short", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }] } } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum(starrocks_fe_unfinished_query{job=\"starrocks\", cluster=~\"$cluster\"})", "legendFormat": "Active", "refId": "A" }]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Max Compaction Score",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 16, "y": 1, "w": 4, "h": 4 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none", "textMode": "auto" },
+      "fieldConfig": { "defaults": { "unit": "short", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }, { "color": "yellow", "value": 50 }, { "color": "red", "value": 100 }] } } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "max(starrocks_fe_tablet_max_compaction_score{job=\"starrocks\", cluster=~\"$cluster\"})", "legendFormat": "Score", "refId": "A" }]
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "Connections",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 20, "y": 1, "w": 4, "h": 4 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "textMode": "auto" },
+      "fieldConfig": { "defaults": { "unit": "short", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }] } } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum(starrocks_fe_connection_total{job=\"starrocks\", cluster=~\"$cluster\"})", "legendFormat": "Connections", "refId": "A" }]
+    },
+    {
+      "id": 10,
+      "type": "row",
+      "title": "Query Performance",
+      "gridPos": { "x": 0, "y": 5, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "QPS & RPS",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 0, "y": 6, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "lineWidth": 1, "fillOpacity": 10 } } },
+      "options": { "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum(rate(starrocks_fe_query_total{job=\"starrocks\", cluster=~\"$cluster\"}[$interval]))", "legendFormat": "QPS", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum(rate(starrocks_fe_request_total{job=\"starrocks\", cluster=~\"$cluster\"}[$interval]))", "legendFormat": "RPS", "refId": "B" },
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum(rate(starrocks_fe_query_err{job=\"starrocks\", cluster=~\"$cluster\"}[$interval]))", "legendFormat": "Error/s", "refId": "C" }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Query Latency Percentiles",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 12, "y": 6, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "ms", "custom": { "lineWidth": 1, "fillOpacity": 5 } } },
+      "options": { "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "starrocks_fe_query_latency_ms{job=\"starrocks\", cluster=~\"$cluster\", quantile=\"0.99\"}", "legendFormat": "p99 {{instance}}", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "starrocks_fe_query_latency_ms{job=\"starrocks\", cluster=~\"$cluster\", quantile=\"0.95\"}", "legendFormat": "p95 {{instance}}", "refId": "B" },
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "starrocks_fe_query_latency_ms{job=\"starrocks\", cluster=~\"$cluster\", quantile=\"0.75\"}", "legendFormat": "p75 {{instance}}", "refId": "C" }
+      ]
+    },
+    {
+      "id": 20,
+      "type": "row",
+      "title": "Transactions",
+      "gridPos": { "x": 0, "y": 14, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "Transaction Rate",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 0, "y": 15, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "lineWidth": 1, "fillOpacity": 10 } } },
+      "options": { "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum(rate(starrocks_fe_txn_begin{job=\"starrocks\", cluster=~\"$cluster\"}[$interval]))", "legendFormat": "Begin", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum(rate(starrocks_fe_txn_success{job=\"starrocks\", cluster=~\"$cluster\"}[$interval]))", "legendFormat": "Success", "refId": "B" }
+      ]
+    },
+    {
+      "id": 22,
+      "type": "timeseries",
+      "title": "Transaction Failures & Rejections",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 12, "y": 15, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "lineWidth": 1, "fillOpacity": 10 } } },
+      "options": { "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum(rate(starrocks_fe_txn_failed{job=\"starrocks\", cluster=~\"$cluster\"}[$interval]))", "legendFormat": "Failed", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum(rate(starrocks_fe_txn_reject{job=\"starrocks\", cluster=~\"$cluster\"}[$interval]))", "legendFormat": "Rejected", "refId": "B" }
+      ]
+    },
+    {
+      "id": 30,
+      "type": "row",
+      "title": "Load Jobs",
+      "gridPos": { "x": 0, "y": 23, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 31,
+      "type": "timeseries",
+      "title": "Load Submissions",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 0, "y": 24, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "lineWidth": 1, "fillOpacity": 10 } } },
+      "options": { "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "rate(starrocks_fe_load_add{job=\"starrocks\", cluster=~\"$cluster\"}[$interval])", "legendFormat": "Submitted {{instance}}", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "rate(starrocks_fe_load_finished{job=\"starrocks\", cluster=~\"$cluster\"}[$interval])", "legendFormat": "Finished {{instance}}", "refId": "B" }
+      ]
+    },
+    {
+      "id": 32,
+      "type": "timeseries",
+      "title": "Insert Load Jobs by State",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 12, "y": 24, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "lineWidth": 1, "fillOpacity": 10 } } },
+      "options": { "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "starrocks_fe_job{job=\"starrocks\", cluster=~\"$cluster\", type=\"INSERT\", state=\"PENDING\"}", "legendFormat": "PENDING", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "starrocks_fe_job{job=\"starrocks\", cluster=~\"$cluster\", type=\"INSERT\", state=\"ETL\"}", "legendFormat": "ETL", "refId": "B" },
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "starrocks_fe_job{job=\"starrocks\", cluster=~\"$cluster\", type=\"INSERT\", state=\"LOADING\"}", "legendFormat": "LOADING", "refId": "C" }
+      ]
+    },
+    {
+      "id": 40,
+      "type": "row",
+      "title": "Storage & Tablets (FE View of BE)",
+      "gridPos": { "x": 0, "y": 32, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 41,
+      "type": "timeseries",
+      "title": "Disk Capacity",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 0, "y": 33, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "lineWidth": 1, "fillOpacity": 10 } } },
+      "options": { "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum(starrocks_be_disks_total_capacity{job=\"starrocks\", cluster=~\"$cluster\"})", "legendFormat": "Total Capacity", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum(starrocks_be_disks_data_used_capacity{job=\"starrocks\", cluster=~\"$cluster\"})", "legendFormat": "Used", "refId": "B" }
+      ]
+    },
+    {
+      "id": 42,
+      "type": "timeseries",
+      "title": "Max Compaction Score",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 12, "y": 33, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "lineWidth": 1, "fillOpacity": 10 }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }, { "color": "yellow", "value": 50 }, { "color": "red", "value": 100 }] } } },
+      "options": { "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "starrocks_fe_tablet_max_compaction_score{job=\"starrocks\", cluster=~\"$cluster\"}", "legendFormat": "Score {{instance}}", "refId": "A" }
+      ]
+    },
+    {
+      "id": 43,
+      "type": "timeseries",
+      "title": "Tablet Distribution",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 0, "y": 41, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "lineWidth": 1, "fillOpacity": 5 } } },
+      "options": { "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "starrocks_fe_tablet_num{job=\"starrocks\", cluster=~\"$cluster\"}", "legendFormat": "BE {{backend_id}}", "refId": "A" }
+      ]
+    },
+    {
+      "id": 44,
+      "type": "timeseries",
+      "title": "Scheduled Tablets (Clone/Rebalance)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 12, "y": 41, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "lineWidth": 1, "fillOpacity": 10 } } },
+      "options": { "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "starrocks_fe_scheduled_pending_tablet_num{job=\"starrocks\", cluster=~\"$cluster\"}", "legendFormat": "Pending {{instance}}", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "starrocks_fe_scheduled_running_tablet_num{job=\"starrocks\", cluster=~\"$cluster\"}", "legendFormat": "Running {{instance}}", "refId": "B" }
+      ]
+    },
+    {
+      "id": 50,
+      "type": "row",
+      "title": "FE Internals",
+      "gridPos": { "x": 0, "y": 49, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 51,
+      "type": "timeseries",
+      "title": "JVM Heap",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 0, "y": 50, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "lineWidth": 1, "fillOpacity": 10 } } },
+      "options": { "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "jvm_heap_size_bytes{job=\"starrocks\", cluster=~\"$cluster\", type=\"used\"}", "legendFormat": "Used {{instance}}", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "jvm_heap_size_bytes{job=\"starrocks\", cluster=~\"$cluster\", type=\"max\"}", "legendFormat": "Max {{instance}}", "refId": "B" }
+      ]
+    },
+    {
+      "id": 52,
+      "type": "timeseries",
+      "title": "Edit Log Write Latency",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 12, "y": 50, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "ms", "custom": { "lineWidth": 1, "fillOpacity": 5 } } },
+      "options": { "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "starrocks_fe_editlog_write_latency_ms{job=\"starrocks\", cluster=~\"$cluster\", quantile=\"0.99\"}", "legendFormat": "p99 {{instance}}", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "starrocks_fe_editlog_write_latency_ms{job=\"starrocks\", cluster=~\"$cluster\", quantile=\"0.95\"}", "legendFormat": "p95 {{instance}}", "refId": "B" }
+      ]
+    },
+    {
+      "id": 53,
+      "type": "timeseries",
+      "title": "Metadata Log Count",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 0, "y": 58, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "lineWidth": 1, "fillOpacity": 10 }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }, { "color": "yellow", "value": 50000 }, { "color": "red", "value": 100000 }] } } },
+      "options": { "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "starrocks_fe_meta_log_count{job=\"starrocks\", cluster=~\"$cluster\"}", "legendFormat": "Log Count {{instance}}", "refId": "A" }
+      ]
+    },
+    {
+      "id": 54,
+      "type": "timeseries",
+      "title": "JVM GC",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 12, "y": 58, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "ms", "custom": { "lineWidth": 1, "fillOpacity": 10 } } },
+      "options": { "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "rate(jvm_young_gc{job=\"starrocks\", cluster=~\"$cluster\", type=\"time\"}[$interval])", "legendFormat": "Young GC ms/s {{instance}}", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "rate(jvm_old_gc{job=\"starrocks\", cluster=~\"$cluster\", type=\"time\"}[$interval])", "legendFormat": "Old GC ms/s {{instance}}", "refId": "B" }
+      ]
+    }
+  ]
+}

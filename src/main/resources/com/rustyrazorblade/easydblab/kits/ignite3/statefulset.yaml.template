@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: ignite-cluster
+  namespace: default
+spec:
+  replicas: __REPLICAS__
+  serviceName: ignite-svc-headless
+  selector:
+    matchLabels:
+      app: ignite
+  template:
+    metadata:
+      labels:
+        app: ignite
+    spec:
+      # Allow enough time for Ignite to flush WAL and checkpoints on shutdown
+      terminationGracePeriodSeconds: 300
+      containers:
+        - name: ignite-node
+          image: apache/ignite3:__IGNITE_VERSION__
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: IGNITE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: IGNITE_WORK_DIR
+              value: /ai3-work
+            - name: HOST_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: JAVA_TOOL_OPTIONS
+              value: "-javaagent:/usr/local/otel/opentelemetry-javaagent.jar"
+            - name: OTEL_SERVICE_NAME
+              value: "ignite3"
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "cluster.name=__CLUSTER_NAME__"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://$(HOST_IP):4317"
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: "grpc"
+            - name: OTEL_TRACES_EXPORTER
+              value: "otlp"
+            - name: OTEL_METRICS_EXPORTER
+              value: "none"
+            - name: OTEL_LOGS_EXPORTER
+              value: "none"
+          ports:
+            - name: rest
+              containerPort: 10300
+            - name: thin-client
+              containerPort: 10800
+            - name: discovery
+              containerPort: 3344
+          volumeMounts:
+            - name: config-vol
+              mountPath: /opt/ignite/etc/ignite-config.conf
+              subPath: ignite-config.conf
+            - name: persistence
+              mountPath: /ai3-work
+            - name: otel-agent
+              mountPath: /usr/local/otel
+              readOnly: true
+      volumes:
+        - name: config-vol
+          configMap:
+            name: ignite-config
+        - name: otel-agent
+          hostPath:
+            path: /usr/local/otel
+  volumeClaimTemplates:
+    - metadata:
+        name: persistence
+        labels:
+          app: ignite
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 10Gi
+        volumeMode: Filesystem

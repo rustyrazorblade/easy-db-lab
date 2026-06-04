@@ -17,6 +17,7 @@
 - [Kits](user-guide/kits.md)
   - [ClickHouse](user-guide/clickhouse.md)
     - [Backup & Restore](user-guide/clickhouse-backup-restore.md)
+  - [Apache Ignite 3](user-guide/ignite3.md)
   - [Presto](user-guide/install-presto.md)
 - [Monitoring](user-guide/monitoring.md)
   - [Profiling](user-guide/profiling.md)

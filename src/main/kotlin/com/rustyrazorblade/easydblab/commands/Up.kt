@@ -15,6 +15,7 @@ import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.network.CidrBlock
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredInstance
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import com.rustyrazorblade.easydblab.providers.aws.VpcNetworkingConfig
@@ -185,7 +186,18 @@ class Up : PicoBaseCommand() {
      * @param initConfig Configuration containing cluster name and tags
      * @return The VPC ID to use for infrastructure
      */
-    private fun createOrValidateVpc(initConfig: InitConfig): String {
+    private fun resolveCidr(cidr: String?): String {
+        if (cidr != null) return cidr
+        val existingCidrs = vpcService.listAllVpcCidrs()
+        val selected = CidrBlock.selectAvailable(existingCidrs)
+        eventBus.emit(Event.Setup.AutoSelectedCidr(selected.value))
+        return selected.value
+    }
+
+    private fun createOrValidateVpc(
+        initConfig: InitConfig,
+        resolvedCidr: String,
+    ): String {
         val existingVpcId = workingState.vpcId
 
         if (existingVpcId != null) {
@@ -224,7 +236,7 @@ class Up : PicoBaseCommand() {
                 putAll(initConfig.tags)
             }
 
-        val vpcId = vpcService.createVpc(initConfig.name, initConfig.cidr, vpcTags)
+        val vpcId = vpcService.createVpc(initConfig.name, resolvedCidr, vpcTags)
         eventBus.emit(Event.Provision.VpcCreated(vpcId))
 
         // Save VPC ID to state
@@ -243,8 +255,13 @@ class Up : PicoBaseCommand() {
     private fun provisionInfrastructure(initConfig: InitConfig) {
         eventBus.emit(Event.Provision.InfrastructureStarting)
 
-        val vpcId = createOrValidateVpc(initConfig)
-        val vpcInfra = setupVpcNetworking(initConfig, vpcId)
+        val resolvedCidr = resolveCidr(initConfig.cidr)
+        if (initConfig.cidr == null) {
+            workingState.initConfig = initConfig.copy(cidr = resolvedCidr)
+            clusterStateManager.save(workingState)
+        }
+        val vpcId = createOrValidateVpc(initConfig, resolvedCidr)
+        val vpcInfra = setupVpcNetworking(initConfig, vpcId, resolvedCidr)
         val subnetIds = vpcInfra.subnetIds
         val securityGroupId = vpcInfra.securityGroupId
         val igwId = vpcInfra.internetGatewayId
@@ -286,6 +303,7 @@ class Up : PicoBaseCommand() {
     private fun setupVpcNetworking(
         initConfig: InitConfig,
         vpcId: String,
+        resolvedCidr: String,
     ) = awsInfrastructureService.setupVpcNetworking(
         VpcNetworkingConfig(
             vpcId = vpcId,
@@ -295,7 +313,7 @@ class Up : PicoBaseCommand() {
             availabilityZones = initConfig.azs.ifEmpty { listOf("a", "b", "c") },
             isOpen = initConfig.open,
             tags = initConfig.tags,
-            vpcCidr = initConfig.cidr,
+            vpcCidr = resolvedCidr,
         ),
     ) { getExternalIpAddress() }
 

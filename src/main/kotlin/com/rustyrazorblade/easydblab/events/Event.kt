@@ -4675,6 +4675,14 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Setup.AutoSelectedCidr")
+        data class AutoSelectedCidr(
+            val cidr: String,
+        ) : Setup {
+            override fun toDisplayString(): String = "Auto-selected CIDR: $cidr"
+        }
+
+        @Serializable
         @SerialName("Setup.ExistingVpc")
         data class ExistingVpc(
             val vpcId: String,

@@ -66,7 +66,7 @@ class TemplateVariablesTest : BaseKoinTest() {
         appCount: Int = 2,
         bucketName: String = "my-bucket",
         region: String = "us-west-2",
-        cidr: String = Constants.Vpc.DEFAULT_CIDR,
+        cidr: String? = null,
     ): ClusterState =
         ClusterState(
             name = "test-cluster",

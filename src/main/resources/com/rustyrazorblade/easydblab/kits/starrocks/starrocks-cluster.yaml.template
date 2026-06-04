@@ -1,0 +1,44 @@
+apiVersion: starrocks.com/v1
+kind: StarRocksCluster
+metadata:
+  name: starrocks
+  namespace: default
+spec:
+  starRocksFeSpec:
+    image: starrocks/fe-ubuntu:__STARROCKS_VERSION__
+    replicas: __APP_NODE_COUNT__
+    requests:
+      cpu: 1
+      memory: 2Gi
+    limits:
+      cpu: 4
+      memory: 8Gi
+    nodeSelector:
+      type: app
+    service:
+      type: NodePort
+      ports:
+        - name: mysql
+          port: 9030
+          containerPort: 9030
+          nodePort: 30930
+        - name: http
+          port: 8030
+          containerPort: 8030
+          nodePort: 30830
+  starRocksBeSpec:
+    image: starrocks/be-ubuntu:__STARROCKS_VERSION__
+    replicas: __DB_NODE_COUNT__
+    requests:
+      cpu: 1
+      memory: 2Gi
+    limits:
+      cpu: 8
+      memory: 16Gi
+    nodeSelector:
+      type: db
+    storageVolumes:
+      - name: be-data
+        storageClassName: __STORAGE_CLASS_WFC__
+        storageSize: __STORAGE_SIZE__
+        mountPath: /opt/starrocks/be/storage

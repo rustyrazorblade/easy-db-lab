@@ -1,0 +1,85 @@
+name: starrocks
+type: db
+description: StarRocks analytical database via the StarRocks Kubernetes Operator
+version: "1.0.0"
+collision-check: true
+metrics:
+  type: scrape
+  port: 30830
+  path: /metrics
+runtime:
+  type: pods
+  selector: "app.kubernetes.io/name=starrocks"
+  namespace: default
+endpoints:
+  - name: "MySQL"
+    node-type: app
+    port: 30930
+    type: jdbc
+    scheme: mysql
+  - name: "HTTP"
+    node-type: app
+    port: 30830
+    type: http
+args:
+  - flag: --version
+    variable: STARROCKS_VERSION
+    description: "StarRocks image version (e.g. 3.4-latest)"
+    type: string
+    default: "latest"
+capabilities:
+  - type: sql
+    user: root
+    driver-class: com.mysql.cj.jdbc.Driver
+
+install:
+  - type: helm-repo
+    name: starrocks
+    url: https://starrocks.github.io/starrocks-kubernetes-operator
+  - type: helm
+    chart: starrocks/kube-starrocks
+    release: starrocks-operator
+    namespace: starrocks-operator
+
+start:
+  - type: shell
+    script: |
+      if [ "${APP_NODE_COUNT:-0}" -lt 1 ]; then
+        echo "Error: StarRocks requires at least 1 app node for FE pods." >&2
+        echo "Re-run 'easy-db-lab init' with --app-nodes 1 or more." >&2
+        exit 1
+      fi
+  - type: platform-pvs
+    node-type: db
+  - type: manifest
+    template: starrocks-cluster.yaml.template
+  - type: shell
+    script: |
+      echo "Waiting for StarRocks FE pods to be created..."
+      until kubectl get pods -l "app.kubernetes.io/component=fe" -n default --no-headers 2>/dev/null | grep -q .; do sleep 5; done
+      echo "FE pods found, waiting for Ready..."
+      kubectl wait --for=condition=Ready pods \
+        -l "app.kubernetes.io/component=fe" \
+        --namespace default \
+        --timeout=300s
+  - type: shell
+    script: |
+      echo "Waiting for StarRocks BE pods to be created..."
+      until kubectl get pods -l "app.kubernetes.io/component=be" -n default --no-headers 2>/dev/null | grep -q .; do sleep 5; done
+      echo "BE pods found, waiting for Ready..."
+      kubectl wait --for=condition=Ready pods \
+        -l "app.kubernetes.io/component=be" \
+        --namespace default \
+        --timeout=300s
+
+stop:
+  - type: delete
+    kind: StarRocksCluster
+    name: starrocks
+    namespace: default
+
+uninstall:
+  - type: platform-pvs-delete
+  - type: helm-uninstall
+    release: starrocks-operator
+    namespace: starrocks-operator

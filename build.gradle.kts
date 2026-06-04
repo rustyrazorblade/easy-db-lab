@@ -148,6 +148,7 @@ dependencies {
     implementation(libs.cassandra.driver.core)
     implementation(libs.presto.jdbc)
     implementation(libs.clickhouse.jdbc)
+    implementation(libs.mysql.connector.j)
 
     // Testing
     testImplementation(libs.archunit.junit5)

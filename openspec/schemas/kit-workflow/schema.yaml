@@ -1,0 +1,95 @@
+name: kit-workflow
+version: 1
+description: Kit creation workflow — proposal → tasks checklist
+artifacts:
+  - id: proposal
+    generates: proposal.md
+    description: Kit proposal capturing workload identity, node type, runtime, endpoints, args, and integrations
+    template: proposal.md
+    instruction: |
+      Create the proposal document for a new easy-db-lab kit.
+
+      Sections:
+      - **Kit**: Name (kebab-case), description, node type (db or app), collision-check (true if the kit
+        owns persistent volumes that should survive stop/start, false otherwise).
+      - **Workload**: What system this kit installs. Link to upstream documentation.
+      - **Runtime**: How the workload runs — helm (include chart name and repo) or pods (include
+        label selector and namespace).
+      - **Endpoints**: Ports and protocols the workload exposes. For each: name, node-type,
+        port number, type (http, jdbc, or native), and scheme/path if non-standard.
+      - **Args**: Key configuration flags the kit will accept. For each: flag name, environment
+        variable name, description, default value, type (string, int, float, boolean).
+      - **Integrations**: Known query engine connectors. Does the workload have a Presto JDBC
+        connector? A ClickHouse federated query bridge? Spark JDBC support? List what is known
+        and what needs investigation.
+
+      Keep it concise — one page is enough. Focus on what, not how.
+      This proposal is the context the tasks checklist is generated from.
+    requires: []
+
+  - id: tasks
+    generates: tasks.md
+    description: Kit implementation checklist covering all required deliverables
+    template: tasks.md
+    instruction: |
+      Create the implementation checklist for building this kit.
+
+      IMPORTANT: Every deliverable MUST be a `- [ ] N.M description` checkbox where N is the
+      section number and M is the item number within that section (e.g. 1.1, 1.2, 2.1).
+      Do NOT use prose lists or nested bullets — the OpenSpec apply tracker only recognises
+      checkbox format.
+
+      Required sections and checkboxes to generate. Adapt descriptions to the specific kit
+      based on the proposal, but always include all sections:
+
+      ## 1. kit.yaml
+      One checkbox per logical block — do not collapse into a single task:
+      - identity: name, type (db|app), description, version, collision-check
+      - runtime block: type (helm|pods), release/chart or selector/namespace
+      - metrics block: scrape type, port, path if non-default
+      - endpoints list: one entry per endpoint from the proposal
+      - args list: one entry per arg from the proposal
+      - capabilities list: sql with user and driver-class if applicable
+      - hooks: post-workload-start and post-workload-stop if needed
+      - install steps: helm-repo and helm entries
+      - start steps: platform-pvs if needed, manifest templates, shell wait loops
+      - stop steps: delete resources in reverse order
+      - uninstall steps: delete CRDs, helm-uninstall, platform-pvs-delete if used
+
+      ## 2. K8s Templates
+      - values.yaml.template parameterised with kit args as env vars
+      - additional manifest templates (operator CRDs, nodeport services, etc.) — one checkbox each
+
+      ## 3. Metrics
+      - confirm scrape port/path in kit.yaml
+      - write metrics-catalog.json (all exported metric names with descriptions)
+      - write METRICS.md (human-readable metrics reference)
+
+      ## 4. Dashboards
+      - create dashboards/ directory with Grafana dashboard JSON
+      - register dashboard in GrafanaDashboard enum (Kotlin code change — requires compile + test)
+      - push dashboard to a running cluster and verify it loads
+
+      ## 5. Integrations
+      For each integration from the proposal, generate separate investigation and implementation tasks:
+      - investigate: does this workload have a Presto JDBC connector?
+      - if Presto connector exists: add connector jar to Presto kit and create catalog template
+      - investigate: ClickHouse federated query support?
+      - investigate: other query engine connectors (Spark JDBC, etc.)?
+      - document supported integrations in README.md.template
+
+      ## 6. Documentation
+      - write README.md.template (overview, args reference, endpoints, known integrations)
+
+      Reference the proposal for workload-specific details (endpoints, args, integrations).
+      Each task must be small enough to complete in one session.
+    requires:
+      - proposal
+
+apply:
+  requires:
+    - tasks
+  tracks: tasks.md
+  instruction: |
+    Read context files, work through pending tasks, mark complete as you go.
+    Pause if you hit blockers or need clarification.

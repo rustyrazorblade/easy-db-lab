@@ -12,6 +12,9 @@ spec:
   templates:
     podTemplates:
       - name: clickhouse-keeper-pod
+        metadata:
+          labels:
+            app.kubernetes.io/instance: clickhouse
         spec:
           affinity:
             nodeAffinity:

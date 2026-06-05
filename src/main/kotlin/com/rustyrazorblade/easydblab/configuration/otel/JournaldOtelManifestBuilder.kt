@@ -27,6 +27,7 @@ class JournaldOtelManifestBuilder(
         private const val APP_LABEL = "fluent-bit-journald"
         private const val CONFIGMAP_NAME = "fluent-bit-journald-config"
         private const val CONFIG_DATA_KEY = "fluent-bit-journald.yaml"
+        private const val SEVERITY_MAPPER_KEY = "severity-mapper.lua"
         private const val IMAGE = "fluent/fluent-bit:latest"
         private const val HTTP_PORT = 2020
         private const val LIVENESS_INITIAL_DELAY = 10
@@ -59,6 +60,13 @@ class JournaldOtelManifestBuilder(
                     .fromResource(
                         JournaldOtelManifestBuilder::class.java,
                         "fluent-bit-journald.yaml",
+                    ).substitute(),
+            ).addToData(
+                SEVERITY_MAPPER_KEY,
+                templateService
+                    .fromResource(
+                        JournaldOtelManifestBuilder::class.java,
+                        "fluent-bit-severity-mapper.lua",
                     ).substitute(),
             ).build()
 
@@ -107,6 +115,12 @@ class JournaldOtelManifestBuilder(
                     .withName("config")
                     .withMountPath("/fluent-bit/etc/config.yaml")
                     .withSubPath(CONFIG_DATA_KEY)
+                    .withReadOnly(true)
+                    .build(),
+                VolumeMountBuilder()
+                    .withName("config")
+                    .withMountPath("/fluent-bit/etc/severity-mapper.lua")
+                    .withSubPath(SEVERITY_MAPPER_KEY)
                     .withReadOnly(true)
                     .build(),
                 VolumeMountBuilder()

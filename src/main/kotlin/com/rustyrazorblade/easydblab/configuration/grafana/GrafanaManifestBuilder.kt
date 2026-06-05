@@ -34,7 +34,7 @@ class GrafanaManifestBuilder(
     companion object {
         private const val NAMESPACE = "default"
         private const val APP_LABEL = "grafana"
-        private const val GRAFANA_IMAGE = "grafana/grafana:13.0.1"
+        private const val GRAFANA_IMAGE = "grafana/grafana:13.0.2"
         private const val IMAGE_RENDERER_IMAGE =
             "grafana/grafana-image-renderer@sha256:6c432f1aed266ce56433becacd197cdab708f9089104d67664207b4fe0975055"
         private const val GRAFANA_PORT = 3000

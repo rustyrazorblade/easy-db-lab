@@ -241,27 +241,6 @@ class StatusTest : BaseKoinTest() {
     }
 
     @Test
-    fun `execute displays kubernetes jobs message when no control node`() {
-        val clusterState =
-            ClusterState(
-                name = "test-cluster",
-                clusterId = "test-123",
-                versions = mutableMapOf(),
-                hosts = mapOf(ServerType.Cassandra to testHosts[ServerType.Cassandra]!!),
-                infrastructure = testInfrastructure,
-                infrastructureStatus = InfrastructureStatus.UP,
-                default = NodeState(version = "5.0"),
-            )
-        whenever(mockClusterStateManager.exists()).thenReturn(true)
-        whenever(mockClusterStateManager.load()).thenReturn(clusterState)
-        Status().execute()
-        val output = capturedOutput()
-        assertThat(output).contains("=== KUBERNETES PODS ===")
-        // KubernetesNoControlNode is still an event
-        assertThat(outputHandler.messages.joinToString("\n")).contains("(no control node configured)")
-    }
-
-    @Test
     fun `execute displays spark cluster section with live state`() {
         setupBasicClusterStateWithEmr()
         whenever(mockEmrService.getClusterStatus("j-TESTABC123"))

@@ -3140,96 +3140,6 @@ sealed interface Event {
         ) : Provision {
             override fun toDisplayString(): String = "AxonOps Workbench configuration written to $configFile"
         }
-
-        @Serializable
-        @SerialName("Provision.ObservabilityAccessInfo")
-        data class ObservabilityAccessInfo(
-            val controlNodeIp: String,
-            val grafanaPort: Int,
-            val victoriaMetricsPort: Int,
-            val victoriaLogsPort: Int,
-            val tempoPort: Int,
-            val pyroscopePort: Int,
-        ) : Provision {
-            override fun toDisplayString(): String =
-                """
-                |
-                |Observability:
-                |  Grafana:         http://$controlNodeIp:$grafanaPort
-                |  VictoriaMetrics: http://$controlNodeIp:$victoriaMetricsPort
-                |  VictoriaLogs:    http://$controlNodeIp:$victoriaLogsPort
-                |  Tempo:           http://$controlNodeIp:$tempoPort
-                |  Pyroscope:       http://$controlNodeIp:$pyroscopePort
-                |
-                """.trimMargin()
-        }
-
-        @Serializable
-        @SerialName("Provision.ClickHouseAccessInfo")
-        data class ClickHouseAccessInfo(
-            val dbNodeIp: String,
-            val httpPort: Int,
-            val nativePort: Int,
-        ) : Provision {
-            override fun toDisplayString(): String =
-                """
-                |
-                |ClickHouse:
-                |  Play UI:         http://$dbNodeIp:$httpPort/play
-                |  HTTP Interface:  http://$dbNodeIp:$httpPort
-                |  Native Protocol: $dbNodeIp:$nativePort
-                """.trimMargin()
-        }
-
-        @Serializable
-        @SerialName("Provision.S3ManagerAccessInfo")
-        data class S3ManagerAccessInfo(
-            val controlNodeIp: String,
-            val s3ManagerPort: Int,
-            val bucket: String,
-            val key: String,
-        ) : Provision {
-            override fun toDisplayString(): String =
-                """
-                |
-                |S3 Manager:
-                |  Web UI: http://$controlNodeIp:$s3ManagerPort/buckets/$bucket/$key/
-                """.trimMargin()
-        }
-
-        @Serializable
-        @SerialName("Provision.RegistryAccessInfo")
-        data class RegistryAccessInfo(
-            val controlNodeIp: String,
-            val registryPort: Int,
-            val socksPort: Int,
-        ) : Provision {
-            override fun toDisplayString(): String {
-                val registryUrl = "$controlNodeIp:$registryPort"
-                return """
-                    |
-                    |=== CONTAINER REGISTRY ===
-                    |Registry URL: $registryUrl
-                    |
-                    |Push images with Gradle Jib (no build.gradle changes required):
-                    |
-                    |  1. Ensure SOCKS proxy is running:
-                    |     source env.sh
-                    |
-                    |  2. Build and push:
-                    |     ./gradlew jib \
-                    |       -Djib.to.image=$registryUrl/your-image:tag \
-                    |       -Djib.allowInsecureRegistries=true \
-                    |       -Djib.httpTimeout=60000 \
-                    |       -DsocksProxyHost=localhost \
-                    |       -DsocksProxyPort=$socksPort
-                    |
-                    |  Or use environment variable:
-                    |     export JAVA_TOOL_OPTIONS="-DsocksProxyHost=localhost -DsocksProxyPort=$socksPort"
-                    |     ./gradlew jib -Djib.to.image=$registryUrl/your-image:tag -Djib.allowInsecureRegistries=true
-                    """.trimMargin()
-            }
-        }
     }
 
     // =========================================================================
@@ -3433,26 +3343,6 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("Status.KubernetesNoControlNode")
-        data object KubernetesNoControlNode : Status {
-            override fun toDisplayString(): String = "\n=== KUBERNETES PODS ===\n(no control node configured)"
-        }
-
-        @Serializable
-        @SerialName("Status.KubernetesNoKubeconfig")
-        data object KubernetesNoKubeconfig : Status {
-            override fun toDisplayString(): String = "\n=== KUBERNETES PODS ===\n(kubeconfig not found - K3s may not be initialized)"
-        }
-
-        @Serializable
-        @SerialName("Status.KubernetesConnectionError")
-        data class KubernetesConnectionError(
-            val error: String,
-        ) : Status {
-            override fun toDisplayString(): String = "\n=== KUBERNETES PODS ===\n(unable to connect to K3s: $error)"
-        }
-
-        @Serializable
         @SerialName("Status.StressJobsNoControlNode")
         data object StressJobsNoControlNode : Status {
             override fun toDisplayString(): String = "\n=== STRESS JOBS ===\n(no control node configured)"
@@ -3476,15 +3366,6 @@ sealed interface Event {
         @SerialName("Status.CassandraNoNodes")
         data object CassandraNoNodes : Status {
             override fun toDisplayString(): String = "\n=== CASSANDRA VERSION ===\n(no Cassandra nodes configured)"
-        }
-
-        // Value type used by WorkloadsSection.pods — not a standalone event.
-        @Serializable
-        @SerialName("Status.WorkloadsError")
-        data class WorkloadsError(
-            val error: String,
-        ) : Status {
-            override fun toDisplayString(): String = "\n=== WORKLOADS ===\n(unable to list workload pods: $error)"
         }
     }
 

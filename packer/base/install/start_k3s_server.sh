@@ -17,6 +17,14 @@ if mountpoint -q /mnt/db1 && [ ! -L /var/lib/rancher/k3s ]; then
     echo "K3s data relocated to NVMe"
 fi
 
+# Relocate container logs to NVMe storage to keep the boot volume free
+if mountpoint -q /mnt/db1 && [ ! -L /var/log/pods ]; then
+    echo "Relocating container logs to NVMe at /mnt/db1/container-logs..."
+    mkdir -p /mnt/db1/container-logs
+    ln -s /mnt/db1/container-logs /var/log/pods
+    echo "Container logs relocated to NVMe"
+fi
+
 # Note: Registry TLS configuration is handled by configure_registry_tls.sh
 # which runs before K3s startup to configure /etc/rancher/k3s/registries.yaml with HTTPS
 

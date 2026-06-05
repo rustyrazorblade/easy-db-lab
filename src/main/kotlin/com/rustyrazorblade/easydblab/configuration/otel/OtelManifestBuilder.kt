@@ -198,8 +198,10 @@ class OtelManifestBuilder(
      * Builds the OTel Collector DaemonSet.
      *
      * Runs on all nodes with hostNetwork, privileged mode.
-     * Mounts log directories as hostPath volumes for system, Cassandra, ClickHouse,
-     * log collection.
+     * Mounts log directories as hostPath volumes for system, Cassandra,
+     * and K8s container log collection. `/mnt/db1/container-logs` is mounted so the
+     * collector can follow the `/var/log/pods` symlink when logs are on NVMe storage.
+     * ClickHouse logs via container stdout — no host path mount needed.
      */
     @Suppress("LongMethod")
     fun buildDaemonSet() =
@@ -282,18 +284,13 @@ class OtelManifestBuilder(
                     .withReadOnly(true)
                     .build(),
                 VolumeMountBuilder()
+                    .withName("container-logs")
+                    .withMountPath("/mnt/db1/container-logs")
+                    .withReadOnly(true)
+                    .build(),
+                VolumeMountBuilder()
                     .withName("cassandra-logs")
                     .withMountPath("/mnt/db1/cassandra/logs")
-                    .withReadOnly(true)
-                    .build(),
-                VolumeMountBuilder()
-                    .withName("clickhouse-server-logs")
-                    .withMountPath("/mnt/db1/clickhouse/logs")
-                    .withReadOnly(true)
-                    .build(),
-                VolumeMountBuilder()
-                    .withName("clickhouse-keeper-logs")
-                    .withMountPath("/mnt/db1/clickhouse/keeper/logs")
                     .withReadOnly(true)
                     .build(),
             ).withNewLivenessProbe()
@@ -329,26 +326,18 @@ class OtelManifestBuilder(
                     .build(),
             ).endVolume()
             .addNewVolume()
+            .withName("container-logs")
+            .withHostPath(
+                HostPathVolumeSourceBuilder()
+                    .withPath("/mnt/db1/container-logs")
+                    .withType("DirectoryOrCreate")
+                    .build(),
+            ).endVolume()
+            .addNewVolume()
             .withName("cassandra-logs")
             .withHostPath(
                 HostPathVolumeSourceBuilder()
                     .withPath("/mnt/db1/cassandra/logs")
-                    .withType("DirectoryOrCreate")
-                    .build(),
-            ).endVolume()
-            .addNewVolume()
-            .withName("clickhouse-server-logs")
-            .withHostPath(
-                HostPathVolumeSourceBuilder()
-                    .withPath("/mnt/db1/clickhouse/logs")
-                    .withType("DirectoryOrCreate")
-                    .build(),
-            ).endVolume()
-            .addNewVolume()
-            .withName("clickhouse-keeper-logs")
-            .withHostPath(
-                HostPathVolumeSourceBuilder()
-                    .withPath("/mnt/db1/clickhouse/keeper/logs")
                     .withType("DirectoryOrCreate")
                     .build(),
             ).endVolume()

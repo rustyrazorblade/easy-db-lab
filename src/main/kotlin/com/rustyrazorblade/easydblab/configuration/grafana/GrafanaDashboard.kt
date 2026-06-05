@@ -96,4 +96,11 @@ enum class GrafanaDashboard(
         jsonFileName = "cluster-comparison.json",
         optional = true,
     ),
+    TEMPO(
+        configMapName = "grafana-dashboard-tempo",
+        volumeName = "dashboard-tempo",
+        mountPath = "/var/lib/grafana/dashboards/tempo",
+        jsonFileName = "tempo.json",
+        optional = true,
+    ),
 }

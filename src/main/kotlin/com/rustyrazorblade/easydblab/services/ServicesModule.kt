@@ -90,6 +90,9 @@ val servicesModule =
         // Kit command scanner — discovers @KitCommand-annotated classes across all JARs
         singleOf(::DefaultKitCommandScanner) bind KitCommandScanner::class
 
+        // Kit source registry — persists additional kit parent directories in kit-sources.yaml
+        singleOf(::KitSourcesProvider)
+
         // Cluster configuration service for writing config files
         factoryOf(::DefaultClusterConfigurationService) bind ClusterConfigurationService::class
 

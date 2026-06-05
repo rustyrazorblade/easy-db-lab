@@ -68,5 +68,81 @@ cp -r /path/to/my-kit/* ~/.easy-db-lab/profiles/default/kits/my-kit/
 easy-db-lab kit install my-kit
 ```
 
+## Using kits from external projects
+
+If you keep kit definitions alongside a private project (a POC, internal tooling, etc.), you can
+register that project's kits directory without copying files into your profile.
+
+A typical project structure looks like this:
+
+```
+myapp/
+├── src/
+├── kits/
+│   └── myapp-workload/
+│       ├── kit.yaml
+│       └── bin/
+│           ├── start.sh
+│           └── stop.sh
+└── README.md
+```
+
+Clone your project and register the kits directory by name:
+
+```bash
+git clone https://github.com/myorg/myapp ~/myapp
+easy-db-lab kit source add myapp ~/myapp/kits
+```
+
+The kits it contains now appear in `kit list` and can be installed by name:
+
+```bash
+easy-db-lab kit list
+easy-db-lab kit install myapp-workload
+```
+
+Registered sources are persisted in `~/.easy-db-lab/profiles/<profile>/kit-sources.yaml` and
+survive CLI restarts. When you `kit install` a kit from an external source, its files are copied
+into the cluster workspace exactly like any other kit — the installed kit is self-contained.
+
+### Managing registered sources
+
+```bash
+# List all registered sources (shows name and path, flags missing paths)
+easy-db-lab kit source list
+```
+
+Output looks like:
+
+```
+Registered kit sources:
+  myapp  /Users/jon/myapp/kits
+```
+
+If a registered path no longer exists on disk, `[missing]` appears next to it so you know
+which sources need attention.
+
+```bash
+# Remove a source by name
+easy-db-lab kit source remove myproject
+```
+
+**Updating a path (upsert behavior):** Sources are identified by name. If you move or reclone
+a project to a different location, just re-add the source with the new path — no need to remove
+the old registration first:
+
+```bash
+# If you move or reclone the project, just update the path — no need to remove first
+easy-db-lab kit source add myapp ~/new-location/myapp/kits
+# Updated kit source 'myapp': /new-location/myapp/kits
+```
+
+### Resolution priority
+
+When multiple sources provide a kit with the same name, the first match wins:
+
+1. Profile kits directory (`~/.easy-db-lab/profiles/<profile>/kits/`)
+2. Registered additional sources (in registration order)
+3. Built-in kits
 
 For a full walkthrough of building and publishing your own kit, see the [Kit Development](../development/kits.md) guide.

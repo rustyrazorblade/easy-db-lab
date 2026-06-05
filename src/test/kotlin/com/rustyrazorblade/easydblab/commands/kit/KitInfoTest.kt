@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.services.InstallTemplateResolver
 import com.rustyrazorblade.easydblab.services.KitCapability
 import com.rustyrazorblade.easydblab.services.KitConfig
+import com.rustyrazorblade.easydblab.services.KitSourcesProvider
 import com.rustyrazorblade.easydblab.services.TemplateService
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -27,7 +28,8 @@ class KitInfoTest : BaseKoinTest() {
         listOf(
             module {
                 single { TemplateService(get(), get()) }
-                single { InstallTemplateResolver(get()) }
+                single { KitSourcesProvider(get()) }
+                single { InstallTemplateResolver(get(), get()) }
             },
         )
 

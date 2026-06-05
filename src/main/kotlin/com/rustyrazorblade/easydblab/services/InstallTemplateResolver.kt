@@ -8,16 +8,19 @@ import java.io.File
 import java.nio.file.Path
 
 /**
- * Resolves kit install templates from three sources in priority order:
+ * Resolves kit install templates from four sources in priority order:
  *
  * 1. Profile directory: `~/.easy-db-lab/profiles/<profile>/kits/<name>/`
- * 2. Built-in classpath: `kits/<name>/` in resources
- * 3. Ad-hoc: any local path supplied via `--from` (not listed by `--list`)
+ * 2. Additional sources: directories registered via `kit source add` (in registration order)
+ * 3. Built-in classpath: `kits/<name>/` in resources
+ * 4. Ad-hoc: any local path supplied via `--from` (not listed, install-time only)
  *
- * Profile templates override built-in templates of the same name.
+ * Profile templates override all others of the same name. Additional-source templates
+ * override built-ins. Missing additional-source directories are silently skipped.
  */
 class InstallTemplateResolver(
     private val context: Context,
+    private val kitSourcesProvider: KitSourcesProvider,
 ) {
     sealed interface TemplateSource {
         /** Template loaded from a local directory (profile override or --from path). */
@@ -66,19 +69,22 @@ class InstallTemplateResolver(
 
     private fun listBuiltinEntries(name: String): List<TemplateEntry> = builtinEntries[name] ?: emptyList()
 
+    /** Lists the names of kit subdirectories inside [dir], or empty if [dir] doesn't exist. */
+    private fun listKitNamesIn(dir: File): List<String> =
+        dir.takeIf { it.isDirectory }?.listFiles { f -> f.isDirectory }?.map { it.name } ?: emptyList()
+
+    /** Returns kit names found in the given [sources] list (missing dirs skipped). */
+    private fun additionalSourceNames(sources: List<KitSourceEntry>): List<String> = sources.flatMap { listKitNamesIn(File(it.path)) }
+
     /**
-     * Lists all discoverable template names: profile-directory names plus built-in names.
-     * Profile names override built-ins of the same name in the returned set.
-     * Ad-hoc (--from) templates are not included.
+     * Lists all discoverable template names: profile-directory names, additional-source names,
+     * and built-in names. Profile names override all others; additional-source names override
+     * built-ins. Ad-hoc (--from) templates are not included.
      */
     fun listAvailableTemplates(): List<String> {
-        val profileNames =
-            profileInstallDir
-                .takeIf { it.isDirectory }
-                ?.listFiles { f -> f.isDirectory }
-                ?.map { it.name }
-                ?: emptyList()
-        return (profileNames + builtinNames).distinct().sorted()
+        val sources = kitSourcesProvider.load().sources
+        val profileNames = listKitNamesIn(profileInstallDir)
+        return (profileNames + additionalSourceNames(sources) + builtinNames).distinct().sorted()
     }
 
     /**
@@ -98,7 +104,8 @@ class InstallTemplateResolver(
         }
 
     /**
-     * Resolves a named template to its source, checking profile dir before built-ins.
+     * Resolves a named template to its source, checking profile dir, then additional sources,
+     * then built-ins.
      *
      * @throws IllegalArgumentException if no template with [name] can be found
      */
@@ -106,6 +113,11 @@ class InstallTemplateResolver(
         val profileTemplate = File(profileInstallDir, name)
         if (profileTemplate.isDirectory) {
             return TemplateSource.Directory(profileTemplate)
+        }
+        val sources = kitSourcesProvider.load().sources
+        for (source in sources) {
+            val dir = File(source.path, name)
+            if (dir.isDirectory) return TemplateSource.Directory(dir)
         }
         if (name in builtinNames) {
             return TemplateSource.Builtin(name)

@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
 import com.rustyrazorblade.easydblab.services.InstallTemplateResolver
 import com.rustyrazorblade.easydblab.services.KitHookExecutor
+import com.rustyrazorblade.easydblab.services.KitSourcesProvider
 import com.rustyrazorblade.easydblab.services.MetricsRegistryService
 import com.rustyrazorblade.easydblab.services.TemplateService
 import com.rustyrazorblade.easydblab.services.WorkloadStepExecutor
@@ -71,7 +72,8 @@ class KitEndToEndTest : BaseKoinTest() {
                 single<MetricsRegistryService> { mockMetricsRegistryService }
                 single<KitHookExecutor> { mockKitHookExecutor }
                 single { TemplateService(get(), get()) }
-                single { InstallTemplateResolver(get()) }
+                single { KitSourcesProvider(get()) }
+                single { InstallTemplateResolver(get(), get()) }
             },
         )
 

@@ -17,7 +17,7 @@ class InstallTemplateResolverTest : BaseKoinTest() {
     @BeforeEach
     fun setupResolver() {
         ctx = TestContextFactory.createTestContext(tempDir)
-        resolver = InstallTemplateResolver(ctx)
+        resolver = InstallTemplateResolver(ctx, KitSourcesProvider(ctx))
     }
 
     private fun createProfileTemplate(name: String): File {
@@ -238,5 +238,79 @@ class InstallTemplateResolverTest : BaseKoinTest() {
 
         requireNotNull(config) { "expected presto ${Constants.Kit.CONFIG_FILE} to be present on classpath" }
         assertThat(config.name).isEqualTo("presto")
+    }
+
+    // ── additional sources ──────────────────────────────────────────────────
+
+    private fun createAdditionalSource(vararg kitNames: String): File {
+        val sourceDir = File(tempDir, "extra-source-${kitNames.first()}").also { it.mkdirs() }
+        for (name in kitNames) {
+            val kitDir = File(sourceDir, name).also { it.mkdirs() }
+            File(kitDir, "start.sh.template").writeText("#!/bin/bash\necho $name")
+        }
+        return sourceDir
+    }
+
+    private fun resolverWithSource(sourceDir: File): InstallTemplateResolver {
+        val provider = KitSourcesProvider(ctx)
+        provider.add("test-source", sourceDir.absolutePath)
+        return InstallTemplateResolver(ctx, provider)
+    }
+
+    @Test
+    fun `kit from additional source appears in listAvailableTemplates`() {
+        val sourceDir = createAdditionalSource("my-external-kit")
+        val r = resolverWithSource(sourceDir)
+        assertThat(r.listAvailableTemplates()).contains("my-external-kit")
+    }
+
+    @Test
+    fun `additional source kit resolves to Directory source`() {
+        val sourceDir = createAdditionalSource("my-external-kit")
+        val r = resolverWithSource(sourceDir)
+        val source = r.resolve("my-external-kit")
+        assertThat(source).isInstanceOf(InstallTemplateResolver.TemplateSource.Directory::class.java)
+        assertThat((source as InstallTemplateResolver.TemplateSource.Directory).dir)
+            .isEqualTo(File(sourceDir, "my-external-kit").canonicalFile)
+    }
+
+    @Test
+    fun `additional source kit shadows built-in of same name`() {
+        val sourceDir = createAdditionalSource("clickhouse")
+        val r = resolverWithSource(sourceDir)
+        val source = r.resolve("clickhouse")
+        assertThat(source).isInstanceOf(InstallTemplateResolver.TemplateSource.Directory::class.java)
+        assertThat((source as InstallTemplateResolver.TemplateSource.Directory).dir)
+            .isEqualTo(File(sourceDir, "clickhouse").canonicalFile)
+    }
+
+    @Test
+    fun `profile kit shadows additional source of same name`() {
+        val sourceDir = createAdditionalSource("mydb")
+        val profileDir = createProfileTemplate("mydb")
+        val r = resolverWithSource(sourceDir)
+        val source = r.resolve("mydb")
+        assertThat(source).isInstanceOf(InstallTemplateResolver.TemplateSource.Directory::class.java)
+        assertThat((source as InstallTemplateResolver.TemplateSource.Directory).dir).isEqualTo(profileDir)
+    }
+
+    @Test
+    fun `missing additional source directory is silently skipped in list`() {
+        val provider = KitSourcesProvider(ctx)
+        provider.add("ghost", "/nonexistent/path/that/does/not/exist")
+        val r = InstallTemplateResolver(ctx, provider)
+        // Should not throw; built-ins still appear
+        val templates = r.listAvailableTemplates()
+        assertThat(templates).contains("clickhouse", "presto")
+    }
+
+    @Test
+    fun `missing additional source directory is silently skipped in resolve`() {
+        val provider = KitSourcesProvider(ctx)
+        provider.add("ghost", "/nonexistent/path/that/does/not/exist")
+        val r = InstallTemplateResolver(ctx, provider)
+        // clickhouse should still resolve to its built-in
+        val source = r.resolve("clickhouse")
+        assertThat(source).isInstanceOf(InstallTemplateResolver.TemplateSource.Builtin::class.java)
     }
 }

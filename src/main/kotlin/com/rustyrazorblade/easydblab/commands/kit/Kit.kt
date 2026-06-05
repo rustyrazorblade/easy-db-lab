@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.commands.kit
 
+import com.rustyrazorblade.easydblab.commands.kit.source.KitSource
 import picocli.CommandLine.Command
 import picocli.CommandLine.Model.CommandSpec
 import picocli.CommandLine.Spec
@@ -12,6 +13,7 @@ import picocli.CommandLine.Spec
  * - `kit info --name`   — show details about a kit before installing
  * - `kit list`          — list all discoverable kit templates
  * - `kit uninstall`     — remove an installed kit and its local files
+ * - `kit source`        — manage additional kit source directories
  *
  * Dynamic per-kit subcommands are registered under `kit install` at startup by
  * [com.rustyrazorblade.easydblab.CommandLineParser.registerDynamicInstallSubcommands].
@@ -24,6 +26,7 @@ import picocli.CommandLine.Spec
         Install::class,
         KitInfo::class,
         KitList::class,
+        KitSource::class,
         Uninstall::class,
     ],
 )
@@ -32,6 +35,6 @@ class Kit : Runnable {
     lateinit var spec: CommandSpec
 
     override fun run() {
-        spec.commandLine().usage(System.out)
+        spec.commandLine().usage(spec.commandLine().out)
     }
 }

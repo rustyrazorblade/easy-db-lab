@@ -340,7 +340,7 @@ All observability K8s resources are built programmatically using Fabric8 manifes
 
 **Storage backends** (control node): VictoriaMetrics (metrics, port 8428), VictoriaLogs (logs, port 9428), Tempo (traces, port 3200), Pyroscope (profiles, port 4040)
 
-**Grafana** (port 3000): Dashboards built via `GrafanaManifestBuilder`. Dashboard JSON in `configuration/grafana/dashboards/` with `__KEY__` template substitution. `GrafanaDashboard` enum is the single source of truth for dashboard metadata.
+**Grafana** (port 3000): Dashboards built via `GrafanaManifestBuilder`. Dashboard JSON files live in the top-level `dashboards/` directory — Gradle copies them into the JAR at build time. `GrafanaDashboard` enum is the single source of truth for dashboard metadata. See [`dashboards/CLAUDE.md`](dashboards/CLAUDE.md) for datasource UIDs, label conventions, spanmetrics metric names, and the correct pattern for cross-dashboard dataLinks (panes= URL format, TraceQL query strings).
 
 **CLI Tool Instrumentation**: The CLI tool uses the OpenTelemetry Java Agent for automatic instrumentation of AWS SDK calls, HTTP clients, JDBC operations, and JVM metrics. No manual instrumentation exists in the Kotlin code. See `docs/reference/opentelemetry.md`.
 

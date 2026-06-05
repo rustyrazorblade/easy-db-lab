@@ -15,20 +15,24 @@ pipeline:
       strip_underscores: true
 
   filters:
-    - name: modify
-      match: "*"
-      rename:
-        - HOSTNAME host.name
-      add:
-        - source journald
+    # Drop noisy kernel apparmor audit messages — high volume, no diagnostic value
+    - name: grep
+      match: journald
+      exclude: SYSLOG_IDENTIFIER kernel
+
+    # Map severity, drop noise fields, rename for clarity
+    - name: lua
+      match: journald
+      script: /fluent-bit/etc/severity-mapper.lua
+      call: process
 
   outputs:
     - name: opentelemetry
-      match: "*"
+      match: journald
       host: 127.0.0.1
       port: 4318
       logs_uri: /v1/logs
       tls: off
       logs_body_key: $MESSAGE
-      logs_severity_number_message_key: $PRIORITY
+      logs_severity_text_message_key: $severity
       logs_body_key_attributes: true

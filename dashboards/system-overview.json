@@ -59,7 +59,19 @@
               }
             ]
           },
-          "unit": "percent"
+          "unit": "percent",
+          "links": [
+            {
+              "title": "View Logs",
+              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}",
+              "targetBlank": false
+            },
+            {
+              "title": "Traces",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "targetBlank": true
+            }
+          ]
         },
         "overrides": []
       },
@@ -83,7 +95,8 @@
         "tooltip": {
           "mode": "multi",
           "sort": "desc"
-        }
+        },
+        "dataLinks": []
       },
       "targets": [
         {
@@ -97,7 +110,8 @@
         }
       ],
       "title": "CPU Usage",
-      "type": "timeseries"
+      "type": "timeseries",
+      "links": []
     },
     {
       "datasource": {
@@ -149,7 +163,19 @@
               }
             ]
           },
-          "unit": "bytes"
+          "unit": "bytes",
+          "links": [
+            {
+              "title": "View Logs",
+              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}",
+              "targetBlank": false
+            },
+            {
+              "title": "Traces",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "targetBlank": true
+            }
+          ]
         },
         "overrides": []
       },
@@ -173,7 +199,8 @@
         "tooltip": {
           "mode": "multi",
           "sort": "desc"
-        }
+        },
+        "dataLinks": []
       },
       "targets": [
         {
@@ -187,7 +214,8 @@
         }
       ],
       "title": "Memory Usage",
-      "type": "timeseries"
+      "type": "timeseries",
+      "links": []
     },
     {
       "datasource": {
@@ -239,7 +267,19 @@
               }
             ]
           },
-          "unit": "Bps"
+          "unit": "Bps",
+          "links": [
+            {
+              "title": "View Logs",
+              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}",
+              "targetBlank": false
+            },
+            {
+              "title": "Traces",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "targetBlank": true
+            }
+          ]
         },
         "overrides": []
       },
@@ -263,7 +303,8 @@
         "tooltip": {
           "mode": "multi",
           "sort": "desc"
-        }
+        },
+        "dataLinks": []
       },
       "targets": [
         {
@@ -286,7 +327,8 @@
         }
       ],
       "title": "Disk I/O",
-      "type": "timeseries"
+      "type": "timeseries",
+      "links": []
     },
     {
       "datasource": {
@@ -338,7 +380,19 @@
               }
             ]
           },
-          "unit": "Bps"
+          "unit": "Bps",
+          "links": [
+            {
+              "title": "View Logs",
+              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}",
+              "targetBlank": false
+            },
+            {
+              "title": "Traces",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "targetBlank": true
+            }
+          ]
         },
         "overrides": []
       },
@@ -362,7 +416,8 @@
         "tooltip": {
           "mode": "multi",
           "sort": "desc"
-        }
+        },
+        "dataLinks": []
       },
       "targets": [
         {
@@ -385,7 +440,8 @@
         }
       ],
       "title": "Network I/O",
-      "type": "timeseries"
+      "type": "timeseries",
+      "links": []
     },
     {
       "datasource": {
@@ -437,7 +493,19 @@
               }
             ]
           },
-          "unit": "short"
+          "unit": "short",
+          "links": [
+            {
+              "title": "View Logs",
+              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}",
+              "targetBlank": false
+            },
+            {
+              "title": "Traces",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "targetBlank": true
+            }
+          ]
         },
         "overrides": []
       },
@@ -461,7 +529,8 @@
         "tooltip": {
           "mode": "multi",
           "sort": "desc"
-        }
+        },
+        "dataLinks": []
       },
       "targets": [
         {
@@ -493,7 +562,8 @@
         }
       ],
       "title": "System Load Average",
-      "type": "timeseries"
+      "type": "timeseries",
+      "links": []
     },
     {
       "datasource": {
@@ -545,7 +615,14 @@
               }
             ]
           },
-          "unit": "bytes"
+          "unit": "bytes",
+          "links": [
+            {
+              "title": "Traces",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "targetBlank": true
+            }
+          ]
         },
         "overrides": []
       },
@@ -670,7 +747,14 @@
               }
             ]
           },
-          "unit": "percent"
+          "unit": "percent",
+          "links": [
+            {
+              "title": "Traces",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "targetBlank": true
+            }
+          ]
         },
         "overrides": []
       },
@@ -760,7 +844,14 @@
               }
             ]
           },
-          "unit": "iops"
+          "unit": "iops",
+          "links": [
+            {
+              "title": "Traces",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "targetBlank": true
+            }
+          ]
         },
         "overrides": []
       },
@@ -859,7 +950,14 @@
               }
             ]
           },
-          "unit": "pps"
+          "unit": "pps",
+          "links": [
+            {
+              "title": "Traces",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "targetBlank": true
+            }
+          ]
         },
         "overrides": []
       },
@@ -958,7 +1056,14 @@
               }
             ]
           },
-          "unit": "short"
+          "unit": "short",
+          "links": [
+            {
+              "title": "Traces",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "targetBlank": true
+            }
+          ]
         },
         "overrides": []
       },
@@ -1075,7 +1180,14 @@
               }
             ]
           },
-          "unit": "short"
+          "unit": "short",
+          "links": [
+            {
+              "title": "Traces",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "targetBlank": true
+            }
+          ]
         },
         "overrides": []
       },
@@ -1173,7 +1285,14 @@
               }
             ]
           },
-          "unit": "bytes"
+          "unit": "bytes",
+          "links": [
+            {
+              "title": "Traces",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "targetBlank": true
+            }
+          ]
         },
         "overrides": []
       },
@@ -1272,7 +1391,14 @@
               }
             ]
           },
-          "unit": "ops"
+          "unit": "ops",
+          "links": [
+            {
+              "title": "Traces",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "targetBlank": true
+            }
+          ]
         },
         "overrides": []
       },

@@ -1,7 +1,5 @@
 package com.rustyrazorblade.easydblab.events
 
-import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.events.Event
 import java.time.Instant
 
@@ -65,74 +63,5 @@ class EventBus {
                 copy
             }
         currentListeners.forEach { it.close() }
-    }
-
-    /**
-     * Display observability stack access information.
-     * Used by GrafanaUpdateConfig (after deployment) and Status (for reference).
-     */
-    fun displayObservabilityAccess(controlNodeIp: String) {
-        emit(
-            Event.Provision.ObservabilityAccessInfo(
-                controlNodeIp = controlNodeIp,
-                grafanaPort = Constants.K8s.GRAFANA_PORT,
-                victoriaMetricsPort = Constants.K8s.VICTORIAMETRICS_PORT,
-                victoriaLogsPort = Constants.K8s.VICTORIALOGS_PORT,
-                tempoPort = Constants.K8s.TEMPO_PORT,
-                pyroscopePort = Constants.K8s.PYROSCOPE_PORT,
-            ),
-        )
-    }
-
-    /**
-     * Display ClickHouse access information.
-     * Used by Status to display ClickHouse connection details.
-     * @param dbNodeIp IP address of a db node where ClickHouse pods are scheduled
-     */
-    fun displayClickHouseAccess(dbNodeIp: String) {
-        emit(
-            Event.Provision.ClickHouseAccessInfo(
-                dbNodeIp,
-                Constants.ClickHouse.HTTP_PORT,
-                Constants.ClickHouse.NATIVE_PORT,
-            ),
-        )
-    }
-
-    /**
-     * Display S3Manager access information linking to the cluster's S3 directory.
-     * @param controlNodeIp IP address of the control node where S3Manager runs
-     * @param s3Path The cluster's S3 path (provides bucket and key)
-     */
-    fun displayS3ManagerAccess(
-        controlNodeIp: String,
-        s3Path: ClusterS3Path,
-    ) {
-        emit(
-            Event.Provision.S3ManagerAccessInfo(
-                controlNodeIp,
-                Constants.K8s.S3MANAGER_PORT,
-                s3Path.bucket,
-                s3Path.getKey(),
-            ),
-        )
-    }
-
-    /**
-     * Display container registry access information with Jib push instructions.
-     * @param controlNodeIp IP address of the control node where the registry runs
-     * @param socksPort SOCKS5 proxy port (defaults to 1080)
-     */
-    fun displayRegistryAccess(
-        controlNodeIp: String,
-        socksPort: Int = Constants.Proxy.DEFAULT_SOCKS5_PORT,
-    ) {
-        emit(
-            Event.Provision.RegistryAccessInfo(
-                controlNodeIp,
-                Constants.K8s.REGISTRY_PORT,
-                socksPort,
-            ),
-        )
     }
 }

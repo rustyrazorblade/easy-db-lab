@@ -17,6 +17,7 @@ fi
 
 EASY_DB_LAB_USER_DATA=~/.easy-db-lab/
 export EASY_DB_LAB_LOG_DIR="${EASY_DB_LAB_LOG_DIR:-$(pwd)/logs}"
+mkdir -p "${EASY_DB_LAB_LOG_DIR}"
 
 VERSION=$(grep '^version' "${APP_HOME}/gradle.properties" | cut -d '=' -f2)
 

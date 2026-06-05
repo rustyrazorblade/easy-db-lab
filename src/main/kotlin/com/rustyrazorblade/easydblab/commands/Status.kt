@@ -16,7 +16,6 @@ import com.rustyrazorblade.easydblab.kubernetes.getLocalKubeconfigPath
 import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupRuleInfo
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
-import com.rustyrazorblade.easydblab.services.K3sService
 import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.StressJobService
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
@@ -27,7 +26,6 @@ import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import java.io.File
-import java.nio.file.Paths
 import java.time.Duration
 import java.time.format.DateTimeFormatter
 
@@ -62,7 +60,6 @@ class Status :
     private val clusterStateManager: ClusterStateManager by inject()
     private val ec2InstanceService: EC2InstanceService by inject()
     private val vpcService: VpcService by inject()
-    private val k3sService: K3sService by inject()
     private val k8sService: K8sService by inject()
     private val remoteOperationsService: RemoteOperationsService by inject()
     private val emrService: EMRService by inject()
@@ -76,23 +73,6 @@ class Status :
         val privateIp: String,
         val availabilityZone: String,
         val state: String,
-    )
-
-    private data class PodDetail(
-        val namespace: String,
-        val name: String,
-        val ready: String,
-        val status: String,
-        val restarts: Int,
-        val age: String,
-    )
-
-    private data class WorkloadPodDetail(
-        val namespace: String,
-        val name: String,
-        val nodeName: String,
-        val ready: String,
-        val status: String,
     )
 
     private val clusterState by lazy { clusterStateManager.load() }
@@ -110,13 +90,11 @@ class Status :
         displaySparkClusterSection()
         displayOpenSearchSection()
         displayS3BucketSection()
-        displayKubernetesSection()
-        displayWorkloadsSection()
+        displayKitsSection()
         displayStressJobsSection()
         displayObservabilitySection()
         displayClickHouseSection()
         displayS3ManagerSection()
-        displayRegistrySection()
         displayCassandraVersionSection()
     }
 
@@ -363,115 +341,33 @@ class Status :
     }
 
     /**
-     * Display Kubernetes pods section
+     * Display installed kits with a running indicator.
+     * Scans the working directory for kit directories (same detection as dynamic subcommand registration).
      */
-    private fun displayKubernetesSection() {
-        val controlHost = clusterState.getControlHost()
-        if (controlHost == null) {
-            println("\n=== KUBERNETES PODS ===")
-            eventBus.emit(Event.Status.KubernetesNoControlNode)
-            return
-        }
+    private fun displayKitsSection() {
+        val installedKits =
+            context.workingDirectory
+                .listFiles()
+                .orEmpty()
+                .filter { it.isDirectory }
+                .filter { kitDir ->
+                    (
+                        File(kitDir, "bin").isDirectory &&
+                            File(kitDir, "bin").listFiles().orEmpty().any { it.isFile && (it.canExecute() || it.name.endsWith(".sh")) }
+                    ) ||
+                        File(kitDir, Constants.Kit.CONFIG_FILE).isFile
+                }.map { it.name }
+                .sorted()
 
-        // Check if kubeconfig exists locally
-        val kubeconfigPath = getLocalKubeconfigPath(context.workingDirectory.absolutePath)
-        if (!File(kubeconfigPath).exists()) {
-            println("\n=== KUBERNETES PODS ===")
-            eventBus.emit(Event.Status.KubernetesNoKubeconfig)
-            return
-        }
+        if (installedKits.isEmpty()) return
 
-        // Try to connect and list pods via K3sService
-        val result = k3sService.listPods(controlHost, Paths.get(kubeconfigPath))
-
-        result.fold(
-            onSuccess = { pods ->
-                val podDetails =
-                    pods.map { pod ->
-                        PodDetail(
-                            namespace = pod.namespace,
-                            name = pod.name.take(POD_NAME_MAX_LENGTH),
-                            ready = pod.ready,
-                            status = pod.status,
-                            restarts = pod.restarts,
-                            age = formatAge(pod.age),
-                        )
-                    }
-                val sb = StringBuilder()
-                sb.appendLine("")
-                sb.appendLine("=== KUBERNETES PODS ===")
-                if (podDetails.isEmpty()) {
-                    sb.appendLine("  (no pods)")
-                } else {
-                    sb.appendLine("  %-20s %-40s %-8s %-12s %-8s %s".format("NAMESPACE", "NAME", "READY", "STATUS", "RESTARTS", "AGE"))
-                    podDetails.forEach { pod ->
-                        sb.appendLine(
-                            "  %-20s %-40s %-8s %-12s %-8s %s".format(
-                                pod.namespace,
-                                pod.name,
-                                pod.ready,
-                                pod.status,
-                                pod.restarts,
-                                pod.age,
-                            ),
-                        )
-                    }
-                }
-                println(sb.toString().trimEnd())
-            },
-            onFailure = { e ->
-                log.debug(e) { "Failed to get Kubernetes pods" }
-                eventBus.emit(Event.Status.KubernetesConnectionError(e.message ?: "unknown error"))
-            },
-        )
-    }
-
-    private fun displayWorkloadsSection() {
-        val controlHost = clusterState.getControlHost() ?: return
-
-        val kubeconfigPath = getLocalKubeconfigPath(context.workingDirectory.absolutePath)
-        if (!File(kubeconfigPath).exists()) {
-            return
-        }
-
+        val runningKits = clusterState.runningKits
         println()
-        println("=== WORKLOADS ===")
-        k8sService.listWorkloadPods(controlHost).fold(
-            onSuccess = { pods ->
-                val details =
-                    pods.map { pod ->
-                        WorkloadPodDetail(
-                            namespace = pod.namespace,
-                            name = pod.name,
-                            nodeName = pod.nodeName,
-                            ready = pod.ready,
-                            status = pod.status,
-                        )
-                    }
-                val sb = StringBuilder()
-                if (details.isEmpty()) {
-                    sb.appendLine("  (no workload pods running)")
-                } else {
-                    sb.appendLine("  %-20s %-40s %-20s %-8s %s".format("NAMESPACE", "NAME", "NODE", "READY", "STATUS"))
-                    details.forEach { pod ->
-                        sb.appendLine(
-                            "  %-20s %-40s %-20s %-8s %s".format(
-                                pod.namespace,
-                                pod.name,
-                                pod.nodeName,
-                                pod.ready,
-                                pod.status,
-                            ),
-                        )
-                    }
-                }
-                println(sb.toString().trimEnd())
-            },
-            onFailure = { e ->
-                log.debug(e) { "Failed to list workload pods" }
-                eventBus.emit(Event.Status.WorkloadsError(e.message ?: "unknown error"))
-            },
-        )
+        println("=== KITS ===")
+        installedKits.forEach { kit ->
+            val icon = if (kit in runningKits) "✓" else "○"
+            println("  $icon $kit")
+        }
     }
 
     /**
@@ -532,15 +428,17 @@ class Status :
             return
         }
 
-        eventBus.emit(
-            Event.Provision.ObservabilityAccessInfo(
-                controlNodeIp = controlHost.privateIp,
-                grafanaPort = Constants.K8s.GRAFANA_PORT,
-                victoriaMetricsPort = Constants.K8s.VICTORIAMETRICS_PORT,
-                victoriaLogsPort = Constants.K8s.VICTORIALOGS_PORT,
-                tempoPort = Constants.K8s.TEMPO_PORT,
-                pyroscopePort = Constants.K8s.PYROSCOPE_PORT,
-            ),
+        val ip = controlHost.privateIp
+        println(
+            """
+
+Observability:
+  Grafana:         http://$ip:${Constants.K8s.GRAFANA_PORT}
+  VictoriaMetrics: http://$ip:${Constants.K8s.VICTORIAMETRICS_PORT}/vmui
+  VictoriaLogs:    http://$ip:${Constants.K8s.VICTORIALOGS_PORT}/select/vmui
+  Tempo:           http://$ip:${Constants.K8s.TEMPO_PORT}
+  Pyroscope:       http://$ip:${Constants.K8s.PYROSCOPE_PORT}
+""",
         )
     }
 
@@ -566,14 +464,14 @@ class Status :
         // Check if ClickHouse namespace has running pods
         val status = k8sService.getNamespaceStatus(controlHost, Constants.ClickHouse.NAMESPACE)
         status.onSuccess { podStatus ->
-            // Only show if there are pods running (status contains pod info)
             if (podStatus.isNotBlank() && !podStatus.contains("No resources found")) {
-                eventBus.emit(
-                    Event.Provision.ClickHouseAccessInfo(
-                        dbNodeIp,
-                        Constants.ClickHouse.HTTP_PORT,
-                        Constants.ClickHouse.NATIVE_PORT,
-                    ),
+                println(
+                    """
+
+ClickHouse:
+  Play UI:         http://$dbNodeIp:${Constants.ClickHouse.HTTP_PORT}/play
+  HTTP Interface:  http://$dbNodeIp:${Constants.ClickHouse.HTTP_PORT}
+  Native Protocol: $dbNodeIp:${Constants.ClickHouse.NATIVE_PORT}""",
                 )
             }
         }
@@ -592,34 +490,12 @@ class Status :
         }
 
         val s3Path = clusterState.s3Path()
-        eventBus.emit(
-            Event.Provision.S3ManagerAccessInfo(
-                controlHost.privateIp,
-                Constants.K8s.S3MANAGER_PORT,
-                s3Path.bucket,
-                s3Path.getKey(),
-            ),
-        )
-    }
+        val ip = controlHost.privateIp
+        println(
+            """
 
-    /**
-     * Display container registry access information if K3s is initialized
-     */
-    private fun displayRegistrySection() {
-        val controlHost = clusterState.getControlHost() ?: return
-
-        // Check if kubeconfig exists locally (indicates K3s is initialized)
-        val kubeconfigPath = getLocalKubeconfigPath(context.workingDirectory.absolutePath)
-        if (!File(kubeconfigPath).exists()) {
-            return
-        }
-
-        eventBus.emit(
-            Event.Provision.RegistryAccessInfo(
-                controlHost.privateIp,
-                Constants.K8s.REGISTRY_PORT,
-                Constants.Proxy.DEFAULT_SOCKS5_PORT,
-            ),
+S3 Manager:
+  Web UI: http://$ip:${Constants.K8s.S3MANAGER_PORT}/buckets/${s3Path.bucket}/${s3Path.getKey()}/""",
         )
     }
 

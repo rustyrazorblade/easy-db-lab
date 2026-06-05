@@ -5,54 +5,55 @@ This page documents the centralized logging infrastructure in easy-db-lab, inclu
 ## Architecture Overview
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     All Nodes                                │
-├─────────────────────────────────────────────────────────────┤
-│   /var/log/*          │   journald                          │
-│   /mnt/db1/cassandra/logs/*.log                             │
-│   /mnt/db1/clickhouse/logs/*.log                            │
-│   /mnt/db1/clickhouse/keeper/logs/*.log                     │
-└──────────────────────────┬──────────────────────────────────┘
-                           │
-                           ▼
-              ┌────────────────────────┐
-              │  OTel Collector        │
-              │  (DaemonSet)           │      ┌──────────────────┐
-              │  filelog + journald    │◀─────│  EMR Spark JVMs  │
-              │  + OTLP receiver       │ OTLP │  (OTel Java Agent│
-              └───────────┬────────────┘      │   v2.25.0)       │
-                          │                   └──────────────────┘
-┌─────────────────────────┼─────────────────────────┐
-│   Control Node          │                          │
-├─────────────────────────┼─────────────────────────┤
-│                         ▼                          │
-│              ┌──────────────────┐                  │
-│              │  Victoria Logs   │                  │
-│              │    (:9428)       │                  │
-│              └────────┬─────────┘                  │
-└───────────────────────┼────────────────────────────┘
-                        │
-                        ▼
-              ┌──────────────────┐
-              │  easy-db-lab     │
-              │  logs query      │
-              └──────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                          All Nodes                                │
+├──────────────────────────────────────────────────────────────────┤
+│  /var/log/system logs     │  /mnt/db1/container-logs/ (NVMe)     │
+│  /mnt/db1/cassandra/logs/ │    K8s pod stdout/stderr             │
+│  journald                 │    (symlinked from /var/log/pods)    │
+│                           │                                       │
+└──────────────┬────────────────────────────┬──────────────────────┘
+               │                            │
+               ▼                            ▼
+              ┌────────────────────────────────────────┐
+              │  OTel Collector (DaemonSet)             │      ┌──────────────────┐
+              │  filelog/system  filelog/containers      │◀─────│  EMR Spark JVMs  │
+              │  filelog/cassandra                       │ OTLP │  (OTel Java Agent│
+              │  + OTLP receiver                        │      │   v2.25.0)       │
+              └───────────────────┬─────────────────────┘      └──────────────────┘
+                                  │
+┌─────────────────────────────────┼────────────────────────────┐
+│   Control Node                  │                             │
+├─────────────────────────────────┼────────────────────────────┤
+│                                 ▼                             │
+│                    ┌──────────────────┐                       │
+│                    │  Victoria Logs   │                       │
+│                    │    (:9428)       │                       │
+│                    └────────┬─────────┘                      │
+└─────────────────────────────┼──────────────────────────────────┘
+                              │
+                              ▼
+                    ┌──────────────────┐
+                    │  easy-db-lab     │
+                    │  logs query      │
+                    └──────────────────┘
 ```
 
 ## Components
 
 ### OTel Collector DaemonSet
 
-The OpenTelemetry Collector runs on all nodes as a DaemonSet, collecting:
+The OpenTelemetry Collector runs on all nodes as a DaemonSet, collecting logs from four separate pipelines:
 
-- **System file logs**: `/var/log/**/*.log`, `/var/log/messages`, `/var/log/syslog`
-- **Cassandra logs**: `/mnt/db1/cassandra/logs/*.log`
-- **ClickHouse server logs**: `/mnt/db1/clickhouse/logs/*.log`
-- **ClickHouse Keeper logs**: `/mnt/db1/clickhouse/keeper/logs/*.log`
-- **systemd journal**: `cassandra`, `docker`, `k3s`, `sshd` units
-- **OTLP**: Receives logs from applications via OTLP protocol
+- **`logs/local`** — host file-based logs:
+  - System logs: `/var/log/**/*.log`, `/var/log/messages`, `/var/log/syslog` (excludes container log paths)
+  - Tool runner logs: `/var/log/easydblab/tools/*.log`
+  - Cassandra logs: `/mnt/db1/cassandra/logs/*.log`
+- **`logs/containers`** — K8s pod stdout/stderr from all running pods, enriched with Kubernetes metadata (pod name, namespace, container name, kit label). Automatically covers any K8s-native kit without per-kit configuration. Logs are stored on NVMe at `/mnt/db1/container-logs/` (symlinked from `/var/log/pods`) to keep the boot volume free.
+- **`logs/otlp`** — logs pushed via OTLP from remote applications (e.g. EMR Spark JVMs)
+- **systemd journal** — collected via a separate Fluent Bit DaemonSet (`fluent-bit-journald`)
 
-Logs are forwarded to Victoria Logs on the control node via the Elasticsearch-compatible sink.
+All pipelines forward to Victoria Logs on the control node.
 
 ### Spark OTel Java Agent (EMR)
 
@@ -80,7 +81,6 @@ easy-db-lab logs query
 
 # Filter by source
 easy-db-lab logs query --source cassandra
-easy-db-lab logs query --source clickhouse
 easy-db-lab logs query --source systemd
 
 # Filter by host
@@ -105,16 +105,24 @@ easy-db-lab logs query -q 'source:cassandra AND host:db0'
 
 | Field | Description |
 |-------|-------------|
-| `source` | Log source: cassandra, clickhouse, systemd, system |
+| `source` | Log source: cassandra, system, tool-runner |
 | `host` | Hostname (db0, app0, control0) |
 | `timestamp` | Log timestamp |
 | `message` | Log message content |
+
+**K8s container log fields** (from `logs/containers` pipeline):
+
+| Field | Description |
+|-------|-------------|
+| `k8s.pod.name` | Name of the pod that emitted the log |
+| `k8s.namespace.name` | Kubernetes namespace |
+| `k8s.container.name` | Container name within the pod |
+| `k8s.app.instance` | Value of the `app.kubernetes.io/instance` pod label — identifies the kit (e.g. `presto`, `tidb`) |
 
 **Source-specific fields**:
 
 | Source | Field | Description |
 |--------|-------|-------------|
-| clickhouse | `component` | server or keeper |
 | systemd | `unit` | systemd unit name |
 
 ## Troubleshooting

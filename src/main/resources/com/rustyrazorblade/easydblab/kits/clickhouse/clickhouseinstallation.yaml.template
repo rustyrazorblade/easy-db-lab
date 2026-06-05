@@ -106,6 +106,9 @@ spec:
   templates:
     podTemplates:
       - name: clickhouse-pod
+        metadata:
+          labels:
+            app.kubernetes.io/instance: clickhouse
         spec:
           containers:
             - name: clickhouse

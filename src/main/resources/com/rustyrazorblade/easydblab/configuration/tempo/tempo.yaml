@@ -30,7 +30,7 @@ metrics_generator:
   registry:
     external_labels:
       source: tempo
-      cluster: easy-db-lab
+      cluster: ${CLUSTER_NAME}
   storage:
     path: /var/tempo/generator/wal
     remote_write:

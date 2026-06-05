@@ -37,12 +37,29 @@
             "type": "victoriametrics-logs-datasource",
             "uid": "victorialogs"
           },
-          "expr": "_time:5m database:clickhouse level:Error",
+          "expr": "_time:5m k8s.container.name:clickhouse severity:ERROR",
           "refId": "A"
         }
       ],
       "title": "Recent Errors (Last 5 min)",
-      "type": "logs"
+      "type": "logs",
+      "links": [
+        {
+          "title": "Traces (ClickHouse spans)",
+          "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20span.db.system%20%3D%20%5C%22clickhouse%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+          "targetBlank": true
+        },
+        {
+          "title": "All ClickHouse Logs",
+          "url": "/d/log-investigation/log-investigation?var-search=service_name%3Dclickhouse&from=${__from}&to=${__to}",
+          "targetBlank": false
+        },
+        {
+          "title": "System Overview",
+          "url": "/d/system-overview/system-overview?from=${__from}&to=${__to}",
+          "targetBlank": false
+        }
+      ]
     },
     {
       "datasource": {
@@ -72,12 +89,29 @@
             "type": "victoriametrics-logs-datasource",
             "uid": "victorialogs"
           },
-          "expr": "_time:5m database:clickhouse level:Warning",
+          "expr": "_time:5m k8s.container.name:clickhouse severity:WARN",
           "refId": "A"
         }
       ],
       "title": "Recent Warnings (Last 5 min)",
-      "type": "logs"
+      "type": "logs",
+      "links": [
+        {
+          "title": "Traces (ClickHouse spans)",
+          "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20span.db.system%20%3D%20%5C%22clickhouse%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+          "targetBlank": true
+        },
+        {
+          "title": "All ClickHouse Logs",
+          "url": "/d/log-investigation/log-investigation?var-search=service_name%3Dclickhouse&from=${__from}&to=${__to}",
+          "targetBlank": false
+        },
+        {
+          "title": "System Overview",
+          "url": "/d/system-overview/system-overview?from=${__from}&to=${__to}",
+          "targetBlank": false
+        }
+      ]
     },
     {
       "datasource": {
@@ -107,12 +141,29 @@
             "type": "victoriametrics-logs-datasource",
             "uid": "victorialogs"
           },
-          "expr": "database:clickhouse",
+          "expr": "k8s.container.name:clickhouse",
           "refId": "A"
         }
       ],
       "title": "ClickHouse Logs",
-      "type": "logs"
+      "type": "logs",
+      "links": [
+        {
+          "title": "Traces (ClickHouse spans)",
+          "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20span.db.system%20%3D%20%5C%22clickhouse%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+          "targetBlank": true
+        },
+        {
+          "title": "All ClickHouse Logs",
+          "url": "/d/log-investigation/log-investigation?var-search=service_name%3Dclickhouse&from=${__from}&to=${__to}",
+          "targetBlank": false
+        },
+        {
+          "title": "System Overview",
+          "url": "/d/system-overview/system-overview?from=${__from}&to=${__to}",
+          "targetBlank": false
+        }
+      ]
     }
   ],
   "refresh": "10s",

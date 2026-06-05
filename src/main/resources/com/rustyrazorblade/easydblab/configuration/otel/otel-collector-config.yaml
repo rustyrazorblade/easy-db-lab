@@ -64,6 +64,15 @@ receivers:
               replacement: '${env:HOSTNAME}:9965'
             - target_label: cluster
               replacement: '${env:CLUSTER_NAME}'
+        - job_name: 'tempo'
+          scrape_interval: 15s
+          static_configs:
+            - targets: ['localhost:3200']
+          relabel_configs:
+            - target_label: instance
+              replacement: '${env:HOSTNAME}:3200'
+            - target_label: cluster
+              replacement: '${env:CLUSTER_NAME}'
 __KIT_SCRAPE_JOBS__
   filelog/system:
     include:
@@ -74,11 +83,61 @@ __KIT_SCRAPE_JOBS__
       - /var/log/**/*.gz
       - /var/log/**/*.old
       - /var/log/easydblab/tools/*.log
+      - /var/log/containers/**
+      - /var/log/pods/**
     start_at: end
     include_file_path: true
     include_file_name: true
     attributes:
       source: system
+  filelog/containers:
+    include:
+      - /var/log/pods/**/*.log
+    exclude:
+      - /var/log/pods/default_otel-collector-*/**
+      - /var/log/pods/default_fluent-bit-journald-*/**
+      - /var/log/pods/default_chi-clickhouse-*/**
+      - /var/log/pods/default_chk-clickhouse-keeper-*/**
+    start_at: end
+    include_file_path: true
+    include_file_name: false
+    operators:
+      - type: container
+        id: container_parser
+        on_error: send
+  filelog/clickhouse-containers:
+    include:
+      - /var/log/pods/default_chi-clickhouse-*/**/*.log
+      - /var/log/pods/default_chk-clickhouse-keeper-*/**/*.log
+    start_at: end
+    include_file_path: true
+    include_file_name: false
+    operators:
+      - type: container
+        id: container_parser
+        on_error: send
+      - type: regex_parser
+        id: extract_ch_parts
+        regex: '^.*?<(?P<ch_level>Debug|Information|Warning|Error|Fatal|Trace)>\s+(?P<ch_message>.+)$'
+        parse_from: body
+        parse_to: attributes
+        on_error: send
+      - type: severity_parser
+        id: parse_ch_severity
+        parse_from: attributes.ch_level
+        on_error: send
+        mapping:
+          debug: Debug
+          info: Information
+          warn: Warning
+          error: Error
+          fatal: Fatal
+          trace: Trace
+      - type: move
+        id: set_ch_body
+        from: attributes.ch_message
+        to: body
+        on_error: send
   filelog/tools:
     include:
       - /var/log/easydblab/tools/*.log
@@ -97,34 +156,8 @@ __KIT_SCRAPE_JOBS__
     include_file_name: true
     attributes:
       source: cassandra
-  # TODO: journald receiver removed — container lacks journalctl binary.
-  # Re-add once we mount host journalctl or use a custom image.
-  filelog/clickhouse-server:
-    include:
-      - /mnt/db1/clickhouse/logs/*.log
-    start_at: end
-    include_file_path: true
-    include_file_name: true
-    attributes:
-      database: clickhouse
-      component: server
-    operators:
-      - type: json_parser
-        id: parse_json
-        on_error: send
-  filelog/clickhouse-keeper:
-    include:
-      - /mnt/db1/clickhouse/keeper/logs/*.log
-    start_at: end
-    include_file_path: true
-    include_file_name: true
-    attributes:
-      database: clickhouse
-      component: keeper
-    operators:
-      - type: json_parser
-        id: parse_json
-        on_error: send
+  # NOTE: ClickHouse logs via container stdout/stderr (K8s pod),
+  # collected by filelog/containers. File-based receivers are not used.
 
 processors:
   batch:
@@ -142,9 +175,33 @@ processors:
       resource_attributes:
         host.name:
           enabled: true
-  # Extract node_role from K8s node label "type" (db, app) set during K3s agent join
+  # Copy k8s.app.instance resource attribute to a log-level service attribute so
+  # container logs share the same service field as journald logs.
+  transform/add_service:
+    log_statements:
+      - context: log
+        statements:
+          - set(attributes["service"], resource.attributes["k8s.app.instance"]) where resource.attributes["k8s.app.instance"] != ""
+
+  # Copy service.name → service_name on the resource so Grafana's auto-generated log queries
+  # (which use underscore-style label names) match VictoriaLogs fields.
+  transform/add_service_name:
+    log_statements:
+      - context: resource
+        statements:
+          - set(attributes["service_name"], attributes["service.name"]) where attributes["service.name"] != ""
+
+  # Extract node_role from K8s node label "type" (db, app) set during K3s agent join.
+  # pod_association enables enrichment of filelog/containers records with pod labels
+  # by matching k8s.pod.name + k8s.namespace.name resource attributes extracted from the log file path.
   k8sattributes:
     passthrough: false
+    pod_association:
+      - sources:
+          - from: resource_attribute
+            name: k8s.pod.name
+          - from: resource_attribute
+            name: k8s.namespace.name
     extract:
       metadata:
         - k8s.node.name
@@ -152,6 +209,9 @@ processors:
         - tag_name: node_role
           key: type
           from: node
+        - tag_name: k8s.app.instance
+          key: app.kubernetes.io/instance
+          from: pod
 
 exporters:
   prometheusremotewrite:
@@ -168,6 +228,34 @@ exporters:
     endpoint: tempo.default.svc.cluster.local:4320
     tls:
       insecure: true
+
+connectors:
+  # Converts spans to Prometheus metrics (calls_total, latency histograms).
+  # Exemplars link metric data points back to individual traces in Tempo.
+  spanmetrics:
+    namespace: traces.spanmetrics
+    histogram:
+      explicit:
+        buckets: [2ms, 4ms, 6ms, 8ms, 10ms, 50ms, 100ms, 200ms, 400ms, 800ms, 1s, 1400ms, 2s, 5s, 10s]
+    dimensions:
+      - name: http.method
+      - name: http.route
+      - name: http.status_code
+      - name: db.system
+    exemplars:
+      enabled: true
+    metrics_flush_interval: 15s
+    resource_metrics_key_attributes:
+      - service.name
+  # Derives service-to-service call rate and latency metrics from trace parent/child relationships.
+  servicegraph:
+    latency_histogram_buckets: [2ms, 4ms, 6ms, 8ms, 10ms, 50ms, 100ms, 200ms, 400ms, 800ms, 1s, 1400ms, 2s, 5s, 10s]
+    dimensions:
+      - http.method
+      - http.status_code
+    store:
+      ttl: 2s
+      max_items: 1000
 
 extensions:
   health_check:
@@ -187,14 +275,26 @@ service:
       processors: [resource/cluster, batch]
       exporters: [prometheusremotewrite]
     logs/local:
-      receivers: [filelog/system, filelog/tools, filelog/cassandra, filelog/clickhouse-server, filelog/clickhouse-keeper]
-      processors: [resourcedetection, k8sattributes, batch]
+      receivers: [filelog/system, filelog/tools, filelog/cassandra]
+      processors: [resourcedetection, k8sattributes, transform/add_service_name, batch]
+      exporters: [otlphttp/victorialogs]
+    logs/containers:
+      receivers: [filelog/containers, filelog/clickhouse-containers]
+      processors: [k8sattributes, transform/add_service, transform/add_service_name, resource/cluster, batch]
       exporters: [otlphttp/victorialogs]
     logs/otlp:
       receivers: [otlp]
-      processors: [batch]
+      processors: [transform/add_service_name, batch]
       exporters: [otlphttp/victorialogs]
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlp/tempo]
+      exporters: [otlp/tempo, spanmetrics, servicegraph]
+    metrics/spanmetrics:
+      receivers: [spanmetrics]
+      processors: [batch]
+      exporters: [prometheusremotewrite]
+    metrics/servicegraph:
+      receivers: [servicegraph]
+      processors: [batch]
+      exporters: [prometheusremotewrite]

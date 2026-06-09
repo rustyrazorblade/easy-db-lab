@@ -1,0 +1,44 @@
+# TiDB Kit
+
+TiDB HTAP cluster with TiKV (row store) and TiFlash (columnar store).
+
+## Cluster Layout
+
+| Component | Node type | Replicas     | Role                          |
+|-----------|-----------|--------------|-------------------------------|
+| PD        | app       | 1            | Placement driver / metadata   |
+| TiDB      | app       | __APP_NODE_COUNT__ | MySQL-compatible SQL layer |
+| TiKV      | db        | __REPLICAS__ | Row store (Raft)              |
+| TiFlash   | db        | __REPLICAS__ | Columnar store (HTAP)         |
+
+## Connection
+
+MySQL-compatible, NodePort 30400 accessible on any cluster node:
+
+```
+mysql -h <node-ip> -P 30400 -u root
+```
+
+Or via easy-db-lab:
+
+```
+easy-db-lab tidb sql "SELECT tidb_version()"
+```
+
+## TiFlash Queries
+
+Tables are not automatically replicated to TiFlash. Enable replication per table:
+
+```sql
+ALTER TABLE my_table SET TIFLASH REPLICA 1;
+```
+
+Then run analytical queries — TiDB routes them to TiFlash automatically, or force it:
+
+```sql
+SELECT /*+ read_from_storage(tiflash[my_table]) */ count(*) FROM my_table;
+```
+
+## Version
+
+TiDB version: __TIDB_VERSION__

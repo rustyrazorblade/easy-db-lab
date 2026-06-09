@@ -93,7 +93,8 @@ class KitSqlCommandTest : BaseKoinTest() {
         }
 
         val stmt = mock<Statement>()
-        whenever(stmt.executeQuery(org.mockito.kotlin.any())).thenReturn(rs)
+        whenever(stmt.execute(org.mockito.kotlin.any())).thenReturn(true)
+        whenever(stmt.resultSet).thenReturn(rs)
         val conn = mock<Connection>()
         whenever(conn.createStatement()).thenReturn(stmt)
         return JdbcConnectionFactory { _, _ -> conn }
@@ -125,16 +126,17 @@ class KitSqlCommandTest : BaseKoinTest() {
         var executedSql: String? = null
         val factory =
             JdbcConnectionFactory { _, _ ->
+                val meta = mock<ResultSetMetaData>()
+                whenever(meta.columnCount).thenReturn(0)
+                val rs = mock<ResultSet>()
+                whenever(rs.metaData).thenReturn(meta)
+                whenever(rs.next()).thenReturn(false)
                 val stmt = mock<Statement>()
-                whenever(stmt.executeQuery(org.mockito.kotlin.any())).thenAnswer { inv ->
+                whenever(stmt.execute(org.mockito.kotlin.any())).thenAnswer { inv ->
                     executedSql = inv.getArgument(0)
-                    val meta = mock<ResultSetMetaData>()
-                    whenever(meta.columnCount).thenReturn(0)
-                    val rs = mock<ResultSet>()
-                    whenever(rs.metaData).thenReturn(meta)
-                    whenever(rs.next()).thenReturn(false)
-                    rs
+                    true
                 }
+                whenever(stmt.resultSet).thenReturn(rs)
                 val conn = mock<Connection>()
                 whenever(conn.createStatement()).thenReturn(stmt)
                 conn

@@ -40,7 +40,9 @@ class Commands :
         val description = spec.usageMessage().description().firstOrNull() ?: ""
         println("$indent${spec.name()} - $description")
 
-        // Print options (skip standard help options at root level for brevity)
+        // Skip hidden options and the standard help/version mixin flags.
+        // usageHelp() covers --help; versionHelp() covers --version/-V from the mixin.
+        // Filtering by predicate (not name) ensures kit args named --version are preserved.
         val options =
             spec.options().filter { opt ->
                 !opt.hidden() && !opt.usageHelp() && !opt.versionHelp()

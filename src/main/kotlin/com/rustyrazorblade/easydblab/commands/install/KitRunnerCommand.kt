@@ -203,14 +203,13 @@ class KitRunnerCommand(
             Constants.Kit.PHASE_START -> {
                 clusterStateManager.addRunningWorkload(kitName)
                 kitHookExecutor.firePostKitStart(kitName)
-                val scrape = config.metrics as? KitMetrics.Scrape
-                if (scrape != null) {
+                val scrapeTargets = config.metrics.filterIsInstance<KitMetrics.Scrape>()
+                if (scrapeTargets.isNotEmpty()) {
                     metricsRegistryService
                         .register(
                             controlHost = controlHost,
                             kitName = kitName,
-                            port = scrape.port,
-                            path = scrape.path,
+                            targets = scrapeTargets,
                         ).onFailure { e -> log.warn(e) { "Failed to register metrics for $kitName" } }
                 }
                 installDashboards(config.dashboards)

@@ -9,6 +9,7 @@ import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.HostPathVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.SecurityContextBuilder
 import io.fabric8.kubernetes.api.model.ServiceAccountBuilder
+import io.fabric8.kubernetes.api.model.ServiceBuilder
 import io.fabric8.kubernetes.api.model.VolumeMountBuilder
 import io.fabric8.kubernetes.api.model.apps.DaemonSetBuilder
 import io.fabric8.kubernetes.api.model.rbac.ClusterRoleBindingBuilder
@@ -36,7 +37,7 @@ class OtelManifestBuilder(
 ) {
     companion object {
         private val log = KotlinLogging.logger {}
-        private const val NAMESPACE = "default"
+        private val NAMESPACE = Constants.K8s.NAMESPACE
         private const val APP_LABEL = "otel-collector"
         private const val CONFIGMAP_NAME = "otel-collector-config"
         private const val CONFIG_DATA_KEY = "otel-collector-config.yaml"
@@ -47,7 +48,7 @@ class OtelManifestBuilder(
         private const val LIVENESS_PERIOD = 30
         private const val READINESS_INITIAL_DELAY = 5
         private const val READINESS_PERIOD = 10
-        private const val WORKLOAD_METRICS_LABEL = "easydblab.com/workload-metrics"
+        private val WORKLOAD_METRICS_LABEL = Constants.K8s.WORKLOAD_METRICS_LABEL
         private const val SCRAPE_INTERVAL = "15s"
     }
 
@@ -78,7 +79,7 @@ class OtelManifestBuilder(
      *
      * @param scrapeConfigs Dynamic per-workload scrape targets from the metrics registry.
      *   Pass the result of [listWorkloadScrapeConfigs] to include currently-running workloads.
-     * @return List of: ServiceAccount, ClusterRole, ClusterRoleBinding, ConfigMap, DaemonSet
+     * @return List of: ServiceAccount, ClusterRole, ClusterRoleBinding, ConfigMap, DaemonSet, Service
      */
     fun buildAllResources(scrapeConfigs: List<WorkloadScrapeConfig> = emptyList()): List<HasMetadata> =
         listOf(
@@ -87,6 +88,7 @@ class OtelManifestBuilder(
             buildClusterRoleBinding(),
             buildConfigMap(scrapeConfigs),
             buildDaemonSet(),
+            buildService(),
         )
 
     /**
@@ -254,6 +256,12 @@ class OtelManifestBuilder(
             .withProtocol("TCP")
             .withName("health")
             .endPort()
+            .addNewPort()
+            .withContainerPort(Constants.K8s.JAEGER_THRIFT_COMPACT_PORT)
+            .withHostPort(Constants.K8s.JAEGER_THRIFT_COMPACT_PORT)
+            .withProtocol("UDP")
+            .withName("jaeger-compact")
+            .endPort()
             .addNewEnv()
             .withName("HOSTNAME")
             .withNewValueFrom()
@@ -343,6 +351,35 @@ class OtelManifestBuilder(
             ).endVolume()
             .endSpec()
             .endTemplate()
+            .endSpec()
+            .build()
+
+    /**
+     * Builds a ClusterIP Service exposing the OTLP gRPC port (4317) for in-cluster access.
+     *
+     * Allows standard K8s pods (non-hostNetwork, e.g. TiDB Operator-managed pods) to push
+     * traces to `otel-collector.default.svc.cluster.local:4317` without knowing node IPs.
+     */
+    fun buildService() =
+        ServiceBuilder()
+            .withNewMetadata()
+            .withName(APP_LABEL)
+            .withNamespace(NAMESPACE)
+            .addToLabels("app.kubernetes.io/name", APP_LABEL)
+            .endMetadata()
+            .withNewSpec()
+            .withType("ClusterIP")
+            .addToSelector("app.kubernetes.io/name", APP_LABEL)
+            .addNewPort()
+            .withName("otlp-grpc")
+            .withPort(Constants.K8s.OTEL_GRPC_PORT)
+            .withProtocol("TCP")
+            .endPort()
+            .addNewPort()
+            .withName("jaeger-compact")
+            .withPort(Constants.K8s.JAEGER_THRIFT_COMPACT_PORT)
+            .withProtocol("UDP")
+            .endPort()
             .endSpec()
             .build()
 }

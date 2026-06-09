@@ -123,6 +123,31 @@ class DefaultK8sStorageOperations(
             eventBus.emit(Event.K8s.ConfigMapDeleted(name))
         }
 
+    override fun deleteConfigMapsByLabels(
+        controlHost: ClusterHost,
+        namespace: String,
+        labels: Map<String, String>,
+    ): Result<Unit> =
+        runCatching {
+            log.info { "Deleting ConfigMaps with labels $labels from namespace $namespace" }
+
+            clientProvider.createClient(controlHost).use { client ->
+                val deleted =
+                    client
+                        .configMaps()
+                        .inNamespace(namespace)
+                        .withLabels(labels)
+                        .delete()
+
+                deleted.forEach { resource ->
+                    val name = resource.name ?: return@forEach
+                    eventBus.emit(Event.K8s.ConfigMapDeleted(name))
+                }
+
+                log.info { "Deleted ${deleted.size} ConfigMap(s) matching labels $labels" }
+            }
+        }
+
     override fun createLocalPersistentVolumes(
         controlHost: ClusterHost,
         config: PersistentVolumeConfig,

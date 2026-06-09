@@ -12,11 +12,14 @@ import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
+import org.mockito.kotlin.argThat
 import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.doThrow
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 
@@ -53,7 +56,7 @@ class KubectlServiceTest : BaseKoinTest() {
         val commandCaptor = argumentCaptor<String>()
         verify(mockRemoteOps).executeRemotely(eq(testHost), commandCaptor.capture(), any(), any())
 
-        assertThat(commandCaptor.firstValue).contains("kubectl apply -f https://example.com/manifest.yaml")
+        assertThat(commandCaptor.firstValue).contains("kubectl apply --server-side -f https://example.com/manifest.yaml")
     }
 
     @Test
@@ -128,6 +131,37 @@ class KubectlServiceTest : BaseKoinTest() {
         val command = commandCaptor.firstValue
         assertThat(command).contains("kubectl delete Pod/mypod -n default")
         assertThat(command).doesNotContain("--ignore-not-found")
+    }
+
+    @Test
+    fun `applyContent uploads yaml to remote path and applies it`() {
+        val yaml = "apiVersion: v1\nkind: ConfigMap"
+
+        makeService().applyContent(host = testHost, yamlContent = yaml)
+
+        val remotePathCaptor = argumentCaptor<String>()
+        verify(mockRemoteOps).upload(eq(testHost), any(), remotePathCaptor.capture())
+        val remotePath = remotePathCaptor.firstValue
+        assertThat(remotePath).startsWith("/tmp/easydblab-manifest-").endsWith(".yaml")
+
+        val commandCaptor = argumentCaptor<String>()
+        verify(mockRemoteOps, times(2)).executeRemotely(eq(testHost), commandCaptor.capture(), any(), any())
+        assertThat(commandCaptor.allValues[0]).contains("kubectl apply -f $remotePath")
+        assertThat(commandCaptor.allValues[1]).isEqualTo("rm -f $remotePath")
+    }
+
+    @Test
+    fun `applyContent cleans up remote file even when kubectl apply fails`() {
+        whenever(mockRemoteOps.executeRemotely(any(), argThat { contains("kubectl apply") }, any(), any()))
+            .doThrow(RuntimeException("apply failed"))
+
+        assertThatThrownBy {
+            makeService().applyContent(host = testHost, yamlContent = "apiVersion: v1")
+        }.isInstanceOf(RuntimeException::class.java)
+
+        val commandCaptor = argumentCaptor<String>()
+        verify(mockRemoteOps, atLeastOnce()).executeRemotely(eq(testHost), commandCaptor.capture(), any(), any())
+        assertThat(commandCaptor.allValues).anyMatch { it.startsWith("rm -f") }
     }
 
     @Test

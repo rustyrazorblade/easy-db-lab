@@ -463,18 +463,19 @@ class KitConfigTest {
     // -------------------------------------------------------------------------
 
     @Test
-    fun `parses scrape metrics with explicit path`() {
+    fun `parses single scrape target as list with explicit path`() {
         val config =
             parse(
                 """
                 name: clickhouse
                 metrics:
-                  type: scrape
-                  port: 9363
-                  path: /metrics
+                  - type: scrape
+                    port: 9363
+                    path: /metrics
                 """.trimIndent(),
             )
-        val metrics = config.metrics as KitMetrics.Scrape
+        assertThat(config.metrics).hasSize(1)
+        val metrics = config.metrics[0] as KitMetrics.Scrape
         assertThat(metrics.port).isEqualTo(9363)
         assertThat(metrics.path).isEqualTo("/metrics")
     }
@@ -486,13 +487,55 @@ class KitConfigTest {
                 """
                 name: mydb
                 metrics:
-                  type: scrape
-                  port: 9100
+                  - type: scrape
+                    port: 9100
                 """.trimIndent(),
             )
-        val metrics = config.metrics as KitMetrics.Scrape
+        assertThat(config.metrics).hasSize(1)
+        val metrics = config.metrics[0] as KitMetrics.Scrape
         assertThat(metrics.port).isEqualTo(9100)
         assertThat(metrics.path).isEqualTo("/metrics")
+    }
+
+    @Test
+    fun `parses scrape metrics with job field`() {
+        val config =
+            parse(
+                """
+                name: tidb
+                metrics:
+                  - type: scrape
+                    port: 31080
+                    path: /metrics
+                    job: tidb-sql
+                  - type: scrape
+                    port: 32180
+                    path: /metrics
+                    job: tikv
+                """.trimIndent(),
+            )
+        assertThat(config.metrics).hasSize(2)
+        val first = config.metrics[0] as KitMetrics.Scrape
+        assertThat(first.port).isEqualTo(31080)
+        assertThat(first.job).isEqualTo("tidb-sql")
+        val second = config.metrics[1] as KitMetrics.Scrape
+        assertThat(second.port).isEqualTo(32180)
+        assertThat(second.job).isEqualTo("tikv")
+    }
+
+    @Test
+    fun `scrape job field defaults to empty string`() {
+        val config =
+            parse(
+                """
+                name: clickhouse
+                metrics:
+                  - type: scrape
+                    port: 9363
+                """.trimIndent(),
+            )
+        val metrics = config.metrics[0] as KitMetrics.Scrape
+        assertThat(metrics.job).isEmpty()
     }
 
     @Test
@@ -502,11 +545,12 @@ class KitConfigTest {
                 """
                 name: presto
                 metrics:
-                  type: java-agent
-                  service-name: presto
+                  - type: java-agent
+                    service-name: presto
                 """.trimIndent(),
             )
-        val metrics = config.metrics as KitMetrics.JavaAgent
+        assertThat(config.metrics).hasSize(1)
+        val metrics = config.metrics[0] as KitMetrics.JavaAgent
         assertThat(metrics.serviceName).isEqualTo("presto")
     }
 
@@ -517,16 +561,17 @@ class KitConfigTest {
                 """
                 name: mydb
                 metrics:
-                  type: helm-native
+                  - type: helm-native
                 """.trimIndent(),
             )
-        assertThat(config.metrics).isEqualTo(KitMetrics.HelmNative)
+        assertThat(config.metrics).hasSize(1)
+        assertThat(config.metrics[0]).isEqualTo(KitMetrics.HelmNative)
     }
 
     @Test
-    fun `metrics absent when not declared`() {
+    fun `metrics defaults to empty list when not declared`() {
         val config = parse("name: mydb")
-        assertThat(config.metrics).isNull()
+        assertThat(config.metrics).isEmpty()
     }
 
     @Test

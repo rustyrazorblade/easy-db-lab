@@ -4,9 +4,9 @@ description: Scaffold ClickHouse workload files using the Altinity operator
 version: "1.0.0"
 collision-check: true
 metrics:
-  type: scrape
-  port: 30936
-  path: /metrics
+  - type: scrape
+    port: 30936
+    path: /metrics
 runtime:
   type: pods
   selector: "clickhouse.altinity.com/chi=clickhouse"

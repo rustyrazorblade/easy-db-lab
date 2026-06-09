@@ -169,4 +169,24 @@ class KitInstallCommandFactoryTest : BaseKoinTest() {
         val command = cl.commandSpec.userObject() as KitInstallCommand
         assertThat(command.resolvedDefaults["REPLICAS"]).isEqualTo("3")
     }
+
+    @Test
+    fun `kit with --version arg does not conflict with picocli mixin version option`() {
+        // Kits like tidb declare --version to set the database version.
+        // mixinStandardHelpOptions also registers --version, so we must not add the mixin
+        // when the kit already owns that flag.
+        val cl = factory.build(config(arg("--version", "TIDB_VERSION", default = "v8.5.2")), directorySource)
+        val optionNames = cl.commandSpec.options().map { it.longestName() }
+        assertThat(optionNames).contains("--version")
+        // --help must still be present
+        assertThat(optionNames).contains("--help")
+    }
+
+    @Test
+    fun `kit with --version arg parses the version value correctly`() {
+        val cl = factory.build(config(arg("--version", "TIDB_VERSION", default = "v8.5.2")), directorySource)
+        val command = cl.commandSpec.userObject() as KitInstallCommand
+        cl.parseArgs("--version", "v7.5.0")
+        assertThat(command.argValues["TIDB_VERSION"]).isEqualTo("v7.5.0")
+    }
 }

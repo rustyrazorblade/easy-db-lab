@@ -3,8 +3,8 @@ type: app
 description: Scaffold Presto workload files (stateless, targets app nodes)
 collision-check: false
 metrics:
-  type: scrape
-  port: 9090
+  - type: scrape
+    port: 9090
 runtime:
   type: helm
   release: presto

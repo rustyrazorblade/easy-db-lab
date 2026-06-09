@@ -73,7 +73,7 @@ class KitRunnerCommandTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(clusterState)
         whenever(mockGrafanaDashboardService.installDashboardFromFile(any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockWorkloadStepExecutor.execute(any(), any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockMetricsRegistryService.register(any(), any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockMetricsRegistryService.register(any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockMetricsRegistryService.deregister(any(), any())).thenReturn(Result.success(Unit))
         workingDir = get<Context>().workingDirectory
     }
@@ -233,16 +233,16 @@ class KitRunnerCommandTest : BaseKoinTest() {
             """
             name: mydb
             metrics:
-              type: scrape
-              port: 9100
-              path: /metrics
+              - type: scrape
+                port: 9100
+                path: /metrics
             start:
               - type: shell
                 script: echo hello
             """.trimIndent(),
         )
         command("mydb", "start").call()
-        verify(mockMetricsRegistryService).register(any(), any(), any(), any())
+        verify(mockMetricsRegistryService).register(any(), any(), any())
     }
 
     @Test
@@ -257,7 +257,7 @@ class KitRunnerCommandTest : BaseKoinTest() {
             """.trimIndent(),
         )
         command("mydb", "start").call()
-        verify(mockMetricsRegistryService, never()).register(any(), any(), any(), any())
+        verify(mockMetricsRegistryService, never()).register(any(), any(), any())
     }
 
     @Test
@@ -414,14 +414,14 @@ class KitRunnerCommandTest : BaseKoinTest() {
             """
             name: mydb
             metrics:
-              type: scrape
-              port: 9100
-              path: /metrics
+              - type: scrape
+                port: 9100
+                path: /metrics
             """.trimIndent(),
         )
         writeScript("mydb", "start", "exit 0")
         command("mydb", "start").call()
-        verify(mockMetricsRegistryService).register(any(), any(), any(), any())
+        verify(mockMetricsRegistryService).register(any(), any(), any())
     }
 
     @Test

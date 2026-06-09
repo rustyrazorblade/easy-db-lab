@@ -25,14 +25,21 @@ class KitInstallCommandFactory(
         val command = KitInstallCommand(config, source)
         val spec = CommandSpec.wrapWithoutInspection(command).name(config.name)
         spec.usageMessage().description(config.description)
-        spec.add(
-            OptionSpec
-                .builder("--help", "-h")
-                .usageHelp(true)
-                .type(Boolean::class.java)
-                .description("Show this help message and exit.")
-                .build(),
-        )
+
+        val kitUsesVersionFlag = config.args.any { it.flag == "--version" }
+        if (kitUsesVersionFlag) {
+            // Kit owns --version as a named arg; only add --help to avoid a duplicate option conflict.
+            spec.add(
+                OptionSpec
+                    .builder("--help", "-h")
+                    .usageHelp(true)
+                    .type(Boolean::class.java)
+                    .description("Show this help message and exit.")
+                    .build(),
+            )
+        } else {
+            spec.mixinStandardHelpOptions(true)
+        }
 
         if (config.collisionCheck) {
             spec.add(forceOptionSpec(command))

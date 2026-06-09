@@ -209,8 +209,18 @@ object Constants {
         const val OTEL_HEALTH_PORT = 13133
         const val TEMPO_OTLP_GRPC_PORT = 4320
         const val TEMPO_OTLP_HTTP_PORT = 4321
+
+        // Jaeger Thrift Compact (UDP) — used by TiDB's OpenTracing reporter to export traces
+        // via the OTel Collector Jaeger receiver, since TiDB v8.5.x has no native OTel support.
+        const val JAEGER_THRIFT_COMPACT_PORT = 6831
         const val CLEANUP_JOB_TTL_SECONDS = 300
         const val DB_MOUNT_PATH = "/mnt/db1"
+
+        // Labels used by the metrics registry system.
+        // OtelManifestBuilder reads ConfigMaps with WORKLOAD_METRICS_LABEL=true.
+        // MetricsRegistryService writes both labels; deregister deletes by both.
+        const val WORKLOAD_METRICS_LABEL = "easydblab.com/workload-metrics"
+        const val KIT_LABEL = "easydblab.com/kit"
     }
 
     // OpenSearch configuration

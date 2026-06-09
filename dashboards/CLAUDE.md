@@ -27,6 +27,56 @@ Labels differ between VictoriaMetrics (Prometheus-style, underscores) and Victor
 
 The `transform/add_service_name` OTel processor copies `service.name` → `service_name` on all log pipelines so Grafana's auto-generated label filters work against VictoriaLogs too.
 
+## Trace Links in Log Panels — Two Distinct Mechanisms
+
+**This is a frequent source of mistakes. Read carefully before adding any trace navigation to a logs panel.**
+
+### Mechanism 1 — Per-row "View Trace in Tempo" button (datasource-level, global)
+
+Configured on the `victorialogs` datasource in `GrafanaDatasourceConfig.kt` via `derivedFields`:
+
+```kotlin
+GrafanaDerivedField(
+    name = "trace_id",
+    field = "trace_id",
+    matcherRegex = "([a-f0-9]{32})",  // only matches valid 128-bit hex trace IDs
+    url = "",
+    datasourceUid = "tempo",
+    urlDisplayLabel = "View Trace in Tempo",
+)
+```
+
+- Appears as a button in the **log detail drawer** when a log row has a `trace_id` field matching the regex
+- Navigates to Tempo Explore with that specific trace ID pre-filled
+- **This is global** — it applies to every VictoriaLogs panel on every dashboard
+- **Nothing in the dashboard JSON controls this** — do NOT try to configure it per-panel
+- If a service has no traces (e.g. TiDB before OTel was wired up), the button simply does not appear because `trace_id` is absent or doesn't match the regex
+
+### Mechanism 2 — Data-point links on metric/timeseries panels (dashboard JSON)
+
+Used on timeseries panels via `fieldConfig.defaults.links`. Appears when hovering over a data point. Contains a full `/explore?panes=` URL with a TraceQL query using Grafana template variables:
+
+```json
+{
+  "url": "/explore?schemaVersion=1&orgId=1&panes=<URL-encoded JSON with TraceQL>",
+  "title": "View in Tempo"
+}
+```
+
+The panes JSON contains `queryType: "traceql"` with a query like `{ resource.host.name = "${__field.labels.host_name}" }` and `${__from}`/`${__to}` time bounds. See the Cross-Dashboard Navigation section below for how to build these URLs correctly.
+
+- **Logs panels (`type: "logs"`) do NOT support this mechanism** — `fieldConfig.defaults.links` is ignored on log panels
+- Only works on `timeseries`, `stat`, `table`, and similar metric panel types
+- Use `bin/generate-dashboard-links.py` to build correct URL-encoded panes values
+
+### Summary table
+
+| What you want | Where to configure it | Panel types |
+|---|---|---|
+| "View Trace in Tempo" per log row | `GrafanaDatasourceConfig.kt` derivedFields | logs (global, auto) |
+| Trace search link on hover | `fieldConfig.defaults.links` in panel JSON | timeseries, stat, table |
+| Panel-level link (header menu) | `panel.links` in panel JSON | all types |
+
 ## Spanmetrics Metric Names
 
 The OTel spanmetrics connector with `namespace: traces.spanmetrics` emits:

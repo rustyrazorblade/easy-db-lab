@@ -51,16 +51,22 @@ class KitJdbcSqlService(
 
             connectionFactory.connect(url, props).use { conn ->
                 conn.createStatement().use { stmt ->
-                    stmt.executeQuery(sql).use { rs ->
-                        val meta = rs.metaData
-                        val columnCount = meta.columnCount
-                        val columns = (1..columnCount).map { meta.getColumnName(it) }
-                        val rows = mutableListOf<List<String>>()
-                        while (rs.next()) {
-                            rows.add((1..columnCount).map { rs.getString(it) ?: "NULL" })
+                    if (stmt.execute(sql)) {
+                        stmt.resultSet.use { rs ->
+                            val meta = rs.metaData
+                            val columnCount = meta.columnCount
+                            val columns = (1..columnCount).map { meta.getColumnName(it) }
+                            val rows = mutableListOf<List<String>>()
+                            while (rs.next()) {
+                                rows.add((1..columnCount).map { rs.getString(it) ?: "NULL" })
+                            }
+                            log.debug { "Query complete: ${rows.size} rows, $columnCount columns" }
+                            SqlQueryResult(columns = columns, rows = rows)
                         }
-                        log.debug { "Query complete: ${rows.size} rows, $columnCount columns" }
-                        SqlQueryResult(columns = columns, rows = rows)
+                    } else {
+                        val count = stmt.updateCount
+                        log.debug { "Statement complete: $count rows affected" }
+                        SqlQueryResult(columns = listOf("rows affected"), rows = listOf(listOf(count.toString())))
                     }
                 }
             }

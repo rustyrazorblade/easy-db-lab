@@ -4823,9 +4823,9 @@ sealed interface Event {
         @SerialName("Kit.MetricsRegistered")
         data class MetricsRegistered(
             val kit: String,
-            val port: Int,
+            val ports: List<Int>,
         ) : Kit {
-            override fun toDisplayString(): String = "[$kit] metrics registered on port $port"
+            override fun toDisplayString(): String = "[$kit] metrics registered on ports ${ports.joinToString()}"
         }
 
         @Serializable

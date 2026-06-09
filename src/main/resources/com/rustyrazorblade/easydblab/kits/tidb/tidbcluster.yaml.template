@@ -1,0 +1,62 @@
+apiVersion: pingcap.com/v1alpha1
+kind: TidbCluster
+metadata:
+  name: tidb
+  namespace: default
+spec:
+  version: "__TIDB_VERSION__"
+  timezone: UTC
+  # Delete PVs when the TidbCluster is removed so clusters stay ephemeral.
+  pvReclaimPolicy: Delete
+  enableDynamicConfiguration: true
+
+  pd:
+    baseImage: pingcap/pd
+    replicas: 1
+    requests:
+      storage: 10Ti
+    storageClassName: local-path
+    config: {}
+    nodeSelector:
+      type: app
+
+  tidb:
+    baseImage: pingcap/tidb
+    replicas: __APP_NODE_COUNT__
+    service:
+      type: ClusterIP
+    # TiDB v8.x has no native OTel support. Traces are exported via the built-in OpenTracing
+    # Jaeger reporter to the OTel Collector (UDP 6831), which translates them to OTLP and
+    # forwards to Tempo. The `opentelemetry.*` config keys do not exist in v8.x and will be
+    # rejected at startup — use [opentracing] instead.
+    config: |
+      [opentracing]
+        enable = true
+      [opentracing.sampler]
+        type = "const"
+        param = 1.0
+      [opentracing.reporter]
+        local-agent-host-port = "otel-collector.default.svc.cluster.local:6831"
+    nodeSelector:
+      type: app
+
+  tikv:
+    baseImage: pingcap/tikv
+    replicas: __REPLICAS__
+    requests:
+      storage: 10Ti
+    storageClassName: local-path
+    config: {}
+    nodeSelector:
+      type: db
+
+  tiflash:
+    baseImage: pingcap/tiflash
+    replicas: __REPLICAS__
+    storageClaims:
+      - resources:
+          requests:
+            storage: 10Ti
+        storageClassName: local-path
+    nodeSelector:
+      type: db

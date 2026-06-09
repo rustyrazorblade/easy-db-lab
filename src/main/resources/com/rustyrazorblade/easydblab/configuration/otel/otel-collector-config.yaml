@@ -5,6 +5,13 @@ receivers:
         endpoint: 0.0.0.0:4317
       http:
         endpoint: 0.0.0.0:4318
+  # Jaeger Thrift Compact (UDP 6831) — receives traces from TiDB's built-in OpenTracing reporter.
+  # TiDB v8.x has no native OTel support; it uses the OpenTracing/Jaeger protocol instead.
+  # The OTel Collector translates Jaeger spans to OTLP and forwards them to Tempo.
+  jaeger:
+    protocols:
+      thrift_compact:
+        endpoint: 0.0.0.0:6831
   hostmetrics:
     collection_interval: 10s
     scrapers:
@@ -287,7 +294,7 @@ service:
       processors: [transform/add_service_name, batch]
       exporters: [otlphttp/victorialogs]
     traces:
-      receivers: [otlp]
+      receivers: [otlp, jaeger]
       processors: [batch]
       exporters: [otlp/tempo, spanmetrics, servicegraph]
     metrics/spanmetrics:

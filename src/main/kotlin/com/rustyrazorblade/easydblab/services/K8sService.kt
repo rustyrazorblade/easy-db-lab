@@ -177,6 +177,13 @@ interface K8sStorageOperations {
         name: String,
     ): Result<Unit>
 
+    /** Deletes all ConfigMaps in [namespace] whose labels match all entries in [labels]. */
+    fun deleteConfigMapsByLabels(
+        controlHost: ClusterHost,
+        namespace: String,
+        labels: Map<String, String>,
+    ): Result<Unit>
+
     fun createLocalPersistentVolumes(
         controlHost: ClusterHost,
         config: PersistentVolumeConfig,

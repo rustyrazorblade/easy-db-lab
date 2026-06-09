@@ -12,6 +12,7 @@ import org.junit.jupiter.api.TestInstance
 import org.junit.jupiter.api.io.TempDir
 import org.testcontainers.containers.localstack.LocalStackContainer
 import org.testcontainers.containers.localstack.LocalStackContainer.Service
+import org.testcontainers.containers.wait.strategy.Wait
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.utility.DockerImageName
@@ -40,6 +41,7 @@ class S3ObjectStoreIntegrationTest {
         val localStack: LocalStackContainer =
             LocalStackContainer(DockerImageName.parse("localstack/localstack:3.0"))
                 .withServices(Service.S3)
+                .waitingFor(Wait.forHttp("/_localstack/health").forStatusCode(200))
     }
 
     private lateinit var s3Client: S3Client

@@ -24,6 +24,7 @@ sealed class KitMetrics {
     data class Scrape(
         val port: Int,
         val path: String = "/metrics",
+        val job: String = "",
     ) : KitMetrics()
 
     @Serializable
@@ -159,7 +160,7 @@ data class KitConfig(
     val collisionCheck: Boolean = false,
     val dashboards: List<DashboardRef> = emptyList(),
     val args: List<KitArgSpec> = emptyList(),
-    val metrics: KitMetrics? = null,
+    val metrics: List<KitMetrics> = emptyList(),
     val endpoints: List<KitEndpoint> = emptyList(),
     val runtime: KitRuntime? = null,
     val install: List<InstallStep> = emptyList(),

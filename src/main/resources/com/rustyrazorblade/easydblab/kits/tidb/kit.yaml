@@ -1,0 +1,132 @@
+name: tidb
+type: db
+description: Deploy a TiDB HTAP cluster (TiKV row store + TiFlash columnar store) via TiDB Operator
+version: "1.0.0"
+collision-check: true
+metrics:
+  - type: scrape
+    port: 31080
+    path: /metrics
+    job: tidb-sql
+  - type: scrape
+    port: 32180
+    path: /metrics
+    job: tikv
+  - type: scrape
+    port: 32379
+    path: /metrics
+    job: pd
+  - type: scrape
+    port: 32234
+    path: /metrics
+    job: tiflash
+runtime:
+  type: pods
+  selector: "app.kubernetes.io/instance=tidb"
+  namespace: default
+endpoints:
+  - name: "MySQL"
+    node-type: app
+    port: 30400
+    type: jdbc
+    scheme: mysql
+    path: "/?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC"
+args:
+  - flag: --version
+    variable: TIDB_VERSION
+    description: "TiDB version (e.g. v8.5.2)"
+    type: string
+    default: "v8.5.2"
+  - flag: --replicas
+    variable: REPLICAS
+    description: "Number of TiKV and TiFlash replicas (one per db node)"
+    type: int
+    default: "${DB_NODE_COUNT}"
+
+install:
+  - type: helm-repo
+    name: pingcap
+    url: https://charts.pingcap.org
+  - type: manifest-url
+    url: https://raw.githubusercontent.com/pingcap/tidb-operator/v1.6.5/manifests/crd.yaml
+  - type: namespace
+    name: tidb-admin
+  - type: helm
+    chart: pingcap/tidb-operator
+    release: tidb-operator
+    namespace: tidb-admin
+    version: v1.6.5
+
+start:
+  - type: shell
+    script: |
+      if [ "${DB_NODE_COUNT}" -lt 1 ] || [ "${APP_NODE_COUNT}" -lt 1 ]; then
+        echo "Error: TiDB requires at least 1 db node and 1 app node." >&2
+        echo "  db nodes:  ${DB_NODE_COUNT} (need ≥1 for TiKV + TiFlash)" >&2
+        echo "  app nodes: ${APP_NODE_COUNT} (need ≥1 for TiDB + PD)" >&2
+        exit 1
+      fi
+  - type: manifest
+    template: tidbcluster.yaml
+  - type: shell
+    script: |
+      wait_for_component() {
+        local component=$1 appear_timeout=$2 ready_timeout=$3
+        echo "Waiting for ${component} pods..."
+        WAITED=0
+        until kubectl get pods -l "app.kubernetes.io/component=${component},app.kubernetes.io/instance=tidb" -n default --no-headers 2>/dev/null | grep -q .; do
+          sleep 5; WAITED=$((WAITED + 5))
+          if [ "$WAITED" -ge "$appear_timeout" ]; then echo "Timed out waiting for ${component} pods to appear" >&2; exit 1; fi
+        done
+        echo "${component} pods found, waiting for Ready..."
+        kubectl wait --for=condition=Ready pods \
+          -l "app.kubernetes.io/component=${component},app.kubernetes.io/instance=tidb" \
+          --namespace default --timeout="${ready_timeout}s"
+      }
+      wait_for_component pd      120 300
+      wait_for_component tikv    120 600
+      wait_for_component tidb    120 300
+      wait_for_component tiflash 300 600
+  - type: manifest
+    template: nodeport-service.yaml
+
+stop:
+  - type: delete
+    kind: TidbCluster
+    name: tidb
+    namespace: default
+  - type: delete
+    kind: Service
+    name: tidb-nodeport
+    namespace: default
+  - type: delete
+    kind: Service
+    name: tikv-nodeport
+    namespace: default
+  - type: delete
+    kind: Service
+    name: pd-nodeport
+    namespace: default
+  - type: delete
+    kind: Service
+    name: tiflash-nodeport
+    namespace: default
+
+uninstall:
+  - type: shell
+    script: |
+      if kubectl get tidbcluster tidb -n default &>/dev/null; then
+        echo "Error: TiDB cluster is still running. Run 'tidb stop' before uninstalling." >&2
+        exit 1
+      fi
+  - type: helm-uninstall
+    release: tidb-operator
+    namespace: tidb-admin
+  - type: shell
+    script: |
+      kubectl delete namespace tidb-admin --ignore-not-found
+
+capabilities:
+  - type: sql
+    user: root
+    driver-class: com.mysql.cj.jdbc.Driver

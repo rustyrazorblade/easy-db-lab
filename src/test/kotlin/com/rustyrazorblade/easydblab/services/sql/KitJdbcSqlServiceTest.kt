@@ -139,7 +139,8 @@ class KitJdbcSqlServiceTest : BaseKoinTest() {
 
         val rs = mockResultSet(listOf("count"), listOf(listOf("42")))
         val stmt = mock<Statement>()
-        whenever(stmt.executeQuery("SELECT count(*) FROM t")).thenReturn(rs)
+        whenever(stmt.execute("SELECT count(*) FROM t")).thenReturn(true)
+        whenever(stmt.resultSet).thenReturn(rs)
         val conn = mock<Connection>()
         whenever(conn.createStatement()).thenReturn(stmt)
 
@@ -156,7 +157,8 @@ class KitJdbcSqlServiceTest : BaseKoinTest() {
 
         val rs = mockResultSet(listOf("id", "name"), listOf(listOf("1", "alice"), listOf("2", "bob")))
         val stmt = mock<Statement>()
-        whenever(stmt.executeQuery(org.mockito.kotlin.any())).thenReturn(rs)
+        whenever(stmt.execute(org.mockito.kotlin.any())).thenReturn(true)
+        whenever(stmt.resultSet).thenReturn(rs)
         val conn = mock<Connection>()
         whenever(conn.createStatement()).thenReturn(stmt)
 
@@ -188,13 +190,31 @@ class KitJdbcSqlServiceTest : BaseKoinTest() {
         }
         whenever(rs.getString(1)).thenReturn(null)
         val stmt = mock<Statement>()
-        whenever(stmt.executeQuery(org.mockito.kotlin.any())).thenReturn(rs)
+        whenever(stmt.execute(org.mockito.kotlin.any())).thenReturn(true)
+        whenever(stmt.resultSet).thenReturn(rs)
         val conn = mock<Connection>()
         whenever(conn.createStatement()).thenReturn(stmt)
 
         val result = buildService(connection = conn).execute("SELECT null").getOrThrow()
 
         assertThat(result.rows[0][0]).isEqualTo("NULL")
+    }
+
+    @Test
+    fun `DDL statement returns rows affected when no result set`() {
+        whenever(mockClusterStateManager.load()).thenReturn(stateWithAppNode())
+
+        val stmt = mock<Statement>()
+        whenever(stmt.execute(org.mockito.kotlin.any())).thenReturn(false)
+        whenever(stmt.updateCount).thenReturn(3)
+        val conn = mock<Connection>()
+        whenever(conn.createStatement()).thenReturn(stmt)
+
+        val result = buildService(connection = conn).execute("INSERT INTO t VALUES (1),(2),(3)").getOrThrow()
+
+        assertThat(result.columns).containsExactly("rows affected")
+        assertThat(result.rows).hasSize(1)
+        assertThat(result.rows[0]).containsExactly("3")
     }
 
     @Test

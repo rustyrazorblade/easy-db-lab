@@ -6,67 +6,66 @@
 
 ## Requirements
 
-### Requirement: config.yaml supports a top-level `metrics` block
-`config.yaml` SHALL support an optional top-level `metrics` key that declares how the kit's metrics reach the OTel collector. Three modes are supported: `scrape`, `java-agent`, and `helm-native`.
+### Requirement: kit.yaml supports a list of metrics declarations
 
-#### Scenario: Scrape mode declares a Prometheus endpoint
-- **WHEN** `config.yaml` declares `metrics: {type: scrape, port: 9180, path: /metrics}`
-- **THEN** the install command parses this into a `WorkloadMetrics.Scrape` value object with port 9180 and path `/metrics`
-- **AND** path defaults to `/metrics` if omitted
+`kit.yaml` SHALL support a `metrics` key that accepts a list of zero or more metric declarations.
+Each list entry follows the same type structure as before (`type: scrape`, `type: java-agent`,
+`type: helm-native`). An empty list or absent `metrics` key means no metrics registration.
+`KitMetrics.Scrape` SHALL accept an optional `job` field that names the Prometheus scrape job
+and the ConfigMap; it defaults to the kit name when omitted.
 
-#### Scenario: Java-agent mode declares JVM instrumentation
-- **WHEN** `config.yaml` declares `metrics: {type: java-agent, service-name: trino}`
-- **THEN** the install command parses this into a `WorkloadMetrics.JavaAgent` value object with service name `trino`
+#### Scenario: Single scrape target declared as a list
 
-#### Scenario: Helm-native mode is a no-op declaration
-- **WHEN** `config.yaml` declares `metrics: {type: helm-native}`
-- **THEN** the install command parses this as `WorkloadMetrics.HelmNative`
-- **AND** no metrics registry ConfigMap is written and no OTel sync is triggered for this kit
+- **WHEN** `kit.yaml` declares `metrics: [{type: scrape, port: 9180}]`
+- **THEN** the kit config is parsed with one `KitMetrics.Scrape` entry with port 9180, path `/metrics`, and job defaulting to the kit name
 
-#### Scenario: Absent metrics block requires no action
-- **WHEN** `config.yaml` has no `metrics` key
-- **THEN** the install command skips all metrics registration steps after `start` and `stop`
+#### Scenario: Multiple scrape targets declared
 
-### Requirement: Metrics registry ConfigMap written after `start` completes
-After all steps in the `start` phase complete successfully, the install command SHALL write a ConfigMap named `easydblab-metrics-<kit>` in the `default` namespace with label `easydblab.com/kit-metrics=true` and data keys `job-name`, `port`, and `path`. This only applies to kits with `metrics.type: scrape`.
+- **WHEN** `kit.yaml` declares multiple `metrics` entries each with a distinct `job` field
+- **THEN** the kit config is parsed with one `KitMetrics.Scrape` per entry, each with its own port, path, and job name
 
-#### Scenario: Registry ConfigMap created after successful start
-- **WHEN** a kit with `metrics: {type: scrape, port: 9180}` completes its `start` phase
-- **THEN** a ConfigMap `easydblab-metrics-<kit>` SHALL exist in the `default` namespace
-- **AND** it SHALL have label `easydblab.com/kit-metrics: "true"`
-- **AND** its data SHALL contain `port: "9180"`, `path: "/metrics"`, `job-name: "<kit>"`
+#### Scenario: Absent metrics key requires no action
 
-#### Scenario: Registry ConfigMap not created for helm-native kits
-- **WHEN** a kit with `metrics: {type: helm-native}` completes its `start` phase
-- **THEN** no ConfigMap named `easydblab-metrics-<kit>` SHALL be created
+- **WHEN** `kit.yaml` has no `metrics` key
+- **THEN** the kit config parses with an empty metrics list and no metrics registration occurs
 
-#### Scenario: Registry ConfigMap not created after failed start
+### Requirement: One ConfigMap written per scrape target after `start` completes
+
+After all steps in the `start` phase complete successfully, the install command SHALL write one
+ConfigMap per `KitMetrics.Scrape` entry. Each ConfigMap SHALL be named
+`easydblab-metrics-<job>`, carry label `easydblab.com/workload-metrics: "true"`, carry label
+`easydblab.com/kit: <kitName>`, and contain data keys `job-name`, `port`, and `path`.
+
+#### Scenario: Single-target kit creates one ConfigMap
+
+- **WHEN** a kit with one `KitMetrics.Scrape` entry (job omitted) completes its `start` phase
+- **THEN** exactly one ConfigMap `easydblab-metrics-<kitName>` SHALL exist with the correct port and path
+- **AND** it SHALL carry label `easydblab.com/kit: <kitName>`
+
+#### Scenario: Multi-target kit creates one ConfigMap per target
+
+- **WHEN** a kit with four `KitMetrics.Scrape` entries (distinct `job` fields) completes its `start` phase
+- **THEN** four ConfigMaps SHALL exist, one per job, each named `easydblab-metrics-<job>`
+- **AND** each SHALL carry label `easydblab.com/kit: <kitName>`
+
+#### Scenario: Registry ConfigMaps not created after failed start
+
 - **WHEN** any step in the `start` phase fails
-- **THEN** the metrics registry ConfigMap SHALL NOT be written
-- **AND** OTel sync SHALL NOT be triggered
+- **THEN** no `easydblab-metrics-*` ConfigMaps SHALL be written for this kit
 
-### Requirement: Metrics registry ConfigMap deleted after `stop` completes
-After all steps in the `stop` phase complete, the install command SHALL delete the ConfigMap `easydblab-metrics-<kit>` if it exists, then trigger OTel sync.
+### Requirement: All ConfigMaps for a kit deleted after `stop` completes
 
-#### Scenario: Registry ConfigMap deleted after stop
-- **WHEN** a kit's `stop` phase completes
-- **THEN** the ConfigMap `easydblab-metrics-<kit>` SHALL no longer exist in the default namespace
+After all steps in the `stop` phase complete, the install command SHALL delete all ConfigMaps
+carrying label `easydblab.com/kit: <kitName>` and `easydblab.com/workload-metrics: "true"`,
+then trigger OTel sync.
 
-#### Scenario: Missing registry ConfigMap on stop is not an error
-- **WHEN** `stop` is run for a kit that has no `easydblab-metrics-<kit>` ConfigMap
+#### Scenario: All targets deregistered after stop
+
+- **WHEN** a kit with four scrape targets completes its `stop` phase
+- **THEN** all four `easydblab-metrics-*` ConfigMaps for that kit SHALL be deleted
+- **AND** the OTel collector ConfigMap SHALL be regenerated without any scrape jobs for that kit
+
+#### Scenario: Missing ConfigMaps on stop is not an error
+
+- **WHEN** `stop` is run for a kit that has no `easydblab-metrics-*` ConfigMaps
 - **THEN** the delete is a no-op and the command succeeds
-
-### Requirement: OTel collector ConfigMap regenerated automatically after `start` and `stop`
-After metrics registry write (on `start`) or delete (on `stop`), the install command SHALL call `OtelManifestBuilder` to regenerate and apply the OTel collector ConfigMap. No explicit step in `config.yaml` is required.
-
-#### Scenario: OTel sync triggered after successful start
-- **WHEN** a kit with a `metrics` block completes its `start` phase
-- **THEN** the OTel collector ConfigMap SHALL be updated to include a scrape job for the kit
-
-#### Scenario: OTel sync triggered after stop
-- **WHEN** a kit's `stop` phase completes
-- **THEN** the OTel collector ConfigMap SHALL be updated to exclude the kit's scrape job
-
-#### Scenario: OTel sync not triggered for helm-native kits
-- **WHEN** a kit with `metrics: {type: helm-native}` starts or stops
-- **THEN** the OTel collector ConfigMap SHALL NOT be modified by the install command

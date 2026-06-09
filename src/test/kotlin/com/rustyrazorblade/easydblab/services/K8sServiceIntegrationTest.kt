@@ -197,6 +197,7 @@ class K8sServiceIntegrationTest {
         assertClusterRoleBindingExists("otel-collector")
         assertConfigMapExists("otel-collector-config", "otel-collector-config.yaml")
         assertDaemonSetExists("otel-collector")
+        assertServiceExists("otel-collector")
     }
 
     @Test

@@ -925,4 +925,230 @@ class KitConfigTest {
         assertThat(config.capabilities).hasSize(1)
         assertThat(config.capabilities[0].type).isEqualTo("tpch-load")
     }
+
+    // -------------------------------------------------------------------------
+    // wire-protocol endpoint types (postgresql, mysql) and database field
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `parses postgresql endpoint with port and database`() {
+        val config =
+            parse(
+                """
+                name: mydb
+                endpoints:
+                  - name: "PostgreSQL wire"
+                    node-type: db
+                    port: 5432
+                    type: postgresql
+                    database: mydb
+                """.trimIndent(),
+            )
+        val endpoint = config.endpoints.single()
+        assertThat(endpoint.type).isEqualTo(KitEndpoint.EndpointType.POSTGRESQL)
+        assertThat(endpoint.port).isEqualTo(5432)
+        assertThat(endpoint.database).isEqualTo("mydb")
+    }
+
+    @Test
+    fun `parses mysql endpoint with port and database`() {
+        val config =
+            parse(
+                """
+                name: mydb
+                endpoints:
+                  - name: "MySQL wire"
+                    node-type: db
+                    port: 3306
+                    type: mysql
+                    database: bench
+                """.trimIndent(),
+            )
+        val endpoint = config.endpoints.single()
+        assertThat(endpoint.type).isEqualTo(KitEndpoint.EndpointType.MYSQL)
+        assertThat(endpoint.port).isEqualTo(3306)
+        assertThat(endpoint.database).isEqualTo("bench")
+    }
+
+    @Test
+    fun `database field defaults to empty string when absent`() {
+        val config =
+            parse(
+                """
+                name: mydb
+                endpoints:
+                  - name: "JDBC"
+                    node-type: db
+                    port: 30123
+                    type: jdbc
+                    scheme: clickhouse
+                """.trimIndent(),
+            )
+        assertThat(config.endpoints.single().database).isEmpty()
+    }
+
+    @Test
+    fun `existing endpoint types unaffected by new types`() {
+        val config =
+            parse(
+                """
+                name: mydb
+                endpoints:
+                  - name: "HTTP"
+                    node-type: app
+                    port: 8080
+                    type: http
+                  - name: "JDBC"
+                    node-type: db
+                    port: 30123
+                    type: jdbc
+                    scheme: clickhouse
+                  - name: "Native"
+                    node-type: db
+                    port: 9000
+                    type: native
+                  - name: "CQL"
+                    node-type: db
+                    port: 9042
+                    type: cql
+                """.trimIndent(),
+            )
+        assertThat(config.endpoints.map { it.type }).containsExactly(
+            KitEndpoint.EndpointType.HTTP,
+            KitEndpoint.EndpointType.JDBC,
+            KitEndpoint.EndpointType.NATIVE,
+            KitEndpoint.EndpointType.CQL,
+        )
+    }
+
+    // -------------------------------------------------------------------------
+    // kit-ref arg type and capability field
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `parses kit-ref arg type`() {
+        val config =
+            parse(
+                """
+                name: sysbench
+                args:
+                  - flag: --target
+                    variable: TARGET
+                    type: kit-ref
+                    capability: sql
+                    description: Kit to benchmark
+                    required: true
+                """.trimIndent(),
+            )
+        val arg = config.args.single()
+        assertThat(arg.type).isEqualTo(KitArgSpec.ArgType.KIT_REF)
+        assertThat(arg.capability).isEqualTo("sql")
+        assertThat(arg.variable).isEqualTo("TARGET")
+    }
+
+    @Test
+    fun `capability field defaults to empty string when absent`() {
+        val config =
+            parse(
+                """
+                name: mydb
+                args:
+                  - flag: --workers
+                    variable: WORKERS
+                    type: int
+                """.trimIndent(),
+            )
+        assertThat(config.args.single().capability).isEmpty()
+    }
+
+    @Test
+    fun `kit-ref arg parses alongside other arg types`() {
+        val config =
+            parse(
+                """
+                name: sysbench
+                args:
+                  - flag: --target
+                    variable: TARGET
+                    type: kit-ref
+                  - flag: --threads
+                    variable: THREADS
+                    type: int
+                  - flag: --workload
+                    variable: WORKLOAD
+                    type: string
+                """.trimIndent(),
+            )
+        assertThat(config.args.map { it.type }).containsExactly(
+            KitArgSpec.ArgType.KIT_REF,
+            KitArgSpec.ArgType.INT,
+            KitArgSpec.ArgType.STRING,
+        )
+    }
+}
+
+/**
+ * Tests for KitEndpoint.toTargetVars — ensures each endpoint type produces the correct TARGET_* vars.
+ */
+class KitEndpointToTargetVarsTest {
+    private val sqlCap = KitCapability(type = "sql", user = "bench", driverClass = "com.example.Driver")
+
+    private fun endpoint(
+        type: KitEndpoint.EndpointType,
+        port: Int = 5432,
+        scheme: String = "",
+        path: String = "",
+        database: String = "testdb",
+    ) = KitEndpoint(name = "test", nodeType = "db", port = port, type = type, scheme = scheme, path = path, database = database)
+
+    @Test
+    fun `jdbc endpoint produces TARGET_JDBC vars`() {
+        val vars =
+            endpoint(
+                KitEndpoint.EndpointType.JDBC,
+                port = 8123,
+                scheme = "clickhouse",
+                path = "/default",
+            ).toTargetVars("10.0.0.1", sqlCap)
+        assertThat(vars["TARGET_JDBC_URL"]).isEqualTo("jdbc:clickhouse://10.0.0.1:8123/default")
+        assertThat(vars["TARGET_JDBC_USER"]).isEqualTo("bench")
+        assertThat(vars["TARGET_JDBC_DRIVER"]).isEqualTo("com.example.Driver")
+    }
+
+    @Test
+    fun `postgresql endpoint produces TARGET_PG vars`() {
+        val vars = endpoint(KitEndpoint.EndpointType.POSTGRESQL, port = 5432, database = "benchdb").toTargetVars("10.0.0.2", sqlCap)
+        assertThat(vars["TARGET_PG_HOST"]).isEqualTo("10.0.0.2")
+        assertThat(vars["TARGET_PG_PORT"]).isEqualTo("5432")
+        assertThat(vars["TARGET_PG_USER"]).isEqualTo("bench")
+        assertThat(vars["TARGET_PG_DATABASE"]).isEqualTo("benchdb")
+    }
+
+    @Test
+    fun `mysql endpoint produces TARGET_MYSQL vars`() {
+        val vars = endpoint(KitEndpoint.EndpointType.MYSQL, port = 3306, database = "sbtest").toTargetVars("10.0.0.3", sqlCap)
+        assertThat(vars["TARGET_MYSQL_HOST"]).isEqualTo("10.0.0.3")
+        assertThat(vars["TARGET_MYSQL_PORT"]).isEqualTo("3306")
+        assertThat(vars["TARGET_MYSQL_USER"]).isEqualTo("bench")
+        assertThat(vars["TARGET_MYSQL_DATABASE"]).isEqualTo("sbtest")
+    }
+
+    @Test
+    fun `http endpoint produces TARGET_HTTP_URL`() {
+        val vars = endpoint(KitEndpoint.EndpointType.HTTP, port = 8080, database = "").toTargetVars("10.0.0.4", null)
+        assertThat(vars["TARGET_HTTP_URL"]).isEqualTo("http://10.0.0.4:8080")
+    }
+
+    @Test
+    fun `native and cql endpoints produce no vars`() {
+        assertThat(endpoint(KitEndpoint.EndpointType.NATIVE).toTargetVars("10.0.0.5", sqlCap)).isEmpty()
+        assertThat(endpoint(KitEndpoint.EndpointType.CQL).toTargetVars("10.0.0.5", sqlCap)).isEmpty()
+    }
+
+    @Test
+    fun `null sql capability produces empty user and driver`() {
+        val vars = endpoint(KitEndpoint.EndpointType.JDBC, scheme = "postgresql").toTargetVars("10.0.0.6", null)
+        assertThat(vars["TARGET_JDBC_USER"]).isEmpty()
+        assertThat(vars["TARGET_JDBC_DRIVER"]).isEmpty()
+    }
 }

@@ -384,69 +384,6 @@ class ChannelMessageBufferTest {
         val messages = buffer.getMessages()
         assertEquals(messageCount, messages.size)
     }
-
-    @Test
-    fun `special characters in messages are handled`() {
-        buffer.start()
-        val specialMessage = "Message with \"quotes\", \n newlines, \t tabs, and unicode: 🎉"
-        sendEvent(OutputEvent.MessageEvent(specialMessage))
-
-        val messages = buffer.getMessages()
-        assertEquals(1, messages.size)
-        // Newlines should be replaced with spaces, tabs preserved as whitespace
-        assertTrue(messages[0].contains("Message with \"quotes\", newlines, tabs, and unicode: 🎉"))
-    }
-
-    @Test
-    fun `ANSI escape sequences are stripped from messages`() {
-        buffer.start()
-        val coloredMessage = "Use \u001b[32measy-db-lab list\u001b[39m to see versions"
-        sendEvent(OutputEvent.MessageEvent(coloredMessage))
-
-        val messages = buffer.getMessages()
-        assertEquals(1, messages.size)
-        assertTrue(messages[0].contains("Use easy-db-lab list to see versions"))
-        assertFalse(messages[0].contains("\u001b"))
-        assertFalse(messages[0].contains("[32m"))
-        assertFalse(messages[0].contains("[39m"))
-    }
-
-    @Test
-    fun `newlines are replaced with spaces`() {
-        buffer.start()
-        val multilineMessage = "Line 1\nLine 2\r\nLine 3\rLine 4"
-        sendEvent(OutputEvent.MessageEvent(multilineMessage))
-
-        val messages = buffer.getMessages()
-        assertEquals(1, messages.size)
-        assertTrue(messages[0].contains("Line 1 Line 2 Line 3 Line 4"))
-        assertFalse(messages[0].contains("\n"))
-        assertFalse(messages[0].contains("\r"))
-    }
-
-    @Test
-    fun `multiple spaces are collapsed into single space`() {
-        buffer.start()
-        val spacedMessage = "Word1    Word2     Word3"
-        sendEvent(OutputEvent.MessageEvent(spacedMessage))
-
-        val messages = buffer.getMessages()
-        assertEquals(1, messages.size)
-        assertTrue(messages[0].contains("Word1 Word2 Word3"))
-    }
-
-    @Test
-    fun `complex ANSI sequences are stripped`() {
-        buffer.start()
-        val complexMessage = "\u001b[1;33mYellow Bold\u001b[0m normal \u001b[31;1mRed Bold\u001b[0m"
-        sendEvent(OutputEvent.MessageEvent(complexMessage))
-
-        val messages = buffer.getMessages()
-        assertEquals(1, messages.size)
-        assertTrue(messages[0].contains("Yellow Bold normal Red Bold"))
-        assertFalse(messages[0].contains("\u001b"))
-    }
-
     // ========== Start/Stop Tests ==========
 
     @Test

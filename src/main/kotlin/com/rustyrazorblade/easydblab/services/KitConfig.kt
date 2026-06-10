@@ -48,6 +48,7 @@ data class KitEndpoint(
     val type: EndpointType,
     val scheme: String = "",
     val path: String = "",
+    val database: String = "",
 ) {
     @Serializable
     enum class EndpointType {
@@ -65,6 +66,12 @@ data class KitEndpoint(
 
         @SerialName("cql")
         CQL,
+
+        @SerialName("postgresql")
+        POSTGRESQL,
+
+        @SerialName("mysql")
+        MYSQL,
     }
 
     /** Formats a connection URL for this endpoint using [ip] as the host address. */
@@ -74,7 +81,45 @@ data class KitEndpoint(
             EndpointType.HTTPS -> "https://$ip:$port$path"
             EndpointType.JDBC -> "jdbc:$scheme://$ip:$port$path"
             EndpointType.NATIVE, EndpointType.CQL -> "$ip:$port"
+            EndpointType.POSTGRESQL -> "postgresql://$ip:$port/$database"
+            EndpointType.MYSQL -> "mysql://$ip:$port/$database"
         }
+
+    /**
+     * Produces TARGET_* environment variables for this endpoint given the resolved [ip]
+     * and the kit's [sqlCap]. Returns an empty map for endpoint types with no TARGET_*
+     * convention (HTTPS, NATIVE, CQL).
+     */
+    fun toTargetVars(
+        ip: String,
+        sqlCap: KitCapability?,
+    ): Map<String, String> {
+        val sqlUser = sqlCap?.user.orEmpty()
+        return when (type) {
+            EndpointType.JDBC ->
+                mapOf(
+                    "TARGET_JDBC_URL" to formatUrl(ip),
+                    "TARGET_JDBC_USER" to sqlUser,
+                    "TARGET_JDBC_DRIVER" to sqlCap?.driverClass.orEmpty(),
+                )
+            EndpointType.POSTGRESQL ->
+                mapOf(
+                    "TARGET_PG_HOST" to ip,
+                    "TARGET_PG_PORT" to port.toString(),
+                    "TARGET_PG_USER" to sqlUser,
+                    "TARGET_PG_DATABASE" to database,
+                )
+            EndpointType.MYSQL ->
+                mapOf(
+                    "TARGET_MYSQL_HOST" to ip,
+                    "TARGET_MYSQL_PORT" to port.toString(),
+                    "TARGET_MYSQL_USER" to sqlUser,
+                    "TARGET_MYSQL_DATABASE" to database,
+                )
+            EndpointType.HTTP -> mapOf("TARGET_HTTP_URL" to formatUrl(ip))
+            else -> emptyMap()
+        }
+    }
 }
 
 @Serializable
@@ -173,6 +218,8 @@ data class KitConfig(
     val type: KitType? = null,
     val capabilities: List<KitCapability> = emptyList(),
 ) {
+    val kitRefArg: KitArgSpec? get() = args.firstOrNull { it.type == KitArgSpec.ArgType.KIT_REF }
+
     fun stepsForPhase(phaseName: String): List<InstallStep> =
         when (phaseName) {
             Constants.Kit.PHASE_INSTALL -> install
@@ -217,6 +264,7 @@ data class KitArgSpec(
     val required: Boolean = false,
     val type: ArgType = ArgType.STRING,
     val default: String = "",
+    val capability: String = "",
 ) {
     @Serializable
     enum class ArgType {
@@ -231,6 +279,9 @@ data class KitArgSpec(
 
         @SerialName("int")
         INT,
+
+        @SerialName("kit-ref")
+        KIT_REF,
     }
 }
 

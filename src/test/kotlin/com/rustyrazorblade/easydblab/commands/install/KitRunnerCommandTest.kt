@@ -8,7 +8,9 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.services.DefaultKitEndpointResolver
 import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
+import com.rustyrazorblade.easydblab.services.KitEndpointResolver
 import com.rustyrazorblade.easydblab.services.KitHookExecutor
 import com.rustyrazorblade.easydblab.services.MetricsRegistryService
 import com.rustyrazorblade.easydblab.services.WorkloadStepExecutor
@@ -45,6 +47,15 @@ class KitRunnerCommandTest : BaseKoinTest() {
             instanceId = "i-ctrl",
         )
 
+    private val dbHost =
+        ClusterHost(
+            publicIp = "3.4.5.6",
+            privateIp = "10.0.2.1",
+            alias = "db0",
+            availabilityZone = "us-west-2a",
+            instanceId = "i-db0",
+        )
+
     private val clusterState =
         ClusterState(
             name = "test-cluster",
@@ -54,6 +65,7 @@ class KitRunnerCommandTest : BaseKoinTest() {
             hosts =
                 mapOf(
                     ServerType.Control to listOf(controlHost),
+                    ServerType.Cassandra to listOf(dbHost),
                 ),
         )
 
@@ -65,6 +77,7 @@ class KitRunnerCommandTest : BaseKoinTest() {
                 single<WorkloadStepExecutor> { mockWorkloadStepExecutor }
                 single<MetricsRegistryService> { mockMetricsRegistryService }
                 single<KitHookExecutor> { mockKitHookExecutor }
+                single<KitEndpointResolver> { DefaultKitEndpointResolver() }
             },
         )
 
@@ -452,6 +465,101 @@ class KitRunnerCommandTest : BaseKoinTest() {
         )
         command("mydb", "stop").call()
         verify(mockClusterStateManager).removeRunningWorkload("mydb")
+    }
+
+    private fun writeResolvedArgs(
+        kitName: String,
+        vars: Map<String, String>,
+    ) {
+        val dir = File(workingDir, kitName).also { it.mkdirs() }
+        File(dir, Constants.Kit.RESOLVED_ARGS_FILE).writeText(
+            vars.entries.joinToString("\n") { (k, v) -> "$k=$v" } + "\n",
+        )
+    }
+
+    @Test
+    fun `kit with kit-ref arg and valid target injects TARGET_JDBC_URL into script env`() {
+        // Write target kit.yaml with JDBC endpoint
+        File(File(workingDir, "clickhouse").also { it.mkdirs() }, "kit.yaml").writeText(
+            """
+            name: clickhouse
+            capabilities:
+              - type: sql
+                user: default
+                driver-class: com.clickhouse.jdbc.ClickHouseDriver
+            endpoints:
+              - name: JDBC
+                node-type: db
+                port: 8123
+                type: jdbc
+                scheme: clickhouse
+                path: /default
+            """.trimIndent(),
+        )
+        // Write bench kit.yaml with kit-ref arg
+        writeKitYaml(
+            "sysbench-clickhouse",
+            """
+            name: sysbench
+            args:
+              - flag: --target
+                variable: TARGET
+                type: kit-ref
+            """.trimIndent(),
+        )
+        writeResolvedArgs("sysbench-clickhouse", mapOf("TARGET" to "clickhouse"))
+
+        val outputFile = File(workingDir, "target_jdbc_url.txt")
+        writeScript(
+            "sysbench-clickhouse",
+            "start",
+            """echo "${'$'}TARGET_JDBC_URL" > "${outputFile.absolutePath}"""",
+        )
+
+        command("sysbench-clickhouse", "start").call()
+
+        assertThat(outputFile.readText().trim()).isEqualTo("jdbc:clickhouse://10.0.2.1:8123/default")
+    }
+
+    @Test
+    fun `kit with kit-ref arg and missing target dir produces no TARGET vars and no exception`() {
+        writeKitYaml(
+            "sysbench-missing",
+            """
+            name: sysbench
+            args:
+              - flag: --target
+                variable: TARGET
+                type: kit-ref
+            """.trimIndent(),
+        )
+        writeResolvedArgs("sysbench-missing", mapOf("TARGET" to "doesnotexist"))
+
+        val outputFile = File(workingDir, "target_url.txt")
+        writeScript(
+            "sysbench-missing",
+            "start",
+            """echo "${'$'}TARGET_JDBC_URL" > "${outputFile.absolutePath}"""",
+        )
+
+        val exitCode = command("sysbench-missing", "start").call()
+
+        assertThat(exitCode).isEqualTo(0)
+        assertThat(outputFile.readText().trim()).isEmpty()
+    }
+
+    @Test
+    fun `kit without kit-ref arg does not inject TARGET vars`() {
+        val outputFile = File(workingDir, "target_url.txt")
+        writeScript(
+            "mydb",
+            "start",
+            """echo "${'$'}TARGET_JDBC_URL" > "${outputFile.absolutePath}"""",
+        )
+
+        command("mydb", "start").call()
+
+        assertThat(outputFile.readText().trim()).isEmpty()
     }
 
     @Test

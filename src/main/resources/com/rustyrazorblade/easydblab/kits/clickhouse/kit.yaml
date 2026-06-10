@@ -26,6 +26,7 @@ endpoints:
     type: jdbc
     scheme: clickhouse
     path: /default?compress=0
+    database: "default"
 args:
   - flag: --clickhouse-version
     variable: CLICKHOUSE_VERSION

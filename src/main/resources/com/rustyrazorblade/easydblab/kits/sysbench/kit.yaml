@@ -1,0 +1,38 @@
+name: sysbench
+type: app
+description: sysbench SQL benchmarking kit — install with --target to point at a running database kit
+version: "1.0.0"
+collision-check: true
+
+args:
+  - flag: --target
+    variable: TARGET
+    type: kit-ref
+    capability: sql
+    description: "Name of the running database kit to benchmark (e.g. clickhouse, tidb)"
+    required: true
+  - flag: --threads
+    variable: THREADS
+    type: int
+    description: "Number of concurrent threads"
+    default: "4"
+  - flag: --duration
+    variable: DURATION
+    type: int
+    description: "Benchmark duration in seconds"
+    default: "60"
+  - flag: --workload
+    variable: WORKLOAD
+    type: string
+    description: "sysbench built-in workload (oltp_read_write, oltp_read_only, oltp_write_only)"
+    default: "oltp_read_write"
+  - flag: --scale
+    variable: SCALE
+    type: int
+    description: "Number of rows per table (in thousands)"
+    default: "10"
+  - flag: --tables
+    variable: TABLES
+    type: int
+    description: "Number of tables"
+    default: "10"

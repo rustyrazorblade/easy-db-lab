@@ -25,12 +25,17 @@ runtime:
   selector: "app.kubernetes.io/instance=tidb"
   namespace: default
 endpoints:
-  - name: "MySQL"
+  - name: "MySQL JDBC"
     node-type: app
     port: 30400
     type: jdbc
     scheme: mysql
     path: "/?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC"
+  - name: "MySQL wire"
+    node-type: app
+    port: 30400
+    type: mysql
+    database: "sbtest"
 args:
   - flag: --version
     variable: TIDB_VERSION

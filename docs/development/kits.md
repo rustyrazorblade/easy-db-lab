@@ -45,15 +45,17 @@ endpoints:
   - name: "HTTP UI"
     node-type: app       # "app" or "db"
     port: 8080
-    type: http           # http | https | jdbc | native | cql
-    scheme: ""           # optional: used for JDBC URLs
-    path: ""             # optional: appended to URL
+    type: http           # http | https | jdbc | native | cql | postgresql | mysql
+    scheme: ""           # optional: used for JDBC URLs (jdbc type only)
+    path: ""             # optional: appended to URL (http/https/jdbc only)
+    database: ""         # optional: logical database name (postgresql and mysql types)
 
 args:
   - flag: --workers
     variable: WORKERS
     description: "Number of workers"
-    type: int            # string | int | float | boolean
+    type: int            # string | int | float | boolean | kit-ref
+    capability: sql      # optional: for kit-ref, declares required capability
     required: false
     default: "${APP_NODE_COUNT}"
 
@@ -392,6 +394,140 @@ datasource under `service_name=<kit>`.
 
 See `docs/user-guide/profiling.md` for how to access profiles in Grafana, profile types, and
 the full observability data flow.
+
+## Bench Kits — cross-kit targeting
+
+A bench kit benchmarks a running database kit. It declares a `kit-ref` arg that the user
+populates with `--target <kit-name>` at install time. The framework then reads the target
+kit's declared endpoints and injects them as `TARGET_*` environment variables into every phase
+script.
+
+### Declaring a kit-ref arg
+
+```yaml
+args:
+  - flag: --target
+    variable: TARGET
+    type: kit-ref
+    capability: sql      # advisory: documents required capability
+    description: "Name of the running database kit to benchmark"
+    required: true
+```
+
+`type: kit-ref` tells easy-db-lab two things:
+1. The installed kit directory is named `<kit>-<target>` instead of `<kit>`, allowing
+   multiple simultaneous instances (e.g. `sysbench-clickhouse` and `sysbench-tidb`).
+2. At start time, `KitEndpointResolver` reads the target kit's `kit.yaml` endpoints and
+   injects them as `TARGET_*` environment variables.
+
+### TARGET_* injection rules
+
+The variables injected depend on what endpoints the target kit declares:
+
+| Endpoint type | Variables injected |
+|---------------|-------------------|
+| `jdbc` | `TARGET_JDBC_URL`, `TARGET_JDBC_USER`, `TARGET_JDBC_DRIVER` |
+| `postgresql` | `TARGET_PG_HOST`, `TARGET_PG_PORT`, `TARGET_PG_USER`, `TARGET_PG_DATABASE` |
+| `mysql` | `TARGET_MYSQL_HOST`, `TARGET_MYSQL_PORT`, `TARGET_MYSQL_USER`, `TARGET_MYSQL_DATABASE` |
+| `http` | `TARGET_HTTP_URL` |
+
+If the target kit directory does not exist or its `kit.yaml` is unreadable, no `TARGET_*`
+variables are injected and no error is raised (fail-safe).
+
+### Wire protocol endpoint types
+
+To expose a PostgreSQL or MySQL wire protocol port, use the corresponding endpoint type:
+
+```yaml
+endpoints:
+  - name: "PostgreSQL wire"
+    node-type: db
+    port: 5432
+    type: postgresql
+    database: "mydb"      # logical database name
+
+  - name: "MySQL wire"
+    node-type: db
+    port: 4000
+    type: mysql
+    database: "test"      # logical database name
+```
+
+The `database` field is also available on `jdbc` endpoints to store the logical database name
+separately from the JDBC URL path.
+
+### SQL capability
+
+Database kits that expose a SQL interface should declare the `sql` capability:
+
+```yaml
+capabilities:
+  - type: sql
+    user: default                            # default username
+    driver-class: com.clickhouse.jdbc.ClickHouseDriver  # JDBC driver (optional)
+```
+
+The `user` and `driver-class` fields are used when constructing `TARGET_JDBC_USER` and
+`TARGET_JDBC_DRIVER` for bench kits targeting this database.
+
+### Making an external kit targetable by bench kits
+
+If you are writing an external kit that exposes a SQL interface and want bench kits like
+sysbench to be able to target it, add three things to your `kit.yaml`:
+
+**1. A `sql` capability** — declares the default username and (for JDBC) the driver class:
+
+```yaml
+capabilities:
+  - type: sql
+    user: root
+    driver-class: com.mysql.cj.jdbc.Driver   # omit if you don't expose JDBC
+```
+
+**2. One or more wire protocol endpoints** — the endpoint type determines which `TARGET_*`
+variables the bench kit receives. Declare one per protocol your database supports:
+
+```yaml
+endpoints:
+  - name: "MySQL wire"
+    node-type: app        # or "db" — must match the node pool your kit runs on
+    port: 3306
+    type: mysql
+    database: "mydb"      # the logical database name bench kits should connect to
+
+  - name: "PostgreSQL wire"
+    node-type: app
+    port: 5432
+    type: postgresql
+    database: "mydb"
+
+  - name: "JDBC"
+    node-type: app
+    port: 3306
+    type: jdbc
+    scheme: mysql
+    path: "/mydb?useSSL=false"
+```
+
+You only need to declare the protocols your database actually supports. A MySQL-compatible
+database only needs the `mysql` endpoint; it does not need to also declare `jdbc` unless
+you want JDBC bench tools to target it.
+
+**3. NodePort service on the declared port** — the bench kit pod runs inside the same
+Kubernetes cluster and connects via the app or db node's private IP. Make sure your kit's
+`start` phase creates a NodePort service exposing the port you declared in the endpoint.
+
+Once these three pieces are in place, a user can install sysbench (or any other bench kit
+that declares `capability: sql`) against your kit:
+
+```bash
+easy-db-lab kit install sysbench --target <your-kit-name>
+easy-db-lab sysbench-<your-kit-name> prepare
+easy-db-lab sysbench-<your-kit-name> start
+```
+
+The capability check at install time will verify your kit exposes `sql` before writing
+any files, so misconfigured targets fail immediately with a clear error.
 
 ## Adding a New Kit
 

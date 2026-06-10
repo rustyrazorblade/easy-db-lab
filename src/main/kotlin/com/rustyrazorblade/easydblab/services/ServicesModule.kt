@@ -76,6 +76,7 @@ val servicesModule =
         factoryOf(::InstallTemplateResolver)
         factoryOf(::WorkloadStepExecutor)
         factory<KitHookExecutor> { DefaultKitHookExecutor(get(), get(), get()) }
+        singleOf(::DefaultKitEndpointResolver) bind KitEndpointResolver::class
         factoryOf(::DefaultOtelSyncService) bind OtelSyncService::class
         factoryOf(::DefaultMetricsRegistryService) bind MetricsRegistryService::class
         factory<VictoriaBackupService> { DefaultVictoriaBackupService(get(), get()) }

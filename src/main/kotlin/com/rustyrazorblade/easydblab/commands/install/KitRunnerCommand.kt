@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.services.DashboardRef
 import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
 import com.rustyrazorblade.easydblab.services.InstallStep
 import com.rustyrazorblade.easydblab.services.KitConfig
+import com.rustyrazorblade.easydblab.services.KitEndpointResolver
 import com.rustyrazorblade.easydblab.services.KitHookExecutor
 import com.rustyrazorblade.easydblab.services.KitMetrics
 import com.rustyrazorblade.easydblab.services.MetricsRegistryService
@@ -36,6 +37,7 @@ class KitRunnerCommand(
     private val workloadStepExecutor: WorkloadStepExecutor by inject()
     private val metricsRegistryService: MetricsRegistryService by inject()
     private val kitHookExecutor: KitHookExecutor by inject()
+    private val kitEndpointResolver: KitEndpointResolver by inject()
 
     private var processExitCode: Int = 0
 
@@ -75,7 +77,13 @@ class KitRunnerCommand(
         // argDefaults first so cluster-state values in base take precedence over kit defaults;
         // resolvedArgs overlays defaults with user-specified install-time values.
         val env = argDefaults + resolvedArgs + base + ("KUBECONFIG" to absoluteKubeconfig)
-        return env + ("BACKUP_NAME" to name)
+        val targetVars =
+            config
+                ?.kitRefArg
+                ?.let { resolvedArgs[it.variable]?.takeIf { v -> v.isNotBlank() } }
+                ?.let { kitEndpointResolver.resolveTargetVars(File(kitDir.parentFile, it), clusterState) }
+                .orEmpty()
+        return env + ("BACKUP_NAME" to name) + targetVars
     }
 
     /**

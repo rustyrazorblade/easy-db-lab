@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.services.KitType
 import com.rustyrazorblade.easydblab.services.StepExecutionContext
 import com.rustyrazorblade.easydblab.services.TemplateVariables
 import com.rustyrazorblade.easydblab.services.WorkloadStepExecutor
+import com.rustyrazorblade.easydblab.services.installConfigYaml
 import org.koin.core.component.inject
 import java.io.File
 
@@ -54,10 +55,14 @@ class KitInstallCommand(
             argValues.putIfAbsent(variable, default)
         }
 
+        validateKitRefCapability()
+
+        val instanceName = resolveInstanceName()
+
         if (config.collisionCheck && !force) {
-            val outputDir = File(context.workingDirectory, config.name)
+            val outputDir = File(context.workingDirectory, instanceName)
             if (outputDir.isDirectory && outputDir.listFiles().orEmpty().isNotEmpty()) {
-                eventBus.emit(Event.Install.CollisionDetected(kit = config.name))
+                eventBus.emit(Event.Install.CollisionDetected(kit = instanceName))
                 return
             }
         }
@@ -65,7 +70,7 @@ class KitInstallCommand(
         val storageSize = argValues.remove("STORAGE_SIZE").orEmpty()
         renderAndWrite(
             source = source,
-            kitName = config.name,
+            kitName = instanceName,
             storageSize = storageSize,
             extraVars = argValues.toMap(),
         )
@@ -74,10 +79,10 @@ class KitInstallCommand(
             val controlHost =
                 clusterState.getControlHost()
                     ?: error("No control node found in cluster state")
-            val kitDir = File(context.workingDirectory, config.name)
+            val kitDir = File(context.workingDirectory, instanceName)
             val variables =
                 TemplateVariables
-                    .from(state = clusterState, kitName = config.name, storageSize = storageSize)
+                    .from(state = clusterState, kitName = instanceName, storageSize = storageSize)
                     .toMap() + argValues
 
             runCatching {
@@ -87,7 +92,7 @@ class KitInstallCommand(
                         phase = Constants.Kit.PHASE_INSTALL,
                         context =
                             StepExecutionContext(
-                                kitName = config.name,
+                                kitName = instanceName,
                                 controlHost = controlHost,
                                 clusterState = clusterState,
                                 variables = variables,
@@ -100,4 +105,38 @@ class KitInstallCommand(
             }
         }
     }
+
+    /**
+     * Validates that the target kit declared by a kit-ref arg exposes the required capability.
+     * Fails fast with a clear error rather than letting the bench kit fail at runtime.
+     */
+    private fun validateKitRefCapability() {
+        val kitRefArg = config.kitRefArg ?: return
+        val requiredCapability = kitRefArg.capability.takeIf { it.isNotBlank() } ?: return
+        val targetName = argValues[kitRefArg.variable]?.takeIf { it.isNotBlank() } ?: return
+
+        val targetKitDir = File(context.workingDirectory, targetName)
+        val configFile = File(targetKitDir, Constants.Kit.CONFIG_FILE)
+        check(configFile.isFile) {
+            "Target kit '$targetName' is not installed (expected $configFile)"
+        }
+
+        val targetConfig = installConfigYaml.decodeFromString(KitConfig.serializer(), configFile.readText())
+        val hasCapability = targetConfig.capabilities.any { it.type == requiredCapability }
+        check(hasCapability) {
+            "Target kit '$targetName' does not have the '$requiredCapability' capability required by ${config.name}"
+        }
+    }
+
+    /**
+     * Computes the directory name for the installed kit. For kits with a kit-ref arg,
+     * the directory is named `<kit>-<target>` so the same bench kit can be installed
+     * against multiple databases simultaneously (e.g. sysbench-clickhouse, sysbench-mysql).
+     * For kits without a kit-ref arg, the directory is the kit's own name.
+     */
+    private fun resolveInstanceName(): String =
+        config.kitRefArg
+            ?.let { argValues[it.variable]?.takeIf { v -> v.isNotBlank() } }
+            ?.let { "${config.name}-$it" }
+            ?: config.name
 }

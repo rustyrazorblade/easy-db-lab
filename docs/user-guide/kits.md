@@ -36,6 +36,56 @@ easy-db-lab kit install clickhouse --help
 After install, the kit's files are written into a subdirectory of the cluster workspace.
 The kit's lifecycle commands are registered automatically.
 
+## Bench kits — benchmarking a database
+
+Bench kits are a special class of kit that run against an already-running database kit. They
+require a `--target` flag pointing at the installed database kit you want to benchmark.
+
+```bash
+# Install sysbench targeting your running ClickHouse instance
+easy-db-lab kit install sysbench --target clickhouse
+
+# Run the prepare, start, and stop lifecycle as usual
+easy-db-lab sysbench-clickhouse prepare
+easy-db-lab sysbench-clickhouse start
+easy-db-lab sysbench-clickhouse stop
+```
+
+The kit is installed into a directory named `<bench-kit>-<target>` (e.g. `sysbench-clickhouse`).
+This lets you run the same bench kit against multiple databases simultaneously and compare results:
+
+```bash
+easy-db-lab kit install sysbench --target clickhouse
+easy-db-lab kit install sysbench --target tidb
+
+# Both run at the same time — compare results in Grafana
+easy-db-lab sysbench-clickhouse start
+easy-db-lab sysbench-tidb start
+```
+
+### TARGET_* environment variables
+
+When a bench kit starts, easy-db-lab reads the target database's endpoint configuration and
+injects it as environment variables into every phase script:
+
+| Variable | Description |
+|----------|-------------|
+| `TARGET_JDBC_URL` | Full JDBC connection URL (e.g. `jdbc:clickhouse://10.0.1.5:8123/default`) |
+| `TARGET_JDBC_USER` | Database username for JDBC connections |
+| `TARGET_JDBC_DRIVER` | Fully-qualified JDBC driver class name |
+| `TARGET_PG_HOST` | Host for PostgreSQL wire protocol connections |
+| `TARGET_PG_PORT` | Port for PostgreSQL wire protocol connections |
+| `TARGET_PG_USER` | Username for PostgreSQL wire protocol connections |
+| `TARGET_PG_DATABASE` | Database name for PostgreSQL wire protocol connections |
+| `TARGET_MYSQL_HOST` | Host for MySQL wire protocol connections |
+| `TARGET_MYSQL_PORT` | Port for MySQL wire protocol connections |
+| `TARGET_MYSQL_USER` | Username for MySQL wire protocol connections |
+| `TARGET_MYSQL_DATABASE` | Database name for MySQL wire protocol connections |
+| `TARGET_HTTP_URL` | Full URL for HTTP endpoint connections |
+
+Which variables are populated depends on what endpoints the target kit declares. A kit that
+supports both JDBC and PostgreSQL wire protocol will populate both sets.
+
 ## Running kit commands
 
 Every installed kit gains a set of subcommands:

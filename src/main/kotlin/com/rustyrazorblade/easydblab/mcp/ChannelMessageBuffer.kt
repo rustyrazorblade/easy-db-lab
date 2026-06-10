@@ -84,7 +84,7 @@ class ChannelMessageBuffer(
      * @param message The message to clean
      * @return The cleaned message
      */
-    private fun cleanMessage(message: String): String {
+    internal fun cleanMessage(message: String): String {
         // Remove ANSI escape sequences (e.g., color codes)
         // Pattern matches ESC followed by [ and any number of digits, semicolons, and letters
         val noAnsi = message.replace(Regex("\u001b\\[[0-9;]*[a-zA-Z]"), "")

@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+POD_NAME="sysbench-${KIT_NAME}"
+
+echo "Stopping sysbench run pod..."
+kubectl --kubeconfig="${KUBECONFIG}" delete pod "${POD_NAME}" --ignore-not-found
+
+if [ -n "${TARGET_MYSQL_HOST:-}" ]; then
+  DB_ARGS="--db-driver=mysql \
+    --mysql-host=${TARGET_MYSQL_HOST} \
+    --mysql-port=${TARGET_MYSQL_PORT} \
+    --mysql-user=${TARGET_MYSQL_USER} \
+    --mysql-db=${TARGET_MYSQL_DATABASE}"
+elif [ -n "${TARGET_PG_HOST:-}" ]; then
+  DB_ARGS="--db-driver=pgsql \
+    --pgsql-host=${TARGET_PG_HOST} \
+    --pgsql-port=${TARGET_PG_PORT} \
+    --pgsql-user=${TARGET_PG_USER} \
+    --pgsql-db=${TARGET_PG_DATABASE}"
+else
+  echo "Warning: no database endpoint found, skipping cleanup." >&2
+  exit 0
+fi
+
+echo "Running sysbench cleanup..."
+CLEANUP_POD="sysbench-cleanup-${KIT_NAME}"
+kubectl --kubeconfig="${KUBECONFIG}" run "${CLEANUP_POD}" \
+  --image="docker.io/severalnines/sysbench" \
+  --restart=Never \
+  --command -- sysbench \
+    ${DB_ARGS} \
+    --tables="${TABLES}" \
+    "${WORKLOAD}" cleanup
+
+kubectl --kubeconfig="${KUBECONFIG}" wait \
+  --for=jsonpath='{.status.phase}'=Succeeded \
+  --timeout=300s \
+  pod/"${CLEANUP_POD}"
+
+kubectl --kubeconfig="${KUBECONFIG}" delete pod "${CLEANUP_POD}" --ignore-not-found
+echo "Sysbench stopped and data cleaned up."

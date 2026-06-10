@@ -73,7 +73,7 @@ class KitInstallCommandFactory(
         val resolvedDefault = resolveDefault(arg.default, templateVars)
         val picoType =
             when (arg.type) {
-                KitArgSpec.ArgType.STRING -> String::class.java
+                KitArgSpec.ArgType.STRING, KitArgSpec.ArgType.KIT_REF -> String::class.java
                 KitArgSpec.ArgType.BOOLEAN -> Boolean::class.java
                 KitArgSpec.ArgType.FLOAT -> Double::class.java
                 KitArgSpec.ArgType.INT -> Int::class.java

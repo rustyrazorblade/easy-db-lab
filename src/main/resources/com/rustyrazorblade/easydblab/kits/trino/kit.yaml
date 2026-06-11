@@ -1,0 +1,43 @@
+name: trino
+type: app
+description: Scaffold Trino workload files (stateless, targets app nodes)
+collision-check: false
+metrics:
+  - type: scrape
+    port: 8080
+    path: /metrics
+    username: trino
+runtime:
+  type: helm
+  release: trino
+  namespace: default
+endpoints:
+  - name: "Trino UI"
+    node-type: app
+    port: 8080
+    type: http
+  - name: "JDBC"
+    node-type: app
+    port: 8080
+    type: jdbc
+    scheme: trino
+args:
+  - flag: --version
+    variable: VERSION
+    description: "Trino release version (e.g. 474, 469)"
+    type: string
+    default: "474"
+  - flag: --workers
+    variable: WORKERS
+    description: "Number of Trino workers (default: app node count)"
+    type: int
+    default: "${APP_NODE_COUNT}"
+hooks:
+  post-workload-start:
+    script: bin/update-catalogs.sh
+  post-workload-stop:
+    script: bin/update-catalogs.sh
+capabilities:
+  - type: sql
+    user: trino
+    driver-class: io.trino.jdbc.TrinoDriver

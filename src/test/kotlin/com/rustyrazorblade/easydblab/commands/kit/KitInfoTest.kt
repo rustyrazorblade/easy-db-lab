@@ -55,7 +55,7 @@ class KitInfoTest : BaseKoinTest() {
     fun `clickhouse info lists configurable args with flags and defaults`() {
         val output = buildInfo("clickhouse")
         assertThat(output).contains("Args:")
-        assertThat(output).contains("--clickhouse-version")
+        assertThat(output).contains("--version")
         assertThat(output).contains("--size")
         assertThat(output).contains("--replicas")
         assertThat(output).contains("(default:")

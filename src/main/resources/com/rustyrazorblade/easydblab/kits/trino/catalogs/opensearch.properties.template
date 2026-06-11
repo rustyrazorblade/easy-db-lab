@@ -1,0 +1,8 @@
+# Note: the Trino OpenSearch connector does not support AWS SigV4 request signing.
+# This catalog works only when the domain has fine-grained access control disabled
+# (open access policy). Requests to a standard AWS OpenSearch domain will return 403.
+connector.name=opensearch
+opensearch.host=__OPENSEARCH_ENDPOINT__
+opensearch.port=443
+opensearch.tls.enabled=true
+opensearch.ignore-publish-address=true

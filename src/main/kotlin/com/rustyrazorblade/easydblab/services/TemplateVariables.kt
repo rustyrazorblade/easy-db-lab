@@ -28,6 +28,7 @@ data class TemplateVariables(
     val appNodeIps: String,
     val runningKits: String,
     val vpcCidr: String,
+    val opensearchEndpoint: String,
 ) {
     fun toMap(): Map<String, String> =
         mapOf(
@@ -49,6 +50,7 @@ data class TemplateVariables(
             "APP_NODE_IPS" to appNodeIps,
             "RUNNING_KITS" to runningKits,
             "VPC_CIDR" to vpcCidr,
+            "OPENSEARCH_ENDPOINT" to opensearchEndpoint,
         )
 
     companion object {
@@ -88,6 +90,7 @@ data class TemplateVariables(
                 // cidr is null until 'up' resolves and persists it; DEFAULT_CIDR is a safe
                 // fallback because templates using VPC_CIDR only execute post-up
                 vpcCidr = state.initConfig?.cidr ?: Constants.Vpc.DEFAULT_CIDR,
+                opensearchEndpoint = state.openSearchDomain?.endpoint.orEmpty(),
             )
         }
     }

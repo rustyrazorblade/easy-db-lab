@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WORKLOAD_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+CATALOGS_DIR="${SCRIPT_DIR}/../catalogs"
+CATALOG_YAML="${SCRIPT_DIR}/../.catalogs-override.yaml"
+export KUBECONFIG="${SCRIPT_DIR}/../../__KUBECONFIG__"
+
+catalog_content=""
+
+# Add a catalog entry from a properties file
+add_catalog() {
+    local name="$1"
+    local props_file="$2"
+    catalog_content+="  ${name}: |"$'\n'
+    while IFS= read -r line; do
+        catalog_content+="    ${line}"$'\n'
+    done < "$props_file"
+}
+
+# Infrastructure databases (not kits): add catalog when endpoint is known
+OPENSEARCH_PROPS="${CATALOGS_DIR}/opensearch.properties"
+if [ -f "$OPENSEARCH_PROPS" ] && grep -qE 'opensearch.host=.+' "$OPENSEARCH_PROPS"; then
+    echo "Adding catalog for infrastructure db: opensearch"
+    add_catalog "opensearch" "$OPENSEARCH_PROPS"
+fi
+
+# Natively supported workloads: check catalogs/ directory
+if [ -n "${RUNNING_KITS:-}" ]; then
+    IFS=',' read -ra workloads <<< "$RUNNING_KITS"
+    for workload in "${workloads[@]}"; do
+        props="${CATALOGS_DIR}/${workload}.properties"
+        if [ -f "$props" ]; then
+            echo "Adding catalog for running workload: $workload"
+            add_catalog "$workload" "$props"
+        fi
+    done
+fi
+
+# Custom --from workloads: scan sibling directories for trino-catalog.properties
+for props in "${WORKLOAD_ROOT}"/*/trino-catalog.properties; do
+    [ -f "$props" ] || continue
+    workload=$(basename "$(dirname "$props")")
+    echo "Adding catalog from custom workload: $workload"
+    add_catalog "$workload" "$props"
+done
+
+# Write override file and run helm upgrade
+EXTRA_VALUES=()
+if [ -n "$catalog_content" ]; then
+    printf "additionalCatalogs:\n%s" "$catalog_content" > "$CATALOG_YAML"
+    EXTRA_VALUES=(--values "$CATALOG_YAML")
+fi
+helm upgrade --install trino trinodb/trino \
+  --namespace default \
+  --create-namespace \
+  --values "${SCRIPT_DIR}/../values.yaml" \
+  "${EXTRA_VALUES[@]}"
+
+# The coordinator uses hostPort:8080. On a single app node a rolling update
+# deadlocks — new pod can't bind the port while the old pod holds it. Deleting
+# the pod lets the controller replace it cleanly.
+kubectl delete pod -n default \
+  -l 'app.kubernetes.io/name=trino,app.kubernetes.io/component=coordinator' \
+  --ignore-not-found
+kubectl rollout status deployment/trino-coordinator --namespace default --timeout=180s
+
+echo "Trino catalog update complete."

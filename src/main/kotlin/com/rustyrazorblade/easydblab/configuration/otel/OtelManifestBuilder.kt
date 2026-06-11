@@ -70,7 +70,8 @@ class OtelManifestBuilder(
             val jobName = data["job-name"] ?: return@mapNotNull null
             val port = data["port"]?.toIntOrNull() ?: return@mapNotNull null
             val path = data["path"] ?: "/metrics"
-            WorkloadScrapeConfig(jobName = jobName, port = port, path = path)
+            val username = data["username"] ?: ""
+            WorkloadScrapeConfig(jobName = jobName, port = port, path = path, username = username)
         }
     }
 
@@ -184,6 +185,7 @@ class OtelManifestBuilder(
                                 replacement = "\${env:CLUSTER_NAME}",
                             ),
                         ),
+                    basicAuth = if (config.username.isNotBlank()) PrometheusBasicAuth(username = config.username) else null,
                 )
             }
         // 8-space indent matches the depth of `- job_name:` entries under

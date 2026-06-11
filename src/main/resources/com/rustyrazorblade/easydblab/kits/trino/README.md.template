@@ -1,0 +1,89 @@
+# Trino on __KIT_NAME__ cluster
+
+Workload: Trino — stateless, targets app nodes
+Version: __VERSION__
+Workers: __WORKERS__
+App nodes: __APP_NODE_COUNT__
+Region: __REGION__
+
+## Quick start
+
+```bash
+./start.sh    # install Trino via Helm, wait for ready
+./stop.sh     # scale Trino to zero (no persistent data)
+```
+
+## Built-in catalogs
+
+Catalogs for co-located databases are added automatically when their services are running:
+
+| Catalog      | Connector    | When added                          |
+|--------------|--------------|-------------------------------------|
+| `cassandra`  | Cassandra    | When `cassandra` is in RUNNING_KITS |
+| `clickhouse` | ClickHouse   | When `clickhouse` is in RUNNING_KITS |
+| `opensearch` | OpenSearch   | When cluster has an OpenSearch domain |
+| `tidb`       | MySQL        | When `tidb` is in RUNNING_KITS        |
+
+## Custom catalogs
+
+You can add your own Trino catalogs — extra data sources, federation views, or
+external databases — without modifying any kit files.
+
+### Option 1: Drop a `trino-catalog.properties` file in a sibling directory
+
+Any sibling kit workspace directory that contains a `trino-catalog.properties`
+file is picked up automatically by `update-catalogs.sh`:
+
+```
+clusters/my-cluster/
+├── trino/               ← this kit
+└── my-other-db/
+    └── trino-catalog.properties   ← auto-discovered
+```
+
+The catalog name is taken from the directory name (`my-other-db`). This is the
+recommended approach for ad-hoc databases and custom --from kits.
+
+Example `trino-catalog.properties` for a MySQL database:
+```properties
+connector.name=mysql
+connection-url=jdbc:mysql://my-host:3306
+connection-user=root
+connection-password=secret
+```
+
+### Option 2: Edit the override file directly
+
+`update-catalogs.sh` writes a Helm values override to `.catalogs-override.yaml`
+before each `helm upgrade`. You can also edit this file by hand and run
+`./update-catalogs.sh` to apply changes:
+
+```yaml
+additionalCatalogs:
+  my_catalog: |
+    connector.name=tpch
+    tpch.splits-per-node=4
+```
+
+### Re-applying catalog changes
+
+After adding or changing catalogs, run:
+
+```bash
+./bin/update-catalogs.sh
+```
+
+This re-runs `helm upgrade` with the new catalog values. Running queries in
+progress are not interrupted — Trino restarts gracefully.
+
+### Connector reference
+
+Trino ships with connectors for many systems. Common ones:
+
+- [Cassandra](https://trino.io/docs/current/connector/cassandra.html)
+- [ClickHouse](https://trino.io/docs/current/connector/clickhouse.html)
+- [OpenSearch](https://trino.io/docs/current/connector/opensearch.html)
+- [MySQL](https://trino.io/docs/current/connector/mysql.html)
+- [PostgreSQL](https://trino.io/docs/current/connector/postgresql.html)
+- [TPCH (built-in benchmark data)](https://trino.io/docs/current/connector/tpch.html)
+- [Black Hole (dev/testing)](https://trino.io/docs/current/connector/blackhole.html)

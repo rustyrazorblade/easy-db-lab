@@ -1,0 +1,382 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "datasource",
+          "uid": "grafana"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "target": {
+          "limit": 100,
+          "matchAny": false,
+          "tags": [],
+          "type": "dashboard"
+        },
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Trino query engine metrics: query activity, memory, throughput, and CPU",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
+      "panels": [],
+      "title": "Query Activity",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Number of queries currently running",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 4, "x": 0, "y": 1 },
+      "id": 2,
+      "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
+      "targets": [{ "expr": "trino_execution_name_QueryManager_RunningQueries{job=\"trino\", cluster=\"$cluster\"}", "legendFormat": "Running", "refId": "A" }],
+      "title": "Running Queries",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Number of queries waiting in the queue",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 5 }, { "color": "red", "value": 20 }] },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 4, "x": 4, "y": 1 },
+      "id": 3,
+      "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
+      "targets": [{ "expr": "trino_execution_name_QueryManager_QueuedQueries{job=\"trino\", cluster=\"$cluster\"}", "legendFormat": "Queued", "refId": "A" }],
+      "title": "Queued Queries",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Number of queries fully blocked waiting for resources",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 5 }] },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 4, "x": 8, "y": 1 },
+      "id": 4,
+      "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
+      "targets": [{ "expr": "trino_execution_name_QueryManager_FullyBlockedQueries{job=\"trino\", cluster=\"$cluster\"}", "legendFormat": "Blocked", "refId": "A" }],
+      "title": "Fully Blocked Queries",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Rate of successfully completed queries per second",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 4, "x": 12, "y": 1 },
+      "id": 5,
+      "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
+      "targets": [{ "expr": "rate(trino_execution_name_QueryManager_CompletedQueries_total{job=\"trino\", cluster=\"$cluster\"}[5m])", "legendFormat": "Completed/s", "refId": "A" }],
+      "title": "Completed Queries/sec",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Rate of failed queries per second — any non-zero value warrants investigation",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 0.01 }] },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 4, "x": 16, "y": 1 },
+      "id": 6,
+      "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
+      "targets": [{ "expr": "rate(trino_execution_name_QueryManager_FailedQueries_total{job=\"trino\", cluster=\"$cluster\"}[5m])", "legendFormat": "Failed/s", "refId": "A" }],
+      "title": "Failed Queries/sec",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Running, queued, and blocked query counts over time",
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "short" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "id": 7,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "trino_execution_name_QueryManager_RunningQueries{job=\"trino\", cluster=\"$cluster\"}", "legendFormat": "Running {{instance}}", "refId": "A" },
+        { "expr": "trino_execution_name_QueryManager_QueuedQueries{job=\"trino\", cluster=\"$cluster\"}", "legendFormat": "Queued {{instance}}", "refId": "B" },
+        { "expr": "trino_execution_name_QueryManager_FullyBlockedQueries{job=\"trino\", cluster=\"$cluster\"}", "legendFormat": "Blocked {{instance}}", "refId": "C" }
+      ],
+      "title": "Query Counts Over Time",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Rate of completed and failed queries per second",
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "reqps" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "id": 8,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "rate(trino_execution_name_QueryManager_CompletedQueries_total{job=\"trino\", cluster=\"$cluster\"}[5m])", "legendFormat": "Completed {{instance}}", "refId": "A" },
+        { "expr": "rate(trino_execution_name_QueryManager_FailedQueries_total{job=\"trino\", cluster=\"$cluster\"}[5m])", "legendFormat": "Failed {{instance}}", "refId": "B" }
+      ],
+      "title": "Query Completion/Failure Rate",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 12 },
+      "id": 9,
+      "panels": [],
+      "title": "Memory",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Total memory available across the Trino cluster",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 4, "x": 0, "y": 13 },
+      "id": 10,
+      "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
+      "targets": [{ "expr": "trino_memory_name_ClusterMemoryManager_ClusterMemoryBytes{job=\"trino\", cluster=\"$cluster\"}", "legendFormat": "Total Memory", "refId": "A" }],
+      "title": "Cluster Total Memory",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Total memory currently reserved by all running queries",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }] },
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 4, "x": 4, "y": 13 },
+      "id": 11,
+      "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
+      "targets": [{ "expr": "trino_memory_name_ClusterMemoryManager_ClusterTotalMemoryReservation{job=\"trino\", cluster=\"$cluster\"}", "legendFormat": "Total Reserved", "refId": "A" }],
+      "title": "Total Memory Reservation",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "User (non-system) memory currently reserved by running queries",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }] },
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 4, "x": 8, "y": 13 },
+      "id": 12,
+      "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
+      "targets": [{ "expr": "trino_memory_name_ClusterMemoryManager_ClusterUserMemoryReservation{job=\"trino\", cluster=\"$cluster\"}", "legendFormat": "User Reserved", "refId": "A" }],
+      "title": "User Memory Reservation",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Total number of queries killed due to out-of-memory conditions — should be 0",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 4, "x": 12, "y": 13 },
+      "id": 13,
+      "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
+      "targets": [{ "expr": "trino_memory_name_ClusterMemoryManager_QueriesKilledDueToOutOfMemory{job=\"trino\", cluster=\"$cluster\"}", "legendFormat": "OOM Kills", "refId": "A" }],
+      "title": "Queries Killed (OOM)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Cluster memory capacity vs total and user memory reservations over time",
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "bytes" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "id": 14,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "trino_memory_name_ClusterMemoryManager_ClusterMemoryBytes{job=\"trino\", cluster=\"$cluster\"}", "legendFormat": "Total Capacity {{instance}}", "refId": "A" },
+        { "expr": "trino_memory_name_ClusterMemoryManager_ClusterTotalMemoryReservation{job=\"trino\", cluster=\"$cluster\"}", "legendFormat": "Total Reserved {{instance}}", "refId": "B" },
+        { "expr": "trino_memory_name_ClusterMemoryManager_ClusterUserMemoryReservation{job=\"trino\", cluster=\"$cluster\"}", "legendFormat": "User Reserved {{instance}}", "refId": "C" }
+      ],
+      "title": "Cluster Memory Over Time",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Cumulative count of queries killed due to out-of-memory — any increase indicates memory pressure",
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "short" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "id": 15,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "trino_memory_name_ClusterMemoryManager_QueriesKilledDueToOutOfMemory{job=\"trino\", cluster=\"$cluster\"}", "legendFormat": "OOM Kills {{instance}}", "refId": "A" }
+      ],
+      "title": "OOM Kills Over Time",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 24 },
+      "id": 16,
+      "panels": [],
+      "title": "Throughput",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Data bytes read into tasks per second across all workers",
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "Bps" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 25 },
+      "id": 17,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "rate(trino_execution_name_SqlTaskManager_InputDataSize_total{job=\"trino\", cluster=\"$cluster\"}[5m])", "legendFormat": "Input Bytes/s {{instance}}", "refId": "A" },
+        { "expr": "rate(trino_execution_name_SqlTaskManager_OutputDataSize_total{job=\"trino\", cluster=\"$cluster\"}[5m])", "legendFormat": "Output Bytes/s {{instance}}", "refId": "B" }
+      ],
+      "title": "Task Data Throughput (Bytes)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Rows read and written by tasks per second across all workers",
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "rows/sec" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 25 },
+      "id": 18,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "rate(trino_execution_name_SqlTaskManager_InputPositions_total{job=\"trino\", cluster=\"$cluster\"}[5m])", "legendFormat": "Input Rows/s {{instance}}", "refId": "A" },
+        { "expr": "rate(trino_execution_name_SqlTaskManager_OutputPositions_total{job=\"trino\", cluster=\"$cluster\"}[5m])", "legendFormat": "Output Rows/s {{instance}}", "refId": "B" }
+      ],
+      "title": "Task Row Throughput",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "CPU seconds consumed by queries per second — indicates query execution intensity",
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "s/s" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 33 },
+      "id": 19,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "rate(trino_execution_name_QueryManager_ConsumedCpuTimeSecs_total{job=\"trino\", cluster=\"$cluster\"}[5m])", "legendFormat": "CPU s/s {{instance}}", "refId": "A" }
+      ],
+      "title": "Query CPU Consumption Rate",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["trino"],
+  "templating": {
+    "list": [
+      {
+        "current": { "text": "VictoriaMetrics", "value": "VictoriaMetrics" },
+        "hide": 0,
+        "includeAll": false,
+        "label": "Datasource",
+        "multi": false,
+        "name": "datasource",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "type": "datasource"
+      },
+      {
+        "current": {},
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "definition": "label_values(up{job=\"trino\"}, cluster)",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Cluster",
+        "multi": false,
+        "name": "cluster",
+        "options": [],
+        "query": {
+          "query": "label_values(up{job=\"trino\"}, cluster)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 2,
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Trino Overview",
+  "uid": "trino-overview",
+  "version": 1
+}

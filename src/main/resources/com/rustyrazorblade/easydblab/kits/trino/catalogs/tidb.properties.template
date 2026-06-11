@@ -1,0 +1,4 @@
+connector.name=mysql
+connection-url=jdbc:mysql://tidb-nodeport.default.svc.cluster.local:4000/?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+connection-user=root
+connection-password=

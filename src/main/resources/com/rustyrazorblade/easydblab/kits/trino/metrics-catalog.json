@@ -1,0 +1,244 @@
+{
+  "workload": "trino",
+  "exported_at": "2026-06-10T17:00:50Z",
+  "series": [
+    {
+      "name": "trino_execution_name_QueryManager_CompletedQueries_total",
+      "labels": {
+        "cluster": "trino-metrics-7766a487-ec03-41d7-8d49-19846d7e4fc1",
+        "job": "trino",
+        "instance": "app0:8080",
+        "host_name": "app0",
+        "os_type": "linux",
+        "otel_scope_name": "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver",
+        "otel_scope_version": "0.154.0",
+        "server_address": "app0",
+        "server_port": "8080",
+        "service_instance_id": "app0:8080",
+        "service_name": "trino",
+        "url_scheme": "http"
+      }
+    },
+    {
+      "name": "trino_execution_name_QueryManager_ConsumedCpuTimeSecs_total",
+      "labels": {
+        "cluster": "trino-metrics-7766a487-ec03-41d7-8d49-19846d7e4fc1",
+        "job": "trino",
+        "instance": "app0:8080",
+        "host_name": "app0",
+        "os_type": "linux",
+        "otel_scope_name": "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver",
+        "otel_scope_version": "0.154.0",
+        "server_address": "app0",
+        "server_port": "8080",
+        "service_instance_id": "app0:8080",
+        "service_name": "trino",
+        "url_scheme": "http"
+      }
+    },
+    {
+      "name": "trino_execution_name_QueryManager_FailedQueries_total",
+      "labels": {
+        "cluster": "trino-metrics-7766a487-ec03-41d7-8d49-19846d7e4fc1",
+        "job": "trino",
+        "instance": "app0:8080",
+        "host_name": "app0",
+        "os_type": "linux",
+        "otel_scope_name": "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver",
+        "otel_scope_version": "0.154.0",
+        "server_address": "app0",
+        "server_port": "8080",
+        "service_instance_id": "app0:8080",
+        "service_name": "trino",
+        "url_scheme": "http"
+      }
+    },
+    {
+      "name": "trino_execution_name_QueryManager_FullyBlockedQueries",
+      "labels": {
+        "cluster": "trino-metrics-7766a487-ec03-41d7-8d49-19846d7e4fc1",
+        "job": "trino",
+        "instance": "app0:8080",
+        "host_name": "app0",
+        "os_type": "linux",
+        "otel_scope_name": "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver",
+        "otel_scope_version": "0.154.0",
+        "server_address": "app0",
+        "server_port": "8080",
+        "service_instance_id": "app0:8080",
+        "service_name": "trino",
+        "url_scheme": "http"
+      }
+    },
+    {
+      "name": "trino_execution_name_QueryManager_QueuedQueries",
+      "labels": {
+        "cluster": "trino-metrics-7766a487-ec03-41d7-8d49-19846d7e4fc1",
+        "job": "trino",
+        "instance": "app0:8080",
+        "host_name": "app0",
+        "os_type": "linux",
+        "otel_scope_name": "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver",
+        "otel_scope_version": "0.154.0",
+        "server_address": "app0",
+        "server_port": "8080",
+        "service_instance_id": "app0:8080",
+        "service_name": "trino",
+        "url_scheme": "http"
+      }
+    },
+    {
+      "name": "trino_execution_name_QueryManager_RunningQueries",
+      "labels": {
+        "cluster": "trino-metrics-7766a487-ec03-41d7-8d49-19846d7e4fc1",
+        "job": "trino",
+        "instance": "app0:8080",
+        "host_name": "app0",
+        "os_type": "linux",
+        "otel_scope_name": "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver",
+        "otel_scope_version": "0.154.0",
+        "server_address": "app0",
+        "server_port": "8080",
+        "service_instance_id": "app0:8080",
+        "service_name": "trino",
+        "url_scheme": "http"
+      }
+    },
+    {
+      "name": "trino_execution_name_SqlTaskManager_InputDataSize_total",
+      "labels": {
+        "cluster": "trino-metrics-7766a487-ec03-41d7-8d49-19846d7e4fc1",
+        "job": "trino",
+        "instance": "app0:8080",
+        "host_name": "app0",
+        "os_type": "linux",
+        "otel_scope_name": "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver",
+        "otel_scope_version": "0.154.0",
+        "server_address": "app0",
+        "server_port": "8080",
+        "service_instance_id": "app0:8080",
+        "service_name": "trino",
+        "url_scheme": "http"
+      }
+    },
+    {
+      "name": "trino_execution_name_SqlTaskManager_InputPositions_total",
+      "labels": {
+        "cluster": "trino-metrics-7766a487-ec03-41d7-8d49-19846d7e4fc1",
+        "job": "trino",
+        "instance": "app0:8080",
+        "host_name": "app0",
+        "os_type": "linux",
+        "otel_scope_name": "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver",
+        "otel_scope_version": "0.154.0",
+        "server_address": "app0",
+        "server_port": "8080",
+        "service_instance_id": "app0:8080",
+        "service_name": "trino",
+        "url_scheme": "http"
+      }
+    },
+    {
+      "name": "trino_execution_name_SqlTaskManager_OutputDataSize_total",
+      "labels": {
+        "cluster": "trino-metrics-7766a487-ec03-41d7-8d49-19846d7e4fc1",
+        "job": "trino",
+        "instance": "app0:8080",
+        "host_name": "app0",
+        "os_type": "linux",
+        "otel_scope_name": "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver",
+        "otel_scope_version": "0.154.0",
+        "server_address": "app0",
+        "server_port": "8080",
+        "service_instance_id": "app0:8080",
+        "service_name": "trino",
+        "url_scheme": "http"
+      }
+    },
+    {
+      "name": "trino_execution_name_SqlTaskManager_OutputPositions_total",
+      "labels": {
+        "cluster": "trino-metrics-7766a487-ec03-41d7-8d49-19846d7e4fc1",
+        "job": "trino",
+        "instance": "app0:8080",
+        "host_name": "app0",
+        "os_type": "linux",
+        "otel_scope_name": "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver",
+        "otel_scope_version": "0.154.0",
+        "server_address": "app0",
+        "server_port": "8080",
+        "service_instance_id": "app0:8080",
+        "service_name": "trino",
+        "url_scheme": "http"
+      }
+    },
+    {
+      "name": "trino_memory_name_ClusterMemoryManager_ClusterMemoryBytes",
+      "labels": {
+        "cluster": "trino-metrics-7766a487-ec03-41d7-8d49-19846d7e4fc1",
+        "job": "trino",
+        "instance": "app0:8080",
+        "host_name": "app0",
+        "os_type": "linux",
+        "otel_scope_name": "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver",
+        "otel_scope_version": "0.154.0",
+        "server_address": "app0",
+        "server_port": "8080",
+        "service_instance_id": "app0:8080",
+        "service_name": "trino",
+        "url_scheme": "http"
+      }
+    },
+    {
+      "name": "trino_memory_name_ClusterMemoryManager_ClusterTotalMemoryReservation",
+      "labels": {
+        "cluster": "trino-metrics-7766a487-ec03-41d7-8d49-19846d7e4fc1",
+        "job": "trino",
+        "instance": "app0:8080",
+        "host_name": "app0",
+        "os_type": "linux",
+        "otel_scope_name": "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver",
+        "otel_scope_version": "0.154.0",
+        "server_address": "app0",
+        "server_port": "8080",
+        "service_instance_id": "app0:8080",
+        "service_name": "trino",
+        "url_scheme": "http"
+      }
+    },
+    {
+      "name": "trino_memory_name_ClusterMemoryManager_ClusterUserMemoryReservation",
+      "labels": {
+        "cluster": "trino-metrics-7766a487-ec03-41d7-8d49-19846d7e4fc1",
+        "job": "trino",
+        "instance": "app0:8080",
+        "host_name": "app0",
+        "os_type": "linux",
+        "otel_scope_name": "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver",
+        "otel_scope_version": "0.154.0",
+        "server_address": "app0",
+        "server_port": "8080",
+        "service_instance_id": "app0:8080",
+        "service_name": "trino",
+        "url_scheme": "http"
+      }
+    },
+    {
+      "name": "trino_memory_name_ClusterMemoryManager_QueriesKilledDueToOutOfMemory",
+      "labels": {
+        "cluster": "trino-metrics-7766a487-ec03-41d7-8d49-19846d7e4fc1",
+        "job": "trino",
+        "instance": "app0:8080",
+        "host_name": "app0",
+        "os_type": "linux",
+        "otel_scope_name": "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver",
+        "otel_scope_version": "0.154.0",
+        "server_address": "app0",
+        "server_port": "8080",
+        "service_instance_id": "app0:8080",
+        "service_name": "trino",
+        "url_scheme": "http"
+      }
+    }
+  ]
+}

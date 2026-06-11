@@ -1,15 +1,26 @@
 package com.rustyrazorblade.easydblab.configuration.otel
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
+data class PrometheusBasicAuth(
+    val username: String,
+    val password: String = "",
+)
+
+@Serializable
+@OptIn(ExperimentalSerializationApi::class)
 data class PrometheusScrapeJob(
     @SerialName("job_name") val jobName: String,
     @SerialName("scrape_interval") val scrapeInterval: String,
     @SerialName("static_configs") val staticConfigs: List<PrometheusStaticConfig>,
     @SerialName("metrics_path") val metricsPath: String,
     @SerialName("relabel_configs") val relabelConfigs: List<PrometheusRelabelConfig>,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    @SerialName("basic_auth") val basicAuth: PrometheusBasicAuth? = null,
 )
 
 @Serializable

@@ -36,6 +36,13 @@ spec:
             <allowed_disk>s3_backup</allowed_disk>
           </backups>
         </clickhouse>
+      # Enable explicitly rather than relying on the image's default config — the
+      # Altinity operator's generated config does not guarantee these listeners.
+      config.d/wire-protocols.xml: |
+        <clickhouse>
+          <mysql_port>9004</mysql_port>
+          <postgresql_port>9005</postgresql_port>
+        </clickhouse>
       config.d/prometheus.xml: |
         <clickhouse>
           <prometheus>

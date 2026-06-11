@@ -4,8 +4,8 @@ A kit is a self-contained package of configuration and scripts that installs, st
 and optionally backs up a workload on your cluster. Each kit defines its full lifecycle in a
 `kit.yaml` file using typed steps — no Kubernetes YAML wrangling required.
 
-easy-db-lab ships with built-in kits (ClickHouse, Presto). You can also create your own kits
-for any workload you want to benchmark or test.
+easy-db-lab ships with built-in kits (ClickHouse, Presto, Trino, TiDB, sysbench). You can
+also create your own kits for any workload you want to benchmark or test.
 
 ## Discovering kits
 
@@ -42,26 +42,30 @@ Bench kits are a special class of kit that run against an already-running databa
 require a `--target` flag pointing at the installed database kit you want to benchmark.
 
 ```bash
-# Install sysbench targeting your running ClickHouse instance
-easy-db-lab kit install sysbench --target clickhouse
+# Install sysbench targeting your running TiDB instance
+easy-db-lab kit install sysbench --target tidb
 
 # Run the prepare, start, and stop lifecycle as usual
-easy-db-lab sysbench-clickhouse prepare
-easy-db-lab sysbench-clickhouse start
-easy-db-lab sysbench-clickhouse stop
+easy-db-lab sysbench-tidb prepare
+easy-db-lab sysbench-tidb start
+easy-db-lab sysbench-tidb stop
 ```
 
-The kit is installed into a directory named `<bench-kit>-<target>` (e.g. `sysbench-clickhouse`).
+The kit is installed into a directory named `<bench-kit>-<target>` (e.g. `sysbench-tidb`).
 This lets you run the same bench kit against multiple databases simultaneously and compare results:
 
 ```bash
-easy-db-lab kit install sysbench --target clickhouse
 easy-db-lab kit install sysbench --target tidb
+easy-db-lab kit install sysbench --target my-custom-db
 
 # Both run at the same time — compare results in Grafana
-easy-db-lab sysbench-clickhouse start
 easy-db-lab sysbench-tidb start
+easy-db-lab sysbench-my-custom-db start
 ```
+
+The target must expose a wire protocol endpoint the bench tool can speak — sysbench
+supports MySQL and PostgreSQL. See [Sysbench](sysbench.md) for the full lifecycle,
+flags, and metrics.
 
 ### TARGET_* environment variables
 

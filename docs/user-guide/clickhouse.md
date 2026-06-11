@@ -131,6 +131,13 @@ After deployment, ClickHouse is accessible via:
 | Play UI | `http://<db-node-ip>:8123/play` | Interactive web query interface |
 | HTTP API | `http://<db-node-ip>:8123` | REST API for queries |
 | Native Protocol | `<db-node-ip>:9000` | High-performance binary protocol |
+| MySQL wire | `<db-node-ip>:9004` | MySQL-compatible protocol (`mysql -h <ip> -P 9004 -u default`) |
+| PostgreSQL wire | `<db-node-ip>:9005` | PostgreSQL-compatible protocol (`psql -h <ip> -p 9005 -U default`) |
+
+The MySQL and PostgreSQL interfaces are protocol-compatible, not dialect-compatible:
+queries sent over them are parsed as ClickHouse SQL. They are handy for connecting
+standard clients and drivers, but tools that emit MySQL- or PostgreSQL-specific DDL
+will not work unmodified.
 
 ## Creating Tables
 
@@ -346,6 +353,8 @@ This ensures `clickhouse-X` always runs on `dbX`, providing:
 |------|---------|
 | 8123 | HTTP interface |
 | 9000 | Native protocol |
+| 9004 | MySQL wire protocol |
+| 9005 | PostgreSQL wire protocol |
 | 9009 | Inter-server communication |
 | 9363 | Metrics |
 | 2181 | Keeper client |

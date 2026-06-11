@@ -27,6 +27,16 @@ endpoints:
     scheme: clickhouse
     path: /default?compress=0
     database: "default"
+  - name: "MySQL wire"
+    node-type: db
+    port: 30904
+    type: mysql
+    database: "default"
+  - name: "PostgreSQL wire"
+    node-type: db
+    port: 30905
+    type: postgresql
+    database: "default"
 args:
   - flag: --version
     variable: VERSION

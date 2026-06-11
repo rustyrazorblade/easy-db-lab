@@ -9,7 +9,7 @@ args:
     variable: TARGET
     type: kit-ref
     capability: sql
-    description: "Name of the running database kit to benchmark (e.g. clickhouse, tidb)"
+    description: "Name of the running database kit to benchmark (e.g. tidb); must expose a MySQL or PostgreSQL wire endpoint"
     required: true
   - flag: --threads
     variable: THREADS

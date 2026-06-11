@@ -20,3 +20,11 @@ spec:
       port: 9363
       targetPort: 9363
       nodePort: 30936
+    - name: mysql
+      port: 9004
+      targetPort: 9004
+      nodePort: 30904
+    - name: postgresql
+      port: 9005
+      targetPort: 9005
+      nodePort: 30905

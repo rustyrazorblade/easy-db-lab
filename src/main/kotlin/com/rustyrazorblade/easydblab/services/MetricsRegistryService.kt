@@ -64,11 +64,12 @@ class DefaultMetricsRegistryService(
                         namespace = Constants.K8s.NAMESPACE,
                         name = configMapName,
                         data =
-                            mapOf(
-                                "job-name" to jobName,
-                                "port" to target.port.toString(),
-                                "path" to target.path,
-                            ),
+                            buildMap {
+                                put("job-name", jobName)
+                                put("port", target.port.toString())
+                                put("path", target.path)
+                                if (target.username.isNotBlank()) put("username", target.username)
+                            },
                         labels =
                             mapOf(
                                 Constants.K8s.WORKLOAD_METRICS_LABEL to "true",

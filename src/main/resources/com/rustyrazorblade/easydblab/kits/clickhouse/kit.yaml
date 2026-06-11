@@ -28,8 +28,8 @@ endpoints:
     path: /default?compress=0
     database: "default"
 args:
-  - flag: --clickhouse-version
-    variable: CLICKHOUSE_VERSION
+  - flag: --version
+    variable: VERSION
     description: "ClickHouse server image version (e.g. 25.4, 24.8)"
     type: string
     default: "latest"

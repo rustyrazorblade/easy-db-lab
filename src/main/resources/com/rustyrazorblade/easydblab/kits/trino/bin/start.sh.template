@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export KUBECONFIG="${SCRIPT_DIR}/../../__KUBECONFIG__"
+
+echo "Installing Trino..."
+helm repo add trinodb https://trinodb.github.io/charts 2>/dev/null || true
+
+# Install and configure catalogs in one step (update-catalogs.sh owns the helm install)
+"${SCRIPT_DIR}/update-catalogs.sh"
+
+PYROSCOPE_OPTS="-javaagent:/usr/local/pyroscope/pyroscope.jar -Dpyroscope.application.name=trino -Dpyroscope.server.address=http://${CONTROL_HOST_PRIVATE}:4040 -Dpyroscope.format=jfr -Dpyroscope.profiler.event=cpu -Dpyroscope.profiler.alloc=512k -Dpyroscope.profiler.lock=10ms"
+
+PYROSCOPE_VOLUME='[{"name":"pyroscope-agent","hostPath":{"path":"/usr/local/pyroscope"}}]'
+PYROSCOPE_MOUNT='[{"name":"pyroscope-agent","mountPath":"/usr/local/pyroscope","readOnly":true}]'
+
+echo "Patching coordinator: hostPort + Pyroscope profiling agent..."
+COORD_PATCH=$(jq -n \
+  --argjson vols "$PYROSCOPE_VOLUME" \
+  --argjson mounts "$PYROSCOPE_MOUNT" \
+  --arg opts "${PYROSCOPE_OPTS} -Dpyroscope.labels=cluster=${CLUSTER_NAME},component=coordinator" \
+  '{spec:{template:{spec:{
+    volumes:$vols,
+    containers:[{name:"trino-coordinator",ports:[{containerPort:8080,hostPort:8080}],env:[{name:"JAVA_TOOL_OPTIONS",value:$opts}],
+      volumeMounts:$mounts}]
+  }}}}')
+kubectl patch deployment trino-coordinator \
+  --namespace default \
+  --type=strategic \
+  -p="$COORD_PATCH"
+
+echo "Patching worker: Pyroscope profiling agent..."
+WORKER_PATCH=$(jq -n \
+  --argjson vols "$PYROSCOPE_VOLUME" \
+  --argjson mounts "$PYROSCOPE_MOUNT" \
+  --arg opts "${PYROSCOPE_OPTS} -Dpyroscope.labels=cluster=${CLUSTER_NAME},component=worker" \
+  '{spec:{template:{spec:{
+    volumes:$vols,
+    containers:[{name:"trino-worker",env:[{name:"JAVA_TOOL_OPTIONS",value:$opts}],
+      volumeMounts:$mounts}]
+  }}}}')
+kubectl patch deployment trino-worker \
+  --namespace default \
+  --type=strategic \
+  -p="$WORKER_PATCH"
+
+echo "Waiting for rollout to complete..."
+# Delete coordinator pod explicitly: rolling restart fails with hostPort conflicts
+# when only one app node is available. Deleting the pod lets the deployment
+# controller create a replacement that picks up ConfigMap changes.
+kubectl delete pod -n default -l 'app.kubernetes.io/name=trino,app.kubernetes.io/component=coordinator' \
+  --ignore-not-found
+kubectl rollout status deployment/trino-coordinator --namespace default --timeout=180s
+kubectl rollout status deployment/trino-worker --namespace default --timeout=180s
+
+echo "Trino is ready. Workers: __WORKERS__"

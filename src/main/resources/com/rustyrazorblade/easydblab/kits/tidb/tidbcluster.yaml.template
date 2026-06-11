@@ -30,6 +30,14 @@ spec:
     # forwards to Tempo. The `opentelemetry.*` config keys do not exist in v8.x and will be
     # rejected at startup — use [opentracing] instead.
     config: |
+      [noop]
+        enable-noop-functions = true
+      [prepared-plan-cache]
+        enabled = true
+      [stmt-summary]
+        enable = true
+      [tikv-client]
+        grpc-connection-count = 4
       [opentracing]
         enable = true
       [opentracing.sampler]

@@ -1,0 +1,4 @@
+connector.name=cassandra
+cassandra.contact-points=__DB_NODE_IPS__
+cassandra.native-protocol-port=9042
+cassandra.load-policy.dc-aware.local-dc=__REGION__

@@ -111,4 +111,31 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         assertThat(configMap.metadata.namespace).isEqualTo("default")
         assertThat(configMap.data).containsKey("otel-collector-config.yaml")
     }
+
+    @Test
+    fun `buildConfigMap with username generates basic_auth block in scrape job`() {
+        val scrapeConfigs =
+            listOf(
+                WorkloadScrapeConfig(jobName = "trino", port = 8080, path = "/metrics", username = "trino"),
+            )
+
+        val configMap = builder.buildConfigMap(scrapeConfigs)
+        val yaml = configMap.data["otel-collector-config.yaml"]!!
+
+        assertThat(yaml).contains("basic_auth:")
+        assertThat(yaml).contains("username: \"trino\"")
+    }
+
+    @Test
+    fun `buildConfigMap without username omits basic_auth block`() {
+        val scrapeConfigs =
+            listOf(
+                WorkloadScrapeConfig(jobName = "clickhouse", port = 9363, path = "/metrics"),
+            )
+
+        val configMap = builder.buildConfigMap(scrapeConfigs)
+        val yaml = configMap.data["otel-collector-config.yaml"]!!
+
+        assertThat(yaml).doesNotContain("basic_auth:")
+    }
 }

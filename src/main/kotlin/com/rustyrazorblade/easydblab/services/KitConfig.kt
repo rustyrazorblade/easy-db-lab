@@ -25,6 +25,7 @@ sealed class KitMetrics {
         val port: Int,
         val path: String = "/metrics",
         val job: String = "",
+        val username: String = "",
     ) : KitMetrics()
 
     @Serializable

@@ -18,6 +18,7 @@
   - [ClickHouse](user-guide/clickhouse.md)
     - [Backup & Restore](user-guide/clickhouse-backup-restore.md)
   - [Presto](user-guide/install-presto.md)
+  - [Trino](user-guide/install-trino.md)
 - [Monitoring](user-guide/monitoring.md)
   - [Profiling](user-guide/profiling.md)
   - [Metrics](user-guide/victoria-metrics.md)

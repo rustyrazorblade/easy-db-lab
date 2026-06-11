@@ -53,3 +53,12 @@ SQL execution is provided via the `sql` capability declared in `clickhouse/kit.y
   **THEN** the query is submitted via JDBC and results are displayed in tabular format.
 - **WHEN** the user runs `clickhouse sql --file query.sql`, **THEN** the SQL from the file is executed.
 - **WHEN** no db nodes exist in cluster state, **THEN** an error is emitted before any connection is made.
+
+### REQ-CH-006: Version Selection
+
+The ClickHouse kit MUST accept a `--version` flag at install time to select the ClickHouse server image version. The flag MUST NOT use the prefix form `--clickhouse-version`.
+
+**Scenarios:**
+
+- **WHEN** the user runs `kit install clickhouse --version 25.4`, **THEN** the deployed ClickHouse uses image version 25.4.
+- **WHEN** the user runs `kit install clickhouse` without `--version`, **THEN** the kit deploys with the default version (`latest`).

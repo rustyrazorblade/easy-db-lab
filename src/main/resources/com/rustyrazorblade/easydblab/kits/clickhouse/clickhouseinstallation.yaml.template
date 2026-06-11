@@ -112,7 +112,7 @@ spec:
         spec:
           containers:
             - name: clickhouse
-              image: clickhouse/clickhouse-server:__CLICKHOUSE_VERSION__
+              image: clickhouse/clickhouse-server:__VERSION__
           affinity:
             nodeAffinity:
               requiredDuringSchedulingIgnoredDuringExecution:

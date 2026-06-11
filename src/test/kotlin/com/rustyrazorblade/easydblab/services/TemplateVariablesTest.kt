@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.OpenSearchClusterState
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -309,5 +310,44 @@ class TemplateVariablesTest : BaseKoinTest() {
         val vars = TemplateVariables.from(state = stateWith(), kitName = "clickhouse", storageSize = "100Gi")
 
         assertThat(vars.toMap()).containsKey("VPC_CIDR")
+    }
+
+    @Test
+    fun `from produces empty opensearchEndpoint when no opensearch domain`() {
+        val vars = TemplateVariables.from(state = stateWith(), kitName = "trino", storageSize = "0Gi")
+
+        assertThat(vars.opensearchEndpoint).isEmpty()
+    }
+
+    @Test
+    fun `from sets opensearchEndpoint from openSearchDomain endpoint`() {
+        val state =
+            stateWith().also {
+                it.openSearchDomain =
+                    OpenSearchClusterState(
+                        domainName = "my-domain",
+                        domainId = "id-123",
+                        endpoint = "search-my-domain-xyz.us-east-1.es.amazonaws.com",
+                    )
+            }
+        val vars = TemplateVariables.from(state = state, kitName = "trino", storageSize = "0Gi")
+
+        assertThat(vars.opensearchEndpoint).isEqualTo("search-my-domain-xyz.us-east-1.es.amazonaws.com")
+    }
+
+    @Test
+    fun `toMap includes OPENSEARCH_ENDPOINT key`() {
+        val state =
+            stateWith().also {
+                it.openSearchDomain =
+                    OpenSearchClusterState(
+                        domainName = "my-domain",
+                        domainId = "id-123",
+                        endpoint = "search-my-domain-xyz.us-east-1.es.amazonaws.com",
+                    )
+            }
+        val vars = TemplateVariables.from(state = state, kitName = "trino", storageSize = "0Gi")
+
+        assertThat(vars.toMap()).containsEntry("OPENSEARCH_ENDPOINT", "search-my-domain-xyz.us-east-1.es.amazonaws.com")
     }
 }

@@ -1,0 +1,17 @@
+server:
+  workers: __WORKERS__
+
+additionalConfigProperties:
+  - "web-ui.authentication.type=FIXED"
+  - "web-ui.user=trino"
+
+image:
+  tag: "__VERSION__"
+
+coordinator:
+  nodeSelector:
+    type: app
+
+worker:
+  nodeSelector:
+    type: app

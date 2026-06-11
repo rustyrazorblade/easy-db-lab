@@ -147,6 +147,7 @@ dependencies {
     // Cassandra Driver
     implementation(libs.cassandra.driver.core)
     implementation(libs.presto.jdbc)
+    implementation(libs.trino.jdbc)
     implementation(libs.clickhouse.jdbc)
     implementation(libs.mysql.connector.j)
 

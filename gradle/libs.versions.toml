@@ -65,6 +65,7 @@ jedis = "7.4.0"
 # Other
 classgraph = "4.8.184"
 presto-jdbc = "0.289"
+trino-jdbc = "474"
 clickhouse-jdbc = "0.7.2"
 mysql-connector-j = "9.3.0"
 resilience4j = "2.4.0"
@@ -184,6 +185,7 @@ fabric8-kubernetes-server-mock = { module = "io.fabric8:kubernetes-server-mock",
 # Cassandra Driver
 cassandra-driver-core = { module = "org.apache.cassandra:java-driver-core", version.ref = "cassandra-driver" }
 presto-jdbc = { module = "com.facebook.presto:presto-jdbc", version.ref = "presto-jdbc" }
+trino-jdbc = { module = "io.trino:trino-jdbc", version.ref = "trino-jdbc" }
 clickhouse-jdbc = { module = "com.clickhouse:clickhouse-jdbc", version.ref = "clickhouse-jdbc" }
 mysql-connector-j = { module = "com.mysql:mysql-connector-j", version.ref = "mysql-connector-j" }
 

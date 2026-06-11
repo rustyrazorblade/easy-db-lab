@@ -2,6 +2,7 @@
 <configuration>
     <!-- Console appender for WARN and above -->
     <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <target>System.err</target>
         <encoder>
             <pattern>%p %C{1}:%L [%t] %m%n</pattern>
         </encoder>

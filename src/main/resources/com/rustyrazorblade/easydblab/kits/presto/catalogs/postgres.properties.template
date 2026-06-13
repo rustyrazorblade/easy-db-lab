@@ -1,0 +1,4 @@
+connector.name=postgresql
+connection-url=jdbc:postgresql://postgres-rw.default.svc.cluster.local:5432/postgres
+connection-user=postgres
+connection-password=postgres

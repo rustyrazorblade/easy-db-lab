@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.services.TemplateService
+import io.fabric8.kubernetes.api.model.ConfigMap
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -15,6 +16,11 @@ import org.mockito.kotlin.whenever
 class OtelManifestBuilderTest : BaseKoinTest() {
     private lateinit var builder: OtelManifestBuilder
     private lateinit var mockClusterStateManager: ClusterStateManager
+
+    private fun yamlFrom(configMap: ConfigMap): String =
+        checkNotNull(configMap.data["otel-collector-config.yaml"]) {
+            "ConfigMap missing expected data key 'otel-collector-config.yaml'"
+        }
 
     override fun additionalTestModules(): List<Module> =
         listOf(
@@ -41,7 +47,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
     @Test
     fun `buildConfigMap with empty list contains all static scrape jobs`() {
         val configMap = builder.buildConfigMap(emptyList())
-        val yaml = configMap.data["otel-collector-config.yaml"]!!
+        val yaml = yamlFrom(configMap)
 
         assertThat(yaml).contains("job_name: 'beyla'")
         assertThat(yaml).contains("job_name: 'ebpf-exporter'")
@@ -53,7 +59,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
     @Test
     fun `buildConfigMap with empty list does not leave placeholder in output`() {
         val configMap = builder.buildConfigMap(emptyList())
-        val yaml = configMap.data["otel-collector-config.yaml"]!!
+        val yaml = yamlFrom(configMap)
 
         assertThat(yaml).doesNotContain("__WORKLOAD_SCRAPE_JOBS__")
     }
@@ -62,12 +68,12 @@ class OtelManifestBuilderTest : BaseKoinTest() {
     fun `buildConfigMap injects dynamic scrape job for each workload`() {
         val scrapeConfigs =
             listOf(
-                WorkloadScrapeConfig(jobName = "presto", port = 8081, path = "/metrics"),
-                WorkloadScrapeConfig(jobName = "opensearch", port = 9600, path = "/_prometheus/metrics"),
+                WorkloadScrapeConfig(kitName = "presto", jobName = "presto", port = 8081, path = "/metrics"),
+                WorkloadScrapeConfig(kitName = "opensearch", jobName = "opensearch", port = 9600, path = "/_prometheus/metrics"),
             )
 
         val configMap = builder.buildConfigMap(scrapeConfigs)
-        val yaml = configMap.data["otel-collector-config.yaml"]!!
+        val yaml = yamlFrom(configMap)
 
         assertThat(yaml).contains("job_name: \"presto\"")
         assertThat(yaml).contains("localhost:8081")
@@ -78,11 +84,29 @@ class OtelManifestBuilderTest : BaseKoinTest() {
     }
 
     @Test
-    fun `buildConfigMap with dynamic jobs still contains all static scrape jobs`() {
-        val scrapeConfigs = listOf(WorkloadScrapeConfig(jobName = "clickhouse", port = 9363, path = "/metrics"))
+    fun `buildConfigMap uses kitName as OTel job_name and relabels job to jobName`() {
+        val scrapeConfigs =
+            listOf(
+                WorkloadScrapeConfig(kitName = "postgres-duckdb", jobName = "postgres", port = 30987, path = "/metrics"),
+                WorkloadScrapeConfig(kitName = "postgres-postgis", jobName = "postgres", port = 30988, path = "/metrics"),
+            )
 
         val configMap = builder.buildConfigMap(scrapeConfigs)
-        val yaml = configMap.data["otel-collector-config.yaml"]!!
+        val yaml = yamlFrom(configMap)
+
+        // OTel job_name uses kitName to ensure uniqueness across instances
+        assertThat(yaml).contains("job_name: \"postgres-duckdb\"")
+        assertThat(yaml).contains("job_name: \"postgres-postgis\"")
+        // Relabel sets the `job` label in metrics back to the logical jobName
+        assertThat(yaml).contains("target_label: \"job\"").contains("replacement: \"postgres\"")
+    }
+
+    @Test
+    fun `buildConfigMap with dynamic jobs still contains all static scrape jobs`() {
+        val scrapeConfigs = listOf(WorkloadScrapeConfig(kitName = "clickhouse", jobName = "clickhouse", port = 9363, path = "/metrics"))
+
+        val configMap = builder.buildConfigMap(scrapeConfigs)
+        val yaml = yamlFrom(configMap)
 
         assertThat(yaml).contains("job_name: 'beyla'")
         assertThat(yaml).contains("job_name: 'ebpf-exporter'")
@@ -94,10 +118,10 @@ class OtelManifestBuilderTest : BaseKoinTest() {
 
     @Test
     fun `buildConfigMap dynamic jobs use OTel runtime env expansion not placeholder`() {
-        val scrapeConfigs = listOf(WorkloadScrapeConfig(jobName = "mydb", port = 9999, path = "/metrics"))
+        val scrapeConfigs = listOf(WorkloadScrapeConfig(kitName = "mydb", jobName = "mydb", port = 9999, path = "/metrics"))
 
         val configMap = builder.buildConfigMap(scrapeConfigs)
-        val yaml = configMap.data["otel-collector-config.yaml"]!!
+        val yaml = yamlFrom(configMap)
 
         assertThat(yaml).contains("\${env:HOSTNAME}:9999")
         assertThat(yaml).contains("\${env:CLUSTER_NAME}")
@@ -116,11 +140,11 @@ class OtelManifestBuilderTest : BaseKoinTest() {
     fun `buildConfigMap with username generates basic_auth block in scrape job`() {
         val scrapeConfigs =
             listOf(
-                WorkloadScrapeConfig(jobName = "trino", port = 8080, path = "/metrics", username = "trino"),
+                WorkloadScrapeConfig(kitName = "trino", jobName = "trino", port = 8080, path = "/metrics", username = "trino"),
             )
 
         val configMap = builder.buildConfigMap(scrapeConfigs)
-        val yaml = configMap.data["otel-collector-config.yaml"]!!
+        val yaml = yamlFrom(configMap)
 
         assertThat(yaml).contains("basic_auth:")
         assertThat(yaml).contains("username: \"trino\"")
@@ -130,11 +154,11 @@ class OtelManifestBuilderTest : BaseKoinTest() {
     fun `buildConfigMap without username omits basic_auth block`() {
         val scrapeConfigs =
             listOf(
-                WorkloadScrapeConfig(jobName = "clickhouse", port = 9363, path = "/metrics"),
+                WorkloadScrapeConfig(kitName = "clickhouse", jobName = "clickhouse", port = 9363, path = "/metrics"),
             )
 
         val configMap = builder.buildConfigMap(scrapeConfigs)
-        val yaml = configMap.data["otel-collector-config.yaml"]!!
+        val yaml = yamlFrom(configMap)
 
         assertThat(yaml).doesNotContain("basic_auth:")
     }

@@ -68,9 +68,10 @@ class MetricsRegistryServiceTest : BaseKoinTest() {
         verify(mockK8sService).createConfigMap(
             controlHost = controlHost,
             namespace = "default",
-            name = "easydblab-metrics-clickhouse",
+            name = "easydblab-metrics-clickhouse-clickhouse",
             data =
                 mapOf(
+                    "kit-name" to "clickhouse",
                     "job-name" to "clickhouse",
                     "port" to "9363",
                     "path" to "/metrics",
@@ -84,16 +85,17 @@ class MetricsRegistryServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `register uses job field as ConfigMap name when provided`() {
+    fun `register uses kitName-jobName as ConfigMap name when job is provided`() {
         val target = KitMetrics.Scrape(port = 20180, path = "/metrics", job = "tikv")
         service.register(controlHost = controlHost, kitName = "tidb", targets = listOf(target))
 
         verify(mockK8sService).createConfigMap(
             controlHost = controlHost,
             namespace = "default",
-            name = "easydblab-metrics-tikv",
+            name = "easydblab-metrics-tidb-tikv",
             data =
                 mapOf(
+                    "kit-name" to "tidb",
                     "job-name" to "tikv",
                     "port" to "20180",
                     "path" to "/metrics",
@@ -121,29 +123,29 @@ class MetricsRegistryServiceTest : BaseKoinTest() {
         verify(mockK8sService).createConfigMap(
             controlHost = controlHost,
             namespace = "default",
-            name = "easydblab-metrics-tidb-sql",
-            data = mapOf("job-name" to "tidb-sql", "port" to "31080", "path" to "/metrics"),
+            name = "easydblab-metrics-tidb-tidb-sql",
+            data = mapOf("kit-name" to "tidb", "job-name" to "tidb-sql", "port" to "31080", "path" to "/metrics"),
             labels = tidbLabels,
         )
         verify(mockK8sService).createConfigMap(
             controlHost = controlHost,
             namespace = "default",
-            name = "easydblab-metrics-tikv",
-            data = mapOf("job-name" to "tikv", "port" to "32180", "path" to "/metrics"),
+            name = "easydblab-metrics-tidb-tikv",
+            data = mapOf("kit-name" to "tidb", "job-name" to "tikv", "port" to "32180", "path" to "/metrics"),
             labels = tidbLabels,
         )
         verify(mockK8sService).createConfigMap(
             controlHost = controlHost,
             namespace = "default",
-            name = "easydblab-metrics-pd",
-            data = mapOf("job-name" to "pd", "port" to "32379", "path" to "/metrics"),
+            name = "easydblab-metrics-tidb-pd",
+            data = mapOf("kit-name" to "tidb", "job-name" to "pd", "port" to "32379", "path" to "/metrics"),
             labels = tidbLabels,
         )
         verify(mockK8sService).createConfigMap(
             controlHost = controlHost,
             namespace = "default",
-            name = "easydblab-metrics-tiflash",
-            data = mapOf("job-name" to "tiflash", "port" to "32234", "path" to "/metrics"),
+            name = "easydblab-metrics-tidb-tiflash",
+            data = mapOf("kit-name" to "tidb", "job-name" to "tiflash", "port" to "32234", "path" to "/metrics"),
             labels = tidbLabels,
         )
     }

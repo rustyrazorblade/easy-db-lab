@@ -219,6 +219,19 @@ GrafanaTracesToLogsConfig(
 
 **tracesToMetrics**: Use `traces_spanmetrics_duration_milliseconds_bucket` (not `latency_bucket`). Use `histogram_quantile(0.99, ...)` (p99, not p90). The `$$__tags` variable injects the span's service label as a Prometheus filter.
 
+## Kit Dashboard Metric Queries
+
+### NodePort Triple-Scraping
+
+When a kit exposes Prometheus metrics via a K8s NodePort, the OTel collector scrapes from every cluster node (each node's NodePort redirects to the same pod). This produces one series per node in VictoriaMetrics — typically 3× the actual value.
+
+- **Ratio queries** (e.g. cache hit ratio, error rate): triple-counting cancels out in numerator and denominator — no filter needed.
+- **Absolute queries** (rates, byte counts, gauge totals): must filter by `host_name="<db-node>"` to get the correct value. Use the node where the pod actually runs (check with `kubectl get pod <pod> -o wide`; for postgres kits this is typically `db0`).
+
+### VictoriaMetrics Counter Naming
+
+The local Prometheus exporter may expose counters without a `_total` suffix, but VictoriaMetrics stores them **with** `_total` following the OpenMetrics convention. Dashboard queries must always use the `_total` form (e.g. `cnpg_pg_stat_database_blks_hit_total`, not `cnpg_pg_stat_database_blks_hit`). Use the `/api/v1/label/__name__/values` endpoint on VictoriaMetrics to confirm the exact stored name before writing a query.
+
 ## Modifying Dashboards
 
 When adding new dashboards or modifying existing ones:

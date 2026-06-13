@@ -47,6 +47,10 @@ class KitRunnerCommandFactory {
             }
         }
 
+        if (File(kitDir, "extensions.yaml").isFile) {
+            groupCL.addSubcommand("extensions", buildExtensionsCommand(kitDir))
+        }
+
         return groupCL
     }
 
@@ -141,6 +145,13 @@ class KitRunnerCommandFactory {
         val command = KitRunnerCommand(kitName, kitDir, phaseName)
         val spec = CommandSpec.forAnnotatedObject(command, CommandLine.defaultFactory()).name(phaseName)
         spec.usageMessage().description("Run $kitName/$phaseName")
+        spec.mixinStandardHelpOptions(true)
+        return CommandLine(spec)
+    }
+
+    private fun buildExtensionsCommand(kitDir: File): CommandLine {
+        val command = KitExtensionsCommand(kitDir)
+        val spec = CommandLine.Model.CommandSpec.forAnnotatedObject(command, CommandLine.defaultFactory())
         spec.mixinStandardHelpOptions(true)
         return CommandLine(spec)
     }

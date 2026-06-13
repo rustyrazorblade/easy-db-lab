@@ -212,7 +212,7 @@ class ClusterStateTest {
 
         // Missing values should use defaults
         assertThat(config.stressInstances).isEqualTo(0)
-        assertThat(config.instanceType).isEqualTo("r3.2xlarge")
+        assertThat(config.instanceType).isEqualTo("i4i.xlarge")
         assertThat(config.controlInstances).isEqualTo(1)
         assertThat(config.controlInstanceType).isEqualTo("m5d.xlarge")
     }

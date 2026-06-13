@@ -88,7 +88,7 @@ class Init : PicoBaseCommand() {
         names = ["--instance", "-i"],
         description = ["Instance Type. Set EASY_DB_LAB_INSTANCE_TYPE to set a default."],
     )
-    var instanceType: String = System.getenv("EASY_DB_LAB_INSTANCE_TYPE") ?: "r3.2xlarge"
+    var instanceType: String = System.getenv("EASY_DB_LAB_INSTANCE_TYPE") ?: "i4i.xlarge"
 
     @Option(
         names = ["--stress-instance", "-si", "--si"],

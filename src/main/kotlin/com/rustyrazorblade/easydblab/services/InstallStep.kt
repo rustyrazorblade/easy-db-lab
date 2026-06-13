@@ -42,6 +42,7 @@ sealed interface InstallStep {
     @SerialName("manifest")
     data class Manifest(
         val template: String,
+        val interpolate: Boolean = false,
     ) : InstallStep
 
     @Serializable

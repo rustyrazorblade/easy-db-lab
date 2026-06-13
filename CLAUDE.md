@@ -1,4 +1,5 @@
 - **Clusters are ephemeral by design.** easy-db-lab spins up temporary test clusters that are destroyed after use. There is no production data, no long-lived deployments, and no users who need to migrate. **Do NOT warn about backwards compatibility** when reviewing PRs or planning changes — it is never a concern here.
+- **Large `storageSize` defaults in kit.yaml (e.g. `10Ti`) are intentional and correct.** Clusters use Local Persistent Volumes via the `local-storage` provisioner, which does not enforce PVC capacity — the declared size is metadata only and does not affect real disk usage. **Never flag large storage defaults as excessive, wasteful, or a bug** during code review or planning.
 - This is a **general purpose database test tool**, not a Cassandra-specific tool. It supports Cassandra, ClickHouse, OpenSearch, TiDB, and more. In user-facing text (docs, error messages, comments), use "database" or "db" instead of "Cassandra" unless referring to Cassandra-specific functionality. The `ServerType.Cassandra` / "db" node type is the generic database node — don't assume it's always Cassandra.
 - This is a command line tool.  The user interacts by reading the output.  Do not suggest replacing print statements with logging, because it breaks the UX.
 - **Structured user-facing output** uses `eventBus.emit(Event.Domain.Type(...))` with domain-specific typed events. Events are defined as sealed data classes in `events/Event.kt` across 28 domain interfaces. See [`events/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/events/CLAUDE.md). **Events are for things an external system would need to be aware of** — lifecycle transitions, state changes, failures. If an MCP client or Redis subscriber would have no reason to care, it is not an event.
@@ -129,6 +130,7 @@ See [`src/test/.../CLAUDE.md`](src/test/kotlin/com/rustyrazorblade/easydblab/CLA
 - **Never add memory limiters to OTel collectors or other observability components.** The `memory_limiter` processor causes data to be refused and dropped under load. The nodes have enough memory — let them use it.
 - **Configuration problems require configuration fixes.** If a service can't connect to a dependency, the fix is to provide the correct endpoint/credentials, not to make the dependency optional.
 - **`RemoteOperationsService` is for commands that run on the remote control node** — filesystem operations, service management (systemd), node-level configuration, and all cluster API tooling (helm, kubectl, cilium). These tools are baked into the AMI and run on the control node via SSH. Use `RemoteOperationsService.executeRemotely()` with `KUBECONFIG=${Constants.K3s.REMOTE_KUBECONFIG}` prefixed on each command. Do NOT use `ProcessBuilder` or local CLI invocations for cluster operations — the tools are not installed on the developer's machine.
+- **Kit shell scripts that create K8s pods must use unique timestamp-based names** — use `pod-name-$(date +%s)` and label every pod with `easydblab/kit=${KIT_NAME}` and `easydblab/role=<role>`. Fixed pod names cause stale-pod conflicts after natural completion (the completed pod persists in K8s indefinitely). Cleanup in `stop.sh` must delete by label selector (`-l "easydblab/kit=...,easydblab/role=..."`) not by name. See `kits/sysbench/bin/` for the reference implementation.
 
 ### Testing
 
@@ -340,7 +342,11 @@ All observability K8s resources are built programmatically using Fabric8 manifes
 
 **Storage backends** (control node): VictoriaMetrics (metrics, port 8428), VictoriaLogs (logs, port 9428), Tempo (traces, port 3200), Pyroscope (profiles, port 4040)
 
-**Grafana** (port 3000): Dashboards built via `GrafanaManifestBuilder`. Dashboard JSON files live in the top-level `dashboards/` directory — Gradle copies them into the JAR at build time. `GrafanaDashboard` enum is the single source of truth for dashboard metadata. See [`dashboards/CLAUDE.md`](dashboards/CLAUDE.md) for datasource UIDs, label conventions, spanmetrics metric names, and the correct pattern for cross-dashboard dataLinks (panes= URL format, TraceQL query strings).
+**Grafana** (port 3000): Two dashboard sources:
+- **Kit dashboards (new, correct)**: JSON files in `src/main/resources/.../kits/<name>/dashboards/`. `KitRunnerCommand` auto-installs them from that directory after a successful `start`. No `GrafanaDashboard` enum entry needed — adding a JSON file is all that's required.
+- **Core/system dashboards (legacy)**: JSON files in the top-level `dashboards/` directory, registered in the `GrafanaDashboard` enum, loaded by `GrafanaManifestBuilder`. Use this only for non-kit dashboards (system-overview, profiling, etc.). **Do NOT add new kit dashboards here.**
+
+See [`dashboards/CLAUDE.md`](dashboards/CLAUDE.md) for datasource UIDs, label conventions, spanmetrics metric names, and the correct pattern for cross-dashboard dataLinks (panes= URL format, TraceQL query strings).
 
 **CLI Tool Instrumentation**: The CLI tool uses the OpenTelemetry Java Agent for automatic instrumentation of AWS SDK calls, HTTP clients, JDBC operations, and JVM metrics. No manual instrumentation exists in the Kotlin code. See `docs/reference/opentelemetry.md`.
 

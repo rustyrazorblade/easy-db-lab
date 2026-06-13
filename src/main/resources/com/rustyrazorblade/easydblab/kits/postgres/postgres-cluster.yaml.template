@@ -1,0 +1,63 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: __KIT_NAME__-credentials
+  namespace: default
+type: kubernetes.io/basic-auth
+stringData:
+  username: postgres
+  password: postgres
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ImageCatalog
+metadata:
+  name: __KIT_NAME__-catalog
+  namespace: default
+spec:
+  images:
+    - major: __PG_MAJOR_VERSION__
+      image: __IMAGE__
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: __KIT_NAME__
+  namespace: default
+spec:
+  instances: __INSTANCES__
+  postgresUID: __POSTGRES_UID__
+  postgresGID: __POSTGRES_GID__
+  imageCatalogRef:
+    apiGroup: postgresql.cnpg.io
+    kind: ImageCatalog
+    name: __KIT_NAME__-catalog
+    major: __PG_MAJOR_VERSION__
+  primaryUpdateStrategy: unsupervised
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: type
+                operator: In
+                values:
+                  - db
+  storage:
+    storageClass: __STORAGE_CLASS_WFC__
+    size: __STORAGE_SIZE__
+  postgresql:
+    shared_preload_libraries: __SHARED_PRELOAD_LIBRARIES__
+    pg_hba:
+      - host all all 10.0.0.0/8 trust
+  bootstrap:
+    initdb:
+      database: postgres
+      owner: postgres
+      secret:
+        name: __KIT_NAME__-credentials
+      postInitSQL: __POST_INIT_SQL__
+  superuserSecret:
+    name: __KIT_NAME__-credentials
+  monitoring:
+    # OTel collector scrapes metrics via NodePort — PodMonitor is not needed
+    enablePodMonitor: false

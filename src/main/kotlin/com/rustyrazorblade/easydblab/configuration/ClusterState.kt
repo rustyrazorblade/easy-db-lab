@@ -79,7 +79,7 @@ data class InfrastructureState(
 data class InitConfig(
     val cassandraInstances: Int = 3,
     val stressInstances: Int = 0,
-    val instanceType: String = "r3.2xlarge",
+    val instanceType: String = "i4i.xlarge",
     val stressInstanceType: String = "c6id.2xlarge",
     val azs: List<String> = listOf(),
     val ami: String = "",

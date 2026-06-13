@@ -1,0 +1,101 @@
+name: postgres
+type: db
+description: Deploy PostgreSQL via the CloudNativePG operator
+version: "1.0.0"
+collision-check: true
+metrics:
+  - type: scrape
+    port: 30987
+    path: /metrics
+    job: postgres
+runtime:
+  type: pods
+  selector: "cnpg.io/podRole=instance"
+  namespace: default
+endpoints:
+  - name: "PostgreSQL"
+    node-type: db
+    port: 30432
+    type: postgresql
+    database: postgres
+  - name: "JDBC"
+    node-type: db
+    port: 30432
+    type: jdbc
+    scheme: postgresql
+    path: /postgres
+args:
+  - flag: --version
+    variable: POSTGRES_VERSION
+    description: "PostgreSQL major version (e.g. 17, 16)"
+    type: string
+    default: "17"
+  - flag: --instances
+    variable: INSTANCES
+    description: "Number of PostgreSQL instances (1 = single node, >1 enables replication)"
+    type: int
+    default: "1"
+  - flag: --size
+    variable: STORAGE_SIZE
+    description: Storage size per node (e.g. 100Gi)
+    type: string
+    default: "10Ti"
+  - flag: --extension
+    variable: EXTENSION
+    description: "Extension alias to activate (e.g. duckdb, postgis, timescaledb). Run 'postgres extensions' to list available aliases."
+    type: extension
+    default: ""
+
+install:
+  - type: helm-repo
+    name: cnpg
+    url: https://cloudnative-pg.github.io/charts
+  - type: helm
+    chart: cnpg/cloudnative-pg
+    release: cnpg-operator
+    namespace: cnpg-system
+
+start:
+  - type: platform-pvs
+    node-type: db
+  - type: manifest
+    template: postgres-cluster.yaml
+  - type: shell
+    script: |
+      echo "Waiting for PostgreSQL instance pods to be created..."
+      until kubectl get pods -l cnpg.io/podRole=instance -n default --no-headers 2>/dev/null | grep -q .; do sleep 5; done
+      echo "Pods found, waiting for Ready..."
+      kubectl wait --for=condition=Ready pods \
+        -l cnpg.io/podRole=instance \
+        --namespace default \
+        --timeout=300s
+  - type: manifest
+    template: nodeport-service.yaml
+
+stop:
+  - type: delete
+    kind: Cluster
+    name: ${KIT_NAME}
+    namespace: default
+  - type: delete
+    kind: Service
+    name: ${KIT_NAME}-nodeport
+    namespace: default
+  - type: delete
+    kind: Secret
+    name: ${KIT_NAME}-credentials
+    namespace: default
+  - type: delete
+    kind: ImageCatalog
+    name: ${KIT_NAME}-catalog
+    namespace: default
+
+uninstall:
+  - type: platform-pvs-delete
+  - type: helm-uninstall
+    release: cnpg-operator
+    namespace: cnpg-system
+
+capabilities:
+  - type: sql
+    user: postgres

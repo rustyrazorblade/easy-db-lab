@@ -1,0 +1,48 @@
+# PostgreSQL on __CLUSTER_NAME__ cluster
+
+Workload: PostgreSQL via CloudNativePG operator
+Version: __POSTGRES_VERSION__
+Instances: __INSTANCES__
+Storage per instance: __STORAGE_SIZE__
+DB nodes: __DB_NODE_COUNT__
+Region: __REGION__
+
+## Connection
+
+```
+Host:     <db-node-ip>
+Port:     30432
+Database: postgres
+User:     postgres
+Password: postgres
+```
+
+```bash
+psql -h <db-node-ip> -p 30432 -U postgres -d postgres
+```
+
+## SQL via easy-db-lab
+
+```bash
+easy-db-lab postgres sql "SELECT version()"
+easy-db-lab postgres sql --file query.sql
+```
+
+## Lifecycle
+
+```bash
+easy-db-lab postgres start    # provision PVs, deploy CNPG Cluster CR, wait for ready
+easy-db-lab postgres stop     # remove Cluster CR (data retained on PVs)
+easy-db-lab postgres start    # reattach to existing PVs, data intact
+easy-db-lab postgres uninstall  # remove operator and delete PVs
+```
+
+## Presto integration
+
+When both postgres and presto are running, a `postgres` catalog is automatically
+available in Presto:
+
+```sql
+SHOW TABLES FROM postgres.public;
+SELECT count(*) FROM postgres.public.my_table;
+```

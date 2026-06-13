@@ -2,7 +2,8 @@
 set -euo pipefail
 
 SYSBENCH_IMAGE="docker.io/severalnines/sysbench"
-POD_NAME="sysbench-prepare-${KIT_NAME}"
+POD_NAME="sysbench-prepare-${KIT_NAME}-$(date +%s)"
+PREPARE_LABELS="easydblab/kit=${KIT_NAME},easydblab/role=sysbench-prepare"
 
 if [ -n "${TARGET_MYSQL_HOST:-}" ]; then
   DB_ARGS="--db-driver=mysql \
@@ -12,11 +13,12 @@ if [ -n "${TARGET_MYSQL_HOST:-}" ]; then
     --mysql-db=${TARGET_MYSQL_DATABASE}"
 
   # TiDB and MySQL do not ship with the sbtest database — create it before sysbench prepare.
-  CREATE_POD="sysbench-createdb-${KIT_NAME}"
+  CREATE_POD="sysbench-createdb-${KIT_NAME}-$(date +%s)"
   echo "Creating database ${TARGET_MYSQL_DATABASE} on ${TARGET_MYSQL_HOST}:${TARGET_MYSQL_PORT}..."
   kubectl --kubeconfig="${KUBECONFIG}" run "${CREATE_POD}" \
     --image="mysql:8.0" \
     --restart=Never \
+    --labels="easydblab/kit=${KIT_NAME},easydblab/role=sysbench-createdb" \
     --command -- mysql \
       -h "${TARGET_MYSQL_HOST}" \
       -P "${TARGET_MYSQL_PORT}" \
@@ -44,6 +46,7 @@ echo "Preparing sysbench data: ${TABLES} tables, ${SCALE}000 rows each..."
 kubectl --kubeconfig="${KUBECONFIG}" run "${POD_NAME}" \
   --image="${SYSBENCH_IMAGE}" \
   --restart=Never \
+  --labels="${PREPARE_LABELS}" \
   --command -- sysbench \
     ${DB_ARGS} \
     --tables="${TABLES}" \

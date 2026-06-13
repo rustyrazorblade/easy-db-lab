@@ -42,6 +42,7 @@ group = "com.rustyrazorblade"
 
 tasks.withType<ShadowJar> {
     isZip64 = true
+    mergeServiceFiles()
 }
 
 java {
@@ -150,6 +151,7 @@ dependencies {
     implementation(libs.trino.jdbc)
     implementation(libs.clickhouse.jdbc)
     implementation(libs.mysql.connector.j)
+    implementation(libs.postgresql.jdbc)
 
     // Testing
     testImplementation(libs.archunit.junit5)

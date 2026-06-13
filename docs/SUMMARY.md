@@ -21,6 +21,7 @@
   - [Trino](user-guide/install-trino.md)
   - [TiDB](user-guide/tidb.md)
   - [Sysbench](user-guide/sysbench.md)
+  - [PostgreSQL](user-guide/install-postgres.md)
 - [Monitoring](user-guide/monitoring.md)
   - [Profiling](user-guide/profiling.md)
   - [Metrics](user-guide/victoria-metrics.md)

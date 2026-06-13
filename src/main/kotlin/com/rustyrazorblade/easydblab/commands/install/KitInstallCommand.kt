@@ -3,6 +3,8 @@ package com.rustyrazorblade.easydblab.commands.install
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.services.ExtensionRegistry
+import com.rustyrazorblade.easydblab.services.ExtensionResolver
 import com.rustyrazorblade.easydblab.services.InstallTemplateResolver
 import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitType
@@ -67,12 +69,13 @@ class KitInstallCommand(
             }
         }
 
+        val extensionVars = buildExtensionVars()
         val storageSize = argValues.remove("STORAGE_SIZE").orEmpty()
         renderAndWrite(
             source = source,
             kitName = instanceName,
             storageSize = storageSize,
-            extraVars = argValues.toMap(),
+            extraVars = extensionVars + argValues.toMap(),
         )
 
         if (config.install.isNotEmpty()) {
@@ -129,14 +132,67 @@ class KitInstallCommand(
     }
 
     /**
-     * Computes the directory name for the installed kit. For kits with a kit-ref arg,
-     * the directory is named `<kit>-<target>` so the same bench kit can be installed
-     * against multiple databases simultaneously (e.g. sysbench-clickhouse, sysbench-mysql).
-     * For kits without a kit-ref arg, the directory is the kit's own name.
+     * Computes the directory name for the installed kit.
+     *
+     * - Kit-ref arg: `<kit>-<target>` (e.g. sysbench-clickhouse) so the same bench kit can
+     *   target multiple databases simultaneously.
+     * - Extension arg: `<kit>-<extension>` (e.g. postgres-duckdb) so the same kit can be
+     *   installed with different extensions simultaneously.
+     * - Otherwise: the kit's own name.
      */
-    private fun resolveInstanceName(): String =
+    private fun resolveInstanceName(): String {
         config.kitRefArg
             ?.let { argValues[it.variable]?.takeIf { v -> v.isNotBlank() } }
-            ?.let { "${config.name}-$it" }
-            ?: config.name
+            ?.let { return "${config.name}-$it" }
+        config.extensionArg
+            ?.let { argValues[it.variable]?.takeIf { v -> v.isNotBlank() } }
+            ?.let { return "${config.name}-$it" }
+        return config.name
+    }
+
+    /**
+     * Resolves extension flags into IMAGE, SHARED_PRELOAD_LIBRARIES, and POST_INIT_SQL
+     * template variables. Returns an empty map for kits that don't declare an extension arg.
+     */
+    private fun buildExtensionVars(): Map<String, String> {
+        val extArg = config.extensionArg ?: return emptyMap()
+        val registry =
+            when (source) {
+                is InstallTemplateResolver.TemplateSource.Directory ->
+                    ExtensionRegistry.fromFile(File(source.dir, "extensions.yaml"))
+                is InstallTemplateResolver.TemplateSource.Builtin ->
+                    ExtensionRegistry.fromClasspath(source.name)
+            }
+        val extensionName = argValues[extArg.variable]?.takeIf { it.isNotBlank() }
+        val versionVarName = config.args.firstOrNull { it.flag == "--version" }?.variable ?: "POSTGRES_VERSION"
+        val postgresVersion = argValues[versionVarName] ?: "17"
+        val extConfig =
+            ExtensionResolver(registry, postgresVersion).resolve(
+                extensions = if (extensionName != null) listOf(extensionName) else emptyList(),
+                imageOverride = null,
+                additionalPreload = emptyList(),
+                additionalCreate = emptyList(),
+            )
+        val postInitSql =
+            if (extConfig.createExtensions.isEmpty()) {
+                "[]"
+            } else {
+                "[${extConfig.createExtensions.joinToString(", ") { "\"CREATE EXTENSION $it\"" }}]"
+            }
+        return mapOf(
+            "IMAGE" to extConfig.image,
+            "SHARED_PRELOAD_LIBRARIES" to
+                if (extConfig.sharedPreloadLibraries.isEmpty()) {
+                    "[]"
+                } else {
+                    "[${extConfig.sharedPreloadLibraries.joinToString(", ") { "\"$it\"" }}]"
+                },
+            "POST_INIT_SQL" to postInitSql,
+            "PG_MAJOR_VERSION" to postgresVersion.substringBefore("."),
+            "POSTGRES_UID" to extConfig.postgresUid.toString(),
+            "POSTGRES_GID" to extConfig.postgresGid.toString(),
+            "POSTGRES_PORT" to extConfig.postgresPort.toString(),
+            "METRICS_PORT" to extConfig.metricsPort.toString(),
+        )
+    }
 }

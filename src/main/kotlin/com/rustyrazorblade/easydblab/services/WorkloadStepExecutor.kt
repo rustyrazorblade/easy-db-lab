@@ -126,7 +126,8 @@ class WorkloadStepExecutor(
                     require(manifestFile.isFile) {
                         "Manifest file not found: ${manifestFile.absolutePath}. Run 'install ${ctx.kitName}' first."
                     }
-                    kubectlService.applyContent(host = host, yamlContent = manifestFile.readText())
+                    val content = if (step.interpolate) interp(manifestFile.readText()) else manifestFile.readText()
+                    kubectlService.applyContent(host = host, yamlContent = content)
                 }
 
                 is InstallStep.ManifestUrl -> {

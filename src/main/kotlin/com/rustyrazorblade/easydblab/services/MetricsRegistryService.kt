@@ -22,10 +22,12 @@ interface MetricsRegistryService {
 /**
  * Manages the per-kit metrics ConfigMaps that drive OTel collector Prometheus scrape jobs.
  *
- * On [register], writes one ConfigMap named `easydblab-metrics-<job>` per scrape target,
+ * On [register], writes one ConfigMap named `easydblab-metrics-<kitName>-<job>` per scrape target,
  * each carrying [Constants.K8s.WORKLOAD_METRICS_LABEL] and [Constants.K8s.KIT_LABEL] so
  * [OtelSyncService] can regenerate the collector config and [deregister] can bulk-delete
- * all targets for a kit by label selector.
+ * all targets for a kit by label selector. Including [kitName] in the ConfigMap name ensures
+ * multiple kit instances with the same job name (e.g. postgres-duckdb and postgres-postgis
+ * both declaring job "postgres") get separate ConfigMaps and separate OTel scrape jobs.
  */
 class DefaultMetricsRegistryService(
     private val k8sService: K8sService,
@@ -57,7 +59,7 @@ class DefaultMetricsRegistryService(
 
             for (target in targets) {
                 val jobName = target.job.ifBlank { kitName }
-                val configMapName = "$CONFIG_MAP_PREFIX$jobName"
+                val configMapName = "$CONFIG_MAP_PREFIX$kitName-$jobName"
                 k8sService
                     .createConfigMap(
                         controlHost = controlHost,
@@ -65,6 +67,7 @@ class DefaultMetricsRegistryService(
                         name = configMapName,
                         data =
                             buildMap {
+                                put("kit-name", kitName)
                                 put("job-name", jobName)
                                 put("port", target.port.toString())
                                 put("path", target.path)
@@ -82,6 +85,7 @@ class DefaultMetricsRegistryService(
             eventBus.emit(Event.Kit.MetricsRegistered(kit = kitName, ports = targets.map { it.port }))
         }.onFailure {
             deregister(controlHost, kitName)
+                .onFailure { e -> log.warn(e) { "Cleanup deregister also failed for $kitName" } }
         }
 
     override fun deregister(

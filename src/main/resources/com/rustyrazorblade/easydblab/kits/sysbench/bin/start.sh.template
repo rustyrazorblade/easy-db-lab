@@ -2,7 +2,8 @@
 set -euo pipefail
 
 SYSBENCH_IMAGE="docker.io/severalnines/sysbench"
-POD_NAME="sysbench-${KIT_NAME}"
+POD_NAME="sysbench-${KIT_NAME}-$(date +%s)"
+LABELS="easydblab/kit=${KIT_NAME},easydblab/role=sysbench-run"
 VICTORIA_URL="http://${CONTROL_HOST_PRIVATE}:8428/api/v1/import/prometheus"
 
 if [ -n "${TARGET_MYSQL_HOST:-}" ]; then
@@ -27,6 +28,7 @@ echo "Starting sysbench: workload=${WORKLOAD}, threads=${THREADS}, duration=${DU
 kubectl --kubeconfig="${KUBECONFIG}" run "${POD_NAME}" \
   --image="${SYSBENCH_IMAGE}" \
   --restart=Never \
+  --labels="${LABELS}" \
   --command -- sysbench \
     ${DB_ARGS} \
     --threads="${THREADS}" \

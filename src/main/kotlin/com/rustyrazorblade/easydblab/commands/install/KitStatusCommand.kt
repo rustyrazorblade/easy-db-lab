@@ -93,7 +93,10 @@ class KitStatusCommand(
             KitRuntime.RuntimeType.STATEFULSET,
             KitRuntime.RuntimeType.PODS,
             -> {
-                val selector = runtime.selector.ifBlank { "app.kubernetes.io/name=$kitName" }
+                val selector =
+                    runtime.selector
+                        .replace("\${KIT_NAME}", kitName)
+                        .ifBlank { "app.kubernetes.io/name=$kitName" }
                 val pods = kubeService.listPodsByLabel(selector, namespace).getOrElse { emptyList() }
                 if (pods.isEmpty()) {
                     KitRunningState.Stopped

@@ -29,3 +29,16 @@ SHALL be set to `com.facebook.presto.jdbc.PrestoDriver` to force-load it.
   **THEN** the query is submitted via JDBC and results are displayed in tabular format.
 - **WHEN** the user runs `presto sql --file query.sql`, **THEN** the SQL from the file is executed.
 - **WHEN** no app nodes exist in cluster state, **THEN** an error is emitted before any connection is made.
+
+### REQ-PRS-003: Catalog Sources
+
+The system SHALL support automatic catalog injection for the following database kits when they are running alongside Presto: Cassandra, ClickHouse, and PostgreSQL.
+
+A catalog properties file MUST exist in `kits/presto/catalogs/<kit-name>.properties.template` for each supported database kit. The `update-catalogs.sh` hook reads `RUNNING_KITS` and injects catalogs for any kit that has a matching properties file.
+
+**Scenarios:**
+
+- **GIVEN** both `cassandra` and `presto` are running, **WHEN** `update-catalogs.sh` executes, **THEN** a `cassandra` catalog is present in Presto.
+- **GIVEN** both `clickhouse` and `presto` are running, **WHEN** `update-catalogs.sh` executes, **THEN** a `clickhouse` catalog is present in Presto.
+- **GIVEN** both `postgres` and `presto` are running, **WHEN** `update-catalogs.sh` executes, **THEN** a `postgres` catalog is present in Presto using the `postgresql` connector pointed at `postgres-rw.default.svc.cluster.local:5432`.
+- **WHEN** a database kit is not running, **THEN** its catalog is not injected into Presto.

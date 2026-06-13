@@ -1,0 +1,449 @@
+{
+  "uid": "postgres-duckdb",
+  "title": "DuckDB Analytics (pg_duckdb)",
+  "description": "DuckDB analytical execution signatures in PostgreSQL: temp file spill, seq scan dominance, buffer pressure. pg_duckdb has no native Prometheus metrics — this dashboard exposes its behavior through PostgreSQL stats.",
+  "graphTooltip": 1,
+  "schemaVersion": 36,
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "15s",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "liveNow": false,
+  "links": [
+    {
+      "title": "PostgreSQL Overview",
+      "type": "link",
+      "url": "/d/postgres-overview",
+      "targetBlank": false,
+      "icon": "external link"
+    }
+  ],
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "datasource", "uid": "grafana" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "target": { "limit": 100, "matchAny": false, "tags": [], "type": "dashboard" },
+        "type": "dashboard"
+      }
+    ]
+  },
+  "templating": {
+    "list": [
+      {
+        "current": { "text": "VictoriaMetrics", "value": "VictoriaMetrics" },
+        "hide": 0,
+        "includeAll": false,
+        "label": "Datasource",
+        "multi": false,
+        "name": "datasource",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "type": "datasource"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "DuckDB Execution Signals",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Temp Files Created (total)",
+      "description": "DuckDB spills intermediate results to PostgreSQL temp files when working memory is exhausted during large sorts, hash joins, or hash aggregates. Each temp file = one analytical spill event.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 10 }, { "color": "red", "value": 100 }] },
+          "unit": "none",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "cnpg_pg_stat_database_temp_files_total{job=\"postgres\",host_name=\"db0\",datname=\"postgres\"}",
+          "refId": "A",
+          "legendFormat": "temp files"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Temp Data Spilled (total)",
+      "description": "Cumulative bytes DuckDB has spilled to disk for temp files. Large values indicate analytical queries are exceeding available work_mem.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 104857600 }, { "color": "red", "value": 1073741824 }] },
+          "unit": "bytes",
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "cnpg_pg_stat_database_temp_bytes_total{job=\"postgres\",host_name=\"db0\",datname=\"postgres\"}",
+          "refId": "A",
+          "legendFormat": "temp bytes"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Seq Scan Ratio",
+      "description": "tup_returned / tup_fetched. OLTP with indexes gives a ratio near 1. DuckDB analytical full-table scans push this ratio to 10x–1000x. A high value here means analytical queries are dominating.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 5 }, { "color": "red", "value": 50 }] },
+          "unit": "none",
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum(rate(cnpg_pg_stat_database_tup_returned_total{job=\"postgres\",host_name=\"db0\",datname=\"postgres\"}[2m])) / clamp_min(sum(rate(cnpg_pg_stat_database_tup_fetched_total{job=\"postgres\",host_name=\"db0\",datname=\"postgres\"}[2m])), 1)",
+          "refId": "A",
+          "legendFormat": "ratio"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Buffer Cache Hit Ratio",
+      "description": "DuckDB full table scans evict index and OLTP data from shared_buffers. A drop here during analytical queries shows DuckDB's cache footprint. Optimal OLTP maintains >99%.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 0.90 }, { "color": "green", "value": 0.99 }] },
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum(rate(cnpg_pg_stat_database_blks_hit_total{job=\"postgres\",host_name=\"db0\",datname=\"postgres\"}[2m])) / (sum(rate(cnpg_pg_stat_database_blks_hit_total{job=\"postgres\",host_name=\"db0\",datname=\"postgres\"}[2m])) + sum(rate(cnpg_pg_stat_database_blks_read_total{job=\"postgres\",host_name=\"db0\",datname=\"postgres\"}[2m])))",
+          "refId": "A",
+          "legendFormat": ""
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "row",
+      "title": "Analytical vs OLTP Profile",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "panels": []
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Tuple Throughput: Analytical vs Index",
+      "description": "tup_returned (green) = rows scanned sequentially — DuckDB does full table scans so this dominates during analytics. tup_fetched (yellow) = rows from index lookups — OLTP with WHERE on indexed columns. A spike in tup_returned with flat tup_fetched is the DuckDB analytical signature.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 6 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "rps",
+          "custom": { "lineWidth": 2, "fillOpacity": 15 }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "seq scan (tup_returned/s)" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "#73BF69", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "index lookup (tup_fetched/s)" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "#FADE2A", "mode": "fixed" } }]
+          }
+        ]
+      },
+      "options": {
+        "legend": { "calcs": ["mean", "max", "lastNotNull"], "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum(rate(cnpg_pg_stat_database_tup_returned_total{job=\"postgres\",host_name=\"db0\",datname=\"postgres\"}[2m]))",
+          "refId": "A",
+          "legendFormat": "seq scan (tup_returned/s)"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum(rate(cnpg_pg_stat_database_tup_fetched_total{job=\"postgres\",host_name=\"db0\",datname=\"postgres\"}[2m]))",
+          "refId": "B",
+          "legendFormat": "index lookup (tup_fetched/s)"
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "type": "row",
+      "title": "Temp File Spill (DuckDB Working Memory)",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
+      "panels": []
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "Temp File Spill Rate",
+      "description": "Rate of DuckDB spilling to disk. Each spike corresponds to an analytical query that exceeded available memory for sorts, hash joins, or aggregates. A flat zero here means DuckDB is running entirely in memory — increase work_mem to eliminate spills.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 15 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "Bps",
+          "custom": { "lineWidth": 2, "fillOpacity": 30 }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "calcs": ["mean", "max", "lastNotNull"], "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum(rate(cnpg_pg_stat_database_temp_bytes_total{job=\"postgres\",host_name=\"db0\",datname=\"postgres\"}[2m]))",
+          "refId": "A",
+          "legendFormat": "temp bytes/s"
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "type": "timeseries",
+      "title": "Disk Block Reads (Cache Miss)",
+      "description": "Physical disk reads during DuckDB full table scans. When DuckDB scans a large table that doesn't fit in shared_buffers, all blocks must be read from disk. This metric spikes during analytical queries and drops back to near-zero after OLTP resumes.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 15 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "rps",
+          "custom": { "lineWidth": 2, "fillOpacity": 20 }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "calcs": ["mean", "max", "lastNotNull"], "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum(rate(cnpg_pg_stat_database_blks_read_total{job=\"postgres\",host_name=\"db0\",datname=\"postgres\"}[2m]))",
+          "refId": "A",
+          "legendFormat": "disk reads/s"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum(rate(cnpg_pg_stat_database_blks_hit_total{job=\"postgres\",host_name=\"db0\",datname=\"postgres\"}[2m]))",
+          "refId": "B",
+          "legendFormat": "cache hits/s"
+        }
+      ]
+    },
+    {
+      "id": 30,
+      "type": "row",
+      "title": "Background Writer Pressure",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 },
+      "panels": []
+    },
+    {
+      "id": 31,
+      "type": "timeseries",
+      "title": "Background Writer Activity",
+      "description": "When DuckDB reads large tables, it evicts OLTP data from shared_buffers. The background writer cleans dirty pages to make room. High buffers_clean here (relative to buffers_alloc) indicates DuckDB is creating cache pressure for concurrent OLTP workloads.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 23 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "rps",
+          "custom": { "lineWidth": 1, "fillOpacity": 10 }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "calcs": ["mean", "max", "lastNotNull"], "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "rate(cnpg_pg_stat_bgwriter_buffers_clean_total{job=\"postgres\",host_name=\"db0\"}[2m])",
+          "refId": "A",
+          "legendFormat": "buffers cleaned/s"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "rate(cnpg_pg_stat_bgwriter_buffers_alloc_total{job=\"postgres\",host_name=\"db0\"}[2m])",
+          "refId": "B",
+          "legendFormat": "buffers allocated/s"
+        }
+      ]
+    },
+    {
+      "id": 32,
+      "type": "timeseries",
+      "title": "Transaction Duration (Analytical vs OLTP)",
+      "description": "DuckDB analytical queries run as single long-running transactions. OLTP transactions commit in microseconds. A high max_tx_duration during analytical load is expected and indicates DuckDB is actively processing. The value drops immediately when the analytical query completes.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 23 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "s",
+          "custom": { "lineWidth": 2, "fillOpacity": 10 }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "calcs": ["mean", "max", "lastNotNull"], "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "max(cnpg_backends_max_tx_duration_seconds{job=\"postgres\",host_name=\"db0\"})",
+          "refId": "A",
+          "legendFormat": "max tx duration (s)"
+        }
+      ]
+    },
+    {
+      "id": 40,
+      "type": "row",
+      "title": "WAL & Transactions",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 30 },
+      "panels": []
+    },
+    {
+      "id": 41,
+      "type": "timeseries",
+      "title": "WAL Generation Rate",
+      "description": "DuckDB read-only analytical queries generate no WAL. If WAL generation drops during what should be an analytical-heavy period, it confirms DuckDB is running read-only queries (SELECT only). WAL resumes when OLTP writes return.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 31 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "Bps",
+          "custom": { "lineWidth": 1, "fillOpacity": 10 }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "rate(cnpg_collector_wal_bytes{job=\"postgres\",host_name=\"db0\"}[2m])",
+          "refId": "A",
+          "legendFormat": "WAL bytes/s"
+        }
+      ]
+    },
+    {
+      "id": 42,
+      "type": "timeseries",
+      "title": "Transaction Rate",
+      "description": "DuckDB analytics = low commits/s (one commit per long-running query). OLTP = high commits/s (thousands of short transactions). Watch for a drop in commit rate when DuckDB takes over — this is the DuckDB execution window.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 31 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "ops",
+          "custom": { "lineWidth": 1, "fillOpacity": 10 }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "calcs": ["mean", "max", "lastNotNull"], "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum(rate(cnpg_pg_stat_database_xact_commit_total{job=\"postgres\",host_name=\"db0\",datname=\"postgres\"}[2m]))",
+          "refId": "A",
+          "legendFormat": "commits/s"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum(rate(cnpg_pg_stat_database_xact_rollback_total{job=\"postgres\",host_name=\"db0\",datname=\"postgres\"}[2m]))",
+          "refId": "B",
+          "legendFormat": "rollbacks/s"
+        }
+      ]
+    }
+  ]
+}

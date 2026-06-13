@@ -71,7 +71,9 @@ class OtelManifestBuilder(
             val port = data["port"]?.toIntOrNull() ?: return@mapNotNull null
             val path = data["path"] ?: "/metrics"
             val username = data["username"] ?: ""
-            WorkloadScrapeConfig(jobName = jobName, port = port, path = path, username = username)
+            // Falls back to jobName for ConfigMaps written before the kit-name key was added
+            val kitName = data["kit-name"] ?: jobName
+            WorkloadScrapeConfig(kitName = kitName, jobName = jobName, port = port, path = path, username = username)
         }
     }
 
@@ -170,12 +172,21 @@ class OtelManifestBuilder(
         val jobs =
             configs.map { config ->
                 PrometheusScrapeJob(
-                    jobName = config.jobName,
+                    // kitName is unique per instance (e.g. "postgres-duckdb") and used as the OTel
+                    // job_name to prevent duplicate scrape_configs when multiple kit instances share
+                    // the same jobName (e.g. all postgres extensions declare job "postgres").
+                    jobName = config.kitName,
                     scrapeInterval = SCRAPE_INTERVAL,
                     staticConfigs = listOf(PrometheusStaticConfig(targets = listOf("localhost:${config.port}"))),
                     metricsPath = config.path,
                     relabelConfigs =
                         listOf(
+                            // Preserve the logical job name from kit.yaml as the `job` label so
+                            // Prometheus queries like job="postgres" continue to work across instances.
+                            PrometheusRelabelConfig(
+                                targetLabel = "job",
+                                replacement = config.jobName,
+                            ),
                             PrometheusRelabelConfig(
                                 targetLabel = "instance",
                                 replacement = "\${env:HOSTNAME}:${config.port}",

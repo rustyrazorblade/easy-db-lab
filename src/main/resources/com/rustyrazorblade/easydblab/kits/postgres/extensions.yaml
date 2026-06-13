@@ -1,0 +1,30 @@
+extensions:
+  duckdb:
+    description: "DuckDB analytical query engine via pg_duckdb"
+    image: "pgduckdb/pgduckdb:__PG_MAJOR__-v1.1.1"
+    shared_preload_libraries:
+      - pg_duckdb
+    create_extensions:
+      - pg_duckdb
+    postgres_uid: 999
+    postgres_gid: 999
+    postgres_port: 30432
+    metrics_port: 30987
+  postgis:
+    description: "Geospatial types and functions"
+    image: "ghcr.io/cloudnative-pg/postgis:__PG_MAJOR__"
+    create_extensions:
+      - postgis
+    postgres_port: 30433
+    metrics_port: 30988
+  timescaledb:
+    description: "Time-series storage and query optimization"
+    image: "timescale/timescaledb-ha:pg__PG_MAJOR__"
+    shared_preload_libraries:
+      - timescaledb
+    create_extensions:
+      - timescaledb
+    postgres_uid: 1000
+    postgres_gid: 1000
+    postgres_port: 30434
+    metrics_port: 30989

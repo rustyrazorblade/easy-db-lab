@@ -33,6 +33,7 @@ class KitRunnerCommand(
         description = ["Name passed to the phase script as BACKUP_NAME (default: timestamp)"],
     )
     var name: String = "backup-${LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))}"
+
     private val grafanaDashboardService: GrafanaDashboardService by inject()
     private val workloadStepExecutor: WorkloadStepExecutor by inject()
     private val metricsRegistryService: MetricsRegistryService by inject()
@@ -211,7 +212,12 @@ class KitRunnerCommand(
             Constants.Kit.PHASE_START -> {
                 clusterStateManager.addRunningWorkload(kitName)
                 kitHookExecutor.firePostKitStart(kitName)
-                val scrapeTargets = config.metrics.filterIsInstance<KitMetrics.Scrape>()
+                val resolvedArgs = readResolvedArgs()
+                val metricsPortOverride = resolvedArgs["METRICS_PORT"]?.toIntOrNull()
+                val scrapeTargets =
+                    config.metrics.filterIsInstance<KitMetrics.Scrape>().map { target ->
+                        if (metricsPortOverride != null) target.copy(port = metricsPortOverride) else target
+                    }
                 if (scrapeTargets.isNotEmpty()) {
                     metricsRegistryService
                         .register(

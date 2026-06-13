@@ -169,10 +169,47 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
         @Test
         fun `succeeds when manifest file exists`() {
             val manifestFile = File(tempDir, "deploy.yaml").also { it.writeText("kind: Pod") }
-            whenever(k8sService.applyYaml(any(), any())).thenReturn(Result.success(Unit))
 
             val result = execute(steps = listOf(InstallStep.Manifest(manifestFile.name)), kitDir = tempDir)
             assertThat(result.isSuccess).isTrue()
+        }
+
+        @Test
+        fun `interpolate=true substitutes step vars in manifest content`() {
+            var capturedContent: String? = null
+            val manifestFile = File(tempDir, "cluster.yaml").also { it.writeText("imageName: \${IMAGE}") }
+            org.mockito.kotlin
+                .doAnswer { inv ->
+                    capturedContent = inv.getArgument(1)
+                }.whenever(kubectlService)
+                .applyContent(any(), any())
+
+            execute(
+                steps = listOf(InstallStep.Manifest(manifestFile.name, interpolate = true)),
+                variables = mapOf("IMAGE" to "ghcr.io/example/pg:17"),
+                kitDir = tempDir,
+            )
+
+            assertThat(capturedContent).isEqualTo("imageName: ghcr.io/example/pg:17")
+        }
+
+        @Test
+        fun `interpolate=false leaves step vars in manifest content untouched`() {
+            var capturedContent: String? = null
+            val manifestFile = File(tempDir, "cluster.yaml").also { it.writeText("imageName: \${IMAGE}") }
+            org.mockito.kotlin
+                .doAnswer { inv ->
+                    capturedContent = inv.getArgument(1)
+                }.whenever(kubectlService)
+                .applyContent(any(), any())
+
+            execute(
+                steps = listOf(InstallStep.Manifest(manifestFile.name, interpolate = false)),
+                variables = mapOf("IMAGE" to "ghcr.io/example/pg:17"),
+                kitDir = tempDir,
+            )
+
+            assertThat(capturedContent).isEqualTo("imageName: \${IMAGE}")
         }
     }
 }

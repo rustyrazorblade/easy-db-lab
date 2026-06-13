@@ -220,6 +220,7 @@ data class KitConfig(
     val capabilities: List<KitCapability> = emptyList(),
 ) {
     val kitRefArg: KitArgSpec? get() = args.firstOrNull { it.type == KitArgSpec.ArgType.KIT_REF }
+    val extensionArg: KitArgSpec? get() = args.firstOrNull { it.type == KitArgSpec.ArgType.EXTENSION }
 
     fun stepsForPhase(phaseName: String): List<InstallStep> =
         when (phaseName) {
@@ -283,6 +284,9 @@ data class KitArgSpec(
 
         @SerialName("kit-ref")
         KIT_REF,
+
+        @SerialName("extension")
+        EXTENSION,
     }
 }
 

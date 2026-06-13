@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.commands.install
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
@@ -162,6 +163,66 @@ class KitInstallCommandTest : BaseKoinTest() {
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("sql")
             .hasMessageContaining("presto")
+    }
+
+    private val extensionsYaml =
+        """
+        extensions:
+          duckdb:
+            description: "DuckDB"
+            image: "ghcr.io/duckdb/pg_duckdb:pg__PG_MAJOR__"
+            shared_preload_libraries:
+              - pg_duckdb
+            create_extensions:
+              - pg_duckdb
+        """.trimIndent()
+
+    private val postgresConfig =
+        KitConfig(
+            name = "postgres",
+            type = null,
+            args =
+                listOf(
+                    KitArgSpec(flag = "--version", variable = "POSTGRES_VERSION", type = KitArgSpec.ArgType.STRING, default = "17"),
+                    KitArgSpec(flag = "--extension", variable = "EXTENSION", type = KitArgSpec.ArgType.EXTENSION, default = ""),
+                ),
+        )
+
+    @Test
+    fun `extension arg creates directory named kit-extension`() {
+        File(templateDir, "extensions.yaml").writeText(extensionsYaml)
+        buildAndRun(postgresConfig, mapOf("POSTGRES_VERSION" to "17", "EXTENSION" to "duckdb"))
+        assertThat(File(workingDir, "postgres-duckdb")).isDirectory()
+        assertThat(File(workingDir, "postgres")).doesNotExist()
+    }
+
+    @Test
+    fun `no extension arg creates directory named after kit`() {
+        File(templateDir, "extensions.yaml").writeText(extensionsYaml)
+        buildAndRun(postgresConfig, mapOf("POSTGRES_VERSION" to "17"))
+        assertThat(File(workingDir, "postgres")).isDirectory()
+    }
+
+    @Test
+    fun `extension arg bakes IMAGE into resolved args`() {
+        File(templateDir, "extensions.yaml").writeText(extensionsYaml)
+        buildAndRun(postgresConfig, mapOf("POSTGRES_VERSION" to "17", "EXTENSION" to "duckdb"))
+        val resolvedArgs =
+            File(workingDir, "postgres-duckdb/${Constants.Kit.RESOLVED_ARGS_FILE}")
+                .readLines()
+                .associate { it.substringBefore('=') to it.substringAfter('=') }
+        assertThat(resolvedArgs["IMAGE"]).isEqualTo("ghcr.io/duckdb/pg_duckdb:pg17")
+    }
+
+    @Test
+    fun `no extension bakes default IMAGE into resolved args`() {
+        File(templateDir, "extensions.yaml").writeText(extensionsYaml)
+        buildAndRun(postgresConfig, mapOf("POSTGRES_VERSION" to "17"))
+        val resolvedArgs =
+            File(workingDir, "postgres/${Constants.Kit.RESOLVED_ARGS_FILE}")
+                .readLines()
+                .associate { it.substringBefore('=') to it.substringAfter('=') }
+        assertThat(resolvedArgs["IMAGE"]).isEqualTo("ghcr.io/cloudnative-pg/postgresql:17")
     }
 
     @Test

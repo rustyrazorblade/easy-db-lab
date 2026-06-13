@@ -6,7 +6,6 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.otel.WorkloadScrapeConfig
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.ConfigMapList
 import io.fabric8.kubernetes.client.KubernetesClient
@@ -27,8 +26,9 @@ import org.mockito.kotlin.whenever
 class OtelSyncServiceTest : BaseKoinTest() {
     private lateinit var mockK8sClientProvider: K8sClientProvider
     private lateinit var mockK8sService: K8sService
-    private lateinit var mockOtelManifestBuilder: OtelManifestBuilder
+    private lateinit var otelManifestBuilder: OtelManifestBuilder
     private lateinit var mockK8sClient: KubernetesClient
+    private lateinit var mockFiltered: FilterWatchListDeletable<ConfigMap, ConfigMapList, Resource<ConfigMap>>
     private lateinit var service: OtelSyncService
 
     private val controlHost =
@@ -57,15 +57,14 @@ class OtelSyncServiceTest : BaseKoinTest() {
     fun setup() {
         mockK8sClientProvider = getKoin().get()
         mockK8sService = getKoin().get()
-        mockOtelManifestBuilder = OtelManifestBuilder(getKoin().get())
+        otelManifestBuilder = OtelManifestBuilder(getKoin().get())
         mockK8sClient = mock()
 
         val mockConfigMapOps =
             mock<MixedOperation<ConfigMap, ConfigMapList, Resource<ConfigMap>>>()
         val mockAnyNsOps =
             mock<AnyNamespaceOperation<ConfigMap, ConfigMapList, Resource<ConfigMap>>>()
-        val mockFiltered =
-            mock<FilterWatchListDeletable<ConfigMap, ConfigMapList, Resource<ConfigMap>>>()
+        mockFiltered = mock()
         val emptyConfigMapList = ConfigMapList().also { it.items = mutableListOf() }
 
         whenever(mockK8sClient.configMaps()).thenReturn(mockConfigMapOps)
@@ -77,7 +76,7 @@ class OtelSyncServiceTest : BaseKoinTest() {
         whenever(mockK8sService.applyResource(any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.rolloutRestartDaemonSet(any(), any(), any())).thenReturn(Result.success(Unit))
 
-        service = DefaultOtelSyncService(mockK8sClientProvider, mockK8sService, mockOtelManifestBuilder)
+        service = DefaultOtelSyncService(mockK8sClientProvider, mockK8sService, otelManifestBuilder)
     }
 
     @Test
@@ -145,14 +144,31 @@ class OtelSyncServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `syncConfigMap with workload scrape configs produces ConfigMap with dynamic jobs`() {
-        val scrapeConfigs = listOf(WorkloadScrapeConfig(jobName = "scylladb", port = 9180, path = "/metrics"))
-        val builder = OtelManifestBuilder(getKoin().get())
+    fun `syncConfigMap applies ConfigMap containing dynamic jobs from workload scrape ConfigMaps`() {
+        val metricsConfigMap =
+            ConfigMap().apply {
+                data =
+                    mapOf(
+                        "kit-name" to "scylladb",
+                        "job-name" to "scylladb",
+                        "port" to "9180",
+                        "path" to "/metrics",
+                    )
+            }
+        whenever(mockFiltered.list()).thenReturn(ConfigMapList().also { it.items = mutableListOf(metricsConfigMap) })
 
-        val configMap = builder.buildConfigMap(scrapeConfigs)
-        val yaml = configMap.data["otel-collector-config.yaml"]
+        var appliedConfigMap: ConfigMap? = null
+        whenever(mockK8sService.applyResource(any(), any())).thenAnswer { inv ->
+            appliedConfigMap = inv.getArgument(1) as? ConfigMap
+            Result.success(Unit)
+        }
 
-        assertThat(yaml).isNotNull
+        service.syncConfigMap(controlHost)
+
+        val yaml =
+            checkNotNull(appliedConfigMap?.data?.get("otel-collector-config.yaml")) {
+                "Applied ConfigMap must contain otel-collector-config.yaml"
+            }
         assertThat(yaml).contains("scylladb")
         assertThat(yaml).contains("9180")
     }

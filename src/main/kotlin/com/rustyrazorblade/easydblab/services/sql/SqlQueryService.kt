@@ -26,6 +26,31 @@ fun interface JdbcConnectionFactory {
     ): Connection
 }
 
+/**
+ * Ensures all bundled JDBC drivers are registered with [DriverManager].
+ *
+ * In a fat JAR (shadow JAR), the ServiceLoader mechanism that normally
+ * auto-registers JDBC drivers via META-INF/services/java.sql.Driver may not
+ * work correctly when multiple drivers are present. Explicitly loading each
+ * driver class forces its static initializer to run, which registers the
+ * driver instance with [DriverManager]. This is the canonical JDBC 4.0
+ * workaround for fat JAR environments.
+ */
+fun ensureJdbcDriversLoaded() {
+    listOf(
+        "org.postgresql.Driver",
+        "com.mysql.cj.jdbc.Driver",
+        "com.clickhouse.jdbc.ClickHouseDriver",
+        "com.facebook.presto.jdbc.PrestoDriver",
+        "io.trino.jdbc.TrinoDriver",
+    ).forEach { driverClass ->
+        runCatching { Class.forName(driverClass) }
+    }
+}
+
 /** Default factory that delegates to [DriverManager.getConnection]. */
 val defaultJdbcConnectionFactory: JdbcConnectionFactory =
-    JdbcConnectionFactory { url, props -> DriverManager.getConnection(url, props) }
+    JdbcConnectionFactory { url, props ->
+        ensureJdbcDriversLoaded()
+        DriverManager.getConnection(url, props)
+    }

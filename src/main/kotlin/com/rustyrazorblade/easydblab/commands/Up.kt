@@ -288,6 +288,13 @@ class Up : PicoBaseCommand() {
         val result = executeProvisioning(instanceConfig, servicesConfig, existingHosts)
         reportProvisioningFailures(result)
 
+        // Persist all discovered+provisioned hosts (existing hosts are in result.hosts but
+        // onHostsCreated is only fired for newly created ones, so we sync the full set here).
+        synchronized(stateLock) {
+            workingState.updateHosts(result.hosts)
+            clusterStateManager.save(workingState)
+        }
+
         finalizeInfrastructureState(vpcId, subnetIds, securityGroupId, igwId)
 
         printProvisioningSuccessMessage()

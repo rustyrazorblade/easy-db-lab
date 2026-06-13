@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-POD_NAME="sysbench-${KIT_NAME}"
+LABELS="easydblab/kit=${KIT_NAME},easydblab/role=sysbench-run"
 
 echo "Stopping sysbench run pod..."
-kubectl --kubeconfig="${KUBECONFIG}" delete pod "${POD_NAME}" --ignore-not-found
+kubectl --kubeconfig="${KUBECONFIG}" delete pods -l "${LABELS}" --ignore-not-found
 
 if [ -n "${TARGET_MYSQL_HOST:-}" ]; then
   DB_ARGS="--db-driver=mysql \
@@ -24,10 +24,12 @@ else
 fi
 
 echo "Running sysbench cleanup..."
-CLEANUP_POD="sysbench-cleanup-${KIT_NAME}"
+CLEANUP_POD="sysbench-cleanup-${KIT_NAME}-$(date +%s)"
+CLEANUP_LABELS="easydblab/kit=${KIT_NAME},easydblab/role=sysbench-cleanup"
 kubectl --kubeconfig="${KUBECONFIG}" run "${CLEANUP_POD}" \
   --image="docker.io/severalnines/sysbench" \
   --restart=Never \
+  --labels="${CLEANUP_LABELS}" \
   --command -- sysbench \
     ${DB_ARGS} \
     --tables="${TABLES}" \

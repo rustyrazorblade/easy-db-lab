@@ -317,6 +317,28 @@ class KitRunnerCommandFactoryTest : BaseKoinTest() {
     }
 
     @Test
+    fun `sql capability with jdbc endpoint and no driver-class registers sql subcommand`() {
+        writeKitYaml(
+            """
+            name: postgres
+            endpoints:
+              - name: "JDBC"
+                node-type: db
+                port: 30432
+                type: jdbc
+                scheme: postgresql
+                path: /postgres
+            capabilities:
+              - type: sql
+                user: postgres
+            """.trimIndent(),
+        )
+
+        val groupCl = factory.buildKitGroup("postgres", kitDir)
+        assertThat(groupCl.subcommands.keys).contains("sql")
+    }
+
+    @Test
     fun `unknown capability type is ignored and does not throw`() {
         writeKitYaml(
             """

@@ -54,7 +54,8 @@ abstract class BaseInstallCommand : PicoBaseCommand() {
 
             val installYamlContent = resolver.readInstallYamlContent(source)
             if (installYamlContent != null) {
-                File(tempDir, Constants.Kit.CONFIG_FILE).writeText(installYamlContent)
+                val renderedYaml = patchKitYaml(installYamlContent, extraVars)
+                File(tempDir, Constants.Kit.CONFIG_FILE).writeText(renderedYaml)
             }
 
             // Persist all resolved kit arg values so later phases (start, stop, etc.) can
@@ -90,4 +91,64 @@ abstract class BaseInstallCommand : PicoBaseCommand() {
 
         eventBus.emit(Event.Install.ScaffoldComplete(kit = kitName, outputDir = outputDir.path))
     }
+
+    /**
+     * Rewrites YAML `port:` lines in [content] whose current value matches a kit.yaml
+     * default port, substituting the override value from [extraVars].
+     *
+     * Kit templates declare static default port values in kit.yaml (e.g. `port: 30432`).
+     * When an extension overrides the ports via POSTGRES_PORT / METRICS_PORT, the written
+     * workspace kit.yaml must reflect those values so that endpoint resolution and the
+     * `sql` subcommand connect to the correct NodePort. The source kit.yaml is valid YAML
+     * (it uses integer literals), so this method replaces default values with overridden
+     * ones line-by-line, targeting only `port: <integer>` scalar lines.
+     *
+     * A substitution is applied when the current port value in the YAML exactly matches
+     * the default stored under the same variable name (POSTGRES_PORT or METRICS_PORT) in
+     * [extraVars] is not needed — instead we use a direct mapping from variable name to
+     * the parsed override integer port.
+     */
+    internal fun patchKitYaml(
+        content: String,
+        extraVars: Map<String, String>,
+    ): String {
+        val postgresPort = extraVars["POSTGRES_PORT"]?.toIntOrNull()
+        val metricsPort = extraVars["METRICS_PORT"]?.toIntOrNull()
+        if (postgresPort == null && metricsPort == null) return content
+
+        return content
+            .lines()
+            .map { line ->
+                val trimmed = line.trimStart()
+                if (!trimmed.startsWith("port:")) return@map line
+
+                val currentPort = trimmed.removePrefix("port:").trim().toIntOrNull() ?: return@map line
+                val indent = " ".repeat(line.length - trimmed.length)
+
+                // Map from known default ports to their override values.
+                // POSTGRES_PORT defaults: 30432. METRICS_PORT defaults: 30987.
+                // When the kit.yaml line holds a default that is being overridden, replace it.
+                val newPort =
+                    when {
+                        postgresPort != null && isDefaultPostgresPort(currentPort) -> postgresPort
+                        metricsPort != null && isDefaultMetricsPort(currentPort) -> metricsPort
+                        else -> return@map line
+                    }
+
+                "${indent}port: $newPort"
+            }.joinToString("\n")
+    }
+
+    /**
+     * Returns true if [port] is a well-known postgres NodePort default that may be
+     * overridden by the POSTGRES_PORT variable. The set of well-known defaults matches
+     * the port values used in the extensions.yaml registry.
+     */
+    private fun isDefaultPostgresPort(port: Int): Boolean = port in setOf(30432, 30433, 30434)
+
+    /**
+     * Returns true if [port] is a well-known metrics NodePort default that may be
+     * overridden by the METRICS_PORT variable.
+     */
+    private fun isDefaultMetricsPort(port: Int): Boolean = port in setOf(30987, 30988, 30989)
 }

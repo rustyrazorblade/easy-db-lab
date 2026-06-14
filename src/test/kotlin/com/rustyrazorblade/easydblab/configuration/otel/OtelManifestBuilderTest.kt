@@ -75,16 +75,16 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         val configMap = builder.buildConfigMap(scrapeConfigs)
         val yaml = yamlFrom(configMap)
 
-        assertThat(yaml).contains("job_name: \"presto\"")
+        assertThat(yaml).contains("job_name: \"presto-presto\"")
         assertThat(yaml).contains("localhost:8081")
         assertThat(yaml).contains("metrics_path: \"/metrics\"")
-        assertThat(yaml).contains("job_name: \"opensearch\"")
+        assertThat(yaml).contains("job_name: \"opensearch-opensearch\"")
         assertThat(yaml).contains("localhost:9600")
         assertThat(yaml).contains("metrics_path: \"/_prometheus/metrics\"")
     }
 
     @Test
-    fun `buildConfigMap uses kitName as OTel job_name and relabels job to jobName`() {
+    fun `buildConfigMap uses kitName-jobName compound key as OTel job_name and relabels job to jobName`() {
         val scrapeConfigs =
             listOf(
                 WorkloadScrapeConfig(kitName = "postgres-duckdb", jobName = "postgres", port = 30987, path = "/metrics"),
@@ -94,9 +94,11 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         val configMap = builder.buildConfigMap(scrapeConfigs)
         val yaml = yamlFrom(configMap)
 
-        // OTel job_name uses kitName to ensure uniqueness across instances
-        assertThat(yaml).contains("job_name: \"postgres-duckdb\"")
-        assertThat(yaml).contains("job_name: \"postgres-postgis\"")
+        // OTel job_name is kitName-jobName compound to ensure uniqueness for both:
+        // - multiple targets per kit (e.g. kafka-exporter, kafka-jmx)
+        // - multiple kit instances with the same jobName (e.g. postgres-duckdb, postgres-postgis)
+        assertThat(yaml).contains("job_name: \"postgres-duckdb-postgres\"")
+        assertThat(yaml).contains("job_name: \"postgres-postgis-postgres\"")
         // Relabel sets the `job` label in metrics back to the logical jobName
         assertThat(yaml).contains("target_label: \"job\"").contains("replacement: \"postgres\"")
     }
@@ -113,7 +115,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         assertThat(yaml).contains("job_name: 'cassandra-maac'")
         assertThat(yaml).contains("job_name: 'yace'")
         assertThat(yaml).contains("job_name: 'hubble'")
-        assertThat(yaml).contains("job_name: \"clickhouse\"")
+        assertThat(yaml).contains("job_name: \"clickhouse-clickhouse\"")
     }
 
     @Test

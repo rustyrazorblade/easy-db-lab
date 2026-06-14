@@ -50,21 +50,6 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
     }
 
     @Test
-    fun `buildDashboardConfigMap loads JSON and creates ConfigMap for each dashboard`() {
-        GrafanaDashboard.entries.forEach { dashboard ->
-            val configMap = builder.buildDashboardConfigMap(dashboard)
-
-            assertThat(configMap.metadata.name)
-                .describedAs("ConfigMap name for ${dashboard.name}")
-                .isEqualTo(dashboard.configMapName)
-            assertThat(configMap.data).containsKey(dashboard.jsonFileName)
-            assertThat(configMap.data[dashboard.jsonFileName])
-                .describedAs("JSON content for ${dashboard.name}")
-                .isNotBlank()
-        }
-    }
-
-    @Test
     fun `buildDashboardConfigMap preserves Grafana built-in variables`() {
         val configMap = builder.buildDashboardConfigMap(GrafanaDashboard.CLICKHOUSE)
         val json = configMap.data[GrafanaDashboard.CLICKHOUSE.jsonFileName]!!

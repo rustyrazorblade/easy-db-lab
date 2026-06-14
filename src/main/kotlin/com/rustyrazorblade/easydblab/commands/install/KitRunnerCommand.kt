@@ -34,6 +34,7 @@ class KitRunnerCommand(
     )
     var name: String = "backup-${LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))}"
 
+    val runtimeArgValues: MutableMap<String, String> = mutableMapOf()
     private val grafanaDashboardService: GrafanaDashboardService by inject()
     private val workloadStepExecutor: WorkloadStepExecutor by inject()
     private val metricsRegistryService: MetricsRegistryService by inject()
@@ -77,7 +78,7 @@ class KitRunnerCommand(
         // Apply in order: argDefaults → resolvedArgs → cluster state (base) → KUBECONFIG → BACKUP_NAME.
         // argDefaults first so cluster-state values in base take precedence over kit defaults;
         // resolvedArgs overlays defaults with user-specified install-time values.
-        val env = argDefaults + resolvedArgs + base + ("KUBECONFIG" to absoluteKubeconfig)
+        val env = argDefaults + resolvedArgs + runtimeArgValues + base + ("KUBECONFIG" to absoluteKubeconfig)
         val targetVars =
             config
                 ?.kitRefArg

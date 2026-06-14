@@ -2,6 +2,8 @@
 
 JSON dashboard files in this directory are loaded into Grafana via `GrafanaManifestBuilder`. Gradle copies them into classpath resources at build time. **Always run `./gradlew installDist` before `grafana update-config`** — `update-config` reads from the built JAR, not the source files directly.
 
+Note: These dashboard are considered LEGACY.  Do not add any additional dashboards here.  All dashboards associated with kits should be in the dashboard directory of the kit, not here.
+
 ## Datasource UIDs
 
 | Datasource        | UID              | Type                                    |

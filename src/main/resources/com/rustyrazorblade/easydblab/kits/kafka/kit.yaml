@@ -1,0 +1,184 @@
+name: kafka
+type: db
+description: Apache Kafka in KRaft mode via Strimzi operator (quay.io/strimzi — Apache 2.0)
+version: "2.0.0"
+collision-check: true
+metrics:
+  - type: scrape
+    port: 32309
+    path: /metrics
+    job: kafka-exporter
+  - type: scrape
+    port: 32404
+    path: /metrics
+    job: kafka-jmx
+runtime:
+  type: helm
+  release: strimzi-operator
+  namespace: strimzi
+  selector: name=strimzi-cluster-operator
+endpoints:
+  - name: "Kafka Internal"
+    node-type: db
+    port: 9092
+    type: kafka
+  - name: "Kafka Bootstrap"
+    node-type: db
+    port: 32100
+    type: kafka
+args:
+  - flag: --version
+    variable: KAFKA_VERSION
+    description: "Kafka version (e.g. 4.0.0)"
+    type: string
+    default: "4.2.0"
+  - flag: --brokers
+    variable: BROKERS
+    description: "Number of broker/controller nodes"
+    type: int
+    default: "1"
+  - flag: --storage-size
+    variable: STORAGE_SIZE
+    description: "Persistent volume size per broker"
+    type: string
+    default: "10Ti"
+
+commands:
+  producer-perf:
+    description: "Run Kafka producer performance test"
+    args:
+      - flag: --num-records
+        variable: NUM_RECORDS
+        description: "Number of records to produce"
+        type: int
+        default: "1000000"
+      - flag: --record-size
+        variable: RECORD_SIZE
+        description: "Record size in bytes"
+        type: int
+        default: "1024"
+      - flag: --throughput
+        variable: THROUGHPUT
+        description: "Target throughput in msg/sec (-1 for unlimited)"
+        type: int
+        default: "1000"
+      - flag: --topic
+        variable: TOPIC
+        description: "Topic to produce to"
+        type: string
+        default: "perf-test"
+  consumer-perf:
+    description: "Run Kafka consumer performance test"
+    args:
+      - flag: --num-records
+        variable: NUM_RECORDS
+        description: "Number of records to consume"
+        type: int
+        default: "1000000"
+      - flag: --topic
+        variable: TOPIC
+        description: "Topic to consume from"
+        type: string
+        default: "perf-test"
+      - flag: --group
+        variable: GROUP
+        description: "Consumer group ID"
+        type: string
+        default: "bench-consumer"
+  create-topic:
+    description: "Create a Kafka topic"
+    args:
+      - flag: --topic
+        variable: TOPIC
+        description: "Topic name"
+        type: string
+        default: "perf-test"
+      - flag: --partitions
+        variable: PARTITIONS
+        description: "Number of partitions"
+        type: int
+        default: "3"
+      - flag: --replication-factor
+        variable: REPLICATION_FACTOR
+        description: "Replication factor"
+        type: int
+        default: "1"
+
+install:
+  - type: helm-repo
+    name: strimzi
+    url: https://strimzi.io/charts/
+  - type: helm
+    chart: strimzi/strimzi-kafka-operator
+    release: strimzi-operator
+    namespace: strimzi
+    values:
+      watchNamespaces: "{default}"
+  - type: wait
+    kind: deployment
+    name: strimzi-cluster-operator
+    namespace: strimzi
+    condition: Available
+    timeout: 300s
+  - type: platform-pvs
+    node-type: db
+    volume-claim-template-name: data-0
+
+start:
+  - type: manifest
+    template: kafka-metrics-config.yaml
+  - type: manifest
+    template: kafka.yaml
+  - type: wait
+    kind: kafka
+    name: kafka
+    condition: Ready
+    timeout: 300s
+  - type: manifest
+    template: kafka-exporter-nodeport.yaml
+  - type: manifest
+    template: kafka-broker-jmx-nodeport.yaml
+
+stop:
+  - type: delete
+    kind: kafka
+    name: kafka
+  - type: delete
+    kind: kafkanodepool
+    name: dual-role
+  - type: delete
+    kind: service
+    name: kafka-exporter-nodeport
+  - type: delete
+    kind: service
+    name: kafka-broker-jmx-nodeport
+
+uninstall:
+  - type: delete
+    kind: kafka
+    name: kafka
+    ignore-not-found: true
+  - type: delete
+    kind: kafkanodepool
+    name: dual-role
+    ignore-not-found: true
+  - type: delete
+    kind: configmap
+    name: kafka-metrics-config
+    ignore-not-found: true
+  - type: delete
+    kind: service
+    name: kafka-exporter-nodeport
+    ignore-not-found: true
+  - type: delete
+    kind: service
+    name: kafka-broker-jmx-nodeport
+    ignore-not-found: true
+  - type: shell
+    script: |
+      kubectl delete pvc -l strimzi.io/cluster=kafka --namespace default --ignore-not-found=true
+  - type: platform-pvs-delete
+    node-type: db
+  - type: helm-uninstall
+    release: strimzi-operator
+    namespace: strimzi

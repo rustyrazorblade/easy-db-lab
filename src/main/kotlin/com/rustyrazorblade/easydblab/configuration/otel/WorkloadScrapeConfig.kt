@@ -3,8 +3,9 @@ package com.rustyrazorblade.easydblab.configuration.otel
 /**
  * Scrape target for a running K8s workload, read from the metrics registry ConfigMaps.
  *
- * [kitName] becomes the OTel scrape job name to ensure uniqueness across multiple kit instances
- * that share the same [jobName] (e.g., postgres-duckdb vs postgres-postgis both declare job "postgres").
+ * The OTel scrape job name is `"$kitName-$jobName"` to ensure uniqueness in all cases:
+ * kits with multiple scrape targets (e.g., kafka-exporter and kafka-jmx within the same kit) and
+ * multiple kit instances sharing the same [jobName] (e.g., postgres-duckdb vs postgres-postgis).
  * The [jobName] is preserved as the `job` label in metrics via a relabel rule.
  *
  * Note: only username-based basic auth is supported. Password is intentionally omitted —

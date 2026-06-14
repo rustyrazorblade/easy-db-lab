@@ -548,6 +548,35 @@ class KitRunnerCommandTest : BaseKoinTest() {
         assertThat(outputFile.readText().trim()).isEmpty()
     }
 
+    // -------------------------------------------------------------------------
+    // runtime arg env layering (kit-command-args)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `runtime arg value overrides install-time resolved arg for same variable`() {
+        writeResolvedArgs("mydb", mapOf("THROUGHPUT" to "100"))
+        val outputFile = File(workingDir, "throughput.txt")
+        writeScript("mydb", "start", """echo "${'$'}THROUGHPUT" > "${outputFile.absolutePath}"""")
+
+        val cmd = command("mydb", "start")
+        cmd.runtimeArgValues["THROUGHPUT"] = "50000"
+        cmd.call()
+
+        assertThat(outputFile.readText().trim()).isEqualTo("50000")
+    }
+
+    @Test
+    fun `cluster state var is not shadowed by runtime arg with same variable name`() {
+        val outputFile = File(workingDir, "cluster_name.txt")
+        writeScript("mydb", "start", """echo "${'$'}CLUSTER_NAME" > "${outputFile.absolutePath}"""")
+
+        val cmd = command("mydb", "start")
+        cmd.runtimeArgValues["CLUSTER_NAME"] = "injected-by-kit"
+        cmd.call()
+
+        assertThat(outputFile.readText().trim()).isEqualTo("test-cluster")
+    }
+
     @Test
     fun `kit without kit-ref arg does not inject TARGET vars`() {
         val outputFile = File(workingDir, "target_url.txt")

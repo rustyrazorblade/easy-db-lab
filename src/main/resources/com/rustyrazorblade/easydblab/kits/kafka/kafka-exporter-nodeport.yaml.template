@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-exporter-nodeport
+  namespace: default
+spec:
+  type: NodePort
+  selector:
+    strimzi.io/cluster: kafka
+    app.kubernetes.io/name: kafka-exporter
+  ports:
+    - port: 9404
+      targetPort: 9404
+      nodePort: 32309

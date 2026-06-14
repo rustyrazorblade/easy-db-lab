@@ -172,10 +172,10 @@ class OtelManifestBuilder(
         val jobs =
             configs.map { config ->
                 PrometheusScrapeJob(
-                    // kitName is unique per instance (e.g. "postgres-duckdb") and used as the OTel
-                    // job_name to prevent duplicate scrape_configs when multiple kit instances share
-                    // the same jobName (e.g. all postgres extensions declare job "postgres").
-                    jobName = config.kitName,
+                    // Use kitName-jobName compound key to ensure uniqueness in all cases:
+                    // - Same kit with multiple scrape targets (e.g. kafka-exporter and kafka-jmx)
+                    // - Multiple kit instances sharing the same jobName (e.g. postgres-duckdb and postgres-postgis)
+                    jobName = "${config.kitName}-${config.jobName}",
                     scrapeInterval = SCRAPE_INTERVAL,
                     staticConfigs = listOf(PrometheusStaticConfig(targets = listOf("localhost:${config.port}"))),
                     metricsPath = config.path,

@@ -16,6 +16,8 @@
   - [Spark](user-guide/spark.md)
 - [Kits](user-guide/kits.md)
   - [ClickHouse](user-guide/clickhouse.md)
+    - [Backup & Restore](user-guide/clickhouse-backup-restore.md)
+  - [Kafka](user-guide/kafka.md)
   - [Presto](user-guide/install-presto.md)
   - [Trino](user-guide/install-trino.md)
   - [TiDB](user-guide/tidb.md)

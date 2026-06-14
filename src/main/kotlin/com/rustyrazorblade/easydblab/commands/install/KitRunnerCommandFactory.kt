@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.commands.install
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.commands.kit.KitSqlCommand
+import com.rustyrazorblade.easydblab.services.KitArgSpec
 import com.rustyrazorblade.easydblab.services.KitCapability
 import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitEndpoint
@@ -9,6 +10,8 @@ import com.rustyrazorblade.easydblab.services.installConfigYaml
 import io.github.oshai.kotlinlogging.KotlinLogging
 import picocli.CommandLine
 import picocli.CommandLine.Model.CommandSpec
+import picocli.CommandLine.Model.ISetter
+import picocli.CommandLine.Model.OptionSpec
 import java.io.File
 import java.util.concurrent.Callable
 
@@ -37,7 +40,7 @@ class KitRunnerCommandFactory {
         val installConfig = loadInstallConfig(kitName, kitDir)
         val phases = collectPhases(kitDir, installConfig)
         phases.sorted().forEach { phaseName ->
-            groupCL.addSubcommand(phaseName, buildPhaseCommand(kitName, kitDir, phaseName))
+            groupCL.addSubcommand(phaseName, buildPhaseCommand(kitName, kitDir, phaseName, installConfig))
         }
         groupCL.addSubcommand("status", buildStatusCommand(kitName, kitDir, installConfig))
 
@@ -141,11 +144,27 @@ class KitRunnerCommandFactory {
         kitName: String,
         kitDir: File,
         phaseName: String,
+        installConfig: KitConfig,
     ): CommandLine {
         val command = KitRunnerCommand(kitName, kitDir, phaseName)
         val spec = CommandSpec.forAnnotatedObject(command, CommandLine.defaultFactory()).name(phaseName)
-        spec.usageMessage().description("Run $kitName/$phaseName")
-        spec.mixinStandardHelpOptions(true)
+        val commandSpec = installConfig.commands[phaseName]
+        val description = commandSpec?.description?.takeIf { it.isNotBlank() } ?: "Run $kitName/$phaseName"
+        spec.usageMessage().description(description)
+        val commandUsesVersionFlag = commandSpec?.args?.any { it.flag == "--version" } == true
+        if (commandUsesVersionFlag) {
+            spec.add(
+                OptionSpec
+                    .builder("--help", "-h")
+                    .usageHelp(true)
+                    .type(Boolean::class.java)
+                    .description("Show this help message and exit.")
+                    .build(),
+            )
+        } else {
+            spec.mixinStandardHelpOptions(true)
+        }
+        commandSpec?.args?.forEach { arg -> spec.add(argOptionSpec(arg, command)) }
         return CommandLine(spec)
     }
 
@@ -154,6 +173,36 @@ class KitRunnerCommandFactory {
         val spec = CommandLine.Model.CommandSpec.forAnnotatedObject(command, CommandLine.defaultFactory())
         spec.mixinStandardHelpOptions(true)
         return CommandLine(spec)
+    }
+
+    private fun argOptionSpec(
+        arg: KitArgSpec,
+        command: KitRunnerCommand,
+    ): OptionSpec {
+        val picoType = arg.type.toPicoCliType()
+        val builder =
+            OptionSpec
+                .builder(arg.flag)
+                .type(picoType)
+                .description(arg.description)
+                .setter(
+                    object : ISetter {
+                        override fun <T> set(value: T): T {
+                            command.runtimeArgValues[arg.variable] = "$value"
+                            return value
+                        }
+                    },
+                )
+        if (arg.default.isNotEmpty()) {
+            // Only pass to PicoCLI when fully resolved — PicoCLI expands ${...} as property
+            // lookups and returns null for unknown keys, corrupting the help text.
+            if (!arg.default.contains("\${")) {
+                builder.defaultValue(arg.default)
+            }
+        } else if (arg.required) {
+            builder.required(true)
+        }
+        return builder.build()
     }
 
     fun buildStatusCommand(

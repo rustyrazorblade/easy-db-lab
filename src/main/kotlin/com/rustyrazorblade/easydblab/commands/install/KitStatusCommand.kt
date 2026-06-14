@@ -83,9 +83,13 @@ class KitStatusCommand(
                 ) {
                     return KitRunningState.Stopped
                 }
+                val podSelector =
+                    runtime.selector
+                        .replace("\${KIT_NAME}", kitName)
+                        .ifBlank { "app.kubernetes.io/instance=$release" }
                 val pods =
                     kubeService
-                        .listPodsByLabel("app.kubernetes.io/instance=$release", namespace)
+                        .listPodsByLabel(podSelector, namespace)
                         .getOrElse { emptyList() }
                 KitRunningState.Running(readyPods = countReadyPods(pods), totalPods = pods.size)
             }

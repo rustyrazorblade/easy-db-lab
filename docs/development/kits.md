@@ -33,8 +33,8 @@ version: "1.0.0"
 collision-check: false   # true = refuse to install if already present
 
 metrics:
-  type: scrape           # see Metrics section
-  port: 9090
+  - type: scrape         # see Metrics section
+    port: 9090
 
 runtime:
   type: helm             # see Runtime section
@@ -260,9 +260,9 @@ succeeds, metrics are registered. When `stop` succeeds, they are deregistered.
 The kit exposes a Prometheus endpoint. The OTel DaemonSet scrapes it.
 ```yaml
 metrics:
-  type: scrape
-  port: 9090          # required
-  path: /metrics      # optional, default: /metrics
+  - type: scrape
+    port: 9090        # required
+    path: /metrics    # optional, default: /metrics
 ```
 
 Registration creates a K8s ConfigMap named `easydblab-metrics-<kit>` labelled
@@ -275,15 +275,15 @@ For JVM kits. The OTel Java agent JAR at `/usr/local/otel/opentelemetry-javaagen
 is attached to the JVM process.
 ```yaml
 metrics:
-  type: java-agent
-  service-name: myworkload
+  - type: java-agent
+    service-name: myworkload
 ```
 
 ### `helm-native` — Built-in telemetry
 The kit ships its own metrics pipeline via Helm values. No OTel config change is needed.
 ```yaml
 metrics:
-  type: helm-native
+  - type: helm-native
 ```
 
 ### Documenting Metrics
@@ -309,7 +309,7 @@ hooks:
 When `easy-db-lab cassandra start` completes, easy-db-lab scans every installed kit
 directory, finds those with a matching `post-workload-start` hook, and fires them.
 
-If `kits` is empty or omitted, the hook fires for any kit start/stop. Hooks retry up
+If `workloads` is empty or omitted, the hook fires for any kit start/stop. Hooks retry up
 to 3 times with exponential backoff (1s, 2s, 4s) on failure.
 
 **Use case**: Presto registers its Cassandra catalog after Cassandra starts. Its

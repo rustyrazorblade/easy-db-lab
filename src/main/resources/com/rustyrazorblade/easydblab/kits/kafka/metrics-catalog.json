@@ -1,0 +1,118 @@
+{
+  "workload": "kafka",
+  "note": "Two scrape jobs: kafka-exporter (NodePort 32309) for consumer lag and topic health; kafka-jmx (NodePort 32404) for broker JMX metrics via Strimzi. Metric names are lowercase (lowercaseOutputName: true in JMX config).",
+  "series": [
+    {
+      "name": "kafka_brokers",
+      "labels": { "job": "kafka-exporter" }
+    },
+    {
+      "name": "kafka_broker_info",
+      "labels": { "job": "kafka-exporter", "id": "0" }
+    },
+    {
+      "name": "kafka_consumergroup_current_offset",
+      "labels": { "job": "kafka-exporter", "consumergroup": "bench-consumer", "topic": "perf-test", "partition": "0" }
+    },
+    {
+      "name": "kafka_consumergroup_current_offset_sum",
+      "labels": { "job": "kafka-exporter", "consumergroup": "bench-consumer", "topic": "perf-test" }
+    },
+    {
+      "name": "kafka_consumergroup_lag",
+      "labels": { "job": "kafka-exporter", "consumergroup": "bench-consumer", "topic": "perf-test", "partition": "0" }
+    },
+    {
+      "name": "kafka_consumergroup_lag_sum",
+      "labels": { "job": "kafka-exporter", "consumergroup": "bench-consumer", "topic": "perf-test" }
+    },
+    {
+      "name": "kafka_consumergroup_members",
+      "labels": { "job": "kafka-exporter", "consumergroup": "bench-consumer" }
+    },
+    {
+      "name": "kafka_topic_partitions",
+      "labels": { "job": "kafka-exporter", "topic": "perf-test" }
+    },
+    {
+      "name": "kafka_topic_partition_current_offset",
+      "labels": { "job": "kafka-exporter", "topic": "perf-test", "partition": "0" }
+    },
+    {
+      "name": "kafka_topic_partition_oldest_offset",
+      "labels": { "job": "kafka-exporter", "topic": "perf-test", "partition": "0" }
+    },
+    {
+      "name": "kafka_topic_partition_leader",
+      "labels": { "job": "kafka-exporter", "topic": "perf-test", "partition": "0" }
+    },
+    {
+      "name": "kafka_topic_partition_leader_is_preferred",
+      "labels": { "job": "kafka-exporter", "topic": "perf-test", "partition": "0" }
+    },
+    {
+      "name": "kafka_topic_partition_replicas",
+      "labels": { "job": "kafka-exporter", "topic": "perf-test", "partition": "0" }
+    },
+    {
+      "name": "kafka_topic_partition_in_sync_replica",
+      "labels": { "job": "kafka-exporter", "topic": "perf-test", "partition": "0" }
+    },
+    {
+      "name": "kafka_topic_partition_under_replicated_partition",
+      "labels": { "job": "kafka-exporter", "topic": "perf-test", "partition": "0" }
+    },
+    {
+      "name": "kafka_controller_kafkacontroller_activecontrollercount",
+      "labels": { "job": "kafka-jmx" }
+    },
+    {
+      "name": "kafka_controller_kafkacontroller_offlinepartitionscount",
+      "labels": { "job": "kafka-jmx" }
+    },
+    {
+      "name": "kafka_coordinator_group_numgroups",
+      "labels": { "job": "kafka-jmx" }
+    },
+    {
+      "name": "kafka_coordinator_group_numoffsets",
+      "labels": { "job": "kafka-jmx" }
+    },
+    {
+      "name": "kafka_log_logmanager_offlinelogdirectorycount",
+      "labels": { "job": "kafka-jmx" }
+    },
+    {
+      "name": "kafka_network_requestmetrics_totaltimems_99thpercentile",
+      "labels": { "job": "kafka-jmx", "request": "Produce" }
+    },
+    {
+      "name": "kafka_network_requestmetrics_totaltimems_mean",
+      "labels": { "job": "kafka-jmx", "request": "Produce" }
+    },
+    {
+      "name": "kafka_server_brokertopicmetrics_bytesinpersec_rate",
+      "labels": { "job": "kafka-jmx", "topic": "perf-test" }
+    },
+    {
+      "name": "kafka_server_brokertopicmetrics_bytesoutpersec_rate",
+      "labels": { "job": "kafka-jmx", "topic": "perf-test" }
+    },
+    {
+      "name": "kafka_server_brokertopicmetrics_messagesinpersec_rate",
+      "labels": { "job": "kafka-jmx", "topic": "perf-test" }
+    },
+    {
+      "name": "kafka_server_replicamanager_leadercount",
+      "labels": { "job": "kafka-jmx" }
+    },
+    {
+      "name": "kafka_server_replicamanager_partitioncount",
+      "labels": { "job": "kafka-jmx" }
+    },
+    {
+      "name": "kafka_server_replicamanager_underreplicatedpartitions",
+      "labels": { "job": "kafka-jmx" }
+    }
+  ]
+}

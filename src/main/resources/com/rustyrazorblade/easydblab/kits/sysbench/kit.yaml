@@ -11,28 +11,41 @@ args:
     capability: sql
     description: "Name of the running database kit to benchmark (e.g. tidb); must expose a MySQL or PostgreSQL wire endpoint"
     required: true
-  - flag: --threads
-    variable: THREADS
-    type: int
-    description: "Number of concurrent threads"
-    default: "4"
-  - flag: --duration
-    variable: DURATION
-    type: int
-    description: "Benchmark duration in seconds"
-    default: "60"
-  - flag: --workload
-    variable: WORKLOAD
-    type: string
-    description: "sysbench built-in workload (oltp_read_write, oltp_read_only, oltp_write_only)"
-    default: "oltp_read_write"
-  - flag: --scale
-    variable: SCALE
-    type: int
-    description: "Number of rows per table (in thousands)"
-    default: "10"
-  - flag: --tables
-    variable: TABLES
-    type: int
-    description: "Number of tables"
-    default: "10"
+
+commands:
+  prepare:
+    description: "Prepare sysbench test data"
+    args:
+      - flag: --workload
+        variable: WORKLOAD
+        type: string
+        description: "sysbench built-in workload (oltp_read_write, oltp_read_only, oltp_write_only)"
+        default: "oltp_read_write"
+      - flag: --scale
+        variable: SCALE
+        type: int
+        description: "Number of rows per table (in thousands)"
+        default: "10"
+      - flag: --tables
+        variable: TABLES
+        type: int
+        description: "Number of tables"
+        default: "10"
+  start:
+    description: "Run sysbench benchmark"
+    args:
+      - flag: --workload
+        variable: WORKLOAD
+        type: string
+        description: "sysbench built-in workload (oltp_read_write, oltp_read_only, oltp_write_only)"
+        default: "oltp_read_write"
+      - flag: --threads
+        variable: THREADS
+        type: int
+        description: "Number of concurrent threads"
+        default: "4"
+      - flag: --duration
+        variable: DURATION
+        type: int
+        description: "Benchmark duration in seconds"
+        default: "60"

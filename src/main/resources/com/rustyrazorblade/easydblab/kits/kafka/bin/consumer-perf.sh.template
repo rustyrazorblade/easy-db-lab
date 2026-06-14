@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+KAFKA_POD=$(KUBECONFIG="$KUBECONFIG" kubectl get pods \
+  -l strimzi.io/cluster=kafka,strimzi.io/broker-role=true \
+  -n default \
+  --field-selector=status.phase=Running \
+  -o jsonpath='{.items[0].metadata.name}')
+
+if [[ -z "$KAFKA_POD" ]]; then
+  echo "No running Kafka pods found" >&2
+  exit 1
+fi
+
+echo "Consumer perf test on pod $KAFKA_POD"
+echo "  topic=$TOPIC  messages=$NUM_RECORDS  group=$GROUP"
+
+KUBECONFIG="$KUBECONFIG" kubectl exec -n default "$KAFKA_POD" -- \
+  bash -c "echo 'auto.offset.reset=earliest' > /tmp/consumer.properties && \
+    bin/kafka-consumer-perf-test.sh \
+    --bootstrap-server localhost:9092 \
+    --topic '$TOPIC' \
+    --num-records '$NUM_RECORDS' \
+    --group '$GROUP' \
+    --command-config /tmp/consumer.properties"

@@ -33,8 +33,8 @@ version: "1.0.0"
 collision-check: false   # true = refuse to install if already present
 
 metrics:
-  - type: scrape         # see Metrics section
-    port: 9090
+  type: scrape           # see Metrics section
+  port: 9090
 
 runtime:
   type: helm             # see Runtime section
@@ -260,9 +260,9 @@ succeeds, metrics are registered. When `stop` succeeds, they are deregistered.
 The kit exposes a Prometheus endpoint. The OTel DaemonSet scrapes it.
 ```yaml
 metrics:
-  - type: scrape
-    port: 9090        # required
-    path: /metrics    # optional, default: /metrics
+  type: scrape
+  port: 9090          # required
+  path: /metrics      # optional, default: /metrics
 ```
 
 Registration creates a K8s ConfigMap named `easydblab-metrics-<kit>` labelled
@@ -275,15 +275,15 @@ For JVM kits. The OTel Java agent JAR at `/usr/local/otel/opentelemetry-javaagen
 is attached to the JVM process.
 ```yaml
 metrics:
-  - type: java-agent
-    service-name: myworkload
+  type: java-agent
+  service-name: myworkload
 ```
 
 ### `helm-native` — Built-in telemetry
 The kit ships its own metrics pipeline via Helm values. No OTel config change is needed.
 ```yaml
 metrics:
-  - type: helm-native
+  type: helm-native
 ```
 
 ### Documenting Metrics
@@ -309,7 +309,7 @@ hooks:
 When `easy-db-lab cassandra start` completes, easy-db-lab scans every installed kit
 directory, finds those with a matching `post-workload-start` hook, and fires them.
 
-If `workloads` is empty or omitted, the hook fires for any kit start/stop. Hooks retry up
+If `kits` is empty or omitted, the hook fires for any kit start/stop. Hooks retry up
 to 3 times with exponential backoff (1s, 2s, 4s) on failure.
 
 **Use case**: Presto registers its Cassandra catalog after Cassandra starts. Its
@@ -430,9 +430,48 @@ The variables injected depend on what endpoints the target kit declares:
 | `postgresql` | `TARGET_PG_HOST`, `TARGET_PG_PORT`, `TARGET_PG_USER`, `TARGET_PG_DATABASE` |
 | `mysql` | `TARGET_MYSQL_HOST`, `TARGET_MYSQL_PORT`, `TARGET_MYSQL_USER`, `TARGET_MYSQL_DATABASE` |
 | `http` | `TARGET_HTTP_URL` |
+| `kafka` | `TARGET_KAFKA_BOOTSTRAP` |
 
 If the target kit directory does not exist or its `kit.yaml` is unreadable, no `TARGET_*`
 variables are injected and no error is raised (fail-safe).
+
+### Wiring a TARGET_* endpoint into an application pod
+
+`TARGET_*` variables are available in the kit's shell scripts — not inside running pods.
+To make the address available to an application, write a ConfigMap from the start script
+and reference it in your deployment.
+
+**In `bin/start.sh.template`:**
+
+```bash
+# Write the target endpoint into a ConfigMap the application pod reads
+kubectl create configmap my-app-config \
+  --from-literal=KAFKA_BOOTSTRAP_SERVERS="$TARGET_KAFKA_BOOTSTRAP" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+kubectl apply -f my-app-deployment.yaml
+```
+
+**In `my-app-deployment.yaml`:**
+
+```yaml
+spec:
+  containers:
+    - name: my-app
+      envFrom:
+        - configMapRef:
+            name: my-app-config
+```
+
+The application sees `KAFKA_BOOTSTRAP_SERVERS` (or any other variable) as a normal
+environment variable. The same pattern works for any `TARGET_*` variable — just change
+the key name to match what your application expects.
+
+Delete the ConfigMap in `bin/stop.sh.template` to keep the cluster clean:
+
+```bash
+kubectl delete configmap my-app-config --ignore-not-found
+```
 
 ### Wire protocol endpoint types
 

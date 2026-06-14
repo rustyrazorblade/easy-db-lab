@@ -1,0 +1,57 @@
+# Kafka on __CLUSTER_NAME__
+
+Workload: Apache Kafka in KRaft mode (no ZooKeeper)
+Brokers: __BROKERS__
+Storage per broker: __STORAGE_SIZE__
+DB nodes: __DB_NODE_COUNT__
+Region: __REGION__
+
+## Bootstrap addresses
+
+**Internal** (in-cluster pods, e.g. Cassandra sidecar):
+```
+kafka.default.svc.cluster.local:9092
+```
+
+**External** (from outside the cluster via Tailscale):
+```
+__CONTROL_HOST_PRIVATE__:32100
+```
+
+## Metrics
+
+JMX exporter: `__CONTROL_HOST_PRIVATE__:32404/metrics`
+
+## Use cases
+
+### CDC: Cassandra → Kafka → OpenSearch
+
+Configure the Cassandra sidecar CDC connector with bootstrap server:
+```
+kafka.default.svc.cluster.local:9092
+```
+
+The internal address avoids NodePort overhead for pod-to-pod traffic.
+
+### Kafka benchmarking
+
+Produce and consume from outside the cluster using the external bootstrap:
+```
+__CONTROL_HOST_PRIVATE__:32100
+```
+
+Example with kafka-producer-perf-test:
+```bash
+kafka-producer-perf-test.sh \
+  --topic test \
+  --num-records 1000000 \
+  --record-size 1024 \
+  --throughput -1 \
+  --producer-props bootstrap.servers=__CONTROL_HOST_PRIVATE__:32100
+```
+
+## Topic management
+
+```bash
+easy-db-lab kafka create-topic --topic my-topic --partitions 3 --replication-factor 1
+```

@@ -73,6 +73,9 @@ data class KitEndpoint(
 
         @SerialName("mysql")
         MYSQL,
+
+        @SerialName("kafka")
+        KAFKA,
     }
 
     /** Formats a connection URL for this endpoint using [ip] as the host address. */
@@ -81,7 +84,7 @@ data class KitEndpoint(
             EndpointType.HTTP -> "http://$ip:$port$path"
             EndpointType.HTTPS -> "https://$ip:$port$path"
             EndpointType.JDBC -> "jdbc:$scheme://$ip:$port$path"
-            EndpointType.NATIVE, EndpointType.CQL -> "$ip:$port"
+            EndpointType.NATIVE, EndpointType.CQL, EndpointType.KAFKA -> "$ip:$port"
             EndpointType.POSTGRESQL -> "postgresql://$ip:$port/$database"
             EndpointType.MYSQL -> "mysql://$ip:$port/$database"
         }
@@ -118,6 +121,7 @@ data class KitEndpoint(
                     "TARGET_MYSQL_DATABASE" to database,
                 )
             EndpointType.HTTP -> mapOf("TARGET_HTTP_URL" to formatUrl(ip))
+            EndpointType.KAFKA -> mapOf("TARGET_KAFKA_BOOTSTRAP" to formatUrl(ip))
             else -> emptyMap()
         }
     }
@@ -197,6 +201,18 @@ data class KitCapability(
     }
 }
 
+/**
+ * Declares the CLI options available for a single kit command (script or lifecycle phase).
+ *
+ * Unlike top-level [KitConfig.args] which are persisted at install time, command args are
+ * ephemeral — they apply only to the current invocation and override install-time values.
+ */
+@Serializable
+data class KitCommandSpec(
+    val description: String = "",
+    val args: List<KitArgSpec> = emptyList(),
+)
+
 @Serializable
 data class KitConfig(
     val name: String,
@@ -218,6 +234,7 @@ data class KitConfig(
     val hooks: KitHooks? = null,
     val type: KitType? = null,
     val capabilities: List<KitCapability> = emptyList(),
+    val commands: Map<String, KitCommandSpec> = emptyMap(),
 ) {
     val kitRefArg: KitArgSpec? get() = args.firstOrNull { it.type == KitArgSpec.ArgType.KIT_REF }
     val extensionArg: KitArgSpec? get() = args.firstOrNull { it.type == KitArgSpec.ArgType.EXTENSION }

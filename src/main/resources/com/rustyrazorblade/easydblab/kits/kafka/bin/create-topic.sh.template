@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+TOPIC="${TOPIC:-perf-test}"
+PARTITIONS="${PARTITIONS:-3}"
+REPLICATION_FACTOR="${REPLICATION_FACTOR:-1}"
+
+POD=$(KUBECONFIG="$KUBECONFIG" kubectl get pods -l strimzi.io/cluster=kafka,strimzi.io/broker-role=true \
+  -o jsonpath='{.items[0].metadata.name}' --field-selector=status.phase=Running 2>/dev/null)
+
+if [ -z "$POD" ]; then
+  echo "No running Kafka broker pod found" >&2
+  exit 1
+fi
+
+echo "Creating topic '$TOPIC' (partitions=$PARTITIONS, replication-factor=$REPLICATION_FACTOR) via $POD"
+
+KUBECONFIG="$KUBECONFIG" kubectl exec "$POD" -- \
+  bin/kafka-topics.sh \
+    --bootstrap-server localhost:9092 \
+    --create \
+    --if-not-exists \
+    --topic "$TOPIC" \
+    --partitions "$PARTITIONS" \
+    --replication-factor "$REPLICATION_FACTOR"

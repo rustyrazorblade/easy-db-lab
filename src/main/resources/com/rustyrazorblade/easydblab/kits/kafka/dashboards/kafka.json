@@ -1,0 +1,434 @@
+{
+  "title": "Kafka Overview",
+  "uid": "kafka-overview",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "15s",
+  "time": {"from": "now-1h", "to": "now"},
+  "templating": {
+    "list": [
+      {
+        "current": {"text": "VictoriaMetrics", "value": "VictoriaMetrics"},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Datasource",
+        "multi": false,
+        "name": "datasource",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "type": "datasource"
+      },
+      {
+        "current": {},
+        "datasource": {"type": "prometheus", "uid": "${datasource}"},
+        "definition": "label_values(kafka_brokers, cluster)",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Cluster",
+        "multi": false,
+        "name": "cluster",
+        "options": [],
+        "query": {"query": "label_values(kafka_brokers, cluster)", "refId": "A"},
+        "refresh": 2,
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "row",
+      "title": "Cluster Health",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0},
+      "id": 1,
+      "collapsed": false
+    },
+    {
+      "type": "stat",
+      "title": "Brokers Online",
+      "description": "Number of Kafka brokers currently online",
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "green", "value": 1}
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 4, "w": 4, "x": 0, "y": 1},
+      "id": 2,
+      "options": {"colorMode": "value", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"]}},
+      "targets": [{"expr": "max(kafka_brokers{cluster=~\"$cluster.*\"})", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "Active Controller",
+      "description": "Active KRaft controller count (should be 1)",
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "red", "value": 0},
+              {"color": "green", "value": 1},
+              {"color": "red", "value": 2}
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 4, "w": 4, "x": 4, "y": 1},
+      "id": 3,
+      "options": {"colorMode": "background", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"]}},
+      "targets": [{"expr": "max(kafka_controller_kafkacontroller_activecontrollercount{cluster=~\"$cluster.*\", job=\"kafka-jmx\"})", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "Under-Replicated Partitions",
+      "description": "Partitions with fewer replicas than configured (alert if > 0)",
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "red", "value": 1}
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 4, "w": 4, "x": 8, "y": 1},
+      "id": 4,
+      "options": {"colorMode": "background", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"]}},
+      "targets": [{"expr": "max(kafka_server_replicamanager_underreplicatedpartitions{cluster=~\"$cluster.*\", job=\"kafka-jmx\"})", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "Offline Partitions",
+      "description": "Partitions with no leader (alert if > 0)",
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "red", "value": 1}
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 4, "w": 4, "x": 12, "y": 1},
+      "id": 5,
+      "options": {"colorMode": "background", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"]}},
+      "targets": [{"expr": "max(kafka_controller_kafkacontroller_offlinepartitionscount{cluster=~\"$cluster.*\", job=\"kafka-jmx\"})", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "Total Partitions",
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 4, "w": 4, "x": 16, "y": 1},
+      "id": 6,
+      "options": {"colorMode": "none", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"]}},
+      "targets": [{"expr": "max(kafka_server_replicamanager_partitioncount{cluster=~\"$cluster.*\", job=\"kafka-jmx\"})", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "Consumer Groups",
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 4, "w": 4, "x": 20, "y": 1},
+      "id": 7,
+      "options": {"colorMode": "none", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"]}},
+      "targets": [{"expr": "max(kafka_coordinator_group_numgroups{cluster=~\"$cluster.*\", job=\"kafka-jmx\"})", "refId": "A"}]
+    },
+    {
+      "type": "row",
+      "title": "Throughput",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 5},
+      "id": 10,
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "Bytes In / Out per Second",
+      "description": "Cluster-wide inbound and outbound byte rates (1-min JMX rate, averaged across OTel scrape instances)",
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {"fillOpacity": 10, "lineWidth": 1},
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 7, "w": 12, "x": 0, "y": 6},
+      "id": 11,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"expr": "avg(kafka_server_brokertopicmetrics_bytesinpersec_rate{cluster=~\"$cluster.*\", job=\"kafka-jmx\", topic=\"\"})", "legendFormat": "bytes in", "refId": "A"},
+        {"expr": "avg(kafka_server_brokertopicmetrics_bytesoutpersec_rate{cluster=~\"$cluster.*\", job=\"kafka-jmx\", topic=\"\"})", "legendFormat": "bytes out", "refId": "B"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Messages In per Second by Topic",
+      "description": "Messages received per topic (1-min JMX rate)",
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {"fillOpacity": 10, "lineWidth": 1},
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 7, "w": 12, "x": 12, "y": 6},
+      "id": 12,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"expr": "avg by (topic)(kafka_server_brokertopicmetrics_messagesinpersec_rate{cluster=~\"$cluster.*\", job=\"kafka-jmx\", topic!=\"\"})", "legendFormat": "{{topic}}", "refId": "A"}
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Request Latency",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 13},
+      "id": 20,
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "Produce Latency (mean / p99)",
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {"fillOpacity": 10, "lineWidth": 1},
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 7, "w": 8, "x": 0, "y": 14},
+      "id": 21,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"expr": "avg(kafka_network_requestmetrics_totaltimems_mean{cluster=~\"$cluster.*\", job=\"kafka-jmx\", request=\"Produce\"})", "legendFormat": "mean", "refId": "A"},
+        {"expr": "max(kafka_network_requestmetrics_totaltimems_99thpercentile{cluster=~\"$cluster.*\", job=\"kafka-jmx\", request=\"Produce\"})", "legendFormat": "p99", "refId": "B"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Fetch Latency (mean / p99)",
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {"fillOpacity": 10, "lineWidth": 1},
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 7, "w": 8, "x": 8, "y": 14},
+      "id": 22,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"expr": "avg(kafka_network_requestmetrics_totaltimems_mean{cluster=~\"$cluster.*\", job=\"kafka-jmx\", request=\"FetchConsumer\"})", "legendFormat": "mean", "refId": "A"},
+        {"expr": "max(kafka_network_requestmetrics_totaltimems_99thpercentile{cluster=~\"$cluster.*\", job=\"kafka-jmx\", request=\"FetchConsumer\"})", "legendFormat": "p99", "refId": "B"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Metadata Latency (mean / p99)",
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {"fillOpacity": 10, "lineWidth": 1},
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 7, "w": 8, "x": 16, "y": 14},
+      "id": 23,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"expr": "avg(kafka_network_requestmetrics_totaltimems_mean{cluster=~\"$cluster.*\", job=\"kafka-jmx\", request=\"Metadata\"})", "legendFormat": "mean", "refId": "A"},
+        {"expr": "max(kafka_network_requestmetrics_totaltimems_99thpercentile{cluster=~\"$cluster.*\", job=\"kafka-jmx\", request=\"Metadata\"})", "legendFormat": "p99", "refId": "B"}
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Consumer Lag",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 21},
+      "id": 30,
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "Consumer Lag by Group",
+      "description": "Total consumer lag summed across all partitions per consumer group and topic",
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {"fillOpacity": 10, "lineWidth": 2},
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 22},
+      "id": 31,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"expr": "max by (consumergroup, topic)(kafka_consumergroup_lag_sum{cluster=~\"$cluster.*\", job=\"kafka-exporter\"})", "legendFormat": "{{consumergroup}} / {{topic}}", "refId": "A"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Consumer Lag by Partition",
+      "description": "Per-partition consumer lag",
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {"fillOpacity": 5, "lineWidth": 1},
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 22},
+      "id": 32,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"expr": "max by (consumergroup, topic, partition)(kafka_consumergroup_lag{cluster=~\"$cluster.*\", job=\"kafka-exporter\"})", "legendFormat": "{{consumergroup}} / {{topic}} / p{{partition}}", "refId": "A"}
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Topic Health",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 30},
+      "id": 40,
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "Topic Offset (Log End)",
+      "description": "Latest offset (how many messages have been produced) per topic partition",
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {"fillOpacity": 5, "lineWidth": 1},
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 7, "w": 12, "x": 0, "y": 31},
+      "id": 41,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"expr": "max by (topic, partition)(kafka_topic_partition_current_offset{cluster=~\"$cluster.*\", job=\"kafka-exporter\", topic!~\"__.*\"})", "legendFormat": "{{topic}} / p{{partition}}", "refId": "A"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "In-Sync Replicas",
+      "description": "Number of in-sync replicas per partition (should equal replication factor)",
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {"fillOpacity": 5, "lineWidth": 1},
+          "unit": "short",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 7, "w": 12, "x": 12, "y": 31},
+      "id": 42,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"expr": "max by (topic, partition)(kafka_topic_partition_in_sync_replica{cluster=~\"$cluster.*\", job=\"kafka-exporter\", topic!~\"__.*\"})", "legendFormat": "{{topic}} / p{{partition}}", "refId": "A"}
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Broker JVM",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 38},
+      "id": 50,
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "Heap Memory Used",
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {"fillOpacity": 10, "lineWidth": 1},
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 7, "w": 12, "x": 0, "y": 39},
+      "id": 51,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"expr": "avg by (instance)(jvm_memory_heap_used_bytes{cluster=~\"$cluster.*\", job=\"kafka-jmx\"})", "legendFormat": "{{instance}}", "refId": "A"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "GC Time Rate",
+      "description": "JVM garbage collection time rate per broker",
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {"fillOpacity": 10, "lineWidth": 1},
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 7, "w": 12, "x": 12, "y": 39},
+      "id": 52,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"expr": "rate(jvm_gc_collection_seconds_sum{cluster=~\"$cluster.*\", job=\"kafka-jmx\"}[5m])", "legendFormat": "{{instance}} {{gc}}", "refId": "A"}
+      ]
+    }
+  ]
+}

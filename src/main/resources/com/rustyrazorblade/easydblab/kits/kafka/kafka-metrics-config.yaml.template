@@ -1,0 +1,51 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-metrics-config
+  namespace: default
+data:
+  kafka-metrics-config.yml: |
+    lowercaseOutputName: true
+    rules:
+      # Broker byte rates (throughput)
+      - pattern: "kafka.server<type=BrokerTopicMetrics, name=(BytesInPerSec|BytesOutPerSec|MessagesInPerSec), topic=(.+)><>OneMinuteRate"
+        name: kafka_server_brokertopicmetrics_$1_rate
+        labels:
+          topic: "$2"
+        type: GAUGE
+      - pattern: "kafka.server<type=BrokerTopicMetrics, name=(BytesInPerSec|BytesOutPerSec|MessagesInPerSec)><>OneMinuteRate"
+        name: kafka_server_brokertopicmetrics_$1_rate
+        type: GAUGE
+
+      # Request latency
+      - pattern: "kafka.network<type=RequestMetrics, name=TotalTimeMs, request=(.+)><>(Mean|99thPercentile)"
+        name: kafka_network_requestmetrics_totaltimems_$2
+        labels:
+          request: "$1"
+        type: GAUGE
+
+      # Partition and replica health
+      - pattern: "kafka.server<type=ReplicaManager, name=(UnderReplicatedPartitions|PartitionCount|LeaderCount)><>Value"
+        name: kafka_server_replicamanager_$1
+        type: GAUGE
+      - pattern: "kafka.controller<type=KafkaController, name=(ActiveControllerCount|OfflinePartitionsCount)><>Value"
+        name: kafka_controller_kafkacontroller_$1
+        type: GAUGE
+
+      # Log / storage
+      - pattern: "kafka.log<type=LogManager, name=OfflineLogDirectoryCount><>Value"
+        name: kafka_log_logmanager_offlinelogdirectorycount
+        type: GAUGE
+
+      # Consumer group coordinator
+      - pattern: "kafka.coordinator.group<type=GroupMetadataManager, name=(NumGroups|NumOffsets)><>Value"
+        name: kafka_coordinator_group_$1
+        type: GAUGE
+
+      # JVM / OS
+      - pattern: "java.lang<type=Memory><HeapMemoryUsage>(used|committed)"
+        name: jvm_memory_heap_$1_bytes
+        type: GAUGE
+      # GC metrics use the JMX exporter's built-in conversion, which produces
+      # jvm_gc_collection_seconds_count and jvm_gc_collection_seconds_sum (ms→s).
+      # A custom rule here would produce different names that break dashboard queries.

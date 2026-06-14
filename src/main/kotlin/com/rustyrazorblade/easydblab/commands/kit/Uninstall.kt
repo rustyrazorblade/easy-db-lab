@@ -3,9 +3,7 @@ package com.rustyrazorblade.easydblab.commands.kit
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.install.KitRunnerCommand
 import picocli.CommandLine.Command
-import picocli.CommandLine.Model.CommandSpec
-import picocli.CommandLine.Option
-import picocli.CommandLine.Spec
+import picocli.CommandLine.Parameters
 import java.io.File
 
 /**
@@ -19,25 +17,17 @@ import java.io.File
     mixinStandardHelpOptions = true,
 )
 class Uninstall : PicoBaseCommand() {
-    @Spec
-    lateinit var spec: CommandSpec
-
-    @Option(
-        names = ["--kit"],
-        description = ["Kit to uninstall"],
+    @Parameters(
+        index = "0",
+        description = ["Name of the kit to uninstall (e.g. kafka, clickhouse)"],
     )
-    var kit: String? = null
+    lateinit var kit: String
 
     override fun execute() {
-        val target =
-            kit ?: run {
-                spec.commandLine().usage(System.out)
-                return
-            }
-        val kitDir = File(context.workingDirectory, target)
+        val kitDir = File(context.workingDirectory, kit)
         if (!kitDir.isDirectory) {
-            error("Kit '$target' is not installed in ${context.workingDirectory}")
+            error("Kit '$kit' is not installed in ${context.workingDirectory}")
         }
-        KitRunnerCommand(target, kitDir, "uninstall").call()
+        KitRunnerCommand(kit, kitDir, "uninstall").call()
     }
 }

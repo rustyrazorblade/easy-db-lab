@@ -71,13 +71,7 @@ class KitInstallCommandFactory(
         command: KitInstallCommand,
     ): OptionSpec {
         val resolvedDefault = resolveDefault(arg.default, templateVars)
-        val picoType =
-            when (arg.type) {
-                KitArgSpec.ArgType.STRING, KitArgSpec.ArgType.KIT_REF, KitArgSpec.ArgType.EXTENSION -> String::class.java
-                KitArgSpec.ArgType.BOOLEAN -> Boolean::class.java
-                KitArgSpec.ArgType.FLOAT -> Double::class.java
-                KitArgSpec.ArgType.INT -> Int::class.java
-            }
+        val picoType = arg.type.toPicoCliType()
 
         val builder =
             OptionSpec
@@ -115,3 +109,11 @@ class KitInstallCommandFactory(
             vars[match.groupValues[1]] ?: match.value
         }
 }
+
+internal fun KitArgSpec.ArgType.toPicoCliType(): Class<*> =
+    when (this) {
+        KitArgSpec.ArgType.STRING, KitArgSpec.ArgType.KIT_REF, KitArgSpec.ArgType.EXTENSION -> String::class.java
+        KitArgSpec.ArgType.BOOLEAN -> Boolean::class.java
+        KitArgSpec.ArgType.FLOAT -> Double::class.java
+        KitArgSpec.ArgType.INT -> Int::class.java
+    }

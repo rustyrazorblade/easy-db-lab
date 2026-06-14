@@ -386,6 +386,64 @@ class KitRunnerCommandFactoryTest : BaseKoinTest() {
         assertThat(groupCl.subcommands.keys).contains("start", "stop", "status", "sql")
     }
 
+    // -------------------------------------------------------------------------
+    // per-command args registration (kit-command-args)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `command with declared args registers them as options on the subcommand`() {
+        writeKitYaml(
+            """
+            name: kafka
+            commands:
+              producer-perf:
+                description: "Run producer perf test"
+                args:
+                  - flag: --num-records
+                    variable: NUM_RECORDS
+                    type: int
+                    default: "1000000"
+                  - flag: --throughput
+                    variable: THROUGHPUT
+                    type: int
+                    default: "-1"
+            start:
+              - type: shell
+                script: echo start
+            """.trimIndent(),
+        )
+        val binDir = File(kitDir, "bin").also { it.mkdirs() }
+        File(binDir, "producer-perf.sh").writeText("#!/bin/sh\necho perf")
+
+        val groupCl = factory.buildKitGroup("kafka", kitDir)
+        val perfCl = groupCl.subcommands["producer-perf"]!!
+        val optionNames = perfCl.commandSpec.options().map { it.longestName() }
+
+        assertThat(optionNames).contains("--num-records", "--throughput")
+    }
+
+    @Test
+    fun `command with no commands entry has only help and name options`() {
+        writeKitYaml(
+            """
+            name: mydb
+            start:
+              - type: shell
+                script: echo start
+            """.trimIndent(),
+        )
+
+        val groupCl = factory.buildKitGroup("mydb", kitDir)
+        val startCl = groupCl.subcommands["start"]!!
+        val optionNames =
+            startCl.commandSpec
+                .options()
+                .map { it.longestName() }
+                .toSet()
+
+        assertThat(optionNames).containsExactlyInAnyOrder("--help", "--version", "--name")
+    }
+
     @Test
     fun `no capabilities block produces no extra subcommands`() {
         writeKitYaml(

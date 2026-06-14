@@ -1,0 +1,63 @@
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: dual-role
+  namespace: default
+  labels:
+    strimzi.io/cluster: kafka
+spec:
+  replicas: __BROKERS__
+  roles:
+    - controller
+    - broker
+  storage:
+    type: jbod
+    volumes:
+      - id: 0
+        type: persistent-claim
+        size: __STORAGE_SIZE__
+        class: local-storage-wfc
+        deleteClaim: true
+---
+apiVersion: kafka.strimzi.io/v1
+kind: Kafka
+metadata:
+  name: kafka
+  namespace: default
+  annotations:
+    strimzi.io/node-pools: enabled
+    strimzi.io/kraft: enabled
+spec:
+  kafka:
+    version: __KAFKA_VERSION__
+    listeners:
+      - name: plain
+        port: 9092
+        type: internal
+        tls: false
+      - name: external
+        port: 9094
+        type: nodeport
+        tls: false
+        configuration:
+          bootstrap:
+            nodePort: 32100
+          preferredNodePortAddressType: InternalIP
+    config:
+      offsets.topic.replication.factor: __BROKERS__
+      transaction.state.log.replication.factor: __BROKERS__
+      transaction.state.log.min.isr: 1
+      default.replication.factor: __BROKERS__
+      min.insync.replicas: 1
+    metricsConfig:
+      type: jmxPrometheusExporter
+      valueFrom:
+        configMapKeyRef:
+          name: kafka-metrics-config
+          key: kafka-metrics-config.yml
+  kafkaExporter:
+    topicRegex: ".*"
+    groupRegex: ".*"
+  entityOperator:
+    topicOperator: {}
+    userOperator: {}

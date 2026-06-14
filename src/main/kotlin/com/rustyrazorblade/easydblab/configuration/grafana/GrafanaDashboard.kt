@@ -103,11 +103,4 @@ enum class GrafanaDashboard(
         jsonFileName = "tempo.json",
         optional = true,
     ),
-    TIDB(
-        configMapName = "grafana-dashboard-tidb",
-        volumeName = "dashboard-tidb",
-        mountPath = "/var/lib/grafana/dashboards/tidb",
-        jsonFileName = "tidb.json",
-        optional = true,
-    ),
 }

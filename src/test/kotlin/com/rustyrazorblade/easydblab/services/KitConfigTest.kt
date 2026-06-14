@@ -666,9 +666,13 @@ class KitConfigTest {
                     node-type: control
                     port: 443
                     type: https
+                  - name: "Kafka"
+                    node-type: db
+                    port: 9092
+                    type: kafka
                 """.trimIndent(),
             )
-        assertThat(config.endpoints).hasSize(5)
+        assertThat(config.endpoints).hasSize(6)
         assertThat(config.endpoints[0].name).isEqualTo("Presto UI")
         assertThat(config.endpoints[0].nodeType).isEqualTo("app")
         assertThat(config.endpoints[0].port).isEqualTo(8080)
@@ -679,6 +683,24 @@ class KitConfigTest {
         assertThat(config.endpoints[2].type).isEqualTo(KitEndpoint.EndpointType.NATIVE)
         assertThat(config.endpoints[3].type).isEqualTo(KitEndpoint.EndpointType.CQL)
         assertThat(config.endpoints[4].type).isEqualTo(KitEndpoint.EndpointType.HTTPS)
+        assertThat(config.endpoints[5].type).isEqualTo(KitEndpoint.EndpointType.KAFKA)
+    }
+
+    @Test
+    fun `kafka endpoint formatUrl returns host colon port with no scheme`() {
+        listOf(
+            Triple("Kafka Internal", 9092, "10.0.0.5"),
+            Triple("Kafka External", 30092, "100.64.1.2"),
+        ).forEach { (name, port, ip) ->
+            val endpoint =
+                KitEndpoint(
+                    name = name,
+                    nodeType = "db",
+                    port = port,
+                    type = KitEndpoint.EndpointType.KAFKA,
+                )
+            assertThat(endpoint.formatUrl(ip)).isEqualTo("$ip:$port")
+        }
     }
 
     @Test
@@ -1059,6 +1081,105 @@ class KitConfigTest {
                 """.trimIndent(),
             )
         assertThat(config.args.single().capability).isEmpty()
+    }
+
+    // -------------------------------------------------------------------------
+    // commands map deserialization (kit-command-args)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `commands defaults to empty map when not declared`() {
+        val config = parse("name: mydb")
+        assertThat(config.commands).isEmpty()
+    }
+
+    @Test
+    fun `parses commands block with description and args`() {
+        val config =
+            parse(
+                """
+                name: kafka
+                commands:
+                  producer-perf:
+                    description: "Run producer perf test"
+                    args:
+                      - flag: --num-records
+                        variable: NUM_RECORDS
+                        type: int
+                        default: "1000000"
+                      - flag: --throughput
+                        variable: THROUGHPUT
+                        type: int
+                        default: "-1"
+                """.trimIndent(),
+            )
+        assertThat(config.commands).hasSize(1)
+        val cmd = config.commands["producer-perf"]!!
+        assertThat(cmd.description).isEqualTo("Run producer perf test")
+        assertThat(cmd.args).hasSize(2)
+        assertThat(cmd.args[0].flag).isEqualTo("--num-records")
+        assertThat(cmd.args[0].variable).isEqualTo("NUM_RECORDS")
+        assertThat(cmd.args[0].type).isEqualTo(KitArgSpec.ArgType.INT)
+        assertThat(cmd.args[0].default).isEqualTo("1000000")
+        assertThat(cmd.args[1].flag).isEqualTo("--throughput")
+    }
+
+    @Test
+    fun `parses multiple commands each with independent args`() {
+        val config =
+            parse(
+                """
+                name: kafka
+                commands:
+                  producer-perf:
+                    args:
+                      - flag: --num-records
+                        variable: NUM_RECORDS
+                        type: int
+                        default: "1000000"
+                  consumer-perf:
+                    args:
+                      - flag: --group
+                        variable: GROUP
+                        type: string
+                        default: "bench"
+                """.trimIndent(),
+            )
+        assertThat(config.commands).hasSize(2)
+        assertThat(config.commands["producer-perf"]!!.args[0].flag).isEqualTo("--num-records")
+        assertThat(config.commands["consumer-perf"]!!.args[0].flag).isEqualTo("--group")
+    }
+
+    @Test
+    fun `command spec description defaults to empty string`() {
+        val config =
+            parse(
+                """
+                name: mydb
+                commands:
+                  start:
+                    args:
+                      - flag: --threads
+                        variable: THREADS
+                        type: int
+                        default: "4"
+                """.trimIndent(),
+            )
+        assertThat(config.commands["start"]!!.description).isEmpty()
+    }
+
+    @Test
+    fun `command spec args default to empty list`() {
+        val config =
+            parse(
+                """
+                name: mydb
+                commands:
+                  start:
+                    description: "Start the workload"
+                """.trimIndent(),
+            )
+        assertThat(config.commands["start"]!!.args).isEmpty()
     }
 
     @Test

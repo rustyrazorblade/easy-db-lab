@@ -31,11 +31,13 @@ variable "s3_bucket" {
 # The user's AWS keypair and local private key, so the build instance is reachable via SSH with
 # their own key (e.g. when left up by --keep-on-error / -on-error=abort).
 variable "ssh_keypair_name" {
-  type = string
+  type    = string
+  default = ""
 }
 
 variable "ssh_private_key_file" {
-  type = string
+  type    = string
+  default = ""
 }
 
 locals {

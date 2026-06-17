@@ -130,10 +130,14 @@ class AwsInfrastructureService(
      * created on repeated Packer builds.
      *
      * @param sshPort SSH port to allow access on
+     * @param sshCidr CIDR allowed to SSH in (the developer's public IP /32)
      * @return VpcInfrastructure containing the IDs of all created/found resources
      */
-    fun ensurePackerInfrastructure(sshPort: Int): VpcInfrastructure {
-        val config = InfrastructureConfig.forPacker(sshPort)
+    fun ensurePackerInfrastructure(
+        sshPort: Int,
+        sshCidr: String,
+    ): VpcInfrastructure {
+        val config = InfrastructureConfig.forPacker(sshPort, sshCidr)
 
         // Check for existing packer VPC first
         val existingVpcId = vpcService.findVpcByName(config.vpcName)

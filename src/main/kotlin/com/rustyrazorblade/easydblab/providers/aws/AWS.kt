@@ -242,9 +242,25 @@ class AWS(
                     .policy(bucketPolicy)
                     .build()
 
-            s3Client.putBucketPolicy(request)
+            // The policy references the just-created IAM roles as principals. IAM is eventually
+            // consistent, so S3 may briefly reject the policy with "Invalid principal in policy"
+            // until the roles propagate. Retry with backoff so this resolves itself.
+            RetryUtil.withS3BucketPolicyRetry("put-bucket-policy") {
+                s3Client.putBucketPolicy(request)
+            }
             log.info { "✓ Applied S3 bucket policy granting access to all 3 IAM roles: $bucketName" }
         } catch (e: software.amazon.awssdk.services.s3.model.S3Exception) {
+            val isPrincipalPropagation =
+                e.awsErrorDetails()?.errorCode() == "MalformedPolicy" ||
+                    e.message?.contains("Invalid principal") == true
+            if (isPrincipalPropagation) {
+                log.error(e) { "Failed to apply S3 bucket policy: $bucketName - ${e.message}" }
+                throw IllegalStateException(
+                    "Could not apply the S3 bucket policy because the easy-db-lab IAM roles are not yet " +
+                        "visible to S3 (IAM propagation delay). Wait a moment and re-run setup-profile.",
+                    e,
+                )
+            }
             log.error(e) { "Failed to apply S3 bucket policy: $bucketName - ${e.message}" }
             throw e
         }

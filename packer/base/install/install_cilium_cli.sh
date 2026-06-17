@@ -19,10 +19,20 @@ fi
 TARBALL="cilium-linux-${ARCH}.tar.gz"
 
 echo "Downloading cilium CLI ${CILIUM_CLI_VERSION} for ${ARCH}..."
-curl -fsSL --retry 3 \
+# Use the shared S3 download cache when present; otherwise download directly (local script
+# tests, or no cache configured).
+if [ -f /usr/local/lib/edl-cache.sh ]; then
+    # shellcheck disable=SC1091
+    source /usr/local/lib/edl-cache.sh
+else
+    cached_fetch() { echo "no S3 cache; downloading $1"; curl -fsSL --retry 3 "$1" -o "$3"; }
+fi
+cached_fetch \
     "https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/${TARBALL}" \
-    -o "${TARBALL}"
+    "cilium-cli/${CILIUM_CLI_VERSION}/${TARBALL}" \
+    "${TARBALL}"
 
+# Always fetch the checksum from origin and verify (validates cache integrity too)
 curl -fsSL --retry 3 \
     "https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/${TARBALL}.sha256sum" \
     -o "${TARBALL}.sha256sum"

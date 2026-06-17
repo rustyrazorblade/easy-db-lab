@@ -1,17 +1,23 @@
 package com.rustyrazorblade.easydblab.providers.aws
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.User
 import io.github.oshai.kotlinlogging.KotlinLogging
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider
+import software.amazon.awssdk.auth.credentials.AwsSessionCredentials
 import java.io.File
 
 /**
- * Manages AWS credentials file creation and access.
- * This was previously handled by the awsConfig lazy property in Context.
+ * Manages the AWS credentials file handed to the Packer container during AMI builds.
+ *
+ * Packer resolves AWS credentials independently of the JVM SDK, so the tool writes a
+ * shared-credentials file and mounts it into the container. Credentials are resolved through the
+ * same [AwsCredentialsProvider] the rest of the tool uses — static keys or an SSO-backed profile —
+ * so AMI builds authenticate identically to every other AWS operation. When the resolved
+ * credentials are temporary (e.g. SSO), the session token is written so Packer can authenticate.
  */
 class AWSCredentialsManager(
     private val profileDir: File,
-    private val user: User,
+    private val credentialsProvider: AwsCredentialsProvider,
 ) {
     private val logger = KotlinLogging.logger {}
 
@@ -21,20 +27,26 @@ class AWSCredentialsManager(
     val credentialsFileName: String = Constants.AWS.DEFAULT_CREDENTIALS_NAME
 
     /**
-     * Get or create the AWS credentials file.
-     * If the file doesn't exist, it will be created with the user's AWS credentials.
+     * The AWS credentials file, written from the currently-resolved credentials.
+     *
+     * The file is always (re)written rather than reused, so temporary credentials (e.g. SSO) are
+     * refreshed on each build instead of leaving a stale, expired file on disk.
      */
     val credentialsFile: File by lazy {
         val file = File(profileDir, credentialsFileName)
-        if (!file.exists()) {
-            logger.debug { "Creating AWS credentials file at ${file.absolutePath}" }
-            file.writeText(
-                """[default]
-                |aws_access_key_id=${user.awsAccessKey}
-                |aws_secret_access_key=${user.awsSecret}
-            """.trimMargin("|"),
-            )
-        }
+        val credentials = credentialsProvider.resolveCredentials()
+        logger.debug { "Writing AWS credentials file at ${file.absolutePath}" }
+
+        val contents =
+            buildString {
+                appendLine("[default]")
+                appendLine("aws_access_key_id=${credentials.accessKeyId()}")
+                appendLine("aws_secret_access_key=${credentials.secretAccessKey()}")
+                if (credentials is AwsSessionCredentials) {
+                    appendLine("aws_session_token=${credentials.sessionToken()}")
+                }
+            }
+        file.writeText(contents)
         file
     }
 

@@ -39,11 +39,17 @@ The setup wizard will prompt you for:
 |--------|-------------|---------|
 | Email | Used to tag AWS resources for ownership | (required) |
 | AWS Region | Region for your clusters | us-west-2 |
-| AWS Access Key | Your AWS access key ID | (required) |
-| AWS Secret Key | Your AWS secret access key | (required) |
+| AWS Profile name | Named AWS profile to authenticate with — press Enter to enter credentials manually instead | (manual) |
+| AWS Access Key | Your AWS access key ID (only asked if no profile name was given) | (required) |
+| AWS Secret Key | Your AWS secret access key (only asked if no profile name was given) | (required) |
 | AxonOps Org | Optional: AxonOps organization name | (skip) |
 | AxonOps Key | Optional: AxonOps API key | (skip) |
-| AWS Profile | Optional: Named AWS profile | (skip) |
+
+```admonish note
+The AWS profile name is asked **first**. If you provide one, the access key and secret prompts are skipped — easy-db-lab resolves credentials through that profile (including [AWS SSO](#using-aws-sso-iam-identity-center) profiles). Static access keys are only collected when you leave the profile name blank.
+```
+
+setup-profile validates your credentials against AWS immediately (and then provisions resources), so your credentials must be usable **before** you run it. For static keys this is automatic; for an SSO profile, run `aws sso login` first (see below).
 
 ### What Gets Created
 
@@ -64,6 +70,65 @@ Your profile is saved to:
 
 ```admonish tip
 Use a different profile by setting `EASY_DB_LAB_PROFILE` environment variable before running setup.
+```
+
+### Using AWS SSO (IAM Identity Center)
+
+If your AWS access is provisioned through AWS SSO (IAM Identity Center) rather than long-lived access keys, easy-db-lab authenticates through a named AWS profile backed by an SSO session. You do **not** copy temporary credentials out of the AWS access portal — the tool resolves them automatically from your SSO login.
+
+```admonish warning
+The AWS access portal's "Command line or programmatic access" panel gives you a temporary access key, secret, **and session token**. Do not use these with easy-db-lab. The static-credential path has no field for a session token, so those credentials will not work. Use the SSO profile flow below instead.
+```
+
+**1. Define an SSO profile** in `~/.aws/config`:
+
+```ini
+[sso-session my-sso]
+sso_start_url = https://my-company.awsapps.com/start
+sso_region = us-east-1
+sso_registration_scopes = sso:account:access
+
+[profile edl]
+sso_session = my-sso
+sso_account_id = 123456789012
+sso_role_name = YourRoleName
+region = us-west-2
+```
+
+**2. Log in** to start an SSO session (this opens a browser):
+
+```bash
+aws sso login --profile edl
+```
+
+**3. Run setup-profile** and enter `edl` when prompted for the AWS profile name (leave the access key and secret blank):
+
+```bash
+easy-db-lab setup-profile
+```
+
+```admonish important
+Run `aws sso login` **before** `setup-profile`. setup-profile validates and provisions against AWS immediately, so it needs an active SSO session. This first-time `aws sso login` → `setup-profile` sequence is only needed once.
+```
+
+#### Day-to-day usage
+
+After the one-time setup, you do **not** sign in for every command. An `aws sso login` session lasts for hours (your organization sets the exact window), and easy-db-lab resolves and refreshes credentials from it automatically:
+
+```bash
+# Once per work session (e.g. each morning), or whenever the session expires:
+aws sso login --profile edl
+
+# Then run commands freely — no per-command authentication:
+easy-db-lab up
+easy-db-lab cassandra start
+easy-db-lab down --auto-approve
+```
+
+When the session expires, the next command fails with an authentication error directing you to log in again. Re-run `aws sso login --profile edl` and continue.
+
+```admonish note
+For operations that run longer than your SSO session window (e.g. an unattended overnight benchmark), the session can expire mid-run and a later AWS call may fail. For interactive, command-by-command use this does not come up.
 ```
 
 ## Step 2: Getting IAM Policies

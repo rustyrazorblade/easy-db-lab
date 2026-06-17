@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.AWSClientFactory
 import com.rustyrazorblade.easydblab.services.CommandExecutor
+import com.rustyrazorblade.easydblab.services.ExternalIpService
 import com.rustyrazorblade.easydblab.services.aws.AMIValidationException
 import com.rustyrazorblade.easydblab.services.aws.AMIValidator
 import com.rustyrazorblade.easydblab.services.aws.AWSResourceSetupService
@@ -41,6 +42,7 @@ class SetupProfile : PicoBaseCommand() {
     private val commandExecutor: CommandExecutor by inject()
     private val prompter: Prompter by inject()
     private val awsClientFactory: AWSClientFactory by inject()
+    private val externalIpService: ExternalIpService by inject()
 
     override fun execute() {
         val existingConfig = userConfigProvider.loadExistingConfig()
@@ -213,7 +215,8 @@ class SetupProfile : PicoBaseCommand() {
     private fun offerIamPolicyDisplay(aws: AWS) {
         val showPolicies =
             prompter.prompt(
-                "Do you want to see the IAM policies with your account ID populated?",
+                "Print the IAM policies easy-db-lab needs (to request access from an AWS admin)? " +
+                    "Not required if setup completes — view anytime with 'show-iam-policies'",
                 "N",
             )
         if (showPolicies.equals("y", true)) {
@@ -452,7 +455,7 @@ class SetupProfile : PicoBaseCommand() {
      */
     private fun ensurePackerVpc() {
         eventBus.emit(Event.Setup.PackerVpcCreating)
-        awsInfra.ensurePackerInfrastructure(Constants.Network.SSH_PORT)
+        awsInfra.ensurePackerInfrastructure(Constants.Network.SSH_PORT, externalIpService.getExternalCidr())
         eventBus.emit(Event.Setup.PackerVpcReady)
     }
 

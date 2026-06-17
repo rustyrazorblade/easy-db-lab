@@ -22,6 +22,24 @@ variable "release_version" {
   default = ""
 }
 
+# Account S3 bucket used as an apt package cache for the JDK install (empty disables caching)
+variable "s3_bucket" {
+  type    = string
+  default = ""
+}
+
+# The user's AWS keypair and local private key, so the build instance is reachable via SSH with
+# their own key (e.g. when left up by --keep-on-error / -on-error=abort).
+variable "ssh_keypair_name" {
+  type    = string
+  default = ""
+}
+
+variable "ssh_private_key_file" {
+  type    = string
+  default = ""
+}
+
 locals {
   timestamp = regex_replace(timestamp(), "[- TZ:]", "")
   version = var.release_version != "" ? var.release_version : local.timestamp
@@ -33,6 +51,9 @@ source "amazon-ebs" "ubuntu" {
   ami_name      = "rustyrazorblade/images/easy-db-lab-base-${var.arch}-${local.version}"
   instance_type = local.instance_type
   region        = "${var.region}"
+  # Instance profile so the build can read/write the account S3 apt cache.
+  # The bucket policy already grants this role s3:* on the account bucket.
+  iam_instance_profile = "EasyDBLabEC2Role"
   source_ami_filter {
     filters = {
       name                = "ubuntu/images/*ubuntu-resolute-26.04-${var.arch}-server-*"
@@ -42,7 +63,9 @@ source "amazon-ebs" "ubuntu" {
     most_recent = true
     owners      = ["099720109477"]
   }
-  ssh_username = "ubuntu"
+  ssh_username         = "ubuntu"
+  ssh_keypair_name     = var.ssh_keypair_name
+  ssh_private_key_file = var.ssh_private_key_file
 
   # Use permanent VPC infrastructure created by PackerInfrastructureService
   vpc_filter {
@@ -73,8 +96,8 @@ source "amazon-ebs" "ubuntu" {
   }
   launch_block_device_mappings {
     device_name = "/dev/sda1"
-    volume_size = 16
-    volume_type = "gp2"
+    volume_size = 40
+    volume_type = "gp3"
     delete_on_termination = true
   }
 }
@@ -89,15 +112,30 @@ build {
     script = "install/prepare_instance.sh"
   }
 
+  # Upload the shared S3 cache library used by the install scripts below
+  provisioner "file" {
+    source      = "install/edl-cache-lib.sh"
+    destination = "/tmp/edl-cache-lib.sh"
+  }
+
+  # install AWS CLI v2 early so the S3 cache is usable by everything that follows
   provisioner "shell" {
-    inline = [
-      # bpftrace was removed b/c it breaks bcc tools, need to build latest from source
-      "echo '=== Downloading yq v4.41.1 ==='",
-      "sudo wget https://github.com/mikefarah/yq/releases/download/v4.41.1/yq_linux_${var.arch} -O /usr/local/bin/yq || { echo 'ERROR: yq download failed' >&2; exit 1; }",
-      "[ -f /usr/local/bin/yq ] || { echo 'ERROR: yq file not found after download' >&2; exit 1; }",
-      "sudo chmod +x /usr/local/bin/yq",
-      "echo '✓ yq installed successfully'",
+    script = "install/install_awscli.sh"
+  }
+
+  # install the cache library and restore the apt archive cache from S3
+  provisioner "shell" {
+    environment_vars = [
+      "EDL_ARCH=${var.arch}",
+      "EDL_S3_BUCKET=${var.s3_bucket}",
     ]
+    script = "install/setup_s3_cache.sh"
+  }
+
+  # install yq (via the S3 download cache)
+  provisioner "shell" {
+    environment_vars = ["ARCH=${var.arch}"]
+    script           = "install/install_yq.sh"
   }
 
   # install python via deadsnakes PPA
@@ -117,11 +155,6 @@ build {
 
   provisioner "shell" {
     script = "install/install_bcc.sh"
-  }
-
-  # install AWS CLI v2
-  provisioner "shell" {
-    script = "install/install_awscli.sh"
   }
 
   # install k3s (disabled, not auto-started)
@@ -157,12 +190,13 @@ build {
     script = "install/install_otel_agent.sh"
   }
 
+  # Installs all supported JDKs (8/11/17/21 + debug symbols) for the Cassandra versions we
+  # support. The hundreds of MB of -dbg packages come from the apt archive cache restored above.
   provisioner "shell" {
-    inline = [
-      "sudo DEBIAN_FRONTEND=noninteractive apt install -y openjdk-8-jdk openjdk-8-dbg openjdk-11-jdk openjdk-11-dbg openjdk-17-jdk openjdk-17-dbg openjdk-21-jdk openjdk-21-dbg",
-      "sudo update-java-alternatives -s /usr/lib/jvm/java-1.11.0-openjdk-${var.arch}",
-      "sudo sed -i '/hl jexec.*/d' /usr/lib/jvm/.java-1.8.0-openjdk-${var.arch}.jinfo"
+    environment_vars = [
+      "ARCH=${var.arch}",
     ]
+    script = "install/install_jdks.sh"
   }
 
   # install my extra nice tools, exa, bat, fd, ripgrep
@@ -181,15 +215,14 @@ build {
     ]
   }
 
+  # install sjk.jar (via the S3 download cache)
   provisioner "shell" {
-    inline = [
-      "echo '=== Downloading sjk.jar v0.21 from Maven Central ==='",
-      "wget https://repo1.maven.org/maven2/org/gridkit/jvmtool/sjk/0.21/sjk-0.21.jar -O /tmp/sjk.jar || { echo 'ERROR: sjk.jar download failed' >&2; exit 1; }",
-      "[ -f /tmp/sjk.jar ] || { echo 'ERROR: sjk.jar file not found after download' >&2; exit 1; }",
-      "sudo mv /tmp/sjk.jar /usr/local/lib/sjk.jar",
-      "echo '✓ sjk.jar v0.21 installed successfully'",
-      ""
-    ]
+    script = "install/install_sjk.sh"
+  }
+
+  # Save the warm apt archive cache back to S3 for the next build
+  provisioner "shell" {
+    script = "install/save_s3_cache.sh"
   }
 }
 

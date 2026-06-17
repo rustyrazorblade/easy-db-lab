@@ -18,6 +18,7 @@ import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.providers.ssh.SSHConfiguration
 import com.rustyrazorblade.easydblab.providers.ssh.SSHConnectionProvider
 import com.rustyrazorblade.easydblab.services.CommandExecutor
+import com.rustyrazorblade.easydblab.services.ExternalIpService
 import com.rustyrazorblade.easydblab.services.aws.AMIValidator
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import com.rustyrazorblade.easydblab.ssh.ISSHClient
@@ -178,6 +179,13 @@ object TestModules {
 
             // AwsS3BucketService using mocked AWS
             single { AwsS3BucketService(get<AWS>()) }
+
+            // Fake external IP resolver so tests never make a network call
+            single<ExternalIpService> {
+                object : ExternalIpService {
+                    override fun getExternalIpAddress(): String = "203.0.113.10"
+                }
+            }
         }
 
     /**

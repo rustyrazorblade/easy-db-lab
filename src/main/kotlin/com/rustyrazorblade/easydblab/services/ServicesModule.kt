@@ -147,6 +147,9 @@ val servicesModule =
             )
         }
 
+        // Resolves the developer's public IP for scoping security-group SSH ingress to a /32
+        single<ExternalIpService> { DefaultExternalIpService() }
+
         // Command executor for scheduling and executing commands with full lifecycle
         // Note: BackupRestoreService is lazily injected in DefaultCommandExecutor to avoid
         // triggering the AWS dependency chain during setup-profile (when settings.yaml doesn't exist yet)

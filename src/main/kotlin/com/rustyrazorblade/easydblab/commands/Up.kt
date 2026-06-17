@@ -25,6 +25,7 @@ import com.rustyrazorblade.easydblab.services.CiliumService
 import com.rustyrazorblade.easydblab.services.ClusterConfigurationService
 import com.rustyrazorblade.easydblab.services.ClusterProvisioningService
 import com.rustyrazorblade.easydblab.services.CommandExecutor
+import com.rustyrazorblade.easydblab.services.ExternalIpService
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import com.rustyrazorblade.easydblab.services.InstanceProvisioningConfig
 import com.rustyrazorblade.easydblab.services.K3sClusterConfig
@@ -45,7 +46,6 @@ import io.github.resilience4j.retry.Retry
 import org.koin.core.component.inject
 import picocli.CommandLine
 import java.io.File
-import java.net.URL
 import java.time.Duration
 
 /**
@@ -87,6 +87,7 @@ class Up : PicoBaseCommand() {
     private val registryService: RegistryService by inject()
     private val socksProxyService: SocksProxyService by inject()
     private val commandExecutor: CommandExecutor by inject()
+    private val externalIpService: ExternalIpService by inject()
 
     // Working copy loaded during execute() - modified and saved
     private lateinit var workingState: ClusterState
@@ -94,12 +95,6 @@ class Up : PicoBaseCommand() {
     companion object {
         private val log = KotlinLogging.logger {}
         private val SSH_STARTUP_DELAY = Duration.ofSeconds(5)
-
-        /**
-         * Gets the external IP address of the machine running easy-db-lab.
-         * Used to restrict SSH access to the security group.
-         */
-        private fun getExternalIpAddress(): String = URL("https://api.ipify.org/").readText()
     }
 
     // Lock for synchronizing access to workingState from parallel threads
@@ -154,10 +149,8 @@ class Up : PicoBaseCommand() {
             return
         }
 
-        val accountBucket = userConfig.s3Bucket
-        require(accountBucket.isNotBlank()) {
-            "No S3 bucket configured in profile. Run 'easy-db-lab setup-profile' first."
-        }
+        // Ensure-or-create the account bucket (migrates profiles that never had one saved)
+        val accountBucket = s3BucketService.ensureAccountBucket(userConfig)
 
         // Configure account-level bucket
         eventBus.emit(Event.S3.BucketUsing(accountBucket))
@@ -322,7 +315,7 @@ class Up : PicoBaseCommand() {
             tags = initConfig.tags,
             vpcCidr = resolvedCidr,
         ),
-    ) { getExternalIpAddress() }
+    ) { externalIpService.getExternalIpAddress() }
 
     private fun discoverExistingHosts(): Map<ServerType, List<ClusterHost>> {
         val existingInstances = ec2InstanceService.findInstancesByClusterId(workingState.clusterId)

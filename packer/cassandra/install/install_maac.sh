@@ -9,7 +9,15 @@ MAAC_BASE="/opt/management-api"
 TEMP_DIR=$(mktemp -d)
 
 echo "Downloading MAAC agent v${MAAC_VERSION}..."
-curl -fsSL -o "${TEMP_DIR}/jars.zip" "${MAAC_URL}"
+# Use the shared S3 download cache when present; otherwise download directly (local script
+# tests, or no cache configured).
+if [ -f /usr/local/lib/edl-cache.sh ]; then
+    # shellcheck disable=SC1091
+    source /usr/local/lib/edl-cache.sh
+else
+    cached_fetch() { echo "no S3 cache; downloading $1"; curl -fsSL --retry 3 "$1" -o "$3"; }
+fi
+cached_fetch "${MAAC_URL}" "maac/v${MAAC_VERSION}/jars.zip" "${TEMP_DIR}/jars.zip"
 
 echo "Extracting MAAC JARs..."
 cd "${TEMP_DIR}"

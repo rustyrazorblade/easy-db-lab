@@ -34,9 +34,9 @@ download_cassandra_version() {
     archive="apache-cassandra-$full_version-bin.tar.gz"
     download_url="https://dlcdn.apache.org/cassandra/$full_version/$archive"
 
-    # Download the file
+    # Download the file (via S3 cache, keyed by the resolved patch version)
     echo "Downloading Cassandra version $full_version from $download_url..."
-    curl -O "$download_url" || {
+    cached_fetch "$download_url" "cassandra-dist/$full_version/$archive" "$archive" || {
         echo "ERROR: Failed to download Cassandra version $full_version from $download_url"
         return 1
     }
@@ -49,8 +49,8 @@ download_cassandra_version() {
 
     echo "Download completed successfully."
 
-    # Extract the archive
-    tar zxvf "$archive" || {
+    # Extract the archive (quiet: verbose file listing floods packer's SSH stream and drops it)
+    tar zxf "$archive" || {
         echo "ERROR: Failed to extract $archive for version $full_version"
         return 1
     }
@@ -87,6 +87,15 @@ fi
 set -euo pipefail
 set -x
 
+# Shared S3 download cache (provides cached_fetch, used by download_cassandra_version above).
+# Falls back to a direct download when the cache lib is absent (local script tests / no cache).
+if [ -f /usr/local/lib/edl-cache.sh ]; then
+    # shellcheck disable=SC1091
+    source /usr/local/lib/edl-cache.sh
+else
+    cached_fetch() { echo "no S3 cache; downloading $1"; curl -fsSL --retry 3 "$1" -o "$3"; }
+fi
+
 # Trap errors and report line number
 trap 'echo "ERROR: Installation failed at line $LINENO with exit code $?" >&2; exit 1' ERR
 
@@ -104,7 +113,7 @@ uv tool install cqlsh
 
 # used to skip the expensive checkstyle checks
 
-sudo update-java-alternatives -s java-1.11.0-openjdk-amd64
+sudo update-java-alternatives -s java-1.11.0-openjdk-amd64 >/tmp/cassandra-setup.log 2>&1
 
 lsblk
 
@@ -150,7 +159,7 @@ do
   elif [[ $URL == *.tar.gz ]]; then
     echo "Downloading $URL for version $version"
 
-    wget "$URL" || {
+    wget -q "$URL" || {
         echo "ERROR: wget failed for version $version from $URL"
         exit 1
     }
@@ -164,7 +173,7 @@ do
     fi
 
     echo "Extracting $archive_file"
-    tar zxvf "$archive_file" || {
+    tar zxf "$archive_file" || {
         echo "ERROR: Failed to extract $archive_file for version $version"
         exit 1
     }
@@ -214,7 +223,8 @@ do
     echo "Building version $version with ant"
     (
       cd "$version" || exit 1
-      ant realclean && ant -Dno-checkstyle=true $ANT_FLAGS || exit 1
+      # Quiet: ant output is voluminous and floods packer's SSH stream
+      ant realclean >/tmp/ant-build.log 2>&1 && ant -Dno-checkstyle=true $ANT_FLAGS >>/tmp/ant-build.log 2>&1 || exit 1
       rm -rf .git
     ) || {
         echo "ERROR: Ant build failed for version $version"

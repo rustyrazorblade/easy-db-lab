@@ -313,6 +313,50 @@ object RetryUtil {
                 }
             }.build()
 
+    /**
+     * Creates retry configuration for applying an S3 bucket policy whose principals are
+     * IAM roles that were just created.
+     *
+     * IAM is eventually consistent, so a freshly created role may not yet be visible to S3's
+     * policy validator. S3 rejects the policy with a 400 `MalformedPolicy` ("Invalid principal
+     * in policy") until the role propagates. Retrying with backoff lets propagation catch up.
+     *
+     * - 5 attempts to cover propagation delay
+     * - Retries on `MalformedPolicy` / "Invalid principal" S3 errors and on 5xx server errors
+     * - Does NOT retry on 403 (forbidden) — that is a real permission error
+     *
+     * Exponential backoff: 1s, 2s, 4s, 8s, 16s
+     *
+     * @return RetryConfig configured for S3 bucket policy application
+     */
+    fun <T> createS3BucketPolicyRetryConfig(): RetryConfig =
+        RetryConfig
+            .custom<T>()
+            .maxAttempts(Constants.Retry.MAX_INSTANCE_PROFILE_RETRIES)
+            .intervalFunction { attemptCount ->
+                // Exponential backoff: 1s, 2s, 4s, 8s, 16s
+                Constants.Retry.EXPONENTIAL_BACKOFF_BASE_MS * (1L shl (attemptCount - 1))
+            }.retryOnException { throwable ->
+                when {
+                    throwable !is S3Exception -> false
+                    throwable.statusCode() == Constants.HttpStatus.FORBIDDEN -> {
+                        log.warn { "Permission denied applying S3 bucket policy - will not retry" }
+                        false
+                    }
+                    throwable.awsErrorDetails()?.errorCode() == "MalformedPolicy" ||
+                        throwable.message?.contains("Invalid principal") == true -> {
+                        log.warn { "IAM role not yet visible to S3 (eventual consistency) - will retry bucket policy" }
+                        true
+                    }
+                    throwable.statusCode() in
+                        Constants.HttpStatus.SERVER_ERROR_MIN..Constants.HttpStatus.SERVER_ERROR_MAX -> {
+                        log.warn { "S3 server error ${throwable.statusCode()} applying bucket policy - will retry" }
+                        true
+                    }
+                    else -> false
+                }
+            }.build()
+
     // ==================== Helper Functions ====================
 
     /**
@@ -364,6 +408,22 @@ object RetryUtil {
         operation: () -> T,
     ): T {
         val retryConfig = createVpcTeardownRetryConfig<T>()
+        val retry = Retry.of(operationName, retryConfig)
+        return Retry.decorateSupplier(retry, operation).get()
+    }
+
+    /**
+     * Executes an operation with S3 bucket policy retry logic (handles IAM eventual consistency).
+     *
+     * @param operationName Name of the operation for logging and metrics
+     * @param operation The operation to execute with retry logic
+     * @return The result of the operation
+     */
+    fun <T> withS3BucketPolicyRetry(
+        operationName: String,
+        operation: () -> T,
+    ): T {
+        val retryConfig = createS3BucketPolicyRetryConfig<T>()
         val retry = Retry.of(operationName, retryConfig)
         return Retry.decorateSupplier(retry, operation).get()
     }

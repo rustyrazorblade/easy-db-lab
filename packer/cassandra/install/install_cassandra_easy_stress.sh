@@ -9,7 +9,7 @@ TEMP_DIR=$(mktemp -d)
 
 echo "Downloading cassandra-easy-stress from ${TARBALL_URL}..."
 cd "${TEMP_DIR}"
-curl -L -o cassandra-easy-stress-latest.tar.gz "${TARBALL_URL}"
+curl -fsSL -o cassandra-easy-stress-latest.tar.gz "${TARBALL_URL}"
 
 echo "Extracting tarball..."
 tar -xzf cassandra-easy-stress-latest.tar.gz

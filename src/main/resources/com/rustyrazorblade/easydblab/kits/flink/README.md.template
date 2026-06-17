@@ -1,0 +1,60 @@
+# Apache Flink on __CLUSTER_NAME__ cluster
+
+Workload: Apache Flink **session cluster** via the Flink Kubernetes Operator
+Flink image: flink:__VERSION__
+TaskManagers: __TASKMANAGERS__
+Task slots per TaskManager: __TASK_SLOTS__
+App nodes: __APP_NODE_COUNT__
+Region: __REGION__
+
+This kit brings up an idle Flink **session cluster** (JobManager + TaskManagers). It does not
+submit any job — you submit your own work via the Web UI, the REST API, or `flink run`.
+
+## Web UI / REST API
+
+```
+URL:  http://<app-node-ip>:30081
+```
+
+The JobManager serves both the Web UI and the Flink REST API on this port.
+
+## Submitting a job
+
+Upload a JAR through the Web UI, or use the REST API. To run from a local Flink distribution
+against the session cluster's REST endpoint, use `-t remote` so the client submits over REST
+(the default `kubernetes-session` target requires K8s API access the job's service account does
+not have):
+
+```bash
+flink run -t remote -m <app-node-ip>:30081 ./examples/streaming/TopSpeedWindowing.jar
+```
+
+`TopSpeedWindowing` is a continuous streaming job — good for watching throughput and
+backpressure light up. Batch examples (e.g. `WordCount`) finish immediately and produce no
+sustained metrics.
+
+## Lifecycle
+
+```bash
+easy-db-lab kit install flink   # add the operator helm repo, install the operator
+easy-db-lab flink start         # deploy the FlinkDeployment session cluster, expose the UI
+easy-db-lab flink stop          # cancel running jobs, then delete the session cluster and UI service
+easy-db-lab flink uninstall     # remove the Flink Kubernetes Operator
+```
+
+## Tuning
+
+```bash
+easy-db-lab kit install flink --version 1.20 --taskmanagers 3 --task-slots 4
+```
+
+- `--version` — Flink image tag (default `1.20`). Must stay in sync with `flinkVersion` in
+  the FlinkDeployment template.
+- `--taskmanagers` — number of TaskManager replicas (default: app node count).
+- `--task-slots` — task slots per TaskManager (default: 2).
+
+## Metrics & profiling
+
+Flink's Prometheus reporter exposes JobManager and TaskManager metrics on `:9249`, scraped
+into VictoriaMetrics. System-level CPU/alloc profiling is captured automatically by the
+cluster's eBPF profiler — no per-kit setup required.

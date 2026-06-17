@@ -1,0 +1,97 @@
+name: flink
+type: app
+description: Apache Flink session cluster via the Flink Kubernetes Operator (stateless, targets app nodes)
+version: "1.0.0"
+collision-check: true
+
+metrics:
+  - type: scrape
+    port: 9249
+    path: /metrics
+
+runtime:
+  type: pods
+  selector: "app=flink-session"
+  namespace: default
+
+endpoints:
+  - name: "Flink Web UI"
+    node-type: app
+    port: 30081
+    type: http
+
+args:
+  - flag: --version
+    variable: VERSION
+    description: "Flink image version (e.g. 1.20). Must stay in sync with the flinkVersion enum in flinkdeployment.yaml.template"
+    type: string
+    default: "1.20"
+  - flag: --taskmanagers
+    variable: TASKMANAGERS
+    description: "Number of TaskManager replicas (default: app node count)"
+    type: int
+    default: "${APP_NODE_COUNT}"
+  - flag: --task-slots
+    variable: TASK_SLOTS
+    description: "Task slots per TaskManager"
+    type: int
+    default: "2"
+
+install:
+  - type: helm-repo
+    name: flink-operator-repo
+    url: https://downloads.apache.org/flink/flink-kubernetes-operator-1.15.0/
+  - type: helm
+    chart: flink-operator-repo/flink-kubernetes-operator
+    release: flink-kubernetes-operator
+    namespace: default
+    values:
+      webhook.create: "false"
+  - type: wait
+    kind: Deployment
+    name: flink-kubernetes-operator
+    namespace: default
+    condition: Available
+
+start:
+  - type: manifest
+    template: flinkdeployment.yaml
+  - type: shell
+    script: |
+      echo "Waiting for Flink session cluster pods to be created..."
+      until kubectl get pods -l app=flink-session -n default --no-headers 2>/dev/null | grep -q .; do sleep 5; done
+      echo "Pods exist, waiting for Ready..."
+      kubectl wait --for=condition=Ready pods \
+        -l app=flink-session \
+        --namespace default \
+        --timeout=300s
+  - type: manifest
+    template: nodeport-service.yaml
+
+stop:
+  # Cancel any running jobs first. The operator refuses to delete a session cluster that
+  # still has non-terminated jobs, so deleting the FlinkDeployment would otherwise hang.
+  - type: shell
+    script: |
+      JM=$(kubectl get pods -n default -l app=flink-session,component=jobmanager \
+        -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+      if [ -n "$JM" ]; then
+        for J in $(kubectl exec -n default "$JM" -- curl -s http://localhost:8081/jobs 2>/dev/null \
+            | jq -r '.jobs[]? | select(.status=="RUNNING") | .id'); do
+          echo "Cancelling running job $J..."
+          kubectl exec -n default "$JM" -- curl -s -XPATCH "http://localhost:8081/jobs/$J?mode=cancel" >/dev/null || true
+        done
+      fi
+  - type: delete
+    kind: FlinkDeployment
+    name: flink-session
+    namespace: default
+  - type: delete
+    kind: Service
+    name: flink-session-ui
+    namespace: default
+
+uninstall:
+  - type: helm-uninstall
+    release: flink-kubernetes-operator
+    namespace: default

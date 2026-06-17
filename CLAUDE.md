@@ -139,7 +139,7 @@ See [`src/test/.../CLAUDE.md`](src/test/kotlin/com/rustyrazorblade/easydblab/CLA
 - Tests should extend BaseKoinTest to use Koin DI.
 - Always use @TempDir for temporary directories in tests - JUnit handles lifecycle automatically.
 - Include testing when planning. Integration tests use TestContainers.
-- CRITICAL: Tests must pass, in CI, on my local, and in the devcontainer. It is UNACCEPTABLE to say that tests are only failing in devcontainers and to ignore them.
+- CRITICAL: Tests must pass, both in CI and on my local. It is UNACCEPTABLE to ignore failing tests or wave them off as environment-specific.
 - When running Gradle tests, run them in a subagent. Never attribute a test containers failure as a pre-existing problem. Raise it to my attention, I may need to restart docker.
 - **Minimal mocking.** Only mock what you must:
   - Mock external services with real side effects (AWS API calls that spin up instances, send emails, etc.)
@@ -211,11 +211,11 @@ DC2="$CLUSTER_BASE/dc2/easy-db-lab"
 
 ### Java Version Management (SDKMAN)
 
-The devcontainer uses SDKMAN to manage Java versions:
+The project uses SDKMAN to manage Java versions:
 - **Java 21** (Temurin) - Default for the main project
 - **Java 11** (Temurin) - Required for building cassandra-analytics
 
-SDKMAN is pre-configured in the devcontainer with both versions installed and Java 21 as the default.
+Install both versions via SDKMAN and set Java 21 as the default.
 
 **Why two versions?** The `bulk-writer` module depends on `cassandra-analytics` which requires JDK 17 to build. The `bin/build-cassandra-analytics` script automatically switches to JDK 17 for that build.
 
@@ -236,14 +236,14 @@ sdk default java 21.0.5-tem
 
 ### Building Cassandra Analytics Dependencies
 
-The `bulk-writer` module depends on cassandra-analytics SNAPSHOT artifacts that aren't published to Maven Central. Run `bin/dev test` and they will be built automatically if missing. To manually build or rebuild:
+The `bulk-writer` module depends on cassandra-analytics SNAPSHOT artifacts that aren't published to Maven Central. They are built automatically if missing when the build needs them. To manually build or rebuild:
 
 ```bash
 # Build cassandra-analytics (auto-skips if already built)
-bin/dev build-analytics
+bin/build-cassandra-analytics
 
 # Force rebuild
-bin/dev build-analytics --force
+bin/build-cassandra-analytics --force
 ```
 
 This clones the cassandra-analytics repo, builds with JDK 17, and publishes artifacts to the local Maven repository (`~/.m2/repository`).

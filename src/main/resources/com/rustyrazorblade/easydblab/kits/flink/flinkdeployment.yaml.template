@@ -1,0 +1,53 @@
+apiVersion: flink.apache.org/v1beta1
+kind: FlinkDeployment
+metadata:
+  name: flink-session
+  namespace: default
+spec:
+  image: flink:__VERSION__
+  # NOTE: flinkVersion is an enum (v1_20, v2_0, ...) and cannot be derived from the
+  # __VERSION__ image tag by template substitution. It is pinned to match the default
+  # --version (1.20). If you change --version to a different minor, update this too.
+  flinkVersion: v1_20
+  serviceAccount: flink
+  flinkConfiguration:
+    taskmanager.numberOfTaskSlots: "__TASK_SLOTS__"
+    # Prometheus metric reporter — exposes JobManager and TaskManager metrics on :9249.
+    # The reporter is pre-staged in the official image at
+    # /opt/flink/plugins/metrics-prometheus/ and auto-loaded by Flink's plugin manager;
+    # no initContainer or jar copying is needed.
+    metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
+    metrics.reporter.prom.port: "9249"
+  # podTemplate applies to BOTH JobManager and TaskManager pods unless overridden per role.
+  podTemplate:
+    spec:
+      nodeSelector:
+        type: app
+      # Spread Flink pods across app nodes. The Prometheus reporter binds hostPort 9249,
+      # so a JobManager and a TaskManager landing on the same node would collide. Anti-affinity
+      # keeps one metrics-exposing Flink pod per node where capacity allows.
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: flink-session
+                topologyKey: kubernetes.io/hostname
+      containers:
+        # The operator names the main container "flink-main-container".
+        - name: flink-main-container
+          ports:
+            - name: metrics
+              containerPort: 9249
+              hostPort: 9249
+  jobManager:
+    resource:
+      memory: "2048m"
+      cpu: 1
+  taskManager:
+    replicas: __TASKMANAGERS__
+    resource:
+      memory: "2048m"
+      cpu: 1

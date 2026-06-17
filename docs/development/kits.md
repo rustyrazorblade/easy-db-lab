@@ -251,6 +251,11 @@ Default values in `kit.yaml` can reference any of the variables above using `${V
 default: "${APP_NODE_COUNT}"
 ```
 
+A single arg cannot produce two *derived* forms — there is no transform syntax. If a kit needs
+the same value in different shapes (e.g. Flink uses the image tag `1.20` and the `flinkVersion`
+enum `v1_20`), hardcode the derived form in the manifest template and document the lockstep
+coupling with the arg.
+
 ## Metrics
 
 The `metrics` field tells easy-db-lab how to collect metrics from the kit. When `start`
@@ -265,10 +270,27 @@ metrics:
     path: /metrics    # optional, default: /metrics
 ```
 
+**Before adding any reporter plumbing, check whether the workload's image already ships the
+metrics reporter** — a pre-staged plugin directory, a built-in endpoint, or a bundled jar
+already on the classpath. Many JVM images do (e.g. the official Flink image pre-stages the
+Prometheus reporter at `/opt/flink/plugins/metrics-prometheus/`; you only set the reporter
+config — no plumbing). Only add an initContainer or volume to stage a reporter jar if it is
+genuinely absent.
+
+**Never mount an `emptyDir` over a directory the image already populates** — it hides what the
+image staged there. (We hit a crash copying the Flink reporter jar from an assumed path that
+did not exist, while the `emptyDir` overlay masked the real pre-staged plugin dir.)
+
 Registration creates a K8s ConfigMap named `easydblab-metrics-<kit>` labelled
 `easydblab.com/kit-metrics=true`. `OtelSyncService` watches for these ConfigMaps and
 regenerates the OTel collector config to add the new scrape job. All scraped metrics receive
 `job=<kit>` and `cluster=<cluster-name>` labels automatically.
+
+The OTel DaemonSet scrapes each target via a `hostPort` on the app node, which assumes **one
+metrics-exposing pod per node per kit**. A kit that exposes metrics from multiple pods (e.g.
+Flink serves `:9249` on the JobManager *and* every TaskManager) will collide on the hostPort
+if two land on the same node. Spread them with `podAntiAffinity` and keep replicas below the
+node count so each metrics-exposing pod gets its own node.
 
 ### `java-agent` — OpenTelemetry Java Agent
 For JVM kits. The OTel Java agent JAR at `/usr/local/otel/opentelemetry-javaagent.jar`
@@ -391,6 +413,14 @@ kubectl patch deployment <deployment-name> --namespace default --type=strategic 
 Use `component=coordinator`, `component=worker`, etc. in the `pyroscope.labels` to distinguish
 multiple JVM processes belonging to the same kit. Profiles appear in Grafana's Pyroscope
 datasource under `service_name=<kit>`.
+
+### Operator-managed (CRD) kits
+
+For kits whose pods are managed by an operator (the Flink operator, CNPG, etc.), a `kubectl
+patch` does **not** work — the operator reconciles its pods and reverts the patch. Put the JVM
+options in the operator's own resource instead (e.g. a `FlinkDeployment`'s `flinkConfiguration`
+or `podTemplate`, or the CR's pod template). For these kits the per-kit Java agent is optional
+anyway — system-level eBPF profiling already covers them, so it can be deferred.
 
 See `docs/user-guide/profiling.md` for how to access profiles in Grafana, profile types, and
 the full observability data flow.

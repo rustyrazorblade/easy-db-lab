@@ -2,49 +2,18 @@
 
 Hello there. If you're reading this, you've probably decided to contribute to easy-db-lab or use the tools for your own work. Very cool.
 
-## Dev Containers (Recommended)
+## Prerequisites
 
-Dev Containers are the preferred method for developing easy-db-lab. They provide a consistent, pre-configured environment with all required tools installed:
+Install these locally before building:
 
-- **Java 21** (Temurin) via SDKMAN
-- **Kotlin** and **Gradle**
-- **MkDocs** for documentation
-- **Docker-in-Docker** for container operations
-- **Claude Code** for AI-assisted development
-- **zsh** with Powerlevel10k theme
+- **Java 21** (Temurin) via SDKMAN — the default for the main project
+- **Java 11** (Temurin) via SDKMAN — required only for building cassandra-analytics
+- **Kotlin** and **Gradle** (the Gradle wrapper `./gradlew` is committed)
+- **Docker** — for TestContainers-backed integration tests
+- **mdbook** + **mdbook-admonish** — for previewing documentation
 
-### VS Code
-
-1. Install the [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
-2. Open the project folder
-3. Click "Reopen in Container" when prompted
-
-### JetBrains IDEs
-
-1. Install the [Dev Containers plugin](https://plugins.jetbrains.com/plugin/21962-dev-containers)
-2. Open the project and select "Dev Containers" from the remote development options
-
-### CLI with bin/dev
-
-The `bin/dev` script provides a convenient wrapper for dev container management:
-
-```bash
-bin/dev start          # Start the dev container
-bin/dev shell          # Open interactive shell
-bin/dev test           # Run Gradle tests
-bin/dev docs-serve     # Serve docs with live reload
-bin/dev claude         # Start Claude Code
-bin/dev status         # Show container status
-bin/dev down           # Stop and remove container
-```
-
-To mount your Claude Code configuration (for AI-assisted development):
-
-```bash
-ENABLE_CLAUDE=1 bin/dev start
-```
-
-Run `bin/dev help` for all available commands.
+SDKMAN manages the two Java versions; set Java 21 as the default. The `bin/build-cassandra-analytics`
+script switches to the JDK it needs automatically.
 
 ## Local Configuration (.env)
 
@@ -79,7 +48,7 @@ Variables already exported in your shell always take precedence over `.env`.
 
 ## Building the Project
 
-Once inside the container (or with local tools installed):
+With the required tools installed:
 
 ```bash
 ./gradlew assemble
@@ -91,10 +60,11 @@ Once inside the container (or with local tools installed):
 Preview documentation locally with live reload:
 
 ```bash
-bin/dev docs-serve
+cd docs
+mdbook serve
 ```
 
-Then open http://localhost:8000 in your browser.
+Then open http://localhost:3000 in your browser.
 
 ## Project Structure
 

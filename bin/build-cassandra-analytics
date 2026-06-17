@@ -104,7 +104,7 @@ fi
 if [ -f "$HOME/.sdkman/bin/sdkman-init.sh" ]; then
     source "$HOME/.sdkman/bin/sdkman-init.sh"
 else
-    echo "Error: SDKMAN not found. It should be installed in the devcontainer."
+    echo "Error: SDKMAN not found. Install it from https://sdkman.io and add Java 11 and 21."
     exit 1
 fi
 

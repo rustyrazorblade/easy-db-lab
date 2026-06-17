@@ -1,0 +1,293 @@
+{
+  "title": "Flink Overview",
+  "uid": "flink-kit",
+  "tags": ["flink", "kit"],
+  "schemaVersion": 39,
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "30s",
+  "templating": {
+    "list": [
+      {
+        "current": { "text": "VictoriaMetrics", "value": "VictoriaMetrics" },
+        "hide": 0,
+        "includeAll": false,
+        "label": "Datasource",
+        "multi": false,
+        "name": "datasource",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "type": "datasource"
+      },
+      {
+        "current": {},
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "definition": "label_values(up{job=\"flink\"}, cluster)",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Cluster",
+        "multi": false,
+        "name": "cluster",
+        "options": [],
+        "query": {
+          "query": "label_values(up{job=\"flink\"}, cluster)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 2,
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
+      "panels": [],
+      "title": "Cluster",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "TaskManagers currently registered with the JobManager",
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "id": 2,
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "expr": "flink_jobmanager_numRegisteredTaskManagers{job=\"flink\", cluster=~\"$cluster\"}", "legendFormat": "TaskManagers", "refId": "A" }
+      ],
+      "title": "Registered TaskManagers",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Jobs running in the session cluster",
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "id": 3,
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "expr": "flink_jobmanager_numRunningJobs{job=\"flink\", cluster=~\"$cluster\"}", "legendFormat": "Running jobs", "refId": "A" }
+      ],
+      "title": "Running Jobs",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Free task slots in the session cluster",
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "id": 4,
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "expr": "flink_jobmanager_taskSlotsAvailable{job=\"flink\", cluster=~\"$cluster\"}", "legendFormat": "Available", "refId": "A" }
+      ],
+      "title": "Task Slots Available",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Total task slots in the session cluster",
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "id": 5,
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "expr": "flink_jobmanager_taskSlotsTotal{job=\"flink\", cluster=~\"$cluster\"}", "legendFormat": "Total", "refId": "A" }
+      ],
+      "title": "Task Slots Total",
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "id": 6,
+      "panels": [],
+      "title": "Job Health",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Time since each job entered the RUNNING state",
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "ms" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "id": 7,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "flink_jobmanager_job_uptime{job=\"flink\", cluster=~\"$cluster\"}", "legendFormat": "{{job_name}}", "refId": "A" }
+      ],
+      "title": "Job Uptime",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Cumulative job restarts (full restarts shown separately)",
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "id": 8,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "flink_jobmanager_job_numRestarts{job=\"flink\", cluster=~\"$cluster\"}", "legendFormat": "{{job_name}} restarts", "refId": "A" },
+        { "expr": "flink_jobmanager_job_fullRestarts{job=\"flink\", cluster=~\"$cluster\"}", "legendFormat": "{{job_name}} full restarts", "refId": "B" }
+      ],
+      "title": "Job Restarts",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Checkpoint completion counts",
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "id": 9,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "flink_jobmanager_job_numberOfCompletedCheckpoints{job=\"flink\", cluster=~\"$cluster\"}", "legendFormat": "{{job_name}} completed", "refId": "A" },
+        { "expr": "flink_jobmanager_job_numberOfFailedCheckpoints{job=\"flink\", cluster=~\"$cluster\"}", "legendFormat": "{{job_name}} failed", "refId": "B" },
+        { "expr": "flink_jobmanager_job_numberOfInProgressCheckpoints{job=\"flink\", cluster=~\"$cluster\"}", "legendFormat": "{{job_name}} in progress", "refId": "C" }
+      ],
+      "title": "Checkpoints",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Duration of the most recent checkpoint",
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "ms" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+      "id": 10,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "flink_jobmanager_job_lastCheckpointDuration{job=\"flink\", cluster=~\"$cluster\"}", "legendFormat": "{{job_name}}", "refId": "A" }
+      ],
+      "title": "Last Checkpoint Duration",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 },
+      "id": 11,
+      "panels": [],
+      "title": "Throughput & Backpressure",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Records consumed and emitted per second, summed across subtasks per operator",
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 23 },
+      "id": 12,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "sum by (task_name) (flink_taskmanager_job_task_numRecordsInPerSecond{job=\"flink\", cluster=~\"$cluster\"})", "legendFormat": "{{task_name}} in", "refId": "A" },
+        { "expr": "sum by (task_name) (flink_taskmanager_job_task_numRecordsOutPerSecond{job=\"flink\", cluster=~\"$cluster\"})", "legendFormat": "{{task_name}} out", "refId": "B" }
+      ],
+      "title": "Records In/Out per Second",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Busy / idle / back-pressured time per second (0-1000 ms/s), averaged across subtasks per operator",
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "ms", "max": 1000 }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 23 },
+      "id": 13,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "avg by (task_name) (flink_taskmanager_job_task_busyTimeMsPerSecond{job=\"flink\", cluster=~\"$cluster\"})", "legendFormat": "{{task_name}} busy", "refId": "A" },
+        { "expr": "avg by (task_name) (flink_taskmanager_job_task_idleTimeMsPerSecond{job=\"flink\", cluster=~\"$cluster\"})", "legendFormat": "{{task_name}} idle", "refId": "B" },
+        { "expr": "avg by (task_name) (flink_taskmanager_job_task_backPressuredTimeMsPerSecond{job=\"flink\", cluster=~\"$cluster\"})", "legendFormat": "{{task_name}} backpressured", "refId": "C" }
+      ],
+      "title": "Busy / Idle / Backpressure (ms/s)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Bytes consumed and emitted per second, summed across subtasks per operator",
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "Bps" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 31 },
+      "id": 14,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "sum by (task_name) (flink_taskmanager_job_task_numBytesInPerSecond{job=\"flink\", cluster=~\"$cluster\"})", "legendFormat": "{{task_name}} in", "refId": "A" },
+        { "expr": "sum by (task_name) (flink_taskmanager_job_task_numBytesOutPerSecond{job=\"flink\", cluster=~\"$cluster\"})", "legendFormat": "{{task_name}} out", "refId": "B" }
+      ],
+      "title": "Bytes In/Out per Second",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Input and output buffer pool usage (0-1), averaged across subtasks per operator",
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "percentunit", "max": 1 }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 31 },
+      "id": 15,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "avg by (task_name) (flink_taskmanager_job_task_buffers_inPoolUsage{job=\"flink\", cluster=~\"$cluster\"})", "legendFormat": "{{task_name}} in", "refId": "A" },
+        { "expr": "avg by (task_name) (flink_taskmanager_job_task_buffers_outPoolUsage{job=\"flink\", cluster=~\"$cluster\"})", "legendFormat": "{{task_name}} out", "refId": "B" }
+      ],
+      "title": "Buffer Pool Usage",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 39 },
+      "id": 16,
+      "panels": [],
+      "title": "JVM (TaskManager)",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "TaskManager heap memory used vs max, per app node",
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "bytes" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 40 },
+      "id": 17,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "flink_taskmanager_Status_JVM_Memory_Heap_Used{job=\"flink\", cluster=~\"$cluster\"}", "legendFormat": "{{host_name}} used", "refId": "A" },
+        { "expr": "flink_taskmanager_Status_JVM_Memory_Heap_Max{job=\"flink\", cluster=~\"$cluster\"}", "legendFormat": "{{host_name}} max", "refId": "B" }
+      ],
+      "title": "TaskManager Heap Memory",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "TaskManager process CPU load (0-1), per app node",
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "percentunit", "max": 1 }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 40 },
+      "id": 18,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "flink_taskmanager_Status_JVM_CPU_Load{job=\"flink\", cluster=~\"$cluster\"}", "legendFormat": "{{host_name}}", "refId": "A" }
+      ],
+      "title": "TaskManager CPU Load",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "TaskManager garbage collection time per second, per app node",
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "ms" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 48 },
+      "id": 19,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "flink_taskmanager_Status_JVM_GarbageCollector_All_TimeMsPerSecond{job=\"flink\", cluster=~\"$cluster\"}", "legendFormat": "{{host_name}}", "refId": "A" }
+      ],
+      "title": "TaskManager GC Time (ms/s)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Live JVM thread count, per app node",
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 48 },
+      "id": 20,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "flink_taskmanager_Status_JVM_Threads_Count{job=\"flink\", cluster=~\"$cluster\"}", "legendFormat": "{{host_name}}", "refId": "A" }
+      ],
+      "title": "TaskManager JVM Threads",
+      "type": "timeseries"
+    }
+  ]
+}

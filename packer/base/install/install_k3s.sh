@@ -12,19 +12,35 @@ echo "=== Running: install_k3s.sh ==="
 K3S_VERSION="v1.35.1+k3s1"
 ARCH="amd64"
 
+# Use the shared S3 download cache when present; otherwise download directly (local script
+# tests, or no cache configured).
+if [ -f /usr/local/lib/edl-cache.sh ]; then
+    # shellcheck disable=SC1091
+    source /usr/local/lib/edl-cache.sh
+else
+    cached_fetch() { echo "no S3 cache; downloading $1"; curl -fsSL --retry 3 "$1" -o "$3"; }
+fi
+
 echo "Downloading k3s ${K3S_VERSION} for airgap installation..."
 
-# Download k3s binary
+# Download k3s binary (via S3 cache)
 echo "Downloading k3s binary..."
-sudo curl -sfL -o /usr/local/bin/k3s \
-  "https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION}/k3s"
-sudo chmod +x /usr/local/bin/k3s
+cached_fetch \
+  "https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION}/k3s" \
+  "k3s/${K3S_VERSION}/k3s-${ARCH}" \
+  /tmp/k3s
+sudo install -m 0755 /tmp/k3s /usr/local/bin/k3s
+rm -f /tmp/k3s
 
-# Download airgap images
+# Download airgap images (large; via S3 cache)
 echo "Downloading k3s airgap images..."
 sudo mkdir -p /var/lib/rancher/k3s/agent/images
-sudo curl -sfL -o /var/lib/rancher/k3s/agent/images/k3s-airgap-images-${ARCH}.tar.zst \
-  "https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION}/k3s-airgap-images-${ARCH}.tar.zst"
+cached_fetch \
+  "https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION}/k3s-airgap-images-${ARCH}.tar.zst" \
+  "k3s/${K3S_VERSION}/k3s-airgap-images-${ARCH}.tar.zst" \
+  /tmp/k3s-airgap-images-${ARCH}.tar.zst
+sudo mv /tmp/k3s-airgap-images-${ARCH}.tar.zst \
+  /var/lib/rancher/k3s/agent/images/k3s-airgap-images-${ARCH}.tar.zst
 
 # Download install script
 echo "Downloading k3s install script..."

@@ -22,6 +22,23 @@ variable "release_version" {
    default = ""
 }
 
+# Declared because the build harness passes -var s3_bucket to every build. The cassandra image
+# builds on top of the base AMI (which already has the JDKs), so it is currently unused here.
+variable "s3_bucket" {
+  type    = string
+  default = ""
+}
+
+# The user's AWS keypair and local private key, so the build instance is reachable via SSH with
+# their own key (e.g. when left up by --keep-on-error / -on-error=abort).
+variable "ssh_keypair_name" {
+  type = string
+}
+
+variable "ssh_private_key_file" {
+  type = string
+}
+
 
 locals {
   timestamp = regex_replace(timestamp(), "[- TZ:]", "")
@@ -38,6 +55,8 @@ source "amazon-ebs" "ubuntu" {
   ami_groups    = local.ami_groups
   instance_type = local.instance_type
   region        = "${var.region}"
+  # Instance profile so the build can read/write the account S3 download/apt cache.
+  iam_instance_profile = "EasyDBLabEC2Role"
   source_ami_filter {
     filters = {
       name                = "rustyrazorblade/images/easy-db-lab-base-${var.arch}-${local.base_version}"
@@ -47,7 +66,9 @@ source "amazon-ebs" "ubuntu" {
     most_recent = true
     owners      = ["self"]
   }
-  ssh_username = "ubuntu"
+  ssh_username         = "ubuntu"
+  ssh_keypair_name     = var.ssh_keypair_name
+  ssh_private_key_file = var.ssh_private_key_file
 
   # Use permanent VPC infrastructure created by PackerInfrastructureService
   vpc_filter {
@@ -78,8 +99,9 @@ source "amazon-ebs" "ubuntu" {
   }
   launch_block_device_mappings {
     device_name = "/dev/sda1"
-    volume_size = 16
-    volume_type = "gp2"
+    # Larger than 16 GiB to hold the base image plus multiple staged Cassandra versions.
+    volume_size = 40
+    volume_type = "gp3"
     delete_on_termination = true
   }
 }
@@ -89,6 +111,16 @@ build {
   sources = [
     "source.amazon-ebs.ubuntu"
   ]
+
+  # The cache library and AWS CLI are baked into the base AMI. Refresh the cache config for this
+  # build and restore the apt archive cache from S3 before any apt installs run.
+  provisioner "shell" {
+    inline = [
+      "echo 'EDL_S3_BUCKET=${var.s3_bucket}' | sudo tee /etc/edl-cache.env >/dev/null",
+      "echo 'EDL_ARCH=${var.arch}' | sudo tee -a /etc/edl-cache.env >/dev/null",
+      ". /usr/local/lib/edl-cache.sh && apt_cache_restore",
+    ]
+  }
 
   provisioner "shell" {
     script = "install/prepare_instance.sh"
@@ -222,6 +254,13 @@ build {
   provisioner "file" {
     source = "htoprc"
     destination = "/home/ubuntu/.config/htop/htoprc"
+  }
+
+  # Save the warm apt archive cache back to S3 for the next build
+  provisioner "shell" {
+    inline = [
+      ". /usr/local/lib/edl-cache.sh && apt_cache_save",
+    ]
   }
 }
 

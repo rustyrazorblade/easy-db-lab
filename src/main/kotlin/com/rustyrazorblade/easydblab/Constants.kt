@@ -8,6 +8,7 @@ object Constants {
     object Paths {
         const val LOCAL_MOUNT = "/local"
         const val CREDENTIALS_MOUNT = "/credentials"
+        const val SSH_KEY_MOUNT = "/secret.pem"
     }
 
     // Server types
@@ -138,6 +139,10 @@ object Constants {
     object Environment {
         const val USER_DIR = "EASY_DB_LAB_USER_DIR"
         const val S3_BUCKET = "EASY_DB_LAB_S3_BUCKET"
+
+        // When truthy, AMI builds leave the instance running on failure (packer -on-error=abort),
+        // regardless of how the build was invoked (e.g. via setup-profile, which has no flag).
+        const val BUILD_KEEP_ON_FAILURE = "EASY_DB_LAB_BUILD_KEEP_ON_FAILURE"
     }
 
     // AWS configuration

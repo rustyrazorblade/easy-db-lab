@@ -13,7 +13,7 @@
 ### AWS Requirements
 
 - **AWS Account**: A dedicated AWS account is recommended for lab environments
-- **AWS Access Key & Secret**: Credentials for programmatic access
+- **AWS Credentials**: Either static access key & secret, or a named profile — including an [AWS SSO (IAM Identity Center)](setup.md#using-aws-sso-iam-identity-center) profile
 - **IAM Permissions**: Permissions to create EC2, IAM, S3, and optionally EMR resources
 
 ```admonish tip

@@ -101,9 +101,16 @@ data class InfrastructureConfig(
          *
          * Packer needs:
          * - Single subnet in any AZ
-         * - SSH access from anywhere (0.0.0.0/0)
+         * - SSH access from the given CIDR (the developer's public IP /32, not 0.0.0.0/0 —
+         *   managed-account governance tools revoke world-open SSH rules)
+         *
+         * @param sshPort SSH port to allow
+         * @param sshCidr CIDR allowed to SSH in (e.g. "203.0.113.10/32")
          */
-        fun forPacker(sshPort: Int): InfrastructureConfig =
+        fun forPacker(
+            sshPort: Int,
+            sshCidr: String,
+        ): InfrastructureConfig =
             InfrastructureConfig(
                 vpcName = PACKER_VPC_NAME,
                 vpcCidr = Constants.Vpc.DEFAULT_CIDR,
@@ -118,7 +125,7 @@ data class InfrastructureConfig(
                 securityGroupDescription = "Security group for Packer AMI builds",
                 securityGroupRules =
                     listOf(
-                        SecurityGroupRule.singlePort(sshPort, "0.0.0.0/0"),
+                        SecurityGroupRule.singlePort(sshPort, sshCidr),
                     ),
                 internetGatewayName = "easy-db-lab-packer-igw",
                 tags = mapOf(Constants.Vpc.TAG_KEY to Constants.Vpc.TAG_VALUE),

@@ -22,9 +22,19 @@ PYROSCOPE_JAR="pyroscope.jar"
 
 sudo mkdir -p /usr/local/pyroscope
 
-# Download the Pyroscope Java agent
-wget -q "https://github.com/grafana/pyroscope-java/releases/download/v${PYROSCOPE_VERSION}/${PYROSCOPE_JAR}" \
-    -O "/tmp/${PYROSCOPE_JAR}"
+# Download the Pyroscope Java agent (via S3 cache)
+# Use the shared S3 download cache when present; otherwise download directly (local script
+# tests, or no cache configured).
+if [ -f /usr/local/lib/edl-cache.sh ]; then
+    # shellcheck disable=SC1091
+    source /usr/local/lib/edl-cache.sh
+else
+    cached_fetch() { echo "no S3 cache; downloading $1"; curl -fsSL --retry 3 "$1" -o "$3"; }
+fi
+cached_fetch \
+    "https://github.com/grafana/pyroscope-java/releases/download/v${PYROSCOPE_VERSION}/${PYROSCOPE_JAR}" \
+    "pyroscope/v${PYROSCOPE_VERSION}/${PYROSCOPE_JAR}" \
+    "/tmp/${PYROSCOPE_JAR}"
 
 sudo mv "/tmp/${PYROSCOPE_JAR}" "/usr/local/pyroscope/${PYROSCOPE_JAR}"
 sudo chmod 644 "/usr/local/pyroscope/${PYROSCOPE_JAR}"

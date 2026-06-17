@@ -297,8 +297,8 @@ class SetupProfileTest : BaseKoinTest() {
             // Should setup IAM resources
             verify(mockAwsResourceSetup).ensureAWSResources(any())
 
-            // Should create Packer infrastructure
-            verify(mockAwsInfra).ensurePackerInfrastructure(any())
+            // Should create Packer infrastructure, scoping SSH to the developer's IP
+            verify(mockAwsInfra).ensurePackerInfrastructure(any(), any())
         }
 
         @Test

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
-    <property name="LOG_DIR" value="${EASY_DB_LAB_USER_DIR:-${user.home}/.easy-db-lab}/logs" />
+    <property name="LOG_DIR" value="${EASY_DB_LAB_LOG_DIR:-${EASY_DB_LAB_USER_DIR:-${user.home}/.easy-db-lab}/logs}" />
 
     <appender name="INFO_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
         <file>${LOG_DIR}/info.log</file>

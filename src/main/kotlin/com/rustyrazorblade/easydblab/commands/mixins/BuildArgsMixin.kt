@@ -29,4 +29,13 @@ class BuildArgsMixin {
         converter = [PicoArchConverter::class],
     )
     var arch: Arch = Arch.AMD64
+
+    @Option(
+        names = ["--keep-on-error"],
+        description = [
+            "On build failure, leave the instance and temporary SSH key running for debugging " +
+                "(packer -on-error=abort) instead of terminating it",
+        ],
+    )
+    var keepOnError: Boolean = false
 }

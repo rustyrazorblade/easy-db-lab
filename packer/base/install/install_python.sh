@@ -42,7 +42,7 @@ sudo update-alternatives --set python /usr/bin/python3.11
 
 # Install uv (fast Python package installer) via official installer
 echo "Installing uv to /usr/local/bin..."
-curl -LsSf https://astral.sh/uv/install.sh | sudo env INSTALLER_NO_MODIFY_PATH=1 UV_INSTALL_DIR=/usr/local/bin sh
+curl -LsSf https://astral.sh/uv/install.sh | sudo env INSTALLER_NO_MODIFY_PATH=1 UV_INSTALL_DIR=/usr/local/bin sh >/tmp/uv-install.log 2>&1
 
 # Verify installation
 uv --version

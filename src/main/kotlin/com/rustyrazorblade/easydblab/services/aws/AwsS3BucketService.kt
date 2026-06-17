@@ -1,11 +1,15 @@
 package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.Context
+import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.AWS
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
+import java.util.UUID
 
 /**
  * Return value from [AwsS3BucketService.configureDataBucket].
@@ -26,6 +30,38 @@ class AwsS3BucketService(
     private val aws: AWS,
 ) : KoinComponent {
     private val eventBus: EventBus by inject()
+    private val userConfigProvider: UserConfigProvider by inject()
+    private val context: Context by inject()
+
+    /**
+     * Ensures the account-level S3 bucket exists and is recorded in the user config, creating it
+     * if [User.s3Bucket] is blank. Idempotent: returns the existing bucket name if already set.
+     *
+     * This lets profiles that predate (or never completed) bucket setup migrate automatically —
+     * `up` and the AMI build path call this so the bucket (and the S3 build cache it backs) come
+     * online without re-running `setup-profile`.
+     */
+    fun ensureAccountBucket(user: User): String {
+        if (user.s3Bucket.isNotBlank()) {
+            return user.s3Bucket
+        }
+        eventBus.emit(Event.Setup.S3BucketCreating)
+        val bucketName = "easy-db-lab-${UUID.randomUUID()}"
+        aws.createS3Bucket(bucketName)
+        aws.putS3BucketPolicy(bucketName)
+        aws.tagS3Bucket(
+            bucketName,
+            mapOf(
+                "Profile" to context.profile,
+                "Owner" to user.email,
+                "easy_cass_lab" to "1",
+            ),
+        )
+        user.s3Bucket = bucketName
+        userConfigProvider.saveUserConfig(user)
+        eventBus.emit(Event.Setup.S3BucketCreated(bucketName))
+        return bucketName
+    }
 
     /**
      * Creates an S3 bucket with the specified name.

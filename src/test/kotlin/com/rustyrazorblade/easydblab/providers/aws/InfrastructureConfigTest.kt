@@ -185,30 +185,30 @@ class InfrastructureConfigTest {
     inner class ForPacker {
         @Test
         fun `should create single subnet`() {
-            val config = InfrastructureConfig.forPacker(sshPort = 22)
+            val config = InfrastructureConfig.forPacker(sshPort = 22, sshCidr = "203.0.113.10/32")
 
             assertThat(config.subnets).hasSize(1)
             assertThat(config.subnets[0].name).isEqualTo("easy-db-lab-packer-subnet")
         }
 
         @Test
-        fun `should allow SSH from anywhere`() {
-            val config = InfrastructureConfig.forPacker(sshPort = 22)
+        fun `should scope SSH to the provided cidr`() {
+            val config = InfrastructureConfig.forPacker(sshPort = 22, sshCidr = "203.0.113.10/32")
 
             val sshRule = config.securityGroupRules.find { it.fromPort == 22 }
-            assertThat(sshRule?.cidr).isEqualTo("0.0.0.0/0")
+            assertThat(sshRule?.cidr).isEqualTo("203.0.113.10/32")
         }
 
         @Test
         fun `should use correct packer VPC name`() {
-            val config = InfrastructureConfig.forPacker(sshPort = 22)
+            val config = InfrastructureConfig.forPacker(sshPort = 22, sshCidr = "203.0.113.10/32")
 
             assertThat(config.vpcName).isEqualTo(Constants.Vpc.PACKER_VPC_NAME)
         }
 
         @Test
         fun `should use correct naming for packer resources`() {
-            val config = InfrastructureConfig.forPacker(sshPort = 22)
+            val config = InfrastructureConfig.forPacker(sshPort = 22, sshCidr = "203.0.113.10/32")
 
             assertThat(config.securityGroupName).isEqualTo("easy-db-lab-packer-sg")
             assertThat(config.internetGatewayName).isEqualTo("easy-db-lab-packer-igw")
@@ -216,7 +216,7 @@ class InfrastructureConfigTest {
 
         @Test
         fun `should use custom SSH port`() {
-            val config = InfrastructureConfig.forPacker(sshPort = 2222)
+            val config = InfrastructureConfig.forPacker(sshPort = 2222, sshCidr = "203.0.113.10/32")
 
             val sshRule = config.securityGroupRules.first()
             assertThat(sshRule.fromPort).isEqualTo(2222)

@@ -1,4 +1,5 @@
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 buildscript {
     repositories {
@@ -46,7 +47,15 @@ tasks.withType<ShadowJar> {
 }
 
 java {
+    // Build with any JDK >= 21 (including 25), but emit Java 21 bytecode so the
+    // output still runs on older JVMs. `release` is set on the compile tasks below
+    // so the JDK-21 API surface is enforced even when compiling on a newer JDK.
     sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
+tasks.withType<JavaCompile>().configureEach {
+    options.release.set(21)
 }
 
 application {
@@ -54,7 +63,11 @@ application {
     mainClass.set("com.rustyrazorblade.easydblab.MainKt")
     applicationDefaultJvmArgs =
         listOf(
-            "-javaagent:\$APP_HOME/agents/opentelemetry-javaagent.jar",
+            // NOTE: The OTel `-javaagent` flag is NOT declared here. Gradle 9's start-script
+            // template runs DEFAULT_JVM_OPTS through an xargs|sed|eval pipeline that escapes
+            // every `$`, so a `$APP_HOME` reference would reach java as a literal path and the
+            // VM would abort on a missing agent jar. The agent flag is appended in the
+            // `startScripts` doLast below, where `$APP_HOME` is expanded before that pipeline.
             "-Deasydblab.ami.name=rustyrazorblade/images/easy-db-lab-cassandra-amd64-$version",
             "-Deasydblab.version=$version",
         )
@@ -72,8 +85,16 @@ ktor {
 
 tasks.named<CreateStartScripts>("startScripts") {
     doLast {
-        // Update the Unix / Mac / Linux start script
-        val replacement = "\$1 \nDEFAULT_JVM_OPTS=\"\\\$DEFAULT_JVM_OPTS -Deasydblab.apphome=\\\$APP_HOME\""
+        // Update the Unix / Mac / Linux start script.
+        //
+        // Append a second DEFAULT_JVM_OPTS assignment so that `$APP_HOME` is expanded by the
+        // shell (APP_HOME is already resolved at this point in the script) BEFORE Gradle's
+        // xargs|sed|eval arg-splitting pipeline runs. Args placed in `applicationDefaultJvmArgs`
+        // are treated literally by that pipeline, so `$APP_HOME` cannot be referenced there —
+        // both the apphome system property and the OTel java agent path are injected here.
+        val replacement =
+            "\$1 \nDEFAULT_JVM_OPTS=\"\\\$DEFAULT_JVM_OPTS -Deasydblab.apphome=\\\$APP_HOME " +
+                "-javaagent:\\\$APP_HOME/agents/opentelemetry-javaagent.jar\""
         val regex = "^(DEFAULT_JVM_OPTS=.*)".toRegex(RegexOption.MULTILINE)
         val body = unixScript.readText()
         val newBody = regex.replace(body, replacement)
@@ -165,7 +186,11 @@ dependencies {
 }
 
 kotlin {
-    jvmToolchain(21)
+    // No fixed toolchain: compile with the developer's JDK (21 or newer, e.g. 25)
+    // while pinning the bytecode target to 21 so artifacts run on older JVMs.
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_21)
+    }
 }
 
 sourceSets {
@@ -304,6 +329,11 @@ tasks.assemble {
 detekt {
     baseline = file("config/detekt/baseline.xml")
 }
+
+// NOTE: detekt 1.23.x bundles a Kotlin compiler that cannot run under a JDK 25 runtime
+// (its parser fails to map the JDK version to a JvmTarget). Run `detekt`/`check` under
+// JDK 21 — which CI does — until detekt is upgraded to a JDK-25-capable release. Building
+// and testing the application itself works fine on JDK 25.
 
 tasks.named<io.gitlab.arturbosch.detekt.Detekt>("detektMain") {
     baseline.set(file("config/detekt/baseline-main.xml"))

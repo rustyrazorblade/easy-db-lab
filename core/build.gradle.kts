@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     idea
     java
@@ -5,8 +7,20 @@ plugins {
     kotlin("plugin.serialization")
 }
 
+java {
+    // Build with any JDK >= 21 (including 25), but emit Java 21 bytecode.
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
+tasks.withType<JavaCompile>().configureEach {
+    options.release.set(21)
+}
+
 kotlin {
-    jvmToolchain(21)
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_21)
+    }
 }
 
 dependencies {

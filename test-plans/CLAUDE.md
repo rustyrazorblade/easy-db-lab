@@ -20,7 +20,7 @@ The skill reads the plan, shows a numbered summary, and executes each step one a
 
 ## Cluster workspace directories
 
-Every plan creates a timestamped workspace under `clusters/` and generates an `easy-db-lab` wrapper in it using `bin/create-easy-db-lab-wrapper`. The wrapper handles the correct `JAVA_HOME` (Java 21 via SDKMAN) and `cd` automatically — no manual path or Java setup needed in the plan steps.
+Every plan creates a timestamped workspace under `clusters/` and generates an `easy-db-lab` wrapper in it using `bin/create-easy-db-lab-wrapper`. The wrapper handles the correct `JAVA_HOME` (the highest-installed Java 21 via SDKMAN, or the newest JDK >= 21 if no 21 is present) and `cd` automatically — no manual path or Java setup needed in the plan steps.
 
 Single-DC pattern:
 

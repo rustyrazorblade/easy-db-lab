@@ -6,14 +6,19 @@ Hello there. If you're reading this, you've probably decided to contribute to ea
 
 Install these locally before building:
 
-- **Java 21** (Temurin) via SDKMAN — the default for the main project
+- **Java 21 or newer** (Temurin) via SDKMAN — Java 21 is the project default, but the
+  build also works on newer JDKs (e.g. 25). The build compiles with whatever JDK you have
+  installed and always emits Java 21 bytecode, so artifacts still run on older JVMs.
+  One caveat: static analysis (`detekt`, and therefore the full `check` task) must run on
+  **JDK 21** — detekt 1.23.8 cannot run under a JDK 25 runtime. Building, running, and
+  testing the application all work on JDK 25; CI runs `check` on JDK 21.
 - **Kotlin** and **Gradle** (the Gradle wrapper `./gradlew` is committed)
 - **Docker** — for TestContainers-backed integration tests
 - **mdbook** + **mdbook-admonish** — for previewing documentation
 
 The example Spark jobs and their Cassandra Analytics build live in the separate
 [`spark-examples`](https://github.com/rustyrazorblade/spark-examples) repository, so this
-repo needs only Java 21.
+repo needs only a single JDK (21 or newer).
 
 ## Local Configuration (.env)
 

@@ -3,10 +3,14 @@
 #
 # Usage: bin/create-easy-db-lab-wrapper <dir>
 #
-# The generated wrapper sets JAVA_HOME to the highest-installed Java 21
-# found via SDKMAN, changes into the workspace directory, and execs
-# bin/easy-db-lab. Every invocation of the wrapper automatically runs from
-# the correct working directory with the correct JDK.
+# The generated wrapper sets JAVA_HOME to a compatible JDK found via SDKMAN,
+# changes into the workspace directory, and execs bin/easy-db-lab. Every
+# invocation of the wrapper automatically runs from the correct working
+# directory with the correct JDK.
+#
+# The CLI is built as Java 21 bytecode, so it runs on Java 21 or any newer JVM
+# (e.g. 25). Java 21 is the preferred runtime; if no Java 21 is installed, the
+# newest installed JDK >= 21 is used as a fallback.
 
 DIR="${1:?Usage: $0 <dir>}"
 
@@ -16,24 +20,31 @@ DIR=$(cd "$DIR" && pwd)
 
 source "$HOME/.sdkman/bin/sdkman-init.sh"
 
-JAVA21_ID=$(ls "$HOME/.sdkman/candidates/java/" | grep "^21\." | sort -V | tail -1)
-if [[ -z "$JAVA21_ID" ]]; then
-    echo "error: no Java 21 installation found in SDKMAN" >&2
+CANDIDATES="$HOME/.sdkman/candidates/java"
+
+# Prefer the highest-installed Java 21 (the project default); otherwise fall
+# back to the newest installed JDK with a major version >= 21.
+JAVA_ID=$(ls "$CANDIDATES" | grep "^21\." | sort -V | tail -1)
+if [[ -z "$JAVA_ID" ]]; then
+    JAVA_ID=$(ls "$CANDIDATES" | awk -F. '$1 >= 21' | sort -V | tail -1)
+fi
+if [[ -z "$JAVA_ID" ]]; then
+    echo "error: no Java 21+ installation found in SDKMAN" >&2
     exit 1
 fi
 
-JAVA21=$(sdk home java "$JAVA21_ID")
+JAVA_HOME_DIR=$(sdk home java "$JAVA_ID")
 
 WRAPPER="$DIR/easy-db-lab"
 
 cat > "$WRAPPER" <<EOF
 #!/usr/bin/env bash
-export JAVA_HOME="$JAVA21"
+export JAVA_HOME="$JAVA_HOME_DIR"
 cd "$DIR"
 exec "$WORKTREE_ROOT/bin/easy-db-lab" "\$@"
 EOF
 
 chmod +x "$WRAPPER"
 echo "created: $WRAPPER"
-echo "  java:    $JAVA21"
+echo "  java:    $JAVA_HOME_DIR"
 echo "  workdir: $DIR"

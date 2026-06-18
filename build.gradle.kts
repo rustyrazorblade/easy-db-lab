@@ -44,6 +44,10 @@ group = "com.rustyrazorblade"
 tasks.withType<ShadowJar> {
     isZip64 = true
     mergeServiceFiles()
+    // Drop the stray `logback.xml` shipped by `swagger-codegen-generators` so it can't become
+    // the fat jar's default logback config. Our config is `easydblab-logback.xml`, so this
+    // exclude only removes the dependency's copy.
+    exclude("logback.xml")
 }
 
 java {
@@ -70,6 +74,12 @@ application {
             // `startScripts` doLast below, where `$APP_HOME` is expanded before that pipeline.
             "-Deasydblab.ami.name=rustyrazorblade/images/easy-db-lab-cassandra-amd64-$version",
             "-Deasydblab.version=$version",
+            // Pin logback to our config by a unique name. On the installDist/distribution
+            // classpath, `swagger-codegen-generators` (pulled in by the swaggerUI route) also
+            // ships a `logback.xml`; with two `logback.xml` resources logback prints a WARN and
+            // dumps its full status to the console on every run. A uniquely-named config makes
+            // logback load ours via a single lookup and skip the duplicate scan entirely.
+            "-Dlogback.configurationFile=easydblab-logback.xml",
         )
 }
 
@@ -330,16 +340,24 @@ detekt {
     baseline = file("config/detekt/baseline.xml")
 }
 
-// NOTE: detekt 1.23.x bundles a Kotlin compiler that cannot run under a JDK 25 runtime
-// (its parser fails to map the JDK version to a JvmTarget). Run `detekt`/`check` under
-// JDK 21 — which CI does — until detekt is upgraded to a JDK-25-capable release. Building
-// and testing the application itself works fine on JDK 25.
-
 tasks.named<io.gitlab.arturbosch.detekt.Detekt>("detektMain") {
     baseline.set(file("config/detekt/baseline-main.xml"))
 }
 tasks.named<io.gitlab.arturbosch.detekt.Detekt>("detektTest") {
     baseline.set(file("config/detekt/baseline-test.xml"))
+}
+
+// detekt 1.23.8 bundles a Kotlin compiler (2.0.21) that cannot run under a JDK 25
+// runtime — its compiler front-end rejects the JDK version string, so the detekt tasks
+// fail before analyzing anything. detekt's embedded compiler supports JDK <= 22, so when
+// the build runs on a newer JDK we disable the detekt tasks rather than let `check`/`build`
+// fail. CI runs on JDK 21, so static analysis is still enforced on every PR; a developer
+// building on JDK 25 gets a clean `build`, just without local detekt feedback until CI runs
+// it on a supported JDK. Remove this gate once detekt ships a stable JDK-25-capable release.
+if (JavaVersion.current() > JavaVersion.VERSION_22) {
+    tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
+        enabled = false
+    }
 }
 
 // Kover code coverage configuration

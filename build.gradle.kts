@@ -200,10 +200,13 @@ tasks.test {
         html.required.set(true)
     }
 
-    // Single JVM so @Isolated / @ResourceLock can serialise TestContainers tests across classes.
-    // Within-JVM class-level parallelism is configured via junit-platform.properties.
-    maxParallelForks = 1
+    // Parallelism comes from forked JVMs, not in-JVM threads. Each fork has its own Koin
+    // GlobalContext, so isolated tests can never collide on shared global state — which is
+    // why in-JVM parallel execution is disabled in junit-platform.properties. forkEvery
+    // reuses each JVM across many classes to amortise JVM startup cost.
     val processors = Runtime.getRuntime().availableProcessors()
+    maxParallelForks = (processors / 2).coerceAtLeast(1)
+    forkEvery = 100
 
     doFirst {
         environment("EASY_DB_LAB_PROFILE", "default")

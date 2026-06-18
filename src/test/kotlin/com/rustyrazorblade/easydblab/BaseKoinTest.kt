@@ -2,14 +2,12 @@ package com.rustyrazorblade.easydblab
 
 import org.junit.jupiter.api.extension.RegisterExtension
 import org.junit.jupiter.api.io.TempDir
-import org.junit.jupiter.api.parallel.ResourceLock
 import org.koin.core.module.Module
 import org.koin.test.KoinTest
 import org.koin.test.get
 import org.koin.test.junit5.KoinTestExtension
 import java.io.File
 
-@ResourceLock("koin")
 abstract class BaseKoinTest : KoinTest {
     @TempDir
     lateinit var tempDir: File

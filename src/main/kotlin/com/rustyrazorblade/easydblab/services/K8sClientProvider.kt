@@ -13,11 +13,13 @@ private val log = KotlinLogging.logger {}
  * Creates Kubernetes clients for K8s API access.
  *
  * When the SOCKS5 proxy is active (started eagerly by [com.rustyrazorblade.easydblab.services.DefaultCommandExecutor]
- * before any command runs), the JVM system property `socksProxyPort` is set and
- * [ProxiedKubernetesClientFactory] uses it to configure the HTTPS proxy automatically.
+ * before any command runs), the proxy port is published via the private
+ * [com.rustyrazorblade.easydblab.Constants.Proxy.PORT_PROPERTY] and [ProxiedKubernetesClientFactory]
+ * uses it to configure the HTTPS proxy. The global `socksProxyHost` is intentionally not set, so only
+ * cluster traffic tunnels — AWS and other traffic stay direct.
  *
- * When Tailscale is active, the proxy is not started and the client connects directly
- * to the private IP without any proxy.
+ * When Tailscale is active, the proxy is not started (no port published) and the client connects
+ * directly to the private IP without any proxy.
  */
 class K8sClientProvider(
     private val clusterStateManager: com.rustyrazorblade.easydblab.configuration.ClusterStateManager,

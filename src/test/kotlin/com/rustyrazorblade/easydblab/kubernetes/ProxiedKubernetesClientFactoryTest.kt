@@ -1,12 +1,15 @@
 package com.rustyrazorblade.easydblab.kubernetes
 
+import com.rustyrazorblade.easydblab.Constants
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.api.parallel.ResourceLock
 import java.io.File
 
+@ResourceLock(Constants.Proxy.PORT_PROPERTY)
 class ProxiedKubernetesClientFactoryTest {
     @TempDir
     lateinit var tempDir: File
@@ -41,16 +44,16 @@ class ProxiedKubernetesClientFactoryTest {
 
     @BeforeEach
     fun clearSystemProperties() {
-        System.clearProperty("socksProxyPort")
+        System.clearProperty(Constants.Proxy.PORT_PROPERTY)
     }
 
     @AfterEach
     fun restoreSystemProperties() {
-        System.clearProperty("socksProxyPort")
+        System.clearProperty(Constants.Proxy.PORT_PROPERTY)
     }
 
     @Test
-    fun `httpsProxy is null when socksProxyPort system property is not set`() {
+    fun `httpsProxy is null when the proxy port is not published (Tailscale or proxy not started)`() {
         val factory = ProxiedKubernetesClientFactory()
         factory.createClient(writeKubeconfig()).use { client ->
             assertThat(client.configuration.httpsProxy).isNull()
@@ -58,8 +61,8 @@ class ProxiedKubernetesClientFactoryTest {
     }
 
     @Test
-    fun `httpsProxy is set to socks5 when socksProxyPort system property is present`() {
-        System.setProperty("socksProxyPort", "1080")
+    fun `httpsProxy is set to socks5 when the proxy port is published`() {
+        System.setProperty(Constants.Proxy.PORT_PROPERTY, "1080")
         val factory = ProxiedKubernetesClientFactory()
         factory.createClient(writeKubeconfig()).use { client ->
             assertThat(client.configuration.httpsProxy).isEqualTo("socks5://127.0.0.1:1080")

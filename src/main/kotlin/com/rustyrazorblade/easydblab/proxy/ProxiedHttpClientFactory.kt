@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.proxy
 
+import com.rustyrazorblade.easydblab.Constants
 import io.github.oshai.kotlinlogging.KotlinLogging
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
@@ -16,8 +17,8 @@ private val log = KotlinLogging.logger {}
 interface HttpClientFactory : AutoCloseable {
     /**
      * Get an OkHttp client configured for cluster access.
-     * When the SOCKS proxy is active, JVM system properties route traffic automatically
-     * via [java.net.ProxySelector]. Implementations should return a cached singleton client.
+     * Cluster traffic routes through the SOCKS tunnel when one is active (see [Socks5ProxySelector]);
+     * otherwise it connects directly. Implementations should return a cached singleton client.
      *
      * @return Configured OkHttpClient ready for HTTP requests
      */
@@ -27,12 +28,13 @@ interface HttpClientFactory : AutoCloseable {
 /**
  * HTTP client factory that creates OkHttp clients for cluster traffic.
  *
- * When the SOCKS5 proxy is active, JVM system properties (`socksProxyHost`, `socksProxyPort`)
- * are set by [ProcessSocksProxyService] so OkHttp routes through the proxy automatically via
- * [java.net.ProxySelector.getDefault]. No explicit proxy configuration is needed here.
+ * The SOCKS proxy is configured **explicitly** on the client via [Socks5ProxySelector], which reads
+ * the published proxy port ([Constants.Proxy.PORT_PROPERTY]). We do NOT rely on the global
+ * `socksProxyHost` property — that would route every socket in the JVM (including the AWS SDK)
+ * through the tunnel. Scoping the proxy to this client keeps AWS and other traffic direct.
  *
- * When Tailscale is active, private IPs are directly reachable and no proxy is started,
- * so these clients connect directly.
+ * When no proxy is running (Tailscale active, or before the proxy starts), the selector returns
+ * `NO_PROXY` and these clients connect directly.
  */
 class ProxiedHttpClientFactory : HttpClientFactory {
     companion object {
@@ -49,10 +51,11 @@ class ProxiedHttpClientFactory : HttpClientFactory {
         synchronized(this) {
             cachedClient?.let { return it }
 
-            log.info { "Creating OkHttp client (proxy routing via JVM system properties if active)" }
+            log.info { "Creating OkHttp client (cluster traffic routed via SOCKS tunnel when active)" }
             val client =
                 OkHttpClient
                     .Builder()
+                    .proxySelector(Socks5ProxySelector())
                     .connectTimeout(CONNECTION_TIMEOUT_SECONDS, TimeUnit.SECONDS)
                     .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
                     .build()

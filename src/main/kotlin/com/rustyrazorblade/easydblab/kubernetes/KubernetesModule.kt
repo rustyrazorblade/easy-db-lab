@@ -9,7 +9,8 @@ import java.nio.file.Paths
  *
  * Provides:
  * - [KubernetesClientFactory]: Creates K8s API clients. When the SOCKS5 proxy is active,
- *   the proxy port is read from the JVM system property `socksProxyPort`.
+ *   the proxy port is read from the private `Constants.Proxy.PORT_PROPERTY` system property and the
+ *   SOCKS proxy is configured explicitly (the global `socksProxyHost` is not set, keeping AWS direct).
  * - [KubernetesService]: High-level service for K8s operations.
  */
 val kubernetesModule =

@@ -102,7 +102,7 @@ source "amazon-ebs" "ubuntu" {
   launch_block_device_mappings {
     device_name = "/dev/sda1"
     # Larger than 16 GiB to hold the base image plus multiple staged Cassandra versions.
-    volume_size = 40
+    volume_size = 20
     volume_type = "gp3"
     delete_on_termination = true
   }

@@ -331,6 +331,15 @@ object Constants {
     // Proxy configuration
     object Proxy {
         const val DEFAULT_SOCKS5_PORT = 1080
+
+        /**
+         * JVM system property used to publish the active SOCKS5 proxy port to the clients that need
+         * the tunnel (fabric8 K8s, OkHttp). Deliberately NOT the standard `socksProxyHost`/
+         * `socksProxyPort`: setting those makes java.net route every socket (including the AWS SDK)
+         * through the tunnel. This private name carries only the port, so cluster clients can opt in
+         * explicitly while AWS and all other traffic stays direct.
+         */
+        const val PORT_PROPERTY = "easydblab.socks5Port"
     }
 
     // Tailscale VPN configuration

@@ -22,6 +22,7 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
+import com.rustyrazorblade.easydblab.proxy.HttpClientFactory
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.EMRService
@@ -71,7 +72,10 @@ val servicesModule =
         factoryOf(::VictoriaManifestBuilder)
         factoryOf(::YaceManifestBuilder)
         factoryOf(::DefaultGrafanaDashboardService) bind GrafanaDashboardService::class
-        single { OkHttpClient() }
+        // GrafanaDashboardService calls the Grafana API on the control node's PRIVATE IP, so its
+        // client must route through the SOCKS tunnel when active. Source it from the proxied factory
+        // rather than a bare OkHttpClient (which, without the global socks property, would go direct).
+        single<OkHttpClient> { get<HttpClientFactory>().createClient() }
         factoryOf(::TemplateService)
         factoryOf(::InstallTemplateResolver)
         factoryOf(::WorkloadStepExecutor)

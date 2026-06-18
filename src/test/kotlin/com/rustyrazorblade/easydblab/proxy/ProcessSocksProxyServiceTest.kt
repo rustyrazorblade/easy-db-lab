@@ -10,10 +10,12 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.api.parallel.ResourceLock
 import java.io.File
 import java.net.ServerSocket
 import java.time.Instant
 
+@ResourceLock(Constants.Proxy.PORT_PROPERTY)
 class ProcessSocksProxyServiceTest {
     @TempDir
     lateinit var tempDir: File
@@ -33,13 +35,13 @@ class ProcessSocksProxyServiceTest {
         File(tempDir, "sshConfig").writeText("Host control0\n  Hostname 10.0.1.5\n")
         // Clear any leftover system properties from prior tests
         System.clearProperty("socksProxyHost")
-        System.clearProperty("socksProxyPort")
+        System.clearProperty(Constants.Proxy.PORT_PROPERTY)
     }
 
     @AfterEach
     fun tearDown() {
         System.clearProperty("socksProxyHost")
-        System.clearProperty("socksProxyPort")
+        System.clearProperty(Constants.Proxy.PORT_PROPERTY)
     }
 
     private fun service() =
@@ -107,7 +109,7 @@ class ProcessSocksProxyServiceTest {
     }
 
     @Test
-    fun `sets JVM system properties when reusing valid proxy`() {
+    fun `publishes the proxy port property but never the global socksProxyHost when reusing valid proxy`() {
         val livePid = ProcessHandle.current().pid().toInt()
         val port = 19082
         writeStateFile(pid = livePid, port = port)
@@ -115,8 +117,10 @@ class ProcessSocksProxyServiceTest {
         val svc = service()
         svc.ensureRunning(testHost)
 
-        assertThat(System.getProperty("socksProxyHost")).isEqualTo("127.0.0.1")
-        assertThat(System.getProperty("socksProxyPort")).isEqualTo("$port")
+        // The private port property is published for the cluster clients...
+        assertThat(System.getProperty(Constants.Proxy.PORT_PROPERTY)).isEqualTo("$port")
+        // ...but the standard global socksProxyHost is NOT set, so java.net (and the AWS SDK) stay direct.
+        assertThat(System.getProperty("socksProxyHost")).isNull()
     }
 
     @Test

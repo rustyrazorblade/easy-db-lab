@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.kubernetes
 
+import com.rustyrazorblade.easydblab.Constants
 import io.fabric8.kubernetes.client.Config
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientBuilder
@@ -24,12 +25,13 @@ interface KubernetesClientFactory {
 /**
  * Kubernetes client factory that routes K8s API traffic through the SOCKS5 proxy when active.
  *
- * The proxy port is read from the JVM system property `socksProxyPort` (set by
+ * The proxy port is read from the [Constants.Proxy.PORT_PROPERTY] system property (set by
  * [com.rustyrazorblade.easydblab.proxy.ProcessSocksProxyService] when the proxy starts).
  * When the property is absent (Tailscale active, no proxy started), the client connects directly.
  *
- * fabric8 uses OkHttp and may not automatically pick up Java's [java.net.ProxySelector],
- * so the SOCKS proxy is configured explicitly via `Config.httpsProxy` when the port is available.
+ * The SOCKS proxy is configured explicitly via `Config.httpsProxy`. We rely on this rather than the
+ * global `socksProxyHost` precisely so that only K8s traffic uses the tunnel — AWS and other traffic
+ * stays direct.
  */
 class ProxiedKubernetesClientFactory : KubernetesClientFactory {
     companion object {
@@ -41,7 +43,7 @@ class ProxiedKubernetesClientFactory : KubernetesClientFactory {
         val kubeconfigContent = kubeconfigPath.toFile().readText()
         val config = Config.fromKubeconfig(kubeconfigContent)
 
-        System.getProperty("socksProxyPort")?.toIntOrNull()?.let { port ->
+        System.getProperty(Constants.Proxy.PORT_PROPERTY)?.toIntOrNull()?.let { port ->
             config.httpsProxy = "socks5://127.0.0.1:$port"
         }
 

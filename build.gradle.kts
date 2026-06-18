@@ -44,6 +44,10 @@ group = "com.rustyrazorblade"
 tasks.withType<ShadowJar> {
     isZip64 = true
     mergeServiceFiles()
+    // Drop the stray `logback.xml` shipped by `swagger-codegen-generators` so it can't become
+    // the fat jar's default logback config. Our config is `easydblab-logback.xml`, so this
+    // exclude only removes the dependency's copy.
+    exclude("logback.xml")
 }
 
 java {
@@ -70,6 +74,12 @@ application {
             // `startScripts` doLast below, where `$APP_HOME` is expanded before that pipeline.
             "-Deasydblab.ami.name=rustyrazorblade/images/easy-db-lab-cassandra-amd64-$version",
             "-Deasydblab.version=$version",
+            // Pin logback to our config by a unique name. On the installDist/distribution
+            // classpath, `swagger-codegen-generators` (pulled in by the swaggerUI route) also
+            // ships a `logback.xml`; with two `logback.xml` resources logback prints a WARN and
+            // dumps its full status to the console on every run. A uniquely-named config makes
+            // logback load ours via a single lookup and skip the duplicate scan entirely.
+            "-Dlogback.configurationFile=easydblab-logback.xml",
         )
 }
 

@@ -59,7 +59,10 @@ if [ "${EASY_DB_LAB_USE_DOCKER}" = "1" ]; then
     # This prevents agent messages from polluting machine-readable output (like JSON policies).
     export OTEL_JAVAAGENT_LOGGING=application
 else
+    # The generated start script always loads the agent. Disable it AND silence its
+    # logger so the agent's version banner doesn't print to the console on every run.
     export OTEL_JAVAAGENT_ENABLED=false
+    export OTEL_JAVAAGENT_LOGGING=none
 fi
 
 # async-profiler (opt-in: set EASY_DB_LAB_PROFILING=1 to enable)

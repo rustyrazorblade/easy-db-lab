@@ -18,11 +18,10 @@ include 'services:webservice'
 rootProject.name = 'easy-db-lab'
 
 include "core"
-include "spark:common"
-include "spark:bulk-writer-sidecar"
-include "spark:bulk-writer-s3-iam"
-include "spark:connector-writer"
-include "spark:connector-read-write"
+
+// The Spark example jobs (bulk writers + connector read/write) live in their own
+// repository now: ../spark-examples. They were decoupled from this build because they
+// depend on locally-built Cassandra Analytics SNAPSHOTs and don't belong in the CLI build.
 
 dependencyResolutionManagement {
     repositories {

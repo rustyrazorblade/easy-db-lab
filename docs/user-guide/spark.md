@@ -272,43 +272,38 @@ Uses the DataStax Spark Cassandra Connector to write data via CQL.
 
 ## Spark Modules
 
-All Spark job modules live under the `spark/` directory and share unified configuration via `spark.easydblab.*` properties. You can compare performance across implementations by swapping the JAR and main class while keeping the same `--conf` flags.
+The Spark job modules live in the [`spark-examples`](https://github.com/rustyrazorblade/spark-examples)
+repository and share unified configuration via `spark.easydblab.*` properties. You can compare
+performance across implementations by swapping the JAR and main class while keeping the same
+`--conf` flags.
 
 ### Module Overview
 
 | Module | Gradle Path | Main Class | Transport | Description |
 |--------|-------------|------------|-----------|-------------|
-| `common` | `:spark:common` | — | — | Shared config, data generation, CQL setup |
-| `bulk-writer-sidecar` | `:spark:bulk-writer-sidecar` | `DirectBulkWriter` | DIRECT | Streams SSTables directly to Sidecar |
-| `bulk-writer-s3-iam` | `:spark:bulk-writer-s3-iam` | `IamBulkWriter` | S3_COMPAT | Stages SSTables in S3 via IAM credentials, imports via Sidecar |
-| `connector-writer` | `:spark:connector-writer` | `StandardConnectorWriter` | CQL | Standard writes via Cassandra native protocol |
-| `connector-read-write` | `:spark:connector-read-write` | `KeyValuePrefixCount` | CQL | Read→transform→write example |
+| `common` | `:common` | — | — | Shared config, data generation, CQL setup |
+| `bulk-writer-sidecar` | `:bulk-writer-sidecar` | `DirectBulkWriter` | DIRECT | Streams SSTables directly to Sidecar |
+| `bulk-writer-s3-iam` | `:bulk-writer-s3-iam` | `IamBulkWriter` | S3_COMPAT | Stages SSTables in S3 via IAM credentials, imports via Sidecar |
+| `connector-writer` | `:connector-writer` | `StandardConnectorWriter` | CQL | Standard writes via Cassandra native protocol |
+| `connector-read-write` | `:connector-read-write` | `KeyValuePrefixCount` | CQL | Read→transform→write example |
 
-### Building
+> The Gradle paths above are within the `spark-examples` build, not this repo.
 
-#### Pre-build Cassandra Analytics (one-time, for bulk-writer modules)
+### Getting the job JARs
 
-The cassandra-analytics library requires JDK 11 to build:
-
-```bash
-bin/build-cassandra-analytics
-```
-
-Options:
-- `--force` - Rebuild even if JARs exist
-- `--branch <branch>` - Use a specific branch (default: trunk)
-
-#### Build JARs
+The job modules live in their own repository,
+[`spark-examples`](https://github.com/rustyrazorblade/spark-examples), which publishes the
+shadow (fat) JARs as GitHub Release assets. Download the one you need and pass it to
+`spark submit` with `--jar`:
 
 ```bash
-# Build all Spark modules
-./gradlew :spark:bulk-writer-sidecar:shadowJar :spark:bulk-writer-s3-iam:shadowJar \
-  :spark:connector-writer:shadowJar :spark:connector-read-write:shadowJar
-
-# Or build individually
-./gradlew :spark:bulk-writer-sidecar:shadowJar
-./gradlew :spark:connector-writer:shadowJar
+# Download a published job jar (check the releases page for the latest version)
+curl -L -O https://github.com/rustyrazorblade/spark-examples/releases/download/v0.1.0/bulk-writer-sidecar.jar
 ```
+
+Available jars: `bulk-writer-sidecar.jar`, `bulk-writer-s3-iam-all.jar`,
+`connector-writer.jar`, `connector-read-write.jar`.
+Releases: <https://github.com/rustyrazorblade/spark-examples/releases>
 
 ### Usage
 
@@ -320,7 +315,7 @@ Streams SSTables directly to Cassandra Sidecar endpoints:
 
 ```bash
 easy-db-lab spark submit \
-  --jar spark/bulk-writer-sidecar/build/libs/bulk-writer-sidecar-*.jar \
+  --jar bulk-writer-sidecar.jar \
   --main-class com.rustyrazorblade.easydblab.spark.DirectBulkWriter \
   --conf spark.easydblab.contactPoints=host1:9043,host2:9043,host3:9043 \
   --conf spark.easydblab.keyspace=bulk_test \
@@ -337,7 +332,7 @@ Stages SSTables in S3 using IAM instance profile credentials, then imports via S
 
 ```bash
 easy-db-lab spark submit \
-  --jar spark/bulk-writer-s3-iam/build/libs/bulk-writer-s3-iam-all.jar \
+  --jar bulk-writer-s3-iam-all.jar \
   --main-class com.rustyrazorblade.easydblab.spark.IamBulkWriter \
   --conf spark.easydblab.contactPoints=host1,host2,host3 \
   --conf spark.easydblab.localDc=us-west-2 \
@@ -355,7 +350,7 @@ Standard CQL writes via Cassandra native protocol:
 
 ```bash
 easy-db-lab spark submit \
-  --jar spark/connector-writer/build/libs/connector-writer-*.jar \
+  --jar connector-writer.jar \
   --main-class com.rustyrazorblade.easydblab.spark.StandardConnectorWriter \
   --conf spark.easydblab.contactPoints=host1,host2,host3 \
   --conf spark.easydblab.keyspace=bulk_test \

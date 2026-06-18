@@ -22,8 +22,11 @@ private val log = KotlinLogging.logger {}
  * Unlike the previous in-process implementation, the SSH process outlives the JVM.
  * On each [ensureRunning] call the service checks `.socks5-proxy-state` for a reusable
  * process (PID alive + same controlIP + same sshConfig path) before starting a new one.
- * When started, the proxy port is published as JVM system properties so all OkHttp and
- * fabric8 connections route through the tunnel automatically via `ProxySelector.getDefault()`.
+ * When started, the proxy port is published via the private [Constants.Proxy.PORT_PROPERTY] system
+ * property. The clients that need the tunnel (fabric8 K8s, OkHttp) read that port and configure the
+ * SOCKS proxy explicitly. We deliberately do NOT set the standard `socksProxyHost`/`socksProxyPort`
+ * properties — those would make java.net route every socket (including the AWS SDK / S3) through the
+ * tunnel, which breaks direct AWS access on corporate networks.
  *
  * The process is killed at cluster teardown by the `Down` command via `cleanupSocks5Proxy()`.
  */
@@ -109,6 +112,12 @@ class ProcessSocksProxyService(
         sshConfigPath: String,
         stateFile: File,
     ): SocksProxyState {
+        // Clear any previously published port before starting. If this start fails (the ssh
+        // process can't spawn, or we're replacing a stale proxy), cluster clients fall back to
+        // NO_PROXY (direct) instead of routing through a dead tunnel port. The new port is
+        // republished by applySystemProperties() only after the proxy is verified.
+        System.clearProperty(Constants.Proxy.PORT_PROPERTY)
+
         val port = selectPort()
         log.info { "Starting SOCKS5 proxy to ${gatewayHost.alias} (${gatewayHost.privateIp}) on port $port" }
 
@@ -170,9 +179,11 @@ class ProcessSocksProxyService(
     }
 
     private fun applySystemProperties(port: Int) {
-        System.setProperty("socksProxyHost", "127.0.0.1")
-        System.setProperty("socksProxyPort", "$port")
-        log.debug { "Set JVM system properties socksProxyHost=127.0.0.1 socksProxyPort=$port" }
+        // Publish ONLY the port under our private property. Never set socksProxyHost/socksProxyPort:
+        // those make java.net tunnel every socket (including the AWS SDK / S3), which is wrong — AWS
+        // public endpoints must be reached directly. Cluster clients read this port and opt in.
+        System.setProperty(Constants.Proxy.PORT_PROPERTY, "$port")
+        log.debug { "Published SOCKS5 proxy port $port via ${Constants.Proxy.PORT_PROPERTY} (global socksProxyHost left unset)" }
     }
 
     private fun isValidProxy(

@@ -294,13 +294,13 @@ class Down : PicoBaseCommand() {
     }
 
     /**
-     * Removes JVM SOCKS proxy system properties so teardown AWS SDK calls go directly
-     * to public AWS endpoints without routing through the SSH tunnel.
+     * Unpublishes the SOCKS proxy port so the cluster clients stop routing through the tunnel before
+     * it is torn down. AWS SDK calls already go direct (the proxy is never applied to them), so this
+     * only affects cluster-internal clients, which teardown no longer needs.
      */
-    private fun clearProxySystemProperties() {
-        System.clearProperty("socksProxyHost")
-        System.clearProperty("socksProxyPort")
-        log.debug { "Cleared JVM SOCKS proxy system properties for teardown" }
+    internal fun clearProxySystemProperties() {
+        System.clearProperty(Constants.Proxy.PORT_PROPERTY)
+        log.debug { "Cleared published SOCKS proxy port property for teardown" }
     }
 
     /**

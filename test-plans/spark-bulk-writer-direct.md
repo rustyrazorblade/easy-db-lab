@@ -14,11 +14,14 @@ exactly 10,000 rows in `bulk_test.data_sidecar` after the Spark job completes.
 
 ## Steps
 
-### 1. Build the bulk-writer-sidecar JAR
+### 1. Download the bulk-writer-sidecar JAR
+
+The job jars are published from the
+[`spark-examples`](https://github.com/rustyrazorblade/spark-examples/releases) repo.
 
 ```bash
-./gradlew :spark:bulk-writer-sidecar:shadowJar
-JAR_FILE=$(ls spark/bulk-writer-sidecar/build/libs/bulk-writer-sidecar*.jar | head -1)
+JAR_FILE="bulk-writer-sidecar.jar"
+curl -L -o "$JAR_FILE" https://github.com/rustyrazorblade/spark-examples/releases/download/v0.1.0/bulk-writer-sidecar.jar
 echo "Using JAR: $JAR_FILE"
 ```
 
@@ -120,4 +123,4 @@ $EDB down --auto-approve
 
 - `storage_compatibility_mode: NONE` must be appended to `cassandra.patch.yaml` before `cassandra start` — not after.
 - The sidecar transport writes directly to Cassandra nodes via the sidecar API (port 9043) — no S3 staging required.
-- Build the JAR from the project root before running this plan. The shadowJar task produces a fat JAR with all dependencies.
+- The job JAR is downloaded from the [`spark-examples`](https://github.com/rustyrazorblade/spark-examples/releases) release (a prebuilt fat JAR with all dependencies). To use a different version, change the release tag in the download URL.

@@ -1,15 +1,36 @@
 package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InfrastructureStatus
 import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.api.parallel.ResourceLock
 import java.io.File
 
 class DownTest : BaseKoinTest() {
+    @BeforeEach
+    @AfterEach
+    fun clearProxyProperty() {
+        System.clearProperty(Constants.Proxy.PORT_PROPERTY)
+    }
+
+    @Test
+    @ResourceLock(Constants.Proxy.PORT_PROPERTY)
+    fun `clearProxySystemProperties clears the published SOCKS5 proxy port`() {
+        System.setProperty(Constants.Proxy.PORT_PROPERTY, "19082")
+        assertThat(System.getProperty(Constants.Proxy.PORT_PROPERTY)).isEqualTo("19082")
+
+        Down().clearProxySystemProperties()
+
+        assertThat(System.getProperty(Constants.Proxy.PORT_PROPERTY)).isNull()
+    }
+
     @Test
     fun `Down command should clean up SOCKS5 proxy state file`(
         @TempDir tempDir: File,

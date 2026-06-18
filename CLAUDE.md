@@ -22,13 +22,14 @@ The project follows a layered architecture:
 
 ### Project Modules
 
-The Gradle project has multiple modules:
+The Gradle project has two modules:
 - **Root module** (`:`) — the main CLI application
-- **`spark/common`** — shared Spark config (`SparkJobConfig`), data generation, CQL setup
-- **`spark/bulk-writer-sidecar`** — Cassandra Analytics bulk writer, direct sidecar transport (requires cassandra-analytics built with JDK 17)
-- **`spark/bulk-writer-s3-iam`** — Cassandra Analytics bulk writer, S3 staging transport with IAM instance profile credentials
-- **`spark/connector-writer`** — Standard Spark Cassandra Connector writer
-- **`spark/connector-read-write`** — Read→transform→write example using Spark Cassandra Connector
+- **`core`** — shared library used by the CLI
+
+The example Spark jobs (bulk writers + connector read/write) live in a separate
+repository, **`../spark-examples`**. They were decoupled because they depend on
+locally-built Cassandra Analytics SNAPSHOTs and don't belong in the CLI build. The
+`spark` CLI commands (EMR provisioning + job submission) remain in this repo.
 
 ### Layer Responsibilities
 
@@ -211,42 +212,24 @@ DC2="$CLUSTER_BASE/dc2/easy-db-lab"
 
 ### Java Version Management (SDKMAN)
 
-The project uses SDKMAN to manage Java versions:
-- **Java 21** (Temurin) - Default for the main project
-- **Java 11** (Temurin) - Required for building cassandra-analytics
+The project uses **Java 21** (Temurin) — managed via SDKMAN and set as the default.
 
-Install both versions via SDKMAN and set Java 21 as the default.
-
-**Why two versions?** The `bulk-writer` module depends on `cassandra-analytics` which requires JDK 17 to build. The `bin/build-cassandra-analytics` script automatically switches to JDK 17 for that build.
-
-**Common commands:**
 ```bash
 # Check current Java version
 java -version
 
 # List installed versions
 sdk list java
-
-# Temporarily use a different version (current shell only)
-sdk use java 17.0.19-amzn
-
-# Switch default version permanently
-sdk default java 21.0.5-tem
 ```
 
-### Building Cassandra Analytics Dependencies
+### Example Spark Jobs
 
-The `bulk-writer` module depends on cassandra-analytics SNAPSHOT artifacts that aren't published to Maven Central. They are built automatically if missing when the build needs them. To manually build or rebuild:
-
-```bash
-# Build cassandra-analytics (auto-skips if already built)
-bin/build-cassandra-analytics
-
-# Force rebuild
-bin/build-cassandra-analytics --force
-```
-
-This clones the cassandra-analytics repo, builds with JDK 17, and publishes artifacts to the local Maven repository (`~/.m2/repository`).
+The example Spark jobs (bulk writers + connector read/write) have moved to their own
+repository: **`../spark-examples`**. Build, test, and the Cassandra Analytics dependency
+all live there now — this repo no longer builds analytics or requires a second JDK. The
+`spark` CLI commands here (EMR provisioning, `spark submit`, status/logs) submit a
+pre-built job jar to EMR; build that jar in `../spark-examples` and point `spark submit`
+at it.
 
 ### Pre-commit Hook Installation
 

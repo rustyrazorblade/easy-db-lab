@@ -33,16 +33,20 @@ DC2="$DC2_DIR/easy-db-lab"
 
 Exports `SIDECAR_IMAGE` and `AWS_PROFILE` from `.env` for all subsequent steps.
 
-### 2. Build and upload the IAM bulk writer JAR
+### 2. Download and upload the IAM bulk writer JAR
+
+The job jars are published from the
+[`spark-examples`](https://github.com/rustyrazorblade/spark-examples/releases) repo.
 
 ```bash
-bin/upload-iam-bulk-writer.sh
+curl -L -o bulk-writer-s3-iam-all.jar https://github.com/rustyrazorblade/spark-examples/releases/download/v0.1.0/bulk-writer-s3-iam-all.jar
 ACCOUNT_BUCKET=$(yq '.s3Bucket' ~/.easy-db-lab/profiles/default/settings.yaml)
 JAR_S3_PATH="s3://$ACCOUNT_BUCKET/spark/bulk-writer-s3-iam-all.jar"
+aws s3 cp bulk-writer-s3-iam-all.jar "$JAR_S3_PATH"
 ```
 
-Builds `:spark:bulk-writer-s3-iam:shadowJar` and uploads to the account bucket. `JAR_S3_PATH`
-is derived from the same settings the script uses, so it is always consistent.
+Downloads the published IAM bulk-writer fat JAR and uploads it to the account bucket so EMR
+can read it. To use a different version, change the release tag in the download URL.
 
 ### 3. Provision DC1 (with Spark) and DC2 in parallel
 

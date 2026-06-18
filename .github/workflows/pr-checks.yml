@@ -32,8 +32,7 @@ jobs:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
       - name: Run tests
-        # Exclude bulk-writer modules - require cassandra-analytics SNAPSHOTs from local Maven
-        run: ./gradlew test koverXmlReport --no-daemon -x :spark:bulk-writer-sidecar:compileJava -x :spark:bulk-writer-sidecar:test -x :spark:bulk-writer-s3:compileJava -x :spark:bulk-writer-s3:test
+        run: ./gradlew test koverXmlReport --no-daemon
 
       - name: Upload test results
         if: always()

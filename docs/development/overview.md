@@ -7,13 +7,13 @@ Hello there. If you're reading this, you've probably decided to contribute to ea
 Install these locally before building:
 
 - **Java 21** (Temurin) via SDKMAN — the default for the main project
-- **Java 11** (Temurin) via SDKMAN — required only for building cassandra-analytics
 - **Kotlin** and **Gradle** (the Gradle wrapper `./gradlew` is committed)
 - **Docker** — for TestContainers-backed integration tests
 - **mdbook** + **mdbook-admonish** — for previewing documentation
 
-SDKMAN manages the two Java versions; set Java 21 as the default. The `bin/build-cassandra-analytics`
-script switches to the JDK it needs automatically.
+The example Spark jobs and their Cassandra Analytics build live in the separate
+[`spark-examples`](https://github.com/rustyrazorblade/spark-examples) repository, so this
+repo needs only Java 21.
 
 ## Local Configuration (.env)
 

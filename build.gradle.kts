@@ -282,6 +282,15 @@ tasks.register("testPacker") {
     dependsOn("testPackerBase", "testPackerCassandra")
 }
 
+// Unit-test the pure build-plan logic behind the build-cassandra-ref workflow
+// (version -> JDK / ant flags / base image / tags). No Docker, no network.
+tasks.register<Exec>("testCassandraBuildPlan") {
+    group = "Verification"
+    description = "Unit-test the build-cassandra-ref build-plan resolution logic"
+    workingDir = file(".")
+    commandLine = listOf("bash", ".github/cassandra-image/resolve-build-plan.test.sh")
+}
+
 tasks.register<Exec>("testPackerScript") {
     group = "Verification"
     description = "Test a specific packer script (use -Pscript=path/to/script.sh)"

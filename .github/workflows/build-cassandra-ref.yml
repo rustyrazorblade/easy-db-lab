@@ -47,6 +47,7 @@ jobs:
       short_sha: ${{ steps.resolve.outputs.short_sha }}
       version: ${{ steps.meta.outputs.version }}
       build_jdk: ${{ steps.meta.outputs.build_jdk }}
+      ant_flags: ${{ steps.meta.outputs.ant_flags }}
       base_image: ${{ steps.meta.outputs.base_image }}
       image_repo: ${{ steps.meta.outputs.image_repo }}
       sha_tag: ${{ steps.meta.outputs.sha_tag }}
@@ -92,8 +93,16 @@ jobs:
           repository: ${{ inputs.repo }}
           ref: ${{ steps.resolve.outputs.sha }}
           fetch-depth: 1
+          path: cassandra-src
 
-      - name: Compute version, JDK, base image, and tags
+      - name: Check out this repo's image-assembly logic
+        uses: actions/checkout@v6
+        with:
+          path: edl
+          sparse-checkout: .github/cassandra-image
+          fetch-depth: 1
+
+      - name: Compute version, JDK, ant flags, base image, and tags
         id: meta
         env:
           SOURCE_REF: ${{ inputs.ref }}
@@ -106,58 +115,26 @@ jobs:
           set -euo pipefail
 
           # Version from build.xml base.version (matches nightly-cassandra-build.yml).
-          version="$(grep -oP 'property name="base.version" value="\K[^"]+' build.xml || echo unknown)"
-          if [[ "$version" == "unknown" || -z "$version" ]]; then
+          version="$(grep -oP 'property name="base.version" value="\K[^"]+' \
+            cassandra-src/build.xml || echo unknown)"
+          if [[ "$version" == "unknown" ]]; then
             echo "::error::could not read base.version from build.xml"
             exit 1
           fi
+          export VERSION="$version"
           echo "Cassandra base.version = ${version}"
 
-          # Auto-map build JDK and runtime base image from the major version.
-          # 4.x -> JDK 11 ; 5.0 -> JDK 17 ; 5.1+/trunk (no tag yet) -> JDK 21.
-          case "$version" in
-            4.*)  auto_jdk=11; auto_base=eclipse-temurin:11-jre ;;
-            5.0*) auto_jdk=17; auto_base=eclipse-temurin:17-jre ;;
-            *)    auto_jdk=21; auto_base=eclipse-temurin:21-jre ;;
-          esac
-
-          build_jdk="${JDK_OVERRIDE:-$auto_jdk}"
-          base_image="${BASE_IMAGE_OVERRIDE:-$auto_base}"
-
-          # Sanitize the ref into a valid image tag using the same transform as
-          # publish-container.yml (replace tag-invalid chars with '-', cap 128).
-          ref_tag="$(echo "$SOURCE_REF" | sed 's/[^a-zA-Z0-9._-]/-/g' | cut -c1-128)"
-          sha_tag="sha-${SHORT_SHA}"
-
-          # Guard: this workflow must never produce the reserved `latest` tag.
-          if [[ "$ref_tag" == "latest" || "$sha_tag" == "latest" ]]; then
-            echo "::error::refusing to produce the reserved 'latest' tag"
-            exit 1
-          fi
-
-          # GHCR image repo: ghcr.io/<owner>/<repo>/cassandra (lowercased).
-          owner_lc="$(echo "$REPO_OWNER" | tr '[:upper:]' '[:lower:]')"
-          repo_lc="$(echo "$REPO_NAME" | tr '[:upper:]' '[:lower:]')"
-          image_repo="ghcr.io/${owner_lc}/${repo_lc}/cassandra"
-
-          tarball_name="apache-cassandra-${version}-${SHORT_SHA}-bin.tar.gz"
-          release_tag="cassandra-${version}-${SHORT_SHA}"
-
-          {
-            echo "version=${version}"
-            echo "build_jdk=${build_jdk}"
-            echo "base_image=${base_image}"
-            echo "image_repo=${image_repo}"
-            echo "sha_tag=${sha_tag}"
-            echo "ref_tag=${ref_tag}"
-            echo "tarball_name=${tarball_name}"
-            echo "release_tag=${release_tag}"
-          } >> "$GITHUB_OUTPUT"
+          # Delegate the pure version->plan mapping to the unit-tested script so
+          # the JDK/ant-flags/base-image/tag logic stays in one place (see
+          # resolve-build-plan.test.sh).
+          # shellcheck source=.github/cassandra-image/resolve-build-plan.sh
+          source edl/.github/cassandra-image/resolve-build-plan.sh
+          plan="$(compute_build_plan)"
+          echo "$plan" >> "$GITHUB_OUTPUT"
 
           echo "Resolved build plan:"
-          echo "  version=${version} jdk=${build_jdk} base_image=${base_image}"
-          echo "  image=${image_repo}:${sha_tag} (+ :${ref_tag})"
-          echo "  tarball=${tarball_name} release=${release_tag}"
+          # shellcheck disable=SC2001  # per-line prefix; parameter expansion can't do this
+          echo "$plan" | sed 's/^/  /'
 
   build:
     name: Build Cassandra artifacts
@@ -178,11 +155,20 @@ jobs:
           java-version: ${{ needs.resolve.outputs.build_jdk }}
 
       - name: Build artifacts with ant
+        env:
+          # Version-specific ant flags from the resolve job. For 4.0/4.1 this is
+          # -Duse.jdk11=true, which those branches require to compile under the
+          # auto-mapped JDK 11 (they default to JDK 8). Empty for 5.0+/trunk.
+          ANT_FLAGS: ${{ needs.resolve.outputs.ant_flags }}
         run: |
           set -euo pipefail
           # Runner-native build (not .build/docker/, which is absent on 4.0/4.1).
           ant realclean
-          ant artifacts -Dno-checkstyle=true -Dant.gen-doc.skip=true
+          # ANT_FLAGS must word-split into separate ant args (and expand to
+          # nothing when empty), so it is intentionally unquoted — same pattern
+          # as packer/cassandra/install/install_cassandra.sh.
+          # shellcheck disable=SC2086
+          ant artifacts -Dno-checkstyle=true -Dant.gen-doc.skip=true $ANT_FLAGS
 
       - name: Locate and rename tarball
         id: artifact

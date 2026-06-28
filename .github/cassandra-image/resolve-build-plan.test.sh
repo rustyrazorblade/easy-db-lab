@@ -150,6 +150,14 @@ assert_fails "empty version fails fast" \
   VERSION= SHORT_SHA=deadbeef0000 SOURCE_REF=trunk \
   JDK_OVERRIDE= BASE_IMAGE_OVERRIDE= REPO_OWNER=o REPO_NAME=r
 
+# --- missing ref fails fast --------------------------------------------------
+# A blank SOURCE_REF must not produce a plan with an empty ref_tag (which would
+# yield an invalid `IMAGE_REPO:` Docker reference deep in the publish job). Fail
+# fast in resolve instead, mirroring the empty-version guard.
+assert_fails "empty source ref fails fast" \
+  VERSION=5.0.3 SHORT_SHA=deadbeef0000 SOURCE_REF= \
+  JDK_OVERRIDE= BASE_IMAGE_OVERRIDE= REPO_OWNER=o REPO_NAME=r
+
 echo ""
 echo "${tests_run} tests, ${tests_failed} failed"
 [[ "$tests_failed" -eq 0 ]]

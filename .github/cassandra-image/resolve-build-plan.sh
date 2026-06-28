@@ -38,6 +38,11 @@ compute_build_plan() {
     return 1
   fi
 
+  if [[ -z "$source_ref" ]]; then
+    echo "::error::no source ref supplied; cannot derive an image tag" >&2
+    return 1
+  fi
+
   # Auto-map build JDK, ant flags, and runtime base image from the major version.
   #   4.x  -> JDK 11; Cassandra 4.0/4.1 default to JDK 8 and require
   #           -Duse.jdk11=true to compile under 11 (matches cassandra_versions.yaml).

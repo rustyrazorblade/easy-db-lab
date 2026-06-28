@@ -1,0 +1,296 @@
+name: Build Cassandra Ref
+
+# On-demand build of a single arbitrary Apache Cassandra git ref.
+#
+# Produces TWO artifacts from one build:
+#   1. A GHCR Docker image that is a drop-in for the Docker Official `cassandra`
+#      image (same docker-entrypoint.sh contract, CASSANDRA_* env vars, ports,
+#      and /var/lib/cassandra volume) — see .github/cassandra-image/.
+#   2. A binary tarball attached to a per-build GitHub release, consumable by the
+#      lab install path (cassandra_versions.yaml + install_cassandra.sh).
+#
+# Three sequential jobs make "build fails -> nothing published" structural:
+#   resolve -> build -> publish (publish needs both).
+#
+# `latest` is reserved for the main CLI image (see .github/CLAUDE.md) and is
+# NEVER produced here.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Cassandra git ref to build (branch, tag, or commit SHA)'
+        required: true
+        type: string
+      repo:
+        description: 'Source repo (owner/name), for forks'
+        required: false
+        type: string
+        default: 'apache/cassandra'
+      jdk:
+        description: 'Override the build JDK (e.g. 11, 17, 21). Blank = auto-map from version.'
+        required: false
+        type: string
+        default: ''
+      base_image:
+        description: 'Override the runtime JRE base image the container is built FROM. Blank = auto-map.'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  resolve:
+    name: Resolve ref and compute outputs
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
+      short_sha: ${{ steps.resolve.outputs.short_sha }}
+      version: ${{ steps.meta.outputs.version }}
+      build_jdk: ${{ steps.meta.outputs.build_jdk }}
+      ant_flags: ${{ steps.meta.outputs.ant_flags }}
+      base_image: ${{ steps.meta.outputs.base_image }}
+      image_repo: ${{ steps.meta.outputs.image_repo }}
+      sha_tag: ${{ steps.meta.outputs.sha_tag }}
+      ref_tag: ${{ steps.meta.outputs.ref_tag }}
+      tarball_name: ${{ steps.meta.outputs.tarball_name }}
+      release_tag: ${{ steps.meta.outputs.release_tag }}
+    steps:
+      - name: Check out this repo's image-assembly logic
+        uses: actions/checkout@v7
+        with:
+          path: edl
+          sparse-checkout: .github/cassandra-image
+          fetch-depth: 1
+
+      - name: Resolve ref to an immutable SHA
+        id: resolve
+        env:
+          SOURCE_REPO: ${{ inputs.repo }}
+          SOURCE_REF: ${{ inputs.ref }}
+        run: |
+          set -euo pipefail
+          # Delegate to the unit-tested resolve_ref (git ls-remote / raw-SHA
+          # fallback / fail-fast naming the bad ref). See resolve-ref.test.sh.
+          # shellcheck source=.github/cassandra-image/resolve-ref.sh
+          source edl/.github/cassandra-image/resolve-ref.sh
+          resolve_ref >> "$GITHUB_OUTPUT"
+
+      - name: Check out resolved SHA to read build.xml
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ inputs.repo }}
+          ref: ${{ steps.resolve.outputs.sha }}
+          fetch-depth: 1
+          path: cassandra-src
+
+      - name: Compute version, JDK, ant flags, base image, and tags
+        id: meta
+        env:
+          SOURCE_REF: ${{ inputs.ref }}
+          SHORT_SHA: ${{ steps.resolve.outputs.short_sha }}
+          JDK_OVERRIDE: ${{ inputs.jdk }}
+          BASE_IMAGE_OVERRIDE: ${{ inputs.base_image }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          REPO_NAME: ${{ github.event.repository.name }}
+        run: |
+          set -euo pipefail
+
+          # Version from build.xml base.version (matches nightly-cassandra-build.yml).
+          version="$(grep -oP 'property name="base.version" value="\K[^"]+' \
+            cassandra-src/build.xml || echo unknown)"
+          if [[ "$version" == "unknown" ]]; then
+            echo "::error::could not read base.version from build.xml"
+            exit 1
+          fi
+          export VERSION="$version"
+          echo "Cassandra base.version = ${version}"
+
+          # Delegate the pure version->plan mapping to the unit-tested script so
+          # the JDK/ant-flags/base-image/tag logic stays in one place (see
+          # resolve-build-plan.test.sh).
+          # shellcheck source=.github/cassandra-image/resolve-build-plan.sh
+          source edl/.github/cassandra-image/resolve-build-plan.sh
+          plan="$(compute_build_plan)"
+          echo "$plan" >> "$GITHUB_OUTPUT"
+
+          echo "Resolved build plan:"
+          # shellcheck disable=SC2001  # per-line prefix; parameter expansion can't do this
+          echo "$plan" | sed 's/^/  /'
+
+  build:
+    name: Build Cassandra artifacts
+    needs: resolve
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out resolved SHA
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ inputs.repo }}
+          ref: ${{ needs.resolve.outputs.sha }}
+          fetch-depth: 1
+
+      - name: Set up build JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: ${{ needs.resolve.outputs.build_jdk }}
+
+      - name: Build artifacts with ant
+        env:
+          # Version-specific ant flags from the resolve job. For 4.0/4.1 this is
+          # -Duse.jdk11=true, which those branches require to compile under the
+          # auto-mapped JDK 11 (they default to JDK 8). Empty for 5.0+/trunk.
+          ANT_FLAGS: ${{ needs.resolve.outputs.ant_flags }}
+        run: |
+          set -euo pipefail
+          # Runner-native build (not .build/docker/, which is absent on 4.0/4.1).
+          ant realclean
+          # ANT_FLAGS must word-split into separate ant args (and expand to
+          # nothing when empty), so it is intentionally unquoted — same pattern
+          # as packer/cassandra/install/install_cassandra.sh.
+          # shellcheck disable=SC2086
+          ant artifacts -Dno-checkstyle=true -Dant.gen-doc.skip=true $ANT_FLAGS
+
+      - name: Locate and rename tarball
+        id: artifact
+        env:
+          TARBALL_NAME: ${{ needs.resolve.outputs.tarball_name }}
+        run: |
+          set -euo pipefail
+          src="$(find build -name 'apache-cassandra-*-bin.tar.gz' -type f | head -n1)"
+          if [[ -z "$src" ]]; then
+            echo "::error::no binary tarball found under build/"
+            exit 1
+          fi
+          cp "$src" "$TARBALL_NAME"
+          if [[ ! -s "$TARBALL_NAME" ]]; then
+            echo "::error::renamed tarball ${TARBALL_NAME} is missing or empty"
+            exit 1
+          fi
+          echo "Built $(du -h "$TARBALL_NAME" | cut -f1) tarball: ${TARBALL_NAME}"
+
+      - name: Upload tarball for publish job
+        uses: actions/upload-artifact@v7
+        with:
+          name: cassandra-tarball
+          path: ${{ needs.resolve.outputs.tarball_name }}
+          retention-days: 7
+          if-no-files-found: error
+
+  publish:
+    name: Publish image and tarball
+    needs: [resolve, build]
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: write
+    steps:
+      - name: Check out image-assembly files
+        uses: actions/checkout@v7
+
+      - name: Download built tarball
+        uses: actions/download-artifact@v8
+        with:
+          name: cassandra-tarball
+          path: .github/cassandra-image
+
+      - name: Create per-build release with tarball
+        id: release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ needs.resolve.outputs.release_tag }}
+          name: "Cassandra ${{ needs.resolve.outputs.version }} (${{ needs.resolve.outputs.short_sha }})"
+          prerelease: true
+          draft: false
+          body: |
+            On-demand Apache Cassandra build.
+
+            - **Source repo**: `${{ inputs.repo }}`
+            - **Ref**: `${{ inputs.ref }}`
+            - **Commit**: `${{ needs.resolve.outputs.sha }}`
+            - **Version**: `${{ needs.resolve.outputs.version }}`
+            - **Build JDK**: `${{ needs.resolve.outputs.build_jdk }}`
+            - **Image**: `${{ needs.resolve.outputs.image_repo }}:${{ needs.resolve.outputs.sha_tag }}`
+
+            These are development builds and should not be used in production.
+          files: .github/cassandra-image/${{ needs.resolve.outputs.tarball_name }}
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        env:
+          IMAGE_REPO: ${{ needs.resolve.outputs.image_repo }}
+          SHA_TAG: ${{ needs.resolve.outputs.sha_tag }}
+          REF_TAG: ${{ needs.resolve.outputs.ref_tag }}
+          BASE_IMAGE: ${{ needs.resolve.outputs.base_image }}
+          TARBALL_NAME: ${{ needs.resolve.outputs.tarball_name }}
+        run: |
+          set -euo pipefail
+          docker build \
+            --build-arg BASE_IMAGE="$BASE_IMAGE" \
+            --build-arg TARBALL="$TARBALL_NAME" \
+            --tag "${IMAGE_REPO}:${SHA_TAG}" \
+            --tag "${IMAGE_REPO}:${REF_TAG}" \
+            .github/cassandra-image
+          docker push "${IMAGE_REPO}:${SHA_TAG}"
+          docker push "${IMAGE_REPO}:${REF_TAG}"
+
+      - name: Smoke test — image serves CQL
+        env:
+          IMAGE_REPO: ${{ needs.resolve.outputs.image_repo }}
+          SHA_TAG: ${{ needs.resolve.outputs.sha_tag }}
+        run: |
+          set -euo pipefail
+          image="${IMAGE_REPO}:${SHA_TAG}"
+          docker pull "$image"
+          cid="$(docker run -d -p 9042:9042 "$image")"
+          trap 'docker rm -f "$cid" >/dev/null 2>&1 || true' EXIT
+
+          echo "Waiting for CQL on 9042 (bounded timeout)..."
+          ready=
+          for _ in $(seq 1 60); do
+            if docker exec "$cid" cqlsh -e 'SELECT release_version FROM system.local;' >/tmp/cql.out 2>/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 5
+          done
+
+          if [[ -z "$ready" ]]; then
+            echo "::error::container did not serve CQL within the timeout"
+            docker logs "$cid" || true
+            exit 1
+          fi
+          echo "CQL query succeeded:"
+          cat /tmp/cql.out
+
+      - name: Write run summary
+        env:
+          IMAGE_REPO: ${{ needs.resolve.outputs.image_repo }}
+          SHA_TAG: ${{ needs.resolve.outputs.sha_tag }}
+          REF_TAG: ${{ needs.resolve.outputs.ref_tag }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+          SHA: ${{ needs.resolve.outputs.sha }}
+          RELEASE_TAG: ${{ needs.resolve.outputs.release_tag }}
+          TARBALL_NAME: ${{ needs.resolve.outputs.tarball_name }}
+        run: |
+          set -euo pipefail
+          tarball_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${TARBALL_NAME}"
+          {
+            echo "## Cassandra ref build"
+            echo ""
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Version | \`${VERSION}\` |"
+            echo "| Commit | \`${SHA}\` |"
+            echo "| Image (immutable) | \`${IMAGE_REPO}:${SHA_TAG}\` |"
+            echo "| Image (ref) | \`${IMAGE_REPO}:${REF_TAG}\` |"
+            echo "| Tarball | ${tarball_url} |"
+            echo ""
+            echo "Pull: \`docker pull ${IMAGE_REPO}:${SHA_TAG}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

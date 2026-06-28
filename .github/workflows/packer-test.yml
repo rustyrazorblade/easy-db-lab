@@ -4,16 +4,31 @@ on:
   pull_request:
     paths:
       - 'packer/**'
+      - '.github/cassandra-image/**'
       - '.github/workflows/packer-test.yml'
   push:
     branches:
       - main
     paths:
       - 'packer/**'
+      - '.github/cassandra-image/**'
       - '.github/workflows/packer-test.yml'
   workflow_dispatch:
 
 jobs:
+  test-cassandra-build-plan:
+    name: Test build-cassandra-ref build-plan logic
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Run build-plan unit tests
+        run: bash .github/cassandra-image/resolve-build-plan.test.sh
+
+      - name: Run ref-resolution unit tests
+        run: bash .github/cassandra-image/resolve-ref.test.sh
+
   test-individual-scripts:
     name: Test Individual Scripts
     runs-on: ubuntu-latest
@@ -25,7 +40,7 @@ jobs:
           - base/install/install_python.sh
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -46,7 +61,7 @@ jobs:
     if: github.event_name == 'pull_request'
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -103,7 +118,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -124,7 +139,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4

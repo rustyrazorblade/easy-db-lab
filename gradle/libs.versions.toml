@@ -53,7 +53,7 @@ okhttp = "5.3.2"
 
 # Apache
 sshd = "2.18.0"
-commons-io = "2.21.0"
+commons-io = "2.22.0"
 commons-text = "1.15.0"
 
 # Cassandra

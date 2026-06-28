@@ -39,6 +39,13 @@ Cassandra version: `4.x → JDK 11 / eclipse-temurin:11-jre`,
 `JDK 21 / eclipse-temurin:21-jre`. Supply an override when a branch needs a
 different JRE than its version maps to (for example when trunk's floor moves).
 
+For 4.0/4.1 refs the build also passes `-Duse.jdk11=true` automatically: those
+branches default their `ant` build to JDK 8 and need that flag to compile under
+the auto-mapped JDK 11 (the same flag the Packer install path uses for 4.x). This
+version → JDK / ant-flags / base-image / tag mapping lives in
+`.github/cassandra-image/resolve-build-plan.sh` and is unit-tested by
+`resolve-build-plan.test.sh` (run via `./gradlew testCassandraBuildPlan`).
+
 ## How it works
 
 Three sequential jobs make "build fails → nothing published" structural:

@@ -27,10 +27,46 @@
 
 ## 5. Verification
 
-- [ ] 5.1 Trigger against a stable ref (e.g. `cassandra-5.0`) and confirm both artifacts publish and the summary is correct
+### Automated (CI)
+
+- [x] 5.0 Unit-test the pure build-plan logic (`.github/cassandra-image/resolve-build-plan.sh`):
+  version → JDK / ant-flags / base-image auto-mapping (4.x/5.0/trunk), `jdk` and
+  `base_image` overrides winning over auto-map, ref-tag sanitization
+  (`feature/foo` → `feature-foo`), the `latest`-tag guard, deterministic
+  non-colliding `sha-<short>` / tarball / release names, and empty-version
+  fail-fast. Runs via `./gradlew testCassandraBuildPlan` and the
+  `test-cassandra-build-plan` job in `packer-test.yml`
+  (`.github/cassandra-image/resolve-build-plan.test.sh`).
+  - Covers spec scenarios: Auto-mapped JDK and base image; Operator overrides the
+    build JDK; Operator overrides the base JVM image; Ref with invalid tag
+    characters is sanitized (incl. `latest` guard); Different refs produce
+    different artifacts.
+  - Covers the 4.x `-Duse.jdk11=true` build-flag requirement so the stated
+    "4.0 → trunk" coverage actually compiles 4.x under the auto-mapped JDK 11.
+
+### Structural / by-inspection (recorded acceptance arguments)
+
+- [x] 5.5 **Build failure blocks all publishing** — guaranteed structurally by
+  `publish: needs: [resolve, build]`; a failing `build` short-circuits `publish`,
+  so no release is created and no image is pushed. No separate test asserts this;
+  the job dependency is the acceptance argument.
+- [x] 5.6 **Authenticated GHCR publishing with no trigger-time secrets** — the
+  `publish` job declares `permissions: { packages: write, contents: write }` and
+  authenticates with `docker/login-action` using `secrets.GITHUB_TOKEN`; no input
+  or repository secret is entered at trigger time. Acceptance is by inspection of
+  the permissions + login wiring.
+
+### Manual (acceptance gate before archive)
+
+Items below exercise a real `workflow_dispatch` run (network + Docker + GHCR) and
+are the manual acceptance gate; they cannot run in unit tests:
+
+- [ ] 5.1 Trigger against a stable ref (e.g. `cassandra-5.0`) and confirm both artifacts publish, the in-workflow CQL smoke test passes (gating publication), and the summary is correct
 - [ ] 5.2 Trigger against `trunk` to exercise the newest-JDK / `base_image` auto-mapping path
-- [ ] 5.3 Trigger with a nonexistent ref and confirm fail-fast with nothing published
-- [ ] 5.4 Confirm a published tarball URL installs via `cassandra_versions.yaml` + `install_cassandra.sh`
+- [ ] 5.3 Trigger with a nonexistent ref and confirm fail-fast with nothing published (resolve step names the bad ref)
+- [ ] 5.4 Confirm a published tarball URL installs via `cassandra_versions.yaml` + `install_cassandra.sh` (single top-level `*cassandra*` dir)
+- [ ] 5.7 Trigger with a fork `repo` input and confirm the ref resolves and builds from the fork
+- [ ] 5.8 Confirm the produced image is a drop-in for `cassandra:<n>` in a compose service using the same `CASSANDRA_*` env vars (CQL on 9042)
 
 ## 6. Documentation
 

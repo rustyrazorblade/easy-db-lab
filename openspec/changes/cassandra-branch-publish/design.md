@@ -57,6 +57,38 @@ Build amd64 only; lab nodes are x86 (`i4i.xlarge`). Multi-arch (buildx + QEMU) i
 - **Partial publish within `publish` (release created but image push fails, or vice-versa)** → re-running with the same SHA is idempotent on the image (same tag) and additive on the release; no cleanup logic. Accepted as fix-forward.
 - **`base.version` is not unique across two trunk builds** → the short SHA in every tag/asset name disambiguates.
 
+## Test Strategy
+
+The build plan is the only "thinking" part of the workflow, so it is factored
+out of the YAML into a pure, sourceable shell function
+(`.github/cassandra-image/resolve-build-plan.sh::compute_build_plan`) and
+unit-tested with no network or Docker
+(`.github/cassandra-image/resolve-build-plan.test.sh`, run via
+`./gradlew testCassandraBuildPlan` and the `test-cassandra-build-plan` CI job).
+The tests assert the version → JDK / ant-flags / base-image auto-mapping, the
+`jdk` / `base_image` overrides, ref-tag sanitization, the `latest`-tag guard,
+deterministic non-colliding artifact names, and fail-fast on an unreadable
+version. This includes the 4.x `-Duse.jdk11=true` ant flag — without it a 4.0/4.1
+ref auto-mapped to JDK 11 would fail to compile (4.x defaults to JDK 8), so the
+flag is required for the stated "4.0 → trunk" coverage to actually build.
+
+The remaining guarantees are accepted by structure or inspection rather than a
+dedicated test:
+
+- **Build failure publishes nothing** — `publish: needs: [resolve, build]` makes
+  a build failure short-circuit `publish` (no release, no image push). The job
+  dependency *is* the guarantee; a negative workflow test would add little.
+- **GHCR auth with no trigger-time secrets** — `permissions: { packages: write,
+  contents: write }` + `docker/login-action` with `secrets.GITHUB_TOKEN`; no
+  input/secret entered at trigger time.
+
+The end-to-end behaviors that require a live runner, Docker, and GHCR (a valid
+ref building + publishing both artifacts, the CQL smoke test gating publication,
+the fork `repo` path, compose drop-in substitution, the run summary, and the
+tarball installing via `install_cassandra.sh`) are exercised by the manual
+`workflow_dispatch` acceptance gate in `tasks.md` §5 (5.1–5.8), not by automated
+tests.
+
 ## Migration Plan
 
 Additive only — new workflow + new `.github/cassandra-image/` files. No existing workflow, CLI, or cluster behavior changes. Rollback = delete the workflow; nothing else depends on it. Produced GHCR images/releases are inert until a consumer references them.

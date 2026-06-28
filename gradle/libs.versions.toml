@@ -46,7 +46,7 @@ awssdk = "2.42.33"
 awssdk-kotlin = "1.4.92"
 
 # Docker
-docker-java = "3.7.0"
+docker-java = "3.7.1"
 
 # HTTP Client
 okhttp = "5.3.2"

@@ -1,6 +1,9 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.github.dockerjava.api.model.AccessMode
+import com.github.dockerjava.api.model.Bind
 import com.github.dockerjava.api.model.Ulimit
+import com.github.dockerjava.api.model.Volume
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
@@ -30,6 +33,7 @@ import io.fabric8.kubernetes.api.model.apps.StatefulSet
 import io.fabric8.kubernetes.client.Config
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientBuilder
+import java.time.Duration
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.MethodOrderer
@@ -71,8 +75,11 @@ class K8sServiceIntegrationTest {
                     cmd.hostConfig!!
                         .withCgroupnsMode("host")
                         .withUlimits(listOf(Ulimit("nofile", 65536L, 65536L)))
+                        // Mount cgroup filesystem for K3s to manage pod cgroups on Ubuntu 24.04 (cgroup v2)
+                        .withBinds(listOf(Bind("/sys/fs/cgroup", Volume("/sys/fs/cgroup"), AccessMode.rw)))
                 }.withLogConsumer(Slf4jLogConsumer(LoggerFactory.getLogger("k3s")))
-                .withEnv("K3S_SNAPSHOTTER", "native") as K3sContainer
+                .withEnv("K3S_SNAPSHOTTER", "native")
+                .withStartupTimeout(Duration.ofMinutes(3)) as K3sContainer
     }
 
     private lateinit var client: KubernetesClient

@@ -47,6 +47,20 @@ run_resolve() {
     bash -c "source '${SCRIPT_DIR}/resolve-ref.sh'; resolve_ref"
 }
 
+# Like run_resolve, but runs under `set -euo pipefail` (exactly as the
+# build-cassandra-ref workflow invokes resolve_ref) and lets the caller pick
+# the injected ls-remote command. This is the regression harness for the bug
+# where an ls-remote error (unreachable repo / transient network failure)
+# aborted the script at the assignment line — before the raw-SHA fallback and
+# before the fail-fast "ref does not exist" naming branch.
+run_resolve_strict() {
+  # Usage: run_resolve_strict <source_ref> <ls-remote-cmd>
+  local source_ref="$1" ls_remote_cmd="$2"
+  SOURCE_REPO="apache/cassandra" SOURCE_REF="$source_ref" \
+    LS_REMOTE_CMD="$ls_remote_cmd" \
+    bash -c "set -euo pipefail; source '${SCRIPT_DIR}/resolve-ref.sh'; resolve_ref"
+}
+
 assert_resolves_to() {
   local desc="$1" source_ref="$2" resolvable="$3" expected_sha="$4"
   tests_run=$((tests_run + 1))
@@ -93,6 +107,43 @@ assert_fails_naming_ref() {
   fi
 }
 
+# Asserts resolve_ref (run under `set -euo pipefail`) resolves to expected_sha
+# despite the injected ls-remote command failing. Proves an ls-remote error
+# does not abort the script before the raw-SHA fallback runs.
+assert_strict_resolves_to() {
+  local desc="$1" source_ref="$2" ls_remote_cmd="$3" expected_sha="$4"
+  tests_run=$((tests_run + 1))
+  local out sha
+  out="$(run_resolve_strict "$source_ref" "$ls_remote_cmd" 2>/dev/null)"
+  sha="$(echo "$out" | grep '^sha=' | head -n1 | cut -d= -f2-)"
+  if [[ "$sha" == "$expected_sha" ]]; then
+    echo "ok   - ${desc} (sha=${sha})"
+  else
+    echo "FAIL - ${desc}: expected sha=${expected_sha}, got sha=${sha}"
+    tests_failed=$((tests_failed + 1))
+  fi
+}
+
+# Asserts resolve_ref (run under `set -euo pipefail`) exits non-zero AND its
+# stderr contains expected_substring. Proves the script reaches its own
+# fail-fast branch rather than being aborted by `set -e` at the ls-remote call.
+assert_strict_fails_with() {
+  local desc="$1" source_ref="$2" ls_remote_cmd="$3" expected_substring="$4"
+  tests_run=$((tests_run + 1))
+  local err rc
+  err="$(run_resolve_strict "$source_ref" "$ls_remote_cmd" 2>&1 >/dev/null)"
+  rc=$?
+  if [[ "$rc" -eq 0 ]]; then
+    echo "FAIL - ${desc}: expected non-zero exit, got success"
+    tests_failed=$((tests_failed + 1))
+  elif [[ "$err" != *"$expected_substring"* ]]; then
+    echo "FAIL - ${desc}: error did not contain '${expected_substring}': ${err}"
+    tests_failed=$((tests_failed + 1))
+  else
+    echo "ok   - ${desc} (failed with '${expected_substring}')"
+  fi
+}
+
 FORTY_HEX="0123456789abcdef0123456789abcdef01234567"
 FAKE_SHA="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
@@ -112,6 +163,24 @@ assert_fails_naming_ref "unresolvable ref fails naming the ref" \
 # A too-short hex string is NOT a valid raw SHA and must still fail-fast.
 assert_fails_naming_ref "short hex string is not a raw SHA" \
   abc123 ""
+
+# --- ls-remote failure must not abort before the documented fallbacks --------
+# (Regression tests for the workflow's `set -euo pipefail` context: a non-zero
+# git ls-remote — unreachable repo or transient network error — used to abort
+# resolve_ref at the assignment line, before either the raw-SHA fallback or the
+# fail-fast naming branch could run.)
+
+# 1. ls-remote fails AND a valid 40-hex SHA is supplied -> raw-SHA fallback wins.
+assert_strict_resolves_to "raw SHA resolves even when ls-remote errors" \
+  "$FORTY_HEX" "false" "$FORTY_HEX"
+
+# 2. ls-remote fails AND a non-SHA ref -> reaches the fail-fast naming branch.
+assert_strict_fails_with "non-SHA ref with failing ls-remote fails fast" \
+  no-such-ref "false" "::error::ref 'no-such-ref' does not exist"
+
+# 3. blank ref -> the no-ref guard fires (also under strict mode).
+assert_strict_fails_with "blank ref reports no ref supplied" \
+  "" "false" "::error::no ref supplied"
 
 echo ""
 echo "${tests_run} tests, ${tests_failed} failed"

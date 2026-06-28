@@ -40,12 +40,20 @@ resolve_ref() {
   echo "Resolving '${source_ref}' in ${repo_url}" >&2
 
   # Try the ref as given first, then explicitly as a tag and a branch.
+  #
+  # git ls-remote is a network call, so a non-zero exit (unreachable repo,
+  # transient failure) is expected and recoverable: a directly-supplied raw
+  # SHA must still resolve, and a genuinely missing ref must reach the
+  # fail-fast naming branch below. The workflow runs under `set -euo
+  # pipefail`, so each invocation is guarded with `|| true` to keep an
+  # ls-remote error from aborting the script at the assignment line.
   local sha
-  sha="$($ls_remote_cmd "$repo_url" "$source_ref" | awk '{print $1}' | head -n1)"
+  sha="$($ls_remote_cmd "$repo_url" "$source_ref" 2>/dev/null \
+    | awk '{print $1}' | head -n1 || true)"
   if [[ -z "$sha" ]]; then
     sha="$($ls_remote_cmd "$repo_url" \
-      "refs/tags/${source_ref}" "refs/heads/${source_ref}" \
-      | awk '{print $1}' | head -n1)"
+      "refs/tags/${source_ref}" "refs/heads/${source_ref}" 2>/dev/null \
+      | awk '{print $1}' | head -n1 || true)"
   fi
 
   # Fall back to accepting a full (40-hex) commit SHA passed directly.

@@ -4,16 +4,31 @@ on:
   pull_request:
     paths:
       - 'packer/**'
+      - '.github/cassandra-image/**'
       - '.github/workflows/packer-test.yml'
   push:
     branches:
       - main
     paths:
       - 'packer/**'
+      - '.github/cassandra-image/**'
       - '.github/workflows/packer-test.yml'
   workflow_dispatch:
 
 jobs:
+  test-cassandra-build-plan:
+    name: Test build-cassandra-ref build-plan logic
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Run build-plan unit tests
+        run: bash .github/cassandra-image/resolve-build-plan.test.sh
+
+      - name: Run ref-resolution unit tests
+        run: bash .github/cassandra-image/resolve-ref.test.sh
+
   test-individual-scripts:
     name: Test Individual Scripts
     runs-on: ubuntu-latest

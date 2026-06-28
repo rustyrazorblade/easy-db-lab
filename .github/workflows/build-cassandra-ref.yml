@@ -55,6 +55,13 @@ jobs:
       tarball_name: ${{ steps.meta.outputs.tarball_name }}
       release_tag: ${{ steps.meta.outputs.release_tag }}
     steps:
+      - name: Check out this repo's image-assembly logic
+        uses: actions/checkout@v6
+        with:
+          path: edl
+          sparse-checkout: .github/cassandra-image
+          fetch-depth: 1
+
       - name: Resolve ref to an immutable SHA
         id: resolve
         env:
@@ -62,30 +69,11 @@ jobs:
           SOURCE_REF: ${{ inputs.ref }}
         run: |
           set -euo pipefail
-          repo_url="https://github.com/${SOURCE_REPO}.git"
-          echo "Resolving '${SOURCE_REF}' in ${repo_url}"
-
-          # Try branch/tag first, then treat the input as a raw SHA.
-          sha="$(git ls-remote "$repo_url" "$SOURCE_REF" | awk '{print $1}' | head -n1)"
-          if [[ -z "$sha" ]]; then
-            sha="$(git ls-remote "$repo_url" "refs/tags/${SOURCE_REF}" "refs/heads/${SOURCE_REF}" \
-              | awk '{print $1}' | head -n1)"
-          fi
-          if [[ -z "$sha" ]]; then
-            # Fall back to accepting a full commit SHA passed directly.
-            if [[ "$SOURCE_REF" =~ ^[0-9a-f]{40}$ ]]; then
-              sha="$SOURCE_REF"
-            fi
-          fi
-
-          if [[ -z "$sha" ]]; then
-            echo "::error::ref '${SOURCE_REF}' does not exist in ${SOURCE_REPO}"
-            exit 1
-          fi
-
-          echo "Resolved to ${sha}"
-          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
-          echo "short_sha=${sha:0:12}" >> "$GITHUB_OUTPUT"
+          # Delegate to the unit-tested resolve_ref (git ls-remote / raw-SHA
+          # fallback / fail-fast naming the bad ref). See resolve-ref.test.sh.
+          # shellcheck source=.github/cassandra-image/resolve-ref.sh
+          source edl/.github/cassandra-image/resolve-ref.sh
+          resolve_ref >> "$GITHUB_OUTPUT"
 
       - name: Check out resolved SHA to read build.xml
         uses: actions/checkout@v6
@@ -94,13 +82,6 @@ jobs:
           ref: ${{ steps.resolve.outputs.sha }}
           fetch-depth: 1
           path: cassandra-src
-
-      - name: Check out this repo's image-assembly logic
-        uses: actions/checkout@v6
-        with:
-          path: edl
-          sparse-checkout: .github/cassandra-image
-          fetch-depth: 1
 
       - name: Compute version, JDK, ant flags, base image, and tags
         id: meta

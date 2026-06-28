@@ -44,6 +44,18 @@
   - Covers the 4.x `-Duse.jdk11=true` build-flag requirement so the stated
     "4.0 → trunk" coverage actually compiles 4.x under the auto-mapped JDK 11.
 
+- [x] 5.0b Unit-test the ref-resolution logic
+  (`.github/cassandra-image/resolve-ref.sh`): a resolvable branch/tag yields its
+  SHA (and a 12-char short SHA), a 40-hex input is accepted as a raw SHA with no
+  remote match, and an unresolvable ref (including a too-short hex string) exits
+  non-zero with a message naming the bad ref. `git ls-remote` is injected
+  (`LS_REMOTE_CMD`) and stubbed, so the test needs no network. Runs via
+  `./gradlew testCassandraResolveRef` and the `test-cassandra-build-plan` job in
+  `packer-test.yml` (`.github/cassandra-image/resolve-ref.test.sh`). The workflow
+  sources this same function, so the tested logic is what actually runs.
+  - Covers spec scenario: Nonexistent ref fails fast (the fail-fast / bad-ref
+    naming behavior previously only exercised by the manual gate 5.3).
+
 ### Structural / by-inspection (recorded acceptance arguments)
 
 - [x] 5.5 **Build failure blocks all publishing** — guaranteed structurally by
@@ -63,7 +75,10 @@ are the manual acceptance gate; they cannot run in unit tests:
 
 - [ ] 5.1 Trigger against a stable ref (e.g. `cassandra-5.0`) and confirm both artifacts publish, the in-workflow CQL smoke test passes (gating publication), and the summary is correct
 - [ ] 5.2 Trigger against `trunk` to exercise the newest-JDK / `base_image` auto-mapping path
-- [ ] 5.3 Trigger with a nonexistent ref and confirm fail-fast with nothing published (resolve step names the bad ref)
+- [x] 5.3 Nonexistent-ref fail-fast (resolve step names the bad ref) is covered
+  automatically by 5.0b (`resolve-ref.test.sh`), which exercises the same
+  `resolve_ref` function the workflow sources. A live `workflow_dispatch` run is
+  no longer required to accept this scenario.
 - [ ] 5.4 Confirm a published tarball URL installs via `cassandra_versions.yaml` + `install_cassandra.sh` (single top-level `*cassandra*` dir)
 - [ ] 5.7 Trigger with a fork `repo` input and confirm the ref resolves and builds from the fork
 - [ ] 5.8 Confirm the produced image is a drop-in for `cassandra:<n>` in a compose service using the same `CASSANDRA_*` env vars (CQL on 9042)

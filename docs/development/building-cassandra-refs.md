@@ -53,7 +53,12 @@ Three sequential jobs make "build fails → nothing published" structural:
 1. **resolve** — validates `ref` with `git ls-remote` (fails fast, naming the bad
    ref, if it does not exist), pins it to a full + short commit SHA, reads
    `base.version` from `build.xml`, and computes the build JDK, runtime base
-   image, image tags, tarball name, and release tag.
+   image, image tags, tarball name, and release tag. The ref-resolution logic
+   (ls-remote / raw-SHA fallback / fail-fast naming the bad ref) lives in
+   `.github/cassandra-image/resolve-ref.sh` and is unit-tested by
+   `resolve-ref.test.sh` (run via `./gradlew testCassandraResolveRef`) with the
+   `git ls-remote` call stubbed, so the fail-fast path is covered without a live
+   run.
 2. **build** — checks out the exact resolved SHA, sets up the build JDK, runs
    `ant artifacts` on the runner, and uploads the tarball as an intra-workflow
    artifact.

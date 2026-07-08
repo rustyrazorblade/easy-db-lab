@@ -7,13 +7,20 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InfrastructureState
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
+import io.fabric8.kubernetes.api.model.batch.v1.Job
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
+import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import java.time.Duration
 
 /**
  * Tests for DefaultStressJobService Job building.
@@ -24,6 +31,32 @@ import org.mockito.kotlin.whenever
 class DefaultStressJobServiceTest : BaseKoinTest() {
     private lateinit var service: DefaultStressJobService
     private lateinit var mockK8sService: K8sService
+    private lateinit var mockClusterStateManager: ClusterStateManager
+
+    private val testControlHost =
+        ClusterHost(
+            publicIp = "54.123.45.67",
+            privateIp = "10.0.1.5",
+            alias = "control0",
+            availabilityZone = "us-west-2a",
+            instanceId = "i-control123",
+        )
+
+    private val testClusterState =
+        ClusterState(
+            name = "test-cluster",
+            versions = mutableMapOf(),
+            clusterId = "test-id",
+            infrastructure =
+                InfrastructureState(
+                    vpcId = "vpc-test",
+                    region = "us-west-2",
+                ),
+            hosts =
+                mapOf(
+                    ServerType.Control to listOf(testControlHost),
+                ),
+        )
 
     override fun additionalTestModules(): List<Module> =
         listOf(
@@ -31,30 +64,8 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
                 single { mock<K8sService>().also { mockK8sService = it } }
                 single {
                     mock<ClusterStateManager>().also {
-                        whenever(it.load()).thenReturn(
-                            ClusterState(
-                                name = "test-cluster",
-                                versions = mutableMapOf(),
-                                infrastructure =
-                                    InfrastructureState(
-                                        vpcId = "vpc-test",
-                                        region = "us-west-2",
-                                    ),
-                                hosts =
-                                    mapOf(
-                                        ServerType.Control to
-                                            listOf(
-                                                ClusterHost(
-                                                    publicIp = "54.123.45.67",
-                                                    privateIp = "10.0.1.5",
-                                                    alias = "control0",
-                                                    availabilityZone = "us-west-2a",
-                                                    instanceId = "i-control123",
-                                                ),
-                                            ),
-                                    ),
-                            ),
-                        )
+                        mockClusterStateManager = it
+                        whenever(it.load()).thenReturn(testClusterState)
                     }
                 }
                 single { TemplateService(get(), get()) }
@@ -64,11 +75,11 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
     @BeforeEach
     fun setup() {
         mockK8sService = getKoin().get()
-        val clusterStateManager: ClusterStateManager = getKoin().get()
+        mockClusterStateManager = getKoin().get()
         service =
             DefaultStressJobService(
                 mockK8sService,
-                clusterStateManager,
+                mockClusterStateManager,
                 com.rustyrazorblade.easydblab.events
                     .EventBus(),
                 getKoin().get(),
@@ -420,5 +431,77 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
         assertThat(javaToolOptions).contains("-Dpyroscope.profiler.alloc=512k")
         assertThat(javaToolOptions).contains("-Dpyroscope.profiler.lock=10ms")
         assertThat(javaToolOptions).contains("-Dpyroscope.labels=cluster=test-cluster,job_name=stress-test-123")
+    }
+
+    @Test
+    fun `startJob should re-apply cluster-config ConfigMap so the otel-sidecar never depends on a stale one`() {
+        whenever(mockK8sService.createConfigMap(any(), any(), any(), any(), any()))
+            .thenReturn(Result.success(Unit))
+        whenever(mockK8sService.createJob(any(), any(), any<Job>()))
+            .thenReturn(Result.success("stress-test-123"))
+        whenever(mockK8sService.getPodsForJob(any(), any(), any()))
+            .thenReturn(
+                Result.success(
+                    listOf(
+                        KubernetesPod(
+                            namespace = Constants.Stress.NAMESPACE,
+                            name = "stress-test-123-abcde",
+                            status = "Running",
+                            ready = "2/2",
+                            restarts = 0,
+                            age = Duration.ZERO,
+                        ),
+                    ),
+                ),
+            )
+
+        val result =
+            service.startJob(
+                testControlHost,
+                StressJobConfig(
+                    jobName = "stress-test-123",
+                    image = "ghcr.io/apache/cassandra-easy-stress:latest",
+                    contactPoints = "10.0.1.6",
+                    args = listOf("run", "KeyValue"),
+                ),
+            )
+
+        assertThat(result.isSuccess).isTrue()
+
+        val dataCaptor = argumentCaptor<Map<String, String>>()
+        verify(mockK8sService).createConfigMap(
+            eq(testControlHost),
+            eq(Constants.Stress.NAMESPACE),
+            eq(Constants.K8s.CLUSTER_CONFIG_NAME),
+            dataCaptor.capture(),
+            any(),
+        )
+
+        val data = dataCaptor.firstValue
+        assertThat(data["control_node_ip"]).isEqualTo("10.0.1.5")
+        assertThat(data["aws_region"]).isEqualTo("us-west-2")
+        assertThat(data["cluster_name"]).isEqualTo("test-cluster-test-id")
+    }
+
+    @Test
+    fun `startJob should fail fast when cluster-config ConfigMap cannot be created`() {
+        whenever(mockK8sService.createConfigMap(any(), any(), eq(Constants.K8s.CLUSTER_CONFIG_NAME), any(), any()))
+            .thenReturn(Result.failure(RuntimeException("configmap creation failed")))
+        whenever(mockK8sService.createConfigMap(any(), any(), eq("otel-stress-sidecar-config"), any(), any()))
+            .thenReturn(Result.success(Unit))
+
+        val result =
+            service.startJob(
+                testControlHost,
+                StressJobConfig(
+                    jobName = "stress-test-123",
+                    image = "ghcr.io/apache/cassandra-easy-stress:latest",
+                    contactPoints = "10.0.1.6",
+                    args = listOf("run", "KeyValue"),
+                ),
+            )
+
+        assertThat(result.isFailure).isTrue()
+        assertThat(result.exceptionOrNull()).hasMessageContaining("configmap creation failed")
     }
 }

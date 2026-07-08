@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.commands.grafana
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
@@ -67,7 +68,6 @@ class GrafanaUpdateConfig : PicoBaseCommand() {
     private val yaceManifestBuilder: YaceManifestBuilder by inject()
 
     companion object {
-        private const val CLUSTER_CONFIG_NAME = "cluster-config"
         private const val DEFAULT_NAMESPACE = "default"
     }
 
@@ -204,11 +204,15 @@ class GrafanaUpdateConfig : PicoBaseCommand() {
             .createConfigMap(
                 controlHost = controlNode,
                 namespace = DEFAULT_NAMESPACE,
-                name = CLUSTER_CONFIG_NAME,
+                name = Constants.K8s.CLUSTER_CONFIG_NAME,
                 data = configData,
                 labels = mapOf("app.kubernetes.io/managed-by" to "easy-db-lab"),
             ).getOrElse { exception ->
-                log.warn { "Failed to create cluster-config ConfigMap: ${exception.message}" }
+                // Fail fast rather than silently continuing: every resource applied below
+                // (OTel, Beyla, Tempo) reads from this ConfigMap via configMapKeyRef, so a
+                // swallowed failure here would leave the whole observability stack broken
+                // with no indication why.
+                error("Failed to create cluster-config ConfigMap: ${exception.message}")
             }
     }
 }

@@ -35,6 +35,7 @@ import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 
@@ -125,6 +126,7 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
         whenever(mockAnyNsOps.withLabel(any<String>(), any<String>())).thenReturn(mockFiltered)
         whenever(mockFiltered.list()).thenReturn(emptyConfigMapList)
         whenever(mockK8sClientProvider.createClient(any())).thenReturn(mockK8sClient)
+        whenever(mockK8sService.createConfigMap(any(), any(), any(), any(), any())).thenReturn(Result.success(Unit))
     }
 
     @Test
@@ -173,6 +175,33 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
         // Verify observability workloads were restarted
         verify(mockK8sService, atLeastOnce()).rolloutRestartDeployment(any(), any(), any())
         verify(mockK8sService, atLeastOnce()).rolloutRestartDaemonSet(any(), any(), any())
+    }
+
+    @Test
+    fun `execute fails fast when cluster-config ConfigMap creation fails`() {
+        val stateWithControl =
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+                hosts =
+                    mutableMapOf(
+                        ServerType.Control to listOf(testControlHost),
+                    ),
+            )
+
+        whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
+        whenever(mockK8sService.createConfigMap(any(), any(), any(), any(), any()))
+            .thenReturn(Result.failure(RuntimeException("configmap creation failed")))
+
+        val command = GrafanaUpdateConfig()
+
+        // Must fail fast rather than silently continuing to apply OTel/Beyla/Tempo resources
+        // that all reference this ConfigMap via configMapKeyRef.
+        assertThatThrownBy { command.execute() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("configmap creation failed")
+
+        verify(mockK8sService, never()).applyResource(any(), any<HasMetadata>())
     }
 
     @Test

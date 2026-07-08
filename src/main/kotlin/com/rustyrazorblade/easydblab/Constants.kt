@@ -197,6 +197,12 @@ object Constants {
     object K8s {
         const val NAMESPACE = "default"
         const val MANIFEST_DIR = "k8s"
+
+        // ConfigMap holding runtime cluster values (control_node_ip, aws_region, s3_bucket,
+        // cluster_s3_prefix, cluster_name) consumed by observability workloads and stress jobs
+        // via configMapKeyRef. Created by GrafanaUpdateConfig; re-applied defensively by
+        // StressJobService in case the `up` run that should have created it failed.
+        const val CLUSTER_CONFIG_NAME = "cluster-config"
         const val LOCAL_STORAGE_CLASS = "local-storage"
         const val LOCAL_STORAGE_WFC_CLASS = "local-storage-wfc"
         const val GRAFANA_PORT = 3000

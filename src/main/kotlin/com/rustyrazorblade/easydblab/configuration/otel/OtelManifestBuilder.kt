@@ -287,7 +287,7 @@ class OtelManifestBuilder(
             .withName("CLUSTER_NAME")
             .withNewValueFrom()
             .withNewConfigMapKeyRef()
-            .withName("cluster-config")
+            .withName(Constants.K8s.CLUSTER_CONFIG_NAME)
             .withKey("cluster_name")
             .endConfigMapKeyRef()
             .endValueFrom()

@@ -154,6 +154,7 @@ class DefaultStressJobService(
             log.info { "Starting stress job: ${config.jobName}" }
 
             ensureSidecarConfigMap(controlHost)
+            ensureClusterConfigMap(controlHost)
 
             val job = buildJob(config)
 
@@ -221,6 +222,38 @@ class DefaultStressJobService(
                 name = SIDECAR_CONFIG_MAP_NAME,
                 data = mapOf(SIDECAR_CONFIG_FILE_NAME to loadSidecarConfig()),
                 labels = mapOf("app.kubernetes.io/name" to "otel-stress-sidecar"),
+            ).getOrThrow()
+    }
+
+    /**
+     * Ensures the cluster-config ConfigMap exists before the otel-sidecar starts.
+     *
+     * The otel-sidecar reads CLUSTER_NAME from this ConfigMap via configMapKeyRef.
+     * It's normally created once during `up` (GrafanaUpdateConfig), but that run happens
+     * long before any stress job is started and can fail independently (e.g. a SOCKS5
+     * proxy race). Re-applying it here is idempotent and self-heals that case instead of
+     * every stress job failing with CreateContainerConfigError.
+     */
+    private fun ensureClusterConfigMap(controlHost: ClusterHost) {
+        val clusterState = clusterStateManager.load()
+        val region =
+            clusterState.infrastructure?.region
+                ?: error("Infrastructure state missing region. Re-provision the cluster to fix this.")
+
+        k8sService
+            .createConfigMap(
+                controlHost = controlHost,
+                namespace = Constants.Stress.NAMESPACE,
+                name = Constants.K8s.CLUSTER_CONFIG_NAME,
+                data =
+                    mapOf(
+                        "control_node_ip" to controlHost.privateIp,
+                        "aws_region" to region,
+                        "s3_bucket" to (clusterState.s3Bucket ?: ""),
+                        "cluster_s3_prefix" to clusterState.clusterPrefix(),
+                        "cluster_name" to clusterState.clusterLabelName(),
+                    ),
+                labels = mapOf("app.kubernetes.io/managed-by" to "easy-db-lab"),
             ).getOrThrow()
     }
 
@@ -455,7 +488,7 @@ class DefaultStressJobService(
                     .withName("CLUSTER_NAME")
                     .withNewValueFrom()
                     .withNewConfigMapKeyRef()
-                    .withName("cluster-config")
+                    .withName(Constants.K8s.CLUSTER_CONFIG_NAME)
                     .withKey("cluster_name")
                     .endConfigMapKeyRef()
                     .endValueFrom()

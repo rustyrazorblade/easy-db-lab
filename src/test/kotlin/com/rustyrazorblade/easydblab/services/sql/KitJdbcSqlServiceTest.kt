@@ -1,12 +1,14 @@
 package com.rustyrazorblade.easydblab.services.sql
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.services.KitEndpoint
 import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
@@ -17,6 +19,7 @@ import java.sql.Connection
 import java.sql.ResultSet
 import java.sql.ResultSetMetaData
 import java.sql.Statement
+import java.util.Properties
 
 /**
  * Tests for [KitJdbcSqlService]. Verifies node resolution from cluster state and
@@ -69,7 +72,35 @@ class KitJdbcSqlServiceTest : BaseKoinTest() {
     @BeforeEach
     fun setup() {
         mockClusterStateManager = mock()
+        System.clearProperty(Constants.Proxy.PORT_PROPERTY)
+        System.clearProperty("socksProxyHost")
+        System.clearProperty("socksProxyPort")
     }
+
+    @AfterEach
+    fun clearProxyProps() {
+        System.clearProperty(Constants.Proxy.PORT_PROPERTY)
+        System.clearProperty("socksProxyHost")
+        System.clearProperty("socksProxyPort")
+    }
+
+    private val trinoJdbcEndpoint =
+        KitEndpoint(
+            name = "JDBC",
+            nodeType = "app",
+            port = 8080,
+            type = KitEndpoint.EndpointType.JDBC,
+            scheme = "trino",
+        )
+
+    private val postgresJdbcEndpoint =
+        KitEndpoint(
+            name = "JDBC",
+            nodeType = "db",
+            port = 30432,
+            type = KitEndpoint.EndpointType.JDBC,
+            scheme = "postgresql",
+        )
 
     private fun stateWithAppNode(): ClusterState =
         ClusterState(
@@ -314,5 +345,102 @@ class KitJdbcSqlServiceTest : BaseKoinTest() {
         service.execute("SELECT 1")
 
         assertThat(capturedUrl).isEqualTo("jdbc:clickhouse://10.0.1.20:30123/default?compress=0")
+    }
+
+    @Test
+    fun `no SOCKS proxy property means connection made directly with no socks props`() {
+        whenever(mockClusterStateManager.load()).thenReturn(stateWithAppNode())
+        // PORT_PROPERTY intentionally unset (cleared in setup)
+
+        var capturedProps: Properties? = null
+        val service =
+            KitJdbcSqlService(
+                clusterStateManager = getKoin().get(),
+                endpoint = trinoJdbcEndpoint,
+                user = "trino",
+                connectionFactory = { _, props ->
+                    capturedProps = Properties().apply { putAll(props) }
+                    throw RuntimeException("stop here")
+                },
+            )
+
+        service.execute("SELECT 1")
+
+        assertThat(capturedProps?.getProperty("socksProxy")).isNull()
+        assertThat(capturedProps?.getProperty("socksProxyHost")).isNull()
+    }
+
+    @Test
+    fun `active proxy port routes trino JDBC via per-connection socksProxy property`() {
+        whenever(mockClusterStateManager.load()).thenReturn(stateWithAppNode())
+        System.setProperty(Constants.Proxy.PORT_PROPERTY, "1080")
+
+        var capturedProps: Properties? = null
+        val service =
+            KitJdbcSqlService(
+                clusterStateManager = getKoin().get(),
+                endpoint = trinoJdbcEndpoint,
+                user = "trino",
+                connectionFactory = { _, props ->
+                    capturedProps = Properties().apply { putAll(props) }
+                    throw RuntimeException("stop here")
+                },
+            )
+
+        service.execute("SELECT 1")
+
+        assertThat(capturedProps?.getProperty("socksProxy")).isEqualTo("127.0.0.1:1080")
+        // per-connection knob must NOT leak into the JVM-global properties
+        assertThat(System.getProperty("socksProxyHost")).isNull()
+    }
+
+    @Test
+    fun `active proxy port routes postgres JDBC via scoped global properties, restored after`() {
+        whenever(mockClusterStateManager.load()).thenReturn(stateWithDbNode())
+        System.setProperty(Constants.Proxy.PORT_PROPERTY, "1080")
+
+        var globalHostDuringConnect: String? = null
+        var globalPortDuringConnect: String? = null
+        val service =
+            KitJdbcSqlService(
+                clusterStateManager = getKoin().get(),
+                endpoint = postgresJdbcEndpoint,
+                user = "pg",
+                connectionFactory = { _, _ ->
+                    // postgres has no per-connection knob → global props set for the connect window
+                    globalHostDuringConnect = System.getProperty("socksProxyHost")
+                    globalPortDuringConnect = System.getProperty("socksProxyPort")
+                    throw RuntimeException("stop here")
+                },
+            )
+
+        service.execute("SELECT 1")
+
+        assertThat(globalHostDuringConnect).isEqualTo("127.0.0.1")
+        assertThat(globalPortDuringConnect).isEqualTo("1080")
+        // restored (cleared) after the connect call returns
+        assertThat(System.getProperty("socksProxyHost")).isNull()
+        assertThat(System.getProperty("socksProxyPort")).isNull()
+    }
+
+    @Test
+    fun `scoped global socks restores previous values after connect`() {
+        whenever(mockClusterStateManager.load()).thenReturn(stateWithDbNode())
+        System.setProperty(Constants.Proxy.PORT_PROPERTY, "1080")
+        System.setProperty("socksProxyHost", "preexisting")
+        System.setProperty("socksProxyPort", "9999")
+
+        val service =
+            KitJdbcSqlService(
+                clusterStateManager = getKoin().get(),
+                endpoint = postgresJdbcEndpoint,
+                user = "pg",
+                connectionFactory = { _, _ -> throw RuntimeException("stop here") },
+            )
+
+        service.execute("SELECT 1")
+
+        assertThat(System.getProperty("socksProxyHost")).isEqualTo("preexisting")
+        assertThat(System.getProperty("socksProxyPort")).isEqualTo("9999")
     }
 }

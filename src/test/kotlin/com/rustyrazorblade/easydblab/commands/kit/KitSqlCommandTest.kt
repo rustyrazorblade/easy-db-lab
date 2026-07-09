@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.services.KitEndpoint
 import com.rustyrazorblade.easydblab.services.sql.JdbcConnectionFactory
 import org.assertj.core.api.Assertions.assertThat
@@ -14,7 +15,10 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
+import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
+import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.io.File
 import java.sql.Connection
@@ -28,6 +32,7 @@ import java.sql.Statement
  */
 class KitSqlCommandTest : BaseKoinTest() {
     private lateinit var mockClusterStateManager: ClusterStateManager
+    private lateinit var mockSocksProxyService: SocksProxyService
     private lateinit var outputHandler: BufferedOutputHandler
 
     private val appHost =
@@ -35,6 +40,14 @@ class KitSqlCommandTest : BaseKoinTest() {
             publicIp = "54.0.0.1",
             privateIp = "10.0.1.10",
             alias = "app0",
+            availabilityZone = "us-west-2a",
+        )
+
+    private val controlHost =
+        ClusterHost(
+            publicIp = "54.0.0.2",
+            privateIp = "10.0.1.1",
+            alias = "control0",
             availabilityZone = "us-west-2a",
         )
 
@@ -52,18 +65,24 @@ class KitSqlCommandTest : BaseKoinTest() {
         listOf(
             module {
                 single<ClusterStateManager> { mockClusterStateManager }
+                single<SocksProxyService> { mockSocksProxyService }
             },
         )
 
     @BeforeEach
     fun setup() {
         mockClusterStateManager = mock()
+        mockSocksProxyService = mock()
         outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
         whenever(mockClusterStateManager.load()).thenReturn(
             ClusterState(
                 name = "test",
                 versions = mutableMapOf(),
-                hosts = mapOf(ServerType.Stress to listOf(appHost)),
+                hosts =
+                    mapOf(
+                        ServerType.Stress to listOf(appHost),
+                        ServerType.Control to listOf(controlHost),
+                    ),
             ),
         )
     }
@@ -195,6 +214,38 @@ class KitSqlCommandTest : BaseKoinTest() {
         command.execute()
 
         assertThat(outputHandler.errors.joinToString("\n") { it.first }).contains("Table not found")
+    }
+
+    @Test
+    fun `ensures SOCKS proxy on control host before querying a non-tailscale cluster`() {
+        val factory = mockSuccessConnection(listOf("count"), listOf(listOf("1")))
+        val command = buildCommand(connectionFactory = factory)
+        command.statement = "SELECT 1"
+        command.execute()
+
+        verify(mockSocksProxyService).ensureRunning(controlHost)
+    }
+
+    @Test
+    fun `skips SOCKS proxy on a tailscale cluster`() {
+        whenever(mockClusterStateManager.load()).thenReturn(
+            ClusterState(
+                name = "test",
+                versions = mutableMapOf(),
+                hosts =
+                    mapOf(
+                        ServerType.Stress to listOf(appHost),
+                        ServerType.Control to listOf(controlHost),
+                    ),
+                tailscaleActive = true,
+            ),
+        )
+        val factory = mockSuccessConnection(listOf("count"), listOf(listOf("1")))
+        val command = buildCommand(connectionFactory = factory)
+        command.statement = "SELECT 1"
+        command.execute()
+
+        verify(mockSocksProxyService, never()).ensureRunning(any())
     }
 
     @Test

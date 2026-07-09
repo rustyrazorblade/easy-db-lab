@@ -246,6 +246,29 @@ All scripts and shell steps receive the following environment variables:
 Args declared in `kit.yaml` under `args:` are also injected using their `variable` name. For
 example, `--workers` with `variable: WORKERS` becomes `$WORKERS`.
 
+### Addressing per-node services (e.g. the Cassandra Sidecar)
+
+Some cluster services run as a **`hostNetwork` DaemonSet — one instance per db node**, addressable
+at `<db-node-private-ip>:<port>` with no cluster-wide load-balanced Service (the Cassandra Sidecar
+on port `9043` is the canonical example). Each instance is **node-local**: a request only affects the
+node it fronts. A kit that needs to reach *every* such instance (for example, creating a per-node
+snapshot before a distributed read) must fan the call out across all nodes rather than wiring a
+single node's URI.
+
+Use `DB_NODE_IPS` — the comma-separated list of all db-node private IPs — as the enumeration source:
+
+```bash
+# Create a Sidecar snapshot on every db node, not just one
+IFS=',' read -ra DB_IPS <<< "$DB_NODE_IPS"
+for ip in "${DB_IPS[@]}"; do
+  curl -sf -XPUT "http://${ip}:9043/api/v1/keyspaces/${KS}/tables/${TBL}/snapshots/${SNAP}"
+done
+```
+
+Wiring only one node's address (e.g. `db0`) leaves the other nodes without the resource, so any work
+that lands on `db1`/`db2` fails. `DB_NODE_IPS` is part of the stable variable contract above, so this
+pattern does not depend on topology discovery from within the kit.
+
 Default values in `kit.yaml` can reference any of the variables above using `${VAR}` syntax:
 ```yaml
 default: "${APP_NODE_COUNT}"

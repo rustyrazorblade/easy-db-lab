@@ -180,15 +180,54 @@ Configuration is located at `/etc/cassandra-sidecar/cassandra-sidecar.yaml` on e
 
 ## Custom Builds
 
-To use a custom Cassandra build from source:
+To run a custom Cassandra build (your own fork, a feature branch, or a prebuilt
+tarball), add a version entry and rebuild the AMI. easy-db-lab bakes every listed
+version into the image — there is no separate build-from-path command.
 
-### Build from Repository
+You don't edit the repository's `cassandra_versions.yaml`. Instead, drop one or
+more YAML files into your profile's extras directory:
 
-```bash
-easy-db-lab cassandra build -n my-build /path/to/cassandra-repo
+```
+~/.easy-db-lab/profiles/<profile>/cassandra_versions/
 ```
 
-### Use Custom Build
+(The default profile is `default`.) At build time these are merged with the
+built-in versions. Each `version` must be unique across the built-in list and
+your extras, or the build fails.
+
+### 1. Add a version entry
+
+Create e.g. `~/.easy-db-lab/profiles/default/cassandra_versions/my-build.yaml`.
+
+Build from a git branch (cloned and compiled with ant during the AMI build):
+
+```yaml
+- version: "my-build"
+  java: "11"
+  python: "3.10.6"
+  url: "https://github.com/myuser/cassandra.git"
+  branch: "my-feature-branch"
+  ant_flags: "-Duse.jdk11=true"   # optional, passed to ant
+```
+
+Or install a prebuilt tarball:
+
+```yaml
+- version: "my-build"
+  java: "11"
+  python: "3.10.6"
+  url: "https://example.com/apache-cassandra-my-build-bin.tar.gz"
+```
+
+An entry with no `url`/`branch` downloads the matching official Apache release.
+
+### 2. Rebuild the Cassandra AMI
+
+```bash
+easy-db-lab build-cassandra
+```
+
+### 3. Select the custom build
 
 ```bash
 easy-db-lab cassandra use my-build

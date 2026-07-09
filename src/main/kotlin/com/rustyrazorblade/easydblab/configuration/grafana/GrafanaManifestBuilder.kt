@@ -59,8 +59,17 @@ class GrafanaManifestBuilder(
         private const val READINESS_INITIAL_DELAY = 5
         private const val READINESS_PERIOD = 10
 
+        /**
+         * External Grafana plugins to install at startup via GF_INSTALL_PLUGINS.
+         *
+         * NOTE: `grafana-pyroscope-datasource` is intentionally NOT listed here. It ships as a
+         * Core plugin in the current Grafana image, and attempting to install a Core plugin as an
+         * external one is a fatal startup error ("cannot install a Core plugin") that puts the pod
+         * into CrashLoopBackOff. The Pyroscope datasource remains available built-in and is still
+         * referenced by GrafanaDatasourceConfig as a core datasource.
+         */
         private const val GRAFANA_PLUGINS =
-            "grafana-clickhouse-datasource,victoriametrics-logs-datasource,grafana-pyroscope-datasource,grafana-polystat-panel"
+            "grafana-clickhouse-datasource,victoriametrics-logs-datasource,grafana-polystat-panel"
 
         private const val RENDERER_TOKEN = "easydblab-renderer"
 

@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Typed Install Steps
+
+## Purpose
+
+Defines a declarative, typed step model for kit lifecycle phases (`install`, `start`, `stop`, `uninstall`) in `kit.yaml`, covering common Kubernetes installation patterns, cluster-state variable interpolation, per-phase collision detection, dashboard registration, and event-reported failure handling.
+
+## Requirements
 
 ### Requirement: kit.yaml declares lifecycle phases as typed step sequences
 `kit.yaml` SHALL support four optional top-level lifecycle keys (`install`, `start`, `stop`,

@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Cloudwatch Metrics Export
+
+## Purpose
+
+Exports CloudWatch metrics into VictoriaMetrics via YACE so that EMR, S3/EBS, and OpenSearch metrics are queryable and survive cluster teardown, and provides Grafana dashboards that render this data from VictoriaMetrics.
+
+## Requirements
 
 ### Requirement: CloudWatch metrics scraped into VictoriaMetrics
 

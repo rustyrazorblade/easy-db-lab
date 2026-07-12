@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Containerized Sidecar
+
+## Purpose
+
+Deploys the Cassandra sidecar as a K3s DaemonSet on database nodes with per-node configuration, host data access, and Pyroscope/OTel instrumentation wired to node-local observability endpoints.
+
+## Requirements
 
 ### Requirement: Sidecar runs as a K3s DaemonSet on database nodes
 

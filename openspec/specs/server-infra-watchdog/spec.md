@@ -1,5 +1,7 @@
 # Server Infrastructure Watchdog
 
+## Purpose
+
 A background service that monitors whether the cluster's AWS VPC still exists while the server is running, and triggers a clean shutdown if the infrastructure has been removed.
 
 ## Requirements

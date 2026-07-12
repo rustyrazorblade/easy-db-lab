@@ -1,6 +1,6 @@
 # Kit Source Management Spec
 
-## Overview
+## Purpose
 
 Users can register additional parent directories as named kit sources. Each source has a
 user-chosen name and a filesystem path — analogous to `git remote`. Kits found in registered

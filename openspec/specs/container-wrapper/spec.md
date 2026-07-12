@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Container Wrapper
+
+## Purpose
+
+Provides an executable `easy-db-lab` wrapper script inside the jib-built container image so workload scripts can invoke the CLI directly, and resolves the `EASY_DB_LAB_EXEC` path correctly in both dev and container environments.
+
+## Requirements
 
 ### Requirement: Container image includes easy-db-lab executable at /usr/local/bin/easy-db-lab
 The jib-built container image SHALL include a shell script at `/usr/local/bin/easy-db-lab` that invokes the application JAR with the correct JVM flags. This script SHALL be executable.

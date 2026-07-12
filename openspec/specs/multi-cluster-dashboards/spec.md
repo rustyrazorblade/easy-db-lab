@@ -1,3 +1,9 @@
+# Multi Cluster Dashboards
+
+## Purpose
+
+Ensures every Grafana dashboard can scope its data to one or more clusters through a shared `cluster` multi-select variable, cluster-scoped panel queries, and an ad hoc filters variable, all backed by the VictoriaMetrics datasource.
+
 ## Requirements
 
 ### Requirement: All dashboards have a cluster multi-select variable

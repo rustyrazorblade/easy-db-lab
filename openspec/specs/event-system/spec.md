@@ -1,5 +1,7 @@
 # Event System
 
+## Purpose
+
 Structured event bus for all user-facing output, with pluggable output destinations.
 
 ## Requirements
@@ -8,76 +10,147 @@ Structured event bus for all user-facing output, with pluggable output destinati
 
 The system MUST emit structured events containing: event type, timestamp, and command name (when available). Event constructors MUST carry only structured domain data fields — never pre-formatted display strings. The `toDisplayString()` method constructs human-readable output internally from those data fields.
 
-**Scenarios:**
+#### Scenario: Event carries typed domain fields
 
-- **GIVEN** a command that produces output, **WHEN** it emits an event, **THEN** the event carries domain-specific typed fields (e.g., host name, resource ID, count) rather than a pre-formatted string.
-- **GIVEN** a concrete event type, **WHEN** it is rendered for console display, **THEN** `toDisplayString()` constructs the human-readable text from its structured data fields.
-- **GIVEN** an event with no meaningful data fields, **WHEN** it is defined, **THEN** it uses a singleton object form rather than carrying empty or dummy fields.
+- **GIVEN** a command that produces output
+- **WHEN** it emits an event
+- **THEN** the event carries domain-specific typed fields (e.g., host name, resource ID, count) rather than a pre-formatted string.
+
+#### Scenario: Display string built from data fields
+
+- **GIVEN** a concrete event type
+- **WHEN** it is rendered for console display
+- **THEN** `toDisplayString()` constructs the human-readable text from its structured data fields.
+
+#### Scenario: Fieldless events use singleton form
+
+- **GIVEN** an event with no meaningful data fields
+- **WHEN** it is defined
+- **THEN** it uses a singleton object form rather than carrying empty or dummy fields.
 
 ### REQ-ES-002: Event Type Hierarchy
 
 Events MUST be organized into domain-specific groups, enabling consumers to filter by domain prefix or match on specific event types. Types follow the pattern `<Domain>.<Action>` (e.g., `Cassandra.Starting`, `K3s.ClusterStarted`).
 
-**Scenarios:**
+#### Scenario: Filter events by domain prefix
 
-- **GIVEN** a consumer interested only in Cassandra events, **WHEN** it filters by the `Cassandra.*` prefix, **THEN** only Cassandra-related events match.
-- **GIVEN** a new feature area, **WHEN** events are needed, **THEN** a new domain interface is added to the sealed hierarchy.
+- **GIVEN** a consumer interested only in Cassandra events
+- **WHEN** it filters by the `Cassandra.*` prefix
+- **THEN** only Cassandra-related events match.
+
+#### Scenario: New domain added to hierarchy
+
+- **GIVEN** a new feature area
+- **WHEN** events are needed
+- **THEN** a new domain interface is added to the sealed hierarchy.
 
 ### REQ-ES-003: Backward-Compatible Console Output
 
 The system MUST preserve existing console output behavior. The migration to structured events is transparent to CLI users.
 
-**Scenarios:**
+#### Scenario: Terminal output unchanged after migration
 
-- **GIVEN** a user runs any command, **WHEN** events are emitted, **THEN** terminal output appears identical to pre-migration behavior.
-- **GIVEN** no external output destinations are configured, **WHEN** commands run, **THEN** only console output is produced with no errors about missing destinations.
+- **GIVEN** a user runs any command
+- **WHEN** events are emitted
+- **THEN** terminal output appears identical to pre-migration behavior.
+
+#### Scenario: Console-only produces no destination errors
+
+- **GIVEN** no external output destinations are configured
+- **WHEN** commands run
+- **THEN** only console output is produced with no errors about missing destinations.
 
 ### REQ-ES-004: Multiple Output Destinations
 
 The system MUST support multiple simultaneous output destinations via fan-out. Adding a new destination requires no changes to event-emitting code.
 
-**Scenarios:**
+#### Scenario: All configured destinations receive the event
 
-- **GIVEN** console, MCP, and Redis destinations are all configured, **WHEN** an event is emitted, **THEN** all three destinations receive the event.
-- **GIVEN** only console is configured, **WHEN** an event is emitted, **THEN** only console output is produced.
+- **GIVEN** console, MCP, and Redis destinations are all configured
+- **WHEN** an event is emitted
+- **THEN** all three destinations receive the event.
+
+#### Scenario: Only configured destination receives the event
+
+- **GIVEN** only console is configured
+- **WHEN** an event is emitted
+- **THEN** only console output is produced.
 
 ### REQ-ES-005: Redis Pub/Sub Destination
 
 The system MUST support publishing events to a Redis pub/sub channel using the Jedis client library, configured via environment variable.
 
-**Scenarios:**
+#### Scenario: Publish events to configured Redis channel
 
-- **GIVEN** `EASY_DB_LAB_REDIS_URL` is set (format: `redis://host:port/channel`), **WHEN** the tool starts, **THEN** the tool connects using Jedis and publishes events to the specified Redis channel.
-- **GIVEN** a Redis subscriber listening on the channel, **WHEN** commands run, **THEN** the subscriber receives structured event envelopes as JSON.
-- **GIVEN** Redis is unavailable at startup, **WHEN** the environment variable is set, **THEN** the tool fails fast with a connection error.
-- **GIVEN** the Redis URL has no path component, **WHEN** the tool starts, **THEN** the system uses the default channel from Constants.
+- **GIVEN** `EASY_DB_LAB_REDIS_URL` is set (format: `redis://host:port/channel`)
+- **WHEN** the tool starts
+- **THEN** the tool connects using Jedis and publishes events to the specified Redis channel.
+
+#### Scenario: Subscriber receives JSON envelopes
+
+- **GIVEN** a Redis subscriber listening on the channel
+- **WHEN** commands run
+- **THEN** the subscriber receives structured event envelopes as JSON.
+
+#### Scenario: Fail fast when Redis unavailable
+
+- **GIVEN** Redis is unavailable at startup
+- **WHEN** the environment variable is set
+- **THEN** the tool fails fast with a connection error.
+
+#### Scenario: Default channel when URL has no path
+
+- **GIVEN** the Redis URL has no path component
+- **WHEN** the tool starts
+- **THEN** the system uses the default channel from Constants.
 
 ### REQ-ES-006: Wire Format Serialization
 
 Events MUST be serializable to a JSON wire format suitable for cross-system consumption. The wire format uses a `type` discriminator field for polymorphic deserialization.
 
-**Scenarios:**
+#### Scenario: Envelope serializes with discriminator
 
-- **GIVEN** an event envelope, **WHEN** it is serialized, **THEN** the JSON contains `timestamp`, optional `commandName`, and a nested `event` object with a `type` discriminator and domain-specific fields.
-- **GIVEN** serialized event JSON, **WHEN** a consumer deserializes it, **THEN** the event can be reconstructed with all typed fields intact.
-- **GIVEN** an event, **WHEN** it is serialized, **THEN** no `message`, `text`, or `displayString` field appears in the wire format — only structured data fields.
+- **GIVEN** an event envelope
+- **WHEN** it is serialized
+- **THEN** the JSON contains `timestamp`, optional `commandName`, and a nested `event` object with a `type` discriminator and domain-specific fields.
+
+#### Scenario: Deserialization reconstructs typed fields
+
+- **GIVEN** serialized event JSON
+- **WHEN** a consumer deserializes it
+- **THEN** the event can be reconstructed with all typed fields intact.
+
+#### Scenario: No display strings in wire format
+
+- **GIVEN** an event
+- **WHEN** it is serialized
+- **THEN** no `message`, `text`, or `displayString` field appears in the wire format — only structured data fields.
 
 ### REQ-ES-007: Command Context Tracking
 
 The system MUST track which command is currently executing and include this in event metadata. Nested command execution (e.g., `init` calling `up`) MUST reflect the innermost command.
 
-**Scenarios:**
+#### Scenario: Nested command reflects innermost
 
-- **GIVEN** a user runs `init` which internally calls `up`, **WHEN** events are emitted during `up`, **THEN** the `commandName` metadata reads `up`.
-- **GIVEN** `up` completes and control returns to `init`, **WHEN** events are emitted, **THEN** the `commandName` metadata reads `init`.
+- **GIVEN** a user runs `init` which internally calls `up`
+- **WHEN** events are emitted during `up`
+- **THEN** the `commandName` metadata reads `up`.
+
+#### Scenario: Command context restored on return
+
+- **GIVEN** `up` completes and control returns to `init`
+- **WHEN** events are emitted
+- **THEN** the `commandName` metadata reads `init`.
 
 ### REQ-ES-008: No Generic Event Types in Production
 
 `Event.Message` and `Event.Error` generic types exist only for test convenience. All production output MUST use domain-specific typed events with structured data fields.
 
-**Scenarios:**
+#### Scenario: Developers use domain-specific event types
 
-- **GIVEN** a command needs to emit output, **WHEN** the developer writes the emit call, **THEN** they use a domain-specific event type, not `Event.Message` or `Event.Error`.
+- **GIVEN** a command needs to emit output
+- **WHEN** the developer writes the emit call
+- **THEN** they use a domain-specific event type, not `Event.Message` or `Event.Error`.
 
 ## Data Contract: Event Envelope
 

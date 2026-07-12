@@ -1,6 +1,6 @@
 # Kit Metrics Declaration
 
-## Overview
+## Purpose
 
 `config.yaml` supports a top-level `metrics` block that declares how a kit's metrics reach the OTel collector. After a kit starts or stops, a K8s ConfigMap registry entry is created or deleted, and the OTel collector ConfigMap is regenerated automatically to include or exclude the kit's scrape job.
 

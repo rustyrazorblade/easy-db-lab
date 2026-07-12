@@ -1,5 +1,7 @@
 # Tool Execution
 
+## Purpose
+
 Remote command execution framework with systemd integration and journald-based log collection.
 
 ## Requirements

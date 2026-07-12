@@ -1,3 +1,11 @@
+# Sidecar OTel
+
+## Purpose
+
+Instruments the Cassandra Sidecar with OpenTelemetry and Pyroscope Java agents so that traces, JVM metrics, logs, and continuous profiles flow to the cluster observability stack.
+
+## Requirements
+
 ### Requirement: OTel Java agent installed on Cassandra nodes
 
 The OTel Java agent JAR SHALL be downloaded and installed to `/usr/local/otel/opentelemetry-javaagent.jar` during the Packer AMI build.

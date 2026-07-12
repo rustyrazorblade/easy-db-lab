@@ -1,5 +1,7 @@
 # Spark EMR
 
+## Purpose
+
 Spark job submission, monitoring, and cancellation on AWS EMR clusters with full observability integration, including OTel and Pyroscope agent installation via bootstrap actions.
 
 ## Requirements

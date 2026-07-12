@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Grafana Install Dashboard
+
+## Purpose
+
+Persist Grafana's data across pod restarts and provide a `grafana install <path>` command that uploads a dashboard JSON file to the running Grafana instance.
+
+## Requirements
 
 ### Requirement: Grafana data persists across pod restarts
 Grafana's data volume SHALL use a `hostPath` mount at `/mnt/db1/grafana` on the control node instead of `emptyDir`. The directory SHALL be created by `grafana update-config` before the Deployment is applied.

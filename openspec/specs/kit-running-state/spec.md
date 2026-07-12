@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Kit Running State
+
+## Purpose
+
+Tracks which kits have been successfully started and not yet stopped, persisting the set in cluster state and exposing it to install templates and hook scripts.
+
+## Requirements
 
 ### Requirement: ClusterState tracks running kits
 `ClusterState` SHALL include a `runningKits: Set<String>` field persisted in `state.json`. The set contains the names of kits that have been successfully started and not yet stopped. `WorkloadRunnerCommand` and EC2/SystemD service commands (Cassandra, OpenSearch) SHALL update this set on successful start or stop.

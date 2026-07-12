@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Dashboard Publishing
+
+## Purpose
+
+Grafana dashboard JSON files live as top-level project artifacts and are published as a standalone zip archive on every push to the main branch, so they are available both on the JAR classpath and as a downloadable release asset.
+
+## Requirements
 
 ### Requirement: Dashboard files are top-level project artifacts
 

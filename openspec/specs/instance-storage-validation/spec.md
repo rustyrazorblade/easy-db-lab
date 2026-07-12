@@ -1,3 +1,11 @@
+# Instance Storage Validation
+
+## Purpose
+
+Validate at init time that a database instance type has adequate data storage — either local instance store or an explicitly specified EBS volume — and fail fast with a clear error before any instances are created if it does not.
+
+## Requirements
+
 ### Requirement: Database instance storage validation at init time
 
 The system SHALL validate that the database instance type has adequate storage before provisioning. An instance type MUST either have local instance store (NVMe) or the user MUST specify `--ebs.type` with a value other than `NONE`. If neither condition is met, the system SHALL fail with a clear error message and NOT proceed with instance creation.

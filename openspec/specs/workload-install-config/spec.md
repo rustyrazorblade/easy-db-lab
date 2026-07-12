@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Workload Install Config
+
+## Purpose
+
+Defines the optional `endpoints:` and `runtime:` sections of a workload's `install.yaml`, declaring connection metadata for the workload's services and K8s resource metadata for running-state detection.
+
+## Requirements
 
 ### Requirement: install.yaml supports endpoints section
 `install.yaml` SHALL support an optional `endpoints:` list declaring connection metadata for the workload's services.

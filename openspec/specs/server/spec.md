@@ -48,14 +48,11 @@ The server MUST expose REST HTTP endpoints for programmatic access to cluster st
 - **WHEN** a client sends GET /status?live=true
 - **THEN** the server bypasses the cache and fetches fresh data before responding.
 
-#### Scenario: Observability object includes Tempo and Pyroscope fields
+#### Scenario: Observability object includes Tempo and Pyroscope
 - **GIVEN** a running cluster with a reachable control node
 - **WHEN** a client sends GET /status
-- **THEN** the `accessInfo.observability` object SHALL include `tempo` and `pyroscope` URL fields alongside `grafana`, `victoriaMetrics`, and `victoriaLogs`.
-
-#### Scenario: Observability URLs include Tempo and Pyroscope
-- **WHEN** a client requests GET /status on a cluster with a reachable control node
-- **THEN** the response `accessInfo.observability` object contains `tempo` at `http://<controlPrivateIp>:3200` and `pyroscope` at `http://<controlPrivateIp>:4040`
+- **THEN** the `accessInfo.observability` object SHALL include `tempo` and `pyroscope` URL fields alongside `grafana`, `victoriaMetrics`, and `victoriaLogs`
+- **AND** `tempo` is `http://<controlPrivateIp>:3200` and `pyroscope` is `http://<controlPrivateIp>:4040`
 
 ### REQ-SERVER-004: Background Status Cache
 

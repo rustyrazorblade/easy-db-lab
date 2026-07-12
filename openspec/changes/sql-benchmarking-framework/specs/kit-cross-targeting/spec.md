@@ -14,9 +14,9 @@ field names the env var that stores the target kit name (conventionally `TARGET`
 - **THEN** deserialization does not throw; the arg defaults to `STRING` type
 
 ### Requirement: Instance directory named after bench kit and target
-When a bench kit is installed and its `kit-ref` arg is provided, the install command
-SHALL create a directory named `<kit-name>-<target-kit-name>` in the cluster workspace
-rather than the kit's base name.
+The install command SHALL create a directory named `<kit-name>-<target-kit-name>` in the
+cluster workspace, rather than the kit's base name, when a bench kit is installed and its
+`kit-ref` arg is provided.
 
 #### Scenario: Bench kit installed with target
 - **WHEN** the user runs `easy-db-lab kit install sysbench --target clickhouse`

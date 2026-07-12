@@ -1,9 +1,10 @@
 ## ADDED Requirements
 
 ### Requirement: kit-ref is a valid arg type in the capabilities arg system
-The `capabilities` arg system (REQ-KCAP-001) already supports typed args (`string`,
-`int`, `boolean`, `float`). A new `kit-ref` type SHALL be valid in the `args:` block
-of any kit, with the same `flag`, `variable`, `description`, and `required` fields.
+A new `kit-ref` type SHALL be a valid arg type in the `capabilities` arg system
+(REQ-KCAP-001), alongside the existing `string`, `int`, `boolean`, and `float` types.
+It is usable in the `args:` block of any kit, with the same `flag`, `variable`,
+`description`, and `required` fields.
 
 #### Scenario: kit-ref arg parsed alongside other arg types
 - **WHEN** a `kit.yaml` declares args including one with `type: kit-ref`

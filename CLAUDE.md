@@ -9,6 +9,7 @@
 - Do not add logging frameworks to command classes unless there is a specific internal debugging need separate from user output.
 - When logging is needed, use: `import io.github.oshai.kotlinlogging.KotlinLogging` and create a logger with `private val log = KotlinLogging.logger {}`
 - **Never use Python for JSON parsing in shell scripts.** Use `jq` instead.
+- **ABSOLUTE RULE: NEVER set, clear, or otherwise touch the `socksProxyHost` / `socksProxyPort` JVM system properties.** Not even temporarily with save/restore. These are JVM-global and capture **every** socket in the process — including the AWS SDK — routing it through the SOCKS tunnel. This caused a major incident and was deliberately removed in #725 (see the commit message and the `Socks5ProxySelector` KDoc). The proxy publishes **only** its port under `Constants.Proxy.PORT_PROPERTY`; cluster clients opt into the tunnel **explicitly and per-client** — Fabric8 via `config.httpsProxy = "socks5://127.0.0.1:{port}"` (`KubernetesClientFactory`), cluster HTTP via `Socks5ProxySelector` installed on that client only (`ProxiedHttpClientFactory`), the CQL driver via `SocksProxyNettyOptions`. To route a **new** client type (e.g. JDBC) through the tunnel, give **that connection** an explicit `java.net.Proxy(SOCKS, ...)` / driver-native SOCKS option — never a global property. This invariant is also encoded in `openspec/specs/networking/spec.md` REQ-NET-005.
 
 ## Project Organization
 

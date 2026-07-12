@@ -170,6 +170,38 @@ socks5-status         # Check status
 stop-socks5           # Stop proxy
 ```
 
+### Host Key Verification
+
+The `sshConfig` generated for your cluster sets `UserKnownHostsFile=/dev/null` alongside
+`StrictHostKeyChecking=no`. `ssh` — and therefore the SOCKS tunnel, which is launched with
+`ssh -N -D` against that config — never reads or writes your `~/.ssh/known_hosts` for cluster
+nodes.
+
+This matters because AWS recycles public IPs across ephemeral cluster lifetimes. Without this
+setting, a recycled IP that previously belonged to a different cluster (with a different host
+key) would make `ssh` hard-fail with `REMOTE HOST IDENTIFICATION HAS CHANGED` — `StrictHostKeyChecking=no`
+only auto-adds *unknown* hosts, it doesn't override a *changed* key for a host already recorded.
+Every cluster is short-lived and gets fresh host keys on every provision, so there is nothing to
+verify against across runs.
+
+If you connected to easy-db-lab clusters before this change, their host keys may still be in
+your `~/.ssh/known_hosts`. They're no longer read by the tool, so you can prune them any time —
+look for entries matching your cluster's `Hostname` lines in the generated `sshConfig`.
+
+### Tunnel Failures
+
+If the SOCKS tunnel can't be established, the command that needed it fails immediately with a
+non-zero exit code rather than silently continuing against a proxy port nothing is listening on.
+The error names the SOCKS proxy as the failing component and points at `socks5-proxy.log` in
+your cluster workspace directory — that file holds the `ssh -v` transcript from the tunnel
+attempt and is the fastest way to find the real cause (a host-key mismatch, a security group
+blocking port 22, the control node not yet accepting SSH, and so on).
+
+`easy-db-lab status` is the one exception: it still reports everything it can reach over SSH and
+the AWS SDK even when the tunnel is down, marking only the sections that require the private
+Kubernetes API (stress jobs, ClickHouse) as unavailable. See the
+[`status` command reference](../reference/commands.md#status) for details.
+
 ### Troubleshooting SOCKS Proxy
 
 **"Connection refused" errors:**
@@ -195,6 +227,14 @@ start-socks5 1081     # Use different port
 1. Check cluster status: `easy-db-lab status`
 2. Verify SSH works: `ssh control0 hostname`
 3. Restart proxy: `stop-socks5 && start-socks5`
+
+**`easy-db-lab` command fails with a SOCKS proxy error:**
+As of this change, `easy-db-lab` commands that need the tunnel (`up`, kit commands, Grafana
+config updates, etc.) abort immediately if the tunnel can't be established, instead of silently
+running against a dead proxy port. Check `socks5-proxy.log` in your cluster workspace directory
+for the `ssh -v` transcript — it shows the actual reason the tunnel failed. See
+[Host Key Verification](#host-key-verification) above for the most common cause on a
+newly-provisioned cluster.
 
 ## Comparison
 

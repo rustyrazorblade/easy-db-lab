@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.commands.cassandra
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
+import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.ServerType
@@ -24,6 +25,7 @@ import java.io.File
 @McpCommand
 @RequireProfileSetup
 @RequireSSHKey
+@RequiresProxy
 @Command(
     name = "start",
     description = ["Start cassandra on all nodes via service command"],

@@ -16,12 +16,40 @@ import kotlin.concurrent.withLock
 
 private val log = KotlinLogging.logger {}
 
+/** TCP port the control node's own `sshd` listens on — the end-to-end reachability target. */
+internal const val SSH_PORT = 22
+
+/** Matches `ssh -v` diagnostic lines (`debug1:`, `debug2:`, `debug3:`) so they can be dropped. */
+private val SSH_DEBUG_LINE = Regex("""^debug\d*:.*""")
+
+/**
+ * Reduces an `ssh -v` transcript to the lines most likely to explain a failure.
+ *
+ * `ssh -v` prefixes its chatter with `debug1:`/`debug2:`/`debug3:`; genuine errors and warnings
+ * (a changed host key, "Permission denied", "Connection refused") are emitted WITHOUT that prefix.
+ * Dropping the debug-prefixed lines and keeping the tail of the remainder surfaces whatever the
+ * real cause was without hardcoding a list of known error strings.
+ *
+ * @param tailLines how many trailing non-debug, non-blank lines to keep.
+ */
+internal fun stripSshDebugNoise(
+    lines: List<String>,
+    tailLines: Int,
+): List<String> =
+    lines
+        .filterNot { SSH_DEBUG_LINE.matches(it) }
+        .filter { it.isNotBlank() }
+        .takeLast(tailLines)
+
 /**
  * SOCKS5 proxy service that launches a detached `ssh -N -D` OS process.
  *
  * Unlike the previous in-process implementation, the SSH process outlives the JVM.
  * On each [ensureRunning] call the service checks `.socks5-proxy-state` for a reusable
- * process (PID alive + same controlIP + same sshConfig path) before starting a new one.
+ * process (PID alive + same controlIP + same sshConfig path + port genuinely accepting
+ * connections) before starting a new one. A live PID whose port is not accepting connections
+ * is a zombie tunnel and is never reused — a fresh proxy is started instead, and that start
+ * fails the calling command if it cannot be verified either.
  * When started, the proxy port is published via the private [Constants.Proxy.PORT_PROPERTY] system
  * property. The clients that need the tunnel (fabric8 K8s, OkHttp) read that port and configure the
  * SOCKS proxy explicitly. We deliberately do NOT set the standard `socksProxyHost`/`socksProxyPort`
@@ -32,11 +60,14 @@ private val log = KotlinLogging.logger {}
  */
 class ProcessSocksProxyService(
     private val context: Context,
+    private val reachabilityProbe: TunnelReachabilityProbe,
 ) : SocksProxyService {
     companion object {
         private const val VERIFY_RETRIES = 10
         private const val VERIFY_DELAY_MS = 500L
         private const val VERIFY_CONNECT_TIMEOUT_MS = 1000
+        private const val SSH_ERROR_TAIL_LINES = 15
+        private const val LOGS_DIR = "logs"
         private val json = Json { prettyPrint = true }
     }
 
@@ -46,9 +77,12 @@ class ProcessSocksProxyService(
 
     override fun ensureRunning(gatewayHost: ClusterHost): SocksProxyState =
         lock.withLock {
-            // Return in-memory state if still alive
+            // Return in-memory state if still alive AND the tunnel is genuinely accepting
+            // connections. A live PID with a dead port is a zombie tunnel (e.g. the remote side
+            // dropped the forward without killing the local process) and must not be reused —
+            // see isValidProxy() below, which enforces the same check on the state-file path.
             val current = state
-            if (current != null && isAlive(pid)) {
+            if (current != null && isAlive(pid) && isPortAccepting(current.localPort)) {
                 log.debug { "SOCKS5 proxy already running in-memory on port ${current.localPort} [PID $pid]" }
                 return@withLock current
             }
@@ -107,6 +141,21 @@ class ProcessSocksProxyService(
             }
         }
 
+    /**
+     * Starts a fresh SOCKS5 proxy `ssh` process to [gatewayHost] and verifies the tunnel is
+     * reachable end-to-end before publishing its port.
+     *
+     * Any previously published port is cleared up front, so a failed start here never leaves a
+     * stale port advertised to clients — they fall back to no-proxy rather than routing through
+     * a dead tunnel. [verifyTunnelReachable] runs before the new port is published; if it cannot
+     * prove the tunnel carries traffic to the control node within its retry window (or the ssh
+     * process dies first), it throws and [applySystemProperties] is never reached, so the dead
+     * port is never republished either. The `ssh -v` transcript is written to
+     * `logs/${Constants.Proxy.SOCKS5_PROXY_LOG_FILE}` and its real error is surfaced in the thrown
+     * message.
+     *
+     * @throws IllegalStateException if the tunnel never becomes reachable or ssh exits early
+     */
     private fun startNewProxy(
         gatewayHost: ClusterHost,
         sshConfigPath: String,
@@ -121,28 +170,45 @@ class ProcessSocksProxyService(
         val port = selectPort()
         log.info { "Starting SOCKS5 proxy to ${gatewayHost.alias} (${gatewayHost.privateIp}) on port $port" }
 
-        val logFile = File(context.workingDirectory, "socks5-proxy.log")
+        // ProcessBuilder's redirect will NOT create parent dirs; without this, ssh's stderr is
+        // silently discarded and the transcript we rely on for diagnosis would be lost.
+        val logDir = File(context.workingDirectory, LOGS_DIR)
+        logDir.mkdirs()
+        val logFile = File(logDir, Constants.Proxy.SOCKS5_PROXY_LOG_FILE)
         val process =
             ProcessBuilder(
                 "nohup",
                 "ssh",
                 "-v",
+                // Exit immediately if the dynamic forward can't be set up, instead of lingering
+                // with a half-open connection — this is what lets us detect a dead ssh fast.
+                "-o",
+                "ExitOnForwardFailure=yes",
                 "-N",
                 "-D",
                 "$port",
                 "-F",
                 sshConfigPath,
-                "control0",
+                gatewayHost.alias,
             ).apply {
                 redirectInput(ProcessBuilder.Redirect.from(File("/dev/null")))
                 redirectOutput(ProcessBuilder.Redirect.to(File("/dev/null")))
-                redirectError(ProcessBuilder.Redirect.appendTo(logFile))
+                // Overwrite (not append) so the log is always exactly this attempt's transcript.
+                redirectError(ProcessBuilder.Redirect.to(logFile))
             }.start()
 
         val newPid = process.pid().toInt()
         log.info { "SSH proxy process started [PID $newPid]" }
 
-        verifyProxyAcceptingConnections(port)
+        try {
+            verifyTunnelReachable(process, port, gatewayHost.privateIp, logFile)
+        } catch (e: IllegalStateException) {
+            // Verification failed: nothing will ever record this PID (the state file write
+            // below is never reached), so it would otherwise be an untracked orphan that
+            // `down` can never find and kill. Destroy it here instead of leaking it.
+            process.destroyForcibly()
+            throw e
+        }
 
         val clusterName = context.workingDirectory.name
         val fileState =
@@ -203,6 +269,10 @@ class ProcessSocksProxyService(
             log.debug { "Control IP changed (was ${loaded.controlIP}, now ${gatewayHost.privateIp})" }
             return false
         }
+        if (!isPortAccepting(loaded.port)) {
+            log.debug { "Proxy PID ${loaded.pid} is alive but port ${loaded.port} is not accepting connections" }
+            return false
+        }
         return true
     }
 
@@ -218,20 +288,76 @@ class ProcessSocksProxyService(
             false
         }
 
+    /**
+     * Verifies the tunnel is reachable end-to-end for up to [VERIFY_RETRIES] * [VERIFY_DELAY_MS],
+     * bailing out the instant the ssh [process] dies rather than polling a corpse for the full
+     * window.
+     *
+     * Success requires the [reachabilityProbe] to confirm an actual SOCKS5 round-trip to
+     * [targetPrivateIp]:[SSH_PORT], not merely that the local `-D` listener opened — the listener
+     * opens even when the remote side is dead. Fails fast by design: the caller must surface the
+     * failure so the invoking command aborts rather than proceeding against a dead tunnel.
+     *
+     * Internal (not private) purely so the loop's decisions — liveness-first, probe as the success
+     * condition, timeout, and exit-code reporting — can be driven directly in tests with a mock
+     * [Process] and a mock probe, without spawning a real ssh process.
+     *
+     * @throws IllegalStateException if ssh exits early or the tunnel never becomes reachable
+     */
     @Suppress("MagicNumber")
-    private fun verifyProxyAcceptingConnections(port: Int) {
+    internal fun verifyTunnelReachable(
+        process: Process,
+        port: Int,
+        targetPrivateIp: String,
+        logFile: File,
+    ) {
         repeat(VERIFY_RETRIES) { attempt ->
-            if (isPortAccepting(port)) {
-                log.debug { "SOCKS5 proxy accepting connections on port $port (attempt ${attempt + 1})" }
+            // A dead ssh (e.g. a changed host key kills it in ~50ms) will never open the tunnel;
+            // stop immediately instead of waiting out the remaining attempts.
+            if (!process.isAlive) {
+                throw IllegalStateException(verificationFailureMessage(logFile, exitCode = process.exitValue()))
+            }
+            if (reachabilityProbe.isReachable(port, targetPrivateIp, SSH_PORT)) {
+                log.debug { "SOCKS5 tunnel reachable end-to-end on port $port (attempt ${attempt + 1})" }
                 return
             }
-            log.debug { "SOCKS5 proxy not ready yet (attempt ${attempt + 1}/$VERIFY_RETRIES)" }
+            log.debug { "SOCKS5 tunnel not reachable yet (attempt ${attempt + 1}/$VERIFY_RETRIES)" }
             if (attempt < VERIFY_RETRIES - 1) {
                 Thread.sleep(VERIFY_DELAY_MS)
             }
         }
-        log.warn { "Could not verify SOCKS5 proxy is accepting connections on port $port — proceeding anyway" }
+        val exitCode = if (process.isAlive) null else process.exitValue()
+        throw IllegalStateException(verificationFailureMessage(logFile, exitCode))
     }
+
+    /**
+     * Builds the failure message for a proxy that never came up, naming the SOCKS proxy as the
+     * failing component, citing the ssh exit code when it died, and surfacing the real ssh error
+     * pulled from [logFile] (debug chatter stripped) plus the full transcript path.
+     */
+    private fun verificationFailureMessage(
+        logFile: File,
+        exitCode: Int?,
+    ): String {
+        val exitInfo = exitCode?.let { " (ssh exited with code $it)" } ?: ""
+        val errors = readSshErrors(logFile)
+        return buildString {
+            append("SOCKS5 proxy failed to establish a working tunnel$exitInfo. ")
+            append("See ${logFile.absolutePath} for the full ssh -v transcript.")
+            if (errors.isNotEmpty()) {
+                append("\nssh reported:\n")
+                append(errors.joinToString("\n"))
+            }
+        }
+    }
+
+    private fun readSshErrors(logFile: File): List<String> =
+        try {
+            stripSshDebugNoise(logFile.readLines(), SSH_ERROR_TAIL_LINES)
+        } catch (e: Exception) {
+            log.debug(e) { "Could not read ssh transcript from ${logFile.absolutePath}" }
+            emptyList()
+        }
 
     private fun buildProxyState(
         port: Int,

@@ -189,4 +189,25 @@ class KitInstallCommandFactoryTest : BaseKoinTest() {
         cl.parseArgs("--version", "v7.5.0")
         assertThat(command.argValues["TIDB_VERSION"]).isEqualTo("v7.5.0")
     }
+
+    @Test
+    fun `optional arg omitted from the command line does not record the string null`() {
+        // Regression: PicoCLI invokes the ISetter with null to initialise an unmatched option
+        // that has no default. Stringifying that null recorded the literal "null" in argValues,
+        // which then passed isNotBlank() downstream and was treated as a real value — e.g. the
+        // postgres kit looked it up as the extension alias "null" and aborted the install.
+        val cl = factory.build(config(arg("--extension", "EXTENSION")), directorySource)
+        val command = cl.commandSpec.userObject() as KitInstallCommand
+        cl.parseArgs()
+        assertThat(command.argValues["EXTENSION"]).isNull()
+        assertThat(command.argValues).doesNotContainValue("null")
+    }
+
+    @Test
+    fun `optional arg supplied on the command line is recorded verbatim`() {
+        val cl = factory.build(config(arg("--extension", "EXTENSION")), directorySource)
+        val command = cl.commandSpec.userObject() as KitInstallCommand
+        cl.parseArgs("--extension", "duckdb")
+        assertThat(command.argValues["EXTENSION"]).isEqualTo("duckdb")
+    }
 }

@@ -158,6 +158,37 @@ automatically after a successful `start`.
 - `@McpCommand` — expose command as an MCP tool in the server (must also add to `McpToolRegistry`)
 - `@RequireProfileSetup` — require AWS profile configuration before execution
 - `@RequireSSHKey` — require SSH key to be available
+- `@RequireDocker` — require a Docker daemon to be reachable before execution
+- `@RequiresProxy` — command's execution path reaches the private K8s API (Fabric8, via
+  `K8sClientProvider`) or a private cluster HTTP endpoint (via `ProxiedHttpClientFactory`), and
+  therefore needs the SOCKS5 tunnel. `DefaultCommandExecutor.checkRequirements()` starts the
+  tunnel before the command runs, when the cluster is provisioned, infrastructure is UP, and
+  Tailscale is not active; a failure to establish it propagates and aborts the command. See
+  `annotations/RequiresProxy.kt` and design decision D7/D9 in
+  `openspec/changes/up-fail-fast/design.md`.
+
+  Commands driving remote tooling through `RemoteOperationsService` — helm, kubectl, cilium run
+  *on the control node* over SSH — do **not** need this annotation. There is no local client
+  making the call, and SSH never traverses the SOCKS tunnel (the tunnel exists only to reach the
+  private Kubernetes API from the developer's machine). `Down` is a concrete example: its first
+  actions unpublish the proxy port and kill the ssh process, so it must not carry `@RequiresProxy`
+  or it would start a tunnel it exists to tear down.
+
+  The annotation takes one parameter, `tolerateFailure: Boolean = false`. When `true`, a proxy
+  failure is recorded on `ProxyAvailability` instead of aborting the command, which must then
+  query that holder itself to render a degraded result. `Status` is the only command that sets
+  this — it is read-only, so reporting a partial view can never leave the cluster in an
+  unexpected state, and it is the command a user reaches for when the cluster is already broken.
+  **No state-mutating command may set `tolerateFailure = true`.**
+
+  There is deliberately no test enforcing that this annotation is applied to every command that
+  reaches the private cluster network. Any such test would have to hand-maintain either a list of
+  proxy-reaching service types or a suppression list for bytecode-reachability false positives —
+  both are lists masquerading as checks that pass while silently covering less as the codebase
+  moves. This is safe specifically because the annotation is opt-in (D7): a missed annotation
+  degrades to a confusing Fabric8/HTTP connection error, the same failure mode the codebase had
+  before the annotation existed, rather than breaking a previously-working command. Apply it by
+  reading the command's execution path, not by a mechanical check.
 - `@TriggerBackup` — trigger a cluster state backup after execution
 - `@PreExecute` / `@PostExecute` — lifecycle hooks around command execution
 

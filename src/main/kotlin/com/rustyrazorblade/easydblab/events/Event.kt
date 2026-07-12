@@ -2928,6 +2928,27 @@ sealed interface Event {
     @Serializable
     sealed interface Provision : Event {
         @Serializable
+        @SerialName("Provision.ControlNodeRequired")
+        data class ControlNodeRequired(
+            val configuredCount: Int,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "A control node is required, but the configuration specifies $configuredCount control instance(s)."
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        @SerialName("Provision.S3BucketRequired")
+        data class S3BucketRequired(
+            val clusterName: String,
+        ) : Provision {
+            override fun toDisplayString(): String = "An S3 bucket is required to provision cluster '$clusterName', but none is configured."
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
         @SerialName("Provision.IamUpdating")
         data object IamUpdating : Provision {
             override fun toDisplayString(): String = "Ensuring IAM policies are up to date..."
@@ -3062,30 +3083,6 @@ sealed interface Event {
         @SerialName("Provision.TailscaleStarting")
         data object TailscaleStarting : Provision {
             override fun toDisplayString(): String = "Starting Tailscale VPN..."
-        }
-
-        @Serializable
-        @SerialName("Provision.TailscaleWarning")
-        data class TailscaleWarning(
-            val error: String,
-        ) : Provision {
-            override fun toDisplayString(): String = "Warning: Failed to start Tailscale: $error"
-
-            override fun isError(): Boolean = true
-        }
-
-        @Serializable
-        @SerialName("Provision.TailscaleManualInstruction")
-        data object TailscaleManualInstruction : Provision {
-            override fun toDisplayString(): String = "You can manually start it later with: easy-db-lab tailscale start"
-        }
-
-        @Serializable
-        @SerialName("Provision.NoControlNodes")
-        data object NoControlNodes : Provision {
-            override fun toDisplayString(): String = "No control nodes found, skipping K3s setup"
-
-            override fun isError(): Boolean = true
         }
 
         @Serializable
@@ -3366,6 +3363,23 @@ sealed interface Event {
         @SerialName("Status.CassandraNoNodes")
         data object CassandraNoNodes : Status {
             override fun toDisplayString(): String = "\n=== CASSANDRA VERSION ===\n(no Cassandra nodes configured)"
+        }
+
+        /**
+         * A status section could not be read. Used when `status` degrades because the SOCKS
+         * proxy could not be established — see the class-level KDoc on `Status` and design
+         * decision D9 in `openspec/changes/up-fail-fast/design.md`. This is the one place a
+         * missing section is reported as data rather than skipped, because an MCP client or
+         * script reading status needs to know a section was never attempted, not just that it
+         * is absent.
+         */
+        @Serializable
+        @SerialName("Status.SectionUnavailable")
+        data class SectionUnavailable(
+            val section: String,
+            val reason: String,
+        ) : Status {
+            override fun toDisplayString(): String = "\n=== ${section.uppercase()} ===\n(unavailable: $reason)"
         }
     }
 

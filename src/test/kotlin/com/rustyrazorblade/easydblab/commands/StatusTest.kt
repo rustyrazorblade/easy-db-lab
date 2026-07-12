@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Version
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -9,6 +10,7 @@ import com.rustyrazorblade.easydblab.configuration.InfrastructureState
 import com.rustyrazorblade.easydblab.configuration.InfrastructureStatus
 import com.rustyrazorblade.easydblab.configuration.NodeState
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.EMRClusterStatus
@@ -16,12 +18,20 @@ import com.rustyrazorblade.easydblab.providers.aws.InstanceDetails
 import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupDetails
 import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupRuleInfo
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
+import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
+import com.rustyrazorblade.easydblab.proxy.DefaultProxyAvailability
+import com.rustyrazorblade.easydblab.proxy.ProxyAvailability
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
+import com.rustyrazorblade.easydblab.services.CommandExecutor
+import com.rustyrazorblade.easydblab.services.DefaultCommandExecutor
+import com.rustyrazorblade.easydblab.services.RequirementCheckDeps
+import com.rustyrazorblade.easydblab.services.ResourceManager
 import com.rustyrazorblade.easydblab.services.StressJobService
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.EMRService
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -43,12 +53,14 @@ class StatusTest : BaseKoinTest() {
     private val mockEmrService: EMRService = mock()
     private val mockStressJobService: StressJobService = mock()
     private lateinit var outputHandler: BufferedOutputHandler
+    private lateinit var proxyAvailability: ProxyAvailability
     private val stdout = ByteArrayOutputStream()
     private val originalOut = System.out
 
     @BeforeEach
     fun captureStdout() {
         outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
+        proxyAvailability = getKoin().get()
         System.setOut(PrintStream(stdout))
     }
 
@@ -121,6 +133,7 @@ class StatusTest : BaseKoinTest() {
                 single<RemoteOperationsService> { mockRemoteOperationsService }
                 single<EMRService> { mockEmrService }
                 single<StressJobService> { mockStressJobService }
+                single<ProxyAvailability> { DefaultProxyAvailability() }
             },
         )
 
@@ -292,6 +305,114 @@ class StatusTest : BaseKoinTest() {
         val output = capturedOutput()
         assertThat(output).contains("=== S3 BUCKET ===")
         assertThat(output).contains("(no S3 bucket configured)")
+    }
+
+    // ========== DEGRADED STATUS (PROXY FAILURE) TESTS ==========
+    //
+    // `status` is the single command permitted to degrade rather than abort when the SOCKS
+    // proxy cannot be established (see openspec/changes/up-fail-fast/design.md, decision D9).
+    // These tests simulate that by recording a failure directly on ProxyAvailability — exactly
+    // what DefaultCommandExecutor.checkRequirements() does for a command whose @RequiresProxy
+    // sets tolerateFailure = true, before Status.execute() ever runs.
+
+    @Test
+    fun `execute still reports EC2 instance and VPC networking state when the proxy cannot be established`() {
+        setupBasicClusterState()
+        setupInstanceStates()
+        proxyAvailability.recordFailure(RuntimeException("port never began accepting connections — see socks5-proxy.log"))
+
+        assertThatThrownBy { Status().execute() }.isInstanceOf(StatusDegradedException::class.java)
+
+        val output = capturedOutput()
+        assertThat(output).contains("=== NODES ===")
+        assertThat(output).contains("db0")
+        assertThat(output).contains("=== NETWORKING ===")
+        assertThat(output).contains("vpc-12345")
+    }
+
+    @Test
+    fun `execute marks only the tunnel-dependent sections unavailable, citing the proxy failure`() {
+        setupBasicClusterState()
+        setupInstanceStates()
+        proxyAvailability.recordFailure(RuntimeException("port never began accepting connections — see socks5-proxy.log"))
+
+        assertThatThrownBy { Status().execute() }.isInstanceOf(StatusDegradedException::class.java)
+
+        val events = outputHandler.messages.joinToString("\n")
+        // The two sections sourced from the private Kubernetes API (Fabric8) are unavailable...
+        assertThat(events).contains("STRESS JOBS")
+        assertThat(events).contains("CLICKHOUSE")
+        // ...each stating the proxy failure as its reason, not merely "unavailable".
+        val reasonOccurrences = events.split("port never began accepting connections").size - 1
+        assertThat(reasonOccurrences).isEqualTo(2)
+        // The database version is sourced over SSH, which never traverses the tunnel, so it is
+        // NOT marked unavailable even though the proxy is down.
+        assertThat(events).doesNotContain("DATABASE VERSION")
+    }
+
+    @Test
+    fun `execute still reports the database version over SSH when the proxy cannot be established`() {
+        setupBasicClusterState()
+        setupInstanceStates()
+        // SSH does not go through the SOCKS tunnel, so a live version is still reachable.
+        whenever(mockRemoteOperationsService.getRemoteVersion(any(), any()))
+            .thenReturn(Version.fromString("5.0.2"))
+        proxyAvailability.recordFailure(RuntimeException("port never began accepting connections — see socks5-proxy.log"))
+
+        assertThatThrownBy { Status().execute() }.isInstanceOf(StatusDegradedException::class.java)
+
+        val output = capturedOutput()
+        // The section a proxy failure previously (wrongly) suppressed now renders over SSH.
+        assertThat(output).contains("=== CASSANDRA VERSION ===")
+        assertThat(output).contains("Version (live): 5.0.2")
+    }
+
+    @Test
+    fun `execute does not abort before rendering the sections it can observe when the proxy cannot be established`() {
+        setupBasicClusterState()
+        setupInstanceStates()
+        proxyAvailability.recordFailure(RuntimeException("port never began accepting connections — see socks5-proxy.log"))
+
+        // The degraded report (cluster/nodes/networking + unavailable markers) must have been
+        // fully rendered before execute() throws to signal the non-zero exit code.
+        assertThatThrownBy { Status().execute() }.isInstanceOf(StatusDegradedException::class.java)
+
+        assertThat(capturedOutput()).contains("=== CLUSTER STATUS ===", "=== NODES ===", "=== NETWORKING ===")
+    }
+
+    @Test
+    fun `execute exits non-zero via the command executor when status degrades due to a proxy failure`() {
+        setupBasicClusterState()
+        setupInstanceStates()
+
+        val mockUserConfigProvider: UserConfigProvider = mock()
+        whenever(mockUserConfigProvider.isSetup()).thenReturn(true)
+        val mockDockerClientProvider: DockerClientProvider = mock()
+        val mockResourceManager: ResourceManager = mock()
+        val mockSocksProxyService: SocksProxyService = mock()
+        whenever(mockSocksProxyService.ensureRunning(any()))
+            .thenThrow(RuntimeException("port never began accepting connections — see socks5-proxy.log"))
+
+        val commandExecutor: CommandExecutor =
+            DefaultCommandExecutor(
+                context = context,
+                clusterStateManager = mockClusterStateManager,
+                requirementCheckDeps =
+                    RequirementCheckDeps(
+                        userConfigProvider = mockUserConfigProvider,
+                        dockerClientProvider = mockDockerClientProvider,
+                    ),
+                resourceManager = mockResourceManager,
+                eventBus = getKoin().get(),
+                socksProxyService = mockSocksProxyService,
+                proxyAvailability = proxyAvailability,
+            )
+
+        // When - status is run through the real executor, exactly as it would be from the CLI
+        val exitCode = commandExecutor.execute { Status() }
+
+        // Then - a partial report must never be read by a script as a healthy cluster
+        assertThat(exitCode).isNotEqualTo(0)
     }
 
     private fun setupBasicClusterStateWithEmr() {

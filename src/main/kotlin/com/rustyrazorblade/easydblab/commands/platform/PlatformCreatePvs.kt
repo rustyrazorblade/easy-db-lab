@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.commands.platform
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
@@ -12,6 +13,7 @@ import picocli.CommandLine.Command
 import picocli.CommandLine.Option
 
 @RequireProfileSetup
+@RequiresProxy
 @Command(
     name = "create-pvs",
     description = ["Create per-kit local PersistentVolumes on cluster nodes"],

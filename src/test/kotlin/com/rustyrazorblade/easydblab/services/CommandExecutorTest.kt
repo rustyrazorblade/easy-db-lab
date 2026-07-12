@@ -2,7 +2,9 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.annotations.TriggerBackup
+import com.rustyrazorblade.easydblab.commands.Down
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
@@ -12,6 +14,8 @@ import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
+import com.rustyrazorblade.easydblab.proxy.DefaultProxyAvailability
+import com.rustyrazorblade.easydblab.proxy.ProxyAvailability
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -43,6 +47,7 @@ class CommandExecutorTest : BaseKoinTest() {
     private lateinit var mockResourceManager: ResourceManager
     private lateinit var mockSocksProxyService: SocksProxyService
     private lateinit var mockUserConfig: User
+    private lateinit var proxyAvailability: ProxyAvailability
     private lateinit var commandExecutor: DefaultCommandExecutor
 
     // Track command execution order
@@ -71,6 +76,7 @@ class CommandExecutorTest : BaseKoinTest() {
         mockResourceManager = mock()
         mockSocksProxyService = mock()
         mockUserConfig = mock()
+        proxyAvailability = DefaultProxyAvailability()
 
         // Default: profile is already set up
         whenever(mockUserConfigProvider.isSetup()).thenReturn(true)
@@ -87,6 +93,7 @@ class CommandExecutorTest : BaseKoinTest() {
                 resourceManager = mockResourceManager,
                 eventBus = EventBus(),
                 socksProxyService = mockSocksProxyService,
+                proxyAvailability = proxyAvailability,
             )
     }
 
@@ -315,7 +322,37 @@ class CommandExecutorTest : BaseKoinTest() {
     // ========== PROXY STARTUP TESTS ==========
 
     @Test
-    fun `executeTopLevel starts proxy when infra is UP and Tailscale is disabled`() {
+    fun `executeTopLevel does not start proxy for a command without RequiresProxy even when infra is UP`() {
+        // Given - cluster is fully provisioned, infra UP, Tailscale disabled: every gating
+        // condition ensureProxyRunning checks is satisfied. Only the missing annotation should
+        // stop the proxy from starting.
+        val controlHost =
+            ClusterHost(
+                publicIp = "1.2.3.4",
+                privateIp = "10.0.0.1",
+                alias = "control0",
+                availabilityZone = "us-west-2a",
+            )
+        val state =
+            ClusterState(
+                name = "test",
+                versions = mutableMapOf(),
+                infrastructureStatus = InfrastructureStatus.UP,
+                tailscaleActive = false,
+                hosts = mapOf(com.rustyrazorblade.easydblab.configuration.ServerType.Control to listOf(controlHost)),
+            )
+        whenever(mockClusterStateManager.exists()).thenReturn(true)
+        whenever(mockClusterStateManager.load()).thenReturn(state)
+
+        // When - TestCommand carries no @RequiresProxy
+        commandExecutor.executeTopLevel(TestCommand { })
+
+        // Then
+        verify(mockSocksProxyService, never()).ensureRunning(any())
+    }
+
+    @Test
+    fun `executeTopLevel starts proxy for a RequiresProxy command when infra is UP and Tailscale is disabled`() {
         // Given
         val controlHost =
             ClusterHost(
@@ -336,14 +373,14 @@ class CommandExecutorTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(state)
 
         // When
-        commandExecutor.executeTopLevel(TestCommand { })
+        commandExecutor.executeTopLevel(ProxyRequiringCommand { })
 
         // Then
         verify(mockSocksProxyService).ensureRunning(controlHost)
     }
 
     @Test
-    fun `executeTopLevel skips proxy when Tailscale is enabled`() {
+    fun `executeTopLevel skips proxy for a RequiresProxy command when Tailscale is enabled`() {
         // Given
         val state =
             ClusterState(
@@ -356,19 +393,188 @@ class CommandExecutorTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(state)
 
         // When
-        commandExecutor.executeTopLevel(TestCommand { })
+        commandExecutor.executeTopLevel(ProxyRequiringCommand { })
 
         // Then
         verify(mockSocksProxyService, never()).ensureRunning(any())
     }
 
     @Test
-    fun `executeTopLevel skips proxy when no state file exists`() {
+    fun `executeTopLevel skips proxy for a RequiresProxy command when no state file exists`() {
         // Given
         whenever(mockClusterStateManager.exists()).thenReturn(false)
 
         // When
-        commandExecutor.executeTopLevel(TestCommand { })
+        commandExecutor.executeTopLevel(ProxyRequiringCommand { })
+
+        // Then
+        verify(mockSocksProxyService, never()).ensureRunning(any())
+    }
+
+    @Test
+    fun `executeTopLevel propagates proxy establishment failure and returns non-zero for a RequiresProxy command`() {
+        // Given
+        val controlHost =
+            ClusterHost(
+                publicIp = "1.2.3.4",
+                privateIp = "10.0.0.1",
+                alias = "control0",
+                availabilityZone = "us-west-2a",
+            )
+        val state =
+            ClusterState(
+                name = "test",
+                versions = mutableMapOf(),
+                infrastructureStatus = InfrastructureStatus.UP,
+                tailscaleActive = false,
+                hosts = mapOf(com.rustyrazorblade.easydblab.configuration.ServerType.Control to listOf(controlHost)),
+            )
+        whenever(mockClusterStateManager.exists()).thenReturn(true)
+        whenever(mockClusterStateManager.load()).thenReturn(state)
+        whenever(mockSocksProxyService.ensureRunning(controlHost))
+            .thenThrow(RuntimeException("port never began accepting connections — see socks5-proxy.log"))
+
+        // When - the command body itself must never run once the proxy fails to establish
+        val exitCode =
+            commandExecutor.executeTopLevel(
+                ProxyRequiringCommand { executionOrder.add("should_not_run") },
+            )
+
+        // Then - the failure propagates out of the proxy check and is reported like any other
+        // command failure, not swallowed into a warning that lets the command proceed
+        assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+        assertThat(executionOrder).doesNotContain("should_not_run")
+    }
+
+    @Test
+    fun `executeTopLevel runs a tolerateFailure command's body even when proxy establishment fails`() {
+        // Given - RequiresProxy(tolerateFailure = true) is the narrow, explicit opt-in that lets
+        // a command survive a proxy failure. Everything else about the failure mode is identical
+        // to the non-tolerant case: ensureRunning still throws.
+        val controlHost =
+            ClusterHost(
+                publicIp = "1.2.3.4",
+                privateIp = "10.0.0.1",
+                alias = "control0",
+                availabilityZone = "us-west-2a",
+            )
+        val state =
+            ClusterState(
+                name = "test",
+                versions = mutableMapOf(),
+                infrastructureStatus = InfrastructureStatus.UP,
+                tailscaleActive = false,
+                hosts = mapOf(com.rustyrazorblade.easydblab.configuration.ServerType.Control to listOf(controlHost)),
+            )
+        whenever(mockClusterStateManager.exists()).thenReturn(true)
+        whenever(mockClusterStateManager.load()).thenReturn(state)
+        whenever(mockSocksProxyService.ensureRunning(controlHost))
+            .thenThrow(RuntimeException("port never began accepting connections — see socks5-proxy.log"))
+
+        // When
+        val exitCode =
+            commandExecutor.executeTopLevel(
+                ToleratingProxyRequiringCommand { executionOrder.add("ran despite proxy failure") },
+            )
+
+        // Then - unlike the non-tolerant case, the command body runs and the command succeeds
+        assertThat(exitCode).isEqualTo(0)
+        assertThat(executionOrder).containsExactly("ran despite proxy failure")
+    }
+
+    @Test
+    fun `executeTopLevel records the proxy failure so a tolerateFailure command can observe it`() {
+        // Given
+        val controlHost =
+            ClusterHost(
+                publicIp = "1.2.3.4",
+                privateIp = "10.0.0.1",
+                alias = "control0",
+                availabilityZone = "us-west-2a",
+            )
+        val state =
+            ClusterState(
+                name = "test",
+                versions = mutableMapOf(),
+                infrastructureStatus = InfrastructureStatus.UP,
+                tailscaleActive = false,
+                hosts = mapOf(com.rustyrazorblade.easydblab.configuration.ServerType.Control to listOf(controlHost)),
+            )
+        whenever(mockClusterStateManager.exists()).thenReturn(true)
+        whenever(mockClusterStateManager.load()).thenReturn(state)
+        whenever(mockSocksProxyService.ensureRunning(controlHost))
+            .thenThrow(RuntimeException("port never began accepting connections — see socks5-proxy.log"))
+        var observedFailureMessage: String? = null
+
+        // When - the command reads ProxyAvailability itself, from inside its own execute()
+        commandExecutor.executeTopLevel(
+            ToleratingProxyRequiringCommand {
+                observedFailureMessage = proxyAvailability.failure()?.message
+            },
+        )
+
+        // Then - the command actually observed why the proxy failed, not just that it failed
+        assertThat(observedFailureMessage).contains("port never began accepting connections")
+    }
+
+    @Test
+    fun `executeTopLevel clears a stale proxy failure before the next command runs`() {
+        // Given - a tolerant command fails to establish the proxy and records it
+        val controlHost =
+            ClusterHost(
+                publicIp = "1.2.3.4",
+                privateIp = "10.0.0.1",
+                alias = "control0",
+                availabilityZone = "us-west-2a",
+            )
+        val state =
+            ClusterState(
+                name = "test",
+                versions = mutableMapOf(),
+                infrastructureStatus = InfrastructureStatus.UP,
+                tailscaleActive = false,
+                hosts = mapOf(com.rustyrazorblade.easydblab.configuration.ServerType.Control to listOf(controlHost)),
+            )
+        whenever(mockClusterStateManager.exists()).thenReturn(true)
+        whenever(mockClusterStateManager.load()).thenReturn(state)
+        whenever(mockSocksProxyService.ensureRunning(controlHost))
+            .thenThrow(RuntimeException("port never began accepting connections — see socks5-proxy.log"))
+        commandExecutor.executeTopLevel(ToleratingProxyRequiringCommand { })
+        assertThat(proxyAvailability.failure()).isNotNull()
+
+        // When - a later command runs in the same (long-running Server/Repl) process
+        commandExecutor.execute { TestCommand { } }
+
+        // Then - the stale failure from the earlier command must not leak into this one
+        assertThat(proxyAvailability.failure()).isNull()
+    }
+
+    @Test
+    fun `executeTopLevel does not start proxy for Down even when infra is UP and Tailscale is disabled`() {
+        // Given - Down is never annotated with @RequiresProxy: it tears down the tunnel itself
+        // as its first action (clearProxySystemProperties + cleanupSocks5Proxy), so a pre-flight
+        // proxy start would only start a tunnel Down immediately destroys.
+        val controlHost =
+            ClusterHost(
+                publicIp = "1.2.3.4",
+                privateIp = "10.0.0.1",
+                alias = "control0",
+                availabilityZone = "us-west-2a",
+            )
+        val state =
+            ClusterState(
+                name = "test",
+                versions = mutableMapOf(),
+                infrastructureStatus = InfrastructureStatus.UP,
+                tailscaleActive = false,
+                hosts = mapOf(com.rustyrazorblade.easydblab.configuration.ServerType.Control to listOf(controlHost)),
+            )
+        whenever(mockClusterStateManager.exists()).thenReturn(true)
+        whenever(mockClusterStateManager.load()).thenReturn(state)
+
+        // When - Down's own execute() may fail against this test's minimal AWS mocks; that is
+        // irrelevant here, only whether the proxy pre-flight ran is under test.
+        commandExecutor.execute { Down() }
 
         // Then
         verify(mockSocksProxyService, never()).ensureRunning(any())
@@ -379,6 +585,32 @@ class CommandExecutorTest : BaseKoinTest() {
     /** Simple test command that executes a provided action */
     @Command(name = "test-command")
     inner class TestCommand(
+        private val action: () -> Unit = {},
+    ) : PicoBaseCommand() {
+        override fun execute() {
+            action()
+        }
+    }
+
+    /** Test command carrying [RequiresProxy], otherwise identical to [TestCommand]. */
+    @RequiresProxy
+    @Command(name = "proxy-requiring-command")
+    inner class ProxyRequiringCommand(
+        private val action: () -> Unit = {},
+    ) : PicoBaseCommand() {
+        override fun execute() {
+            action()
+        }
+    }
+
+    /**
+     * Test command carrying `@RequiresProxy(tolerateFailure = true)` — the narrow opt-in that
+     * lets a command survive a proxy establishment failure instead of aborting. Otherwise
+     * identical to [TestCommand].
+     */
+    @RequiresProxy(tolerateFailure = true)
+    @Command(name = "tolerating-proxy-requiring-command")
+    inner class ToleratingProxyRequiringCommand(
         private val action: () -> Unit = {},
     ) : PicoBaseCommand() {
         override fun execute() {

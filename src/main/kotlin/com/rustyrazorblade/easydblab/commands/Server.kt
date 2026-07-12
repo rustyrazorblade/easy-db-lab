@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.mcp.McpServer
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -13,8 +14,16 @@ import java.io.File
 
 /**
  * Starts the server for AI assistant integration, REST status endpoints, and live metrics.
+ *
+ * Carries [RequiresProxy]: [McpServer] unconditionally constructs a `StatusCache` whose
+ * background refresh loop calls `K3sService`/`K8sService` (Fabric8, via `K8sClientProvider`)
+ * on every refresh cycle, and conditionally a `MetricsCollector` that queries
+ * `VictoriaMetricsQueryService` (`HttpClientFactory`) when Redis is configured. Both run inside
+ * this command's own execution, not as separate `PicoCommand`s, so the tunnel must be
+ * established before [execute] starts the server.
  */
 @RequireProfileSetup
+@RequiresProxy
 @Command(
     name = "server",
     description = [

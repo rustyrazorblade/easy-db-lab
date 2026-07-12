@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.commands.cassandra.stress
 
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ServerType
@@ -20,6 +21,7 @@ import picocli.CommandLine.Parameters
  */
 @McpCommand
 @RequireProfileSetup
+@RequiresProxy
 @Command(
     name = "stop",
     description = ["Stop and delete stress jobs"],

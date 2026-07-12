@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.commands.logs
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.VictoriaStreamService
@@ -24,6 +25,7 @@ import picocli.CommandLine.Option
  */
 @McpCommand
 @RequireProfileSetup
+@RequiresProxy
 @Command(
     name = "import",
     description = ["Import logs from cluster VictoriaLogs to an external instance"],

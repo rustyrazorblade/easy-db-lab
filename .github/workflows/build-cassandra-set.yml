@@ -38,12 +38,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Quote every version: an unquoted 6.0 is a YAML float that GitHub
+          # Actions stringifies to "6", producing apache-cassandra-6-bin.tar.gz
+          # instead of the apache-cassandra-6.0-bin.tar.gz the versions file needs.
           - ref: cassandra-5.0
-            version: 5.0-HEAD
+            version: "5.0-HEAD"
           - ref: cassandra-6.0
-            version: 6.0
+            version: "6.0"
           - ref: trunk
-            version: trunk
+            version: "trunk"
     uses: ./.github/workflows/build-cassandra-ref.yml
     with:
       ref: ${{ matrix.ref }}

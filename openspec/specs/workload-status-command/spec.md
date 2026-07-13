@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Workload Status Command
+
+## Purpose
+
+Synthesizes a `status` subcommand for every installed workload that reports its K8s running state and the connection endpoints declared in `install.yaml`, with private IPs resolved from cluster state.
+
+## Requirements
 
 ### Requirement: Status subcommand synthesized for every installed workload
 Every installed workload directory SHALL have a `status` subcommand registered automatically by `WorkloadRunnerCommandFactory`, regardless of whether `install.yaml` exists or contains typed phases.

@@ -591,6 +591,78 @@ class KitRunnerCommandTest : BaseKoinTest() {
         assertThat(outputFile.readText().trim()).isEmpty()
     }
 
+    private fun writeWorkspaceKubeconfig() {
+        File(workingDir, Constants.K3s.LOCAL_KUBECONFIG).writeText(
+            """
+            apiVersion: v1
+            kind: Config
+            clusters:
+              - name: default
+                cluster:
+                  server: https://10.0.0.1:6443
+            contexts:
+              - name: default
+                context:
+                  cluster: default
+                  user: default
+            current-context: default
+            users:
+              - name: default
+                user:
+                  token: abc123
+            """.trimIndent() + "\n",
+        )
+    }
+
+    @Test
+    fun `shell step KUBECONFIG points at a proxied temp kubeconfig when a SOCKS port is published`() {
+        writeWorkspaceKubeconfig()
+        val kubeconfigCopy = File(workingDir, "kubeconfig-seen.txt")
+        val kubeconfigPathFile = File(workingDir, "kubeconfig-path.txt")
+        // Capture both the path kubectl would use and the content it would read, while the
+        // temp kubeconfig still exists (it is deleted when the command finishes).
+        writeScript(
+            "mydb",
+            "start",
+            """
+            echo "${'$'}KUBECONFIG" > "${kubeconfigPathFile.absolutePath}"
+            cat "${'$'}KUBECONFIG" > "${kubeconfigCopy.absolutePath}"
+            """.trimIndent(),
+        )
+
+        try {
+            System.setProperty(Constants.Proxy.PORT_PROPERTY, "1080")
+            command("mydb", "start").call()
+        } finally {
+            System.clearProperty(Constants.Proxy.PORT_PROPERTY)
+        }
+
+        // KUBECONFIG points at the resolver's temp copy, not the workspace kubeconfig.
+        val kubeconfigPathUsed = kubeconfigPathFile.readText().trim()
+        assertThat(File(kubeconfigPathUsed).name).startsWith("edl-kubeconfig-proxy-")
+        // That temp kubeconfig routes kubectl/helm through the published SOCKS port.
+        assertThat(kubeconfigCopy.readText()).contains("proxy-url").contains("socks5://127.0.0.1:1080")
+        // The canonical workspace kubeconfig is never patched in place (fabric8 reads it).
+        assertThat(File(workingDir, Constants.K3s.LOCAL_KUBECONFIG).readText()).doesNotContain("proxy-url")
+    }
+
+    @Test
+    fun `shell step KUBECONFIG points at the workspace kubeconfig when no SOCKS port is published`() {
+        writeWorkspaceKubeconfig()
+        val kubeconfigPathFile = File(workingDir, "kubeconfig-path.txt")
+        writeScript(
+            "mydb",
+            "start",
+            """echo "${'$'}KUBECONFIG" > "${kubeconfigPathFile.absolutePath}"""",
+        )
+
+        System.clearProperty(Constants.Proxy.PORT_PROPERTY)
+        command("mydb", "start").call()
+
+        assertThat(kubeconfigPathFile.readText().trim())
+            .isEqualTo(File(workingDir, Constants.K3s.LOCAL_KUBECONFIG).absolutePath)
+    }
+
     @Test
     fun `bare executable script without sh suffix is found and run`() {
         val binDir = File(workingDir, "mydb/bin").also { it.mkdirs() }

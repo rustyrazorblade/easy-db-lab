@@ -45,8 +45,9 @@ K3s API servers run on private IPs, so all access goes through an SSH tunnel:
 3. All K8s API traffic tunnels through SSH to the private cluster
 
 ```kotlin
-// In KubernetesClientFactory
-config.httpsProxy = "socks5://$proxyHost:$proxyPort"
+// In ProxiedKubernetesClientFactory — the port is read from Constants.Proxy.PORT_PROPERTY,
+// NOT passed in and NOT set as the global socksProxyHost (which would capture the AWS SDK too).
+config.httpsProxy = "socks5://127.0.0.1:$port"
 config.connectionTimeout = 30000  // Increased for SOCKS proxy
 config.requestTimeout = 60000
 ```
@@ -72,10 +73,9 @@ Handles multi-document YAML (separated by `---`). Each document is parsed for it
 ```kotlin
 val kubernetesModule = module {
     factory<KubernetesClientFactory> {
-        ProxiedKubernetesClientFactory(
-            proxyHost = "127.0.0.1",
-            proxyPort = get<SocksProxyService>().getLocalPort(),
-        )
+        // No proxy args — the factory reads the SOCKS port from Constants.Proxy.PORT_PROPERTY at
+        // client-creation time (per-client, explicit; the global socksProxyHost is never set).
+        ProxiedKubernetesClientFactory()
     }
     factory<KubernetesService> { (kubeconfigPath: String) ->
         DefaultKubernetesService(clientFactory = get(), kubeconfigPath = Paths.get(kubeconfigPath))

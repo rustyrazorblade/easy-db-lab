@@ -1,5 +1,7 @@
 # Log Investigation Dashboard
 
+## Purpose
+
 Grafana dashboard for interactive log investigation with filtering by node role, host, source, level, and free-text search.
 
 ## Requirements

@@ -14,7 +14,7 @@ single
 
 ## Environment
 
-Single DC, 3 database nodes on `i4i.xlarge` (local NVMe, no EBS required), 0 app nodes. Tailscale disabled via `--no-tailscale`.
+Single DC, 1 database node on `i4i.xlarge` (local NVMe, no EBS required), 0 app nodes. Tailscale disabled via `--no-tailscale`.
 
 ## Steps
 
@@ -23,7 +23,7 @@ Single DC, 3 database nodes on `i4i.xlarge` (local NVMe, no EBS required), 0 app
 Provision a 3-node cluster with Tailscale explicitly disabled.
 
 ```bash
-$EDB init socks5-validation --db 3 --instance i4i.xlarge --no-tailscale --up
+$EDB init socks5-validation --db 1 --instance i4i.xlarge --no-tailscale --up
 ```
 
 ### 2. Select Cassandra 5.0
@@ -40,7 +40,7 @@ $EDB cassandra start
 
 ### 4. Verify cluster health via nodetool
 
-All 3 nodes should show UN (Up/Normal). This command routes through the SOCKS proxy.
+The single node should show UN (Up/Normal). This command routes through the SOCKS proxy.
 
 ```bash
 $EDB cassandra nt status

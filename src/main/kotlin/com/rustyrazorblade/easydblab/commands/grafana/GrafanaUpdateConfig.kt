@@ -1,7 +1,9 @@
 package com.rustyrazorblade.easydblab.commands.grafana
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ServerType
@@ -45,6 +47,7 @@ import picocli.CommandLine.Command
  */
 @McpCommand
 @RequireProfileSetup
+@RequiresProxy
 @Command(
     name = "update-config",
     description = ["Build and apply the full observability stack to K8s cluster"],
@@ -111,6 +114,21 @@ class GrafanaUpdateConfig : PicoBaseCommand() {
 
         // Restart all observability workloads so they pick up new ConfigMaps
         restartObservabilityWorkloads(controlNode)
+
+        // Gate success on the whole stack actually reaching Ready. waitForPodsReady is namespace-wide
+        // (every pod in `default`) and fail-fast: it aborts immediately on CrashLoopBackOff /
+        // ImagePullBackOff and on timeout. This propagates a non-zero exit up through
+        // `Up.runNestedCommand { GrafanaUpdateConfig() }`, so `up` never reports success while the
+        // observability stack is broken or still coming up.
+        waitForObservabilityReady(controlNode)
+    }
+
+    private fun waitForObservabilityReady(controlNode: ClusterHost) {
+        k8sService
+            .waitForPodsReady(controlNode, Constants.K8s.OBSERVABILITY_READY_TIMEOUT_SECONDS)
+            .getOrElse { exception ->
+                error("Observability stack did not become ready: ${exception.message}")
+            }
     }
 
     private fun restartObservabilityWorkloads(controlNode: ClusterHost) {

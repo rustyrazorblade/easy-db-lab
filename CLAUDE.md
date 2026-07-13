@@ -9,6 +9,7 @@
 - Do not add logging frameworks to command classes unless there is a specific internal debugging need separate from user output.
 - When logging is needed, use: `import io.github.oshai.kotlinlogging.KotlinLogging` and create a logger with `private val log = KotlinLogging.logger {}`
 - **Never use Python for JSON parsing in shell scripts.** Use `jq` instead.
+- **ABSOLUTE RULE: NEVER set, clear, or otherwise touch the `socksProxyHost` / `socksProxyPort` JVM system properties.** Not even temporarily with save/restore. These are JVM-global and capture **every** socket in the process — including the AWS SDK — routing it through the SOCKS tunnel. This caused a major incident and was deliberately removed in #725 (see the commit message and the `Socks5ProxySelector` KDoc). The proxy publishes **only** its port under `Constants.Proxy.PORT_PROPERTY`; cluster clients opt into the tunnel **explicitly and per-client** — Fabric8 via `config.httpsProxy = "socks5://127.0.0.1:{port}"` (`KubernetesClientFactory`), cluster HTTP via `Socks5ProxySelector` installed on that client only (`ProxiedHttpClientFactory`), the CQL driver via `SocksProxyNettyOptions`, and the JDBC `sql` command plus local kubectl/helm in kit shell steps via `SocksTcpBridge` (a per-connection localhost→SOCKS TCP forwarder; see `KubeconfigProxyResolver`). To route a **new** client type through the tunnel, give **that connection** an explicit `java.net.Proxy(SOCKS, ...)` / driver-native SOCKS option (or route it through `SocksTcpBridge`) — never a global property. This invariant is also encoded in `openspec/specs/networking/spec.md` REQ-NET-005.
 
 ## Project Organization
 
@@ -139,7 +140,7 @@ See [`src/test/.../CLAUDE.md`](src/test/kotlin/com/rustyrazorblade/easydblab/CLA
 - Always add tests to new non-trivial code.
 - Tests should extend BaseKoinTest to use Koin DI.
 - Always use @TempDir for temporary directories in tests - JUnit handles lifecycle automatically.
-- Include testing when planning. Integration tests use TestContainers.
+- Include testing when planning. The suite is split into two tiers: `./gradlew test` runs the fast unit tier (no Docker, `src/test/`), and `./gradlew integrationTest` runs the slow tier (TestContainers/Docker, `src/integrationTest/`). `./gradlew check` runs both. Any test that uses TestContainers, the Fabric8 kubernetes-server-mock, okhttp MockWebServer, or a fixed-port socket belongs in `src/integrationTest/` — those dependencies are scoped to `integrationTestImplementation` only and will not compile under `src/test/`.
 - CRITICAL: Tests must pass, both in CI and on my local. It is UNACCEPTABLE to ignore failing tests or wave them off as environment-specific.
 - When running Gradle tests, run them in a subagent. Never attribute a test containers failure as a pre-existing problem. Raise it to my attention, I may need to restart docker.
 - **Minimal mocking.** Only mock what you must:

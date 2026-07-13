@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.commands.cassandra
 
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.ServerType
@@ -18,6 +19,7 @@ import picocli.CommandLine.Mixin
  */
 @McpCommand
 @RequireProfileSetup
+@RequiresProxy
 @Command(
     name = "restart",
     description = ["Restart cassandra"],

@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.commands.cassandra
 
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
+import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.ServerType
@@ -21,6 +22,7 @@ import picocli.CommandLine.Mixin
  */
 @RequireProfileSetup
 @RequireSSHKey
+@RequiresProxy
 @Command(
     name = "stop",
     description = ["Stop cassandra on all nodes via service command"],

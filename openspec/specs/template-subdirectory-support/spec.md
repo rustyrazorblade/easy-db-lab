@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Template Subdirectory Support
+
+## Purpose
+
+Renders workload templates while preserving their relative subdirectory structure, creating parent directories as needed and making files rendered into `bin/` executable.
+
+## Requirements
 
 ### Requirement: Template renderer preserves relative subdirectory structure
 When rendering templates, the output path SHALL preserve the relative path from the template root. A template at `bin/start.sh.template` SHALL render to `<outputDir>/bin/start.sh`. Parent directories SHALL be created as needed.

@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.commands.cassandra.stress
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
@@ -20,6 +21,7 @@ import java.time.Duration
  */
 @McpCommand
 @RequireProfileSetup
+@RequiresProxy
 @Command(
     name = "status",
     description = ["Check status of stress jobs"],

@@ -1,8 +1,10 @@
 # Workload Arg Passthrough
 
+## Purpose
+
 Defines how workload phase commands accept positional arguments and make them available to typed steps and shell scripts.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Workload phase commands accept positional arguments
 

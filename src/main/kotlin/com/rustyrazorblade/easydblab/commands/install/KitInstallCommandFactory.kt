@@ -81,7 +81,13 @@ class KitInstallCommandFactory(
                 .setter(
                     object : ISetter {
                         override fun <T> set(value: T): T {
-                            command.argValues[arg.variable] = "$value"
+                            // PicoCLI invokes this setter with null to initialise an unmatched
+                            // option that has no default (e.g. an optional `--extension`). Skip it:
+                            // stringifying null would record the literal "null" in argValues, which
+                            // then passes `isNotBlank()` downstream and is treated as a real value
+                            // (e.g. looked up as the extension alias "null"). Only record a value
+                            // the user actually supplied.
+                            value?.let { command.argValues[arg.variable] = it.toString() }
                             return value
                         }
                     },

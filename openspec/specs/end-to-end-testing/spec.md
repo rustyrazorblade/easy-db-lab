@@ -1,3 +1,9 @@
+# End To End Testing
+
+## Purpose
+
+A bash test runner provisions real AWS infrastructure, deploys services, runs validation steps for optional service domains (Cassandra, Spark, ClickHouse, OpenSearch, observability), and tears down the environment, with resilient step execution, breakpoints, resume, and interactive failure recovery.
+
 ## Requirements
 
 ### Requirement: End-to-end test runner

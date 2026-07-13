@@ -162,6 +162,7 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
         whenever(mockDashboardService.uploadDashboards(any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.rolloutRestartDeployment(any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.rolloutRestartDaemonSet(any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.waitForPodsReady(any(), any())).thenReturn(Result.success(Unit))
 
         val command = GrafanaUpdateConfig()
         command.execute()
@@ -173,6 +174,42 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
         // Verify observability workloads were restarted
         verify(mockK8sService, atLeastOnce()).rolloutRestartDeployment(any(), any(), any())
         verify(mockK8sService, atLeastOnce()).rolloutRestartDaemonSet(any(), any(), any())
+
+        // Verify success is gated on the stack reaching Ready
+        verify(mockK8sService).waitForPodsReady(any(), any())
+    }
+
+    @Test
+    fun `execute fails when observability stack does not become ready`() {
+        val stateWithControl =
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+                hosts =
+                    mutableMapOf(
+                        ServerType.Control to listOf(testControlHost),
+                    ),
+            )
+
+        whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
+        whenever(mockK8sService.applyResource(any(), any<HasMetadata>())).thenReturn(Result.success(Unit))
+        whenever(mockDashboardService.uploadDashboards(any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.rolloutRestartDeployment(any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.rolloutRestartDaemonSet(any(), any(), any())).thenReturn(Result.success(Unit))
+        // The stack applied and restarted, but a pod never reached Ready (e.g. Grafana CrashLoopBackOff).
+        whenever(mockK8sService.waitForPodsReady(any(), any()))
+            .thenReturn(
+                Result.failure(
+                    IllegalStateException("Pod grafana-xyz container grafana is in CrashLoopBackOff state"),
+                ),
+            )
+
+        val command = GrafanaUpdateConfig()
+
+        assertThatThrownBy { command.execute() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("Observability stack did not become ready")
+            .hasMessageContaining("CrashLoopBackOff")
     }
 
     @Test

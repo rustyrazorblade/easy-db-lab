@@ -107,6 +107,12 @@ easy-db-lab up [options]
 
 Creates: VPC, EC2 instances, K3s cluster. Configures the account S3 bucket for this cluster.
 
+`up` fails fast. If any provisioning step fails — EC2 setup, K3s, node labeling, the
+`local-storage`/`local-storage-wfc` StorageClasses, the observability stack, Tailscale, and so
+on — the command exits non-zero and stops rather than continuing with a partially-provisioned
+cluster. EC2 instances that were already launched are left running; there is no automatic
+rollback. Reclaim them with `easy-db-lab down`, fix the underlying issue, and re-run `up`.
+
 ### down
 
 Shut down AWS infrastructure.
@@ -148,6 +154,15 @@ Display full environment status.
 ```bash
 easy-db-lab status
 ```
+
+`status` is the one command that degrades instead of failing outright when the SOCKS proxy
+tunnel can't be established. It still reports EC2, VPC, security groups, Spark/EMR, OpenSearch,
+S3, kits, observability URLs, and database versions — the last read directly over SSH, which
+never uses the tunnel. Only the sections that require the private Kubernetes API (stress jobs,
+ClickHouse) are marked unavailable, each stating the proxy failure as the reason. `status` still
+exits non-zero when degraded, so a partial report is never mistaken for a healthy cluster by a
+script. See [Network Connectivity](../user-guide/network-connectivity.md) for how to diagnose a
+tunnel that won't come up.
 
 ---
 

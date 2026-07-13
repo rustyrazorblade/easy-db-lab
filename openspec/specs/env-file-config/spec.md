@@ -1,3 +1,9 @@
+# Env File Config
+
+## Purpose
+
+Project scripts load configuration from a gitignored `.env` file at the project root without overwriting variables already set in the shell, and a committed `.env.example` documents every supported variable.
+
 ## Requirements
 
 ### Requirement: Scripts source a gitignored .env file at project root

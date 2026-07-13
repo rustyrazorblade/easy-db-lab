@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.commands.metrics
 
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.VictoriaBackupService
@@ -24,6 +25,7 @@ import picocli.CommandLine.Option
  */
 @McpCommand
 @RequireProfileSetup
+@RequiresProxy
 @Command(
     name = "backup",
     description = ["Backup VictoriaMetrics data to S3"],

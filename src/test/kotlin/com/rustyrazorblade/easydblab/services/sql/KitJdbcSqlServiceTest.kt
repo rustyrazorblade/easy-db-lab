@@ -1,10 +1,13 @@
 package com.rustyrazorblade.easydblab.services.sql
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.proxy.SocksTcpBridge
+import com.rustyrazorblade.easydblab.proxy.SocksTcpBridgeFactory
 import com.rustyrazorblade.easydblab.services.KitEndpoint
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -12,6 +15,7 @@ import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.sql.Connection
 import java.sql.ResultSet
@@ -314,5 +318,88 @@ class KitJdbcSqlServiceTest : BaseKoinTest() {
         service.execute("SELECT 1")
 
         assertThat(capturedUrl).isEqualTo("jdbc:clickhouse://10.0.1.20:30123/default?compress=0")
+    }
+
+    @Test
+    fun `routes through the SOCKS bridge and rewrites the url authority when a proxy port is published`() {
+        whenever(mockClusterStateManager.load()).thenReturn(stateWithAppNode())
+
+        val fakeBridge = mock<SocksTcpBridge>()
+        whenever(fakeBridge.localPort).thenReturn(FAKE_LOCAL_PORT)
+
+        var openedSocksPort = -1
+        var openedHost = ""
+        var openedPort = -1
+        val bridgeFactory =
+            SocksTcpBridgeFactory { socksPort, host, port ->
+                openedSocksPort = socksPort
+                openedHost = host
+                openedPort = port
+                fakeBridge
+            }
+
+        var capturedUrl: String? = null
+        val service =
+            KitJdbcSqlService(
+                clusterStateManager = getKoin().get(),
+                endpoint = prestoJdbcEndpoint,
+                user = "easy-db-lab",
+                connectionFactory = { url, _ ->
+                    capturedUrl = url
+                    throw RuntimeException("stop here")
+                },
+                bridgeFactory = bridgeFactory,
+            )
+
+        try {
+            System.setProperty(Constants.Proxy.PORT_PROPERTY, "1080")
+            service.execute("SELECT 1")
+        } finally {
+            System.clearProperty(Constants.Proxy.PORT_PROPERTY)
+        }
+
+        // Bridge opened toward the private endpoint via the published SOCKS port.
+        assertThat(openedSocksPort).isEqualTo(1080)
+        assertThat(openedHost).isEqualTo("10.0.1.10")
+        assertThat(openedPort).isEqualTo(8080)
+        // Only the authority is rewritten to the loopback listener; the rest of the URL is intact.
+        assertThat(capturedUrl).isEqualTo("jdbc:presto://127.0.0.1:$FAKE_LOCAL_PORT/cassandra")
+        // The bridge is always torn down, even though the connection attempt failed.
+        verify(fakeBridge).close()
+    }
+
+    @Test
+    fun `connects directly to the private ip and never opens a bridge when no proxy port is published`() {
+        whenever(mockClusterStateManager.load()).thenReturn(stateWithAppNode())
+
+        var bridgeOpened = false
+        val bridgeFactory =
+            SocksTcpBridgeFactory { _, _, _ ->
+                bridgeOpened = true
+                mock()
+            }
+
+        var capturedUrl: String? = null
+        val service =
+            KitJdbcSqlService(
+                clusterStateManager = getKoin().get(),
+                endpoint = prestoJdbcEndpoint,
+                user = "easy-db-lab",
+                connectionFactory = { url, _ ->
+                    capturedUrl = url
+                    throw RuntimeException("stop here")
+                },
+                bridgeFactory = bridgeFactory,
+            )
+
+        System.clearProperty(Constants.Proxy.PORT_PROPERTY)
+        service.execute("SELECT 1")
+
+        assertThat(bridgeOpened).isFalse()
+        assertThat(capturedUrl).isEqualTo("jdbc:presto://10.0.1.10:8080/cassandra")
+    }
+
+    private companion object {
+        const val FAKE_LOCAL_PORT = 54321
     }
 }

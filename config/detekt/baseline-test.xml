@@ -8,10 +8,7 @@
     <ID>EmptyFunctionBlock:MetricsRegistryServiceTest.kt$MetricsRegistryServiceTest.&lt;no name provided>${}</ID>
     <ID>EmptyFunctionBlock:StatusCacheTest.kt$StatusCacheTest.&lt;no name provided>${}</ID>
     <ID>EmptyFunctionBlock:UseCassandraTest.kt$UseCassandraTest.&lt;no name provided>${}</ID>
-    <ID>HasPlatformType:RedisEventListenerTest.kt$RedisEventListenerTest.Companion$@Container @JvmStatic val redis = GenericContainer("redis:7-alpine").withExposedPorts(6379)</ID>
-    <ID>LargeClass:K8sServiceIntegrationTest.kt$K8sServiceIntegrationTest</ID>
     <ID>LargeClass:KitConfigTest.kt$KitConfigTest</ID>
-    <ID>LongMethod:K8sServiceIntegrationTest.kt$K8sServiceIntegrationTest$@Test @Order(23) fun `PV with stale claimRef should rebind after clearing UID`()</ID>
     <ID>MapGetWithNotNullAssertionOperator:ClusterStateTest.kt$ClusterStateTest$loadedState.hosts[ServerType.Cassandra]!!</ID>
     <ID>MapGetWithNotNullAssertionOperator:ClusterStateTest.kt$ClusterStateTest$loadedState.hosts[ServerType.Control]!!</ID>
     <ID>MapGetWithNotNullAssertionOperator:EC2InstanceServiceTest.kt$EC2InstanceServiceTest$result[ServerType.Cassandra]!!</ID>
@@ -21,7 +18,6 @@
     <ID>UnreachableCode:McpSchemaValidationTest.kt$McpSchemaValidationTest$val type = prop["type"]?.jsonPrimitive?.content ?: return</ID>
     <ID>UnreachableCode:McpSchemaValidationTest.kt$McpSchemaValidationTest$when (type) { "string" -> { if (defaultValue !is JsonPrimitive || !defaultValue.isString) { issues.add("Property '$propName' has non-string default for string type") } } "number" -> { if (defaultValue !is JsonPrimitive || defaultValue.doubleOrNull == null) { issues.add("Property '$propName' has non-number default for number type") } } "boolean" -> { if (defaultValue !is JsonPrimitive || defaultValue.booleanOrNull == null) { issues.add("Property '$propName' has non-boolean default for boolean type") } } }</ID>
     <ID>UnreachableCode:TestPrompter.kt$TestPrompter$responses[question] // Then try partial match (question contains key) ?: responses.entries.find { question.contains(it.key, ignoreCase = true) }?.value // Fall back to default ?: default</ID>
-    <ID>UnusedPrivateMember:K8sServiceIntegrationTest.kt$K8sServiceIntegrationTest$private fun assertStatefulSetExists(name: String)</ID>
     <ID>UseOrEmpty:ChannelMessageBufferTest.kt$ChannelMessageBufferTest$timestampRegex.find(it)?.groupValues?.get(1) ?: ""</ID>
   </CurrentIssues>
 </SmellBaseline>

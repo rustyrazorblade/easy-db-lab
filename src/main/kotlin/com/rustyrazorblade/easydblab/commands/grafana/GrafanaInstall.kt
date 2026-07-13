@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.commands.grafana
 
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
@@ -11,6 +12,7 @@ import picocli.CommandLine.Parameters
 import java.io.File
 
 @RequireProfileSetup
+@RequiresProxy
 @Command(
     name = "install",
     description = ["Upload a Grafana dashboard JSON file to the running Grafana instance"],

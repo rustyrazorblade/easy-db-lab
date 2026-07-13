@@ -23,6 +23,12 @@ object ClusterConfigWriter {
     ) {
         // write standard stuff first
         writer.appendLine("StrictHostKeyChecking=no")
+        // AWS recycles public IPs across ephemeral cluster lifetimes, so a host's key
+        // recorded in the developer's ~/.ssh/known_hosts can collide with a different
+        // cluster's key for the same IP. Pin to /dev/null so this config never reads
+        // or writes that file -- matching the MINA SSHD path used everywhere else,
+        // which verifies no host keys at all.
+        writer.appendLine("UserKnownHostsFile=/dev/null")
         writer.appendLine("User ubuntu")
         writer.appendLine("IdentityFile $identityFile")
 

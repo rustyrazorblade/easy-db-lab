@@ -1,15 +1,15 @@
 # Install Command Spec
 
-## Overview
+## Purpose
 
 The `install` command group scaffolds kit-specific files (Helm values, scripts, README) into a
 local directory. Users then run the kit via `easy-db-lab <kit> start` — the CLI reads the
 generated `bin/` scripts and registers them as top-level subcommands automatically.
 
-## Template Discovery
+## Requirements
 
 ### Requirement: Template discovery sources
-Templates are resolved from four sources in priority order:
+Templates SHALL be resolved from four sources in priority order:
 
 1. **Profile directory**: `~/.easy-db-lab/profiles/<profile>/kits/<name>/`
 2. **Additional sources**: directories registered via `kit source add`, searched in registration order; each registered directory's subdirectories are treated as individual kit templates
@@ -68,6 +68,26 @@ The CLI loader SHALL look for `kit.yaml` when resolving a kit's configuration fr
 - **WHEN** a template directory contains `config.yaml` but no `kit.yaml`
 - **THEN** the CLI does not load it (no silent fallback)
 
+### Requirement: Kit node-type requirement field
+A kit MAY declare `type: db` or `type: app` in `kit.yaml`; when declared, the cluster MUST have at least
+one node of that type before installation proceeds.
+
+#### Scenario: Install fails when required node pool is absent
+- **GIVEN** a kit declares `type: app`
+- **WHEN** the user runs `easy-db-lab install <kit>` and the cluster has no app nodes
+- **THEN** the install fails immediately with `Event.Kit.RequirementNotMet`
+- **THEN** no files are written to disk
+
+#### Scenario: Install proceeds when required node pool is present
+- **GIVEN** a kit declares `type: db`
+- **WHEN** the user runs `easy-db-lab install <kit>` and the cluster has at least one db node
+- **THEN** the install proceeds normally
+
+#### Scenario: No type field means no requirement check
+- **GIVEN** a kit declares no `type` field
+- **WHEN** the user runs `easy-db-lab install <kit>`
+- **THEN** no node-type check is performed
+
 ## Template Structure
 
 Each template directory contains a `kit.yaml` descriptor and files with a `.template` suffix:
@@ -110,26 +130,6 @@ args:
 
 `default` values support `${VAR}` interpolation from cluster state (e.g. `${DB_NODE_COUNT}`,
 `${APP_NODE_COUNT}`). Raw `${VAR}` text is kept when cluster state is unavailable.
-
-### Requirement: Kit node-type requirement field
-A kit MAY declare `type: db` or `type: app` in `kit.yaml` to assert that the cluster has at least
-one node of that type before installation proceeds.
-
-#### Scenario: Install fails when required node pool is absent
-- **GIVEN** a kit declares `type: app`
-- **WHEN** the user runs `easy-db-lab install <kit>` and the cluster has no app nodes
-- **THEN** the install fails immediately with `Event.Kit.RequirementNotMet`
-- **THEN** no files are written to disk
-
-#### Scenario: Install proceeds when required node pool is present
-- **GIVEN** a kit declares `type: db`
-- **WHEN** the user runs `easy-db-lab install <kit>` and the cluster has at least one db node
-- **THEN** the install proceeds normally
-
-#### Scenario: No type field means no requirement check
-- **GIVEN** a kit declares no `type` field
-- **WHEN** the user runs `easy-db-lab install <kit>`
-- **THEN** no node-type check is performed
 
 ## Kit Lifecycle Hooks
 

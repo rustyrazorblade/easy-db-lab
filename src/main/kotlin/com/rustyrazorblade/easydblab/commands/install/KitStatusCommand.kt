@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.commands.install
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ServerType
@@ -28,6 +29,7 @@ private sealed interface KitRunningState {
     ) : KitRunningState
 }
 
+@RequiresProxy
 @Command(name = "status")
 class KitStatusCommand(
     private val kitName: String,

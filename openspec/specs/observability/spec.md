@@ -1,4 +1,10 @@
-## MODIFIED Requirements
+# Observability
+
+## Purpose
+
+Provides the cluster's metrics, logging, and tracing stack: dynamically generated OTel Collector scrape configuration, Grafana dashboards backed by VictoriaMetrics, Cilium/Hubble network visibility, hostPort-based metrics exposure, and a ClusterIP Service for pushing OTLP traces.
+
+## Requirements
 
 ### Requirement: OTel Collector scrapes workload metrics dynamically
 The OTel Collector ConfigMap SHALL be generated dynamically by `OtelManifestBuilder`, combining a fixed set of static scrape jobs for host processes with a dynamic set of per-workload scrape jobs read from the K8s metrics registry (`easydblab-metrics-*` ConfigMaps). The static ClickHouse scrape job previously hardcoded in `otel-collector-config.yaml` SHALL be removed.
@@ -64,8 +70,6 @@ All dashboards SHALL include a `cluster` multi-select variable and an ad hoc fil
 - **AND** the dashboard SHALL be mounted at `/var/lib/grafana/dashboards/cluster-comparison`
 - **AND** the volume mount SHALL use `optional: true` so absence of the file does not block Grafana startup
 
-## ADDED Requirements
-
 ### Requirement: Cilium replaces Flannel as the K3s CNI
 The K3s cluster SHALL use Cilium as its CNI plugin with `kube-proxy` replacement enabled. K3s SHALL be started with `--flannel-backend=none --disable-network-policy`. Cilium SHALL be installed via helm before any workloads are deployed. Hubble SHALL be enabled with Prometheus metrics export.
 
@@ -94,8 +98,6 @@ K8s workloads installed via `config.yaml` SHALL use standard pod networking (not
 - **WHEN** a workload exposes metrics on `hostPort: 9180`
 - **THEN** the OTel DaemonSet (hostNetwork) can scrape `localhost:9180` on the same node
 - **AND** this is identical to how MAAC metrics are scraped at `localhost:9000`
-
-## ADDED Requirements
 
 ### Requirement: OTel Collector is reachable via ClusterIP Service
 

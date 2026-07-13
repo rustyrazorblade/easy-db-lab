@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Workload Runner
+
+## Purpose
+
+Discovers installed workload directories as top-level CLI subcommands, executes their `bin/` scripts with cluster state injected as environment variables, and installs their dashboards after a successful start.
+
+## Requirements
 
 ### Requirement: Installed workload dirs are discovered as top-level subcommands
 At startup, the CLI SHALL scan `context.workingDirectory` for subdirectories that contain a `bin/` directory. Each such directory SHALL be registered as a top-level PicoCLI subcommand whose sub-subcommands are the executable files found in `bin/`.

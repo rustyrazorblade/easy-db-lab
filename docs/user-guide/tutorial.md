@@ -101,6 +101,14 @@ This command creates:
 5. Configures K3s cluster on all nodes
 6. Writes SSH config and environment files
 
+```admonish warning title="up fails fast"
+If any step fails — EC2 setup, K3s, node labeling, StorageClasses, the observability stack,
+Tailscale — `up` aborts with a non-zero exit code instead of continuing with a
+partially-provisioned cluster. EC2 instances already launched are left running; clusters are
+ephemeral and there's no automatic rollback. Reclaim them with `easy-db-lab down`, fix the
+underlying issue, and re-run `up`.
+```
+
 ### Up Options
 
 | Option | Description |

@@ -1,6 +1,6 @@
 # Uninstalled Kit Hint
 
-## Overview
+## Purpose
 
 When the user types a top-level subcommand that is not installed but matches an available
 kit template, the CLI SHALL print an actionable error message instead of the generic
@@ -10,9 +10,7 @@ PicoCLI unmatched-argument error.
 
 ### Requirement: Hint for uninstalled available kit
 
-When an unrecognized top-level argument exactly matches the name of an available (installable)
-kit template, the CLI SHALL print a targeted message identifying the kit as not
-installed and providing the exact command to install it.
+When an unrecognized top-level argument exactly matches the name of an available (installable) kit template, the CLI SHALL print a targeted message identifying the kit as not installed and providing the exact command to install it.
 
 #### Scenario: User types an available but uninstalled kit name
 

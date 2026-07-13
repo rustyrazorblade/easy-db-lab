@@ -1,5 +1,7 @@
 # Live Stream Metrics
 
+## Purpose
+
 Real-time cluster metrics streaming via Redis pub/sub, queried from VictoriaMetrics using dashboard-consistent PromQL expressions.
 
 ## Requirements

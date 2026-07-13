@@ -1,7 +1,13 @@
-## ADDED Requirements
+# Kit Lifecycle Hooks
+
+## Purpose
+
+Let a kit declare hook scripts in its `config.yaml` that run after any other kit starts or stops, so observer kits can react to peer kit lifecycle events with retry-on-failure semantics.
+
+## Requirements
 
 ### Requirement: config.yaml declares post-kit hooks
-A kit's `config.yaml` MAY declare hook scripts that execute after any other kit starts or stops. Hooks are declared under a `hooks` key with `post-workload-start` and/or `post-workload-stop` sub-keys, each specifying a `script` path relative to the kit directory. An optional `kits` list scopes the hook to specific triggering kit names; when absent the hook fires for all kits.
+A kit's `config.yaml` MAY declare hook scripts that execute after any other kit starts or stops. Hooks SHALL be declared under a `hooks` key with `post-workload-start` and/or `post-workload-stop` sub-keys, each specifying a `script` path relative to the kit directory. An optional `kits` list scopes the hook to specific triggering kit names; when absent the hook fires for all kits.
 
 #### Scenario: Hook fires after any kit starts
 - **WHEN** kit A declares `hooks.post-workload-start.script` with no `kits` filter

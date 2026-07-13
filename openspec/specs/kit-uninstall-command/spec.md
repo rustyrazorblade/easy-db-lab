@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Kit Uninstall Command
+
+## Purpose
+
+Provides a top-level `uninstall` command group that lists installed kits exposing an uninstall phase as subcommands, runs a kit's uninstall phase, and removes its local directory on success.
+
+## Requirements
 
 ### Requirement: Top-level uninstall command group exists
 The CLI SHALL expose a top-level `uninstall` command group that is always present in the help output, even when no kits are installed.

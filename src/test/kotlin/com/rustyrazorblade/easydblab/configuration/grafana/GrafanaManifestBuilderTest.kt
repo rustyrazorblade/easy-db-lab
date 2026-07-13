@@ -82,6 +82,30 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
     }
 
     @Test
+    fun `buildDeployment does not attempt to install the bundled Pyroscope core plugin`() {
+        // Regression: grafana-pyroscope-datasource is a BUNDLED core plugin in Grafana 13.x.
+        // Listing it in GF_INSTALL_PLUGINS makes the boot-time install fail
+        // ("cannot install a Core plugin") and Grafana CrashLoopBackOffs. Only externally
+        // distributed plugins may appear here.
+        val deployment = builder.buildDeployment()
+        val grafanaContainer =
+            deployment.spec.template.spec.containers
+                .first { it.name == "grafana" }
+        val plugins =
+            grafanaContainer.env
+                .first { it.name == "GF_INSTALL_PLUGINS" }
+                .value
+                .split(",")
+
+        assertThat(plugins).doesNotContain("grafana-pyroscope-datasource")
+        assertThat(plugins).contains(
+            "grafana-clickhouse-datasource",
+            "victoriametrics-logs-datasource",
+            "grafana-polystat-panel",
+        )
+    }
+
+    @Test
     fun `buildDeployment includes volume mounts for all dashboards`() {
         val deployment = builder.buildDeployment()
         val container =

@@ -219,6 +219,12 @@ object Constants {
         // via the OTel Collector Jaeger receiver, since TiDB v8.5.x has no native OTel support.
         const val JAEGER_THRIFT_COMPACT_PORT = 6831
         const val CLEANUP_JOB_TTL_SECONDS = 300
+
+        // Max time `up` waits for every observability pod in the `default` namespace to reach Ready
+        // after the stack is applied. Generous because Grafana plugin installs and first-boot image
+        // pulls are slow; the wait is fail-fast on CrashLoopBackOff/ImagePullBackOff, so a broken
+        // stack aborts well before this ceiling.
+        const val OBSERVABILITY_READY_TIMEOUT_SECONDS = 300
         const val DB_MOUNT_PATH = "/mnt/db1"
 
         // Labels used by the metrics registry system.
@@ -340,6 +346,14 @@ object Constants {
          * explicitly while AWS and all other traffic stays direct.
          */
         const val PORT_PROPERTY = "easydblab.socks5Port"
+
+        /**
+         * Filename of the SOCKS5 proxy's `ssh -v` transcript. It lives under the workspace
+         * `logs/` directory (alongside `logs/info.log`), overwritten on each proxy start so the
+         * tail is always exactly the most recent attempt. Read back on verification failure to
+         * surface the real ssh error (e.g. a changed host key or refused connection).
+         */
+        const val SOCKS5_PROXY_LOG_FILE = "socks5-proxy.log"
     }
 
     // Tailscale VPN configuration

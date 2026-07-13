@@ -1,6 +1,6 @@
 # Dynamic OTel Scrape Config
 
-## Overview
+## Purpose
 
 The OTel Collector ConfigMap is generated dynamically by `OtelManifestBuilder`, combining a fixed set of static scrape jobs for host processes with a dynamic set of per-workload scrape jobs read from the K8s metrics registry (`easydblab-metrics-*` ConfigMaps). This allows workloads to register and deregister their metrics endpoints at runtime without manual config changes.
 

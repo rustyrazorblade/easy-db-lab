@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.commands.install
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.ExtensionRegistry
@@ -23,6 +24,7 @@ import java.io.File
  * [OptionSpec][picocli.CommandLine.Model.OptionSpec] API; values land in [argValues] via ISetter
  * callbacks before [execute] is called.
  */
+@RequiresProxy
 class KitInstallCommand(
     private val config: KitConfig,
     private val source: InstallTemplateResolver.TemplateSource,

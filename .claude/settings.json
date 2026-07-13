@@ -1,6 +1,8 @@
 {
+  "agent": "project-manager",
   "enabledPlugins": {
     "cassandra-expert@rustyrazorblade-plugins": true,
-    "easy-db-lab@rustyrazorblade-plugins": true
+    "easy-db-lab@rustyrazorblade-plugins": true,
+    "spec-flow@rustyrazorblade-plugins": true
   }
 }

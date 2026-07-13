@@ -36,8 +36,7 @@ The CLI SHALL expose `kit uninstall` as a subcommand that removes an installed k
 - **THEN** the kit is uninstalled as before
 
 ### Requirement: Uninstalled kit hint references `kit install`
-When the user types a top-level argument that matches an installable kit name,
-the hint message SHALL reference `kit install <name>`, not `install <name>`.
+When the user types a top-level argument that matches an installable kit name, the hint message SHALL reference `kit install <name>`, not `install <name>`.
 
 #### Scenario: Hint message uses new command path
 - **WHEN** the user runs `easy-db-lab clickhouse` before installing the clickhouse kit

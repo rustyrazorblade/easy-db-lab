@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.commands.spark
 
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.SparkService
@@ -23,6 +24,7 @@ import picocli.CommandLine.Option
  */
 @McpCommand
 @RequireProfileSetup
+@RequiresProxy
 @Command(
     name = "logs",
     description = ["Query Spark/EMR logs from Victoria Logs"],

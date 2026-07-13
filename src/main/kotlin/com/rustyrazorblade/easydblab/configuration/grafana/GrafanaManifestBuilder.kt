@@ -59,8 +59,13 @@ class GrafanaManifestBuilder(
         private const val READINESS_INITIAL_DELAY = 5
         private const val READINESS_PERIOD = 10
 
+        // Only externally-distributed plugins belong here. The Pyroscope datasource
+        // (grafana-pyroscope-datasource) is BUNDLED as a core plugin in Grafana 13.x — listing it
+        // makes the boot-time install step fail ("cannot install a Core plugin") and Grafana
+        // CrashLoopBackOffs. It is still declared as a datasource in GrafanaDatasourceConfig; the
+        // bundled plugin serves it without an install.
         private const val GRAFANA_PLUGINS =
-            "grafana-clickhouse-datasource,victoriametrics-logs-datasource,grafana-pyroscope-datasource,grafana-polystat-panel"
+            "grafana-clickhouse-datasource,victoriametrics-logs-datasource,grafana-polystat-panel"
 
         private const val RENDERER_TOKEN = "easydblab-renderer"
 

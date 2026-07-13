@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.commands
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.annotations.TriggerBackup
 import com.rustyrazorblade.easydblab.commands.cassandra.WriteConfig
 import com.rustyrazorblade.easydblab.commands.grafana.GrafanaUpdateConfig
@@ -64,6 +65,7 @@ import java.time.Duration
  */
 @McpCommand
 @RequireProfileSetup
+@RequiresProxy
 @TriggerBackup
 @CommandLine.Command(
     name = "up",
@@ -112,13 +114,64 @@ class Up : PicoBaseCommand() {
             workingState.initConfig
                 ?: error("No init config found. Please run 'easy-db-lab init' first.")
 
+        validateControlNodeConfigured(initConfig)
+
         configureAccountS3Bucket()
+        validateS3BucketConfigured()
         reapplyS3Policy()
         provisionInfrastructure(initConfig)
         writeConfigurationFiles()
-        commandExecutor.execute { WriteConfig() }
-        waitForSshAndDownloadVersions()
+        runNestedCommand { WriteConfig() }
+        waitForSshReady()
+        downloadCassandraVersions()
         setupInstancesIfNeeded()
+    }
+
+    /**
+     * Validates that the configuration will produce a control node, before any AWS resource is
+     * provisioned. Every downstream step — K3s, node labeling, StorageClasses, observability —
+     * depends on a control node existing. Discovering that it doesn't mid-provisioning, after
+     * EC2 instances are already running, is the exact failure this check exists to prevent.
+     */
+    private fun validateControlNodeConfigured(initConfig: InitConfig) {
+        if (initConfig.controlInstances < 1) {
+            eventBus.emit(Event.Provision.ControlNodeRequired(initConfig.controlInstances))
+            error(
+                "A control node is required to provision a cluster " +
+                    "(configured control instances: ${initConfig.controlInstances}).",
+            )
+        }
+    }
+
+    /**
+     * Validates that an S3 bucket is actually configured after [configureAccountS3Bucket] runs.
+     * That method is responsible for ensuring one exists; this is the assertion that it did, so
+     * a bug there fails loudly here rather than silently skipping registry TLS configuration and
+     * kubeconfig backup later.
+     */
+    private fun validateS3BucketConfigured() {
+        if (workingState.s3Bucket.isNullOrBlank()) {
+            eventBus.emit(Event.Provision.S3BucketRequired(workingState.name))
+            error("An S3 bucket is required to provision a cluster.")
+        }
+    }
+
+    /**
+     * Runs a nested command through [commandExecutor] and aborts `up` if it fails.
+     *
+     * [CommandExecutor.execute] never lets a nested command's exception escape to its caller —
+     * [com.rustyrazorblade.easydblab.services.DefaultCommandExecutor.executeWithLifecycle]
+     * catches it, logs the cause chain, and converts it to a non-zero exit code. Callers must
+     * therefore inspect the returned exit code themselves; this helper does that once so every
+     * nested-command call site aborts provisioning identically instead of discarding the result.
+     */
+    private fun <T : PicoCommand> runNestedCommand(commandFactory: () -> T) {
+        val command = commandFactory()
+        val commandName = command::class.simpleName ?: "nested command"
+        val exitCode = commandExecutor.execute { command }
+        if (exitCode != 0) {
+            error("$commandName failed during provisioning (exit code $exitCode).")
+        }
     }
 
     /**
@@ -128,13 +181,8 @@ class Up : PicoBaseCommand() {
      */
     private fun reapplyS3Policy() {
         eventBus.emit(Event.Provision.IamUpdating)
-        runCatching {
-            s3BucketService.attachS3Policy(Constants.AWS.Roles.EC2_INSTANCE_ROLE)
-        }.onFailure { e ->
-            log.warn(e) { "Failed to re-apply S3 policy (cluster may still work if policy exists)" }
-        }.onSuccess {
-            log.debug { "S3 policy re-applied successfully" }
-        }
+        s3BucketService.attachS3Policy(Constants.AWS.Roles.EC2_INSTANCE_ROLE)
+        log.debug { "S3 policy re-applied successfully" }
     }
 
     /**
@@ -454,13 +502,17 @@ class Up : PicoBaseCommand() {
                 context.workingDirectory.toPath(),
                 workingState,
                 userConfig,
-            ).onFailure { error ->
-                log.error(error) { "Failed to write some configuration files" }
-            }
+            ).getOrThrow()
     }
 
-    /** Waits for SSH to become available on instances and downloads Cassandra version info. */
-    private fun waitForSshAndDownloadVersions() {
+    /**
+     * Waits for SSH to become available on the control node and Cassandra hosts.
+     *
+     * The control node is included because the SOCKS tunnel and K3s setup both dial it next;
+     * confirming it is reachable here, rather than discovering it isn't mid-tunnel-setup, is
+     * what [downloadCassandraVersions] alone never verified.
+     */
+    private fun waitForSshReady() {
         eventBus.emit(Event.Provision.SshWaiting)
         Thread.sleep(SSH_STARTUP_DELAY.toMillis())
 
@@ -474,23 +526,38 @@ class Up : PicoBaseCommand() {
 
         Retry
             .decorateRunnable(retry) {
-                hostOperationsService.withHosts(
-                    workingState.hosts,
-                    ServerType.Cassandra,
-                    hosts.hostList,
-                ) { clusterHost ->
-                    val host = clusterHost.toHost()
-                    remoteOps.executeRemotely(host, "echo 1").text
-                    val versionsFile = File(context.workingDirectory, "cassandra_versions.yaml")
-                    if (!versionsFile.exists()) {
-                        remoteOps.download(
-                            host,
-                            "/etc/cassandra_versions.yaml",
-                            versionsFile.toPath(),
-                        )
-                    }
-                }
+                checkSshReady(ServerType.Control)
+                checkSshReady(ServerType.Cassandra)
             }.run()
+    }
+
+    private fun checkSshReady(serverType: ServerType) {
+        hostOperationsService.withHosts(
+            workingState.hosts,
+            serverType,
+            hosts.hostList,
+        ) { clusterHost ->
+            remoteOps.executeRemotely(clusterHost.toHost(), "echo 1").text
+        }
+    }
+
+    /** Downloads Cassandra version metadata from db hosts. Meaningless for the control node. */
+    private fun downloadCassandraVersions() {
+        hostOperationsService.withHosts(
+            workingState.hosts,
+            ServerType.Cassandra,
+            hosts.hostList,
+        ) { clusterHost ->
+            val host = clusterHost.toHost()
+            val versionsFile = File(context.workingDirectory, "cassandra_versions.yaml")
+            if (!versionsFile.exists()) {
+                remoteOps.download(
+                    host,
+                    "/etc/cassandra_versions.yaml",
+                    versionsFile.toPath(),
+                )
+            }
+        }
     }
 
     /** Runs instance setup, K3s configuration, and optional AxonOps setup unless --no-setup. */
@@ -498,14 +565,14 @@ class Up : PicoBaseCommand() {
         if (noSetup) {
             eventBus.emit(Event.Provision.SkippingNodeSetup)
         } else {
-            commandExecutor.execute { SetupInstance() }
+            runNestedCommand { SetupInstance() }
             startTailscaleIfConfigured()
             startProxyIfNeeded()
             startK3sOnAllNodes()
 
             if (userConfig.axonOpsKey.isNotBlank() && userConfig.axonOpsOrg.isNotBlank()) {
                 eventBus.emit(Event.Provision.AxonOpsSetup(userConfig.axonOpsOrg))
-                commandExecutor.execute { ConfigureAxonOps() }
+                runNestedCommand { ConfigureAxonOps() }
             }
         }
     }
@@ -527,35 +594,34 @@ class Up : PicoBaseCommand() {
     /**
      * Starts Tailscale VPN on the control node if credentials are configured.
      *
-     * This enables secure remote access to the cluster through Tailscale's VPN.
-     * If Tailscale fails to start, a warning is logged but the up command continues.
+     * This enables secure remote access to the cluster through Tailscale's VPN. A requested
+     * networking path that fails to come up is a failed provision: this aborts `up` rather than
+     * warning and continuing, but preserves the manual-setup instruction in the thrown message
+     * so the user still knows how to recover.
      */
     private fun startTailscaleIfConfigured() {
         if (!workingState.isTailscaleEnabled()) return
         if (userConfig.tailscaleClientId.isNotBlank() && userConfig.tailscaleClientSecret.isNotBlank()) {
             eventBus.emit(Event.Provision.TailscaleStarting)
-            try {
-                commandExecutor.execute { TailscaleStart() }
-            } catch (e: Exception) {
-                eventBus.emit(Event.Provision.TailscaleWarning(e.message ?: "Unknown error"))
-                eventBus.emit(Event.Provision.TailscaleManualInstruction)
+            val exitCode = commandExecutor.execute { TailscaleStart() }
+            if (exitCode != 0) {
+                error(
+                    "Failed to start Tailscale VPN (exit code $exitCode). " +
+                        "You can manually start it later with: easy-db-lab tailscale start",
+                )
             }
         }
     }
 
-    /** Starts K3s server on control node and joins Cassandra/Stress nodes as agents. */
+    /** Installs Cilium as the K3s CNI on the control node. */
     private fun installCilium() {
         val controlHosts = workingState.hosts[ServerType.Control] ?: emptyList()
-        if (controlHosts.isEmpty()) return
         ciliumService.install(controlHosts.first().toHost()).getOrThrow()
     }
 
+    /** Starts K3s server on control node and joins Cassandra/Stress nodes as agents. */
     private fun startK3sOnAllNodes() {
         val controlHosts = workingState.hosts[ServerType.Control] ?: emptyList()
-        if (controlHosts.isEmpty()) {
-            eventBus.emit(Event.Provision.NoControlNodes)
-            return
-        }
 
         // Configure registry TLS before K3s starts so registries.yaml is in place
         configureRegistryTls()
@@ -582,24 +648,17 @@ class Up : PicoBaseCommand() {
             result.errors.forEach { (operation, error) ->
                 log.error(error) { "K3s setup failed: $operation" }
             }
+            error("K3s cluster setup failed: " + result.errors.keys.joinToString(", "))
         }
 
         // Label db and app nodes with ordinals for StatefulSet pod-to-node pinning
         labelNodesWithOrdinals(controlHosts.first())
 
         // Ensure StorageClasses exist for Local PVs
-        k8sService
-            .ensureLocalStorageClass(controlHosts.first())
-            .getOrElse { exception ->
-                log.warn(exception) { "Failed to create local-storage StorageClass" }
-            }
-        k8sService
-            .ensureLocalStorageWfcClass(controlHosts.first())
-            .getOrElse { exception ->
-                log.warn(exception) { "Failed to create local-storage-wfc StorageClass" }
-            }
+        k8sService.ensureLocalStorageClass(controlHosts.first()).getOrThrow()
+        k8sService.ensureLocalStorageWfcClass(controlHosts.first()).getOrThrow()
 
-        commandExecutor.execute { GrafanaUpdateConfig() }
+        runNestedCommand { GrafanaUpdateConfig() }
     }
 
     /**
@@ -611,23 +670,21 @@ class Up : PicoBaseCommand() {
      */
     private fun labelNodesWithOrdinals(controlHost: ClusterHost) {
         // Label control node with type=control (db and app nodes get this via K3s agent config)
-        k8sService.labelNode(controlHost, controlHost.alias, mapOf("type" to "control")).getOrElse { exception ->
-            log.warn(exception) { "Failed to label control node ${controlHost.alias} with type=control" }
-        }
+        k8sService.labelNode(controlHost, controlHost.alias, mapOf("type" to "control")).getOrThrow()
 
         val dbHosts = workingState.hosts[ServerType.Cassandra] ?: emptyList()
         val appHosts = workingState.hosts[ServerType.Stress] ?: emptyList()
 
+        // Zero db nodes is a legal configuration (e.g. Trino + OpenSearch) — this is a skip
+        // because there is nothing to do, not a failure, so it must never warn.
         if (dbHosts.isEmpty()) {
-            log.warn { "No db nodes found, skipping db node labeling" }
+            log.debug { "No db nodes found, skipping db node labeling" }
         } else {
             eventBus.emit(Event.Provision.NodeLabeling(dbHosts.size))
             dbHosts.forEachIndexed { index, host ->
                 k8sService
                     .labelNode(controlHost, host.alias, mapOf(Constants.NODE_ORDINAL_LABEL to index.toString()))
-                    .getOrElse { exception ->
-                        log.warn(exception) { "Failed to label db node ${host.alias} with ordinal $index" }
-                    }
+                    .getOrThrow()
             }
             eventBus.emit(Event.Provision.NodeLabelingComplete)
         }
@@ -637,9 +694,7 @@ class Up : PicoBaseCommand() {
             appHosts.forEachIndexed { index, host ->
                 k8sService
                     .labelNode(controlHost, host.alias, mapOf(Constants.NODE_ORDINAL_LABEL to index.toString()))
-                    .getOrElse { exception ->
-                        log.warn(exception) { "Failed to label app node ${host.alias} with ordinal $index" }
-                    }
+                    .getOrThrow()
             }
             eventBus.emit(Event.Provision.NodeLabelingComplete)
         }
@@ -654,16 +709,7 @@ class Up : PicoBaseCommand() {
      */
     private fun configureRegistryTls() {
         val controlHosts = workingState.hosts[ServerType.Control] ?: emptyList()
-        if (controlHosts.isEmpty()) {
-            log.warn { "No control nodes found, skipping registry TLS configuration" }
-            return
-        }
-
-        val s3Bucket = workingState.s3Bucket
-        if (s3Bucket.isNullOrBlank()) {
-            log.warn { "S3 bucket not configured, skipping registry TLS configuration" }
-            return
-        }
+        val s3Bucket = checkNotNull(workingState.s3Bucket) { "S3 bucket must be configured before registry TLS setup" }
 
         val controlHost = controlHosts.first().toHost()
         val registryHost = controlHost.private

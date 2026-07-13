@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -16,6 +17,7 @@ import com.rustyrazorblade.easydblab.kubernetes.getLocalKubeconfigPath
 import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupRuleInfo
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
+import com.rustyrazorblade.easydblab.proxy.ProxyAvailability
 import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.StressJobService
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
@@ -36,9 +38,34 @@ import java.time.format.DateTimeFormatter
  * - Security group rules (full ingress/egress)
  * - Kubernetes jobs running on K3s cluster
  * - Cassandra version (live via SSH, fallback to cached)
+ *
+ * ## The one permitted exception to fail-fast
+ *
+ * Every other `@RequiresProxy` command aborts when the SOCKS5 tunnel cannot be established.
+ * `Status` is the single, deliberate exception: it carries `@RequiresProxy(tolerateFailure =
+ * true)`, so a proxy failure is recorded on [ProxyAvailability] instead of aborting the command
+ * (see `DefaultCommandExecutor.checkRequirements()`).
+ *
+ * Unavailability follows the **transport** a section actually uses, not a hand-picked list.
+ * Sections sourced from cluster state, the AWS SDK, or direct SSH to the nodes still render when
+ * the proxy is down — SSH never traverses the tunnel, which exists only to reach the private
+ * Kubernetes API. Only the two sections sourced from that API (stress jobs and the ClickHouse
+ * namespace status) are marked unavailable, via [renderProxyDependentSection]. There is exactly
+ * one rendering path ([execute]) for both the healthy and degraded reports, so a section added
+ * to the healthy report cannot silently vanish from the degraded one unless it too depends on
+ * the Kubernetes API.
+ *
+ * This is permitted only because `Status` is read-only — it changes no cluster state, so
+ * reporting a partial view can never leave the cluster in an unexpected condition. It is why
+ * `status` is the command a user reaches for when the cluster is already broken. It still exits
+ * non-zero when degraded (see [StatusDegradedException]), so a partial report is never mistaken
+ * by a script for a healthy cluster. See design decision D9 in
+ * `openspec/changes/up-fail-fast/design.md`. **No command that mutates state may take this
+ * exception.**
  */
 @McpCommand
 @RequireProfileSetup
+@RequiresProxy(tolerateFailure = true)
 @Command(
     name = "status",
     description = ["Display full environment status"],
@@ -48,6 +75,7 @@ class Status :
     PicoCommand,
     KoinComponent {
     private val context: Context by inject()
+    private val proxyAvailability: ProxyAvailability by inject()
 
     companion object {
         private val log = KotlinLogging.logger {}
@@ -83,6 +111,11 @@ class Status :
             return
         }
 
+        // One rendering path for both the healthy and degraded reports. Every section renders by
+        // default; only the two sourced from the private Kubernetes API are wrapped in
+        // renderProxyDependentSection, so a proxy failure marks exactly those unavailable while
+        // every AWS-, cluster-state-, and SSH-backed section still renders. A section added here
+        // renders unless it is deliberately wrapped — it can never silently vanish when degraded.
         displayClusterSection()
         displayNodesSection()
         displayNetworkingSection()
@@ -91,11 +124,51 @@ class Status :
         displayOpenSearchSection()
         displayS3BucketSection()
         displayKitsSection()
-        displayStressJobsSection()
+        renderProxyDependentSection("Stress jobs") { displayStressJobsSection() }
         displayObservabilitySection()
-        displayClickHouseSection()
+        renderProxyDependentSection("ClickHouse") { displayClickHouseSection() }
         displayS3ManagerSection()
         displayCassandraVersionSection()
+
+        // A degraded report is still an unsuccessful command: fail after rendering so a script
+        // can never read a partial report as a healthy cluster. See StatusDegradedException.
+        val proxyFailure = proxyAvailability.failure()
+        if (proxyFailure != null) {
+            throw StatusDegradedException(proxyFailure)
+        }
+    }
+
+    /**
+     * Renders a status section whose data comes from the private Kubernetes API (Fabric8 via
+     * `K8sClientProvider`) and therefore depends on the SOCKS tunnel.
+     *
+     * When the proxy failed to establish (recorded on [ProxyAvailability]; see the class KDoc and
+     * design decision D9), the section is reported as [Event.Status.SectionUnavailable] with the
+     * proxy failure as its reason, instead of being read. Otherwise it renders normally via
+     * [render].
+     *
+     * This is the ONLY place a section is skipped on a proxy failure, and it is keyed on the
+     * transport — not on a hand-maintained list of section names. Sections sourced from cluster
+     * state, the AWS SDK, or direct SSH to the nodes are never wrapped here, because SSH never
+     * traverses the tunnel and neither the AWS APIs nor cluster state touch it; they always
+     * render, degraded or not. There is deliberately no second "degraded" rendering routine that
+     * could fall out of sync with this one.
+     */
+    private fun renderProxyDependentSection(
+        sectionName: String,
+        render: () -> Unit,
+    ) {
+        val proxyFailure = proxyAvailability.failure()
+        if (proxyFailure == null) {
+            render()
+            return
+        }
+        eventBus.emit(
+            Event.Status.SectionUnavailable(
+                sectionName,
+                "SOCKS proxy could not be established: ${proxyFailure.message}",
+            ),
+        )
     }
 
     /**
@@ -562,3 +635,16 @@ private fun ClusterHost.toHost(): Host =
         alias = this.alias,
         availabilityZone = this.availabilityZone,
     )
+
+/**
+ * Thrown by [Status] after it renders a degraded report, so the command still exits non-zero.
+ *
+ * Rendering happens before this is thrown — `Status.execute` renders every section, guarding
+ * only the tunnel-dependent ones via `renderProxyDependentSection`, and throws this only at the
+ * end — so a caller reading only the output still sees everything that could be observed, while a
+ * caller reading only the exit code can never mistake a partial report for a healthy cluster.
+ * The proxy failure that forced the degradation is carried as this exception's cause.
+ */
+class StatusDegradedException(
+    proxyFailure: Throwable,
+) : Exception("status degraded: SOCKS proxy could not be established", proxyFailure)

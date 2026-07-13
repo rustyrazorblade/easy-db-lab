@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.annotations.RequireDocker
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
+import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.annotations.TriggerBackup
 import com.rustyrazorblade.easydblab.commands.PicoCommand
 import com.rustyrazorblade.easydblab.commands.SetupProfile
@@ -13,6 +14,7 @@ import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
+import com.rustyrazorblade.easydblab.proxy.ProxyAvailability
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.KoinComponent
@@ -29,7 +31,7 @@ import kotlin.system.exitProcess
  * - [schedule]: Schedule a command to run after the current command's lifecycle completes.
  *
  * The full lifecycle includes:
- * 1. Requirement checks (@RequireProfileSetup, @RequireSSHKey, @RequireDocker)
+ * 1. Requirement checks (@RequireProfileSetup, @RequireSSHKey, @RequireDocker, @RequiresProxy)
  * 2. Pre-execute hooks (@PreExecute)
  * 3. Command execution
  * 4. Post-execute hooks (@PostExecute)
@@ -88,6 +90,7 @@ class DefaultCommandExecutor(
     private val resourceManager: ResourceManager,
     private val eventBus: EventBus,
     private val socksProxyService: SocksProxyService,
+    private val proxyAvailability: ProxyAvailability,
 ) : CommandExecutor,
     KoinComponent {
     // Lazy injection - only resolves when first accessed (defers AWS dependency chain)
@@ -109,10 +112,9 @@ class DefaultCommandExecutor(
      * Execute a command with full lifecycle, then process any scheduled commands.
      * This is the entry point for top-level command execution (called by CommandLineParser).
      *
-     * Starts the SOCKS5 proxy eagerly before executing any command, when the cluster is
-     * provisioned, infrastructure is UP, and Tailscale is not enabled. This guarantees the
-     * proxy is always available before any service needs it, and automatically restarts it
-     * if the process was killed between invocations.
+     * The SOCKS5 proxy is started by [checkRequirements] — see [ensureProxyRunning] — only for
+     * the command(s) actually executed (this one, and any it schedules or delegates to) that
+     * carry [RequiresProxy]. A command that never declares the dependency never starts a tunnel.
      *
      * @param command The command to execute
      * @return Exit code (0 for success, non-zero for failure)
@@ -120,10 +122,6 @@ class DefaultCommandExecutor(
     fun executeTopLevel(command: PicoCommand): Int {
         // VPC reconstruction from environment variable (if set)
         handleVpcReconstructionFromEnv()
-
-        // Eagerly start SOCKS5 proxy when cluster is provisioned and Tailscale is not active.
-        // ensureRunning is idempotent — it reuses the existing OS process if it is still alive.
-        ensureProxyRunning()
 
         try {
             val exitCode = executeWithLifecycle(command)
@@ -153,11 +151,15 @@ class DefaultCommandExecutor(
     }
 
     /**
-     * Starts the SOCKS5 proxy if the cluster is provisioned, infrastructure is UP,
-     * and Tailscale is not active. Failures are logged as warnings and do not abort
-     * the command — the proxy may not be reachable during teardown or partial failures.
+     * Starts the SOCKS5 proxy for commands that carry [RequiresProxy] (see [checkRequirements]),
+     * when the cluster is provisioned, infrastructure is UP, and Tailscale is not active.
+     *
+     * A failure to establish the proxy propagates to the caller rather than being swallowed:
+     * the annotation is the assertion that the command cannot proceed without a working tunnel,
+     * so publishing a dead one (or silently running without it) would only defer the failure to
+     * a more confusing Fabric8/HTTP error later. `Down` is never annotated, so it never starts a
+     * tunnel it would immediately have to tear down.
      */
-    @Suppress("TooGenericExceptionCaught")
     private fun ensureProxyRunning() {
         if (!clusterStateManager.exists()) return
         val state =
@@ -171,26 +173,25 @@ class DefaultCommandExecutor(
         if (state.isTailscaleEnabled()) return
         val controlHost = state.getControlHost() ?: return
 
-        try {
-            socksProxyService.ensureRunning(controlHost)
-        } catch (e: Exception) {
-            log.warn(e) { "SOCKS5 proxy startup failed — proceeding without proxy" }
-        }
+        socksProxyService.ensureRunning(controlHost)
     }
 
     /**
      * Executes a command with the complete lifecycle:
-     * 1. Check requirements
+     * 1. Check requirements (may propagate a failure, exit the process, or run setup)
      * 2. Execute command (includes @PreExecute, execute(), @PostExecute via PicoCommand.call())
      * 3. Handle post-success actions
+     *
+     * Requirement checks and command execution share one try/catch so that a failure raised
+     * while checking requirements (e.g. [RequiresProxy] failing to establish the tunnel) is
+     * reported and converted to a non-zero exit code exactly like a failure inside the command
+     * itself, rather than escaping uncaught.
      */
+    @Suppress("TooGenericExceptionCaught")
     private fun executeWithLifecycle(command: PicoCommand): Int {
-        // 1. Check requirements (may exit process on failure or run setup)
-        checkRequirements(command)
-
-        // 2. Execute with PicoCommand lifecycle (@PreExecute, execute(), @PostExecute)
         val exitCode =
             try {
+                checkRequirements(command)
                 command.call()
             } catch (e: Exception) {
                 log.error(e) { "Command execution failed" }
@@ -216,6 +217,12 @@ class DefaultCommandExecutor(
      */
     private fun checkRequirements(command: PicoCommand) {
         val annotations = command::class.annotations
+
+        // Clear any proxy failure recorded for a previous command before this one runs. Without
+        // this, a Server/Repl session that keeps the process alive across many commands could
+        // let a stale failure from an earlier command leak into a later one that never touched
+        // the proxy at all.
+        proxyAvailability.clear()
 
         // Check if the command requires profile setup
         if (annotations.any { it is RequireProfileSetup }) {
@@ -247,6 +254,33 @@ class DefaultCommandExecutor(
             if (!checkSSHKeyAvailability()) {
                 eventBus.emit(Event.Command.SshKeyMissing(requirementCheckDeps.userConfigProvider.sshKeyPath))
                 exitProcess(1)
+            }
+        }
+
+        // Start the SOCKS5 proxy for commands that declare a dependency on it. A failure here
+        // propagates — see ensureProxyRunning — and is caught by the try/catch in
+        // executeWithLifecycle exactly like a failure inside the command itself.
+        //
+        // The single exception is a command whose annotation sets tolerateFailure = true
+        // (currently only Status, see RequiresProxy's KDoc and design decision D9). For that
+        // narrow, explicitly-declared case, the failure is recorded on ProxyAvailability instead
+        // of propagating, and the command runs anyway — it is the command's own job to query
+        // ProxyAvailability and degrade. This is not the blanket "proceeding without proxy"
+        // swallow this change removed: it applies only to a command that opted in at its
+        // declaration site, and only to this one failure.
+        val requiresProxy = annotations.filterIsInstance<RequiresProxy>().firstOrNull()
+        if (requiresProxy != null) {
+            if (requiresProxy.tolerateFailure) {
+                runCatching { ensureProxyRunning() }
+                    .onFailure { e ->
+                        log.warn(e) {
+                            "Proxy failed to establish for ${command::class.simpleName}; " +
+                                "this command tolerates the failure and will report degraded state"
+                        }
+                        proxyAvailability.recordFailure(e)
+                    }
+            } else {
+                ensureProxyRunning()
             }
         }
     }

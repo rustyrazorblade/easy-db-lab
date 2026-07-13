@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services.aws
 
+import com.rustyrazorblade.easydblab.SharedLocalStack
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
 import com.rustyrazorblade.easydblab.services.aws.EC2VpcService
 import com.rustyrazorblade.easydblab.services.aws.EMRService
@@ -13,15 +14,6 @@ import org.junit.jupiter.api.TestInstance
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
-import org.testcontainers.containers.localstack.LocalStackContainer
-import org.testcontainers.containers.localstack.LocalStackContainer.Service
-import org.testcontainers.containers.wait.strategy.Wait
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
-import org.testcontainers.utility.DockerImageName
-import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
-import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
-import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.ec2.Ec2Client
 import software.amazon.awssdk.services.ec2.model.AttachInternetGatewayRequest
 import software.amazon.awssdk.services.ec2.model.AuthorizeSecurityGroupIngressRequest
@@ -42,19 +34,13 @@ import software.amazon.awssdk.services.ec2.model.ResourceType as Ec2ResourceType
  * real AWS SDK API calls against a LocalStack EC2 endpoint.
  *
  * EMR and OpenSearch are mocked since LocalStack Community Edition doesn't support them.
+ *
+ * Uses the JVM-wide [SharedLocalStack] EC2 backend. Every assertion is scoped to a
+ * single VPC id created by the test (via `discoverResources(vpcId)`), so VPCs created
+ * by co-tenant EC2 test classes cannot affect these results.
  */
-@Testcontainers
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class AwsInfrastructureServiceIntegrationTest {
-    companion object {
-        @Container
-        @JvmStatic
-        val localStack: LocalStackContainer =
-            LocalStackContainer(DockerImageName.parse("localstack/localstack:3.0"))
-                .withServices(Service.EC2)
-                .waitingFor(Wait.forHttp("/_localstack/health").forStatusCode(200))
-    }
-
     private lateinit var ec2Client: Ec2Client
     private lateinit var vpcService: EC2VpcService
     private lateinit var emrService: EMRService
@@ -63,21 +49,7 @@ class AwsInfrastructureServiceIntegrationTest {
 
     @BeforeAll
     fun setupClients() {
-        val credentials =
-            StaticCredentialsProvider.create(
-                AwsBasicCredentials.create(
-                    localStack.accessKey,
-                    localStack.secretKey,
-                ),
-            )
-
-        ec2Client =
-            Ec2Client
-                .builder()
-                .endpointOverride(localStack.getEndpointOverride(Service.EC2))
-                .region(Region.of(localStack.region))
-                .credentialsProvider(credentials)
-                .build()
+        ec2Client = SharedLocalStack.ec2Client()
     }
 
     @BeforeEach

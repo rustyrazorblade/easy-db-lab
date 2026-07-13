@@ -24,7 +24,7 @@ Every manifest builder must have:
 
 ### Test Location
 
-`src/test/kotlin/.../services/K8sServiceIntegrationTest.kt` — single K3s container shared across all tests (`@TestInstance(PER_CLASS)`).
+`src/integrationTest/kotlin/.../services/K8sServiceIntegrationTest.kt` — single K3s container shared across all tests (`@TestInstance(PER_CLASS)`). This test lives in the slow `integrationTest` source set (Docker-only), not `src/test/`; run it with `./gradlew integrationTest` (or `check`).
 
 ## Core State Management
 

@@ -114,6 +114,34 @@ tasks.named<CreateStartScripts>("startScripts") {
     }
 }
 
+// Test tiering: a fast UNIT tier (`test`) and a slow INTEGRATION tier (`integrationTest`),
+// structurally separated by classpath scoping. `./gradlew test` runs ONLY the unit tier and
+// needs no Docker; the integration tier (TestContainers, the Fabric8 mock server, real
+// socket/SSH/Redis/K8s I/O) lives in `src/integrationTest/kotlin` and is wired into `check`
+// below. The three integration-only test dependencies are scoped to this suite (see the
+// `dependencies` block) so a container test can no longer even COMPILE under `src/test`.
+testing {
+    suites {
+        // Pin both suites to the same JUnit Jupiter version as the `libs.testing` bundle so the
+        // suite DSL doesn't fall back to its JUnit 4 default and pull a stray junit4 jar onto
+        // either test classpath.
+        val test by getting(JvmTestSuite::class) {
+            useJUnitJupiter(libs.versions.jupiter)
+        }
+
+        @Suppress("UnusedPrivateProperty")
+        val integrationTest by registering(JvmTestSuite::class) {
+            useJUnitJupiter(libs.versions.jupiter)
+        }
+    }
+}
+
+// The integration tier reuses every dependency available to the unit tier (archunit,
+// koin-test, coroutines-test, the testing bundle) so shared test deps live in exactly one
+// place; the three integration-only deps are added on top in the `dependencies` block.
+configurations["integrationTestImplementation"].extendsFrom(configurations["testImplementation"])
+configurations["integrationTestRuntimeOnly"].extendsFrom(configurations["testRuntimeOnly"])
+
 // In this section you declare the dependencies for your production and test code
 dependencies {
     // Logging
@@ -184,15 +212,29 @@ dependencies {
     implementation(libs.mysql.connector.j)
     implementation(libs.postgresql.jdbc)
 
-    // Testing
+    // Testing — shared across BOTH tiers (unit `test` + `integrationTest`). The
+    // integrationTest source set inherits these via `extendsFrom(testImplementation)`
+    // wired below.
     testImplementation(libs.archunit.junit5)
     testImplementation(libs.kotlin.reflect)
     testImplementation(libs.bundles.testing)
     testImplementation(libs.bundles.koin.test)
     testImplementation(libs.kotlinx.coroutines.test)
-    testImplementation(libs.bundles.testcontainers)
-    testImplementation(libs.fabric8.kubernetes.server.mock)
-    testImplementation(libs.okhttpMockwebserver)
+
+    // Integration-tier-only dependencies. Deliberately scoped to `integrationTest` and NOT
+    // to `testImplementation` so that a container / mock-server test can no longer COMPILE
+    // under `src/test`. This is the structural enforcement of the tiering split: any test
+    // that reaches for TestContainers, the Fabric8 mock server, or MockWebServer must live
+    // in `src/integrationTest`.
+    "integrationTestImplementation"(libs.bundles.testcontainers)
+    "integrationTestImplementation"(libs.fabric8.kubernetes.server.mock)
+    "integrationTestImplementation"(libs.okhttpMockwebserver)
+
+    // The production code and the compiled output of the unit `test` source set (shared helpers
+    // like BaseKoinTest, MockSSHClient, custom AssertJ assertions, TestPrompter) reach the
+    // integration tier's compile AND runtime classpaths through the `associateWith(main)` /
+    // `associateWith(test)` friend-path wiring below, so no explicit project()/test-output
+    // dependency is declared here.
 }
 
 kotlin {
@@ -211,6 +253,21 @@ sourceSets {
     val test by getting {
         java.srcDirs("src/test/kotlin")
     }
+    val integrationTest by getting {
+        java.srcDirs("src/integrationTest/kotlin")
+    }
+}
+
+// Give the integration tier the same `internal`-visibility friend paths the unit `test` tier
+// gets for free. Kotlin only wires the `test` compilation as a friend of `main`; a custom
+// source set does not get that association, so integration tests (moved out of `src/test`)
+// could not see `internal` members of production code or of the shared unit-test helpers.
+// Associating with both `main` and `test` restores that access AND puts their compiled output
+// on the integration tier's compile + runtime classpaths, so no separate project()/test-output
+// dependency is needed.
+kotlin.target.compilations.named("integrationTest") {
+    associateWith(kotlin.target.compilations.getByName("main"))
+    associateWith(kotlin.target.compilations.getByName("test"))
 }
 
 // Apply consistent test logging to every test task in every subproject.
@@ -226,9 +283,11 @@ allprojects {
     }
 }
 
-tasks.test {
-    useJUnitPlatform()
-
+// Shared execution config for BOTH test tiers (`test` + `integrationTest`). The integration
+// tier needs the same TestContainers/Docker environment as the unit tier, so configure every
+// Test task in this project rather than just `test`. (`useJUnitPlatform()` is already set per
+// suite in the `testing` block above.)
+tasks.withType<Test>().configureEach {
     // Enable HTML and XML reports
     reports {
         junitXml.required.set(true)
@@ -258,6 +317,11 @@ tasks.test {
         println("  Max parallel forks: $maxParallelForks")
         println("========================================")
     }
+}
+
+// `./gradlew check` must run BOTH tiers; `./gradlew test` stays UNIT-ONLY (fast, no Docker).
+tasks.named("check") {
+    dependsOn(testing.suites.named("integrationTest"))
 }
 
 // Packer testing tasks
@@ -345,6 +409,13 @@ tasks.named<io.gitlab.arturbosch.detekt.Detekt>("detektMain") {
 }
 tasks.named<io.gitlab.arturbosch.detekt.Detekt>("detektTest") {
     baseline.set(file("config/detekt/baseline-test.xml"))
+}
+tasks.named<io.gitlab.arturbosch.detekt.Detekt>("detektIntegrationTest") {
+    baseline.set(file("config/detekt/baseline-integration-test.xml"))
+}
+
+tasks.named<io.gitlab.arturbosch.detekt.Detekt>("detekt") {
+    source(files("src/integrationTest/kotlin"))
 }
 
 // detekt 1.23.8 bundles a Kotlin compiler (2.0.21) that cannot run under a JDK 25

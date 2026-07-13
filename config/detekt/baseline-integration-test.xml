@@ -1,0 +1,10 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>HasPlatformType:RedisEventListenerTest.kt$RedisEventListenerTest.Companion$@Container @JvmStatic val redis = GenericContainer("redis:7-alpine").withExposedPorts(6379)</ID>
+    <ID>LargeClass:K8sServiceIntegrationTest.kt$K8sServiceIntegrationTest</ID>
+    <ID>LongMethod:K8sServiceIntegrationTest.kt$K8sServiceIntegrationTest$@Test @Order(23) fun `PV with stale claimRef should rebind after clearing UID`()</ID>
+    <ID>UnusedPrivateMember:K8sServiceIntegrationTest.kt$K8sServiceIntegrationTest$private fun assertStatefulSetExists(name: String)</ID>
+  </CurrentIssues>
+</SmellBaseline>

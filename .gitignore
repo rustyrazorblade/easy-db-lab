@@ -154,6 +154,9 @@ CLAUDE.local.md
 site/
 .claude/settings.local.json
 
+# spec-flow local flagged-test set (must never be committed)
+.spec-flow/
+
 # Cassandra Analytics build artifacts (see bin/build-cassandra-analytics)
 .cassandra-analytics
 .cassandra-analytics/
@@ -176,3 +179,4 @@ profiles/
 /presto/
 .claude/scheduled_tasks*
 
+/.memsearch

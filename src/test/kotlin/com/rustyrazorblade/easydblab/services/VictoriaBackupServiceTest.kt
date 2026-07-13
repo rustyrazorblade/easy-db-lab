@@ -19,6 +19,7 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.reset
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import java.time.Duration
 
 /**
  * Test suite for VictoriaBackupService.
@@ -57,7 +58,8 @@ class VictoriaBackupServiceTest : BaseKoinTest() {
             module {
                 single<K8sService> { mockK8sService }
                 factory<VictoriaBackupService> {
-                    DefaultVictoriaBackupService(get(), get())
+                    // Zero poll interval so the job-wait loop does not sleep between mock polls.
+                    DefaultVictoriaBackupService(get(), get(), jobPollInterval = Duration.ZERO)
                 }
             },
         )

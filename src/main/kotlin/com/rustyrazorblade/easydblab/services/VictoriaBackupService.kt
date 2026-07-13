@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.configuration.victoria.VictoriaBackupJobBui
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import io.github.oshai.kotlinlogging.KotlinLogging
+import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -70,11 +71,14 @@ interface VictoriaBackupService {
  * Uses Kubernetes Jobs to run backup operations on the control node.
  *
  * @property k8sService Service for Kubernetes operations
+ * @param jobPollInterval How long to wait between backup-job status polls. Defaults to
+ *   [JOB_POLL_INTERVAL_MS] so production timing is unchanged; tests inject [Duration.ZERO].
  */
 class DefaultVictoriaBackupService(
     private val k8sService: K8sService,
     private val eventBus: EventBus,
     private val jobBuilder: VictoriaBackupJobBuilder = VictoriaBackupJobBuilder(),
+    private val jobPollInterval: Duration = Duration.ofMillis(JOB_POLL_INTERVAL_MS),
 ) : VictoriaBackupService {
     private val log = KotlinLogging.logger {}
 
@@ -255,7 +259,7 @@ class DefaultVictoriaBackupService(
                 }
             }
 
-            Thread.sleep(JOB_POLL_INTERVAL_MS)
+            Thread.sleep(jobPollInterval.toMillis())
             eventBus.emit(Event.Backup.Waiting)
         }
 

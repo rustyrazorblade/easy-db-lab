@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.output.OutputEvent
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.channels.Channel
+import java.time.Duration
 import java.time.LocalTime
 import java.util.Collections
 import kotlin.concurrent.thread
@@ -13,9 +14,14 @@ import kotlin.concurrent.thread
  *
  * This class processes OutputEvent messages from a channel and stores them in a thread-safe buffer
  * with timestamps. It manages its own consumer thread internally.
+ *
+ * @param pollInterval How long the consumer sleeps between channel polls to avoid busy-waiting.
+ *   Defaults to [Constants.Time.THREAD_SLEEP_DELAY_MS] so production behavior is unchanged; tests
+ *   inject [Duration.ZERO] so high-volume cases drain without the per-message throttle.
  */
 class ChannelMessageBuffer(
     private val outputChannel: Channel<OutputEvent>,
+    private val pollInterval: Duration = Duration.ofMillis(Constants.Time.THREAD_SLEEP_DELAY_MS),
 ) {
     companion object {
         private val log = KotlinLogging.logger {}
@@ -58,7 +64,7 @@ class ChannelMessageBuffer(
                         } else if (result.isClosed) {
                             // do nothing
                         }
-                        Thread.sleep(Constants.Time.THREAD_SLEEP_DELAY_MS) // Small delay to avoid busy-waiting
+                        Thread.sleep(pollInterval.toMillis()) // Small delay to avoid busy-waiting
                     }
                 } catch (e: InterruptedException) {
                     log.info { "Message buffer consumer thread interrupted" }

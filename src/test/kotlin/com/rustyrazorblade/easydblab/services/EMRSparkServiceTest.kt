@@ -34,6 +34,7 @@ import software.amazon.awssdk.services.emr.model.StepCancellationOption
 import software.amazon.awssdk.services.emr.model.StepState
 import software.amazon.awssdk.services.emr.model.StepStateChangeReason
 import software.amazon.awssdk.services.emr.model.StepStatus
+import java.time.Duration
 
 /**
  * Test suite for EMRSparkService following TDD principles.
@@ -76,7 +77,19 @@ class EMRSparkServiceTest : BaseKoinTest() {
                 single<ObjectStore> { mockObjectStore }
                 single<ClusterStateManager> { mockClusterStateManager }
                 single<VictoriaLogsService> { mockVictoriaLogsService }
-                factory<SparkService> { EMRSparkService(get(), get(), get(), get(), get()) }
+                // Zero delays so job-polling tests do not sit through the production poll interval
+                // or log-ingestion wait; only timing changes, not the behavior under test.
+                factory<SparkService> {
+                    EMRSparkService(
+                        get(),
+                        get(),
+                        get(),
+                        get(),
+                        get(),
+                        pollInterval = Duration.ZERO,
+                        logIngestionWait = Duration.ZERO,
+                    )
+                }
             },
         )
 

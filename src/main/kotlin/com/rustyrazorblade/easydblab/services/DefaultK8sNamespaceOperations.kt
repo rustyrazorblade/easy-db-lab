@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.github.oshai.kotlinlogging.KotlinLogging
+import java.time.Duration
 import java.time.Instant
 
 private val log = KotlinLogging.logger {}
@@ -14,10 +15,15 @@ private val log = KotlinLogging.logger {}
 /**
  * Implementation of namespace-related K8s operations: observability status,
  * pod readiness, namespace deletion, resource deletion by label, and rollout restarts.
+ *
+ * @param podPollInterval How long to wait between pod-readiness polls. Defaults to
+ *   [POD_POLL_INTERVAL_MS] so production timing is unchanged; integration tests inject a tiny
+ *   value so they do not busy-wait a live cluster at 5s granularity.
  */
 class DefaultK8sNamespaceOperations(
     private val clientProvider: K8sClientProvider,
     private val eventBus: EventBus,
+    private val podPollInterval: Duration = Duration.ofMillis(POD_POLL_INTERVAL_MS),
 ) : K8sNamespaceOperations {
     override fun getObservabilityStatus(controlHost: ClusterHost): Result<String> =
         runCatching {
@@ -274,7 +280,7 @@ class DefaultK8sNamespaceOperations(
                     )
                 }
 
-                Thread.sleep(POD_POLL_INTERVAL_MS)
+                Thread.sleep(podPollInterval.toMillis())
             }
         }
     }

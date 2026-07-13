@@ -49,7 +49,13 @@ start:
         NODE_LIST="${NODE_LIST}\"ignite-cluster-${i}.ignite-svc-headless.default.svc.cluster.local:3344\", "
       done
       NODE_LIST="${NODE_LIST%, }"
-      CONF_FILE=$(mktemp /tmp/ignite-config.XXXXXX.conf)
+      # Only trailing X's are substituted by BSD mktemp (macOS operators run this
+      # step locally), so keep the X's at the end — no ".conf" suffix. The
+      # configmap key sets the real filename, so the temp name is irrelevant.
+      CONF_FILE=$(mktemp /tmp/ignite-config.XXXXXX)
+      # Clean up even if a later command fails before the explicit rm, so a
+      # leftover temp file never blocks a subsequent run.
+      trap 'rm -f "${CONF_FILE}"' EXIT
       # printf avoids heredoc quoting issues and correctly embeds the node list
       printf '{ network: { port: 3344, nodeFinder: { netClusterNodes: [%s] } }, storage: { profiles: [{ name: default, engine: %s }] } }' \
         "${NODE_LIST}" "${STORAGE_PROFILE}" > "${CONF_FILE}"
@@ -57,7 +63,6 @@ start:
         --namespace default \
         --from-file=ignite-config.conf="${CONF_FILE}" \
         --dry-run=client -o yaml | kubectl apply -f -
-      rm -f "${CONF_FILE}"
       echo "ConfigMap created."
 
   - type: manifest

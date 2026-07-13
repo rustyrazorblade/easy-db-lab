@@ -18,7 +18,7 @@ spec:
       terminationGracePeriodSeconds: 300
       containers:
         - name: ignite-node
-          image: apache/ignite3:__IGNITE_VERSION__
+          image: apacheignite/ignite:__IGNITE_VERSION__
           imagePullPolicy: IfNotPresent
           env:
             - name: IGNITE_NODE_NAME

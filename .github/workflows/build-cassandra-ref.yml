@@ -38,6 +38,61 @@ on:
         type: string
         default: ''
 
+  # Reusable engine: build-cassandra-set.yml calls this once per matrix version so
+  # every version gets the SAME correct per-version JDK/base-image and BOTH artifacts
+  # (GHCR image + per-sha tarball release). The caller collects the tarball via the
+  # `artifact_name` output / uploaded workflow artifact and the `tarball_name` +
+  # `release_tag` outputs below.
+  workflow_call:
+    inputs:
+      ref:
+        description: 'Cassandra git ref to build (branch, tag, or commit SHA)'
+        required: true
+        type: string
+      repo:
+        description: 'Source repo (owner/name), for forks'
+        required: false
+        type: string
+        default: 'apache/cassandra'
+      jdk:
+        description: 'Override the build JDK (e.g. 11, 17, 21). Blank = auto-map from version.'
+        required: false
+        type: string
+        default: ''
+      base_image:
+        description: 'Override the runtime JRE base image the container is built FROM. Blank = auto-map.'
+        required: false
+        type: string
+        default: ''
+      stable_version:
+        description: >-
+          Optional stable version label (e.g. 5.0-HEAD, 6.0, trunk). When set, the
+          uploaded tarball artifact is named `cassandra-tarball-<stable_version>` so a
+          matrix caller can collect and rename each build deterministically. Blank =
+          artifact name falls back to the sanitized ref tag.
+        required: false
+        type: string
+        default: ''
+    outputs:
+      version:
+        description: 'Cassandra base.version read from build.xml.'
+        value: ${{ jobs.resolve.outputs.version }}
+      short_sha:
+        description: 'Short commit SHA the ref resolved to.'
+        value: ${{ jobs.resolve.outputs.short_sha }}
+      tarball_name:
+        description: 'Filename of the built binary tarball (apache-cassandra-<version>-<sha>-bin.tar.gz).'
+        value: ${{ jobs.resolve.outputs.tarball_name }}
+      release_tag:
+        description: 'Per-build GitHub release tag the tarball is attached to.'
+        value: ${{ jobs.resolve.outputs.release_tag }}
+      artifact_name:
+        description: 'Name of the uploaded workflow artifact containing the tarball.'
+        value: ${{ jobs.resolve.outputs.artifact_name }}
+      image:
+        description: 'Immutable GHCR image reference (repo:sha-<short_sha>).'
+        value: ${{ jobs.resolve.outputs.image_repo }}:${{ jobs.resolve.outputs.sha_tag }}
+
 jobs:
   resolve:
     name: Resolve ref and compute outputs
@@ -54,6 +109,11 @@ jobs:
       ref_tag: ${{ steps.meta.outputs.ref_tag }}
       tarball_name: ${{ steps.meta.outputs.tarball_name }}
       release_tag: ${{ steps.meta.outputs.release_tag }}
+      # Deterministic name for the uploaded tarball artifact. When a caller passes a
+      # stable_version (the matrix set workflow does), the name encodes it so the
+      # aggregation job can pair each build to its stable filename; otherwise it falls
+      # back to the sanitized ref tag, keeping the name unique across matrix calls.
+      artifact_name: ${{ inputs.stable_version != '' && format('cassandra-tarball-{0}', inputs.stable_version) || format('cassandra-tarball-{0}', steps.meta.outputs.ref_tag) }}
     steps:
       - name: Check out this repo's image-assembly logic
         uses: actions/checkout@v6
@@ -95,7 +155,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Version from build.xml base.version (matches nightly-cassandra-build.yml).
+          # Version from build.xml base.version.
           version="$(grep -oP 'property name="base.version" value="\K[^"]+' \
             cassandra-src/build.xml || echo unknown)"
           if [[ "$version" == "unknown" ]]; then
@@ -172,7 +232,7 @@ jobs:
       - name: Upload tarball for publish job
         uses: actions/upload-artifact@v7
         with:
-          name: cassandra-tarball
+          name: ${{ needs.resolve.outputs.artifact_name }}
           path: ${{ needs.resolve.outputs.tarball_name }}
           retention-days: 7
           if-no-files-found: error
@@ -191,7 +251,7 @@ jobs:
       - name: Download built tarball
         uses: actions/download-artifact@v8
         with:
-          name: cassandra-tarball
+          name: ${{ needs.resolve.outputs.artifact_name }}
           path: .github/cassandra-image
 
       # Build the image LOCALLY (load into the daemon, do NOT push). The smoke

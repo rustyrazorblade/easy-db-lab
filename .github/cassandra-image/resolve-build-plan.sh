@@ -48,11 +48,24 @@ compute_build_plan() {
   #           -Duse.jdk11=true to compile under 11 (matches cassandra_versions.yaml).
   #   5.0  -> JDK 17; no extra ant flags.
   #   5.1+/trunk (no tag yet) -> JDK 21; no extra ant flags.
+  #
+  # Each base image is pinned to a SPECIFIC Ubuntu LTS variant (never the floating
+  # `-jre` tag) whose apt-provided python3 is INSIDE that Cassandra major's
+  # cqlsh-supported Python range. cqlsh enforces the range with a sys.version_info
+  # check in bin/cqlsh.py; picking an out-of-range Python makes cqlsh die with
+  # "No appropriate Python interpreter found" (issue #764). Ranges (from source):
+  #   4.0/4.1: guard is only 3.6+ (lower bound), BUT cqlsh relies on the driver's
+  #            stdlib `asyncore` reactor with no `pyasyncore` backport, and Python
+  #            3.12 removed stdlib asyncore -> cqlsh breaks above 3.11. Newest LTS
+  #            still in range: jammy (Ubuntu 22.04, Python 3.10).
+  #   5.0    : guard is 3.6-3.13 and cqlsh vendors `pyasyncore` -> noble
+  #            (Ubuntu 24.04, Python 3.12) is in range.
+  #   5.1+/trunk (6.0): guard is 3.6-3.13, same as 5.0 -> noble (Python 3.12).
   local auto_jdk auto_base ant_flags
   case "$version" in
-    4.*)  auto_jdk=11; auto_base=eclipse-temurin:11-jre; ant_flags="-Duse.jdk11=true" ;;
-    5.0*) auto_jdk=17; auto_base=eclipse-temurin:17-jre; ant_flags="" ;;
-    *)    auto_jdk=21; auto_base=eclipse-temurin:21-jre; ant_flags="" ;;
+    4.*)  auto_jdk=11; auto_base=eclipse-temurin:11-jre-jammy; ant_flags="-Duse.jdk11=true" ;;
+    5.0*) auto_jdk=17; auto_base=eclipse-temurin:17-jre-noble; ant_flags="" ;;
+    *)    auto_jdk=21; auto_base=eclipse-temurin:21-jre-noble; ant_flags="" ;;
   esac
 
   local build_jdk="${jdk_override:-$auto_jdk}"

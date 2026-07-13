@@ -11,12 +11,17 @@
 # cassandra-branch-publish for the rationale (design decision D0).
 #
 # Build args:
-#   BASE_IMAGE     runtime JRE base image (default eclipse-temurin:17-jre).
+#   BASE_IMAGE     runtime JRE base image (default eclipse-temurin:17-jre-noble).
 #                  The workflow overrides this per resolved Cassandra version.
+#                  Pinned to a specific Ubuntu LTS variant (never the floating
+#                  `-jre` tag) so the apt-provided python3 stays inside cqlsh's
+#                  supported Python range — the floating tag drifted to Python
+#                  3.14 and broke cqlsh (issue #764). noble ships Python 3.12,
+#                  which is in the 3.6-3.13 range cqlsh 5.0+ supports.
 #   TARBALL        path (relative to build context) to the
 #                  apache-cassandra-<version>-bin.tar.gz to inject.
 
-ARG BASE_IMAGE=eclipse-temurin:17-jre
+ARG BASE_IMAGE=eclipse-temurin:17-jre-noble
 
 FROM ${BASE_IMAGE}
 

@@ -15,6 +15,7 @@ import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import java.time.Duration
 
 /**
  * Test suite for TailscaleService.
@@ -41,7 +42,9 @@ class TailscaleServiceTest : BaseKoinTest() {
         listOf(
             module {
                 single<RemoteOperationsService> { mockRemoteOps }
-                factory<TailscaleService> { DefaultTailscaleService(get(), get()) }
+                // Zero daemon startup delay so startTailscale tests do not sit through the
+                // production pause; only timing changes, not the behavior under test.
+                factory<TailscaleService> { DefaultTailscaleService(get(), get(), daemonStartupDelay = Duration.ZERO) }
             },
         )
 

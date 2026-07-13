@@ -15,6 +15,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
+import java.time.Duration
 import java.util.concurrent.TimeUnit
 
 private val log = KotlinLogging.logger {}
@@ -128,10 +129,15 @@ interface TailscaleService : AutoCloseable {
 /**
  * Default implementation of TailscaleService using OkHttp for API calls
  * and RemoteOperationsService for SSH commands.
+ *
+ * @param daemonStartupDelay Pause after starting `tailscaled` before authenticating, giving the
+ *   daemon a moment to initialize. Defaults to [Constants.Tailscale.DAEMON_STARTUP_DELAY_MS] so
+ *   production timing is unchanged; tests inject [Duration.ZERO] to run instantly.
  */
 class DefaultTailscaleService(
     private val remoteOps: RemoteOperationsService,
     private val eventBus: EventBus,
+    private val daemonStartupDelay: Duration = Duration.ofMillis(Constants.Tailscale.DAEMON_STARTUP_DELAY_MS),
 ) : TailscaleService {
     private val httpClient: OkHttpClient =
         OkHttpClient
@@ -295,7 +301,7 @@ class DefaultTailscaleService(
             )
 
             // Give the daemon a moment to initialize
-            Thread.sleep(Constants.Tailscale.DAEMON_STARTUP_DELAY_MS)
+            Thread.sleep(daemonStartupDelay.toMillis())
 
             eventBus.emit(Event.Tailscale.Authenticating(host.alias))
 

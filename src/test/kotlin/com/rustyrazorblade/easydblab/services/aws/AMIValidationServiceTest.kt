@@ -18,6 +18,7 @@ import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import software.amazon.awssdk.services.ec2.Ec2Client
 import software.amazon.awssdk.services.ec2.model.Ec2Exception
+import java.time.Duration
 import java.time.Instant
 
 class AMIValidationServiceTest {
@@ -44,6 +45,10 @@ class AMIValidationServiceTest {
                     ec2Client = mockEc2Client,
                     eventBus = eventBus,
                     aws = mockAWS,
+                    // Zero backoff so the retry-path tests do not sit through the production
+                    // 2s/4s/8s wall-clock backoff; the retry predicate (which decides what to
+                    // retry) is identical to production, only the wait is removed.
+                    validationRetryConfig = AMIService.buildValidationRetryConfig(Duration.ZERO),
                 ),
             )
     }

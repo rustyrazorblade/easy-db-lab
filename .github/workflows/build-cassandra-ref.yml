@@ -223,8 +223,22 @@ jobs:
         run: |
           set -euo pipefail
           image="${IMAGE_REPO}:${SHA_TAG}"
-          cid="$(docker run -d -p 9042:9042 "$image")"
-          trap 'docker rm -f "$cid" >/dev/null 2>&1 || true' EXIT
+
+          # Pin Cassandra to a deterministic IP on a user-defined docker network
+          # and dial cqlsh at that same IP. The vendored docker-entrypoint.sh
+          # binds listen_address/broadcast_rpc_address to the container's own IP
+          # (never loopback), and nodetool statusbinary reports readiness against
+          # that interface — so cqlsh must connect to that IP, not 127.0.0.1
+          # (issue #768). Never bind to 0.0.0.0; pin to the node's real IP.
+          net="cass-smoke-$$"
+          cass_ip="172.28.0.10"
+          docker network create --subnet 172.28.0.0/16 "$net"
+          cid="$(docker run -d --network "$net" --ip "$cass_ip" \
+                  -e CASSANDRA_LISTEN_ADDRESS="$cass_ip" \
+                  -e CASSANDRA_RPC_ADDRESS="$cass_ip" \
+                  -e CASSANDRA_BROADCAST_RPC_ADDRESS="$cass_ip" \
+                  "$image")"
+          trap 'docker rm -f "$cid" >/dev/null 2>&1 || true; docker network rm "$net" >/dev/null 2>&1 || true' EXIT
 
           echo "Waiting for the native transport to report running (bounded timeout)..."
           ready=
@@ -247,8 +261,9 @@ jobs:
           # Real cqlsh run. NO 2>/dev/null — cqlsh's own error (e.g. the #764
           # "No appropriate Python interpreter found") must be visible and must
           # fail the job. --debug surfaces the interpreter/driver details.
+          # Dial the pinned container IP (not loopback) — see #768 above.
           echo "Running cqlsh query (errors visible)..."
-          docker exec "$cid" cqlsh --debug \
+          docker exec "$cid" cqlsh --debug "$cass_ip" 9042 \
             -e 'SELECT release_version FROM system.local;' | tee /tmp/cql.out
           echo "CQL query succeeded."
 

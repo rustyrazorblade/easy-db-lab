@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services.aws
 
+import com.rustyrazorblade.easydblab.SharedLocalStack
 import com.rustyrazorblade.easydblab.services.aws.EC2VpcService
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -8,15 +9,6 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
-import org.testcontainers.containers.localstack.LocalStackContainer
-import org.testcontainers.containers.localstack.LocalStackContainer.Service
-import org.testcontainers.containers.wait.strategy.Wait
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
-import org.testcontainers.utility.DockerImageName
-import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
-import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
-import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.ec2.Ec2Client
 
 /**
@@ -25,39 +17,22 @@ import software.amazon.awssdk.services.ec2.Ec2Client
  * Tests verify that VPC resource creation, idempotent find-or-create patterns,
  * security group ingress rules, route tables, and tag operations work correctly
  * through real AWS SDK API calls against a LocalStack EC2 endpoint.
+ *
+ * Uses the JVM-wide [SharedLocalStack] EC2 backend, shared with the other EC2
+ * integration tests. VPC names, tag values, and the CIDR blocks used by the
+ * whole-region queries ([EC2VpcService.listAllVpcCidrs], [EC2VpcService.findVpcByName],
+ * [EC2VpcService.findVpcsByTag]) are unique to this class, and those assertions use
+ * containment rather than exact global counts, so co-tenant EC2 resources cannot
+ * affect these results.
  */
-@Testcontainers
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class EC2VpcServiceIntegrationTest {
-    companion object {
-        @Container
-        @JvmStatic
-        val localStack: LocalStackContainer =
-            LocalStackContainer(DockerImageName.parse("localstack/localstack:3.0"))
-                .withServices(Service.EC2)
-                .waitingFor(Wait.forHttp("/_localstack/health").forStatusCode(200))
-    }
-
     private lateinit var ec2Client: Ec2Client
     private lateinit var vpcService: EC2VpcService
 
     @BeforeAll
     fun setupClients() {
-        val credentials =
-            StaticCredentialsProvider.create(
-                AwsBasicCredentials.create(
-                    localStack.accessKey,
-                    localStack.secretKey,
-                ),
-            )
-
-        ec2Client =
-            Ec2Client
-                .builder()
-                .endpointOverride(localStack.getEndpointOverride(Service.EC2))
-                .region(Region.of(localStack.region))
-                .credentialsProvider(credentials)
-                .build()
+        ec2Client = SharedLocalStack.ec2Client()
     }
 
     @BeforeEach

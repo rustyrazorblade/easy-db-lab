@@ -84,7 +84,9 @@ jobs:
         if: always()
         with:
           name: Test Results
-          path: '**/build/test-results/{test,integrationTest}/*.xml'
+          path: |
+            **/build/test-results/test/*.xml
+            **/build/test-results/integrationTest/*.xml
           reporter: java-junit
           fail-on-error: false
 

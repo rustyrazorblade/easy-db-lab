@@ -36,7 +36,7 @@ jline = "3.30.6"
 mordant = "1.2.1"
 
 # Ktor
-ktor = "3.4.2"
+ktor = "3.5.1"
 
 # Koin DI
 koin = "4.2.1"

@@ -1,0 +1,150 @@
+name: Build Cassandra Set
+
+# Nightly build of the set of Apache Cassandra versions the lab tracks.
+#
+# Replaces the old hand-rolled nightly-cassandra-build.yml (JDK 11 for all, tarball
+# only, no 6.0). This drives the reusable build-cassandra-ref.yml engine once per
+# version, so every version gets:
+#   1. The correct per-version build JDK + runtime base image (auto-mapped in
+#      resolve-build-plan.sh: 5.0 -> JDK 17, 6.0/trunk -> JDK 21).
+#   2. BOTH artifacts — a GHCR container image (moving `:cassandra-<ref>` tag +
+#      immutable `:sha-<short>` tag) AND a per-sha tarball GitHub release.
+#
+# The aggregation job then republishes every version's tarball, renamed to the
+# stable convention, onto the moving `nightly` GitHub release so existing lab
+# consumers (packer/cassandra/cassandra_versions.yaml) keep their stable URLs:
+#   .../releases/download/nightly/apache-cassandra-<version>-bin.tar.gz
+#
+# `latest` is reserved for the main CLI image (see .github/CLAUDE.md) and is NEVER
+# produced here.
+
+on:
+  schedule:
+    # Run daily at 2am UTC (same slot as the retired nightly-cassandra-build.yml).
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    # Allow manual triggering for testing.
+
+# Grant the reusable engine's publish job what it needs (GHCR push + per-sha
+# release) and the aggregation job the release write it needs for `nightly`.
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.version }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - ref: cassandra-5.0
+            version: 5.0-HEAD
+          - ref: cassandra-6.0
+            version: 6.0
+          - ref: trunk
+            version: trunk
+    uses: ./.github/workflows/build-cassandra-ref.yml
+    with:
+      ref: ${{ matrix.ref }}
+      stable_version: ${{ matrix.version }}
+    secrets: inherit
+
+  publish-nightly:
+    name: Republish tarballs to the moving nightly release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all built tarball artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: cassandra-tarball-*
+          path: artifacts
+
+      - name: Rename tarballs to the stable nightly convention
+        run: |
+          set -euo pipefail
+          # Each artifact directory is named `cassandra-tarball-<stable_version>`
+          # (the stable_version passed into the reusable workflow). Inside is a
+          # single tarball named with the build.xml base.version + sha; rename it to
+          # the stable `apache-cassandra-<stable_version>-bin.tar.gz` the versions
+          # file already references.
+          shopt -s nullglob
+          found=0
+          for dir in artifacts/cassandra-tarball-*/; do
+            stable="$(basename "$dir")"
+            stable="${stable#cassandra-tarball-}"
+            src="$(find "$dir" -name 'apache-cassandra-*-bin.tar.gz' -type f | head -n1)"
+            if [[ -z "$src" ]]; then
+              echo "::error::no tarball found in ${dir}"
+              exit 1
+            fi
+            target="apache-cassandra-${stable}-bin.tar.gz"
+            cp "$src" "$target"
+            if [[ ! -s "$target" ]]; then
+              echo "::error::renamed tarball ${target} is missing or empty"
+              exit 1
+            fi
+            echo "Prepared $(du -h "$target" | cut -f1) tarball: ${target}"
+            found=$((found + 1))
+          done
+          if [[ "$found" -eq 0 ]]; then
+            echo "::error::no tarball artifacts were downloaded"
+            exit 1
+          fi
+          echo "Release tarballs:"
+          ls -lh apache-cassandra-*-bin.tar.gz
+
+      - name: Delete existing nightly release and tag
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete nightly --yes --cleanup-tag --repo "${{ github.repository }}" || true
+
+      - name: Create the nightly release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: nightly
+          name: "Nightly Cassandra Builds"
+          prerelease: true
+          draft: false
+          body: |
+            ## Automated Nightly Builds
+
+            This release contains nightly binary tarballs of Apache Cassandra
+            development branches, each built with its correct per-version JDK by the
+            reusable `build-cassandra-ref.yml` engine. Matching GHCR container images
+            are published under the moving `:cassandra-<ref>` tag.
+
+            - **5.0-HEAD**: Latest from `cassandra-5.0` branch
+            - **6.0**: Latest from `cassandra-6.0` branch
+            - **trunk**: Latest from `trunk` branch
+
+            ### Stable Download URLs
+
+            These URLs always point to the latest nightly builds:
+
+            ```
+            https://github.com/${{ github.repository }}/releases/download/nightly/apache-cassandra-5.0-HEAD-bin.tar.gz
+            https://github.com/${{ github.repository }}/releases/download/nightly/apache-cassandra-6.0-bin.tar.gz
+            https://github.com/${{ github.repository }}/releases/download/nightly/apache-cassandra-trunk-bin.tar.gz
+            ```
+
+            ### Build Information
+
+            - **Workflow Run**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            - **Build Command**: `ant artifacts -Dno-checkstyle=true -Dant.gen-doc.skip=true`
+
+            ### Usage
+
+            These artifacts are compatible with the `easy-db-lab` Packer build system
+            and can be used as drop-in replacements for building Cassandra from source.
+
+            ---
+
+            **Note**: These are development builds and should not be used in production.
+          files: |
+            apache-cassandra-*-bin.tar.gz

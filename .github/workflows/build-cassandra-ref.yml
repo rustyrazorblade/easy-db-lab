@@ -258,14 +258,44 @@ jobs:
           fi
           echo "nodetool statusbinary: running"
 
-          # Real cqlsh run. NO 2>/dev/null — cqlsh's own error (e.g. the #764
-          # "No appropriate Python interpreter found") must be visible and must
-          # fail the job. --debug surfaces the interpreter/driver details.
-          # Dial the pinned container IP (not loopback) — see #768 above.
-          echo "Running cqlsh query (errors visible)..."
-          docker exec "$cid" cqlsh --debug "$cass_ip" 9042 \
-            -e 'SELECT release_version FROM system.local;' | tee /tmp/cql.out
-          echo "CQL query succeeded."
+          # Bounded poll of the REAL CQL endpoint. statusbinary can report
+          # "running" before the native-transport socket actually accepts, so
+          # this is a stronger readiness gate on the exact thing we test — not a
+          # weakening. The job still FAILS if the endpoint never accepts within
+          # the bound (no `|| true` around the overall outcome). Dial the pinned
+          # container IP (not loopback) — see #768 above.
+          echo "Polling the CQL endpoint (bounded)..."
+          cql_ok=
+          for _ in $(seq 1 24); do          # ~2 min: 24 * 5s
+            if docker exec "$cid" cqlsh "$cass_ip" 9042 \
+                 -e 'SELECT release_version FROM system.local;' >/tmp/cql.out 2>/tmp/cql.err; then
+              cql_ok=1
+              break
+            fi
+            sleep 5
+          done
+
+          if [ -n "$cql_ok" ]; then
+            echo "CQL query succeeded:"
+            cat /tmp/cql.out
+          else
+            # On exhaustion, dump full diagnostics to distinguish a readiness
+            # race from a bind that never applied, THEN fail. The final visible
+            # cqlsh attempt keeps --debug and shows its stderr (no 2>/dev/null),
+            # preserving the #766 hardening.
+            echo "::error::CQL endpoint never accepted within the bounded retry"
+            echo "===== last cqlsh stderr (with --debug) ====="
+            docker exec "$cid" cqlsh --debug "$cass_ip" 9042 -e 'SELECT release_version FROM system.local;' || true
+            echo "===== docker logs ====="
+            docker logs "$cid" || true
+            echo "===== effective bind config ====="
+            # find the effective cassandra.yaml via the entrypoint's CASSANDRA_CONF
+            conf="$(docker exec "$cid" bash -c 'echo "${CASSANDRA_CONF:-/etc/cassandra}"')"
+            docker exec "$cid" bash -c "grep -E '^(rpc_address|listen_address|broadcast_address|broadcast_rpc_address|start_native_transport|native_transport_port):' \"$conf/cassandra.yaml\"" || true
+            echo "===== listening sockets (what is bound to 9042) ====="
+            docker exec "$cid" bash -c 'ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null || true'
+            exit 1
+          fi
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v4

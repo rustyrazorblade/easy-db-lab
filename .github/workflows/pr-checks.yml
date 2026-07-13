@@ -31,8 +31,11 @@ jobs:
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
-      - name: Run tests
-        run: ./gradlew test koverXmlReport --no-daemon
+      # Run BOTH test tiers: the fast unit tier (`test`) and the slow integration tier
+      # (`integrationTest`, TestContainers/mock-server/real-I-O). GitHub's ubuntu runners ship
+      # a running Docker daemon at /var/run/docker.sock, which the integration tier needs.
+      - name: Run unit + integration tiers
+        run: ./gradlew test integrationTest koverXmlReport --no-daemon
 
       - name: Upload test results
         if: always()
@@ -41,15 +44,47 @@ jobs:
           name: test-results
           path: |
             **/build/reports/tests/test/
+            **/build/reports/tests/integrationTest/
             **/build/test-results/test/
+            **/build/test-results/integrationTest/
           retention-days: 30
+
+      # spec-flow contract: on any test failure, write the failing test ids (one
+      # `com.example.FooTest.method` per line, across BOTH tiers) and upload them as the
+      # `spec-flow-failures` artifact that `/spec-flow:sync-ci` pulls into the branch's flagged set.
+      - name: Collect failing test ids
+        if: failure()
+        run: |
+          python3 - <<'PY' > spec-flow-failures.txt
+          import glob, xml.etree.ElementTree as ET
+          ids = set()
+          for f in glob.glob("**/build/test-results/**/*.xml", recursive=True):
+              try:
+                  root = ET.parse(f).getroot()
+              except ET.ParseError:
+                  continue
+              for tc in root.iter("testcase"):
+                  if any(c.tag in ("failure", "error") for c in tc):
+                      cls, name = tc.get("classname", ""), tc.get("name", "")
+                      if cls and name:
+                          ids.add(f"{cls}.{name}")
+          print("\n".join(sorted(ids)))
+          PY
+
+      - name: Upload failing test ids
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: spec-flow-failures
+          path: spec-flow-failures.txt
+          if-no-files-found: ignore
 
       - name: Publish Test Results
         uses: dorny/test-reporter@v3
         if: always()
         with:
           name: Test Results
-          path: '**/build/test-results/test/*.xml'
+          path: '**/build/test-results/{test,integrationTest}/*.xml'
           reporter: java-junit
           fail-on-error: false
 

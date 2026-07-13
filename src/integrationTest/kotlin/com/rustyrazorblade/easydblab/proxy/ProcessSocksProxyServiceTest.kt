@@ -22,6 +22,7 @@ import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.io.File
 import java.net.ServerSocket
+import java.time.Duration
 import java.time.Instant
 
 @ResourceLock(Constants.Proxy.PORT_PROPERTY)
@@ -63,6 +64,8 @@ class ProcessSocksProxyServiceTest {
         ProcessSocksProxyService(
             Context.forCli(File(System.getProperty("user.home"), ".easy-db-lab")).copy(workingDirectory = tempDir),
             probe,
+            // Tiny verify delay so verification retries do not sleep 500ms per attempt.
+            verifyDelay = Duration.ofMillis(1),
         )
 
     private fun writeStateFile(

@@ -30,6 +30,7 @@ import software.amazon.awssdk.services.emr.model.RunJobFlowRequest
 import software.amazon.awssdk.services.emr.model.ScriptBootstrapActionConfig
 import software.amazon.awssdk.services.emr.model.Tag
 import software.amazon.awssdk.services.emr.model.TerminateJobFlowsRequest
+import java.time.Duration
 
 /** Recursively converts an EMRConfiguration to the AWS SDK Configuration type. */
 private fun EMRConfiguration.toAwsConfiguration(): Configuration {
@@ -49,11 +50,18 @@ private fun EMRConfiguration.toAwsConfiguration(): Configuration {
  *
  * This service handles creation, status monitoring, discovery, and termination
  * of EMR clusters for Spark job execution.
+ *
+ * @param readyPollInterval Delay between cluster-state polls while waiting for a cluster to reach
+ *   its ready/terminated state. Defaults to [POLL_INTERVAL_MS]; tests inject a tiny value.
+ * @param terminationPollInterval Delay between polls while waiting for bulk cluster termination.
+ *   Defaults to [TERMINATION_POLL_INTERVAL_MS]; tests inject a tiny value.
  */
 @Suppress("TooManyFunctions")
 class EMRService(
     private val emrClient: EmrClient,
     private val eventBus: EventBus,
+    private val readyPollInterval: Duration = Duration.ofMillis(POLL_INTERVAL_MS),
+    private val terminationPollInterval: Duration = Duration.ofMillis(TERMINATION_POLL_INTERVAL_MS),
 ) {
     companion object {
         private val log = KotlinLogging.logger {}
@@ -253,7 +261,7 @@ class EMRService(
                 }
             }
 
-            Thread.sleep(POLL_INTERVAL_MS)
+            Thread.sleep(readyPollInterval.toMillis())
         }
 
         error("Timeout waiting for EMR cluster $clusterId to be ready after ${timeoutMs}ms")
@@ -352,7 +360,7 @@ class EMRService(
             }
 
             log.debug { "EMR cluster $clusterId state: ${status.state}" }
-            Thread.sleep(POLL_INTERVAL_MS)
+            Thread.sleep(readyPollInterval.toMillis())
         }
 
         error("Timeout waiting for EMR cluster $clusterId to terminate after ${timeoutMs}ms")
@@ -494,7 +502,7 @@ class EMRService(
                 }
             log.debug { "Still waiting for $pending EMR clusters to terminate..." }
 
-            Thread.sleep(TERMINATION_POLL_INTERVAL_MS)
+            Thread.sleep(terminationPollInterval.toMillis())
         }
 
         throw AwsTimeoutException("Timeout waiting for EMR clusters to terminate after ${timeoutMs}ms")

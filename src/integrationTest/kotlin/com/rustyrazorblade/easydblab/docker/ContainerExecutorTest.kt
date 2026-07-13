@@ -25,6 +25,7 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.io.IOException
+import java.time.Duration
 
 class ContainerExecutorTest :
     BaseKoinTest(),
@@ -38,7 +39,8 @@ class ContainerExecutorTest :
         mockDockerClient = mock()
         // Get the OutputHandler from Koin and cast it to BufferedOutputHandler
         bufferedOutputHandler = get<OutputHandler>() as BufferedOutputHandler
-        containerExecutor = ContainerExecutor(mockDockerClient)
+        // Zero poll interval so the completion-wait loop does not sleep between mock inspections.
+        containerExecutor = ContainerExecutor(mockDockerClient, pollInterval = Duration.ZERO)
     }
 
     @Test

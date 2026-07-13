@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import software.amazon.awssdk.services.ec2.Ec2Client
+import java.time.Duration
 
 /**
  * Integration tests for EC2VpcService using LocalStack.
@@ -42,6 +43,8 @@ class EC2VpcServiceIntegrationTest {
                 ec2Client,
                 com.rustyrazorblade.easydblab.events
                     .EventBus(),
+                // Tiny poll interval so teardown/ENI waits do not busy-poll LocalStack at 5s steps.
+                pollInterval = Duration.ofMillis(1),
             )
     }
 

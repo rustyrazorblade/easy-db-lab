@@ -55,6 +55,7 @@ import software.amazon.awssdk.services.ec2.model.RevokeSecurityGroupEgressReques
 import software.amazon.awssdk.services.ec2.model.RevokeSecurityGroupIngressRequest
 import software.amazon.awssdk.services.ec2.model.Tag
 import software.amazon.awssdk.services.ec2.model.TerminateInstancesRequest
+import java.time.Duration
 
 /**
  * Implementation of VpcService using AWS EC2 SDK.
@@ -67,6 +68,7 @@ import software.amazon.awssdk.services.ec2.model.TerminateInstancesRequest
 class EC2VpcService(
     private val ec2Client: Ec2Client,
     private val eventBus: EventBus,
+    private val pollInterval: Duration = Duration.ofMillis(VpcService.POLL_INTERVAL_MS),
 ) : VpcService {
     companion object {
         private val log = KotlinLogging.logger {}
@@ -823,7 +825,7 @@ class EC2VpcService(
             }
 
             log.debug { "Still waiting for ${remaining.size} network interfaces to clear..." }
-            Thread.sleep(VpcService.POLL_INTERVAL_MS)
+            Thread.sleep(pollInterval.toMillis())
         }
 
         throw AwsTimeoutException(
@@ -889,7 +891,7 @@ class EC2VpcService(
             val pending = instances.count { it.state().name() != InstanceStateName.TERMINATED }
             log.debug { "Still waiting for $pending instances to terminate..." }
 
-            Thread.sleep(VpcService.POLL_INTERVAL_MS)
+            Thread.sleep(pollInterval.toMillis())
         }
 
         throw AwsTimeoutException("Timeout waiting for instances to terminate after ${timeoutMs}ms")
@@ -1061,7 +1063,7 @@ class EC2VpcService(
             val pending = natGateways.count { it.state() != NatGatewayState.DELETED }
             log.debug { "Still waiting for $pending NAT gateways to be deleted..." }
 
-            Thread.sleep(VpcService.POLL_INTERVAL_MS)
+            Thread.sleep(pollInterval.toMillis())
         }
 
         throw AwsTimeoutException("Timeout waiting for NAT gateways to be deleted after ${timeoutMs}ms")

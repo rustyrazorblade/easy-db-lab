@@ -17,6 +17,7 @@ import io.fabric8.kubernetes.api.model.batch.v1.JobBuilder
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
 import io.github.resilience4j.retry.RetryConfig
+import java.time.Duration
 
 /**
  * Configuration for starting a stress job.
@@ -123,12 +124,16 @@ interface StressJobService {
 
 /**
  * Default implementation of StressJobService.
+ *
+ * @param jobPollInterval How long to wait between job-completion polls. Defaults to
+ *   [JOB_POLL_INTERVAL_MS] so production timing is unchanged; tests inject [Duration.ZERO].
  */
 class DefaultStressJobService(
     private val k8sService: K8sService,
     private val clusterStateManager: ClusterStateManager,
     private val eventBus: EventBus,
     private val templateService: TemplateService,
+    private val jobPollInterval: Duration = Duration.ofMillis(JOB_POLL_INTERVAL_MS),
 ) : StressJobService {
     private val log = KotlinLogging.logger {}
 
@@ -336,7 +341,7 @@ class DefaultStressJobService(
                 break
             }
 
-            Thread.sleep(JOB_POLL_INTERVAL_MS)
+            Thread.sleep(jobPollInterval.toMillis())
         }
 
         return ""

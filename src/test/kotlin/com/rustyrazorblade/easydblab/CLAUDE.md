@@ -1,5 +1,14 @@
 # Test Infrastructure
 
+## Test Tiers
+
+The suite is split into two tiers by source set:
+
+- **Unit tier (`src/test/`, `./gradlew test`)** — fast, no Docker. This is where most tests live.
+- **Integration tier (`src/integrationTest/`, `./gradlew integrationTest`)** — slow, Docker-only (TestContainers: LocalStack, K3s, Cassandra, Redis, Postgres). `./gradlew check` runs both.
+
+The boundary is structural: TestContainers, the Fabric8 kubernetes-server-mock, okhttp MockWebServer, and fixed-port socket tests are scoped to `integrationTestImplementation` only, so they will not compile under `src/test/`. Any test needing those must go in `src/integrationTest/` (e.g. `K8sServiceIntegrationTest`, `DockerTest`, the `*IntegrationTest` classes). The patterns below (BaseKoinTest, mocks, assertions) apply to both tiers.
+
 ## BaseKoinTest
 
 All tests that need dependency injection should extend `BaseKoinTest`. It provides:

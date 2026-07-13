@@ -79,10 +79,10 @@ All services in this package are registered in `providers/aws/AWSModule.kt` as K
 
 Do not rely solely on unit tests with mocked `ObjectStore` — mocks cannot catch S3 API behavior differences (e.g., how `ListObjectsV2` handles prefixes, delimiters, and common prefixes vs. object contents).
 
-Integration tests live in `src/test/kotlin/.../services/aws/` and follow the pattern in `S3ObjectStoreIntegrationTest`:
+Integration tests live in the slow tier under `src/integrationTest/kotlin/.../services/aws/` (LocalStack needs Docker, so these belong in the `integrationTest` source set, not `src/test/`) and follow the pattern in `S3ObjectStoreIntegrationTest`:
 - Use `@Testcontainers` + `LocalStackContainer` with `Service.S3`
 - Create buckets in `@BeforeAll`
 - Use `@TestInstance(TestInstance.Lifecycle.PER_CLASS)` to share the container across tests
 - Test the full behavior end-to-end: upload data, call the service method, assert on results
 
-Services that call S3 indirectly (via `ObjectStore`) also need integration tests — see `ClickHouseBackupServiceIntegrationTest` as an example of testing a higher-level service against LocalStack.
+Services that call S3 indirectly (via `ObjectStore`) also need integration tests — see `ClusterBackupServiceS3IntegrationTest` as an example of testing a higher-level service against LocalStack.

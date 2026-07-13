@@ -1,9 +1,13 @@
 package com.rustyrazorblade.easydblab.services.sql
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.proxy.SocksTcpBridgeFactory
+import com.rustyrazorblade.easydblab.proxy.defaultSocksTcpBridgeFactory
 import com.rustyrazorblade.easydblab.services.KitEndpoint
 import io.github.oshai.kotlinlogging.KotlinLogging
+import java.sql.Connection
 import java.util.Properties
 
 /**
@@ -17,12 +21,14 @@ import java.util.Properties
  * @property endpoint JDBC endpoint declared in kit.yaml.
  * @property user JDBC username (from the sql capability config); omitted from properties if blank.
  * @property connectionFactory Injectable for testing; defaults to [defaultJdbcConnectionFactory].
+ * @property bridgeFactory Injectable for testing; defaults to [defaultSocksTcpBridgeFactory].
  */
 class KitJdbcSqlService(
     private val clusterStateManager: ClusterStateManager,
     private val endpoint: KitEndpoint,
     private val user: String,
     private val connectionFactory: JdbcConnectionFactory = defaultJdbcConnectionFactory,
+    private val bridgeFactory: SocksTcpBridgeFactory = defaultSocksTcpBridgeFactory,
 ) {
     private val log = KotlinLogging.logger {}
 
@@ -40,35 +46,59 @@ class KitJdbcSqlService(
             if (hosts.isNullOrEmpty()) {
                 error("No ${serverType.serverType} nodes found in cluster state. Is the cluster running?")
             }
-            val url = endpoint.formatUrl(hosts.first().privateIp)
-
-            log.debug { "Connecting to ${endpoint.name} at $url" }
+            val privateIp = hosts.first().privateIp
+            val url = endpoint.formatUrl(privateIp)
 
             val props =
                 Properties().apply {
                     if (user.isNotBlank()) setProperty("user", user)
                 }
 
-            connectionFactory.connect(url, props).use { conn ->
-                conn.createStatement().use { stmt ->
-                    if (stmt.execute(sql)) {
-                        stmt.resultSet.use { rs ->
-                            val meta = rs.metaData
-                            val columnCount = meta.columnCount
-                            val columns = (1..columnCount).map { meta.getColumnName(it) }
-                            val rows = mutableListOf<List<String>>()
-                            while (rs.next()) {
-                                rows.add((1..columnCount).map { rs.getString(it) ?: "NULL" })
-                            }
-                            log.debug { "Query complete: ${rows.size} rows, $columnCount columns" }
-                            SqlQueryResult(columns = columns, rows = rows)
-                        }
-                    } else {
-                        val count = stmt.updateCount
-                        log.debug { "Statement complete: $count rows affected" }
-                        SqlQueryResult(columns = listOf("rows affected"), rows = listOf(listOf(count.toString())))
-                    }
+            val socksPort = System.getProperty(Constants.Proxy.PORT_PROPERTY)?.toIntOrNull()
+            if (socksPort == null) {
+                // Tailscale active or no proxy: connect directly to the private IP, unchanged.
+                log.debug { "Connecting to ${endpoint.name} at $url" }
+                connectAndRun(url, props, sql)
+            } else {
+                // SOCKS-only cluster: forward loopback through the existing tunnel to the private IP.
+                bridgeFactory.open(socksPort, privateIp, endpoint.port).use { bridge ->
+                    val bridged = endpoint.formatUrl("127.0.0.1", bridge.localPort)
+                    log.debug { "Connecting to ${endpoint.name} via SOCKS bridge at $bridged (target $url)" }
+                    connectAndRun(bridged, props, sql)
                 }
+            }
+        }
+
+    private fun connectAndRun(
+        url: String,
+        props: Properties,
+        sql: String,
+    ): SqlQueryResult =
+        connectionFactory.connect(url, props).use { conn ->
+            runStatement(conn, sql)
+        }
+
+    private fun runStatement(
+        conn: Connection,
+        sql: String,
+    ): SqlQueryResult =
+        conn.createStatement().use { stmt ->
+            if (stmt.execute(sql)) {
+                stmt.resultSet.use { rs ->
+                    val meta = rs.metaData
+                    val columnCount = meta.columnCount
+                    val columns = (1..columnCount).map { meta.getColumnName(it) }
+                    val rows = mutableListOf<List<String>>()
+                    while (rs.next()) {
+                        rows.add((1..columnCount).map { rs.getString(it) ?: "NULL" })
+                    }
+                    log.debug { "Query complete: ${rows.size} rows, $columnCount columns" }
+                    SqlQueryResult(columns = columns, rows = rows)
+                }
+            } else {
+                val count = stmt.updateCount
+                log.debug { "Statement complete: $count rows affected" }
+                SqlQueryResult(columns = listOf("rows affected"), rows = listOf(listOf(count.toString())))
             }
         }
 }

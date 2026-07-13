@@ -78,8 +78,17 @@ data class KitEndpoint(
         KAFKA,
     }
 
-    /** Formats a connection URL for this endpoint using [ip] as the host address. */
-    fun formatUrl(ip: String): String =
+    /**
+     * Formats a connection URL for this endpoint using [ip] as the host address.
+     *
+     * [port] defaults to the endpoint's declared port; callers that tunnel the connection
+     * through a loopback listener (e.g. the SOCKS TCP bridge) pass the listener's local port
+     * so the URL points at the bridge instead of the private-IP authority.
+     */
+    fun formatUrl(
+        ip: String,
+        port: Int = this.port,
+    ): String =
         when (type) {
             EndpointType.HTTP -> "http://$ip:$port$path"
             EndpointType.HTTPS -> "https://$ip:$port$path"

@@ -1,3 +1,12 @@
+// Testcontainers 2.x deprecated `org.testcontainers.containers.localstack.LocalStackContainer`
+// in favour of `org.testcontainers.localstack.LocalStackContainer`, whose API differs (the
+// `Service` enum is gone in favour of `withServices(String...)`, and per-service
+// `getEndpointOverride(Service)` is replaced by a single `getEndpoint()`). That migration is a
+// behavioural change that can only be validated against a running LocalStack container, so it is
+// deferred rather than guessed at here. Suppress the deprecation for this file until the wrapper
+// is migrated deliberately.
+@file:Suppress("DEPRECATION")
+
 package com.rustyrazorblade.easydblab
 
 import org.testcontainers.containers.localstack.LocalStackContainer

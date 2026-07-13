@@ -16,6 +16,8 @@ import org.koin.dsl.module
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
 
+private val prettyJson = Json { prettyPrint = true }
+
 class McpEnumTest : BaseKoinTest() {
     private lateinit var registry: McpToolRegistry
 
@@ -42,7 +44,7 @@ class McpEnumTest : BaseKoinTest() {
         // Print the schema to see what's being generated
         println("Generated schema for enum command:")
         println(
-            Json { prettyPrint = true }
+            prettyJson
                 .encodeToString(JsonObject.serializer(), schema),
         )
 

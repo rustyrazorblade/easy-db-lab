@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.output
 
 import com.github.dockerjava.api.model.Frame
 import com.github.dockerjava.api.model.StreamType
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.AfterEach
@@ -13,6 +14,7 @@ import org.junit.jupiter.api.Test
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class FilteringChannelOutputHandlerFrameResetTest {
     private lateinit var outputChannel: Channel<OutputEvent>
     private lateinit var handler: FilteringChannelOutputHandler

@@ -62,7 +62,7 @@ class DefaultDockerClient(
     override fun listImages(
         name: String,
         tag: String,
-    ): List<Image> = dockerClient.listImagesCmd().withImageNameFilter("$name:$tag").exec()
+    ): List<Image> = dockerClient.listImagesCmd().withReferenceFilter("$name:$tag").exec()
 
     override fun pullImage(
         name: String,

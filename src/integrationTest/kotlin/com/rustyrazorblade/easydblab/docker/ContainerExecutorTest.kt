@@ -131,6 +131,7 @@ class ContainerIOManagerTest :
         val callbackCaptor = argumentCaptor<ResultCallback.Adapter<Frame>>()
 
         doAnswer { invocation ->
+            @Suppress("UNCHECKED_CAST")
             val callback = invocation.arguments[2] as ResultCallback.Adapter<Frame>
             // Simulate some frames
             callback.onNext(Frame(StreamType.STDOUT, "Line 1\n".toByteArray()))
@@ -155,6 +156,7 @@ class ContainerIOManagerTest :
         val containerId = "test-container-123"
 
         doAnswer { invocation ->
+            @Suppress("UNCHECKED_CAST")
             val callback = invocation.arguments[2] as ResultCallback.Adapter<Frame>
             callback.onError(IOException("Connection lost"))
             null

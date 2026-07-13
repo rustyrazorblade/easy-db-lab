@@ -38,7 +38,7 @@ class VictoriaMetricsQueryServiceTest {
         assertThat(db0.metric["host_name"]).isEqualTo("db-0")
         assertThat(db0.numericValue()).isEqualTo(34.2)
 
-        val db1 = parsed.data!!.result[1]
+        val db1 = parsed.data.result[1]
         assertThat(db1.metric["host_name"]).isEqualTo("db-1")
         assertThat(db1.numericValue()).isEqualTo(28.7)
     }
@@ -138,7 +138,7 @@ class VictoriaMetricsQueryServiceTest {
         val parsed = json.decodeFromString<PromQueryResponse>(responseJson)
 
         assertThat(parsed.data!!.result).hasSize(1)
-        assertThat(parsed.data!!.result[0].metric).isEmpty()
-        assertThat(parsed.data!!.result[0].numericValue()).isEqualTo(1500.0)
+        assertThat(parsed.data.result[0].metric).isEmpty()
+        assertThat(parsed.data.result[0].numericValue()).isEqualTo(1500.0)
     }
 }

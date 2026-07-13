@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.output
 
 import com.github.dockerjava.api.model.Frame
 import com.github.dockerjava.api.model.StreamType
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -10,6 +11,7 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class FilteringChannelOutputHandlerTest {
     @Test
     fun `should drop frame events and not send them to channel`() =

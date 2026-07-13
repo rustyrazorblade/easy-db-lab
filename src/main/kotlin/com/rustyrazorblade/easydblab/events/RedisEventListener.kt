@@ -2,7 +2,7 @@ package com.rustyrazorblade.easydblab.events
 
 import com.rustyrazorblade.easydblab.Constants
 import io.github.oshai.kotlinlogging.KotlinLogging
-import redis.clients.jedis.JedisPooled
+import redis.clients.jedis.RedisClient
 import java.net.URI
 
 /**
@@ -25,7 +25,7 @@ class RedisEventListener(
     }
 
     private val channel: String
-    private val jedis: JedisPooled
+    private val jedis: RedisClient
 
     init {
         val uri = URI(redisUrl)
@@ -35,7 +35,7 @@ class RedisEventListener(
         val host = uri.host
         val port = if (uri.port > 0) uri.port else DEFAULT_REDIS_PORT
 
-        jedis = JedisPooled(host, port)
+        jedis = RedisClient.create(host, port)
 
         // Fail fast: verify connectivity by pinging Redis
         jedis.ping()

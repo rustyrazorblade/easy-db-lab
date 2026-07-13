@@ -8,7 +8,6 @@ import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
-import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -624,17 +623,6 @@ S3 Manager:
         }
     }
 }
-
-/**
- * Extension function to convert ClusterHost to Host for SSH operations
- */
-private fun ClusterHost.toHost(): Host =
-    Host(
-        public = this.publicIp,
-        private = this.privateIp,
-        alias = this.alias,
-        availabilityZone = this.availabilityZone,
-    )
 
 /**
  * Thrown by [Status] after it renders a degraded report, so the command still exits non-zero.

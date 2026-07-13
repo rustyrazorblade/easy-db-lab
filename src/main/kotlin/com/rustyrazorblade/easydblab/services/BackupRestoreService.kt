@@ -116,7 +116,7 @@ class DefaultBackupRestoreService(
 
             // Step 1: Look up cluster info and S3 bucket from VPC tags
             log.info { "Looking up cluster info from VPC: $vpcId" }
-            eventBus.emit(Event.Backup.ClusterLookup(vpcId.toString()))
+            eventBus.emit(Event.Backup.ClusterLookup(vpcId))
 
             val vpcTags = vpcService.getVpcTags(vpcId)
             val clusterId =

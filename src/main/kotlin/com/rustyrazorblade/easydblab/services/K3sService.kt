@@ -214,7 +214,7 @@ class DefaultK3sService(
                 )
 
                 // Parse YAML
-                val kubeconfigMap = yamlMapper.readValue(tempFile, Map::class.java) as Map<String, Any>
+                val kubeconfigMap = yamlMapper.readValue(tempFile, Map::class.java)
 
                 // Modify server URL from 127.0.0.1 to control node's private IP
                 val newServerUrl = Constants.K3s.DEFAULT_SERVER_URL.replace("127.0.0.1", host.private)
@@ -222,6 +222,7 @@ class DefaultK3sService(
                 @Suppress("UNCHECKED_CAST")
                 val clusters = kubeconfigMap["clusters"] as? List<Map<String, Any>>
                 clusters?.firstOrNull()?.let { cluster ->
+                    @Suppress("UNCHECKED_CAST")
                     val clusterData = cluster["cluster"] as? MutableMap<String, Any>
                     clusterData?.put("server", newServerUrl)
                 }

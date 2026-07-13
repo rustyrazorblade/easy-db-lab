@@ -4,26 +4,43 @@ import com.github.dockerjava.api.model.Frame
 import com.github.dockerjava.api.model.StreamType
 import com.rustyrazorblade.easydblab.output.OutputEvent
 import kotlinx.coroutines.channels.Channel
+import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertFalse
-import org.junit.jupiter.api.Assertions.assertNotSame
-import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import java.time.Duration
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
+/**
+ * Tests for [ChannelMessageBuffer].
+ *
+ * The buffer runs a background consumer that drains [channel] asynchronously, so these tests
+ * synchronize on observable buffer state (via [awaitBufferSize] / [awaitUntil]) rather than fixed
+ * `Thread.sleep` calls. Polling a condition removes the wall-clock cost of worst-case sleeps while
+ * being strictly more reliable than a fixed pause.
+ */
 class ChannelMessageBufferTest {
     private lateinit var channel: Channel<OutputEvent>
     private lateinit var buffer: ChannelMessageBuffer
 
+    companion object {
+        private const val TIMESTAMP_PREFIX = "\\[\\d{2}:\\d{2}:\\d{2}\\.\\d+\\] "
+
+        // Failure ceiling only: awaitUntil returns as soon as the condition holds. Generous so a
+        // loaded CI machine never flakes; the consumer (zero poll interval here) drains in ms.
+        private val AWAIT_TIMEOUT = Duration.ofSeconds(10)
+        private const val POLL_INTERVAL_MS = 5L
+    }
+
     @BeforeEach
     fun setup() {
         channel = Channel(Channel.UNLIMITED)
-        buffer = ChannelMessageBuffer(channel)
+        // Zero poll interval so the consumer drains without the production per-message throttle;
+        // only throughput changes, not the buffering behavior under test.
+        buffer = ChannelMessageBuffer(channel, pollInterval = Duration.ZERO)
     }
 
     @AfterEach
@@ -32,20 +49,35 @@ class ChannelMessageBufferTest {
         channel.close()
     }
 
-    // Helper method to send event to channel and wait for processing
-    private fun sendEvent(event: OutputEvent) {
-        val result = channel.trySend(event)
-        assertTrue(result.isSuccess, "Failed to send event")
-        Thread.sleep(50) // Give buffer time to process
+    /** Sends an event to the channel, asserting the send succeeded. */
+    private fun send(event: OutputEvent) {
+        assertThat(channel.trySend(event).isSuccess)
+            .describedAs("send $event to channel")
+            .isTrue()
     }
+
+    /** Polls [condition] on a short interval until it holds or the timeout elapses. */
+    private fun awaitUntil(
+        description: String,
+        condition: () -> Boolean,
+    ) {
+        val deadline = System.nanoTime() + AWAIT_TIMEOUT.toNanos()
+        while (!condition() && System.nanoTime() < deadline) {
+            Thread.sleep(POLL_INTERVAL_MS)
+        }
+        assertThat(condition()).describedAs(description).isTrue()
+    }
+
+    /** Waits until the buffer has exactly [expected] messages. */
+    private fun awaitBufferSize(expected: Int) = awaitUntil("buffer size reaches $expected") { buffer.size() == expected }
 
     // ========== Construction Tests ==========
 
     @Test
     fun `constructor initializes with empty buffer`() {
-        assertTrue(buffer.isEmpty())
-        assertEquals(0, buffer.size())
-        assertTrue(buffer.getMessages().isEmpty())
+        assertThat(buffer.isEmpty()).isTrue()
+        assertThat(buffer.size()).isZero()
+        assertThat(buffer.getMessages()).isEmpty()
     }
 
     // ========== Event Processing Tests ==========
@@ -53,94 +85,99 @@ class ChannelMessageBufferTest {
     @Test
     fun `processEvent handles MessageEvent and returns true`() {
         buffer.start()
-        sendEvent(OutputEvent.MessageEvent("Test message"))
+        send(OutputEvent.MessageEvent("Test message"))
+        awaitBufferSize(1)
 
-        assertEquals(1, buffer.size())
         val messages = buffer.getMessages()
-        assertEquals(1, messages.size)
-        assertTrue(messages[0].contains("Test message"))
-        assertTrue(messages[0].matches(Regex("\\[\\d{2}:\\d{2}:\\d{2}\\.\\d+\\] .*")))
+        assertThat(messages).hasSize(1)
+        assertThat(messages[0]).contains("Test message")
+        assertThat(messages[0]).matches("$TIMESTAMP_PREFIX.*")
     }
 
     @Test
     fun `processEvent handles ErrorEvent with ERROR prefix and returns true`() {
         buffer.start()
-        sendEvent(OutputEvent.ErrorEvent("Test error"))
+        send(OutputEvent.ErrorEvent("Test error"))
+        awaitBufferSize(1)
 
-        assertEquals(1, buffer.size())
         val messages = buffer.getMessages()
-        assertEquals(1, messages.size)
-        assertTrue(messages[0].contains("ERROR: Test error"))
-        assertTrue(messages[0].matches(Regex("\\[\\d{2}:\\d{2}:\\d{2}\\.\\d+\\] ERROR: .*")))
+        assertThat(messages).hasSize(1)
+        assertThat(messages[0]).contains("ERROR: Test error")
+        assertThat(messages[0]).matches("${TIMESTAMP_PREFIX}ERROR: .*")
     }
 
     @Test
     fun `processEvent handles ErrorEvent with throwable`() {
         buffer.start()
         val exception = RuntimeException("Test exception")
-        sendEvent(OutputEvent.ErrorEvent("Error with exception", exception))
+        send(OutputEvent.ErrorEvent("Error with exception", exception))
+        awaitBufferSize(1)
 
-        assertEquals(1, buffer.size())
-        val messages = buffer.getMessages()
-        assertTrue(messages[0].contains("ERROR: Error with exception"))
+        assertThat(buffer.getMessages()[0]).contains("ERROR: Error with exception")
     }
 
     @Test
     fun `processEvent handles FrameEvent without buffering and returns true`() {
         buffer.start()
         val frame = Frame(StreamType.STDOUT, "frame content".toByteArray())
-        sendEvent(OutputEvent.FrameEvent(frame))
+        send(OutputEvent.FrameEvent(frame))
+        // The consumer processes the channel FIFO, so once the sentinel is buffered the frame ahead
+        // of it has already been processed. A frame that contributed nothing leaves size at 1.
+        send(OutputEvent.MessageEvent("sentinel"))
+        awaitBufferSize(1)
 
-        assertTrue(buffer.isEmpty())
-        assertEquals(0, buffer.size())
+        val messages = buffer.getMessages()
+        assertThat(messages).hasSize(1)
+        assertThat(messages[0]).contains("sentinel")
     }
 
     @Test
-    fun `processEvent handles CloseEvent and stops consumer`() {
+    fun `processEvent handles CloseEvent without buffering`() {
         buffer.start()
-        sendEvent(OutputEvent.CloseEvent)
-        Thread.sleep(100) // Give time for thread to stop
+        send(OutputEvent.CloseEvent)
+        // CloseEvent is not buffered; the following sentinel proves the event was consumed and
+        // added nothing to the buffer.
+        send(OutputEvent.MessageEvent("sentinel"))
+        awaitBufferSize(1)
 
-        assertTrue(buffer.isEmpty())
-        // The consumer thread should stop after CloseEvent
+        assertThat(buffer.getMessages()[0]).contains("sentinel")
     }
 
     @Test
     fun `processEvent handles multiple message types in sequence`() {
         buffer.start()
-        sendEvent(OutputEvent.MessageEvent("Info message"))
-        sendEvent(OutputEvent.ErrorEvent("Error message"))
-        sendEvent(OutputEvent.FrameEvent(Frame(StreamType.STDOUT, "frame".toByteArray())))
-        sendEvent(OutputEvent.MessageEvent("Another info"))
+        send(OutputEvent.MessageEvent("Info message"))
+        send(OutputEvent.ErrorEvent("Error message"))
+        send(OutputEvent.FrameEvent(Frame(StreamType.STDOUT, "frame".toByteArray())))
+        send(OutputEvent.MessageEvent("Another info"))
+        awaitBufferSize(3)
 
         val messages = buffer.getMessages()
-        assertEquals(3, messages.size)
-        assertTrue(messages[0].contains("Info message"))
-        assertTrue(messages[1].contains("ERROR: Error message"))
-        assertTrue(messages[2].contains("Another info"))
+        assertThat(messages[0]).contains("Info message")
+        assertThat(messages[1]).contains("ERROR: Error message")
+        assertThat(messages[2]).contains("Another info")
     }
 
     @Test
     fun `processEvent handles empty message content`() {
         buffer.start()
-        sendEvent(OutputEvent.MessageEvent(""))
-        sendEvent(OutputEvent.ErrorEvent(""))
+        send(OutputEvent.MessageEvent(""))
+        send(OutputEvent.ErrorEvent(""))
+        awaitBufferSize(2)
 
         val messages = buffer.getMessages()
-        assertEquals(2, messages.size)
-        assertTrue(messages[0].matches(Regex("\\[\\d{2}:\\d{2}:\\d{2}\\.\\d+\\] $")))
-        assertTrue(messages[1].matches(Regex("\\[\\d{2}:\\d{2}:\\d{2}\\.\\d+\\] ERROR: $")))
+        assertThat(messages[0]).matches("$TIMESTAMP_PREFIX$")
+        assertThat(messages[1]).matches("${TIMESTAMP_PREFIX}ERROR: $")
     }
 
     @Test
     fun `processEvent handles very long messages`() {
         buffer.start()
         val longMessage = "x".repeat(10000)
-        sendEvent(OutputEvent.MessageEvent(longMessage))
+        send(OutputEvent.MessageEvent(longMessage))
+        awaitBufferSize(1)
 
-        val messages = buffer.getMessages()
-        assertEquals(1, messages.size)
-        assertTrue(messages[0].contains(longMessage))
+        assertThat(buffer.getMessages()[0]).contains(longMessage)
     }
 
     // ========== Buffer Operations Tests ==========
@@ -148,76 +185,81 @@ class ChannelMessageBufferTest {
     @Test
     fun `getMessages returns copy of buffer`() {
         buffer.start()
-        sendEvent(OutputEvent.MessageEvent("Message 1"))
+        send(OutputEvent.MessageEvent("Message 1"))
+        awaitBufferSize(1)
 
         val messages1 = buffer.getMessages()
         val messages2 = buffer.getMessages()
 
-        assertEquals(messages1, messages2)
-        assertNotSame(messages1, messages2) // Different instances
+        assertThat(messages1).isEqualTo(messages2)
+        assertThat(messages1).isNotSameAs(messages2)
 
-        // Modifying returned list doesn't affect buffer
-        messages1.toMutableList().clear()
-        assertEquals(1, buffer.size())
+        // The returned list is an independent copy, so the buffer is unaffected by consumers of it.
+        assertThat(buffer.size()).isEqualTo(1)
     }
 
     @Test
     fun `clearMessages empties buffer`() {
         buffer.start()
-        sendEvent(OutputEvent.MessageEvent("Message 1"))
-        sendEvent(OutputEvent.MessageEvent("Message 2"))
+        send(OutputEvent.MessageEvent("Message 1"))
+        send(OutputEvent.MessageEvent("Message 2"))
+        awaitBufferSize(2)
 
-        assertEquals(2, buffer.size())
-        assertFalse(buffer.isEmpty())
+        assertThat(buffer.isEmpty()).isFalse()
 
         buffer.clearMessages()
 
-        assertEquals(0, buffer.size())
-        assertTrue(buffer.isEmpty())
-        assertTrue(buffer.getMessages().isEmpty())
+        assertThat(buffer.size()).isZero()
+        assertThat(buffer.isEmpty()).isTrue()
+        assertThat(buffer.getMessages()).isEmpty()
     }
 
     @Test
     fun `getAndClearMessages atomically retrieves and clears`() {
         buffer.start()
-        sendEvent(OutputEvent.MessageEvent("Message 1"))
-        sendEvent(OutputEvent.MessageEvent("Message 2"))
+        send(OutputEvent.MessageEvent("Message 1"))
+        send(OutputEvent.MessageEvent("Message 2"))
+        awaitBufferSize(2)
 
         val messages = buffer.getAndClearMessages()
 
-        assertEquals(2, messages.size)
-        assertTrue(buffer.isEmpty())
-        assertEquals(0, buffer.size())
+        assertThat(messages).hasSize(2)
+        assertThat(buffer.isEmpty()).isTrue()
+        assertThat(buffer.size()).isZero()
     }
 
     @Test
     fun `size returns correct count`() {
         buffer.start()
-        assertEquals(0, buffer.size())
+        assertThat(buffer.size()).isZero()
 
-        sendEvent(OutputEvent.MessageEvent("Message 1"))
-        assertEquals(1, buffer.size())
+        send(OutputEvent.MessageEvent("Message 1"))
+        awaitBufferSize(1)
 
-        sendEvent(OutputEvent.MessageEvent("Message 2"))
-        assertEquals(2, buffer.size())
+        send(OutputEvent.MessageEvent("Message 2"))
+        awaitBufferSize(2)
 
-        sendEvent(OutputEvent.FrameEvent(Frame(StreamType.STDOUT, "frame".toByteArray())))
-        assertEquals(2, buffer.size()) // Frame not buffered
+        // Frame is not buffered: after the sentinel is buffered (size 3), the frame ahead of it in
+        // the FIFO has already been processed and added nothing.
+        send(OutputEvent.FrameEvent(Frame(StreamType.STDOUT, "frame".toByteArray())))
+        send(OutputEvent.MessageEvent("sentinel"))
+        awaitBufferSize(3)
 
         buffer.clearMessages()
-        assertEquals(0, buffer.size())
+        assertThat(buffer.size()).isZero()
     }
 
     @Test
     fun `isEmpty returns correct state`() {
         buffer.start()
-        assertTrue(buffer.isEmpty())
+        assertThat(buffer.isEmpty()).isTrue()
 
-        sendEvent(OutputEvent.MessageEvent("Message"))
-        assertFalse(buffer.isEmpty())
+        send(OutputEvent.MessageEvent("Message"))
+        awaitBufferSize(1)
+        assertThat(buffer.isEmpty()).isFalse()
 
         buffer.clearMessages()
-        assertTrue(buffer.isEmpty())
+        assertThat(buffer.isEmpty()).isTrue()
     }
 
     // ========== Thread Safety Tests ==========
@@ -226,47 +268,42 @@ class ChannelMessageBufferTest {
     fun `concurrent operations are thread-safe`() {
         buffer.start()
         val executor = Executors.newFixedThreadPool(10)
-        val iterations = 10 // Reduced from 100
-        val expectedTotal = 10 * iterations // 100 messages total
+        val iterations = 10
+        val expectedTotal = 10 * iterations
         val latch = CountDownLatch(expectedTotal)
 
         // Submit multiple threads writing messages
         repeat(10) { threadIndex ->
             executor.submit {
                 repeat(iterations) { i ->
-                    val result = channel.trySend(OutputEvent.MessageEvent("Thread $threadIndex - Message $i"))
-                    assertTrue(result.isSuccess)
+                    assertThat(channel.trySend(OutputEvent.MessageEvent("Thread $threadIndex - Message $i")).isSuccess).isTrue()
                     latch.countDown()
                 }
             }
         }
 
-        // Wait for all operations to complete
-        assertTrue(latch.await(10, TimeUnit.SECONDS))
+        // Wait for all sends to complete
+        assertThat(latch.await(10, TimeUnit.SECONDS)).isTrue()
         executor.shutdown()
-        assertTrue(executor.awaitTermination(1, TimeUnit.SECONDS))
+        assertThat(executor.awaitTermination(1, TimeUnit.SECONDS)).isTrue()
 
-        // Give consumer time to process all messages (100 messages * 10ms + overhead)
-        Thread.sleep(2000)
-
-        // Verify all messages were buffered
-        val messages = buffer.getMessages()
-        assertEquals(expectedTotal, messages.size)
+        // Wait for the consumer to buffer every message
+        awaitBufferSize(expectedTotal)
+        assertThat(buffer.getMessages()).hasSize(expectedTotal)
     }
 
     @Test
     fun `getAndClearMessages is atomic under concurrent access`() {
         buffer.start()
         val executor = Executors.newFixedThreadPool(10)
-        val totalMessages = 100 // Reduced from 1000
+        val totalMessages = 100
         val collectedMessages = Collections.synchronizedList(mutableListOf<String>())
 
         // Add messages
         repeat(totalMessages) { i ->
-            val result = channel.trySend(OutputEvent.MessageEvent("Message $i"))
-            assertTrue(result.isSuccess)
+            send(OutputEvent.MessageEvent("Message $i"))
         }
-        Thread.sleep(1500) // Give consumer time to process (100 messages * 10ms + overhead)
+        awaitBufferSize(totalMessages)
 
         // Multiple threads trying to get and clear
         val futures =
@@ -280,11 +317,11 @@ class ChannelMessageBufferTest {
         // Wait for all threads
         futures.forEach { it.get() }
         executor.shutdown()
-        assertTrue(executor.awaitTermination(1, TimeUnit.SECONDS))
+        assertThat(executor.awaitTermination(1, TimeUnit.SECONDS)).isTrue()
 
         // All messages should be collected exactly once
-        assertEquals(totalMessages, collectedMessages.size)
-        assertTrue(buffer.isEmpty())
+        assertThat(collectedMessages).hasSize(totalMessages)
+        assertThat(buffer.isEmpty()).isTrue()
     }
 
     // ========== Message Order Tests ==========
@@ -293,146 +330,112 @@ class ChannelMessageBufferTest {
     fun `messages preserve insertion order`() {
         buffer.start()
         repeat(50) { i ->
-            // Reduced from 100
-            sendEvent(OutputEvent.MessageEvent("Message $i"))
+            send(OutputEvent.MessageEvent("Message $i"))
         }
-        Thread.sleep(200) // Give consumer time to process all
+        awaitBufferSize(50)
 
         val messages = buffer.getMessages()
-        assertEquals(50, messages.size)
-
         messages.forEachIndexed { index, message ->
-            assertTrue(message.contains("Message $index"))
+            assertThat(message).contains("Message $index")
         }
     }
 
     @Test
     fun `messages maintain chronological timestamps`() {
         buffer.start()
-        sendEvent(OutputEvent.MessageEvent("First"))
-        Thread.sleep(10) // Small delay to ensure different timestamps
-        sendEvent(OutputEvent.MessageEvent("Second"))
-        Thread.sleep(10)
-        sendEvent(OutputEvent.MessageEvent("Third"))
+        send(OutputEvent.MessageEvent("First"))
+        send(OutputEvent.MessageEvent("Second"))
+        send(OutputEvent.MessageEvent("Third"))
+        awaitBufferSize(3)
 
         val messages = buffer.getMessages()
-        assertEquals(3, messages.size)
 
-        // Extract timestamps (format: [HH:mm:ss.SSS])
+        // Every message carries a timestamp prefix
         val timestampRegex = Regex("\\[(\\d{2}:\\d{2}:\\d{2}\\.\\d+)\\]")
-        val timestamps =
-            messages.map {
-                timestampRegex.find(it)?.groupValues?.get(1) ?: ""
-            }
+        assertThat(messages).allMatch { timestampRegex.containsMatchIn(it) }
 
-        // Verify all timestamps were extracted
-        assertTrue(timestamps.all { it.isNotEmpty() })
-
-        // Verify chronological order
-        assertTrue(messages[0].contains("First"))
-        assertTrue(messages[1].contains("Second"))
-        assertTrue(messages[2].contains("Third"))
+        // FIFO insertion order is preserved
+        assertThat(messages[0]).contains("First")
+        assertThat(messages[1]).contains("Second")
+        assertThat(messages[2]).contains("Third")
     }
 
     // ========== Edge Cases ==========
 
     @Test
     fun `processEvent continues after exceptions`() {
-        // This test verifies exception handling in processEvent
-        // Since we can't easily trigger an exception in the when block,
-        // we verify the structure handles all cases properly
-
         buffer.start()
-        sendEvent(OutputEvent.MessageEvent("Before"))
-        sendEvent(OutputEvent.MessageEvent("After"))
+        send(OutputEvent.MessageEvent("Before"))
+        send(OutputEvent.MessageEvent("After"))
+        awaitBufferSize(2)
 
-        assertEquals(2, buffer.size())
+        assertThat(buffer.size()).isEqualTo(2)
     }
 
     @Test
     fun `getAndClearMessages on empty buffer returns empty list`() {
         val messages = buffer.getAndClearMessages()
 
-        assertTrue(messages.isEmpty())
-        assertTrue(buffer.isEmpty())
+        assertThat(messages).isEmpty()
+        assertThat(buffer.isEmpty()).isTrue()
     }
 
     @Test
     fun `clearMessages on empty buffer is safe`() {
         buffer.clearMessages() // Should not throw
-        assertTrue(buffer.isEmpty())
+        assertThat(buffer.isEmpty()).isTrue()
     }
 
     @Test
     fun `high message volume is handled correctly`() {
         buffer.start()
-        val messageCount = 1000 // Reduced from 10000
+        val messageCount = 1000
         repeat(messageCount) { i ->
-            val result = channel.trySend(OutputEvent.MessageEvent("Message $i"))
-            assertTrue(result.isSuccess)
+            send(OutputEvent.MessageEvent("Message $i"))
         }
 
-        // Wait for buffer to process all messages with periodic checks
-        var waitTime = 0
-        val maxWaitTime = 15000 // 15 seconds max
-        while (buffer.size() < messageCount && waitTime < maxWaitTime) {
-            Thread.sleep(100)
-            waitTime += 100
-        }
-
-        assertEquals(messageCount, buffer.size())
-        val messages = buffer.getMessages()
-        assertEquals(messageCount, messages.size)
+        awaitBufferSize(messageCount)
+        assertThat(buffer.getMessages()).hasSize(messageCount)
     }
+
     // ========== Start/Stop Tests ==========
 
     @Test
     fun `start initiates message consumption`() {
-        // Buffer should be empty before start
-        assertTrue(buffer.isEmpty())
+        assertThat(buffer.isEmpty()).isTrue()
 
-        // Start the buffer
         buffer.start()
 
-        // Now messages should be buffered
-        sendEvent(OutputEvent.MessageEvent("After start"))
-        assertEquals(1, buffer.size())
-        assertTrue(buffer.getMessages()[0].contains("After start"))
+        send(OutputEvent.MessageEvent("After start"))
+        awaitBufferSize(1)
+        assertThat(buffer.getMessages()[0]).contains("After start")
     }
 
     @Test
     fun `stop halts message consumption`() {
         buffer.start()
 
-        // Send and verify message is buffered
-        sendEvent(OutputEvent.MessageEvent("Message 1"))
-        assertEquals(1, buffer.size())
+        send(OutputEvent.MessageEvent("Message 1"))
+        awaitBufferSize(1)
 
-        // Stop the buffer
+        // stop() joins the consumer thread, so once it returns nothing will drain the channel.
         buffer.stop()
-        Thread.sleep(100) // Give thread time to stop
-
-        // Clear existing messages
         buffer.clearMessages()
 
-        // Send message after stopping - should not be buffered
-        channel.trySend(OutputEvent.MessageEvent("After stop"))
-        Thread.sleep(100)
-        assertTrue(buffer.isEmpty())
+        send(OutputEvent.MessageEvent("After stop"))
+        assertThat(buffer.isEmpty()).isTrue()
     }
 
     @Test
-    fun `channel closure stops consumer thread`() {
+    fun `channel closure retains already-buffered messages`() {
         buffer.start()
 
-        sendEvent(OutputEvent.MessageEvent("Before close"))
-        assertEquals(1, buffer.size())
+        send(OutputEvent.MessageEvent("Before close"))
+        awaitBufferSize(1)
 
-        // Close the channel
+        // Closing the channel stops new events from arriving but does not clear the buffer.
         channel.close()
-        Thread.sleep(100) // Give thread time to detect closure
 
-        // Buffer should still have the message from before close
-        assertEquals(1, buffer.size())
+        assertThat(buffer.size()).isEqualTo(1)
     }
 }

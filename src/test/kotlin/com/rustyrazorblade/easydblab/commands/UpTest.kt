@@ -49,6 +49,7 @@ import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.io.File
 import java.nio.file.Path
+import java.time.Duration
 
 /**
  * Tests for [Up], the command that provisions and configures the complete cluster.
@@ -290,7 +291,7 @@ class UpTest : BaseKoinTest() {
 
     @Test
     fun `up provisions successfully when every step succeeds`() {
-        assertThatCode { Up().execute() }.doesNotThrowAnyException()
+        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
 
         verify(mockClusterProvisioningService).provisionAll(any(), any(), any(), any())
         verify(mockK8sService).labelNode(eq(testControlHost), eq("control0"), any())
@@ -308,7 +309,7 @@ class UpTest : BaseKoinTest() {
     fun `up fails before any EC2 instance is launched when configuration produces no control node`() {
         whenever(mockClusterStateManager.load()).thenReturn(happyState(controlInstances = 0))
 
-        assertThatThrownBy { Up().execute() }
+        assertThatThrownBy { newUp().execute() }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("control node is required")
 
@@ -320,7 +321,7 @@ class UpTest : BaseKoinTest() {
     fun `up fails before any EC2 instance is launched when no S3 bucket is configured`() {
         whenever(mockS3BucketService.ensureAccountBucket(any())).thenReturn("")
 
-        assertThatThrownBy { Up().execute() }
+        assertThatThrownBy { newUp().execute() }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("S3 bucket is required")
 
@@ -337,7 +338,7 @@ class UpTest : BaseKoinTest() {
             ),
         )
 
-        assertThatCode { Up().execute() }.doesNotThrowAnyException()
+        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
 
         assertThat(outputHandler.errors).isEmpty()
         verify(mockK8sService, never()).labelNode(any(), eq("db0"), any())
@@ -352,7 +353,7 @@ class UpTest : BaseKoinTest() {
     fun `up aborts when the nested WriteConfig command fails`() {
         nestedCommandExitCodes["WriteConfig"] = 1
 
-        assertThatThrownBy { Up().execute() }
+        assertThatThrownBy { newUp().execute() }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("WriteConfig")
 
@@ -363,7 +364,7 @@ class UpTest : BaseKoinTest() {
     fun `up aborts when the nested SetupInstance command fails`() {
         nestedCommandExitCodes["SetupInstance"] = 1
 
-        assertThatThrownBy { Up().execute() }
+        assertThatThrownBy { newUp().execute() }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("SetupInstance")
 
@@ -377,7 +378,7 @@ class UpTest : BaseKoinTest() {
         overrideUser(userWithAxonOps)
         nestedCommandExitCodes["ConfigureAxonOps"] = 1
 
-        assertThatThrownBy { Up().execute() }
+        assertThatThrownBy { newUp().execute() }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("ConfigureAxonOps")
     }
@@ -386,7 +387,7 @@ class UpTest : BaseKoinTest() {
     fun `up aborts when the nested GrafanaUpdateConfig command fails`() {
         nestedCommandExitCodes["GrafanaUpdateConfig"] = 1
 
-        assertThatThrownBy { Up().execute() }
+        assertThatThrownBy { newUp().execute() }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("GrafanaUpdateConfig")
     }
@@ -396,7 +397,7 @@ class UpTest : BaseKoinTest() {
         whenever(mockClusterConfigurationService.writeAllConfigurationFiles(any(), any(), any()))
             .thenReturn(Result.failure(RuntimeException("disk full")))
 
-        assertThatThrownBy { Up().execute() }
+        assertThatThrownBy { newUp().execute() }
             .isInstanceOf(RuntimeException::class.java)
             .hasMessageContaining("disk full")
 
@@ -409,7 +410,7 @@ class UpTest : BaseKoinTest() {
             K3sSetupResult(serverStarted = false, errors = mapOf("K3s server start" to Exception("connection refused"))),
         )
 
-        assertThatThrownBy { Up().execute() }
+        assertThatThrownBy { newUp().execute() }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("K3s cluster setup failed")
 
@@ -420,7 +421,7 @@ class UpTest : BaseKoinTest() {
     fun `up aborts when ensureLocalStorageClass fails`() {
         whenever(mockK8sService.ensureLocalStorageClass(any())).thenReturn(Result.failure(RuntimeException("apply failed")))
 
-        assertThatThrownBy { Up().execute() }
+        assertThatThrownBy { newUp().execute() }
             .isInstanceOf(RuntimeException::class.java)
             .hasMessageContaining("apply failed")
 
@@ -432,7 +433,7 @@ class UpTest : BaseKoinTest() {
     fun `up aborts when ensureLocalStorageWfcClass fails`() {
         whenever(mockK8sService.ensureLocalStorageWfcClass(any())).thenReturn(Result.failure(RuntimeException("apply failed")))
 
-        assertThatThrownBy { Up().execute() }
+        assertThatThrownBy { newUp().execute() }
             .isInstanceOf(RuntimeException::class.java)
             .hasMessageContaining("apply failed")
     }
@@ -442,7 +443,7 @@ class UpTest : BaseKoinTest() {
         whenever(mockK8sService.labelNode(eq(testControlHost), eq("control0"), any()))
             .thenReturn(Result.failure(RuntimeException("k8s api unreachable")))
 
-        assertThatThrownBy { Up().execute() }
+        assertThatThrownBy { newUp().execute() }
             .isInstanceOf(RuntimeException::class.java)
             .hasMessageContaining("k8s api unreachable")
 
@@ -455,7 +456,7 @@ class UpTest : BaseKoinTest() {
         whenever(mockK8sService.labelNode(eq(testControlHost), eq("db0"), any()))
             .thenReturn(Result.failure(RuntimeException("db label failed")))
 
-        assertThatThrownBy { Up().execute() }
+        assertThatThrownBy { newUp().execute() }
             .isInstanceOf(RuntimeException::class.java)
             .hasMessageContaining("db label failed")
 
@@ -467,7 +468,7 @@ class UpTest : BaseKoinTest() {
         whenever(mockK8sService.labelNode(eq(testControlHost), eq("app0"), any()))
             .thenReturn(Result.failure(RuntimeException("app label failed")))
 
-        assertThatThrownBy { Up().execute() }
+        assertThatThrownBy { newUp().execute() }
             .isInstanceOf(RuntimeException::class.java)
             .hasMessageContaining("app label failed")
 
@@ -479,7 +480,7 @@ class UpTest : BaseKoinTest() {
     fun `up aborts before provisioning when reapplying the S3 policy fails`() {
         whenever(mockS3BucketService.attachS3Policy(any())).thenThrow(RuntimeException("access denied"))
 
-        assertThatThrownBy { Up().execute() }
+        assertThatThrownBy { newUp().execute() }
             .isInstanceOf(RuntimeException::class.java)
             .hasMessageContaining("access denied")
 
@@ -491,7 +492,7 @@ class UpTest : BaseKoinTest() {
         overrideUser(tailscaleUser())
         nestedCommandExitCodes["TailscaleStart"] = 1
 
-        assertThatThrownBy { Up().execute() }
+        assertThatThrownBy { newUp().execute() }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("easy-db-lab tailscale start")
 
@@ -500,7 +501,7 @@ class UpTest : BaseKoinTest() {
 
     @Test
     fun `no-setup exits cleanly without touching K3s or nested setup commands`() {
-        val command = Up()
+        val command = newUp()
         command.noSetup = true
 
         assertThatCode { command.execute() }.doesNotThrowAnyException()
@@ -517,7 +518,7 @@ class UpTest : BaseKoinTest() {
 
     @Test
     fun `ssh readiness wait covers the control host, not only db hosts`() {
-        assertThatCode { Up().execute() }.doesNotThrowAnyException()
+        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
 
         assertThat(sshCheckedAliases).contains("control0", "db0")
     }
@@ -532,12 +533,19 @@ class UpTest : BaseKoinTest() {
         // exercised either way; only the wait time differs.
         sshFailureException = IllegalStateException("connection refused")
 
-        assertThatThrownBy { Up().execute() }
+        assertThatThrownBy { newUp().execute() }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("connection refused")
 
         verify(mockK3sClusterService, never()).setupCluster(any())
     }
+
+    /**
+     * Constructs an [Up] with a zero SSH startup delay so tests do not sit through the production
+     * [Up.SSH_STARTUP_DELAY] pause. The delay's only effect is wall-clock timing, so removing it
+     * does not change any behavior under test.
+     */
+    private fun newUp(): Up = Up(sshStartupDelay = Duration.ZERO)
 
     private fun overrideUser(user: User) {
         whenever(mockClusterStateManager.load()).thenReturn(happyState())

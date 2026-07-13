@@ -21,9 +21,14 @@ import kotlin.concurrent.thread
 
 /**
  * Manages the execution lifecycle of a Docker container.
+ *
+ * @param pollInterval How long to wait between container-state polls while waiting for completion.
+ *   Defaults to [CONTAINER_POLLING_INTERVAL] so production timing is unchanged; tests inject a tiny
+ *   value so they do not busy-wait a real container at 1s granularity.
  */
 class ContainerExecutor(
     private val dockerClient: DockerClientInterface,
+    private val pollInterval: Duration = CONTAINER_POLLING_INTERVAL,
 ) : KoinComponent {
     private val eventBus: EventBus by inject()
 
@@ -91,7 +96,7 @@ class ContainerExecutor(
                 error("Container $containerId did not complete within $maxWaitTime")
             }
 
-            Thread.sleep(CONTAINER_POLLING_INTERVAL.toMillis())
+            Thread.sleep(pollInterval.toMillis())
             containerState = dockerClient.inspectContainer(containerId).state
         } while (containerState.running == true)
 

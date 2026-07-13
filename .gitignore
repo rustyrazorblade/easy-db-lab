@@ -179,3 +179,4 @@ profiles/
 /presto/
 .claude/scheduled_tasks*
 
+/.memsearch

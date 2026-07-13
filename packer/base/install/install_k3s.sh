@@ -10,7 +10,14 @@ echo "=== Running: install_k3s.sh ==="
 
 # Determine k3s version and architecture
 K3S_VERSION="v1.35.1+k3s1"
-ARCH="amd64"
+# Detect architecture from the running system if not provided by Packer
+if [ -z "${ARCH}" ]; then
+  case "$(uname -m)" in
+    x86_64)  ARCH="amd64" ;;
+    aarch64) ARCH="arm64" ;;
+    *) echo "Unsupported architecture: $(uname -m)"; exit 1 ;;
+  esac
+fi
 
 # Use the shared S3 download cache when present; otherwise download directly (local script
 # tests, or no cache configured).
@@ -24,9 +31,14 @@ fi
 echo "Downloading k3s ${K3S_VERSION} for airgap installation..."
 
 # Download k3s binary (via S3 cache)
-echo "Downloading k3s binary..."
+# k3s binary naming: "k3s" for amd64, "k3s-arm64" for arm64
+K3S_BINARY="k3s"
+if [ "$ARCH" = "arm64" ]; then
+  K3S_BINARY="k3s-arm64"
+fi
+echo "Downloading k3s binary (${K3S_BINARY})..."
 cached_fetch \
-  "https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION}/k3s" \
+  "https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION}/${K3S_BINARY}" \
   "k3s/${K3S_VERSION}/k3s-${ARCH}" \
   /tmp/k3s
 sudo install -m 0755 /tmp/k3s /usr/local/bin/k3s

@@ -15,6 +15,10 @@ export VERSION=$1
 export JAVA_VERSION=$(yq e '.[] | select(.version == env(VERSION)).java' $CASSANDRA_VERSIONS)
 echo "Using java version from cassandra_versions.yaml: $JAVA_VERSION"
 
+JAVA_DISTRIBUTION_RAW=$(yq e '.[] | select(.version == env(VERSION)).java_distribution' $CASSANDRA_VERSIONS)
+export JAVA_DISTRIBUTION="${JAVA_DISTRIBUTION_RAW:-openjdk}"
+echo "Using JDK distribution: $JAVA_DISTRIBUTION"
+
 export PY_VERSION=$(yq e '.[] | select(.version == env(VERSION)).python' $CASSANDRA_VERSIONS)
 
 if [ -z "$JAVA_VERSION" ]; then
@@ -40,20 +44,37 @@ else
     exit 1
 fi
 
-# if java version = 8 then run update-java-alternatives -s java-1.8.0-openjdk-amd64
-if [ "$JAVA_VERSION" = "8" ]; then
-  sudo update-java-alternatives -s java-1.8.0-openjdk-$ARCH
-# if java version = 11 then run update-java-alternatives -s java-1.11.0-openjdk-amd64
-elif [ "$JAVA_VERSION" = "11" ]; then
-  sudo update-java-alternatives -s java-1.11.0-openjdk-$ARCH
-elif [ "$JAVA_VERSION" = "17" ]; then
-  sudo update-java-alternatives -s java-1.17.0-openjdk-$ARCH
-elif [ "$JAVA_VERSION" = "21" ]; then
-  sudo update-java-alternatives -s java-1.21.0-openjdk-$ARCH
-else
-  echo "Unknown java version $JAVA_VERSION"
+# Resolve the update-java-alternatives name based on distribution and version
+resolve_java_alternative() {
+  local version=$1
+  local distro=$2
+
+  case "$distro" in
+    openjdk)
+      echo "java-1.${version}.0-openjdk-$ARCH"
+      ;;
+    corretto)
+      # Corretto 8 uses "java-1.8.0-amazon-corretto", 11+ uses "java-<ver>-amazon-corretto"
+      if [ "$version" = "8" ]; then
+        echo "java-1.8.0-amazon-corretto"
+      else
+        echo "java-${version}-amazon-corretto"
+      fi
+      ;;
+    *)
+      echo "Unknown JDK distribution: $distro" >&2
+      return 1
+      ;;
+  esac
+}
+
+JAVA_ALT=$(resolve_java_alternative "$JAVA_VERSION" "$JAVA_DISTRIBUTION")
+if [ $? -ne 0 ]; then
   exit 1
 fi
+
+echo "Switching to: $JAVA_ALT"
+sudo update-java-alternatives -s "$JAVA_ALT"
 
 # set python version using update-alternatives
 # Extract major.minor version from full version (e.g., "3.10.6" -> "3.10", "2.7.18" -> "2.7")

@@ -24,6 +24,7 @@ data class InstanceSpec(
     val existingCount: Int,
     val instanceType: String,
     val ebsConfig: EBSConfig?,
+    val amiId: String? = null,
 ) {
     /**
      * Number of additional instances needed to reach the configured count.

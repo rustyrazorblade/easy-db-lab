@@ -22,6 +22,9 @@ data class CassandraVersion(
     val java: String,
     val python: String,
     @JsonIgnoreProperties(ignoreUnknown = true)
+    @param:JsonProperty("java_distribution")
+    val javaDistribution: String = "openjdk",
+    @JsonIgnoreProperties(ignoreUnknown = true)
     val axonops: String? = null,
     @JsonIgnoreProperties(ignoreUnknown = true)
     @param:JsonProperty("jvm_options")

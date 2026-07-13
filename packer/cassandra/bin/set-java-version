@@ -1,17 +1,19 @@
 #!/bin/bash
 
-# Script to set Java version for a Cassandra installation
-# Usage: set-java-version JAVA_VERSION [CASSANDRA_VERSION]
+# Script to set Java version and optionally JDK distribution for a Cassandra installation
+# Usage: set-java-version JAVA_VERSION [CASSANDRA_VERSION] [JDK_DISTRIBUTION]
 # If CASSANDRA_VERSION is not provided, it will be derived from the current Cassandra symlink
+# If JDK_DISTRIBUTION is not provided, the existing value is preserved
 
 if [ $# -lt 1 ]; then
-    echo "Usage: $0 JAVA_VERSION [CASSANDRA_VERSION]"
-    echo "Example: $0 11 4.0"
+    echo "Usage: $0 JAVA_VERSION [CASSANDRA_VERSION] [JDK_DISTRIBUTION]"
+    echo "Example: $0 17 5.0 corretto"
     exit 1
 fi
 
 export JAVA_VERSION=$1
 export CASSANDRA_VERSION=$2
+export JDK_DISTRIBUTION=$3
 
 # If CASSANDRA_VERSION is not provided, derive it from the current symlink
 if [ -z "$CASSANDRA_VERSION" ]; then
@@ -30,6 +32,16 @@ if yq -i e '.[] |= select(.version == env(CASSANDRA_VERSION)) |= .java = env(JAV
 else
     echo "Failed to update Java version in /etc/cassandra_versions.yaml"
     exit 1
+fi
+
+# Update the JDK distribution if provided
+if [ -n "$JDK_DISTRIBUTION" ]; then
+    if yq -i e '.[] |= select(.version == env(CASSANDRA_VERSION)) |= .java_distribution = env(JDK_DISTRIBUTION)' /etc/cassandra_versions.yaml; then
+        echo "Updated JDK distribution to $JDK_DISTRIBUTION for Cassandra $CASSANDRA_VERSION"
+    else
+        echo "Failed to update JDK distribution in /etc/cassandra_versions.yaml"
+        exit 1
+    fi
 fi
 
 echo "Java version successfully updated"

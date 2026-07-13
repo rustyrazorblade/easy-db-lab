@@ -46,6 +46,12 @@ class UseCassandra : PicoBaseCommand() {
     )
     var javaVersion = ""
 
+    @Option(
+        names = ["--jdk-distro"],
+        description = ["JDK distribution: openjdk, corretto"],
+    )
+    var jdkDistro = ""
+
     @Suppress("TooGenericExceptionCaught")
     override fun execute() {
         check(version.isNotBlank())
@@ -63,8 +69,10 @@ class UseCassandra : PicoBaseCommand() {
 
         hostOperationsService.withHosts(state.hosts, ServerType.Cassandra, hosts.hostList, parallel = true) { host ->
             val it = host.toHost()
-            if (javaVersion.isNotBlank()) {
-                remoteOps.executeRemotely(it, "set-java-version $javaVersion $version")
+            if (javaVersion.isNotBlank() || jdkDistro.isNotBlank()) {
+                val javaVer = javaVersion.ifBlank { "\"\"" }
+                val distroArg = jdkDistro.ifBlank { "" }
+                remoteOps.executeRemotely(it, "set-java-version $javaVer $version $distroArg".trim())
             }
             remoteOps.executeRemotely(it, "sudo use-cassandra $version").text
             state.versions?.put(it.alias, version)

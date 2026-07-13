@@ -29,4 +29,26 @@ class CassandraVersionTest {
         CassandraVersion.write(cassandraVersions, output)
         assertThat(output).matches { !it.toString().contains("null") }
     }
+
+    @Test
+    fun testJavaDistributionFieldLoadsFromYaml() {
+        val cassandraVersions = CassandraVersion.loadFromFile(mainFilePath)
+        assertThat(cassandraVersions).allMatch { it.javaDistribution == "openjdk" }
+    }
+
+    @Test
+    fun testJavaDistributionDefaultsToOpenjdkWhenMissing() {
+        val cassandraVersions = CassandraVersion.loadFromMainAndExtras(mainFilePath, extrasDirectoryPath)
+        val extraVersion = cassandraVersions.first { it.version == "1.2" }
+        assertThat(extraVersion.javaDistribution).isEqualTo("openjdk")
+    }
+
+    @Test
+    fun testJavaDistributionSerializedInOutput() {
+        val cassandraVersions = CassandraVersion.loadFromFile(mainFilePath)
+        val output = ByteArrayOutputStream()
+        CassandraVersion.write(cassandraVersions, output)
+        assertThat(output.toString()).contains("java_distribution")
+        assertThat(output.toString()).contains("openjdk")
+    }
 }

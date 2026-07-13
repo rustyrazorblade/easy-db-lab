@@ -13,6 +13,7 @@ const val CLUSTER_STATE = "state.json"
 data class NodeState(
     var version: String = "",
     var javaVersion: String = "",
+    var javaDistribution: String = "openjdk",
 )
 
 /**
@@ -95,6 +96,7 @@ data class InitConfig(
     val controlInstanceType: String = "m5d.xlarge",
     val tags: Map<String, String> = mapOf(),
     val arch: String = "AMD64",
+    val appArch: String? = null,
     val sparkEnabled: Boolean = false,
     val sparkMasterInstanceType: String = "m5.xlarge",
     val sparkWorkerInstanceType: String = "m5.xlarge",
@@ -140,6 +142,7 @@ data class InitConfig(
                 controlInstanceType = "m5d.xlarge",
                 tags = init.tags,
                 arch = init.arch.name,
+                appArch = init.appArch?.name,
                 sparkEnabled = init.spark.enable,
                 sparkMasterInstanceType = init.spark.masterInstanceType,
                 sparkWorkerInstanceType = init.spark.workerInstanceType,

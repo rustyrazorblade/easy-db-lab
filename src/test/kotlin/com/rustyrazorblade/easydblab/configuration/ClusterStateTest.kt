@@ -735,4 +735,57 @@ class ClusterStateTest {
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("S3 bucket not configured")
     }
+
+    @Test
+    fun `NodeState javaDistribution defaults to openjdk when missing from JSON`(
+        @TempDir tempDir: File,
+    ) {
+        val stateFile = File(tempDir, "state.json")
+        val manager = ClusterStateManager(stateFile)
+
+        val legacyJson =
+            """
+            {
+              "name": "old-cluster",
+              "default": {
+                "version": "4.0",
+                "javaVersion": "11"
+              },
+              "nodes": {},
+              "versions": {}
+            }
+            """.trimIndent()
+
+        stateFile.writeText(legacyJson)
+
+        val loadedState = manager.load()
+        assertThat(loadedState.default.javaDistribution).isEqualTo("openjdk")
+    }
+
+    @Test
+    fun `NodeState preserves javaDistribution when present in JSON`(
+        @TempDir tempDir: File,
+    ) {
+        val stateFile = File(tempDir, "state.json")
+        val manager = ClusterStateManager(stateFile)
+
+        val json =
+            """
+            {
+              "name": "corretto-cluster",
+              "default": {
+                "version": "5.0",
+                "javaVersion": "17",
+                "javaDistribution": "corretto"
+              },
+              "nodes": {},
+              "versions": {}
+            }
+            """.trimIndent()
+
+        stateFile.writeText(json)
+
+        val loadedState = manager.load()
+        assertThat(loadedState.default.javaDistribution).isEqualTo("corretto")
+    }
 }

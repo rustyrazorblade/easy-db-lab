@@ -164,6 +164,13 @@ class Init : PicoBaseCommand() {
     )
     var arch: Arch = Arch.AMD64
 
+    @Option(
+        names = ["--app-arch"],
+        description = ["CPU architecture for app/stress nodes (defaults to cluster arch)"],
+        converter = [PicoArchConverter::class],
+    )
+    var appArch: Arch? = null
+
     @Mixin
     var spark = SparkInitMixin()
 

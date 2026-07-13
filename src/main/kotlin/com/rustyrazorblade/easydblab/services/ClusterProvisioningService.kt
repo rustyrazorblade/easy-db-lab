@@ -387,7 +387,7 @@ class DefaultClusterProvisioningService(
                 serverType = spec.serverType,
                 count = spec.neededCount,
                 instanceType = spec.instanceType,
-                amiId = infraContext.amiId,
+                amiId = spec.amiId ?: infraContext.amiId,
                 keyName = infraContext.keyName,
                 securityGroupId = infraContext.securityGroupId,
                 subnetIds = infraContext.subnetIds,

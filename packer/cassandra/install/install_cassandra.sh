@@ -113,7 +113,9 @@ uv tool install cqlsh
 
 # used to skip the expensive checkstyle checks
 
-sudo update-java-alternatives -s java-1.11.0-openjdk-amd64 >/tmp/cassandra-setup.log 2>&1
+# Default to OpenJDK 11 for the build process
+ARCH=$(dpkg --print-architecture)
+sudo update-java-alternatives -s java-1.11.0-openjdk-$ARCH >/tmp/cassandra-setup.log 2>&1
 
 lsblk
 

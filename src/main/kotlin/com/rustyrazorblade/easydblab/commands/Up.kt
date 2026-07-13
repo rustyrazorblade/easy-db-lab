@@ -264,6 +264,15 @@ class Up : PicoBaseCommand() {
                 error(error.message ?: "Failed to resolve AMI")
             }
 
+        val appAmiId =
+            if (initConfig.appArch != null && initConfig.appArch != initConfig.arch) {
+                amiResolver.resolveAmiId("", initConfig.appArch).getOrElse { error ->
+                    error(error.message ?: "Failed to resolve app node AMI for arch ${initConfig.appArch}")
+                }
+            } else {
+                null
+            }
+
         val baseTags =
             mapOf(
                 "easy_cass_lab" to "1",
@@ -271,7 +280,7 @@ class Up : PicoBaseCommand() {
             ) + initConfig.tags
 
         val existingHosts = discoverExistingHosts()
-        val instanceConfig = buildInstanceConfig(initConfig, amiId, securityGroupId, subnetIds, baseTags)
+        val instanceConfig = buildInstanceConfig(initConfig, amiId, appAmiId, securityGroupId, subnetIds, baseTags)
         val servicesConfig = buildServicesConfig(initConfig, subnetIds, securityGroupId, baseTags)
 
         if (initConfig.opensearchEnabled) {
@@ -328,6 +337,7 @@ class Up : PicoBaseCommand() {
     private fun buildInstanceConfig(
         initConfig: InitConfig,
         amiId: String,
+        appAmiId: String?,
         securityGroupId: String,
         subnetIds: List<String>,
         baseTags: Map<String, String>,
@@ -335,8 +345,22 @@ class Up : PicoBaseCommand() {
         val existingInstances = ec2InstanceService.findInstancesByClusterId(workingState.clusterId)
         val dbHasInstanceStore = ec2InstanceService.hasInstanceStore(initConfig.instanceType)
         val instanceSpecs = instanceSpecFactory.createInstanceSpecs(initConfig, existingInstances, dbHasInstanceStore)
+
+        val specsWithAmi =
+            if (appAmiId != null) {
+                instanceSpecs.map { spec ->
+                    if (spec.serverType == ServerType.Stress || spec.serverType == ServerType.Control) {
+                        spec.copy(amiId = appAmiId)
+                    } else {
+                        spec
+                    }
+                }
+            } else {
+                instanceSpecs
+            }
+
         return InstanceProvisioningConfig(
-            specs = instanceSpecs,
+            specs = specsWithAmi,
             amiId = amiId,
             securityGroupId = securityGroupId,
             subnetIds = subnetIds,

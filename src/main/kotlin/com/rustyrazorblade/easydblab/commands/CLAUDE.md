@@ -60,10 +60,11 @@ commands/
 ├── clickhouse/            # ClickHouse commands
 ├── grafana/               # Grafana commands
 ├── install/               # Kit install internals (BaseInstallCommand, KitInstallCommand, KitRunnerCommand, KitStatusCommand, factories)
-├── kit/                   # Kit management commands (kit install, kit list, kit uninstall)
+├── kit/                   # Kit management commands (kit install, kit list, kit uninstall) + <kit> sql
 │   ├── Kit.kt             # Parent command group
 │   ├── Install.kt         # kit install — scaffolds kit files (dynamic subcommands added at startup)
 │   ├── KitList.kt         # kit list — lists discoverable templates
+│   ├── KitSqlCommand.kt   # <kit> sql — runs SQL over the kit's JDBC endpoint; SOCKS-bridged when tunnel-only (#740)
 │   └── Uninstall.kt       # kit uninstall — removes an installed kit
 ├── logs/                  # Log import/listing commands
 ├── metrics/               # Metrics import/listing commands

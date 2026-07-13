@@ -1,5 +1,17 @@
 # bin/ Scripts
 
+## easy-db-lab
+
+The local-development CLI entrypoint. It does **not** launch the JVM itself — it delegates to the Gradle-generated start script (`build/install/easy-db-lab/bin/easy-db-lab`), which is the single source of truth for the classpath, the OTel java agent, and `easydblab.apphome`/`easydblab.version` (#727). Build it first with `./gradlew installDist`. This wrapper only layers on dev-only conveniences: `.env` loading (gitignored; shell env always wins), a log directory (`EASY_DB_LAB_LOG_DIR`, defaults to `./logs`), and passing extra JVM options through the generated script's `EASY_DB_LAB_OPTS` hook.
+
+## create-easy-db-lab-wrapper
+
+```
+bin/create-easy-db-lab-wrapper <cluster-dir>
+```
+
+Generates a workspace-local `easy-db-lab` wrapper inside a cluster directory. The generated wrapper sets `JAVA_HOME` to a compatible JDK via SDKMAN (the highest-installed Java 21, else the newest installed JDK >= 21), `cd`s into the workspace directory, and execs `bin/easy-db-lab` — so every cluster command runs from the correct directory with the correct JDK, no manual `cd` or Java ceremony. See "Cluster Workspace Directories" in the root `CLAUDE.md`.
+
 ## test
 
 Single entrypoint for all integration tests.

@@ -67,19 +67,19 @@ BASE_ENV=(VERSION=5.0.3 SHORT_SHA=abc123def456 SOURCE_REF=cassandra-5.0
 assert_field "4.x auto-maps to JDK 11" build_jdk 11 \
   VERSION=4.0.12 SHORT_SHA=deadbeef0000 SOURCE_REF=cassandra-4.0 \
   JDK_OVERRIDE= BASE_IMAGE_OVERRIDE= REPO_OWNER=o REPO_NAME=r
-assert_field "4.x auto-maps to temurin 11 base" base_image eclipse-temurin:11-jre \
+assert_field "4.x auto-maps to pinned temurin 11 jammy base" base_image eclipse-temurin:11-jre-jammy \
   VERSION=4.1.5 SHORT_SHA=deadbeef0000 SOURCE_REF=cassandra-4.1 \
   JDK_OVERRIDE= BASE_IMAGE_OVERRIDE= REPO_OWNER=o REPO_NAME=r
 assert_field "5.0 auto-maps to JDK 17" build_jdk 17 \
   VERSION=5.0.3 SHORT_SHA=deadbeef0000 SOURCE_REF=cassandra-5.0 \
   JDK_OVERRIDE= BASE_IMAGE_OVERRIDE= REPO_OWNER=o REPO_NAME=r
-assert_field "5.0 auto-maps to temurin 17 base" base_image eclipse-temurin:17-jre \
+assert_field "5.0 auto-maps to pinned temurin 17 noble base" base_image eclipse-temurin:17-jre-noble \
   VERSION=5.0.3 SHORT_SHA=deadbeef0000 SOURCE_REF=cassandra-5.0 \
   JDK_OVERRIDE= BASE_IMAGE_OVERRIDE= REPO_OWNER=o REPO_NAME=r
 assert_field "trunk (5.1) auto-maps to JDK 21" build_jdk 21 \
   VERSION=5.1 SHORT_SHA=deadbeef0000 SOURCE_REF=trunk \
   JDK_OVERRIDE= BASE_IMAGE_OVERRIDE= REPO_OWNER=o REPO_NAME=r
-assert_field "trunk auto-maps to temurin 21 base" base_image eclipse-temurin:21-jre \
+assert_field "trunk auto-maps to pinned temurin 21 noble base" base_image eclipse-temurin:21-jre-noble \
   VERSION=5.1 SHORT_SHA=deadbeef0000 SOURCE_REF=trunk \
   JDK_OVERRIDE= BASE_IMAGE_OVERRIDE= REPO_OWNER=o REPO_NAME=r
 

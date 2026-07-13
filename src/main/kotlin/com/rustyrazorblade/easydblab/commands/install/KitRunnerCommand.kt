@@ -12,6 +12,7 @@ import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitEndpointResolver
 import com.rustyrazorblade.easydblab.services.KitHookExecutor
 import com.rustyrazorblade.easydblab.services.KitMetrics
+import com.rustyrazorblade.easydblab.services.KubeconfigProxyResolver
 import com.rustyrazorblade.easydblab.services.MetricsRegistryService
 import com.rustyrazorblade.easydblab.services.StepExecutionContext
 import com.rustyrazorblade.easydblab.services.TemplateVariables
@@ -29,6 +30,7 @@ class KitRunnerCommand(
     private val kitName: String,
     private val kitDir: File,
     private val phaseName: String,
+    private val kubeconfigProxyResolver: KubeconfigProxyResolver = KubeconfigProxyResolver(),
 ) : PicoBaseCommand() {
     @CommandLine.Option(
         names = ["--name"],
@@ -48,21 +50,32 @@ class KitRunnerCommand(
     override fun execute() {
         val config = loadInstallConfig()
         val typedSteps = config?.stepsForPhase(phaseName)?.takeIf { it.isNotEmpty() }
-        val augmentedEnv = buildAugmentedEnv(config)
 
-        if (typedSteps != null) {
-            executeTypedPhase(config, typedSteps, augmentedEnv)
-        } else {
-            val scriptFile = findScriptFile()
-            when {
-                scriptFile != null -> executeScript(scriptFile, augmentedEnv, config ?: KitConfig(name = kitName))
-                phaseName == Constants.Kit.PHASE_UNINSTALL -> removeKitDirectory()
-                else -> error("No typed phase or script found for '$phaseName' in kit '$kitName'")
+        // Resolve the kubeconfig that local kubectl/helm shell steps will use. On a SOCKS-only
+        // cluster this yields a temp copy carrying a `proxy-url` so those binaries route through
+        // the tunnel; on Tailscale/no-proxy it returns the workspace kubeconfig unchanged. The
+        // temp file (if any) is deleted when the block exits, on both success and failure.
+        val workspaceKubeconfig = File(kitDir.parentFile, Constants.K3s.LOCAL_KUBECONFIG)
+        kubeconfigProxyResolver.resolve(workspaceKubeconfig).use { resolvedKubeconfig ->
+            val augmentedEnv = buildAugmentedEnv(config, resolvedKubeconfig.path)
+
+            if (typedSteps != null) {
+                executeTypedPhase(config, typedSteps, augmentedEnv)
+            } else {
+                val scriptFile = findScriptFile()
+                when {
+                    scriptFile != null -> executeScript(scriptFile, augmentedEnv, config ?: KitConfig(name = kitName))
+                    phaseName == Constants.Kit.PHASE_UNINSTALL -> removeKitDirectory()
+                    else -> error("No typed phase or script found for '$phaseName' in kit '$kitName'")
+                }
             }
         }
     }
 
-    private fun buildAugmentedEnv(config: KitConfig?): Map<String, String> {
+    private fun buildAugmentedEnv(
+        config: KitConfig?,
+        kubeconfigPath: File,
+    ): Map<String, String> {
         val argDefaults = config?.args?.associate { it.variable to it.default }.orEmpty()
         // Read installed arg values written by kit install, overriding the kit defaults.
         // This ensures phases like platform-pvs use the actual installed STORAGE_SIZE
@@ -74,9 +87,10 @@ class KitRunnerCommand(
             TemplateVariables
                 .from(state = clusterState, kitName = kitName, storageSize = storageSize)
                 .toMap()
-        // Shell steps run from kitDir (e.g. clickhouse/), so a relative KUBECONFIG
-        // would resolve to clickhouse/kubeconfig which doesn't exist. Use the absolute path.
-        val absoluteKubeconfig = File(kitDir.parentFile, Constants.K3s.LOCAL_KUBECONFIG).absolutePath
+        // Shell steps run from kitDir (e.g. clickhouse/), so a relative KUBECONFIG would resolve
+        // to clickhouse/kubeconfig which doesn't exist. Use the absolute path of the kubeconfig
+        // resolved for this command (the SOCKS-proxied temp copy when a tunnel is published).
+        val absoluteKubeconfig = kubeconfigPath.absolutePath
         // Apply in order: argDefaults → resolvedArgs → cluster state (base) → KUBECONFIG → BACKUP_NAME.
         // argDefaults first so cluster-state values in base take precedence over kit defaults;
         // resolvedArgs overlays defaults with user-specified install-time values.

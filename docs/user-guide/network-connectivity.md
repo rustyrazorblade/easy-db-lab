@@ -146,6 +146,37 @@ with-proxy wget http://10.0.1.50:8080/api
 with-proxy http http://control0:3000/api/health
 ```
 
+### Kit commands over SOCKS
+
+Kit lifecycle commands work transparently on SOCKS-only clusters — no extra flags or setup —
+whether or not Tailscale is enabled.
+
+**`kit <name> start` / `stop` and other lifecycle phases.** These run `kubectl` and `helm` on
+your machine to apply manifests, wait on pods, and read pod state. On a SOCKS-only cluster the
+private Kubernetes API is reachable only through the tunnel, so `easy-db-lab` hands those
+local `kubectl`/`helm` invocations a throwaway kubeconfig carrying a
+`proxy-url: socks5://127.0.0.1:<port>` on the cluster entry. That routes **only** kubectl/helm
+through the tunnel — `aws`, `curl`, and anything else a kit step runs stay direct. The proxied
+kubeconfig is derived per command and deleted when the command finishes; the workspace
+kubeconfig is never modified.
+
+```bash
+easy-db-lab postgres start
+```
+
+**`sql`.** The `sql` command opens a short-lived in-process loopback bridge that forwards the
+JDBC connection through the existing tunnel to the database's private IP, then tears it down when
+the query finishes. This works for raw-TCP drivers (PostgreSQL, MySQL) as well as HTTP-based ones
+(Trino, ClickHouse):
+
+```bash
+easy-db-lab postgres sql "SELECT 1"
+```
+
+On Tailscale-enabled clusters the same commands connect directly to the private IP with no proxy,
+so behavior is identical either way. In neither path are the JVM-global `socksProxyHost` /
+`socksProxyPort` properties touched — routing is scoped per client.
+
 ### Browser Access
 
 Configure your browser's SOCKS5 proxy:

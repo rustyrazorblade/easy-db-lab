@@ -704,6 +704,47 @@ class KitConfigTest {
     }
 
     @Test
+    fun `formatUrl port override replaces the port for every url-bearing endpoint type`() {
+        data class Case(
+            val type: KitEndpoint.EndpointType,
+            val expectedDefault: String,
+            val expectedOverride: String,
+        )
+
+        val ip = "10.0.1.10"
+        val declaredPort = 8080
+        val overridePort = 54321
+        val cases =
+            listOf(
+                Case(KitEndpoint.EndpointType.HTTP, "http://$ip:$declaredPort/p", "http://$ip:$overridePort/p"),
+                Case(KitEndpoint.EndpointType.HTTPS, "https://$ip:$declaredPort/p", "https://$ip:$overridePort/p"),
+                Case(KitEndpoint.EndpointType.JDBC, "jdbc:presto://$ip:$declaredPort/p", "jdbc:presto://$ip:$overridePort/p"),
+                Case(KitEndpoint.EndpointType.NATIVE, "$ip:$declaredPort", "$ip:$overridePort"),
+                Case(KitEndpoint.EndpointType.CQL, "$ip:$declaredPort", "$ip:$overridePort"),
+                Case(KitEndpoint.EndpointType.KAFKA, "$ip:$declaredPort", "$ip:$overridePort"),
+                Case(KitEndpoint.EndpointType.POSTGRESQL, "postgresql://$ip:$declaredPort/db", "postgresql://$ip:$overridePort/db"),
+                Case(KitEndpoint.EndpointType.MYSQL, "mysql://$ip:$declaredPort/db", "mysql://$ip:$overridePort/db"),
+            )
+
+        cases.forEach { case ->
+            val endpoint =
+                KitEndpoint(
+                    name = "test",
+                    nodeType = "db",
+                    port = declaredPort,
+                    type = case.type,
+                    scheme = "presto",
+                    path = "/p",
+                    database = "db",
+                )
+            // Single-arg overload uses the endpoint's declared port.
+            assertThat(endpoint.formatUrl(ip)).isEqualTo(case.expectedDefault)
+            // Port override substitutes only the port.
+            assertThat(endpoint.formatUrl(ip, overridePort)).isEqualTo(case.expectedOverride)
+        }
+    }
+
+    @Test
     fun `endpoint scheme and path default to empty strings`() {
         val config =
             parse(

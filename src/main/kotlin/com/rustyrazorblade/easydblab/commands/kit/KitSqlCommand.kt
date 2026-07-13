@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.commands.kit
 
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
+import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.KitEndpoint
@@ -29,6 +30,7 @@ import java.io.File
  */
 @RequireProfileSetup
 @RequireSSHKey
+@RequiresProxy
 @Command(
     name = "sql",
     description = ["Execute SQL against the database"],

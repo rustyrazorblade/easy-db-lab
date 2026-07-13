@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.SharedLocalStack
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.services.aws.S3ObjectStore
 import org.assertj.core.api.Assertions.assertThat
@@ -9,17 +10,7 @@ import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.junit.jupiter.api.io.TempDir
-import org.testcontainers.containers.localstack.LocalStackContainer
-import org.testcontainers.containers.localstack.LocalStackContainer.Service
-import org.testcontainers.containers.wait.strategy.Wait
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
-import org.testcontainers.utility.DockerImageName
-import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
-import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
-import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3Client
-import software.amazon.awssdk.services.s3.model.CreateBucketRequest
 import java.io.File
 
 /**
@@ -27,19 +18,14 @@ import java.io.File
  *
  * These tests verify actual S3 operations including upload, download, and incremental backup
  * functionality against a real S3-compatible storage backend.
+ *
+ * Uses the JVM-wide [SharedLocalStack] S3 backend. This class owns a dedicated,
+ * class-unique bucket so co-tenant S3 test classes cannot see or clobber its objects.
  */
-@Testcontainers
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class ClusterBackupServiceS3IntegrationTest {
-    companion object {
-        private const val TEST_BUCKET = "easy-db-lab-test-bucket"
-
-        @Container
-        @JvmStatic
-        val localStack: LocalStackContainer =
-            LocalStackContainer(DockerImageName.parse("localstack/localstack:3.0"))
-                .withServices(Service.S3)
-                .waitingFor(Wait.forHttp("/_localstack/health").forStatusCode(200))
+    private companion object {
+        private const val TEST_BUCKET = "clusterbackup-test-bucket"
     }
 
     private lateinit var s3Client: S3Client
@@ -51,28 +37,8 @@ class ClusterBackupServiceS3IntegrationTest {
 
     @BeforeAll
     fun setupS3Client() {
-        s3Client =
-            S3Client
-                .builder()
-                .endpointOverride(localStack.getEndpointOverride(Service.S3))
-                .region(Region.of(localStack.region))
-                .credentialsProvider(
-                    StaticCredentialsProvider.create(
-                        AwsBasicCredentials.create(
-                            localStack.accessKey,
-                            localStack.secretKey,
-                        ),
-                    ),
-                ).forcePathStyle(true)
-                .build()
-
-        // Create test bucket
-        s3Client.createBucket(
-            CreateBucketRequest
-                .builder()
-                .bucket(TEST_BUCKET)
-                .build(),
-        )
+        s3Client = SharedLocalStack.s3Client()
+        SharedLocalStack.createBucketIfMissing(s3Client, TEST_BUCKET)
     }
 
     @BeforeEach

@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services.aws
 
+import com.rustyrazorblade.easydblab.SharedLocalStack
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.AWS
 import org.assertj.core.api.Assertions.assertThat
@@ -9,15 +10,6 @@ import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.mockito.kotlin.mock
-import org.testcontainers.containers.localstack.LocalStackContainer
-import org.testcontainers.containers.localstack.LocalStackContainer.Service
-import org.testcontainers.containers.wait.strategy.Wait
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
-import org.testcontainers.utility.DockerImageName
-import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
-import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
-import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.ec2.Ec2Client
 import software.amazon.awssdk.services.ec2.model.BlockDeviceMapping
 import software.amazon.awssdk.services.ec2.model.EbsBlockDevice
@@ -29,42 +21,23 @@ import software.amazon.awssdk.services.ec2.model.RegisterImageRequest
  * Tests verify that AWS SDK request construction, filter handling, and response
  * parsing work correctly against a real EC2-compatible API.
  *
+ * Uses the JVM-wide [SharedLocalStack] EC2 backend, shared with the other EC2
+ * integration tests. AMI names registered here are unique to this class, and
+ * every assertion filters by this class's own name patterns, so co-tenant EC2
+ * resources (e.g. VPCs from other test classes) cannot affect these results.
+ *
  * Note: LocalStack Community Edition does not faithfully implement all AMI fields
  * (e.g., architecture returns null). Architecture normalization is covered in unit tests.
  */
-@Testcontainers
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class AMIServiceIntegrationTest {
-    companion object {
-        @Container
-        @JvmStatic
-        val localStack: LocalStackContainer =
-            LocalStackContainer(DockerImageName.parse("localstack/localstack:3.0"))
-                .withServices(Service.EC2)
-                .waitingFor(Wait.forHttp("/_localstack/health").forStatusCode(200))
-    }
-
     private lateinit var ec2Client: Ec2Client
     private lateinit var eventBus: EventBus
     private lateinit var amiService: AMIService
 
     @BeforeAll
     fun setupClients() {
-        val credentials =
-            StaticCredentialsProvider.create(
-                AwsBasicCredentials.create(
-                    localStack.accessKey,
-                    localStack.secretKey,
-                ),
-            )
-
-        ec2Client =
-            Ec2Client
-                .builder()
-                .endpointOverride(localStack.getEndpointOverride(Service.EC2))
-                .region(Region.of(localStack.region))
-                .credentialsProvider(credentials)
-                .build()
+        ec2Client = SharedLocalStack.ec2Client()
     }
 
     @BeforeEach

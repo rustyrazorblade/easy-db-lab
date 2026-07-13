@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services.aws
 
+import com.rustyrazorblade.easydblab.SharedLocalStack
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.services.aws.S3ObjectStore
 import org.assertj.core.api.Assertions.assertThat
@@ -10,17 +11,7 @@ import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.junit.jupiter.api.io.TempDir
-import org.testcontainers.containers.localstack.LocalStackContainer
-import org.testcontainers.containers.localstack.LocalStackContainer.Service
-import org.testcontainers.containers.wait.strategy.Wait
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
-import org.testcontainers.utility.DockerImageName
-import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
-import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
-import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3Client
-import software.amazon.awssdk.services.s3.model.CreateBucketRequest
 import java.io.File
 import java.nio.file.Path
 
@@ -29,19 +20,14 @@ import java.nio.file.Path
  *
  * Tests verify that S3 operations (upload, download, list, delete, exists, metadata)
  * work correctly through real AWS SDK API calls against a LocalStack S3 endpoint.
+ *
+ * Uses the JVM-wide [SharedLocalStack] S3 backend. This class owns a dedicated,
+ * class-unique bucket so co-tenant S3 test classes cannot see or clobber its objects.
  */
-@Testcontainers
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class S3ObjectStoreIntegrationTest {
-    companion object {
-        private const val TEST_BUCKET = "test-bucket"
-
-        @Container
-        @JvmStatic
-        val localStack: LocalStackContainer =
-            LocalStackContainer(DockerImageName.parse("localstack/localstack:3.0"))
-                .withServices(Service.S3)
-                .waitingFor(Wait.forHttp("/_localstack/health").forStatusCode(200))
+    private companion object {
+        private const val TEST_BUCKET = "s3objectstore-test-bucket"
     }
 
     private lateinit var s3Client: S3Client
@@ -49,24 +35,8 @@ class S3ObjectStoreIntegrationTest {
 
     @BeforeAll
     fun setupClients() {
-        val credentials =
-            StaticCredentialsProvider.create(
-                AwsBasicCredentials.create(
-                    localStack.accessKey,
-                    localStack.secretKey,
-                ),
-            )
-
-        s3Client =
-            S3Client
-                .builder()
-                .endpointOverride(localStack.getEndpointOverride(Service.S3))
-                .region(Region.of(localStack.region))
-                .credentialsProvider(credentials)
-                .forcePathStyle(true)
-                .build()
-
-        s3Client.createBucket(CreateBucketRequest.builder().bucket(TEST_BUCKET).build())
+        s3Client = SharedLocalStack.s3Client()
+        SharedLocalStack.createBucketIfMissing(s3Client, TEST_BUCKET)
     }
 
     @BeforeEach

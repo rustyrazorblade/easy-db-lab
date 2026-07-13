@@ -23,7 +23,7 @@ kaml = "0.104.0"
 kotlinx-coroutines = "1.10.2"
 
 # Testing
-archunit = "1.3.0"
+archunit = "1.4.2"
 jupiter = "5.10.2"
 assertj = "3.27.7"
 mockito-kotlin = "6.3.0"

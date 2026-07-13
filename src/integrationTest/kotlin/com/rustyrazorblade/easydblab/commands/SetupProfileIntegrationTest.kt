@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Prompter
+import com.rustyrazorblade.easydblab.SharedLocalStack
 import com.rustyrazorblade.easydblab.TestPrompter
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
@@ -19,15 +20,6 @@ import org.junit.jupiter.api.TestInstance
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.mock
-import org.testcontainers.containers.localstack.LocalStackContainer
-import org.testcontainers.containers.localstack.LocalStackContainer.Service
-import org.testcontainers.containers.wait.strategy.Wait
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
-import org.testcontainers.utility.DockerImageName
-import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
-import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
-import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.iam.IamClient
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.HeadBucketRequest
@@ -41,20 +33,13 @@ import software.amazon.awssdk.services.sts.model.GetCallerIdentityRequest
  * These tests verify actual AWS operations (S3 bucket creation, etc.)
  * against a real S3-compatible storage backend.
  *
+ * Uses the JVM-wide [SharedLocalStack] container. Bucket names are made unique
+ * per test so co-tenant S3 tests in the same container cannot interfere.
+ *
  * Note: LocalStack IAM support is limited, so IAM operations are mocked.
  */
-@Testcontainers
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class SetupProfileIntegrationTest : BaseKoinTest() {
-    companion object {
-        @Container
-        @JvmStatic
-        val localStack: LocalStackContainer =
-            LocalStackContainer(DockerImageName.parse("localstack/localstack:3.0"))
-                .withServices(Service.S3, Service.STS)
-                .waitingFor(Wait.forHttp("/_localstack/health").forStatusCode(200))
-    }
-
     private lateinit var s3Client: S3Client
     private lateinit var stsClient: StsClient
     private lateinit var iamClient: IamClient
@@ -70,30 +55,8 @@ class SetupProfileIntegrationTest : BaseKoinTest() {
 
     @BeforeAll
     fun setupLocalStackClients() {
-        val credentials =
-            StaticCredentialsProvider.create(
-                AwsBasicCredentials.create(
-                    localStack.accessKey,
-                    localStack.secretKey,
-                ),
-            )
-
-        s3Client =
-            S3Client
-                .builder()
-                .endpointOverride(localStack.getEndpointOverride(Service.S3))
-                .region(Region.of(localStack.region))
-                .credentialsProvider(credentials)
-                .forcePathStyle(true)
-                .build()
-
-        stsClient =
-            StsClient
-                .builder()
-                .endpointOverride(localStack.getEndpointOverride(Service.STS))
-                .region(Region.of(localStack.region))
-                .credentialsProvider(credentials)
-                .build()
+        s3Client = SharedLocalStack.s3Client()
+        stsClient = SharedLocalStack.stsClient()
 
         // IAM client - LocalStack IAM is limited, so we mock it
         iamClient = mock()

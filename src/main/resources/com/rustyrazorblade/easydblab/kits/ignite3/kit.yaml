@@ -56,8 +56,11 @@ start:
       # Clean up even if a later command fails before the explicit rm, so a
       # leftover temp file never blocks a subsequent run.
       trap 'rm -f "${CONF_FILE}"' EXIT
-      # printf avoids heredoc quoting issues and correctly embeds the node list
-      printf '{ network: { port: 3344, nodeFinder: { netClusterNodes: [%s] } }, storage: { profiles: [{ name: default, engine: %s }] } }' \
+      # printf avoids heredoc quoting issues and correctly embeds the node list.
+      # Ignite 3.1.0 requires every config root nested under a top-level `ignite { }`
+      # block — the flat form (valid in 3.0.x) fails with "'network' configuration root
+      # doesn't exist". nodeFinder type is STATIC since we supply an explicit node list.
+      printf 'ignite { network: { port: 3344, nodeFinder: { netClusterNodes: [%s], type: STATIC } }, storage: { profiles: [{ name: default, engine: %s }] } }' \
         "${NODE_LIST}" "${STORAGE_PROFILE}" > "${CONF_FILE}"
       kubectl create configmap ignite-config \
         --namespace default \
@@ -100,12 +103,30 @@ start:
     script: |
       #!/usr/bin/env bash
       set -euo pipefail
-      echo "Configuring OTLP metrics exporter..."
-      # NodePort 30300 is reachable from the local machine via Tailscale private IP
-      curl -s -f -X PATCH "http://${CONTROL_HOST_PRIVATE}:30300/management/v1/configuration/cluster" \
-        -H "Content-Type: application/json" \
-        -d "{\"ignite\":{\"metrics\":{\"exporters\":{\"otel\":{\"exporterName\":\"otlp\",\"endpoint\":\"http://${CONTROL_HOST_PRIVATE}:4318/v1/metrics\",\"protocol\":\"http/protobuf\"}}}}}"
-      echo "OTLP metrics configured."
+      echo "Enabling Ignite native OTLP metrics exporter..."
+      # Ignite's native OTLP exporter emits the full native metric set (JMX exposes none to
+      # the platform MBean server in 3.1.0, so it is not usable). Metrics push to the
+      # control-node OTel collector's OTLP receiver (:4318), which forwards to VictoriaMetrics
+      # under the stable `cluster` label. Ignite's config API needs text/plain + HOCON
+      # (application/json → 415). Retry: the NodePort was just created (kube-proxy timing).
+      OTLP='ignite.metrics.exporters.otlpExporter{exporterName=otlp,endpoint="http://'"${CONTROL_HOST_PRIVATE}"':4318/v1/metrics",protocol="http/protobuf"}'
+      for attempt in $(seq 1 12); do
+        if curl -s -f -X PATCH "http://${CONTROL_HOST_PRIVATE}:30300/management/v1/configuration/cluster" \
+             -H "Content-Type: text/plain" -d "${OTLP}"; then
+          echo "OTLP metrics exporter configured."
+          break
+        fi
+        echo "OTLP-exporter enable attempt ${attempt}/12 failed; retrying in 5s..."
+        sleep 5
+        [ "${attempt}" = "12" ] && { echo "ERROR: enabling OTLP exporter failed after 12 attempts" >&2; exit 1; }
+      done
+      # Ignite activates metric exporters at node start, so a post-init config change does
+      # not take effect until nodes restart. Roll the StatefulSet so the exporter activates
+      # on the fresh boot (nodes re-read cluster config at join). Deterministic, kit-owned.
+      echo "Rolling Ignite nodes so the OTLP exporter activates..."
+      kubectl rollout restart statefulset/ignite-cluster -n default
+      kubectl rollout status statefulset/ignite-cluster -n default --timeout=300s
+      echo "OTLP metrics exporter active."
 
 stop:
   - type: delete

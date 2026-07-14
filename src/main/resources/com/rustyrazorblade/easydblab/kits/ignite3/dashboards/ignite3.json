@@ -1,0 +1,178 @@
+{
+  "uid": "ignite3-kit",
+  "title": "Apache Ignite 3",
+  "tags": ["ignite3", "kit"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "editable": true,
+  "refresh": "30s",
+  "time": { "from": "now-30m", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "cluster",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+        "definition": "label_values(TotalNodes, cluster)",
+        "query": "label_values(TotalNodes, cluster)",
+        "refresh": 2,
+        "includeAll": false,
+        "multi": false,
+        "sort": 1
+      }
+    ]
+  },
+  "panels": [
+    { "type": "row", "title": "Cluster", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "collapsed": false },
+    {
+      "type": "stat", "title": "Nodes",
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] } } },
+      "targets": [ { "expr": "max(TotalNodes{cluster=~\"$cluster\", otel_scope_name=\"topology.cluster\"})", "refId": "A" } ]
+    },
+    {
+      "type": "stat", "title": "Healthy partitions",
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "green" } } },
+      "targets": [ { "expr": "sum(HealthyPartitionCount{cluster=~\"$cluster\", otel_scope_name=~\"partition.states.*\"})", "refId": "A" } ]
+    },
+    {
+      "type": "stat", "title": "Broken partitions",
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } } },
+      "targets": [ { "expr": "sum(BrokenPartitionCount{cluster=~\"$cluster\", otel_scope_name=~\"partition.states.*\"})", "refId": "A" } ]
+    },
+    {
+      "type": "stat", "title": "Unavailable partitions",
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } } },
+      "targets": [ { "expr": "sum(UnavailablePartitionCount{cluster=~\"$cluster\", otel_scope_name=~\"partition.states.*\"})", "refId": "A" } ]
+    },
+
+    { "type": "row", "title": "SQL", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 }, "collapsed": false },
+    {
+      "type": "timeseries", "title": "SQL query outcomes (rate)",
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "targets": [
+        { "expr": "sum(rate(Succeeded{cluster=~\"$cluster\", otel_scope_name=\"sql.queries\"}[$__rate_interval]))", "legendFormat": "succeeded", "refId": "A" },
+        { "expr": "sum(rate(Failed{cluster=~\"$cluster\", otel_scope_name=\"sql.queries\"}[$__rate_interval]))", "legendFormat": "failed", "refId": "B" },
+        { "expr": "sum(rate(Canceled{cluster=~\"$cluster\", otel_scope_name=\"sql.queries\"}[$__rate_interval]))", "legendFormat": "canceled", "refId": "C" },
+        { "expr": "sum(rate(TimedOut{cluster=~\"$cluster\", otel_scope_name=\"sql.queries\"}[$__rate_interval]))", "legendFormat": "timed out", "refId": "D" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "SQL plan cache (rate)",
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 6 },
+      "targets": [
+        { "expr": "sum(rate(Hits{cluster=~\"$cluster\", otel_scope_name=\"sql.plan.cache\"}[$__rate_interval]))", "legendFormat": "hits", "refId": "A" },
+        { "expr": "sum(rate(Misses{cluster=~\"$cluster\", otel_scope_name=\"sql.plan.cache\"}[$__rate_interval]))", "legendFormat": "misses", "refId": "B" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "Open cursors",
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 6 },
+      "targets": [ { "expr": "sum(OpenCursors{cluster=~\"$cluster\", otel_scope_name=\"sql.client\"})", "legendFormat": "open cursors", "refId": "A" } ]
+    },
+
+    { "type": "row", "title": "Transactions", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 }, "collapsed": false },
+    {
+      "type": "timeseries", "title": "Commits (rate)",
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
+      "targets": [
+        { "expr": "sum(rate(RwCommits{cluster=~\"$cluster\", otel_scope_name=\"transactions\"}[$__rate_interval]))", "legendFormat": "read-write", "refId": "A" },
+        { "expr": "sum(rate(RoCommits{cluster=~\"$cluster\", otel_scope_name=\"transactions\"}[$__rate_interval]))", "legendFormat": "read-only", "refId": "B" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "Rollbacks (rate)",
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
+      "targets": [
+        { "expr": "sum(rate(RwRollbacks{cluster=~\"$cluster\", otel_scope_name=\"transactions\"}[$__rate_interval]))", "legendFormat": "read-write", "refId": "A" },
+        { "expr": "sum(rate(RoRollbacks{cluster=~\"$cluster\", otel_scope_name=\"transactions\"}[$__rate_interval]))", "legendFormat": "read-only", "refId": "B" }
+      ]
+    },
+
+    { "type": "row", "title": "Client handler", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 }, "collapsed": false },
+    {
+      "type": "timeseries", "title": "Sessions",
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 24 },
+      "targets": [
+        { "expr": "sum(SessionsActive{cluster=~\"$cluster\", otel_scope_name=\"client.handler\"})", "legendFormat": "active", "refId": "A" },
+        { "expr": "sum(rate(SessionsAccepted{cluster=~\"$cluster\", otel_scope_name=\"client.handler\"}[$__rate_interval]))", "legendFormat": "accepted/s", "refId": "B" },
+        { "expr": "sum(rate(SessionsRejected{cluster=~\"$cluster\", otel_scope_name=\"client.handler\"}[$__rate_interval]))", "legendFormat": "rejected/s", "refId": "C" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "Requests",
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 24 },
+      "targets": [
+        { "expr": "sum(RequestsActive{cluster=~\"$cluster\", otel_scope_name=\"client.handler\"})", "legendFormat": "active", "refId": "A" },
+        { "expr": "sum(rate(RequestsProcessed{cluster=~\"$cluster\", otel_scope_name=\"client.handler\"}[$__rate_interval]))", "legendFormat": "processed/s", "refId": "B" },
+        { "expr": "sum(rate(RequestsFailed{cluster=~\"$cluster\", otel_scope_name=\"client.handler\"}[$__rate_interval]))", "legendFormat": "failed/s", "refId": "C" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "Network bytes (rate)",
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 24 },
+      "fieldConfig": { "defaults": { "unit": "Bps" } },
+      "targets": [
+        { "expr": "sum(rate(BytesReceived{cluster=~\"$cluster\", otel_scope_name=\"client.handler\"}[$__rate_interval]))", "legendFormat": "received", "refId": "A" },
+        { "expr": "sum(rate(BytesSent{cluster=~\"$cluster\", otel_scope_name=\"client.handler\"}[$__rate_interval]))", "legendFormat": "sent", "refId": "B" }
+      ]
+    },
+
+    { "type": "row", "title": "Storage (aipersist)", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 32 }, "collapsed": false },
+    {
+      "type": "timeseries", "title": "Storage size by node",
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 33 },
+      "fieldConfig": { "defaults": { "unit": "bytes" } },
+      "targets": [
+        { "expr": "TotalUsedSize{cluster=~\"$cluster\", otel_scope_name=\"storage.aipersist.default\"}", "legendFormat": "used {{instance}}", "refId": "A" },
+        { "expr": "TotalAllocatedSize{cluster=~\"$cluster\", otel_scope_name=\"storage.aipersist.default\"}", "legendFormat": "allocated {{instance}}", "refId": "B" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "Checkpoint duration",
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 33 },
+      "fieldConfig": { "defaults": { "unit": "ms" } },
+      "targets": [
+        { "expr": "LastCheckpointDuration{cluster=~\"$cluster\", otel_scope_name=\"storage.aipersist.checkpoint\"}", "legendFormat": "total {{instance}}", "refId": "A" },
+        { "expr": "LastCheckpointFsyncDuration{cluster=~\"$cluster\", otel_scope_name=\"storage.aipersist.checkpoint\"}", "legendFormat": "fsync {{instance}}", "refId": "B" }
+      ]
+    },
+
+    { "type": "row", "title": "Thread pools", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 41 }, "collapsed": false },
+    {
+      "type": "timeseries", "title": "Active threads by pool",
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 42 },
+      "targets": [
+        { "expr": "sum by (otel_scope_name) (ActiveCount{cluster=~\"$cluster\", otel_scope_name=~\"thread.pools.*\"})", "legendFormat": "{{otel_scope_name}}", "refId": "A" },
+        { "expr": "sum({__name__=~\"stripe_[0-9]+_ActiveCount\", cluster=~\"$cluster\", otel_scope_name=\"thread.pools.sql-executor\"})", "legendFormat": "thread.pools.sql-executor", "refId": "B" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "Queue size by pool",
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 42 },
+      "targets": [
+        { "expr": "sum by (otel_scope_name) (QueueSize{cluster=~\"$cluster\", otel_scope_name=~\"thread.pools.*\"})", "legendFormat": "{{otel_scope_name}}", "refId": "A" },
+        { "expr": "sum({__name__=~\"stripe_[0-9]+_QueueSize\", cluster=~\"$cluster\", otel_scope_name=\"thread.pools.sql-executor\"})", "legendFormat": "thread.pools.sql-executor", "refId": "B" }
+      ]
+    }
+  ]
+}

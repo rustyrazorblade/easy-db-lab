@@ -153,8 +153,8 @@ class DockerTest : BaseKoinTest() {
         whenever(mockContainerState.exitCodeLong).thenReturn(0L)
 
         doAnswer { invocation ->
-            @Suppress("UNCHECKED_CAST")
-            val callback = invocation.arguments[2] as com.github.dockerjava.api.async.ResultCallback.Adapter<Frame>
+            val callback =
+                invocation.getArgument<com.github.dockerjava.api.async.ResultCallback.Adapter<Frame>>(2)
             callback.onNext(Frame(StreamType.STDOUT, "Hello from container\n".toByteArray()))
             callback.onNext(Frame(StreamType.STDERR, "Warning message\n".toByteArray()))
             null

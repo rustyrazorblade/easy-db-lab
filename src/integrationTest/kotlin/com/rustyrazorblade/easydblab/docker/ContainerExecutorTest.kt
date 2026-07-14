@@ -131,8 +131,7 @@ class ContainerIOManagerTest :
         val callbackCaptor = argumentCaptor<ResultCallback.Adapter<Frame>>()
 
         doAnswer { invocation ->
-            @Suppress("UNCHECKED_CAST")
-            val callback = invocation.arguments[2] as ResultCallback.Adapter<Frame>
+            val callback = invocation.getArgument<ResultCallback.Adapter<Frame>>(2)
             // Simulate some frames
             callback.onNext(Frame(StreamType.STDOUT, "Line 1\n".toByteArray()))
             callback.onNext(Frame(StreamType.STDOUT, "Line 2\n".toByteArray()))
@@ -156,8 +155,7 @@ class ContainerIOManagerTest :
         val containerId = "test-container-123"
 
         doAnswer { invocation ->
-            @Suppress("UNCHECKED_CAST")
-            val callback = invocation.arguments[2] as ResultCallback.Adapter<Frame>
+            val callback = invocation.getArgument<ResultCallback.Adapter<Frame>>(2)
             callback.onError(IOException("Connection lost"))
             null
         }.whenever(mockDockerClient).attachContainer(eq(containerId), any(), any())

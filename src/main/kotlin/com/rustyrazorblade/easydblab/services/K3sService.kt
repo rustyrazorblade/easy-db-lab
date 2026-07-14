@@ -1,8 +1,5 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -13,6 +10,8 @@ import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import com.rustyrazorblade.easydblab.kubernetes.ProxiedKubernetesClientFactory
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
+import io.fabric8.kubernetes.client.internal.KubeConfigUtils
+import io.fabric8.kubernetes.client.utils.Serialization
 import io.github.oshai.kotlinlogging.KLogger
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
@@ -142,10 +141,6 @@ class DefaultK3sService(
         const val SERVER_SCRIPT_PATH = "/usr/local/bin/start-k3s-server.sh"
     }
 
-    private val yamlMapper =
-        ObjectMapper(YAMLFactory())
-            .registerKotlinModule()
-
     /**
      * Starts the K3s server service using the pre-installed startup script.
      *
@@ -213,22 +208,19 @@ class DefaultK3sService(
                     tempFile.toPath(),
                 )
 
-                // Parse YAML
-                val kubeconfigMap = yamlMapper.readValue(tempFile, Map::class.java)
+                // Parse kubeconfig into fabric8's typed model (no untyped map diving)
+                val kubeConfig = KubeConfigUtils.parseConfig(tempFile)
 
                 // Modify server URL from 127.0.0.1 to control node's private IP
                 val newServerUrl = Constants.K3s.DEFAULT_SERVER_URL.replace("127.0.0.1", host.private)
 
-                @Suppress("UNCHECKED_CAST")
-                val clusters = kubeconfigMap["clusters"] as? List<Map<String, Any>>
-                clusters?.firstOrNull()?.let { cluster ->
-                    @Suppress("UNCHECKED_CAST")
-                    val clusterData = cluster["cluster"] as? MutableMap<String, Any>
-                    clusterData?.put("server", newServerUrl)
-                }
+                val cluster =
+                    kubeConfig.clusters.firstOrNull()?.cluster
+                        ?: error("Kubeconfig downloaded from ${host.alias} contains no clusters")
+                cluster.server = newServerUrl
 
                 // Write modified kubeconfig to local path
-                yamlMapper.writeValue(localPath.toFile(), kubeconfigMap)
+                Files.writeString(localPath, Serialization.asYaml(kubeConfig))
 
                 log.info { "Successfully configured kubeconfig at $localPath with server URL $newServerUrl" }
             } finally {

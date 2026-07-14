@@ -93,6 +93,12 @@ source "amazon-ebs" "ubuntu" {
     }
   }
 
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 2
+  }
+
   run_tags = {
     easy_cass_lab = "1"
   }

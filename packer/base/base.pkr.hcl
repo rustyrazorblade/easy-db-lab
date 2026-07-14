@@ -253,6 +253,10 @@ build {
       # to the home dir before moving it to /etc/profile.d, so remove any stray copy here.
       "rm -rf /home/ubuntu/aliases.sh",
       "rm -rf /home/ubuntu/.cache /home/ubuntu/.wget-hsts /home/ubuntu/.bash_history /home/ubuntu/.m2 /home/ubuntu/.sudo_as_admin_successful /home/ubuntu/.lesshst",
+      # Discard the now-freed blocks so EBS excludes them from the snapshot (this is what
+      # actually shrinks the snapshot and cuts AMI-creation time). -av prints bytes trimmed
+      # per filesystem for verification. No `|| true`: a fstrim failure must surface.
+      "sudo fstrim -av",
     ]
   }
 }

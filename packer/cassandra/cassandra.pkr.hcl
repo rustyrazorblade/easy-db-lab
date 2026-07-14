@@ -292,6 +292,10 @@ build {
       # Home-dir build leftovers (surgical; tolerate absence)
       "rm -rf /home/ubuntu/cassandra /home/ubuntu/bin-cassandra /home/ubuntu/cassandra_versions.yaml /home/ubuntu/axonops-sudoers /home/ubuntu/services /home/ubuntu/aliases.sh",
       "rm -rf /home/ubuntu/.cache /home/ubuntu/.wget-hsts /home/ubuntu/.bash_history /home/ubuntu/.m2 /home/ubuntu/.sudo_as_admin_successful /home/ubuntu/.lesshst",
+      # Discard the now-freed blocks so EBS excludes them from the snapshot (this is what
+      # actually shrinks the snapshot and cuts AMI-creation time). -av prints bytes trimmed
+      # per filesystem for verification. No `|| true`: a fstrim failure must surface.
+      "sudo fstrim -av",
     ]
   }
 }

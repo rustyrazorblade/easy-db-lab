@@ -127,61 +127,87 @@ YAML=/etc/cassandra_versions.yaml
 VERSIONS=$(yq '.[].version' "$YAML")
 echo "Installing versions: $VERSIONS"
 
-for version in $VERSIONS;
-do
-  echo "Configuring version: $version"
+## Installs a single Cassandra version end-to-end: download (or git build), place under
+## /usr/local/cassandra/$version, and apply the per-version configuration.
+##
+## Safe to run as a background job: it operates in its own private temp working directory
+## (so concurrent versions never share extraction state, e.g. the `find . -name '*cassandra*'`
+## below only ever sees its own tarball) and otherwise writes only version-specific paths.
+## Genuinely shared/global steps (user + directory creation, update-java-alternatives, the
+## Maven cache cleanup) are kept serial outside this function.
+install_cassandra_version() {
+  local version="$1"
+  # yq's env(version) reads this from the environment; the export stays isolated to this
+  # subshell when the function is backgrounded, so parallel versions never clobber each other.
   export version
 
+  local workdir
+  workdir=$(mktemp -d) || {
+      echo "ERROR: Failed to create temp working directory for version $version"
+      return 1
+  }
+  cd "$workdir" || {
+      echo "ERROR: Cannot change to working directory $workdir for version $version"
+      return 1
+  }
+
+  echo "Configuring version: $version"
+
+  local URL BRANCH
   URL=$(yq '.[] | select(.version == env(version)) | .url // ""' "$YAML")
   echo "$URL"
-
   BRANCH=$(yq '.[] | select(.version == env(version)) | .branch // ""' "$YAML")
 
   # if $version is set, $URL is blank, and $BRANCH is blank
   if [[ $version != "" && $URL == "" && $BRANCH == "" ]]; then
     download_cassandra_version "$version" || {
         echo "ERROR: download_cassandra_version failed for version $version"
-        exit 1
+        return 1
     }
 
     # check if $version exists in the current directory
     if [[ ! -d $version ]]; then
       echo "ERROR: Failed to download Cassandra version $version - directory not found"
-      exit 1
+      return 1
     fi
 
     sudo mv "$version" "/usr/local/cassandra/$version" || {
         echo "ERROR: Failed to move $version to /usr/local/cassandra/"
-        exit 1
+        return 1
     }
 
-  # if a URL is set and ends in .tar.gz, download it
+  # if a URL is set and ends in .tar.gz, download it (via the S3 cache, version-keyed)
   elif [[ $URL == *.tar.gz ]]; then
     echo "Downloading $URL for version $version"
 
-    wget -q "$URL" || {
-        echo "ERROR: wget failed for version $version from $URL"
-        exit 1
-    }
-
+    local archive_file
     archive_file=$(basename "$URL")
+
+    # Route the nightly tarball through the S3 download cache (keyed by version) so it is not
+    # re-fetched cold from GitHub on every build. cached_fetch falls back to a direct download
+    # when no cache bucket is configured (local packer Docker tests).
+    cached_fetch "$URL" "cassandra-dist/$version/$archive_file" "$archive_file" || {
+        echo "ERROR: Failed to download version $version from $URL"
+        return 1
+    }
 
     # Verify download succeeded and file is not empty
     if [[ ! -f "$archive_file" || ! -s "$archive_file" ]]; then
         echo "ERROR: Downloaded file $archive_file is missing or empty for version $version"
-        exit 1
+        return 1
     fi
 
     echo "Extracting $archive_file"
     tar zxf "$archive_file" || {
         echo "ERROR: Failed to extract $archive_file for version $version"
-        exit 1
+        return 1
     }
 
     rm -f "$archive_file"
 
     # Find the extracted directory (should be the only directory created)
     # Look for directories starting with 'apache-cassandra' or 'cassandra'
+    local f
     f=$(find . -maxdepth 1 -type d -name '*cassandra*' ! -name '.' -printf '%f\n' | head -n 1)
 
     # Verify extracted directory exists
@@ -189,14 +215,14 @@ do
         echo "ERROR: Could not find extracted Cassandra directory for version $version"
         echo "Available directories:"
         ls -la
-        exit 1
+        return 1
     fi
 
     echo "Found extracted directory: $f"
 
     sudo mv "$f" "/usr/local/cassandra/$version" || {
         echo "ERROR: Failed to move $f to /usr/local/cassandra/$version"
-        exit 1
+        return 1
     }
 
   else
@@ -205,42 +231,46 @@ do
     # as the directory to clone into
     # checkout the branch specified in the yaml file
     # do a build and create the tar.gz
+    local ANT_FLAGS
     ANT_FLAGS=$(yq '.[] | select(.version == env(version)) | .ant_flags // ""' "$YAML")
     # all builds work with JDK 11 for now
 
     echo "Cloning repo for version $version from $URL branch $BRANCH"
     git clone --depth=1 --single-branch --branch "$BRANCH" "$URL" "$version" || {
         echo "ERROR: Git clone failed for version $version from $URL branch $BRANCH"
-        exit 1
+        return 1
     }
 
     # Verify clone was successful
     if [[ ! -d "$version/.git" ]]; then
         echo "ERROR: Git clone incomplete for version $version - .git directory not found"
-        exit 1
+        return 1
     fi
 
     echo "Building version $version with ant"
+    # Per-version build log so concurrent builds do not clobber a shared file.
+    local ant_log="/tmp/ant-build-$version.log"
     (
       cd "$version" || exit 1
       # Quiet: ant output is voluminous and floods packer's SSH stream
-      ant realclean >/tmp/ant-build.log 2>&1 && ant -Dno-checkstyle=true $ANT_FLAGS >>/tmp/ant-build.log 2>&1 || exit 1
+      # shellcheck disable=SC2086
+      ant realclean >"$ant_log" 2>&1 && ant -Dno-checkstyle=true $ANT_FLAGS >>"$ant_log" 2>&1 || exit 1
       rm -rf .git
     ) || {
         echo "ERROR: Ant build failed for version $version"
-        exit 1
+        return 1
     }
 
     sudo mv "$version" "/usr/local/cassandra/$version" || {
         echo "ERROR: Failed to move built version $version to /usr/local/cassandra/"
-        exit 1
+        return 1
     }
   fi
 
   # Verify the version was successfully moved to /usr/local/cassandra/
   if [[ ! -d "/usr/local/cassandra/$version" ]]; then
       echo "ERROR: Version $version not found in /usr/local/cassandra/ after installation"
-      exit 1
+      return 1
   fi
 
   # at this point the $version is in place, however it was installed
@@ -255,7 +285,7 @@ do
       cat /tmp/cassandra.in.sh >> bin/cassandra.in.sh
   ) || {
       echo "ERROR: Configuration failed for version $version"
-      exit 1
+      return 1
   }
 
   # Remove bundled cqlsh from Cassandra 2.x and 3.x to use uv-installed version
@@ -265,11 +295,53 @@ do
     rm -f "/usr/local/cassandra/$version/bin/cqlsh.py"
   fi
 
-  # Clean up Maven cache to save space
-  rm -rf ~/.m2 || true
+  cd / && rm -rf "$workdir"
 
   echo "✓ Successfully installed and configured version $version"
+}
+
+# Install every version concurrently. Each job runs in its own temp working directory and
+# writes only version-specific paths, so the fan-out is parallel-safe. The shared/global
+# setup above (user + directory creation, update-java-alternatives) already ran serially.
+loop_start=$(date +%s)
+echo "Starting Cassandra version install loop at epoch $loop_start"
+
+declare -A version_pids=()
+declare -A version_logs=()
+
+for version in $VERSIONS; do
+  log="/tmp/cassandra-install-${version}.log"
+  version_logs["$version"]="$log"
+  # Capture each version's output (incl. set -x trace) to its own log so parallel jobs do
+  # not interleave; the logs are replayed serially below for readable success/failure output.
+  install_cassandra_version "$version" >"$log" 2>&1 &
+  version_pids["$version"]=$!
 done
+
+# Fail loud: wait on every job, replay its log, and record any version that exited non-zero.
+install_failed=()
+for version in "${!version_pids[@]}"; do
+  if wait "${version_pids[$version]}"; then
+    echo "===== install log: $version (OK) ====="
+    cat "${version_logs[$version]}"
+  else
+    echo "===== install log: $version (FAILED) ====="
+    cat "${version_logs[$version]}"
+    install_failed+=("$version")
+  fi
+done
+
+loop_end=$(date +%s)
+echo "Cassandra version install loop took $((loop_end - loop_start))s"
+
+if [ "${#install_failed[@]}" -ne 0 ]; then
+  echo "ERROR: Cassandra install failed for version(s): ${install_failed[*]}" >&2
+  exit 1
+fi
+
+# Clean up the Maven cache once, after all (potential) source builds have finished. This is
+# shared/global state (HOME), so it is kept out of the parallel fan-out.
+rm -rf ~/.m2 || true
 
 # Final verification - ensure all versions are installed
 echo ""

@@ -10,7 +10,7 @@ sudo apt-get install -y axon-agent
 # need to add a new start script for C*
 
 # some versions have JVM specific agents
-declare -a agent_versions=("3.0-agent" "3.11-agent"  "4.0-agent-jdk8" "4.0-agent" "4.1-agent-jdk8" "4.1-agent" "5.0-agent" "5.0-agent-jdk17")
+declare -a agent_versions=("3.0-agent" "3.11-agent"  "4.0-agent-jdk8" "4.0-agent" "4.1-agent-jdk8" "4.1-agent" "5.0-agent-jdk11" "5.0-agent-jdk17")
 
 # Function to install an axon agent version
 install_axon_agent() {
@@ -34,15 +34,15 @@ install_axon_agent() {
     if [ -n "$file" ]; then
       echo -e "\e[32mSuccessfully downloaded ${package}:all as $file\e[0m"
     else
-      # If we couldn't find the file, fall back to amd64
-      echo -e "\e[31mPackage downloaded but file not found, falling back to amd64...\e[0m"
-      sudo apt install --download-only -y "${package}:amd64"
+      # If we couldn't find the file, fall back to the builder's native arch
+      echo -e "\e[31mPackage downloaded but file not found, falling back to native arch...\e[0m"
+      sudo apt install --download-only -y "${package}:$(dpkg --print-architecture)"
       file=$(sudo find /var/cache/apt/archives/ -name "${package}*")
     fi
   else
-    # Fall back to amd64 if 'all' is not available
-    echo "Package not available for 'all' architecture, falling back to amd64..."
-    sudo apt install --download-only -y "${package}:amd64" 
+    # Fall back to the builder's native arch if 'all' is not available
+    echo "Package not available for 'all' architecture, falling back to native arch..."
+    sudo apt install --download-only -y "${package}:$(dpkg --print-architecture)"
     file=$(sudo find /var/cache/apt/archives/ -name "${package}*")
   fi
 
@@ -71,7 +71,10 @@ install_axon_agent() {
 # download each version of the axon agent
 for agent_version in "${agent_versions[@]}"
 do
-  install_axon_agent "$agent_version"
+  install_axon_agent "$agent_version" || {
+    echo -e "\e[31mERROR: failed to install axon agent $agent_version\e[0m" >&2
+    exit 1
+  }
 done
 
 # install agent_service file included with every version since its expected

@@ -88,6 +88,12 @@ source "amazon-ebs" "ubuntu" {
     }
   }
 
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 2
+  }
+
   run_tags = {
     easy_cass_lab = "1"
   }
@@ -223,6 +229,35 @@ build {
   # Save the warm apt archive cache back to S3 for the next build
   provisioner "shell" {
     script = "install/save_s3_cache.sh"
+  }
+
+  # Final image cleanup: prune build cruft so it is not baked into the AMI and to shrink
+  # the EBS snapshot. This MUST run AFTER save_s3_cache.sh above (which calls apt_cache_save),
+  # otherwise the warm apt archive cache would be stripped before it is persisted to S3,
+  # slowing future builds. First we log a pre-prune inventory, then prune system caches/logs
+  # and the surgical set of home-dir build leftovers. Runtime paths (.local/cqlsh,
+  # .config/htoprc, .ssh, shell dotfiles) are deliberately left untouched.
+  provisioner "shell" {
+    inline = [
+      "echo '=== image cleanup: pre-prune inventory ==='",
+      "ls -la /home/ubuntu || true",
+      "sudo du -sh /var/cache/apt/archives /var/lib/apt/lists /tmp /var/tmp /var/log /home/ubuntu/.cache 2>/dev/null || true",
+      "df -h / || true",
+      "echo '=== image cleanup: pruning ==='",
+      # System caches and logs
+      "sudo apt-get clean",
+      "sudo rm -rf /var/cache/apt/archives/*.deb /var/lib/apt/lists/*",
+      "sudo rm -rf /tmp/* /var/tmp/*",
+      "sudo find /var/log -type f -exec truncate -s 0 {} +",
+      # Home-dir build leftovers (surgical; tolerate absence). The base build uploads aliases.sh
+      # to the home dir before moving it to /etc/profile.d, so remove any stray copy here.
+      "rm -rf /home/ubuntu/aliases.sh",
+      "rm -rf /home/ubuntu/.cache /home/ubuntu/.wget-hsts /home/ubuntu/.bash_history /home/ubuntu/.m2 /home/ubuntu/.sudo_as_admin_successful /home/ubuntu/.lesshst",
+      # Discard the now-freed blocks so EBS excludes them from the snapshot (this is what
+      # actually shrinks the snapshot and cuts AMI-creation time). -av prints bytes trimmed
+      # per filesystem for verification. No `|| true`: a fstrim failure must surface.
+      "sudo fstrim -av",
+    ]
   }
 }
 

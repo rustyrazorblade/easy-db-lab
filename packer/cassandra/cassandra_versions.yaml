@@ -29,6 +29,11 @@
   java: "11"
   python: "3.11.9"
 
+- version: "6.0"
+  url: https://github.com/rustyrazorblade/easy-db-lab/releases/download/nightly/apache-cassandra-6.0-bin.tar.gz
+  java: "21"
+  python: "3.11.9"
+
 - version: "trunk"
   url: https://github.com/rustyrazorblade/easy-db-lab/releases/download/nightly/apache-cassandra-trunk-bin.tar.gz
   java: "21"

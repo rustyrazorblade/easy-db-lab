@@ -1,21 +1,27 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.ssh.Response
+import io.fabric8.kubernetes.client.internal.KubeConfigUtils
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
+import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.doNothing
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import java.nio.file.Files
+import java.nio.file.Path
 
 /**
  * Test suite for K3sService following TDD principles.
@@ -369,5 +375,120 @@ class K3sServiceTest : BaseKoinTest() {
         assertThat(result.isFailure).isTrue()
         assertThat(result.exceptionOrNull())
             .hasMessageContaining("Permission denied")
+    }
+
+    // ========== KUBECONFIG DOWNLOAD & REWRITE TESTS ==========
+
+    /**
+     * A valid k3s kubeconfig with the server pointing at loopback, exactly as
+     * downloaded from /etc/rancher/k3s/k3s.yaml on the control node. The download
+     * mock writes this to the temp file the service hands it, and the service is
+     * expected to rewrite only the server URL while preserving everything else.
+     */
+    private val loopbackKubeconfigYaml =
+        """
+        apiVersion: v1
+        kind: Config
+        clusters:
+        - cluster:
+            certificate-authority-data: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0t
+            server: https://127.0.0.1:6443
+          name: default
+        contexts:
+        - context:
+            cluster: default
+            user: default
+          name: default
+        current-context: default
+        users:
+        - name: default
+          user:
+            client-certificate-data: LS0tLS1DRVJULS0tLS0=
+            client-key-data: LS0tLS1LRVktLS0tLQ==
+        """.trimIndent()
+
+    private val kubeconfigWithoutClustersYaml =
+        """
+        apiVersion: v1
+        kind: Config
+        clusters: []
+        contexts: []
+        current-context: ""
+        users: []
+        """.trimIndent()
+
+    @Test
+    fun `downloadAndConfigureKubeconfig rewrites server URL to control node private IP`(
+        @TempDir tempDir: Path,
+    ) {
+        // Given - download writes a loopback kubeconfig to the temp path the service creates.
+        // We only supply the INPUT; every assertion below is on the service's real transform.
+        val host =
+            Host(
+                public = "54.123.45.67",
+                private = "10.0.1.42",
+                alias = "control0",
+                availabilityZone = "us-west-2a",
+            )
+        doAnswer { invocation ->
+            val downloadTarget = invocation.getArgument<Path>(2)
+            Files.writeString(downloadTarget, loopbackKubeconfigYaml)
+            null
+        }.whenever(mockRemoteOps)
+            .download(eq(host), eq(Constants.K3s.REMOTE_KUBECONFIG), any())
+
+        val localPath = tempDir.resolve("kubeconfig")
+
+        // When
+        val result = k3sService.downloadAndConfigureKubeconfig(host, localPath)
+
+        // Then - re-parse the ACTUAL written file with real fabric8 and inspect the transform.
+        assertThat(result.isSuccess).isTrue()
+
+        val expectedServerUrl = Constants.K3s.DEFAULT_SERVER_URL.replace("127.0.0.1", host.private)
+        val writtenConfig = KubeConfigUtils.parseConfig(localPath.toFile())
+        val writtenCluster = writtenConfig.clusters.first()
+
+        assertThat(writtenCluster.cluster.server).isEqualTo(expectedServerUrl)
+        // Sanity check the expected value really is derived from the loopback default.
+        assertThat(expectedServerUrl).isEqualTo("https://10.0.1.42:6443")
+
+        // Round-trip proof: unrelated fields survived the parse -> mutate -> serialize cycle.
+        assertThat(writtenCluster.name).isEqualTo("default")
+        assertThat(writtenCluster.cluster.certificateAuthorityData)
+            .isEqualTo("LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0t")
+        assertThat(writtenConfig.currentContext).isEqualTo("default")
+        assertThat(writtenConfig.users.first().name).isEqualTo("default")
+    }
+
+    @Test
+    fun `downloadAndConfigureKubeconfig fails cleanly when kubeconfig has no clusters`(
+        @TempDir tempDir: Path,
+    ) {
+        // Given - download writes a kubeconfig with an empty cluster list.
+        val host =
+            Host(
+                public = "54.123.45.67",
+                private = "10.0.1.42",
+                alias = "control0",
+                availabilityZone = "us-west-2a",
+            )
+        doAnswer { invocation ->
+            val downloadTarget = invocation.getArgument<Path>(2)
+            Files.writeString(downloadTarget, kubeconfigWithoutClustersYaml)
+            null
+        }.whenever(mockRemoteOps)
+            .download(eq(host), eq(Constants.K3s.REMOTE_KUBECONFIG), any())
+
+        val localPath = tempDir.resolve("kubeconfig")
+
+        // When
+        val result = k3sService.downloadAndConfigureKubeconfig(host, localPath)
+
+        // Then
+        assertThat(result.isFailure).isTrue()
+        assertThat(result.exceptionOrNull())
+            .hasMessageContaining("contains no clusters")
+            .hasMessageContaining(host.alias)
     }
 }

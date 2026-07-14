@@ -25,6 +25,7 @@ import software.amazon.awssdk.services.ec2.model.IpPermission
 import software.amazon.awssdk.services.ec2.model.IpRange
 import software.amazon.awssdk.services.ec2.model.Tag
 import software.amazon.awssdk.services.ec2.model.TagSpecification
+import java.time.Duration
 import software.amazon.awssdk.services.ec2.model.ResourceType as Ec2ResourceType
 
 /**
@@ -59,6 +60,8 @@ class AwsInfrastructureServiceIntegrationTest {
                 ec2Client,
                 com.rustyrazorblade.easydblab.events
                     .EventBus(),
+                // Tiny poll interval so teardown/ENI waits do not busy-poll LocalStack at 5s steps.
+                pollInterval = Duration.ofMillis(1),
             )
         emrService = mock()
         openSearchService = mock()

@@ -41,6 +41,7 @@ import java.time.Duration
 class EC2InstanceService(
     private val ec2Client: Ec2Client,
     private val eventBus: EventBus,
+    private val pollInterval: Duration = Duration.ofMillis(POLL_INTERVAL_MS),
 ) {
     companion object {
         private val log = KotlinLogging.logger {}
@@ -254,7 +255,7 @@ class EC2InstanceService(
                 "Waiting: $running/${details.size} running, $withPublicIp/${details.size} with public IP"
             }
 
-            Thread.sleep(POLL_INTERVAL_MS)
+            Thread.sleep(pollInterval.toMillis())
         }
 
         error("Timeout waiting for instances to reach running state after ${timeoutMs}ms")

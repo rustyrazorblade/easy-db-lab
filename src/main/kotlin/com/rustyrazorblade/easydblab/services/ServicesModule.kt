@@ -50,7 +50,9 @@ val servicesModule =
         factory<CiliumService> { DefaultCiliumService(get(), get()) }
         factory<HelmService> { DefaultHelmService(get()) }
         factory<KubectlService> { DefaultKubectlService(get()) }
-        factoryOf(::DefaultTailscaleService) bind TailscaleService::class
+        // Explicit factory (not factoryOf) so the daemonStartupDelay constructor default applies
+        // instead of Koin trying to resolve a Duration binding.
+        factory<TailscaleService> { DefaultTailscaleService(get(), get()) }
 
         // CQL session factory and service - singleton for session caching in REPL/Server mode
         singleOf(::DefaultCqlSessionFactory) bind CqlSessionFactory::class

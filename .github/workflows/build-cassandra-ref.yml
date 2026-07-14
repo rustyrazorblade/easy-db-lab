@@ -38,6 +38,61 @@ on:
         type: string
         default: ''
 
+  # Reusable engine: build-cassandra-set.yml calls this once per matrix version so
+  # every version gets the SAME correct per-version JDK/base-image and BOTH artifacts
+  # (GHCR image + per-sha tarball release). The caller collects the tarball via the
+  # `artifact_name` output / uploaded workflow artifact and the `tarball_name` +
+  # `release_tag` outputs below.
+  workflow_call:
+    inputs:
+      ref:
+        description: 'Cassandra git ref to build (branch, tag, or commit SHA)'
+        required: true
+        type: string
+      repo:
+        description: 'Source repo (owner/name), for forks'
+        required: false
+        type: string
+        default: 'apache/cassandra'
+      jdk:
+        description: 'Override the build JDK (e.g. 11, 17, 21). Blank = auto-map from version.'
+        required: false
+        type: string
+        default: ''
+      base_image:
+        description: 'Override the runtime JRE base image the container is built FROM. Blank = auto-map.'
+        required: false
+        type: string
+        default: ''
+      stable_version:
+        description: >-
+          Optional stable version label (e.g. 5.0-HEAD, 6.0, trunk). When set, the
+          uploaded tarball artifact is named `cassandra-tarball-<stable_version>` so a
+          matrix caller can collect and rename each build deterministically. Blank =
+          artifact name falls back to the sanitized ref tag.
+        required: false
+        type: string
+        default: ''
+    outputs:
+      version:
+        description: 'Cassandra base.version read from build.xml.'
+        value: ${{ jobs.resolve.outputs.version }}
+      short_sha:
+        description: 'Short commit SHA the ref resolved to.'
+        value: ${{ jobs.resolve.outputs.short_sha }}
+      tarball_name:
+        description: 'Filename of the built binary tarball (apache-cassandra-<version>-<sha>-bin.tar.gz).'
+        value: ${{ jobs.resolve.outputs.tarball_name }}
+      release_tag:
+        description: 'Per-build GitHub release tag the tarball is attached to.'
+        value: ${{ jobs.resolve.outputs.release_tag }}
+      artifact_name:
+        description: 'Name of the uploaded workflow artifact containing the tarball.'
+        value: ${{ jobs.resolve.outputs.artifact_name }}
+      image:
+        description: 'Immutable GHCR image reference (repo:sha-<short_sha>).'
+        value: ${{ jobs.resolve.outputs.image_repo }}:${{ jobs.resolve.outputs.sha_tag }}
+
 jobs:
   resolve:
     name: Resolve ref and compute outputs
@@ -54,6 +109,11 @@ jobs:
       ref_tag: ${{ steps.meta.outputs.ref_tag }}
       tarball_name: ${{ steps.meta.outputs.tarball_name }}
       release_tag: ${{ steps.meta.outputs.release_tag }}
+      # Deterministic name for the uploaded tarball artifact. When a caller passes a
+      # stable_version (the matrix set workflow does), the name encodes it so the
+      # aggregation job can pair each build to its stable filename; otherwise it falls
+      # back to the sanitized ref tag, keeping the name unique across matrix calls.
+      artifact_name: ${{ inputs.stable_version != '' && format('cassandra-tarball-{0}', inputs.stable_version) || format('cassandra-tarball-{0}', steps.meta.outputs.ref_tag) }}
     steps:
       - name: Check out this repo's image-assembly logic
         uses: actions/checkout@v6
@@ -95,7 +155,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Version from build.xml base.version (matches nightly-cassandra-build.yml).
+          # Version from build.xml base.version.
           version="$(grep -oP 'property name="base.version" value="\K[^"]+' \
             cassandra-src/build.xml || echo unknown)"
           if [[ "$version" == "unknown" ]]; then
@@ -172,7 +232,7 @@ jobs:
       - name: Upload tarball for publish job
         uses: actions/upload-artifact@v7
         with:
-          name: cassandra-tarball
+          name: ${{ needs.resolve.outputs.artifact_name }}
           path: ${{ needs.resolve.outputs.tarball_name }}
           retention-days: 7
           if-no-files-found: error
@@ -191,9 +251,131 @@ jobs:
       - name: Download built tarball
         uses: actions/download-artifact@v8
         with:
-          name: cassandra-tarball
+          name: ${{ needs.resolve.outputs.artifact_name }}
           path: .github/cassandra-image
 
+      # Build the image LOCALLY (load into the daemon, do NOT push). The smoke
+      # test below runs against this local image so that a broken image never
+      # reaches GHCR or a release — publishing only happens after it passes.
+      - name: Build image locally
+        env:
+          IMAGE_REPO: ${{ needs.resolve.outputs.image_repo }}
+          SHA_TAG: ${{ needs.resolve.outputs.sha_tag }}
+          REF_TAG: ${{ needs.resolve.outputs.ref_tag }}
+          BASE_IMAGE: ${{ needs.resolve.outputs.base_image }}
+          TARBALL_NAME: ${{ needs.resolve.outputs.tarball_name }}
+        run: |
+          set -euo pipefail
+          docker build \
+            --build-arg BASE_IMAGE="$BASE_IMAGE" \
+            --build-arg TARBALL="$TARBALL_NAME" \
+            --tag "${IMAGE_REPO}:${SHA_TAG}" \
+            --tag "${IMAGE_REPO}:${REF_TAG}" \
+            .github/cassandra-image
+
+      # Gate the publish on a real smoke test against the locally-built image.
+      # This must run BEFORE the GHCR push and the release so a broken cqlsh
+      # (issue #764) or a server that never comes up prevents publishing.
+      - name: Smoke test — image serves CQL
+        env:
+          IMAGE_REPO: ${{ needs.resolve.outputs.image_repo }}
+          SHA_TAG: ${{ needs.resolve.outputs.sha_tag }}
+        run: |
+          set -euo pipefail
+          image="${IMAGE_REPO}:${SHA_TAG}"
+
+          # Pin Cassandra to a deterministic IP on a user-defined docker network
+          # and dial cqlsh at that same IP. The vendored docker-entrypoint.sh
+          # binds listen_address/broadcast_rpc_address to the container's own IP
+          # (never loopback), and nodetool statusbinary reports readiness against
+          # that interface — so cqlsh must connect to that IP, not 127.0.0.1
+          # (issue #768). Never bind to 0.0.0.0; pin to the node's real IP.
+          net="cass-smoke-$$"
+          cass_ip="172.28.0.10"
+          docker network create --subnet 172.28.0.0/16 "$net"
+          cid="$(docker run -d --network "$net" --ip "$cass_ip" \
+                  -e CASSANDRA_LISTEN_ADDRESS="$cass_ip" \
+                  -e CASSANDRA_RPC_ADDRESS="$cass_ip" \
+                  -e CASSANDRA_BROADCAST_RPC_ADDRESS="$cass_ip" \
+                  "$image")"
+          trap 'docker rm -f "$cid" >/dev/null 2>&1 || true; docker network rm "$net" >/dev/null 2>&1 || true' EXIT
+
+          echo "Waiting for the native transport to report running (bounded timeout)..."
+          ready=
+          for _ in $(seq 1 60); do
+            status="$(docker exec "$cid" nodetool statusbinary 2>/dev/null || true)"
+            if [[ "$status" == *running* ]]; then
+              ready=1
+              break
+            fi
+            sleep 5
+          done
+
+          if [[ -z "$ready" ]]; then
+            echo "::error::native transport did not report 'running' within the timeout"
+            docker logs "$cid" || true
+            exit 1
+          fi
+          echo "nodetool statusbinary: running"
+
+          # Bounded poll of the REAL CQL endpoint. statusbinary can report
+          # "running" before the native-transport socket actually accepts, so
+          # this is a stronger readiness gate on the exact thing we test — not a
+          # weakening. The job still FAILS if the endpoint never accepts within
+          # the bound (no `|| true` around the overall outcome). Dial the pinned
+          # container IP (not loopback) — see #768 above.
+          echo "Polling the CQL endpoint (bounded)..."
+          cql_ok=
+          for _ in $(seq 1 24); do          # ~2 min: 24 * 5s
+            if docker exec "$cid" cqlsh "$cass_ip" 9042 \
+                 -e 'SELECT release_version FROM system.local;' >/tmp/cql.out 2>/tmp/cql.err; then
+              cql_ok=1
+              break
+            fi
+            sleep 5
+          done
+
+          if [ -n "$cql_ok" ]; then
+            echo "CQL query succeeded:"
+            cat /tmp/cql.out
+          else
+            # On exhaustion, dump full diagnostics to distinguish a readiness
+            # race from a bind that never applied, THEN fail. The final visible
+            # cqlsh attempt keeps --debug and shows its stderr (no 2>/dev/null),
+            # preserving the #766 hardening.
+            echo "::error::CQL endpoint never accepted within the bounded retry"
+            echo "===== last cqlsh stderr (with --debug) ====="
+            docker exec "$cid" cqlsh --debug "$cass_ip" 9042 -e 'SELECT release_version FROM system.local;' || true
+            echo "===== docker logs ====="
+            docker logs "$cid" || true
+            echo "===== effective bind config ====="
+            # find the effective cassandra.yaml via the entrypoint's CASSANDRA_CONF
+            conf="$(docker exec "$cid" bash -c 'echo "${CASSANDRA_CONF:-/etc/cassandra}"')"
+            docker exec "$cid" bash -c "grep -E '^(rpc_address|listen_address|broadcast_address|broadcast_rpc_address|start_native_transport|native_transport_port):' \"$conf/cassandra.yaml\"" || true
+            echo "===== listening sockets (what is bound to 9042) ====="
+            docker exec "$cid" bash -c 'ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null || true'
+            exit 1
+          fi
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Push only after the smoke test passed.
+      - name: Push image
+        env:
+          IMAGE_REPO: ${{ needs.resolve.outputs.image_repo }}
+          SHA_TAG: ${{ needs.resolve.outputs.sha_tag }}
+          REF_TAG: ${{ needs.resolve.outputs.ref_tag }}
+        run: |
+          set -euo pipefail
+          docker push "${IMAGE_REPO}:${SHA_TAG}"
+          docker push "${IMAGE_REPO}:${REF_TAG}"
+
+      # Create the release only after the smoke test passed and the image pushed.
       - name: Create per-build release with tarball
         id: release
         uses: softprops/action-gh-release@v3
@@ -214,60 +396,6 @@ jobs:
 
             These are development builds and should not be used in production.
           files: .github/cassandra-image/${{ needs.resolve.outputs.tarball_name }}
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push image
-        env:
-          IMAGE_REPO: ${{ needs.resolve.outputs.image_repo }}
-          SHA_TAG: ${{ needs.resolve.outputs.sha_tag }}
-          REF_TAG: ${{ needs.resolve.outputs.ref_tag }}
-          BASE_IMAGE: ${{ needs.resolve.outputs.base_image }}
-          TARBALL_NAME: ${{ needs.resolve.outputs.tarball_name }}
-        run: |
-          set -euo pipefail
-          docker build \
-            --build-arg BASE_IMAGE="$BASE_IMAGE" \
-            --build-arg TARBALL="$TARBALL_NAME" \
-            --tag "${IMAGE_REPO}:${SHA_TAG}" \
-            --tag "${IMAGE_REPO}:${REF_TAG}" \
-            .github/cassandra-image
-          docker push "${IMAGE_REPO}:${SHA_TAG}"
-          docker push "${IMAGE_REPO}:${REF_TAG}"
-
-      - name: Smoke test — image serves CQL
-        env:
-          IMAGE_REPO: ${{ needs.resolve.outputs.image_repo }}
-          SHA_TAG: ${{ needs.resolve.outputs.sha_tag }}
-        run: |
-          set -euo pipefail
-          image="${IMAGE_REPO}:${SHA_TAG}"
-          docker pull "$image"
-          cid="$(docker run -d -p 9042:9042 "$image")"
-          trap 'docker rm -f "$cid" >/dev/null 2>&1 || true' EXIT
-
-          echo "Waiting for CQL on 9042 (bounded timeout)..."
-          ready=
-          for _ in $(seq 1 60); do
-            if docker exec "$cid" cqlsh -e 'SELECT release_version FROM system.local;' >/tmp/cql.out 2>/dev/null; then
-              ready=1
-              break
-            fi
-            sleep 5
-          done
-
-          if [[ -z "$ready" ]]; then
-            echo "::error::container did not serve CQL within the timeout"
-            docker logs "$cid" || true
-            exit 1
-          fi
-          echo "CQL query succeeded:"
-          cat /tmp/cql.out
 
       - name: Write run summary
         env:

@@ -27,6 +27,7 @@ import software.amazon.awssdk.services.emr.model.StepState
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.time.Duration
 import java.util.zip.GZIPInputStream
 
 /**
@@ -49,6 +50,10 @@ import java.util.zip.GZIPInputStream
  *
  * @property emrClient AWS EMR client for API operations
  * @property clusterStateManager Manager for cluster state persistence
+ * @property pollInterval Delay between job-status polls. Defaults to [Constants.EMR.POLL_INTERVAL_MS]
+ *   so production timing is unchanged; tests inject [Duration.ZERO] to poll without waiting.
+ * @property logIngestionWait Pause before querying Victoria Logs on failure, allowing logs to be
+ *   ingested. Defaults to [Constants.EMR.LOG_INGESTION_WAIT_MS]; tests inject [Duration.ZERO].
  */
 class EMRSparkService(
     private val emrClient: EmrClient,
@@ -56,6 +61,8 @@ class EMRSparkService(
     private val clusterStateManager: ClusterStateManager,
     private val victoriaLogsService: VictoriaLogsService,
     private val eventBus: EventBus,
+    private val pollInterval: Duration = Duration.ofMillis(Constants.EMR.POLL_INTERVAL_MS),
+    private val logIngestionWait: Duration = Duration.ofMillis(Constants.EMR.LOG_INGESTION_WAIT_MS),
 ) : SparkService {
     private val log = KotlinLogging.logger {}
 
@@ -120,7 +127,7 @@ class EMRSparkService(
             var pollCount = 0
 
             do {
-                Thread.sleep(Constants.EMR.POLL_INTERVAL_MS)
+                Thread.sleep(pollInterval.toMillis())
                 pollCount++
 
                 // Check for timeout
@@ -201,7 +208,7 @@ class EMRSparkService(
     private fun queryVictoriaLogs(stepId: String) {
         println("\n=== Step Logs ===")
         try {
-            Thread.sleep(Constants.EMR.LOG_INGESTION_WAIT_MS)
+            Thread.sleep(logIngestionWait.toMillis())
 
             // Query using OTel Java agent log attributes (service.name) instead of defunct step_id tag
             // The Java agent tags logs with service.name=spark-<job-name>

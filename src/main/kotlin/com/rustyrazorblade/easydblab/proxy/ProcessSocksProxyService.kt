@@ -10,6 +10,7 @@ import java.io.File
 import java.net.BindException
 import java.net.InetSocketAddress
 import java.net.ServerSocket
+import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
@@ -61,6 +62,7 @@ internal fun stripSshDebugNoise(
 class ProcessSocksProxyService(
     private val context: Context,
     private val reachabilityProbe: TunnelReachabilityProbe,
+    private val verifyDelay: Duration = Duration.ofMillis(VERIFY_DELAY_MS),
 ) : SocksProxyService {
     companion object {
         private const val VERIFY_RETRIES = 10
@@ -323,7 +325,7 @@ class ProcessSocksProxyService(
             }
             log.debug { "SOCKS5 tunnel not reachable yet (attempt ${attempt + 1}/$VERIFY_RETRIES)" }
             if (attempt < VERIFY_RETRIES - 1) {
-                Thread.sleep(VERIFY_DELAY_MS)
+                Thread.sleep(verifyDelay.toMillis())
             }
         }
         val exitCode = if (process.isAlive) null else process.exitValue()

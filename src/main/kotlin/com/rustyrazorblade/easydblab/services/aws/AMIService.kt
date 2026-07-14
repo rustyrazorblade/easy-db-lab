@@ -16,6 +16,7 @@ import software.amazon.awssdk.services.ec2.model.DescribeImagesRequest
 import software.amazon.awssdk.services.ec2.model.DescribeSnapshotsRequest
 import software.amazon.awssdk.services.ec2.model.Ec2Exception
 import software.amazon.awssdk.services.ec2.model.Filter
+import java.time.Duration
 import java.time.Instant
 
 /**
@@ -44,20 +45,25 @@ class AMIService(
         // AMI pattern template - architecture is injected at runtime
         const val DEFAULT_AMI_PATTERN_TEMPLATE = "rustyrazorblade/images/easy-db-lab-cassandra-%s-*"
 
+        /** Base backoff for the default validation retry policy (2s, doubling per attempt). */
+        private val DEFAULT_VALIDATION_BACKOFF: Duration = Duration.ofSeconds(2)
+
         /**
-         * Default retry configuration for AMI validation:
+         * Builds a retry configuration for AMI validation with a configurable base backoff:
          * - Max 3 attempts
-         * - 2 second initial wait with exponential backoff
+         * - Exponential backoff off [baseBackoff] (baseBackoff, 2×, 4×)
          * - Retries on transient AWS errors (429, 5xx)
          * - Does NOT retry on permission errors (403)
+         *
+         * Production uses [defaultValidationRetryConfig]; tests inject a near-zero [baseBackoff]
+         * so the retry-path tests do not sit through real wall-clock backoff.
          */
-        val defaultValidationRetryConfig: RetryConfig =
+        fun buildValidationRetryConfig(baseBackoff: Duration): RetryConfig =
             RetryConfig
                 .custom<AMI>()
                 .maxAttempts(3)
                 .intervalFunction { attemptCount ->
-                    // Exponential backoff: 2s, 4s, 8s
-                    2000L * (1L shl (attemptCount - 1))
+                    baseBackoff.toMillis() * (1L shl (attemptCount - 1))
                 }.retryOnException { throwable ->
                     when {
                         throwable !is Ec2Exception -> false
@@ -76,6 +82,11 @@ class AMIService(
                         else -> false
                     }
                 }.build()
+
+        /**
+         * Default retry configuration for AMI validation: 3 attempts with 2s/4s/8s backoff.
+         */
+        val defaultValidationRetryConfig: RetryConfig = buildValidationRetryConfig(DEFAULT_VALIDATION_BACKOFF)
     }
 
     /**

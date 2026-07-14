@@ -62,6 +62,10 @@ import java.time.Duration
  *
  * @see Init for cluster initialization (must be run first)
  * @see Down for tearing down infrastructure
+ *
+ * @param sshStartupDelay How long to pause before the first SSH readiness probe, giving freshly
+ *   booted instances a moment before we start dialing them. Defaults to [SSH_STARTUP_DELAY] so
+ *   production timing is unchanged; tests inject [java.time.Duration.ZERO] to run instantly.
  */
 @McpCommand
 @RequireProfileSetup
@@ -71,7 +75,9 @@ import java.time.Duration
     name = "up",
     description = ["Starts instances"],
 )
-class Up : PicoBaseCommand() {
+class Up(
+    private val sshStartupDelay: Duration = SSH_STARTUP_DELAY,
+) : PicoBaseCommand() {
     private val userConfig: User by inject()
     private val s3BucketService: AwsS3BucketService by inject()
     private val openSearchService: OpenSearchService by inject()
@@ -514,7 +520,7 @@ class Up : PicoBaseCommand() {
      */
     private fun waitForSshReady() {
         eventBus.emit(Event.Provision.SshWaiting)
-        Thread.sleep(SSH_STARTUP_DELAY.toMillis())
+        Thread.sleep(sshStartupDelay.toMillis())
 
         val retryConfig = RetryUtil.createSshConnectionRetryConfig()
         val retry =

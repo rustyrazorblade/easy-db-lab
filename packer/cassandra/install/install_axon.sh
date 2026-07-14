@@ -34,15 +34,15 @@ install_axon_agent() {
     if [ -n "$file" ]; then
       echo -e "\e[32mSuccessfully downloaded ${package}:all as $file\e[0m"
     else
-      # If we couldn't find the file, fall back to amd64
-      echo -e "\e[31mPackage downloaded but file not found, falling back to amd64...\e[0m"
-      sudo apt install --download-only -y "${package}:amd64"
+      # If we couldn't find the file, fall back to the builder's native arch
+      echo -e "\e[31mPackage downloaded but file not found, falling back to native arch...\e[0m"
+      sudo apt install --download-only -y "${package}:$(dpkg --print-architecture)"
       file=$(sudo find /var/cache/apt/archives/ -name "${package}*")
     fi
   else
-    # Fall back to amd64 if 'all' is not available
-    echo "Package not available for 'all' architecture, falling back to amd64..."
-    sudo apt install --download-only -y "${package}:amd64" 
+    # Fall back to the builder's native arch if 'all' is not available
+    echo "Package not available for 'all' architecture, falling back to native arch..."
+    sudo apt install --download-only -y "${package}:$(dpkg --print-architecture)"
     file=$(sudo find /var/cache/apt/archives/ -name "${package}*")
   fi
 

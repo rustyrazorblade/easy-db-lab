@@ -243,23 +243,11 @@ class ProcessSocksProxyServiceTest {
         assertThat(System.getProperty(Constants.Proxy.PORT_PROPERTY)).isNull()
     }
 
-    @Test
-    fun `failure message surfaces the real ssh error and omits debug noise`() {
-        val alias = "refused-control"
-        writeUnreachableSshConfig(alias)
-        val host = testHost.copy(alias = alias)
-        val svc = service()
-
-        val thrown = catchThrowable { svc.ensureRunning(host) }
-
-        // The real, un-prefixed ssh error ("Connection refused") must be pulled from the
-        // transcript into the message; the debug1: chatter must NOT be.
-        assertThat(thrown)
-            .isInstanceOf(IllegalStateException::class.java)
-        assertThat(thrown.message)
-            .contains("Connection refused")
-            .doesNotContain("debug1:")
-    }
+    // NOTE: the failure-message construction (real ssh error surfaced, debug1: chatter stripped) is
+    // now proven deterministically in the unit tier by ProcessSocksProxyMessageTest, which feeds a
+    // synthetic transcript to verificationFailureMessage. The former real-ssh version of that test
+    // lived here and depended on scraping a live `ssh -v` at a refused loopback port, which was
+    // non-deterministic across host network stacks (issue #750).
 
     @Test
     fun `a live process with a dead tunnel port is not reused`() {

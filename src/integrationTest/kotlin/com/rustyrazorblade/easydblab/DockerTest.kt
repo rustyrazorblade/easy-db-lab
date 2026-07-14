@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab
 
+import com.github.dockerjava.api.async.ResultCallback
 import com.github.dockerjava.api.command.InspectContainerResponse
 import com.github.dockerjava.api.model.AccessMode
 import com.github.dockerjava.api.model.Frame
@@ -154,7 +155,7 @@ class DockerTest : BaseKoinTest() {
 
         doAnswer { invocation ->
             val callback =
-                invocation.getArgument<com.github.dockerjava.api.async.ResultCallback.Adapter<Frame>>(2)
+                invocation.getArgument<ResultCallback.Adapter<Frame>>(2)
             callback.onNext(Frame(StreamType.STDOUT, "Hello from container\n".toByteArray()))
             callback.onNext(Frame(StreamType.STDERR, "Warning message\n".toByteArray()))
             null

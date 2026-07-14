@@ -336,8 +336,12 @@ class ProcessSocksProxyService(
      * Builds the failure message for a proxy that never came up, naming the SOCKS proxy as the
      * failing component, citing the ssh exit code when it died, and surfacing the real ssh error
      * pulled from [logFile] (debug chatter stripped) plus the full transcript path.
+     *
+     * Internal (not private) purely so the message construction — that the real, un-prefixed ssh
+     * error is surfaced while `debug*:` chatter is dropped — can be driven directly in tests with a
+     * synthetic transcript, without spawning a real ssh process against a refused port.
      */
-    private fun verificationFailureMessage(
+    internal fun verificationFailureMessage(
         logFile: File,
         exitCode: Int?,
     ): String {

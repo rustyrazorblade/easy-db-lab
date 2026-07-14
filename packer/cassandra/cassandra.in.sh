@@ -51,9 +51,9 @@ case "$ECL_CASSANDRA_VERSION" in
         ;;
     "5.0")
         if [ "$ECL_JAVA_VERSION" = "11" ]; then
-            AXONOPS_AGENT="5.0-agent"
+            AXONOPS_AGENT="5.0-agent-jdk11"
         elif [ "$ECL_JAVA_VERSION" = "17" ]; then
-            ECL_AGENT_JAR="/usr/share/axonops/5.0-agent-jdk17/lib/axon-cassandra5.0-agent.jar"
+            AXONOPS_AGENT="5.0-agent-jdk17"
         fi
         ;;
     "5.1"|"6.0")
@@ -62,15 +62,17 @@ case "$ECL_CASSANDRA_VERSION" in
         ;;
 esac
 
-# Configure JVM_EXTRA_OPTS with agent if applicable
+# Configure JVM_EXTRA_OPTS with agent if applicable.
+# The install dir is named after the full agent version (e.g. 5.0-agent-jdk11),
+# but the jar inside is always axon-cassandra<X.Y>-agent.jar (no jdk suffix),
+# so resolve it by glob rather than assuming the name matches the directory.
 if [ -n "$AXONOPS_AGENT" ]; then
-    ECL_AGENT_JAR="/usr/share/axonops/${AXONOPS_AGENT}/lib/axon-cassandra${AXONOPS_AGENT}.jar"
-fi
-
-if [ -f "$ECL_AGENT_JAR" ]; then
-    export JVM_EXTRA_OPTS="-javaagent:${ECL_AGENT_JAR}=/etc/axonops/axon-agent.yml"
-else
-    echo "WARNING: AxonOps agent jar not found at $ECL_AGENT_JAR" >&2
+    ECL_AGENT_JAR=$(find "/usr/share/axonops/${AXONOPS_AGENT}/lib" -maxdepth 1 -name 'axon-cassandra*.jar' 2>/dev/null | head -n 1)
+    if [ -f "$ECL_AGENT_JAR" ]; then
+        export JVM_EXTRA_OPTS="-javaagent:${ECL_AGENT_JAR}=/etc/axonops/axon-agent.yml"
+    else
+        echo "WARNING: AxonOps agent jar not found for $AXONOPS_AGENT" >&2
+    fi
 fi
 
 # MAAC (Management API for Apache Cassandra) metrics agent

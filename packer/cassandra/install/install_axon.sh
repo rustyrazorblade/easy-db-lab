@@ -10,7 +10,7 @@ sudo apt-get install -y axon-agent
 # need to add a new start script for C*
 
 # some versions have JVM specific agents
-declare -a agent_versions=("3.0-agent" "3.11-agent"  "4.0-agent-jdk8" "4.0-agent" "4.1-agent-jdk8" "4.1-agent" "5.0-agent" "5.0-agent-jdk17")
+declare -a agent_versions=("3.0-agent" "3.11-agent"  "4.0-agent-jdk8" "4.0-agent" "4.1-agent-jdk8" "4.1-agent" "5.0-agent-jdk11" "5.0-agent-jdk17")
 
 # Function to install an axon agent version
 install_axon_agent() {
@@ -71,7 +71,10 @@ install_axon_agent() {
 # download each version of the axon agent
 for agent_version in "${agent_versions[@]}"
 do
-  install_axon_agent "$agent_version"
+  install_axon_agent "$agent_version" || {
+    echo -e "\e[31mERROR: failed to install axon agent $agent_version\e[0m" >&2
+    exit 1
+  }
 done
 
 # install agent_service file included with every version since its expected

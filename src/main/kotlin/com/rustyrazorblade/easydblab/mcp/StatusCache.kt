@@ -5,7 +5,6 @@ import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
-import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -561,11 +560,3 @@ class StatusCache(
         }
     }
 }
-
-private fun ClusterHost.toHost(): Host =
-    Host(
-        public = this.publicIp,
-        private = this.privateIp,
-        alias = this.alias,
-        availabilityZone = this.availabilityZone,
-    )

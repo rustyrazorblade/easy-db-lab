@@ -140,7 +140,7 @@ class DefaultGrafanaDashboardService(
                     .build()
             okHttpClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
-                    error("Grafana API returned ${response.code}: ${response.body?.string()}")
+                    error("Grafana API returned ${response.code}: ${response.body.string()}")
                 }
             }
             eventBus.emit(Event.Grafana.DashboardInstalled(title = title))

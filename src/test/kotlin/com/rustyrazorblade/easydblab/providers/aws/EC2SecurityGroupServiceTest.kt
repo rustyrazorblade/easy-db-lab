@@ -88,7 +88,7 @@ internal class EC2SecurityGroupServiceTest {
         val result = vpcService.describeSecurityGroup("sg-12345")
 
         assertThat(result).isNotNull
-        assertThat(result!!.securityGroupId).isEqualTo("sg-12345")
+        assertThat(result.securityGroupId).isEqualTo("sg-12345")
         assertThat(result.name).isEqualTo("test-security-group")
         assertThat(result.description).isEqualTo("Test security group for cluster")
         assertThat(result.vpcId).isEqualTo("vpc-abc123")
@@ -145,7 +145,7 @@ internal class EC2SecurityGroupServiceTest {
         val result = vpcService.describeSecurityGroup("sg-multi")
 
         assertThat(result).isNotNull
-        assertThat(result!!.inboundRules).hasSize(1)
+        assertThat(result.inboundRules).hasSize(1)
         assertThat(result.inboundRules[0].cidrBlocks)
             .containsExactly("10.0.0.0/8", "192.168.0.0/16", "172.16.0.0/12")
     }
@@ -192,7 +192,7 @@ internal class EC2SecurityGroupServiceTest {
         val result = vpcService.describeSecurityGroup("sg-known-ports")
 
         assertThat(result).isNotNull
-        assertThat(result!!.inboundRules).hasSize(2)
+        assertThat(result.inboundRules).hasSize(2)
 
         val sshRule = result.inboundRules.find { it.fromPort == 22 }
         assertThat(sshRule).isNotNull
@@ -236,7 +236,7 @@ internal class EC2SecurityGroupServiceTest {
         val result = vpcService.describeSecurityGroup("sg-range")
 
         assertThat(result).isNotNull
-        assertThat(result!!.inboundRules).hasSize(1)
+        assertThat(result.inboundRules).hasSize(1)
         assertThat(result.inboundRules[0].fromPort).isEqualTo(7000)
         assertThat(result.inboundRules[0].toPort).isEqualTo(7001)
         // Port range should not have a default description
@@ -274,7 +274,7 @@ internal class EC2SecurityGroupServiceTest {
         val result = vpcService.describeSecurityGroup("sg-all")
 
         assertThat(result).isNotNull
-        assertThat(result!!.inboundRules).hasSize(1)
+        assertThat(result.inboundRules).hasSize(1)
         assertThat(result.inboundRules[0].protocol).isEqualTo("All")
         assertThat(result.inboundRules[0].fromPort).isNull()
         assertThat(result.inboundRules[0].toPort).isNull()
@@ -305,7 +305,7 @@ internal class EC2SecurityGroupServiceTest {
         val result = vpcService.describeSecurityGroup("sg-empty")
 
         assertThat(result).isNotNull
-        assertThat(result!!.inboundRules).isEmpty()
+        assertThat(result.inboundRules).isEmpty()
         assertThat(result.outboundRules).isEmpty()
     }
 }

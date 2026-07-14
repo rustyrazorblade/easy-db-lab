@@ -378,14 +378,14 @@ open class McpToolRegistry : KoinComponent {
             type.isEnum -> "string" // Enums are strings with constraints
             type == String::class.java -> "string"
             type == Int::class.java ||
-                type == Integer::class.java ||
+                type == Int::class.javaObjectType ||
                 type == Long::class.java ||
-                type == java.lang.Long::class.java ||
+                type == Long::class.javaObjectType ||
                 type == Double::class.java ||
-                type == java.lang.Double::class.java ||
+                type == Double::class.javaObjectType ||
                 type == Float::class.java ||
-                type == java.lang.Float::class.java -> "number"
-            type == Boolean::class.java || type == java.lang.Boolean::class.java -> "boolean"
+                type == Float::class.javaObjectType -> "number"
+            type == Boolean::class.java || type == Boolean::class.javaObjectType -> "boolean"
             else -> "string" // Default to string for unknown types
         }
 
@@ -534,13 +534,13 @@ open class McpToolRegistry : KoinComponent {
             enumConstant.name.equals(enumString, ignoreCase = true)
         }
 
-    private fun isIntType(type: Class<*>): Boolean = type == Int::class.java || type == Integer::class.java
+    private fun isIntType(type: Class<*>): Boolean = type == Int::class.java || type == Int::class.javaObjectType
 
-    private fun isLongType(type: Class<*>): Boolean = type == Long::class.java || type == java.lang.Long::class.java
+    private fun isLongType(type: Class<*>): Boolean = type == Long::class.java || type == Long::class.javaObjectType
 
-    private fun isDoubleType(type: Class<*>): Boolean = type == Double::class.java || type == java.lang.Double::class.java
+    private fun isDoubleType(type: Class<*>): Boolean = type == Double::class.java || type == Double::class.javaObjectType
 
-    private fun isFloatType(type: Class<*>): Boolean = type == Float::class.java || type == java.lang.Float::class.java
+    private fun isFloatType(type: Class<*>): Boolean = type == Float::class.java || type == Float::class.javaObjectType
 
-    private fun isBooleanType(type: Class<*>): Boolean = type == Boolean::class.java || type == java.lang.Boolean::class.java
+    private fun isBooleanType(type: Class<*>): Boolean = type == Boolean::class.java || type == Boolean::class.javaObjectType
 }

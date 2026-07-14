@@ -20,6 +20,7 @@ tasks.withType<JavaCompile>().configureEach {
 kotlin {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_21)
+        allWarningsAsErrors.set(true)
     }
 }
 

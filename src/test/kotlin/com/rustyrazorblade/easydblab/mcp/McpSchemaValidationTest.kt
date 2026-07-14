@@ -12,6 +12,8 @@ import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 
+private val prettyJson = Json { prettyPrint = true }
+
 class McpSchemaValidationTest : BaseKoinTest() {
     private lateinit var registry: McpToolRegistry
 
@@ -209,7 +211,7 @@ class McpSchemaValidationTest : BaseKoinTest() {
         if (index == 15) {
             println("Full schema for tool 15:")
             println(
-                Json { prettyPrint = true }
+                prettyJson
                     .encodeToString(JsonObject.serializer(), schema),
             )
             println()

@@ -29,6 +29,7 @@ import io.ktor.server.routing.routing
 import io.ktor.server.sse.SSE
 import io.ktor.server.sse.sse
 import io.ktor.util.collections.ConcurrentMap
+import io.ktor.utils.io.ExperimentalKtorApi
 import io.modelcontextprotocol.kotlin.sdk.server.ClientConnection
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.server.ServerOptions
@@ -422,6 +423,7 @@ class McpServer(
         }
     }
 
+    @OptIn(ExperimentalKtorApi::class)
     private fun io.ktor.server.routing.Routing.configureStatusRoutes() {
         get("/stress/status") {
             val live = call.request.queryParameters["live"]?.toBoolean() ?: false

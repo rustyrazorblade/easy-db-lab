@@ -63,6 +63,7 @@ class ProcessSocksProxyService(
     private val context: Context,
     private val reachabilityProbe: TunnelReachabilityProbe,
     private val verifyDelay: Duration = Duration.ofMillis(VERIFY_DELAY_MS),
+    private val processLauncher: SshProcessLauncher = DefaultSshProcessLauncher,
 ) : SocksProxyService {
     companion object {
         private const val VERIFY_RETRIES = 10
@@ -177,27 +178,7 @@ class ProcessSocksProxyService(
         val logDir = File(context.workingDirectory, LOGS_DIR)
         logDir.mkdirs()
         val logFile = File(logDir, Constants.Proxy.SOCKS5_PROXY_LOG_FILE)
-        val process =
-            ProcessBuilder(
-                "nohup",
-                "ssh",
-                "-v",
-                // Exit immediately if the dynamic forward can't be set up, instead of lingering
-                // with a half-open connection — this is what lets us detect a dead ssh fast.
-                "-o",
-                "ExitOnForwardFailure=yes",
-                "-N",
-                "-D",
-                "$port",
-                "-F",
-                sshConfigPath,
-                gatewayHost.alias,
-            ).apply {
-                redirectInput(ProcessBuilder.Redirect.from(File("/dev/null")))
-                redirectOutput(ProcessBuilder.Redirect.to(File("/dev/null")))
-                // Overwrite (not append) so the log is always exactly this attempt's transcript.
-                redirectError(ProcessBuilder.Redirect.to(logFile))
-            }.start()
+        val process = processLauncher.launch(buildSshCommand(port, sshConfigPath, gatewayHost.alias), logFile)
 
         val newPid = process.pid().toInt()
         log.info { "SSH proxy process started [PID $newPid]" }
@@ -236,15 +217,49 @@ class ProcessSocksProxyService(
         return proxyState
     }
 
-    private fun selectPort(): Int {
-        val preferred = Constants.Proxy.DEFAULT_SOCKS5_PORT
-        return try {
+    /**
+     * Builds the `ssh -N -D` command line that opens the dynamic SOCKS5 forward to [alias].
+     *
+     * Internal (not private) purely so a test can assert the command dials the gateway's recorded
+     * [alias] (never a hardcoded host) and carries the fail-fast options, without spawning ssh.
+     *
+     * `-o ExitOnForwardFailure=yes` makes ssh exit immediately if the dynamic forward cannot be set
+     * up rather than lingering half-open, which is what lets verification detect a dead ssh fast.
+     */
+    internal fun buildSshCommand(
+        port: Int,
+        sshConfigPath: String,
+        alias: String,
+    ): List<String> =
+        listOf(
+            "nohup",
+            "ssh",
+            "-v",
+            "-o",
+            "ExitOnForwardFailure=yes",
+            "-N",
+            "-D",
+            "$port",
+            "-F",
+            sshConfigPath,
+            alias,
+        )
+
+    /**
+     * Selects the local port for the SOCKS5 listener: [preferred] if it is free, otherwise an
+     * OS-assigned ephemeral port.
+     *
+     * Internal (not private) with a [preferred] parameter purely so the fallback branch can be
+     * driven deterministically in a test by passing a port that is known to be bound, instead of
+     * having to bind the hardcoded default port (a fixed-port collision risk on CI — issue #750).
+     */
+    internal fun selectPort(preferred: Int = Constants.Proxy.DEFAULT_SOCKS5_PORT): Int =
+        try {
             ServerSocket(preferred).use { preferred }
         } catch (_: BindException) {
             log.debug { "Port $preferred is in use, selecting an available port" }
             ServerSocket(0).use { it.localPort }
         }
-    }
 
     private fun applySystemProperties(port: Int) {
         // Publish ONLY the port under our private property. Never set socksProxyHost/socksProxyPort:
@@ -336,8 +351,12 @@ class ProcessSocksProxyService(
      * Builds the failure message for a proxy that never came up, naming the SOCKS proxy as the
      * failing component, citing the ssh exit code when it died, and surfacing the real ssh error
      * pulled from [logFile] (debug chatter stripped) plus the full transcript path.
+     *
+     * Internal (not private) purely so the message construction — that the real, un-prefixed ssh
+     * error is surfaced while `debug*:` chatter is dropped — can be driven directly in tests with a
+     * synthetic transcript, without spawning a real ssh process against a refused port.
      */
-    private fun verificationFailureMessage(
+    internal fun verificationFailureMessage(
         logFile: File,
         exitCode: Int?,
     ): String {

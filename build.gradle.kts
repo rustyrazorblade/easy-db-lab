@@ -242,6 +242,7 @@ kotlin {
     // while pinning the bytecode target to 21 so artifacts run on older JVMs.
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_21)
+        allWarningsAsErrors.set(true)
     }
 }
 

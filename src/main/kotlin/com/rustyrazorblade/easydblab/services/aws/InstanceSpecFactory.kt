@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services.aws
 
+import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredInstance
@@ -17,6 +18,7 @@ import com.rustyrazorblade.easydblab.providers.aws.EBSConfig
  * @property existingCount Number of instances that already exist
  * @property instanceType EC2 instance type (e.g., "m5.large")
  * @property ebsConfig Optional EBS configuration for attached storage
+ * @property amiId AMI matching this group's own CPU architecture
  */
 data class InstanceSpec(
     val serverType: ServerType,
@@ -24,6 +26,7 @@ data class InstanceSpec(
     val existingCount: Int,
     val instanceType: String,
     val ebsConfig: EBSConfig?,
+    val amiId: String,
 ) {
     /**
      * Number of additional instances needed to reach the configured count.
@@ -45,6 +48,7 @@ interface InstanceSpecFactory {
      * @param initConfig The cluster initialization configuration
      * @param existingInstances Map of existing instances by server type
      * @param dbHasInstanceStore Whether the database instance type has local instance store
+     * @param amiByArch AMI id resolved for each distinct CPU architecture in the cluster
      * @return List of instance specifications for Cassandra, Stress, and Control nodes
      * @throws IllegalArgumentException if database instance type has no instance store and no EBS configured
      */
@@ -52,6 +56,7 @@ interface InstanceSpecFactory {
         initConfig: InitConfig,
         existingInstances: Map<ServerType, List<DiscoveredInstance>>,
         dbHasInstanceStore: Boolean,
+        amiByArch: Map<Arch, String>,
     ): List<InstanceSpec>
 
     /**
@@ -71,6 +76,7 @@ class DefaultInstanceSpecFactory : InstanceSpecFactory {
         initConfig: InitConfig,
         existingInstances: Map<ServerType, List<DiscoveredInstance>>,
         dbHasInstanceStore: Boolean,
+        amiByArch: Map<Arch, String>,
     ): List<InstanceSpec> {
         val ebsConfig = createEbsConfig(initConfig)
 
@@ -83,6 +89,18 @@ class DefaultInstanceSpecFactory : InstanceSpecFactory {
         val existingStressCount = existingInstances[ServerType.Stress]?.size ?: 0
         val existingControlCount = existingInstances[ServerType.Control]?.size ?: 0
 
+        // A group with no configured instances never launches, so it needs no image; only groups
+        // that will launch require an AMI resolved for their architecture.
+        fun amiFor(
+            arch: String,
+            configuredCount: Int,
+        ): String {
+            if (configuredCount <= 0) return ""
+            val resolved = Arch.valueOf(arch)
+            return amiByArch[resolved]
+                ?: error("No AMI resolved for architecture $resolved")
+        }
+
         return listOf(
             InstanceSpec(
                 serverType = ServerType.Cassandra,
@@ -90,6 +108,7 @@ class DefaultInstanceSpecFactory : InstanceSpecFactory {
                 existingCount = existingCassandraCount,
                 instanceType = initConfig.instanceType,
                 ebsConfig = ebsConfig,
+                amiId = amiFor(initConfig.dbArch, initConfig.cassandraInstances),
             ),
             InstanceSpec(
                 serverType = ServerType.Stress,
@@ -97,6 +116,7 @@ class DefaultInstanceSpecFactory : InstanceSpecFactory {
                 existingCount = existingStressCount,
                 instanceType = initConfig.stressInstanceType,
                 ebsConfig = null,
+                amiId = amiFor(initConfig.appArch, initConfig.stressInstances),
             ),
             InstanceSpec(
                 serverType = ServerType.Control,
@@ -104,6 +124,7 @@ class DefaultInstanceSpecFactory : InstanceSpecFactory {
                 existingCount = existingControlCount,
                 instanceType = initConfig.controlInstanceType,
                 ebsConfig = null,
+                amiId = amiFor(initConfig.controlArch, initConfig.controlInstances),
             ),
         )
     }

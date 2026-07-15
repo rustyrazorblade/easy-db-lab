@@ -4,7 +4,6 @@ import com.fasterxml.jackson.annotation.JsonIgnore
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.converters.PicoAZConverter
-import com.rustyrazorblade.easydblab.commands.converters.PicoArchConverter
 import com.rustyrazorblade.easydblab.commands.mixins.OpenSearchInitMixin
 import com.rustyrazorblade.easydblab.commands.mixins.SparkInitMixin
 import com.rustyrazorblade.easydblab.configuration.Arch
@@ -14,6 +13,7 @@ import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.network.CidrBlock
 import com.rustyrazorblade.easydblab.services.CommandExecutor
+import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -58,25 +58,41 @@ import kotlin.system.exitProcess
 class Init : PicoBaseCommand() {
     private val userConfig: User by inject()
     private val commandExecutor: CommandExecutor by inject()
+    private val ec2InstanceService: EC2InstanceService by inject()
 
     companion object {
         private const val DEFAULT_CASSANDRA_INSTANCE_COUNT = 3
         private const val DEFAULT_EBS_SIZE_GB = 256
+
+        /** Control node instance type. Kept in sync with [InitConfig] control defaults. */
+        const val DEFAULT_CONTROL_INSTANCE_TYPE = "m5d.xlarge"
 
         @JsonIgnore val log = KotlinLogging.logger {}
     }
 
     @Option(
         names = ["--db", "--cassandra", "-c"],
-        description = ["Number of database instances"],
+        description = ["Legacy alias for --db.count. Number of database instances"],
     )
     var cassandraInstances = DEFAULT_CASSANDRA_INSTANCE_COUNT
 
     @Option(
+        names = ["--db.count"],
+        description = ["Number of database instances. Takes precedence over the legacy --db/--cassandra/-c alias"],
+    )
+    var dbCount: Int? = null
+
+    @Option(
         names = ["--app", "--stress", "-s"],
-        description = ["Number of application instances"],
+        description = ["Legacy alias for --app.count. Number of application instances"],
     )
     var stressInstances = 0
+
+    @Option(
+        names = ["--app.count"],
+        description = ["Number of application instances. Takes precedence over the legacy --app/--stress/-s alias"],
+    )
+    var appCount: Int? = null
 
     @Option(
         names = ["--up"],
@@ -86,15 +102,38 @@ class Init : PicoBaseCommand() {
 
     @Option(
         names = ["--instance", "-i"],
-        description = ["Instance Type. Set EASY_DB_LAB_INSTANCE_TYPE to set a default."],
+        description = [
+            "Legacy alias for --db.instance-type. Database instance type. " +
+                "Set EASY_DB_LAB_INSTANCE_TYPE to set a default.",
+        ],
     )
     var instanceType: String = System.getenv("EASY_DB_LAB_INSTANCE_TYPE") ?: "i4i.xlarge"
 
     @Option(
+        names = ["--db.instance-type"],
+        description = [
+            "Database instance type. Takes precedence over the legacy --instance/-i alias.",
+        ],
+    )
+    var dbInstanceType: String? = null
+
+    @Option(
         names = ["--stress-instance", "-si", "--si"],
-        description = ["Stress Instance Type. Set EASY_DB_LAB_STRESS_INSTANCE_TYPE to set a default."],
+        description = [
+            "Legacy alias for --app.instance-type. Application (stress) instance type. " +
+                "Set EASY_DB_LAB_STRESS_INSTANCE_TYPE to set a default.",
+        ],
     )
     var stressInstanceType: String = System.getenv("EASY_DB_LAB_STRESS_INSTANCE_TYPE") ?: "c6id.2xlarge"
+
+    @Option(
+        names = ["--app.instance-type"],
+        description = [
+            "Application (stress) instance type. " +
+                "Takes precedence over the legacy --stress-instance/-si alias.",
+        ],
+    )
+    var appInstanceType: String? = null
 
     @Option(
         names = ["--azs", "--az", "-z"],
@@ -157,13 +196,6 @@ class Init : PicoBaseCommand() {
     )
     var name = "test"
 
-    @Option(
-        names = ["--arch", "-a", "--cpu"],
-        description = ["CPU architecture"],
-        converter = [PicoArchConverter::class],
-    )
-    var arch: Arch = Arch.AMD64
-
     @Mixin
     var spark = SparkInitMixin()
 
@@ -208,6 +240,34 @@ class Init : PicoBaseCommand() {
     )
     var cilium = false
 
+    /**
+     * Resolved number of database instances: the namespaced `--db.count` when supplied, otherwise
+     * the legacy `--db`/`--cassandra`/`-c` alias (or its default). Namespaced always wins.
+     */
+    @get:JsonIgnore
+    val resolvedDbCount: Int get() = dbCount ?: cassandraInstances
+
+    /**
+     * Resolved number of application instances: the namespaced `--app.count` when supplied,
+     * otherwise the legacy `--app`/`--stress`/`-s` alias (or its default). Namespaced always wins.
+     */
+    @get:JsonIgnore
+    val resolvedAppCount: Int get() = appCount ?: stressInstances
+
+    /**
+     * Resolved database instance type: the namespaced `--db.instance-type` when supplied, otherwise
+     * the legacy `--instance`/`-i` alias (or its default). Namespaced always wins.
+     */
+    @get:JsonIgnore
+    val resolvedDbInstanceType: String get() = dbInstanceType ?: instanceType
+
+    /**
+     * Resolved application instance type: the namespaced `--app.instance-type` when supplied,
+     * otherwise the legacy `--stress-instance`/`-si` alias (or its default). Namespaced always wins.
+     */
+    @get:JsonIgnore
+    val resolvedAppInstanceType: String get() = appInstanceType ?: stressInstanceType
+
     override fun execute() {
         validateParameters()
 
@@ -242,8 +302,8 @@ class Init : PicoBaseCommand() {
     }
 
     private fun validateParameters() {
-        require(cassandraInstances > 0) { "Number of Cassandra instances must be positive" }
-        require(stressInstances >= 0) { "Number of stress instances cannot be negative" }
+        require(resolvedDbCount > 0) { "Number of database instances must be positive" }
+        require(resolvedAppCount >= 0) { "Number of application instances cannot be negative" }
         require(ebsSize > 0) { "EBS size must be positive" }
         require(ebsIops >= 0) { "EBS IOPS cannot be negative" }
         require(ebsThroughput >= 0) { "EBS throughput cannot be negative" }
@@ -282,12 +342,28 @@ class Init : PicoBaseCommand() {
             ClusterState(
                 name = name,
                 versions = mutableMapOf(),
-                initConfig = InitConfig.fromInit(this, userConfig.region),
+                initConfig =
+                    InitConfig.fromInit(
+                        init = this,
+                        region = userConfig.region,
+                        dbArch = deriveArch(resolvedDbInstanceType),
+                        appArch = deriveArch(resolvedAppInstanceType),
+                        controlArch = deriveArch(DEFAULT_CONTROL_INSTANCE_TYPE),
+                    ),
                 tailscaleActive = userConfig.isTailscaleEnabled() && !noTailscale,
             )
         clusterStateManager.save(state)
         return state
     }
+
+    /**
+     * Derives the CPU architecture of an instance type from its EC2 `SupportedArchitectures`.
+     *
+     * Fails fast (before any provisioning) if the instance type is unknown in the region or its
+     * architectures do not resolve to a single [Arch] — the architecture is never defaulted.
+     */
+    private fun deriveArch(instanceType: String): Arch =
+        Arch.fromEc2(ec2InstanceService.describeInstanceType(instanceType).supportedArchitectures)
 
     private fun extractResourceFiles() {
         eventBus.emit(Event.Setup.WritingSetupScript)

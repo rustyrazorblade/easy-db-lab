@@ -22,7 +22,6 @@ import software.amazon.awssdk.services.ec2.model.HttpTokensState
 import software.amazon.awssdk.services.ec2.model.IamInstanceProfileSpecification
 import software.amazon.awssdk.services.ec2.model.InstanceMetadataOptionsRequest
 import software.amazon.awssdk.services.ec2.model.InstanceStateName
-import software.amazon.awssdk.services.ec2.model.InstanceType
 import software.amazon.awssdk.services.ec2.model.ResourceType
 import software.amazon.awssdk.services.ec2.model.RunInstancesRequest
 import software.amazon.awssdk.services.ec2.model.Tag
@@ -30,6 +29,20 @@ import software.amazon.awssdk.services.ec2.model.TagSpecification
 import software.amazon.awssdk.services.ec2.model.VolumeType
 import software.amazon.awssdk.services.ec2.waiters.Ec2Waiter
 import java.time.Duration
+
+/**
+ * Capabilities of an EC2 instance type derived from a single `DescribeInstanceTypes` query.
+ *
+ * Consolidates the two facts the tool needs about an instance type — whether it has local instance
+ * store, and which CPU architectures it supports — so both are obtained from one API call.
+ *
+ * @property hasInstanceStore true if the instance type has local (NVMe) instance store volumes
+ * @property supportedArchitectures EC2 `SupportedArchitectures` strings (e.g. `["x86_64"]`)
+ */
+data class InstanceTypeCapabilities(
+    val hasInstanceStore: Boolean,
+    val supportedArchitectures: List<String>,
+)
 
 /**
  * Service for creating and managing EC2 instances.
@@ -41,6 +54,7 @@ import java.time.Duration
 class EC2InstanceService(
     private val ec2Client: Ec2Client,
     private val eventBus: EventBus,
+    private val region: String,
     private val pollInterval: Duration = Duration.ofMillis(POLL_INTERVAL_MS),
 ) {
     companion object {
@@ -54,6 +68,12 @@ class EC2InstanceService(
 
         /** Polling interval for checking instance state */
         const val POLL_INTERVAL_MS = 5000L
+
+        /**
+         * Page size for `DescribeInstanceTypes`. The API applies the instance-type filter per page,
+         * so a larger page reduces the number of round-trips needed to reach the matching type.
+         */
+        const val INSTANCE_TYPES_PAGE_SIZE = 100
     }
 
     /**
@@ -105,7 +125,7 @@ class EC2InstanceService(
             RunInstancesRequest
                 .builder()
                 .imageId(config.amiId)
-                .instanceType(InstanceType.fromValue(config.instanceType))
+                .instanceType(config.instanceType)
                 .minCount(1)
                 .maxCount(1)
                 .keyName(config.keyName)
@@ -370,30 +390,58 @@ class EC2InstanceService(
     }
 
     /**
-     * Checks whether the given EC2 instance type has local instance store (NVMe) volumes.
+     * Queries the capabilities of an EC2 instance type in one `DescribeInstanceTypes` call.
      *
-     * Uses the DescribeInstanceTypes API to query instance type capabilities.
+     * The instance type is passed as an `instance-type` filter carrying the raw string, never
+     * routed through the SDK's fixed `InstanceType` enum. Instance-type support therefore does not
+     * depend on the installed SDK version — any valid EC2 instance type is accepted, including a
+     * type newer than the SDK (closes #783; previously such types failed with a `[null]` error).
+     *
+     * The call reports both whether the type has local instance store and its supported CPU
+     * architectures, so both facts are obtained from the same query.
+     *
+     * `DescribeInstanceTypes` applies the instance-type filter **per page**, so a matching type can
+     * sit behind an empty page that still carries a `nextToken`. This follows `nextToken` across
+     * pages and only reports "not found" once every page is exhausted with no match — reading only
+     * the first page would misreport a common type (e.g. `i4i.xlarge`) as unknown.
      *
      * @param instanceType EC2 instance type (e.g., "i3.xlarge", "c5.2xlarge")
-     * @return true if the instance type has instance store, false otherwise
+     * @return the instance type's capabilities
+     * @throws IllegalStateException if the type is unknown in the region (no match across all pages)
      */
-    fun hasInstanceStore(instanceType: String): Boolean {
-        val request =
-            DescribeInstanceTypesRequest
-                .builder()
-                .instanceTypes(InstanceType.fromValue(instanceType))
-                .build()
+    fun describeInstanceType(instanceType: String): InstanceTypeCapabilities {
+        var nextToken: String? = null
+        do {
+            val request =
+                DescribeInstanceTypesRequest
+                    .builder()
+                    .filters(
+                        Filter
+                            .builder()
+                            .name("instance-type")
+                            .values(instanceType)
+                            .build(),
+                    ).maxResults(INSTANCE_TYPES_PAGE_SIZE)
+                    .nextToken(nextToken)
+                    .build()
 
-        val response =
-            RetryUtil.withAwsRetry("describe-instance-type-$instanceType") {
-                ec2Client.describeInstanceTypes(request)
+            val response =
+                RetryUtil.withAwsRetry("describe-instance-type-$instanceType") {
+                    ec2Client.describeInstanceTypes(request)
+                }
+
+            val typeInfo = response.instanceTypes().firstOrNull()
+            if (typeInfo != null) {
+                return InstanceTypeCapabilities(
+                    hasInstanceStore = typeInfo.instanceStorageSupported() == true,
+                    supportedArchitectures =
+                        typeInfo.processorInfo()?.supportedArchitecturesAsStrings().orEmpty(),
+                )
             }
+            nextToken = response.nextToken()
+        } while (!nextToken.isNullOrEmpty())
 
-        val typeInfo =
-            response.instanceTypes().firstOrNull()
-                ?: error("Instance type $instanceType not found")
-
-        return typeInfo.instanceStorageSupported() == true
+        error("Instance type '$instanceType' not found in region $region")
     }
 
     /**

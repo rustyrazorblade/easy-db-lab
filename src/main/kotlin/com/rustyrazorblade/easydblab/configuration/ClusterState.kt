@@ -94,7 +94,9 @@ data class InitConfig(
     val controlInstances: Int = 1,
     val controlInstanceType: String = "m5d.xlarge",
     val tags: Map<String, String> = mapOf(),
-    val arch: String = "AMD64",
+    val dbArch: String = "AMD64",
+    val appArch: String = "AMD64",
+    val controlArch: String = "AMD64",
     val sparkEnabled: Boolean = false,
     val sparkMasterInstanceType: String = "m5.xlarge",
     val sparkWorkerInstanceType: String = "m5.xlarge",
@@ -113,19 +115,28 @@ data class InitConfig(
          * Factory method to create InitConfig from an Init command instance.
          * Encapsulates the transformation logic in a single location.
          *
+         * Architectures are derived from each group's resolved instance type and passed in, rather
+         * than read from a user flag — the architecture is a property of the instance type.
+         *
          * @param init The Init command instance containing user-specified configuration
          * @param region The AWS region from user configuration
+         * @param dbArch Architecture derived from the resolved database instance type
+         * @param appArch Architecture derived from the resolved application instance type
+         * @param controlArch Architecture derived from the control instance type
          * @return A new InitConfig with values from the Init command
          */
         fun fromInit(
             init: Init,
             region: String,
+            dbArch: Arch,
+            appArch: Arch,
+            controlArch: Arch,
         ): InitConfig =
             InitConfig(
-                cassandraInstances = init.cassandraInstances,
-                stressInstances = init.stressInstances,
-                instanceType = init.instanceType,
-                stressInstanceType = init.stressInstanceType,
+                cassandraInstances = init.resolvedDbCount,
+                stressInstances = init.resolvedAppCount,
+                instanceType = init.resolvedDbInstanceType,
+                stressInstanceType = init.resolvedAppInstanceType,
                 azs = init.azs,
                 ami = init.ami,
                 region = region,
@@ -137,9 +148,11 @@ data class InitConfig(
                 ebsOptimized = init.ebsOptimized,
                 open = init.open,
                 controlInstances = 1,
-                controlInstanceType = "m5d.xlarge",
+                controlInstanceType = Init.DEFAULT_CONTROL_INSTANCE_TYPE,
                 tags = init.tags,
-                arch = init.arch.name,
+                dbArch = dbArch.name,
+                appArch = appArch.name,
+                controlArch = controlArch.name,
                 sparkEnabled = init.spark.enable,
                 sparkMasterInstanceType = init.spark.masterInstanceType,
                 sparkWorkerInstanceType = init.spark.workerInstanceType,

@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.commands.cassandra.WriteConfig
 import com.rustyrazorblade.easydblab.commands.grafana.GrafanaUpdateConfig
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.commands.tailscale.TailscaleStart
+import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.InfrastructureState
@@ -313,11 +314,6 @@ class Up(
         val securityGroupId = vpcInfra.securityGroupId
         val igwId = vpcInfra.internetGatewayId
 
-        val amiId =
-            amiResolver.resolveAmiId(initConfig.ami, initConfig.arch).getOrElse { error ->
-                error(error.message ?: "Failed to resolve AMI")
-            }
-
         val baseTags =
             mapOf(
                 "easy_cass_lab" to "1",
@@ -325,7 +321,7 @@ class Up(
             ) + initConfig.tags
 
         val existingHosts = discoverExistingHosts()
-        val instanceConfig = buildInstanceConfig(initConfig, amiId, securityGroupId, subnetIds, baseTags)
+        val instanceConfig = buildInstanceConfig(initConfig, securityGroupId, subnetIds, baseTags)
         val servicesConfig = buildServicesConfig(initConfig, subnetIds, securityGroupId, baseTags)
 
         if (initConfig.opensearchEnabled) {
@@ -381,23 +377,98 @@ class Up(
 
     private fun buildInstanceConfig(
         initConfig: InitConfig,
-        amiId: String,
         securityGroupId: String,
         subnetIds: List<String>,
         baseTags: Map<String, String>,
     ): InstanceProvisioningConfig {
         val existingInstances = ec2InstanceService.findInstancesByClusterId(workingState.clusterId)
-        val dbHasInstanceStore = ec2InstanceService.hasInstanceStore(initConfig.instanceType)
-        val instanceSpecs = instanceSpecFactory.createInstanceSpecs(initConfig, existingInstances, dbHasInstanceStore)
+        // One DescribeInstanceTypes query reports both instance-store presence and supported
+        // architectures; take instance-store from it rather than a second per-type API call.
+        val dbCapabilities = ec2InstanceService.describeInstanceType(initConfig.instanceType)
+        val launchingGroups = launchingNodeGroups(initConfig)
+        val amiByArch = resolveAmisByArch(initConfig, launchingGroups)
+        logResolvedGroupAmis(launchingGroups, amiByArch)
+        val instanceSpecs =
+            instanceSpecFactory.createInstanceSpecs(
+                initConfig,
+                existingInstances,
+                dbCapabilities.hasInstanceStore,
+                amiByArch,
+            )
         return InstanceProvisioningConfig(
             specs = instanceSpecs,
-            amiId = amiId,
             securityGroupId = securityGroupId,
             subnetIds = subnetIds,
             tags = baseTags,
             clusterName = initConfig.name,
             userConfig = userConfig,
         )
+    }
+
+    /**
+     * A node group that will launch at least one instance, paired with the instance type and CPU
+     * architecture that drive its AMI selection.
+     */
+    private data class NodeGroupArch(
+        val serverType: ServerType,
+        val instanceType: String,
+        val arch: Arch,
+    )
+
+    /**
+     * The node groups that will actually launch instances, i.e. those with a configured count above
+     * zero. A group with zero nodes (commonly the application group) contributes no architecture, so
+     * `up` never resolves or requires an AMI for an image it will not use.
+     */
+    private fun launchingNodeGroups(initConfig: InitConfig): List<NodeGroupArch> =
+        buildList {
+            if (initConfig.cassandraInstances > 0) {
+                add(NodeGroupArch(ServerType.Cassandra, initConfig.instanceType, Arch.valueOf(initConfig.dbArch)))
+            }
+            if (initConfig.stressInstances > 0) {
+                add(NodeGroupArch(ServerType.Stress, initConfig.stressInstanceType, Arch.valueOf(initConfig.appArch)))
+            }
+            if (initConfig.controlInstances > 0) {
+                add(NodeGroupArch(ServerType.Control, initConfig.controlInstanceType, Arch.valueOf(initConfig.controlArch)))
+            }
+        }
+
+    /**
+     * Resolves one AMI per distinct CPU architecture across the cluster's launching node groups.
+     *
+     * A mixed-architecture cluster (e.g. an arm64 database group and an x86_64 application group)
+     * resolves each distinct architecture exactly once; the resulting map is attached per group so
+     * every node boots from the image matching its own architecture. Architectures that belong only
+     * to node groups with zero nodes are not resolved, so `up` does not demand an unused image.
+     */
+    private fun resolveAmisByArch(
+        initConfig: InitConfig,
+        launchingGroups: List<NodeGroupArch>,
+    ): Map<Arch, String> =
+        launchingGroups
+            .map { it.arch }
+            .distinct()
+            .associateWith { arch ->
+                amiResolver.resolveAmiId(initConfig.ami, arch.type).getOrElse { error ->
+                    error(error.message ?: "Failed to resolve AMI for architecture $arch")
+                }
+            }
+
+    /**
+     * Logs the per-group architecture/AMI decision on the success path so a mixed-architecture
+     * launch is diagnosable: each launching group's instance type, derived CPU architecture, and the
+     * AMI selected for it.
+     */
+    private fun logResolvedGroupAmis(
+        launchingGroups: List<NodeGroupArch>,
+        amiByArch: Map<Arch, String>,
+    ) {
+        log.info {
+            "Resolved per-group AMIs: " +
+                launchingGroups.joinToString { group ->
+                    "${group.serverType}[${group.instanceType}/${group.arch}]=${amiByArch[group.arch]}"
+                }
+        }
     }
 
     private fun buildServicesConfig(

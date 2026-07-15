@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredInstance
 import com.rustyrazorblade.easydblab.providers.aws.InstanceCreationConfig
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
@@ -19,9 +20,9 @@ import software.amazon.awssdk.services.ec2.model.DescribeInstancesResponse
 import software.amazon.awssdk.services.ec2.model.Instance
 import software.amazon.awssdk.services.ec2.model.InstanceState
 import software.amazon.awssdk.services.ec2.model.InstanceStateName
-import software.amazon.awssdk.services.ec2.model.InstanceStorageInfo
 import software.amazon.awssdk.services.ec2.model.InstanceTypeInfo
 import software.amazon.awssdk.services.ec2.model.Placement
+import software.amazon.awssdk.services.ec2.model.ProcessorInfo
 import software.amazon.awssdk.services.ec2.model.Reservation
 import software.amazon.awssdk.services.ec2.model.RunInstancesRequest
 import software.amazon.awssdk.services.ec2.model.RunInstancesResponse
@@ -34,6 +35,7 @@ internal class EC2InstanceServiceTest {
             mockEc2Client,
             com.rustyrazorblade.easydblab.events
                 .EventBus(),
+            region = "us-west-2",
         )
 
     @Test
@@ -394,33 +396,58 @@ internal class EC2InstanceServiceTest {
     }
 
     @Test
-    fun `hasInstanceStore should return true for instance type with instance store`() {
+    fun `describeInstanceType resolves a type not present in the SDK enum via an instance-type filter`() {
+        // A type the SDK's InstanceType enum does not know about. Routing it through
+        // InstanceType.fromValue would yield UNKNOWN_TO_SDK_VERSION and a "[null]" API error.
+        val newType = "x99.someday.metal"
         val typeInfo =
             InstanceTypeInfo
                 .builder()
-                .instanceType("i3.xlarge")
+                .instanceType(newType)
                 .instanceStorageSupported(true)
-                .instanceStorageInfo(InstanceStorageInfo.builder().totalSizeInGB(950L).build())
-                .build()
+                .processorInfo(
+                    ProcessorInfo.builder().supportedArchitecturesWithStrings("arm64").build(),
+                ).build()
 
-        val response =
-            DescribeInstanceTypesResponse
-                .builder()
-                .instanceTypes(typeInfo)
-                .build()
+        whenever(mockEc2Client.describeInstanceTypes(any<DescribeInstanceTypesRequest>()))
+            .thenReturn(DescribeInstanceTypesResponse.builder().instanceTypes(typeInfo).build())
 
-        whenever(mockEc2Client.describeInstanceTypes(any<DescribeInstanceTypesRequest>())).thenReturn(response)
+        val result = ec2InstanceService.describeInstanceType(newType)
 
-        assertThat(ec2InstanceService.hasInstanceStore("i3.xlarge")).isTrue()
+        assertThat(result.hasInstanceStore).isTrue()
+        assertThat(result.supportedArchitectures).containsExactly("arm64")
+
+        // Verify the request used an instance-type filter carrying the raw string,
+        // not the SDK's InstanceType enum.
+        val captor = argumentCaptor<DescribeInstanceTypesRequest>()
+        verify(mockEc2Client).describeInstanceTypes(captor.capture())
+        val request = captor.firstValue
+        assertThat(request.instanceTypes()).isEmpty()
+        assertThat(request.filters()).anySatisfy { filter ->
+            assertThat(filter.name()).isEqualTo("instance-type")
+            assertThat(filter.values()).containsExactly(newType)
+        }
     }
 
     @Test
-    fun `hasInstanceStore should return false for instance type without instance store`() {
+    fun `describeInstanceType throws naming the type and region when the result is empty`() {
+        whenever(mockEc2Client.describeInstanceTypes(any<DescribeInstanceTypesRequest>()))
+            .thenReturn(DescribeInstanceTypesResponse.builder().instanceTypes(emptyList()).build())
+
+        assertThatThrownBy { ec2InstanceService.describeInstanceType("bogus.type") }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("bogus.type")
+            .hasMessageContaining("us-west-2")
+    }
+
+    @Test
+    fun `describeInstanceType reports no instance store for a type without local storage`() {
         val typeInfo =
             InstanceTypeInfo
                 .builder()
                 .instanceType("c5.2xlarge")
                 .instanceStorageSupported(false)
+                .processorInfo(ProcessorInfo.builder().supportedArchitecturesWithStrings("x86_64").build())
                 .build()
 
         val response =
@@ -431,7 +458,75 @@ internal class EC2InstanceServiceTest {
 
         whenever(mockEc2Client.describeInstanceTypes(any<DescribeInstanceTypesRequest>())).thenReturn(response)
 
-        assertThat(ec2InstanceService.hasInstanceStore("c5.2xlarge")).isFalse()
+        val result = ec2InstanceService.describeInstanceType("c5.2xlarge")
+
+        assertThat(result.hasInstanceStore).isFalse()
+        assertThat(result.supportedArchitectures).containsExactly("x86_64")
+    }
+
+    @Test
+    fun `describeInstanceType follows nextToken past an empty first page to find the type`() {
+        // EC2 applies the instance-type filter per page, so a common type can sit behind an empty
+        // first page that still carries a nextToken. Reading only the first page would misreport
+        // the type as "not found" — the bug this reproduces.
+        val emptyFirstPage =
+            DescribeInstanceTypesResponse
+                .builder()
+                .instanceTypes(emptyList())
+                .nextToken("page-2-token")
+                .build()
+        val matchingTypeInfo =
+            InstanceTypeInfo
+                .builder()
+                .instanceType("i4i.xlarge")
+                .instanceStorageSupported(true)
+                .processorInfo(ProcessorInfo.builder().supportedArchitecturesWithStrings("x86_64").build())
+                .build()
+        val secondPage =
+            DescribeInstanceTypesResponse
+                .builder()
+                .instanceTypes(matchingTypeInfo)
+                .build()
+
+        whenever(mockEc2Client.describeInstanceTypes(any<DescribeInstanceTypesRequest>()))
+            .thenReturn(emptyFirstPage, secondPage)
+
+        val result = ec2InstanceService.describeInstanceType("i4i.xlarge")
+
+        assertThat(result.hasInstanceStore).isTrue()
+        assertThat(result.supportedArchitectures).containsExactly("x86_64")
+
+        // Two pages fetched; the second request carried the first page's nextToken.
+        val captor = argumentCaptor<DescribeInstanceTypesRequest>()
+        verify(mockEc2Client, times(2)).describeInstanceTypes(captor.capture())
+        assertThat(captor.firstValue.nextToken()).isNull()
+        assertThat(captor.secondValue.nextToken()).isEqualTo("page-2-token")
+    }
+
+    @Test
+    fun `describeInstanceType throws only after exhausting all pages without a match`() {
+        val firstEmptyPage =
+            DescribeInstanceTypesResponse
+                .builder()
+                .instanceTypes(emptyList())
+                .nextToken("page-2-token")
+                .build()
+        val lastEmptyPage =
+            DescribeInstanceTypesResponse
+                .builder()
+                .instanceTypes(emptyList())
+                .build()
+
+        whenever(mockEc2Client.describeInstanceTypes(any<DescribeInstanceTypesRequest>()))
+            .thenReturn(firstEmptyPage, lastEmptyPage)
+
+        assertThatThrownBy { ec2InstanceService.describeInstanceType("nonexistent.type") }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("nonexistent.type")
+            .hasMessageContaining("us-west-2")
+
+        // The error is raised only after both pages are consulted, not on the empty first page.
+        verify(mockEc2Client, times(2)).describeInstanceTypes(any<DescribeInstanceTypesRequest>())
     }
 
     private fun createInstance(

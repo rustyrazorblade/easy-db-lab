@@ -25,7 +25,9 @@ import kotlin.concurrent.thread
 /**
  * Infrastructure parameters for instance creation.
  *
- * @property amiId AMI ID to use for instances
+ * The AMI is not part of this context — it is resolved per architecture and carried on each
+ * [InstanceSpec], so mixed-architecture clusters attach the correct image per group.
+ *
  * @property keyName SSH key pair name
  * @property securityGroupId Security group ID
  * @property subnetIds Available subnet IDs
@@ -33,7 +35,6 @@ import kotlin.concurrent.thread
  * @property clusterName Name of the cluster
  */
 data class InfrastructureContext(
-    val amiId: String,
     val keyName: String,
     val securityGroupId: String,
     val subnetIds: List<String>,
@@ -59,8 +60,7 @@ data class ProvisioningResult(
 /**
  * Configuration for provisioning instances.
  *
- * @property specs Instance specifications for each server type
- * @property amiId AMI ID to use for instances
+ * @property specs Instance specifications for each server type, each carrying its own AMI
  * @property securityGroupId Security group for instances
  * @property subnetIds Available subnet IDs
  * @property tags Tags to apply to instances
@@ -69,7 +69,6 @@ data class ProvisioningResult(
  */
 data class InstanceProvisioningConfig(
     val specs: List<InstanceSpec>,
-    val amiId: String,
     val securityGroupId: String,
     val subnetIds: List<String>,
     val tags: Map<String, String>,
@@ -200,7 +199,6 @@ class DefaultClusterProvisioningService(
                         try {
                             val infraContext =
                                 InfrastructureContext(
-                                    amiId = config.amiId,
                                     keyName = config.userConfig.keyName,
                                     securityGroupId = config.securityGroupId,
                                     subnetIds = config.subnetIds,
@@ -371,7 +369,6 @@ class DefaultClusterProvisioningService(
 
     private fun InstanceProvisioningConfig.toInfrastructureContext() =
         InfrastructureContext(
-            amiId = amiId,
             keyName = userConfig.keyName,
             securityGroupId = securityGroupId,
             subnetIds = subnetIds,
@@ -388,7 +385,7 @@ class DefaultClusterProvisioningService(
                 serverType = spec.serverType,
                 count = spec.neededCount,
                 instanceType = spec.instanceType,
-                amiId = infraContext.amiId,
+                amiId = spec.amiId,
                 keyName = infraContext.keyName,
                 securityGroupId = infraContext.securityGroupId,
                 subnetIds = infraContext.subnetIds,

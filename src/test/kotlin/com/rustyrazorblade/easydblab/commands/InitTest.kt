@@ -5,6 +5,8 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.services.TemplateService
+import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
+import com.rustyrazorblade.easydblab.services.aws.InstanceTypeCapabilities
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterEach
@@ -13,6 +15,7 @@ import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
+import org.mockito.kotlin.any
 import org.mockito.kotlin.argThat
 import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.mock
@@ -22,12 +25,14 @@ import java.io.File
 
 class InitTest : BaseKoinTest() {
     private lateinit var mockClusterStateManager: ClusterStateManager
+    private lateinit var mockEc2InstanceService: EC2InstanceService
     private lateinit var outputHandler: BufferedOutputHandler
 
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
                 single<ClusterStateManager> { mockClusterStateManager }
+                single { mockEc2InstanceService }
                 single { TemplateService(get(), get()) }
             },
         )
@@ -35,9 +40,13 @@ class InitTest : BaseKoinTest() {
     @BeforeEach
     fun setupMocks() {
         mockClusterStateManager = mock()
+        mockEc2InstanceService = mock()
         outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
 
         whenever(mockClusterStateManager.exists()).thenReturn(false)
+        // Default: every instance type is x86_64 with instance store.
+        whenever(mockEc2InstanceService.describeInstanceType(any()))
+            .thenReturn(InstanceTypeCapabilities(hasInstanceStore = true, supportedArchitectures = listOf("x86_64")))
     }
 
     @AfterEach
@@ -223,6 +232,51 @@ class InitTest : BaseKoinTest() {
             assertThat(command.resolvedAppCount).isEqualTo(command.stressInstances)
             assertThat(command.resolvedDbInstanceType).isEqualTo(command.instanceType)
             assertThat(command.resolvedAppInstanceType).isEqualTo(command.stressInstanceType)
+        }
+    }
+
+    @Nested
+    inner class ArchitectureDerivation {
+        @Test
+        fun `derives each group architecture independently from its resolved instance type`() {
+            whenever(mockEc2InstanceService.describeInstanceType("arm.db"))
+                .thenReturn(InstanceTypeCapabilities(hasInstanceStore = true, supportedArchitectures = listOf("arm64")))
+            whenever(mockEc2InstanceService.describeInstanceType("x86.app"))
+                .thenReturn(InstanceTypeCapabilities(hasInstanceStore = false, supportedArchitectures = listOf("x86_64")))
+
+            val command = Init()
+            command.clean = true
+            command.instanceType = "arm.db"
+            command.stressInstanceType = "x86.app"
+            command.execute()
+
+            verify(mockClusterStateManager).save(
+                argThat {
+                    initConfig?.dbArch == "ARM64" &&
+                        initConfig?.appArch == "AMD64" &&
+                        initConfig?.controlArch == "AMD64"
+                },
+            )
+        }
+
+        @Test
+        fun `fails fast when the instance type is unknown in the region naming the type and region`() {
+            whenever(mockEc2InstanceService.describeInstanceType("bogus.type"))
+                .thenThrow(IllegalStateException("Instance type 'bogus.type' not found in region us-west-2"))
+
+            val command = Init()
+            command.clean = true
+            command.instanceType = "bogus.type"
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalStateException::class.java)
+                .hasMessageContaining("bogus.type")
+                .hasMessageContaining("us-west-2")
+
+            // No cluster state saved with instance config when derivation fails.
+            verify(mockClusterStateManager, org.mockito.kotlin.never()).save(
+                argThat { initConfig != null },
+            )
         }
     }
 

@@ -74,6 +74,7 @@ class ClusterProvisioningServiceTest {
                     existingCount = 0,
                     instanceType = "m5.large",
                     ebsConfig = null,
+                    amiId = "ami-12345",
                 )
             val config = createInstanceConfig(specs = listOf(spec))
 
@@ -99,6 +100,7 @@ class ClusterProvisioningServiceTest {
                     existingCount = 3,
                     instanceType = "m5.large",
                     ebsConfig = null,
+                    amiId = "ami-12345",
                 )
             val config = createInstanceConfig(specs = listOf(spec))
 
@@ -127,6 +129,7 @@ class ClusterProvisioningServiceTest {
                     existingCount = 3,
                     instanceType = "m5.large",
                     ebsConfig = null,
+                    amiId = "ami-12345",
                 )
             val config = createInstanceConfig(specs = listOf(spec))
 
@@ -159,6 +162,7 @@ class ClusterProvisioningServiceTest {
                     existingCount = 0,
                     instanceType = "m5.large",
                     ebsConfig = null,
+                    amiId = "ami-12345",
                 )
             val config = createInstanceConfig(specs = listOf(spec))
 
@@ -180,6 +184,7 @@ class ClusterProvisioningServiceTest {
                     existingCount = 0,
                     instanceType = "m5.large",
                     ebsConfig = null,
+                    amiId = "ami-12345",
                 )
             val stressSpec =
                 InstanceSpec(
@@ -188,6 +193,7 @@ class ClusterProvisioningServiceTest {
                     existingCount = 0,
                     instanceType = "c5.large",
                     ebsConfig = null,
+                    amiId = "ami-12345",
                 )
             val config = createInstanceConfig(specs = listOf(cassandraSpec, stressSpec))
 
@@ -210,6 +216,7 @@ class ClusterProvisioningServiceTest {
                     existingCount = 1,
                     instanceType = "m5.large",
                     ebsConfig = null,
+                    amiId = "ami-12345",
                 )
             val config = createInstanceConfig(specs = listOf(spec))
 
@@ -238,6 +245,7 @@ class ClusterProvisioningServiceTest {
                         existingCount = 0,
                         instanceType = "m5.large",
                         ebsConfig = null,
+                        amiId = "ami-12345",
                     ),
                 )
             val instanceConfig = createInstanceConfig(specs = specs)
@@ -276,6 +284,7 @@ class ClusterProvisioningServiceTest {
                         existingCount = 0,
                         instanceType = "m5.large",
                         ebsConfig = null,
+                        amiId = "ami-12345",
                     ),
                 )
             val instanceConfig = createInstanceConfig(specs = specs)
@@ -314,6 +323,7 @@ class ClusterProvisioningServiceTest {
                         existingCount = 0,
                         instanceType = "m5.large",
                         ebsConfig = null,
+                        amiId = "ami-12345",
                     ),
                 )
             val instanceConfig = createInstanceConfig(specs = specs)
@@ -353,6 +363,7 @@ class ClusterProvisioningServiceTest {
                     existingCount = 0,
                     instanceType = "m5.large",
                     ebsConfig = null,
+                    amiId = "ami-12345",
                 )
             val instanceConfig = createInstanceConfig(specs = listOf(controlSpec))
             val initConfig = createInitConfig(sparkEnabled = true, controlInstances = 1)
@@ -394,6 +405,7 @@ class ClusterProvisioningServiceTest {
                         existingCount = 0,
                         instanceType = "m5.large",
                         ebsConfig = null,
+                        amiId = "ami-12345",
                     ),
                 )
             val instanceConfig = createInstanceConfig(specs = specs)
@@ -490,7 +502,6 @@ class ClusterProvisioningServiceTest {
     private fun createInstanceConfig(specs: List<InstanceSpec>): InstanceProvisioningConfig =
         InstanceProvisioningConfig(
             specs = specs,
-            amiId = "ami-12345",
             securityGroupId = "sg-12345",
             subnetIds = listOf("subnet-1", "subnet-2"),
             tags = mapOf("ClusterId" to "test-cluster"),

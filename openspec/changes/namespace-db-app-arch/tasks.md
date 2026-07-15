@@ -40,23 +40,23 @@ for AWS retries.
 
 ## 4. Architecture derivation at init; remove `--arch`
 
-- [ ] 4.1 Write a failing test: `init` derives each group's architecture from its resolved
+- [x] 4.1 Write a failing test: `init` derives each group's architecture from its resolved
   instance type via `describeInstanceType`, and an unknown instance type fails at `init`
   before any provisioning, naming the type and region.
-- [ ] 4.2 Derive `dbArch` / `appArch` / `controlArch` in `Init.execute` and persist them.
-- [ ] 4.3 Replace `InitConfig.arch: String` with defaulted `dbArch` / `appArch` /
+- [x] 4.2 Derive `dbArch` / `appArch` / `controlArch` in `Init.execute` and persist them.
+- [x] 4.3 Replace `InitConfig.arch: String` with defaulted `dbArch` / `appArch` /
   `controlArch`; confirm an older `state.json` (with the old single `arch`) still loads.
-- [ ] 4.4 Remove the `--arch` / `-a` / `--cpu` option from `Init` (keep `Arch` and
+- [x] 4.4 Remove the `--arch` / `-a` / `--cpu` option from `Init` (keep `Arch` and
   `PicoArchConverter` for the `build-image` path).
 
 ## 5. Per-architecture AMIs through provisioning
 
-- [ ] 5.1 Write a failing test: a mixed-architecture cluster (db `arm64`, app `x86_64`)
+- [x] 5.1 Write a failing test: a mixed-architecture cluster (db `arm64`, app `x86_64`)
   provisions each group from the AMI matching its own architecture; distinct architectures
   are resolved once each and attached per group.
-- [ ] 5.2 Add the resolved AMI (or arch) to `InstanceSpec`; resolve one AMI per distinct
+- [x] 5.2 Add the resolved AMI (or arch) to `InstanceSpec`; resolve one AMI per distinct
   architecture in `Up.buildInstanceConfig` and attach it per spec.
-- [ ] 5.3 Have `createInstancesForType` read `spec.amiId`; drop the global `amiId` from
+- [x] 5.3 Have `createInstancesForType` read `spec.amiId`; drop the global `amiId` from
   `InstanceProvisioningConfig` and its infra-context.
 
 ## 6. Documentation

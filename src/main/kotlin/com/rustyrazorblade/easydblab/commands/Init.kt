@@ -4,7 +4,6 @@ import com.fasterxml.jackson.annotation.JsonIgnore
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.converters.PicoAZConverter
-import com.rustyrazorblade.easydblab.commands.converters.PicoArchConverter
 import com.rustyrazorblade.easydblab.commands.mixins.OpenSearchInitMixin
 import com.rustyrazorblade.easydblab.commands.mixins.SparkInitMixin
 import com.rustyrazorblade.easydblab.configuration.Arch
@@ -14,6 +13,7 @@ import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.network.CidrBlock
 import com.rustyrazorblade.easydblab.services.CommandExecutor
+import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -58,10 +58,14 @@ import kotlin.system.exitProcess
 class Init : PicoBaseCommand() {
     private val userConfig: User by inject()
     private val commandExecutor: CommandExecutor by inject()
+    private val ec2InstanceService: EC2InstanceService by inject()
 
     companion object {
         private const val DEFAULT_CASSANDRA_INSTANCE_COUNT = 3
         private const val DEFAULT_EBS_SIZE_GB = 256
+
+        /** Control node instance type. Kept in sync with [InitConfig] control defaults. */
+        const val DEFAULT_CONTROL_INSTANCE_TYPE = "m5d.xlarge"
 
         @JsonIgnore val log = KotlinLogging.logger {}
     }
@@ -191,13 +195,6 @@ class Init : PicoBaseCommand() {
         defaultValue = "test",
     )
     var name = "test"
-
-    @Option(
-        names = ["--arch", "-a", "--cpu"],
-        description = ["CPU architecture"],
-        converter = [PicoArchConverter::class],
-    )
-    var arch: Arch = Arch.AMD64
 
     @Mixin
     var spark = SparkInitMixin()
@@ -345,12 +342,28 @@ class Init : PicoBaseCommand() {
             ClusterState(
                 name = name,
                 versions = mutableMapOf(),
-                initConfig = InitConfig.fromInit(this, userConfig.region),
+                initConfig =
+                    InitConfig.fromInit(
+                        init = this,
+                        region = userConfig.region,
+                        dbArch = deriveArch(resolvedDbInstanceType),
+                        appArch = deriveArch(resolvedAppInstanceType),
+                        controlArch = deriveArch(DEFAULT_CONTROL_INSTANCE_TYPE),
+                    ),
                 tailscaleActive = userConfig.isTailscaleEnabled() && !noTailscale,
             )
         clusterStateManager.save(state)
         return state
     }
+
+    /**
+     * Derives the CPU architecture of an instance type from its EC2 `SupportedArchitectures`.
+     *
+     * Fails fast (before any provisioning) if the instance type is unknown in the region or its
+     * architectures do not resolve to a single [Arch] — the architecture is never defaulted.
+     */
+    private fun deriveArch(instanceType: String): Arch =
+        Arch.fromEc2(ec2InstanceService.describeInstanceType(instanceType).supportedArchitectures)
 
     private fun extractResourceFiles() {
         eventBus.emit(Event.Setup.WritingSetupScript)

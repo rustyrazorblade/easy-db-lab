@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.commands.cassandra.WriteConfig
 import com.rustyrazorblade.easydblab.commands.grafana.GrafanaUpdateConfig
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.commands.tailscale.TailscaleStart
+import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.InfrastructureState
@@ -313,11 +314,6 @@ class Up(
         val securityGroupId = vpcInfra.securityGroupId
         val igwId = vpcInfra.internetGatewayId
 
-        val amiId =
-            amiResolver.resolveAmiId(initConfig.ami, initConfig.arch).getOrElse { error ->
-                error(error.message ?: "Failed to resolve AMI")
-            }
-
         val baseTags =
             mapOf(
                 "easy_cass_lab" to "1",
@@ -325,7 +321,7 @@ class Up(
             ) + initConfig.tags
 
         val existingHosts = discoverExistingHosts()
-        val instanceConfig = buildInstanceConfig(initConfig, amiId, securityGroupId, subnetIds, baseTags)
+        val instanceConfig = buildInstanceConfig(initConfig, securityGroupId, subnetIds, baseTags)
         val servicesConfig = buildServicesConfig(initConfig, subnetIds, securityGroupId, baseTags)
 
         if (initConfig.opensearchEnabled) {
@@ -381,23 +377,41 @@ class Up(
 
     private fun buildInstanceConfig(
         initConfig: InitConfig,
-        amiId: String,
         securityGroupId: String,
         subnetIds: List<String>,
         baseTags: Map<String, String>,
     ): InstanceProvisioningConfig {
         val existingInstances = ec2InstanceService.findInstancesByClusterId(workingState.clusterId)
         val dbHasInstanceStore = ec2InstanceService.hasInstanceStore(initConfig.instanceType)
-        val instanceSpecs = instanceSpecFactory.createInstanceSpecs(initConfig, existingInstances, dbHasInstanceStore)
+        val amiByArch = resolveAmisByArch(initConfig)
+        val instanceSpecs =
+            instanceSpecFactory.createInstanceSpecs(initConfig, existingInstances, dbHasInstanceStore, amiByArch)
         return InstanceProvisioningConfig(
             specs = instanceSpecs,
-            amiId = amiId,
             securityGroupId = securityGroupId,
             subnetIds = subnetIds,
             tags = baseTags,
             clusterName = initConfig.name,
             userConfig = userConfig,
         )
+    }
+
+    /**
+     * Resolves one AMI per distinct CPU architecture across the cluster's node groups.
+     *
+     * A mixed-architecture cluster (e.g. an arm64 database group and an x86_64 application group)
+     * resolves each distinct architecture exactly once; the resulting map is attached per group so
+     * every node boots from the image matching its own architecture.
+     */
+    private fun resolveAmisByArch(initConfig: InitConfig): Map<Arch, String> {
+        val distinctArchs =
+            setOf(initConfig.dbArch, initConfig.appArch, initConfig.controlArch)
+                .map { Arch.valueOf(it) }
+        return distinctArchs.associateWith { arch ->
+            amiResolver.resolveAmiId(initConfig.ami, arch.type).getOrElse { error ->
+                error(error.message ?: "Failed to resolve AMI for architecture $arch")
+            }
+        }
     }
 
     private fun buildServicesConfig(

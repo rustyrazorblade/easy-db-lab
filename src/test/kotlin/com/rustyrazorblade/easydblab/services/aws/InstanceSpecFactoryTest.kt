@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services.aws
 
+import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredInstance
@@ -15,9 +16,38 @@ import org.junit.jupiter.api.Test
 class InstanceSpecFactoryTest {
     private lateinit var factory: InstanceSpecFactory
 
+    private val amiByArch = mapOf(Arch.AMD64 to "ami-amd64", Arch.ARM64 to "ami-arm64")
+
     @BeforeEach
     fun setup() {
         factory = DefaultInstanceSpecFactory()
+    }
+
+    @Nested
+    inner class PerArchitectureAmi {
+        @Test
+        fun `attaches the AMI matching each group's own architecture in a mixed-arch cluster`() {
+            val initConfig =
+                createInitConfig(
+                    instanceType = "arm.db",
+                    stressInstanceType = "x86.app",
+                    dbArch = "ARM64",
+                    appArch = "AMD64",
+                    controlArch = "AMD64",
+                )
+
+            val specs =
+                factory.createInstanceSpecs(
+                    initConfig,
+                    emptyMap(),
+                    dbHasInstanceStore = true,
+                    amiByArch = amiByArch,
+                )
+
+            assertThat(specs.find { it.serverType == ServerType.Cassandra }!!.amiId).isEqualTo("ami-arm64")
+            assertThat(specs.find { it.serverType == ServerType.Stress }!!.amiId).isEqualTo("ami-amd64")
+            assertThat(specs.find { it.serverType == ServerType.Control }!!.amiId).isEqualTo("ami-amd64")
+        }
     }
 
     @Nested
@@ -31,7 +61,7 @@ class InstanceSpecFactoryTest {
                     controlInstances = 1,
                 )
 
-            val specs = factory.createInstanceSpecs(initConfig, emptyMap(), dbHasInstanceStore = true)
+            val specs = factory.createInstanceSpecs(initConfig, emptyMap(), dbHasInstanceStore = true, amiByArch = amiByArch)
 
             assertThat(specs).hasSize(3)
             assertThat(specs.map { it.serverType }).containsExactly(
@@ -50,7 +80,7 @@ class InstanceSpecFactoryTest {
                     controlInstances = 1,
                 )
 
-            val specs = factory.createInstanceSpecs(initConfig, emptyMap(), dbHasInstanceStore = true)
+            val specs = factory.createInstanceSpecs(initConfig, emptyMap(), dbHasInstanceStore = true, amiByArch = amiByArch)
 
             val cassandraSpec = specs.find { it.serverType == ServerType.Cassandra }!!
             val stressSpec = specs.find { it.serverType == ServerType.Stress }!!
@@ -83,7 +113,7 @@ class InstanceSpecFactoryTest {
                         ),
                 )
 
-            val specs = factory.createInstanceSpecs(initConfig, existingInstances, dbHasInstanceStore = true)
+            val specs = factory.createInstanceSpecs(initConfig, existingInstances, dbHasInstanceStore = true, amiByArch = amiByArch)
 
             val cassandraSpec = specs.find { it.serverType == ServerType.Cassandra }!!
             val stressSpec = specs.find { it.serverType == ServerType.Stress }!!
@@ -117,7 +147,7 @@ class InstanceSpecFactoryTest {
                         ),
                 )
 
-            val specs = factory.createInstanceSpecs(initConfig, existingInstances, dbHasInstanceStore = true)
+            val specs = factory.createInstanceSpecs(initConfig, existingInstances, dbHasInstanceStore = true, amiByArch = amiByArch)
 
             val cassandraSpec = specs.find { it.serverType == ServerType.Cassandra }!!
             val stressSpec = specs.find { it.serverType == ServerType.Stress }!!
@@ -135,7 +165,7 @@ class InstanceSpecFactoryTest {
                     controlInstanceType = "t3.medium",
                 )
 
-            val specs = factory.createInstanceSpecs(initConfig, emptyMap(), dbHasInstanceStore = true)
+            val specs = factory.createInstanceSpecs(initConfig, emptyMap(), dbHasInstanceStore = true, amiByArch = amiByArch)
 
             val cassandraSpec = specs.find { it.serverType == ServerType.Cassandra }!!
             val stressSpec = specs.find { it.serverType == ServerType.Stress }!!
@@ -154,7 +184,7 @@ class InstanceSpecFactoryTest {
                     ebsSize = 100,
                 )
 
-            val specs = factory.createInstanceSpecs(initConfig, emptyMap(), dbHasInstanceStore = true)
+            val specs = factory.createInstanceSpecs(initConfig, emptyMap(), dbHasInstanceStore = true, amiByArch = amiByArch)
 
             val cassandraSpec = specs.find { it.serverType == ServerType.Cassandra }!!
             val stressSpec = specs.find { it.serverType == ServerType.Stress }!!
@@ -172,7 +202,7 @@ class InstanceSpecFactoryTest {
         fun `should succeed when instance type has instance store and no EBS`() {
             val initConfig = createInitConfig(ebsType = "NONE")
 
-            val specs = factory.createInstanceSpecs(initConfig, emptyMap(), dbHasInstanceStore = true)
+            val specs = factory.createInstanceSpecs(initConfig, emptyMap(), dbHasInstanceStore = true, amiByArch = amiByArch)
 
             assertThat(specs).hasSize(3)
             assertThat(specs.find { it.serverType == ServerType.Cassandra }!!.ebsConfig).isNull()
@@ -182,7 +212,7 @@ class InstanceSpecFactoryTest {
         fun `should succeed when instance type has no instance store but EBS is configured`() {
             val initConfig = createInitConfig(ebsType = "gp3", ebsSize = 200)
 
-            val specs = factory.createInstanceSpecs(initConfig, emptyMap(), dbHasInstanceStore = false)
+            val specs = factory.createInstanceSpecs(initConfig, emptyMap(), dbHasInstanceStore = false, amiByArch = amiByArch)
 
             assertThat(specs).hasSize(3)
             assertThat(specs.find { it.serverType == ServerType.Cassandra }!!.ebsConfig).isNotNull
@@ -193,7 +223,7 @@ class InstanceSpecFactoryTest {
             val initConfig = createInitConfig(instanceType = "c5.2xlarge", ebsType = "NONE")
 
             assertThatThrownBy {
-                factory.createInstanceSpecs(initConfig, emptyMap(), dbHasInstanceStore = false)
+                factory.createInstanceSpecs(initConfig, emptyMap(), dbHasInstanceStore = false, amiByArch = amiByArch)
             }.isInstanceOf(IllegalArgumentException::class.java)
                 .hasMessageContaining("c5.2xlarge")
                 .hasMessageContaining("no local instance store")
@@ -281,6 +311,9 @@ class InstanceSpecFactoryTest {
         ebsSize: Int = 100,
         ebsIops: Int = 0,
         ebsThroughput: Int = 0,
+        dbArch: String = "AMD64",
+        appArch: String = "AMD64",
+        controlArch: String = "AMD64",
     ): InitConfig =
         InitConfig(
             cassandraInstances = cassandraInstances,
@@ -295,6 +328,9 @@ class InstanceSpecFactoryTest {
             ebsThroughput = ebsThroughput,
             controlInstances = controlInstances,
             controlInstanceType = controlInstanceType,
+            dbArch = dbArch,
+            appArch = appArch,
+            controlArch = controlArch,
         )
 
     /**

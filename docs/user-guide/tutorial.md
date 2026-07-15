@@ -18,14 +18,18 @@ This creates a 3-node Cassandra cluster by default.
 
 ### Init Options
 
+The database and application node groups use a namespaced `--db.*` / `--app.*`
+scheme. Every older flag still works as an **alias** with its established
+default; when both a namespaced option and its legacy alias are given for the
+same setting, **the namespaced option wins**, regardless of order.
+
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--db`, `--cassandra`, `-c` | Number of Cassandra instances | 3 |
-| `--app`, `--stress`, `-s` | Number of stress/application instances | 0 |
-| `--instance`, `-i` | Cassandra instance type | r3.2xlarge |
-| `--stress-instance`, `-si` | Stress instance type | c7i.2xlarge |
+| `--db.count` (alias `--db`, `--cassandra`, `-c`) | Number of database instances | 3 |
+| `--app.count` (alias `--app`, `--stress`, `-s`) | Number of application instances | 0 |
+| `--db.instance-type` (alias `--instance`, `-i`) | Database instance type | i4i.xlarge |
+| `--app.instance-type` (alias `--stress-instance`, `-si`) | Application instance type | c6id.2xlarge |
 | `--azs`, `-z` | Availability zones (e.g., `a,b,c`) | all available |
-| `--arch`, `-a` | CPU architecture (AMD64, ARM64) | AMD64 |
 | `--ebs.type` | EBS volume type (NONE, gp2, gp3, io1, io2) | NONE |
 | `--ebs.size` | EBS volume size in GB | 256 |
 | `--ebs.iops` | EBS IOPS (gp3 only) | 0 |
@@ -54,8 +58,14 @@ easy-db-lab init prod-test --db 5 --ebs.type gp3 --ebs.size 500 --ebs.iops 3000
 ```
 
 **ARM64 cluster for Graviton instances:**
+The architecture is derived automatically from the instance type — no flag needed.
 ```bash
-easy-db-lab init my-cluster --arch ARM64 --instance r7g.2xlarge
+easy-db-lab init my-cluster --db.instance-type r7g.2xlarge
+```
+
+**Mixed-architecture cluster (arm64 database, x86_64 application):**
+```bash
+easy-db-lab init my-cluster --db.instance-type r7g.2xlarge --app.instance-type c6id.2xlarge
 ```
 
 **Initialize and provision in one step:**

@@ -72,14 +72,27 @@ Initialize a directory for easy-db-lab.
 easy-db-lab init [cluster-name] [options]
 ```
 
+The database and application node groups are configured through a namespaced
+`--db.*` / `--app.*` scheme. Every pre-existing flag continues to work as an
+**alias** carrying its established default. When both a namespaced option and its
+legacy alias are supplied for the same setting, **the namespaced option always
+wins**, regardless of the order they appear on the command line.
+
+Architecture is no longer a flag. Each node group's CPU architecture is derived
+automatically from that group's resolved instance type at `init` time (via the
+EC2 `DescribeInstanceTypes` `SupportedArchitectures` field) and persisted per
+group in cluster state. A cluster whose database and application groups have
+different architectures is provisioned correctly, each group booting from the
+AMI for its own architecture. An instance type whose architecture cannot be
+determined fails at `init`, before any instance is created.
+
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--db`, `--cassandra`, `-c` | Number of Cassandra instances | 3 |
-| `--app`, `--stress`, `-s` | Number of stress instances | 0 |
-| `--instance`, `-i` | Cassandra instance type | r3.2xlarge |
-| `--stress-instance`, `-si` | Stress instance type | c7i.2xlarge |
+| `--db.count` (alias `--db`, `--cassandra`, `-c`) | Number of database instances | 3 |
+| `--app.count` (alias `--app`, `--stress`, `-s`) | Number of application instances | 0 |
+| `--db.instance-type` (alias `--instance`, `-i`) | Database instance type | i4i.xlarge |
+| `--app.instance-type` (alias `--stress-instance`, `-si`) | Application instance type | c6id.2xlarge |
 | `--azs`, `-z` | Availability zones (e.g., `a,b,c`) | all |
-| `--arch`, `-a` | CPU architecture (AMD64, ARM64) | AMD64 |
 | `--ebs.type` | EBS volume type (NONE, gp2, gp3, io1, io2) | NONE |
 | `--ebs.size` | EBS volume size in GB | 256 |
 | `--ebs.iops` | EBS IOPS (gp3 only) | 0 |

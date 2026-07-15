@@ -61,6 +61,6 @@ for AWS retries.
 
 ## 6. Documentation
 
-- [ ] 6.1 Update the `init` reference in `docs/` for `--db.*` / `--app.*`, the legacy
+- [x] 6.1 Update the `init` reference in `docs/` for `--db.*` / `--app.*`, the legacy
   aliases and precedence, and the removal of `--arch`.
-- [ ] 6.2 Update `CLAUDE.md` flag notes where they describe init options or architecture.
+- [x] 6.2 Update `CLAUDE.md` flag notes where they describe init options or architecture.

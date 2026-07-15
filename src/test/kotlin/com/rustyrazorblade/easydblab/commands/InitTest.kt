@@ -194,13 +194,19 @@ class InitTest : BaseKoinTest() {
         fun `namespaced db instance-type wins over legacy alias regardless of order`() {
             val namespacedFirst = Init()
             picocli.CommandLine(namespacedFirst).parseArgs(
-                "--db.instance-type", "arm.big", "--instance", "legacy.small",
+                "--db.instance-type",
+                "arm.big",
+                "--instance",
+                "legacy.small",
             )
             assertThat(namespacedFirst.resolvedDbInstanceType).isEqualTo("arm.big")
 
             val legacyFirst = Init()
             picocli.CommandLine(legacyFirst).parseArgs(
-                "--instance", "legacy.small", "--db.instance-type", "arm.big",
+                "--instance",
+                "legacy.small",
+                "--db.instance-type",
+                "arm.big",
             )
             assertThat(legacyFirst.resolvedDbInstanceType).isEqualTo("arm.big")
         }

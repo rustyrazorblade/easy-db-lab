@@ -264,11 +264,24 @@ jobs:
           REF_TAG: ${{ needs.resolve.outputs.ref_tag }}
           BASE_IMAGE: ${{ needs.resolve.outputs.base_image }}
           TARBALL_NAME: ${{ needs.resolve.outputs.tarball_name }}
+          # OCI provenance inputs (issue #767) — stamp the image so `docker
+          # inspect` traces it back to the exact Cassandra source commit.
+          OCI_REVISION: ${{ needs.resolve.outputs.sha }}
+          OCI_SOURCE: https://github.com/${{ inputs.repo }}
+          OCI_VERSION: ${{ needs.resolve.outputs.version }}
+          OCI_REF_NAME: ${{ inputs.ref }}
         run: |
           set -euo pipefail
+          # RFC-3339 UTC build timestamp for org.opencontainers.image.created.
+          created="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
           docker build \
             --build-arg BASE_IMAGE="$BASE_IMAGE" \
             --build-arg TARBALL="$TARBALL_NAME" \
+            --build-arg OCI_REVISION="$OCI_REVISION" \
+            --build-arg OCI_SOURCE="$OCI_SOURCE" \
+            --build-arg OCI_VERSION="$OCI_VERSION" \
+            --build-arg OCI_CREATED="$created" \
+            --build-arg OCI_REF_NAME="$OCI_REF_NAME" \
             --tag "${IMAGE_REPO}:${SHA_TAG}" \
             --tag "${IMAGE_REPO}:${REF_TAG}" \
             .github/cassandra-image

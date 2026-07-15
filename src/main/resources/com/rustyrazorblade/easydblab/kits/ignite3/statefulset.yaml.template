@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: ignite-cluster
+  namespace: default
+spec:
+  replicas: __REPLICAS__
+  serviceName: ignite-svc-headless
+  # Parallel (not OrderedReady): all nodes must boot together and discover each other
+  # on :3344 BEFORE `cluster init` runs. OrderedReady deadlocks — pods 1..N are never
+  # created until pod-0 is Ready, but readiness/init can't complete without the full set.
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app: ignite
+  template:
+    metadata:
+      labels:
+        app: ignite
+    spec:
+      # Allow enough time for Ignite to flush WAL and checkpoints on shutdown
+      terminationGracePeriodSeconds: 300
+      containers:
+        - name: ignite-node
+          image: apacheignite/ignite:__IGNITE_VERSION__
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: IGNITE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: IGNITE_WORK_DIR
+              value: /ai3-work
+          ports:
+            - name: rest
+              containerPort: 10300
+            - name: thin-client
+              containerPort: 10800
+            - name: discovery
+              containerPort: 3344
+          # Readiness probes the REST port (10300), which opens as soon as the node
+          # process starts — BEFORE cluster init. The client/SQL connector (10800) does
+          # NOT open until `cluster init` runs, and init is gated behind pods being Ready,
+          # so probing 10800 here would deadlock. 10300 lets pods go Ready pre-init; the
+          # cluster-init Job (and its wait-for-Complete) is the real "cluster ready" gate.
+          readinessProbe:
+            tcpSocket:
+              port: 10300
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 6
+          volumeMounts:
+            - name: config-vol
+              mountPath: /opt/ignite/etc/ignite-config.conf
+              subPath: ignite-config.conf
+            - name: persistence
+              mountPath: /ai3-work
+      volumes:
+        - name: config-vol
+          configMap:
+            name: ignite-config
+  volumeClaimTemplates:
+    - metadata:
+        name: persistence
+        labels:
+          app: ignite
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 10Gi
+        volumeMode: Filesystem

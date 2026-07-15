@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ignite-svc-headless
+  namespace: default
+spec:
+  clusterIP: None
+  # Publish DNS records for not-yet-Ready pods. Ignite peer discovery (StaticNodeFinder)
+  # runs at node boot (~13s), BEFORE the readiness probe passes (~30s). Without this, a
+  # peer has no DNS record at discovery time, every node resolves only itself, and each
+  # forms an isolated 1-node cluster (split-brain). Required for StatefulSet discovery
+  # that must happen before readiness.
+  publishNotReadyAddresses: true
+  selector:
+    app: ignite
+  ports:
+    - name: discovery
+      port: 3344
+      targetPort: 3344

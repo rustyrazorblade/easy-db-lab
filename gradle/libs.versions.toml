@@ -69,6 +69,7 @@ trino-jdbc = "474"
 clickhouse-jdbc = "0.7.2"
 mysql-connector-j = "9.3.0"
 postgresql-jdbc = "42.7.4"
+ignite3 = "3.1.0"
 resilience4j = "2.4.0"
 fabric8-kubernetes = "7.5.0"
 
@@ -192,6 +193,7 @@ trino-jdbc = { module = "io.trino:trino-jdbc", version.ref = "trino-jdbc" }
 clickhouse-jdbc = { module = "com.clickhouse:clickhouse-jdbc", version.ref = "clickhouse-jdbc" }
 mysql-connector-j = { module = "com.mysql:mysql-connector-j", version.ref = "mysql-connector-j" }
 postgresql-jdbc = { module = "org.postgresql:postgresql", version.ref = "postgresql-jdbc" }
+ignite3-jdbc = { module = "org.apache.ignite:ignite-jdbc", version.ref = "ignite3" }
 
 
 [bundles]

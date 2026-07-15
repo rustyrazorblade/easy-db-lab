@@ -1,0 +1,165 @@
+name: ignite3
+type: db
+description: Apache Ignite 3 distributed database with configurable storage profiles
+version: "1.0.0"
+collision-check: true
+
+runtime:
+  type: pods
+  selector: "app=ignite"
+  namespace: default
+
+endpoints:
+  - name: "REST"
+    node-type: db
+    port: 30300
+    type: http
+  - name: "JDBC"
+    node-type: db
+    port: 30800
+    type: jdbc
+    scheme: "ignite:thin"
+
+args:
+  - flag: --replicas
+    variable: REPLICAS
+    description: "Number of Ignite 3 server nodes (default: db node count)"
+    type: int
+    default: "${DB_NODE_COUNT}"
+  - flag: --storage
+    variable: STORAGE_PROFILE
+    description: "Storage profile: aimem (volatile), aipersist (in-memory+disk), rocksdb (disk-based LSM)"
+    type: string
+    default: "aipersist"
+  - flag: --version
+    variable: IGNITE_VERSION
+    description: "Apache Ignite 3 Docker image version"
+    type: string
+    default: "3.1.0"
+
+start:
+  - type: shell
+    script: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      echo "Creating Ignite 3 ConfigMap..."
+      # Build comma-separated node address list for static IP finder
+      NODE_LIST=""
+      for i in $(seq 0 $((REPLICAS - 1))); do
+        NODE_LIST="${NODE_LIST}\"ignite-cluster-${i}.ignite-svc-headless.default.svc.cluster.local:3344\", "
+      done
+      NODE_LIST="${NODE_LIST%, }"
+      # Only trailing X's are substituted by BSD mktemp (macOS operators run this
+      # step locally), so keep the X's at the end — no ".conf" suffix. The
+      # configmap key sets the real filename, so the temp name is irrelevant.
+      CONF_FILE=$(mktemp /tmp/ignite-config.XXXXXX)
+      # Clean up even if a later command fails before the explicit rm, so a
+      # leftover temp file never blocks a subsequent run.
+      trap 'rm -f "${CONF_FILE}"' EXIT
+      # printf avoids heredoc quoting issues and correctly embeds the node list.
+      # Ignite 3.1.0 requires every config root nested under a top-level `ignite { }`
+      # block — the flat form (valid in 3.0.x) fails with "'network' configuration root
+      # doesn't exist". nodeFinder type is STATIC since we supply an explicit node list.
+      printf 'ignite { network: { port: 3344, nodeFinder: { netClusterNodes: [%s], type: STATIC } }, storage: { profiles: [{ name: default, engine: %s }] } }' \
+        "${NODE_LIST}" "${STORAGE_PROFILE}" > "${CONF_FILE}"
+      kubectl create configmap ignite-config \
+        --namespace default \
+        --from-file=ignite-config.conf="${CONF_FILE}" \
+        --dry-run=client -o yaml | kubectl apply -f -
+      echo "ConfigMap created."
+
+  - type: manifest
+    template: services.yaml
+
+  - type: manifest
+    template: statefulset.yaml
+
+  - type: shell
+    script: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      echo "Waiting for Ignite 3 pods to be created..."
+      until kubectl get pods -l app=ignite -n default --no-headers 2>/dev/null | grep -q .; do sleep 5; done
+      echo "Pods found, waiting for Ready..."
+      kubectl wait --for=condition=Ready pods \
+        -l app=ignite \
+        --namespace default \
+        --timeout=300s
+
+  - type: manifest
+    template: cluster-init-job.yaml
+
+  - type: wait
+    kind: job
+    name: cluster-init
+    condition: Complete
+    namespace: default
+    timeout: 120s
+
+  - type: manifest
+    template: nodeport-service.yaml
+
+  - type: shell
+    script: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      echo "Enabling Ignite native OTLP metrics exporter..."
+      # Ignite's native OTLP exporter emits the full native metric set (JMX exposes none to
+      # the platform MBean server in 3.1.0, so it is not usable). Metrics push to the
+      # control-node OTel collector's OTLP receiver (:4318), which forwards to VictoriaMetrics
+      # under the stable `cluster` label. Ignite's config API needs text/plain + HOCON
+      # (application/json → 415). Retry: the NodePort was just created (kube-proxy timing).
+      OTLP='ignite.metrics.exporters.otlpExporter{exporterName=otlp,endpoint="http://'"${CONTROL_HOST_PRIVATE}"':4318/v1/metrics",protocol="http/protobuf"}'
+      for attempt in $(seq 1 12); do
+        if curl -s -f -X PATCH "http://${CONTROL_HOST_PRIVATE}:30300/management/v1/configuration/cluster" \
+             -H "Content-Type: text/plain" -d "${OTLP}"; then
+          echo "OTLP metrics exporter configured."
+          break
+        fi
+        echo "OTLP-exporter enable attempt ${attempt}/12 failed; retrying in 5s..."
+        sleep 5
+        [ "${attempt}" = "12" ] && { echo "ERROR: enabling OTLP exporter failed after 12 attempts" >&2; exit 1; }
+      done
+      # Ignite activates metric exporters at node start, so a post-init config change does
+      # not take effect until nodes restart. Roll the StatefulSet so the exporter activates
+      # on the fresh boot (nodes re-read cluster config at join). Deterministic, kit-owned.
+      echo "Rolling Ignite nodes so the OTLP exporter activates..."
+      kubectl rollout restart statefulset/ignite-cluster -n default
+      kubectl rollout status statefulset/ignite-cluster -n default --timeout=300s
+      echo "OTLP metrics exporter active."
+
+stop:
+  - type: delete
+    kind: StatefulSet
+    name: ignite-cluster
+    namespace: default
+  - type: delete
+    kind: Service
+    name: ignite-nodeport
+    namespace: default
+  - type: delete
+    kind: Job
+    name: cluster-init
+    namespace: default
+  - type: delete
+    kind: ConfigMap
+    name: ignite-config
+    namespace: default
+
+uninstall:
+  - type: delete
+    kind: Service
+    name: ignite-svc-headless
+    namespace: default
+  - type: shell
+    script: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      echo "Deleting Ignite 3 PersistentVolumeClaims..."
+      kubectl delete pvc -l app=ignite --namespace default --ignore-not-found=true
+      echo "PVCs deleted."
+
+capabilities:
+  - type: sql
+    user: ""
+    driver-class: org.apache.ignite.jdbc.IgniteJdbcDriver

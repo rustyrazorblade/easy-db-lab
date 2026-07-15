@@ -1,0 +1,24 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cluster-init
+  namespace: default
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 120
+  template:
+    spec:
+      restartPolicy: Never
+      terminationGracePeriodSeconds: 120
+      containers:
+        - name: cluster-init
+          # The apacheignite/ignite image includes the Ignite 3 CLI at /opt/ignite3cli/bin/ignite3
+          image: apacheignite/ignite:__IGNITE_VERSION__
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              /opt/ignite3cli/bin/ignite3 cluster init \
+                --name=ignite \
+                --url=http://ignite-svc-headless:10300

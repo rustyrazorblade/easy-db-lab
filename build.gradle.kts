@@ -211,6 +211,7 @@ dependencies {
     implementation(libs.clickhouse.jdbc)
     implementation(libs.mysql.connector.j)
     implementation(libs.postgresql.jdbc)
+    implementation(libs.ignite3.jdbc)
 
     // Testing — shared across BOTH tiers (unit `test` + `integrationTest`). The
     // integrationTest source set inherits these via `extendsFrom(testImplementation)`

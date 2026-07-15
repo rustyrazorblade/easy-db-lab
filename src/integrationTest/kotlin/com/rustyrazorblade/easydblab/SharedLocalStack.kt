@@ -9,9 +9,8 @@
 
 package com.rustyrazorblade.easydblab
 
-import org.testcontainers.containers.localstack.LocalStackContainer
-import org.testcontainers.containers.localstack.LocalStackContainer.Service
 import org.testcontainers.containers.wait.strategy.Wait
+import org.testcontainers.localstack.LocalStackContainer
 import org.testcontainers.utility.DockerImageName
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
@@ -39,15 +38,15 @@ import software.amazon.awssdk.services.sts.StsClient
  * calls `.stop()`.
  *
  * The container enables the union of services the six tests need — S3, STS, and
- * EC2 — and exposes ready-to-use AWS SDK clients (each pointed at the matching
- * LocalStack endpoint with the container's credentials). Because one EC2 and one
+ * EC2 — and exposes ready-to-use AWS SDK clients (each pointed at the container's
+ * single LocalStack endpoint with the container's credentials). Because one EC2 and one
  * S3 backend are now shared across classes, tests must scope their assertions to
  * the resources they create rather than asserting on global container state.
  */
 object SharedLocalStack {
     private val container: LocalStackContainer by lazy {
         LocalStackContainer(DockerImageName.parse("localstack/localstack:3.0"))
-            .withServices(Service.S3, Service.STS, Service.EC2)
+            .withServices("s3", "sts", "ec2")
             .waitingFor(Wait.forHttp("/_localstack/health").forStatusCode(200))
             .apply { start() }
     }
@@ -67,7 +66,7 @@ object SharedLocalStack {
     fun s3Client(): S3Client =
         S3Client
             .builder()
-            .endpointOverride(container.getEndpointOverride(Service.S3))
+            .endpointOverride(container.endpoint)
             .region(Region.of(container.region))
             .credentialsProvider(credentialsProvider())
             .forcePathStyle(true)
@@ -79,7 +78,7 @@ object SharedLocalStack {
     fun stsClient(): StsClient =
         StsClient
             .builder()
-            .endpointOverride(container.getEndpointOverride(Service.STS))
+            .endpointOverride(container.endpoint)
             .region(Region.of(container.region))
             .credentialsProvider(credentialsProvider())
             .build()
@@ -90,7 +89,7 @@ object SharedLocalStack {
     fun ec2Client(): Ec2Client =
         Ec2Client
             .builder()
-            .endpointOverride(container.getEndpointOverride(Service.EC2))
+            .endpointOverride(container.endpoint)
             .region(Region.of(container.region))
             .credentialsProvider(credentialsProvider())
             .build()

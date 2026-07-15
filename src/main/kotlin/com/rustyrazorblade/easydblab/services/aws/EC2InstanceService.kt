@@ -427,16 +427,6 @@ class EC2InstanceService(
     }
 
     /**
-     * Checks whether the given EC2 instance type has local instance store (NVMe) volumes.
-     *
-     * Thin reader over [describeInstanceType].
-     *
-     * @param instanceType EC2 instance type (e.g., "i3.xlarge", "c5.2xlarge")
-     * @return true if the instance type has instance store, false otherwise
-     */
-    fun hasInstanceStore(instanceType: String): Boolean = describeInstanceType(instanceType).hasInstanceStore
-
-    /**
      * Finds all running instances belonging to a cluster by ClusterId tag.
      *
      * Used to discover existing infrastructure before creating new instances,

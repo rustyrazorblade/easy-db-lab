@@ -89,7 +89,13 @@ class DefaultInstanceSpecFactory : InstanceSpecFactory {
         val existingStressCount = existingInstances[ServerType.Stress]?.size ?: 0
         val existingControlCount = existingInstances[ServerType.Control]?.size ?: 0
 
-        fun amiFor(arch: String): String {
+        // A group with no configured instances never launches, so it needs no image; only groups
+        // that will launch require an AMI resolved for their architecture.
+        fun amiFor(
+            arch: String,
+            configuredCount: Int,
+        ): String {
+            if (configuredCount <= 0) return ""
             val resolved = Arch.valueOf(arch)
             return amiByArch[resolved]
                 ?: error("No AMI resolved for architecture $resolved")
@@ -102,7 +108,7 @@ class DefaultInstanceSpecFactory : InstanceSpecFactory {
                 existingCount = existingCassandraCount,
                 instanceType = initConfig.instanceType,
                 ebsConfig = ebsConfig,
-                amiId = amiFor(initConfig.dbArch),
+                amiId = amiFor(initConfig.dbArch, initConfig.cassandraInstances),
             ),
             InstanceSpec(
                 serverType = ServerType.Stress,
@@ -110,7 +116,7 @@ class DefaultInstanceSpecFactory : InstanceSpecFactory {
                 existingCount = existingStressCount,
                 instanceType = initConfig.stressInstanceType,
                 ebsConfig = null,
-                amiId = amiFor(initConfig.appArch),
+                amiId = amiFor(initConfig.appArch, initConfig.stressInstances),
             ),
             InstanceSpec(
                 serverType = ServerType.Control,
@@ -118,7 +124,7 @@ class DefaultInstanceSpecFactory : InstanceSpecFactory {
                 existingCount = existingControlCount,
                 instanceType = initConfig.controlInstanceType,
                 ebsConfig = null,
-                amiId = amiFor(initConfig.controlArch),
+                amiId = amiFor(initConfig.controlArch, initConfig.controlInstances),
             ),
         )
     }

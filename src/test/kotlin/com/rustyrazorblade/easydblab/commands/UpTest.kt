@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Version
+import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -31,6 +32,7 @@ import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import com.rustyrazorblade.easydblab.services.aws.DefaultInstanceSpecFactory
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.InstanceSpecFactory
+import com.rustyrazorblade.easydblab.services.aws.InstanceTypeCapabilities
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
 import com.rustyrazorblade.easydblab.ssh.Response
 import org.assertj.core.api.Assertions.assertThat
@@ -213,7 +215,8 @@ class UpTest : BaseKoinTest() {
         )
 
         whenever(mockEc2InstanceService.findInstancesByClusterId(any())).thenReturn(emptyMap())
-        whenever(mockEc2InstanceService.hasInstanceStore(any())).thenReturn(true)
+        whenever(mockEc2InstanceService.describeInstanceType(any()))
+            .thenReturn(InstanceTypeCapabilities(hasInstanceStore = true, supportedArchitectures = listOf("x86_64")))
 
         whenever(mockAmiResolver.resolveAmiId(any(), any())).thenReturn(Result.success("ami-123"))
 
@@ -343,6 +346,41 @@ class UpTest : BaseKoinTest() {
         assertThat(outputHandler.errors).isEmpty()
         verify(mockK8sService, never()).labelNode(any(), eq("db0"), any())
         verify(mockK8sService).labelNode(eq(testControlHost), eq("app0"), any())
+    }
+
+    @Test
+    fun `up does not resolve an AMI for the application architecture when there are zero app nodes`() {
+        // A mixed-arch spec whose only arm64 group is the application group, sized to zero. `up`
+        // must not demand (nor resolve) an arm64 image it will never launch.
+        whenever(mockClusterStateManager.load()).thenReturn(
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+                tailscaleActive = true,
+                initConfig =
+                    InitConfig(
+                        cassandraInstances = 1,
+                        stressInstances = 0,
+                        controlInstances = 1,
+                        dbArch = "AMD64",
+                        appArch = "ARM64",
+                        controlArch = "AMD64",
+                        cidr = "10.0.0.0/16",
+                        name = "test-cluster",
+                    ),
+            ),
+        )
+        whenever(mockClusterProvisioningService.provisionAll(any(), any(), any(), any())).thenReturn(
+            ProvisioningResult(
+                hosts = mapOf(ServerType.Control to listOf(testControlHost), ServerType.Cassandra to listOf(testDbHost)),
+                errors = emptyMap(),
+            ),
+        )
+
+        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
+
+        verify(mockAmiResolver, never()).resolveAmiId(any(), eq(Arch.ARM64.type))
+        verify(mockAmiResolver).resolveAmiId(any(), eq(Arch.AMD64.type))
     }
 
     // =========================================================================

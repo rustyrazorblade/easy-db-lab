@@ -48,6 +48,34 @@ class InstanceSpecFactoryTest {
             assertThat(specs.find { it.serverType == ServerType.Stress }!!.amiId).isEqualTo("ami-amd64")
             assertThat(specs.find { it.serverType == ServerType.Control }!!.amiId).isEqualTo("ami-amd64")
         }
+
+        @Test
+        fun `does not require an AMI for a node group sized to zero`() {
+            // Only an amd64 AMI is resolved; the arm64 application group is sized to zero, so its
+            // (unresolved) architecture must not be required.
+            val amdOnly = mapOf(Arch.AMD64 to "ami-amd64")
+            val initConfig =
+                createInitConfig(
+                    cassandraInstances = 3,
+                    stressInstances = 0,
+                    controlInstances = 1,
+                    dbArch = "AMD64",
+                    appArch = "ARM64",
+                    controlArch = "AMD64",
+                )
+
+            val specs =
+                factory.createInstanceSpecs(
+                    initConfig,
+                    emptyMap(),
+                    dbHasInstanceStore = true,
+                    amiByArch = amdOnly,
+                )
+
+            assertThat(specs.find { it.serverType == ServerType.Cassandra }!!.amiId).isEqualTo("ami-amd64")
+            assertThat(specs.find { it.serverType == ServerType.Control }!!.amiId).isEqualTo("ami-amd64")
+            assertThat(specs.find { it.serverType == ServerType.Stress }!!.amiId).isEmpty()
+        }
     }
 
     @Nested

@@ -164,8 +164,6 @@ spark/bulk-writer-sidecar/libs/*.jar
 spark/bulk-writer-s3/libs/*.jar
 /clusters/
 
-# Claude Code config (mounted in devcontainer)
-.devcontainer/claude/
 .s3-fullpath
 .worktrees/
 .mcp-server.pid

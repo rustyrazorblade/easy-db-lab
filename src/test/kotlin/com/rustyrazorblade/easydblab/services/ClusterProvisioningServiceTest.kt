@@ -25,8 +25,10 @@ import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argThat
+import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
+import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 
@@ -205,6 +207,42 @@ class ClusterProvisioningServiceTest {
             assertThat(result.errors).isEmpty()
             assertThat(result.hosts[ServerType.Cassandra]).hasSize(3)
             assertThat(result.hosts[ServerType.Stress]).hasSize(2)
+        }
+
+        @Test
+        fun `routes each spec's own amiId to that server type's instance creation`() {
+            // Distinct AMIs per group — the whole point of per-spec routing. If provisioning
+            // collapsed back to a single shared AMI, both configs would carry the same id and one
+            // of these assertions would fail.
+            val dbSpec =
+                InstanceSpec(
+                    serverType = ServerType.Cassandra,
+                    configuredCount = 1,
+                    existingCount = 0,
+                    instanceType = "m5.large",
+                    ebsConfig = null,
+                    amiId = "ami-aaaa",
+                )
+            val appSpec =
+                InstanceSpec(
+                    serverType = ServerType.Stress,
+                    configuredCount = 1,
+                    existingCount = 0,
+                    instanceType = "m6g.large",
+                    ebsConfig = null,
+                    amiId = "ami-bbbb",
+                )
+            val config = createInstanceConfig(specs = listOf(dbSpec, appSpec))
+
+            setupMockInstanceCreation()
+
+            service.provisionInstances(config, emptyMap()) { _, _ -> }
+
+            val captor = argumentCaptor<InstanceCreationConfig>()
+            verify(ec2InstanceService, times(2)).createInstances(captor.capture())
+            val amiIdByType = captor.allValues.associate { it.serverType to it.amiId }
+            assertThat(amiIdByType[ServerType.Cassandra]).isEqualTo("ami-aaaa")
+            assertThat(amiIdByType[ServerType.Stress]).isEqualTo("ami-bbbb")
         }
 
         @Test

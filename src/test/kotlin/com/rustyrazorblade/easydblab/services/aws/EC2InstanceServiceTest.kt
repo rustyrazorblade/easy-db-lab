@@ -464,6 +464,71 @@ internal class EC2InstanceServiceTest {
         assertThat(result.supportedArchitectures).containsExactly("x86_64")
     }
 
+    @Test
+    fun `describeInstanceType follows nextToken past an empty first page to find the type`() {
+        // EC2 applies the instance-type filter per page, so a common type can sit behind an empty
+        // first page that still carries a nextToken. Reading only the first page would misreport
+        // the type as "not found" — the bug this reproduces.
+        val emptyFirstPage =
+            DescribeInstanceTypesResponse
+                .builder()
+                .instanceTypes(emptyList())
+                .nextToken("page-2-token")
+                .build()
+        val matchingTypeInfo =
+            InstanceTypeInfo
+                .builder()
+                .instanceType("i4i.xlarge")
+                .instanceStorageSupported(true)
+                .processorInfo(ProcessorInfo.builder().supportedArchitecturesWithStrings("x86_64").build())
+                .build()
+        val secondPage =
+            DescribeInstanceTypesResponse
+                .builder()
+                .instanceTypes(matchingTypeInfo)
+                .build()
+
+        whenever(mockEc2Client.describeInstanceTypes(any<DescribeInstanceTypesRequest>()))
+            .thenReturn(emptyFirstPage, secondPage)
+
+        val result = ec2InstanceService.describeInstanceType("i4i.xlarge")
+
+        assertThat(result.hasInstanceStore).isTrue()
+        assertThat(result.supportedArchitectures).containsExactly("x86_64")
+
+        // Two pages fetched; the second request carried the first page's nextToken.
+        val captor = argumentCaptor<DescribeInstanceTypesRequest>()
+        verify(mockEc2Client, times(2)).describeInstanceTypes(captor.capture())
+        assertThat(captor.firstValue.nextToken()).isNull()
+        assertThat(captor.secondValue.nextToken()).isEqualTo("page-2-token")
+    }
+
+    @Test
+    fun `describeInstanceType throws only after exhausting all pages without a match`() {
+        val firstEmptyPage =
+            DescribeInstanceTypesResponse
+                .builder()
+                .instanceTypes(emptyList())
+                .nextToken("page-2-token")
+                .build()
+        val lastEmptyPage =
+            DescribeInstanceTypesResponse
+                .builder()
+                .instanceTypes(emptyList())
+                .build()
+
+        whenever(mockEc2Client.describeInstanceTypes(any<DescribeInstanceTypesRequest>()))
+            .thenReturn(firstEmptyPage, lastEmptyPage)
+
+        assertThatThrownBy { ec2InstanceService.describeInstanceType("nonexistent.type") }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("nonexistent.type")
+            .hasMessageContaining("us-west-2")
+
+        // The error is raised only after both pages are consulted, not on the empty first page.
+        verify(mockEc2Client, times(2)).describeInstanceTypes(any<DescribeInstanceTypesRequest>())
+    }
+
     private fun createInstance(
         instanceId: String,
         serverType: String,

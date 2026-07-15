@@ -68,6 +68,12 @@ class EC2InstanceService(
 
         /** Polling interval for checking instance state */
         const val POLL_INTERVAL_MS = 5000L
+
+        /**
+         * Page size for `DescribeInstanceTypes`. The API applies the instance-type filter per page,
+         * so a larger page reduces the number of round-trips needed to reach the matching type.
+         */
+        const val INSTANCE_TYPES_PAGE_SIZE = 100
     }
 
     /**
@@ -391,39 +397,51 @@ class EC2InstanceService(
      * depend on the installed SDK version — any valid EC2 instance type is accepted, including a
      * type newer than the SDK (closes #783; previously such types failed with a `[null]` error).
      *
-     * A single call reports both whether the type has local instance store and its supported CPU
-     * architectures, so both facts are obtained from one query per instance type.
+     * The call reports both whether the type has local instance store and its supported CPU
+     * architectures, so both facts are obtained from the same query.
+     *
+     * `DescribeInstanceTypes` applies the instance-type filter **per page**, so a matching type can
+     * sit behind an empty page that still carries a `nextToken`. This follows `nextToken` across
+     * pages and only reports "not found" once every page is exhausted with no match — reading only
+     * the first page would misreport a common type (e.g. `i4i.xlarge`) as unknown.
      *
      * @param instanceType EC2 instance type (e.g., "i3.xlarge", "c5.2xlarge")
      * @return the instance type's capabilities
-     * @throws IllegalStateException if the type is unknown in the region (empty result)
+     * @throws IllegalStateException if the type is unknown in the region (no match across all pages)
      */
     fun describeInstanceType(instanceType: String): InstanceTypeCapabilities {
-        val request =
-            DescribeInstanceTypesRequest
-                .builder()
-                .filters(
-                    Filter
-                        .builder()
-                        .name("instance-type")
-                        .values(instanceType)
-                        .build(),
-                ).build()
+        var nextToken: String? = null
+        do {
+            val request =
+                DescribeInstanceTypesRequest
+                    .builder()
+                    .filters(
+                        Filter
+                            .builder()
+                            .name("instance-type")
+                            .values(instanceType)
+                            .build(),
+                    ).maxResults(INSTANCE_TYPES_PAGE_SIZE)
+                    .nextToken(nextToken)
+                    .build()
 
-        val response =
-            RetryUtil.withAwsRetry("describe-instance-type-$instanceType") {
-                ec2Client.describeInstanceTypes(request)
+            val response =
+                RetryUtil.withAwsRetry("describe-instance-type-$instanceType") {
+                    ec2Client.describeInstanceTypes(request)
+                }
+
+            val typeInfo = response.instanceTypes().firstOrNull()
+            if (typeInfo != null) {
+                return InstanceTypeCapabilities(
+                    hasInstanceStore = typeInfo.instanceStorageSupported() == true,
+                    supportedArchitectures =
+                        typeInfo.processorInfo()?.supportedArchitecturesAsStrings().orEmpty(),
+                )
             }
+            nextToken = response.nextToken()
+        } while (!nextToken.isNullOrEmpty())
 
-        val typeInfo =
-            response.instanceTypes().firstOrNull()
-                ?: error("Instance type '$instanceType' not found in region $region")
-
-        return InstanceTypeCapabilities(
-            hasInstanceStore = typeInfo.instanceStorageSupported() == true,
-            supportedArchitectures =
-                typeInfo.processorInfo()?.supportedArchitecturesAsStrings().orEmpty(),
-        )
+        error("Instance type '$instanceType' not found in region $region")
     }
 
     /**

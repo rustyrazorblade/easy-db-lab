@@ -46,6 +46,7 @@ import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.DefaultCommandExecutor
 import com.rustyrazorblade.easydblab.services.InstallTemplateResolver
 import com.rustyrazorblade.easydblab.services.KitCommandScanner
+import com.rustyrazorblade.easydblab.services.ScannedKitCommand
 import com.rustyrazorblade.easydblab.services.TemplateVariables
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.KoinComponent
@@ -172,7 +173,7 @@ class CommandLineParser : KoinComponent {
         }
 
     /** Kit commands discovered via classpath scan, grouped by kit name. Evaluated once. */
-    private val kitCommandsByKit: Map<String, List<com.rustyrazorblade.easydblab.services.ScannedKitCommand>> by lazy {
+    private val kitCommandsByKit: Map<String, List<ScannedKitCommand>> by lazy {
         get<KitCommandScanner>().findAll()
     }
 

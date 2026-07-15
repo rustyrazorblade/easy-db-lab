@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.AWS
+import com.rustyrazorblade.easydblab.providers.ssh.SSHConfiguration
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.koin.core.component.KoinComponent
@@ -56,7 +57,7 @@ class BaseKoinTestWithSSH :
     @Test
     fun `test SSH module is available by default`() {
         // SSH configuration should be available automatically from core modules
-        val sshConfig: com.rustyrazorblade.easydblab.providers.ssh.SSHConfiguration by inject()
+        val sshConfig: SSHConfiguration by inject()
         assertThat(sshConfig).isNotNull
         assertThat(sshConfig.keyPath).isEqualTo("test")
     }

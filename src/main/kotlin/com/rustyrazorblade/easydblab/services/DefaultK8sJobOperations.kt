@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import com.rustyrazorblade.easydblab.kubernetes.ManifestApplier
 import io.fabric8.kubernetes.api.model.DeletionPropagation
+import io.fabric8.kubernetes.api.model.batch.v1.Job
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.time.Duration
 import java.time.Instant
@@ -46,7 +47,7 @@ class DefaultK8sJobOperations(
     override fun createJob(
         controlHost: ClusterHost,
         namespace: String,
-        job: io.fabric8.kubernetes.api.model.batch.v1.Job,
+        job: Job,
     ): Result<String> =
         runCatching {
             log.info { "Creating K8s job '${job.metadata?.name}' in namespace $namespace" }

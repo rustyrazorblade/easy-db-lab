@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.proxy.HttpClientFactory
 import io.github.oshai.kotlinlogging.KotlinLogging
 import okhttp3.MediaType.Companion.toMediaType
@@ -67,7 +68,7 @@ interface VictoriaStreamService {
  */
 class DefaultVictoriaStreamService(
     private val httpClientFactory: HttpClientFactory,
-    private val clusterStateManager: com.rustyrazorblade.easydblab.configuration.ClusterStateManager,
+    private val clusterStateManager: ClusterStateManager,
 ) : VictoriaStreamService {
     companion object {
         private const val HTTP_NO_CONTENT = 204

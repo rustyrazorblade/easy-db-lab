@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab
 
 import com.github.dockerjava.api.async.ResultCallback
+import com.github.dockerjava.api.command.CreateContainerResponse
 import com.github.dockerjava.api.command.InspectContainerResponse
 import com.github.dockerjava.api.model.AccessMode
 import com.github.dockerjava.api.model.Frame
@@ -58,7 +59,7 @@ class DockerTest : BaseKoinTest() {
     private lateinit var mockUserIdProvider: UserIdProvider
     private lateinit var docker: Docker
     private lateinit var mockContainerCreationCommand: ContainerCreationCommand
-    private lateinit var mockContainerResponse: com.github.dockerjava.api.command.CreateContainerResponse
+    private lateinit var mockContainerResponse: CreateContainerResponse
     private lateinit var mockContainerState: InspectContainerResponse.ContainerState
     private lateinit var mockInspectContainerResponse: InspectContainerResponse
 
@@ -136,7 +137,7 @@ class DockerTest : BaseKoinTest() {
         val mockVolume = mock<VolumeMapping>()
         whenever(mockVolume.source).thenReturn("/host/path")
         whenever(mockVolume.destination).thenReturn("/container/path")
-        whenever(mockVolume.mode).thenReturn(com.github.dockerjava.api.model.AccessMode.rw)
+        whenever(mockVolume.mode).thenReturn(AccessMode.rw)
 
         whenever(mockContainerState.running).thenReturn(true).thenReturn(false)
         whenever(mockContainerState.exitCodeLong).thenReturn(0L)

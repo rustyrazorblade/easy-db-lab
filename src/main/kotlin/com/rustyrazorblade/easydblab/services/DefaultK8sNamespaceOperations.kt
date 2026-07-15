@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import io.fabric8.kubernetes.api.model.HasMetadata
+import io.fabric8.kubernetes.api.model.Pod
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.time.Duration
@@ -285,7 +286,7 @@ class DefaultK8sNamespaceOperations(
         }
     }
 
-    private fun describePodState(pod: io.fabric8.kubernetes.api.model.Pod): String {
+    private fun describePodState(pod: Pod): String {
         val phase = pod.status?.phase ?: "Unknown"
         val parts = mutableListOf("phase=$phase")
 

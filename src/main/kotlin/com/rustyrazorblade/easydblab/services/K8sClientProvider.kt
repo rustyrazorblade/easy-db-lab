@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.kubernetes.ProxiedKubernetesClientFactory
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -22,7 +23,7 @@ private val log = KotlinLogging.logger {}
  * directly to the private IP without any proxy.
  */
 class K8sClientProvider(
-    private val clusterStateManager: com.rustyrazorblade.easydblab.configuration.ClusterStateManager,
+    private val clusterStateManager: ClusterStateManager,
 ) {
     fun createClient(controlHost: ClusterHost): KubernetesClient {
         log.debug { "Creating K8s client for ${controlHost.alias} (${controlHost.privateIp})" }

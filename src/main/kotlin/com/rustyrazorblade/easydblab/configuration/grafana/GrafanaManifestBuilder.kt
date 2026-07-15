@@ -15,6 +15,7 @@ import io.fabric8.kubernetes.api.model.Volume
 import io.fabric8.kubernetes.api.model.VolumeBuilder
 import io.fabric8.kubernetes.api.model.VolumeMount
 import io.fabric8.kubernetes.api.model.VolumeMountBuilder
+import io.fabric8.kubernetes.api.model.apps.Deployment
 import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
 
 /**
@@ -141,7 +142,7 @@ class GrafanaManifestBuilder(
      *
      * @return Fabric8 Deployment object
      */
-    fun buildDeployment(): io.fabric8.kubernetes.api.model.apps.Deployment {
+    fun buildDeployment(): Deployment {
         val clusterName = templateService.buildContextVariables()["CLUSTER_NAME"] ?: "cluster"
 
         return DeploymentBuilder()

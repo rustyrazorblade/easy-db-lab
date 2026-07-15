@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import io.fabric8.kubernetes.api.model.HasMetadata
+import io.fabric8.kubernetes.api.model.batch.v1.Job
 import java.nio.file.Path
 
 /**
@@ -73,7 +74,7 @@ interface K8sJobOperations {
     fun createJob(
         controlHost: ClusterHost,
         namespace: String,
-        job: io.fabric8.kubernetes.api.model.batch.v1.Job,
+        job: Job,
     ): Result<String>
 
     fun deleteJob(

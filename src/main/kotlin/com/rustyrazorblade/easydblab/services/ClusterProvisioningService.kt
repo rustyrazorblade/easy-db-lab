@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.InstanceCreationConfig
 import com.rustyrazorblade.easydblab.services.aws.DomainState
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
@@ -166,7 +167,7 @@ class DefaultClusterProvisioningService(
     private val ec2InstanceService: EC2InstanceService,
     private val emrProvisioningService: EMRProvisioningService,
     private val openSearchService: OpenSearchService,
-    private val aws: com.rustyrazorblade.easydblab.providers.aws.AWS,
+    private val aws: AWS,
     private val user: User,
     private val eventBus: EventBus,
 ) : ClusterProvisioningService {

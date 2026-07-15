@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
+import io.fabric8.kubernetes.api.model.Container
 import io.fabric8.kubernetes.api.model.ContainerBuilder
 import io.fabric8.kubernetes.api.model.EnvVarBuilder
 import io.fabric8.kubernetes.api.model.VolumeBuilder
@@ -378,7 +379,7 @@ class DefaultStressJobService(
         region: String,
         controlNodeIp: String,
         clusterName: String,
-    ): io.fabric8.kubernetes.api.model.Container {
+    ): Container {
         val pyroscopeServerAddress = "http://$controlNodeIp:${Constants.K8s.PYROSCOPE_PORT}"
         val pyroscopeLabels = "cluster=$clusterName,job_name=${config.jobName}"
 
@@ -432,7 +433,7 @@ class DefaultStressJobService(
         jobName: String,
         tags: Map<String, String>,
         promPort: Int,
-    ): io.fabric8.kubernetes.api.model.Container {
+    ): Container {
         val resourceAttributes = buildResourceAttributes(jobName, tags)
 
         return ContainerBuilder()
@@ -490,8 +491,8 @@ class DefaultStressJobService(
     private fun assembleJob(
         jobName: String,
         labels: Map<String, String>,
-        stressContainer: io.fabric8.kubernetes.api.model.Container,
-        otelSidecar: io.fabric8.kubernetes.api.model.Container,
+        stressContainer: Container,
+        otelSidecar: Container,
     ): Job =
         JobBuilder()
             .withNewMetadata()

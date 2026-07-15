@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.proxy.HttpClientFactory
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.serialization.Serializable
@@ -68,7 +69,7 @@ interface VictoriaMetricsQueryService {
 
 class DefaultVictoriaMetricsQueryService(
     private val httpClientFactory: HttpClientFactory,
-    private val clusterStateManager: com.rustyrazorblade.easydblab.configuration.ClusterStateManager,
+    private val clusterStateManager: ClusterStateManager,
 ) : VictoriaMetricsQueryService {
     override fun query(
         controlHost: ClusterHost,

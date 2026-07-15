@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InfrastructureStatus
+import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -339,7 +340,7 @@ class CommandExecutorTest : BaseKoinTest() {
                 versions = mutableMapOf(),
                 infrastructureStatus = InfrastructureStatus.UP,
                 tailscaleActive = false,
-                hosts = mapOf(com.rustyrazorblade.easydblab.configuration.ServerType.Control to listOf(controlHost)),
+                hosts = mapOf(ServerType.Control to listOf(controlHost)),
             )
         whenever(mockClusterStateManager.exists()).thenReturn(true)
         whenever(mockClusterStateManager.load()).thenReturn(state)
@@ -367,7 +368,7 @@ class CommandExecutorTest : BaseKoinTest() {
                 versions = mutableMapOf(),
                 infrastructureStatus = InfrastructureStatus.UP,
                 tailscaleActive = false,
-                hosts = mapOf(com.rustyrazorblade.easydblab.configuration.ServerType.Control to listOf(controlHost)),
+                hosts = mapOf(ServerType.Control to listOf(controlHost)),
             )
         whenever(mockClusterStateManager.exists()).thenReturn(true)
         whenever(mockClusterStateManager.load()).thenReturn(state)
@@ -427,7 +428,7 @@ class CommandExecutorTest : BaseKoinTest() {
                 versions = mutableMapOf(),
                 infrastructureStatus = InfrastructureStatus.UP,
                 tailscaleActive = false,
-                hosts = mapOf(com.rustyrazorblade.easydblab.configuration.ServerType.Control to listOf(controlHost)),
+                hosts = mapOf(ServerType.Control to listOf(controlHost)),
             )
         whenever(mockClusterStateManager.exists()).thenReturn(true)
         whenever(mockClusterStateManager.load()).thenReturn(state)
@@ -464,7 +465,7 @@ class CommandExecutorTest : BaseKoinTest() {
                 versions = mutableMapOf(),
                 infrastructureStatus = InfrastructureStatus.UP,
                 tailscaleActive = false,
-                hosts = mapOf(com.rustyrazorblade.easydblab.configuration.ServerType.Control to listOf(controlHost)),
+                hosts = mapOf(ServerType.Control to listOf(controlHost)),
             )
         whenever(mockClusterStateManager.exists()).thenReturn(true)
         whenever(mockClusterStateManager.load()).thenReturn(state)
@@ -498,7 +499,7 @@ class CommandExecutorTest : BaseKoinTest() {
                 versions = mutableMapOf(),
                 infrastructureStatus = InfrastructureStatus.UP,
                 tailscaleActive = false,
-                hosts = mapOf(com.rustyrazorblade.easydblab.configuration.ServerType.Control to listOf(controlHost)),
+                hosts = mapOf(ServerType.Control to listOf(controlHost)),
             )
         whenever(mockClusterStateManager.exists()).thenReturn(true)
         whenever(mockClusterStateManager.load()).thenReturn(state)
@@ -533,7 +534,7 @@ class CommandExecutorTest : BaseKoinTest() {
                 versions = mutableMapOf(),
                 infrastructureStatus = InfrastructureStatus.UP,
                 tailscaleActive = false,
-                hosts = mapOf(com.rustyrazorblade.easydblab.configuration.ServerType.Control to listOf(controlHost)),
+                hosts = mapOf(ServerType.Control to listOf(controlHost)),
             )
         whenever(mockClusterStateManager.exists()).thenReturn(true)
         whenever(mockClusterStateManager.load()).thenReturn(state)
@@ -567,7 +568,7 @@ class CommandExecutorTest : BaseKoinTest() {
                 versions = mutableMapOf(),
                 infrastructureStatus = InfrastructureStatus.UP,
                 tailscaleActive = false,
-                hosts = mapOf(com.rustyrazorblade.easydblab.configuration.ServerType.Control to listOf(controlHost)),
+                hosts = mapOf(ServerType.Control to listOf(controlHost)),
             )
         whenever(mockClusterStateManager.exists()).thenReturn(true)
         whenever(mockClusterStateManager.load()).thenReturn(state)

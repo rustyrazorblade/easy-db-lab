@@ -2,6 +2,8 @@ package com.rustyrazorblade.easydblab
 
 import com.github.dockerjava.api.DockerClient
 import com.github.dockerjava.api.async.ResultCallback
+import com.github.dockerjava.api.command.CreateContainerCmd
+import com.github.dockerjava.api.command.CreateContainerResponse
 import com.github.dockerjava.api.command.InspectContainerResponse
 import com.github.dockerjava.api.command.PullImageResultCallback
 import com.github.dockerjava.api.model.AccessMode
@@ -114,7 +116,7 @@ class DefaultDockerClient(
 
 // Wrapper class for container creation commands to make testing easier
 class ContainerCreationCommand(
-    private val command: com.github.dockerjava.api.command.CreateContainerCmd,
+    private val command: CreateContainerCmd,
 ) {
     fun withCmd(commands: List<String>): ContainerCreationCommand {
         command.withCmd(commands)
@@ -149,7 +151,7 @@ class ContainerCreationCommand(
         return this
     }
 
-    fun exec(): com.github.dockerjava.api.command.CreateContainerResponse = command.exec()
+    fun exec(): CreateContainerResponse = command.exec()
 }
 
 // Utility for getting user ID, extracted for testability

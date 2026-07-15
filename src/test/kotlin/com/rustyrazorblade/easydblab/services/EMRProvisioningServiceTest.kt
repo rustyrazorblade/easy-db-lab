@@ -17,6 +17,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.mockito.kotlin.KArgumentCaptor
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.eq
@@ -436,7 +437,7 @@ internal class EMRProvisioningServiceTest {
     private fun setupEmrMocks(
         clusterId: String,
         clusterName: String,
-        configCaptor: org.mockito.kotlin.KArgumentCaptor<EMRClusterConfig>? = null,
+        configCaptor: KArgumentCaptor<EMRClusterConfig>? = null,
     ) {
         val createResult =
             EMRClusterResult(

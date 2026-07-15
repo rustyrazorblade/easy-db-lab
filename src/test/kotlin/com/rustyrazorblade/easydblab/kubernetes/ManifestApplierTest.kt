@@ -148,13 +148,13 @@ class ManifestApplierTest {
      * This allows testing validation logic that runs before client operations.
      */
     @Suppress("UNCHECKED_CAST")
-    private fun createNullClient(): io.fabric8.kubernetes.client.KubernetesClient {
+    private fun createNullClient(): KubernetesClient {
         // Use a proxy that throws NPE for any method call
         return java.lang.reflect.Proxy.newProxyInstance(
-            io.fabric8.kubernetes.client.KubernetesClient::class.java.classLoader,
-            arrayOf(io.fabric8.kubernetes.client.KubernetesClient::class.java),
+            KubernetesClient::class.java.classLoader,
+            arrayOf(KubernetesClient::class.java),
         ) { _, _, _ ->
             throw NullPointerException("Client method should not be called for validation tests")
-        } as io.fabric8.kubernetes.client.KubernetesClient
+        } as KubernetesClient
     }
 }

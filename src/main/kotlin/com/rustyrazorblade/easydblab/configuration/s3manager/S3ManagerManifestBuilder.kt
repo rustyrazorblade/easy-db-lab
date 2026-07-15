@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.configuration.s3manager
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.HasMetadata
+import io.fabric8.kubernetes.api.model.apps.Deployment
 import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
 
 /**
@@ -45,7 +46,7 @@ class S3ManagerManifestBuilder(
      * Runs on control plane with hostNetwork. Uses IAM role for AWS credentials.
      */
     @Suppress("LongMethod")
-    fun buildDeployment(): io.fabric8.kubernetes.api.model.apps.Deployment {
+    fun buildDeployment(): Deployment {
         val region = templateService.buildContextVariables()["AWS_REGION"] ?: "us-east-1"
 
         return DeploymentBuilder()

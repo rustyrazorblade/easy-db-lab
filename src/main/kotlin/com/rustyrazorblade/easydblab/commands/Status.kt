@@ -13,6 +13,7 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
 import com.rustyrazorblade.easydblab.kubernetes.getLocalKubeconfigPath
+import com.rustyrazorblade.easydblab.providers.aws.InstanceDetails
 import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupRuleInfo
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
@@ -243,7 +244,7 @@ class Status :
 
     private fun buildNodeDetails(
         serverType: ServerType,
-        instanceStates: Map<String, com.rustyrazorblade.easydblab.providers.aws.InstanceDetails>,
+        instanceStates: Map<String, InstanceDetails>,
     ): List<NodeDetail> {
         val hosts = clusterState.hosts[serverType] ?: emptyList()
         return hosts.map { host ->

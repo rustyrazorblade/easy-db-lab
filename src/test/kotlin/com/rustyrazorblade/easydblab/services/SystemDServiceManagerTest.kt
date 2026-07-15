@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.Host
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.ssh.Response
 import io.github.oshai.kotlinlogging.KLogger
@@ -41,7 +42,7 @@ class SystemDServiceManagerTest : BaseKoinTest() {
      */
     private class TestSystemDService(
         remoteOps: RemoteOperationsService,
-        eventBus: com.rustyrazorblade.easydblab.events.EventBus,
+        eventBus: EventBus,
     ) : AbstractSystemDServiceManager("test-service", remoteOps, eventBus) {
         override val log: KLogger = KotlinLogging.logger {}
     }

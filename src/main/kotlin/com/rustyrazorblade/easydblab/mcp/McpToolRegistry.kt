@@ -20,6 +20,7 @@ import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import picocli.CommandLine.Mixin
 import picocli.CommandLine.Option
+import java.lang.reflect.Field
 import kotlin.reflect.KClass
 import kotlin.reflect.KProperty1
 import kotlin.reflect.full.memberProperties
@@ -229,7 +230,7 @@ open class McpToolRegistry : KoinComponent {
     // ==================== PicoCLI @Option Processing ====================
 
     private fun processOptionAnnotation(
-        javaField: java.lang.reflect.Field,
+        javaField: Field,
         fieldName: String,
         command: PicoCommand,
         properties: MutableMap<String, JsonElement>,
@@ -245,7 +246,7 @@ open class McpToolRegistry : KoinComponent {
     }
 
     private fun buildPicoOptionSchema(
-        javaField: java.lang.reflect.Field,
+        javaField: Field,
         fieldName: String,
         optionAnnotation: Option,
         command: PicoCommand,
@@ -276,7 +277,7 @@ open class McpToolRegistry : KoinComponent {
     // ==================== PicoCLI @Mixin Processing ====================
 
     private fun processMixinAnnotation(
-        javaField: java.lang.reflect.Field,
+        javaField: Field,
         command: PicoCommand,
         properties: MutableMap<String, JsonElement>,
         requiredFields: MutableList<String>,
@@ -321,7 +322,7 @@ open class McpToolRegistry : KoinComponent {
     }
 
     private fun buildMixinPropertySchema(
-        javaField: java.lang.reflect.Field,
+        javaField: Field,
         fieldName: String,
         optionAnnotation: Option,
         mixin: Any,
@@ -339,7 +340,7 @@ open class McpToolRegistry : KoinComponent {
 
     /** Add default value to JSON schema from any object (not just ICommand). */
     private fun JsonObjectBuilder.addDefaultValueFromAny(
-        javaField: java.lang.reflect.Field,
+        javaField: Field,
         target: Any,
     ) {
         javaField.isAccessible = true
@@ -469,7 +470,7 @@ open class McpToolRegistry : KoinComponent {
 
     private fun setFieldValue(
         target: Any,
-        field: java.lang.reflect.Field,
+        field: Field,
         value: JsonElement,
     ) {
         try {
@@ -492,7 +493,7 @@ open class McpToolRegistry : KoinComponent {
     }
 
     private fun setEnumFieldValue(
-        field: java.lang.reflect.Field,
+        field: Field,
         target: Any,
         value: JsonElement,
     ) {

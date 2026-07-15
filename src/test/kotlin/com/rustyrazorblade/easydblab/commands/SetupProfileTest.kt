@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Prompter
 import com.rustyrazorblade.easydblab.TestPrompter
 import com.rustyrazorblade.easydblab.configuration.Arch
+import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
@@ -98,7 +99,7 @@ class SetupProfileTest : BaseKoinTest() {
 
             // Mock getUserConfig to return a User object
             val userConfig =
-                com.rustyrazorblade.easydblab.configuration.User(
+                User(
                     email = "test@example.com",
                     region = "us-west-2",
                     keyName = "test-key",
@@ -152,7 +153,7 @@ class SetupProfileTest : BaseKoinTest() {
             whenever(mockUserConfigProvider.loadExistingConfig()).thenReturn(existingConfig)
 
             val userConfig =
-                com.rustyrazorblade.easydblab.configuration.User(
+                User(
                     email = "test@example.com",
                     region = "us-west-2",
                     keyName = "test-key",
@@ -190,7 +191,7 @@ class SetupProfileTest : BaseKoinTest() {
             whenever(mockUserConfigProvider.loadExistingConfig()).thenReturn(existingConfig)
 
             val userConfig =
-                com.rustyrazorblade.easydblab.configuration.User(
+                User(
                     email = "test@example.com",
                     region = "us-west-2",
                     keyName = "test-key",
@@ -226,7 +227,7 @@ class SetupProfileTest : BaseKoinTest() {
             whenever(mockUserConfigProvider.loadExistingConfig()).thenReturn(existingConfig)
 
             val userConfig =
-                com.rustyrazorblade.easydblab.configuration.User(
+                User(
                     email = "test@example.com",
                     region = "us-west-2",
                     keyName = "test-key",
@@ -691,7 +692,7 @@ class SetupProfileTest : BaseKoinTest() {
             whenever(mockUserConfigProvider.loadExistingConfig()).thenReturn(existingConfig)
 
             val userConfig =
-                com.rustyrazorblade.easydblab.configuration.User(
+                User(
                     email = "test@example.com",
                     region = "us-west-2",
                     keyName = "test-key",

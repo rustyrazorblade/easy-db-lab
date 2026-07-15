@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -184,7 +185,7 @@ class TemplateServiceTest : BaseKoinTest() {
         // Use a known resource — OTel collector config contains __KEY__ variables
         val template =
             service.fromResource(
-                com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder::class.java,
+                OtelManifestBuilder::class.java,
                 "otel-collector-config.yaml",
             )
 

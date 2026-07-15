@@ -21,6 +21,8 @@ import io.ktor.server.netty.Netty
 import io.ktor.server.plugins.swagger.swaggerUI
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
+import io.ktor.server.routing.Routing
+import io.ktor.server.routing.RoutingContext
 import io.ktor.server.routing.get
 import io.ktor.server.routing.openapi.OpenApiDocSource
 import io.ktor.server.routing.openapi.describe
@@ -391,7 +393,7 @@ class McpServer(
         log.info { "Server stopped" }
     }
 
-    private fun io.ktor.server.routing.Routing.configureSseRoutes(
+    private fun Routing.configureSseRoutes(
         server: Server,
         serverSessions: ConcurrentMap<String, ServerSession>,
     ) {
@@ -424,7 +426,7 @@ class McpServer(
     }
 
     @OptIn(ExperimentalKtorApi::class)
-    private fun io.ktor.server.routing.Routing.configureStatusRoutes() {
+    private fun Routing.configureStatusRoutes() {
         get("/stress/status") {
             val live = call.request.queryParameters["live"]?.toBoolean() ?: false
             if (live) statusCache.forceRefresh()
@@ -484,7 +486,7 @@ class McpServer(
         }
     }
 
-    private suspend fun io.ktor.server.routing.RoutingContext.respondWithCachedStatus(section: String?) {
+    private suspend fun RoutingContext.respondWithCachedStatus(section: String?) {
         try {
             val json = statusCache.getStatus(section)
             if (json == null) {

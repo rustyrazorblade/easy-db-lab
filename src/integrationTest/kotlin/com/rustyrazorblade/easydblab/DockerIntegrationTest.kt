@@ -1,5 +1,7 @@
 package com.rustyrazorblade.easydblab
 
+import com.github.dockerjava.api.command.CreateContainerCmd
+import com.github.dockerjava.api.command.CreateContainerResponse
 import com.github.dockerjava.api.command.InspectContainerResponse
 import com.github.dockerjava.api.model.AccessMode
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -54,7 +56,7 @@ class DockerIntegrationTest : BaseKoinTest() {
     private lateinit var mockUserIdProvider: UserIdProvider
     private lateinit var docker: Docker
     private lateinit var mockContainerCreationCommand: ContainerCreationCommand
-    private lateinit var mockContainerResponse: com.github.dockerjava.api.command.CreateContainerResponse
+    private lateinit var mockContainerResponse: CreateContainerResponse
     private lateinit var mockContainerState: InspectContainerResponse.ContainerState
     private lateinit var mockInspectContainerResponse: InspectContainerResponse
 
@@ -156,7 +158,7 @@ class DockerIntegrationTest : BaseKoinTest() {
 
     @Test
     fun `ContainerCreationCommand validates blank working directory`() {
-        val mockCreateCmd = mock<com.github.dockerjava.api.command.CreateContainerCmd>()
+        val mockCreateCmd = mock<CreateContainerCmd>()
         val command = ContainerCreationCommand(mockCreateCmd)
 
         assertThatThrownBy { command.withWorkingDir("") }

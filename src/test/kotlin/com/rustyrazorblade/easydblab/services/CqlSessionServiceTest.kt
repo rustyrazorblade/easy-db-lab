@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.datastax.oss.driver.api.core.CqlSession
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
@@ -59,7 +60,7 @@ class CqlSessionServiceTest : BaseKoinTest() {
         mockResourceManager = mock()
 
         whenever(mockSocksProxy.getLocalPort()).thenReturn(1080)
-        val mockSession = mock<com.datastax.oss.driver.api.core.CqlSession>()
+        val mockSession = mock<CqlSession>()
         whenever(mockSession.isClosed).thenReturn(false)
         whenever(mockSessionFactory.createDirectSession(any(), any())).thenReturn(mockSession)
         whenever(mockSessionFactory.createSession(any(), any(), any())).thenReturn(mockSession)

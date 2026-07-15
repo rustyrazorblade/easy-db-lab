@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.SharedLocalStack
+import com.rustyrazorblade.easydblab.network.CidrBlock
 import com.rustyrazorblade.easydblab.services.aws.EC2VpcService
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -313,7 +314,7 @@ class EC2VpcServiceIntegrationTest {
 
             val existingCidrs = vpcService.listAllVpcCidrs()
             val selected =
-                com.rustyrazorblade.easydblab.network.CidrBlock
+                CidrBlock
                     .selectAvailable(existingCidrs)
 
             assertThat(existingCidrs).doesNotContain(selected.value)

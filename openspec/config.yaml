@@ -33,7 +33,7 @@ rules:
     - Do not include implementation details (file paths, class names)
     - Use the same terminology the codebase uses
   tasks:
-    - Tests must pass in CI, local, and devcontainer environments
+    - Tests must pass in CI and local environments
     - Use AssertJ assertions, not JUnit assertions
     - Tests extend BaseKoinTest for Koin DI
     - No mock-echo tests — every test must verify real logic

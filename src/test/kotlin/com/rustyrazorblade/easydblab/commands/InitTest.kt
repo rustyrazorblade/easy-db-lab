@@ -180,6 +180,53 @@ class InitTest : BaseKoinTest() {
     }
 
     @Nested
+    inner class NamespacedPrecedence {
+        @Test
+        fun `namespaced db instance-type wins over legacy alias regardless of order`() {
+            val namespacedFirst = Init()
+            picocli.CommandLine(namespacedFirst).parseArgs(
+                "--db.instance-type", "arm.big", "--instance", "legacy.small",
+            )
+            assertThat(namespacedFirst.resolvedDbInstanceType).isEqualTo("arm.big")
+
+            val legacyFirst = Init()
+            picocli.CommandLine(legacyFirst).parseArgs(
+                "--instance", "legacy.small", "--db.instance-type", "arm.big",
+            )
+            assertThat(legacyFirst.resolvedDbInstanceType).isEqualTo("arm.big")
+        }
+
+        @Test
+        fun `namespaced app count wins over legacy alias regardless of order`() {
+            val namespacedFirst = Init()
+            picocli.CommandLine(namespacedFirst).parseArgs("--app.count", "7", "--app", "2")
+            assertThat(namespacedFirst.resolvedAppCount).isEqualTo(7)
+
+            val legacyFirst = Init()
+            picocli.CommandLine(legacyFirst).parseArgs("--app", "2", "--app.count", "7")
+            assertThat(legacyFirst.resolvedAppCount).isEqualTo(7)
+        }
+
+        @Test
+        fun `legacy alias sets the value when the namespaced option is absent`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--cassandra", "5", "--stress-instance", "z1.big")
+            assertThat(command.resolvedDbCount).isEqualTo(5)
+            assertThat(command.resolvedAppInstanceType).isEqualTo("z1.big")
+        }
+
+        @Test
+        fun `defaults are used when neither namespaced nor legacy is set`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs()
+            assertThat(command.resolvedDbCount).isEqualTo(command.cassandraInstances)
+            assertThat(command.resolvedAppCount).isEqualTo(command.stressInstances)
+            assertThat(command.resolvedDbInstanceType).isEqualTo(command.instanceType)
+            assertThat(command.resolvedAppInstanceType).isEqualTo(command.stressInstanceType)
+        }
+    }
+
+    @Nested
     inner class ExistingVpc {
         @Test
         fun `execute sets existing VPC ID when provided`() {

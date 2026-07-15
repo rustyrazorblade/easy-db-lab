@@ -28,15 +28,15 @@ for AWS retries.
 
 ## 3. Namespaced options and precedence
 
-- [ ] 3.1 Write a failing test: when both a namespaced option and its legacy alias are set,
+- [x] 3.1 Write a failing test: when both a namespaced option and its legacy alias are set,
   the resolved value is the namespaced one, independent of argument order; when only the
   legacy flag (or neither) is set, the legacy value / default is used.
-- [ ] 3.2 Add nullable, no-default `@Option`s `--db.instance-type`, `--app.instance-type`,
+- [x] 3.2 Add nullable, no-default `@Option`s `--db.instance-type`, `--app.instance-type`,
   `--db.count`, `--app.count` on `Init`, following the `--ebs.*` individual-`@Option`
   precedent (no `@ArgGroup`). Keep every legacy flag as an alias with its current default.
-- [ ] 3.3 Add resolved accessors on `Init` (`resolved = namespaced ?: legacy`) and state the
+- [x] 3.3 Add resolved accessors on `Init` (`resolved = namespaced ?: legacy`) and state the
   namespaced-wins precedence in each option's `--help` description.
-- [ ] 3.4 `InitConfig.fromInit` reads the resolved accessors, not the raw legacy fields.
+- [x] 3.4 `InitConfig.fromInit` reads the resolved accessors, not the raw legacy fields.
 
 ## 4. Architecture derivation at init; remove `--arch`
 

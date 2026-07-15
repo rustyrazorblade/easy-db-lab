@@ -122,10 +122,10 @@ data class InitConfig(
             region: String,
         ): InitConfig =
             InitConfig(
-                cassandraInstances = init.cassandraInstances,
-                stressInstances = init.stressInstances,
-                instanceType = init.instanceType,
-                stressInstanceType = init.stressInstanceType,
+                cassandraInstances = init.resolvedDbCount,
+                stressInstances = init.resolvedAppCount,
+                instanceType = init.resolvedDbInstanceType,
+                stressInstanceType = init.resolvedAppInstanceType,
                 azs = init.azs,
                 ami = init.ami,
                 region = region,

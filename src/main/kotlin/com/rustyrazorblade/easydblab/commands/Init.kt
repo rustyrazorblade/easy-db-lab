@@ -68,15 +68,27 @@ class Init : PicoBaseCommand() {
 
     @Option(
         names = ["--db", "--cassandra", "-c"],
-        description = ["Number of database instances"],
+        description = ["Legacy alias for --db.count. Number of database instances"],
     )
     var cassandraInstances = DEFAULT_CASSANDRA_INSTANCE_COUNT
 
     @Option(
+        names = ["--db.count"],
+        description = ["Number of database instances. Takes precedence over the legacy --db/--cassandra/-c alias"],
+    )
+    var dbCount: Int? = null
+
+    @Option(
         names = ["--app", "--stress", "-s"],
-        description = ["Number of application instances"],
+        description = ["Legacy alias for --app.count. Number of application instances"],
     )
     var stressInstances = 0
+
+    @Option(
+        names = ["--app.count"],
+        description = ["Number of application instances. Takes precedence over the legacy --app/--stress/-s alias"],
+    )
+    var appCount: Int? = null
 
     @Option(
         names = ["--up"],
@@ -86,15 +98,38 @@ class Init : PicoBaseCommand() {
 
     @Option(
         names = ["--instance", "-i"],
-        description = ["Instance Type. Set EASY_DB_LAB_INSTANCE_TYPE to set a default."],
+        description = [
+            "Legacy alias for --db.instance-type. Database instance type. " +
+                "Set EASY_DB_LAB_INSTANCE_TYPE to set a default.",
+        ],
     )
     var instanceType: String = System.getenv("EASY_DB_LAB_INSTANCE_TYPE") ?: "i4i.xlarge"
 
     @Option(
+        names = ["--db.instance-type"],
+        description = [
+            "Database instance type. Takes precedence over the legacy --instance/-i alias.",
+        ],
+    )
+    var dbInstanceType: String? = null
+
+    @Option(
         names = ["--stress-instance", "-si", "--si"],
-        description = ["Stress Instance Type. Set EASY_DB_LAB_STRESS_INSTANCE_TYPE to set a default."],
+        description = [
+            "Legacy alias for --app.instance-type. Application (stress) instance type. " +
+                "Set EASY_DB_LAB_STRESS_INSTANCE_TYPE to set a default.",
+        ],
     )
     var stressInstanceType: String = System.getenv("EASY_DB_LAB_STRESS_INSTANCE_TYPE") ?: "c6id.2xlarge"
+
+    @Option(
+        names = ["--app.instance-type"],
+        description = [
+            "Application (stress) instance type. " +
+                "Takes precedence over the legacy --stress-instance/-si alias.",
+        ],
+    )
+    var appInstanceType: String? = null
 
     @Option(
         names = ["--azs", "--az", "-z"],
@@ -208,6 +243,34 @@ class Init : PicoBaseCommand() {
     )
     var cilium = false
 
+    /**
+     * Resolved number of database instances: the namespaced `--db.count` when supplied, otherwise
+     * the legacy `--db`/`--cassandra`/`-c` alias (or its default). Namespaced always wins.
+     */
+    @get:JsonIgnore
+    val resolvedDbCount: Int get() = dbCount ?: cassandraInstances
+
+    /**
+     * Resolved number of application instances: the namespaced `--app.count` when supplied,
+     * otherwise the legacy `--app`/`--stress`/`-s` alias (or its default). Namespaced always wins.
+     */
+    @get:JsonIgnore
+    val resolvedAppCount: Int get() = appCount ?: stressInstances
+
+    /**
+     * Resolved database instance type: the namespaced `--db.instance-type` when supplied, otherwise
+     * the legacy `--instance`/`-i` alias (or its default). Namespaced always wins.
+     */
+    @get:JsonIgnore
+    val resolvedDbInstanceType: String get() = dbInstanceType ?: instanceType
+
+    /**
+     * Resolved application instance type: the namespaced `--app.instance-type` when supplied,
+     * otherwise the legacy `--stress-instance`/`-si` alias (or its default). Namespaced always wins.
+     */
+    @get:JsonIgnore
+    val resolvedAppInstanceType: String get() = appInstanceType ?: stressInstanceType
+
     override fun execute() {
         validateParameters()
 
@@ -242,8 +305,8 @@ class Init : PicoBaseCommand() {
     }
 
     private fun validateParameters() {
-        require(cassandraInstances > 0) { "Number of Cassandra instances must be positive" }
-        require(stressInstances >= 0) { "Number of stress instances cannot be negative" }
+        require(resolvedDbCount > 0) { "Number of database instances must be positive" }
+        require(resolvedAppCount >= 0) { "Number of application instances cannot be negative" }
         require(ebsSize > 0) { "EBS size must be positive" }
         require(ebsIops >= 0) { "EBS IOPS cannot be negative" }
         require(ebsThroughput >= 0) { "EBS throughput cannot be negative" }

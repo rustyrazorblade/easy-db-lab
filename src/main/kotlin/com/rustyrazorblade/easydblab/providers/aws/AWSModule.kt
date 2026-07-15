@@ -162,6 +162,7 @@ val awsModule =
             EC2InstanceService(
                 get<Ec2Client>(),
                 get<EventBus>(),
+                region = get<Region>().id(),
             )
         }
 

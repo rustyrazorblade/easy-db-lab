@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredInstance
 import com.rustyrazorblade.easydblab.providers.aws.InstanceCreationConfig
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
@@ -22,6 +23,7 @@ import software.amazon.awssdk.services.ec2.model.InstanceStateName
 import software.amazon.awssdk.services.ec2.model.InstanceStorageInfo
 import software.amazon.awssdk.services.ec2.model.InstanceTypeInfo
 import software.amazon.awssdk.services.ec2.model.Placement
+import software.amazon.awssdk.services.ec2.model.ProcessorInfo
 import software.amazon.awssdk.services.ec2.model.Reservation
 import software.amazon.awssdk.services.ec2.model.RunInstancesRequest
 import software.amazon.awssdk.services.ec2.model.RunInstancesResponse
@@ -34,6 +36,7 @@ internal class EC2InstanceServiceTest {
             mockEc2Client,
             com.rustyrazorblade.easydblab.events
                 .EventBus(),
+            region = "us-west-2",
         )
 
     @Test
@@ -391,6 +394,51 @@ internal class EC2InstanceServiceTest {
         ).describeInstanceStatus(
             any<software.amazon.awssdk.services.ec2.model.DescribeInstanceStatusRequest>(),
         )
+    }
+
+    @Test
+    fun `describeInstanceType resolves a type not present in the SDK enum via an instance-type filter`() {
+        // A type the SDK's InstanceType enum does not know about. Routing it through
+        // InstanceType.fromValue would yield UNKNOWN_TO_SDK_VERSION and a "[null]" API error.
+        val newType = "x99.someday.metal"
+        val typeInfo =
+            InstanceTypeInfo
+                .builder()
+                .instanceType(newType)
+                .instanceStorageSupported(true)
+                .processorInfo(
+                    ProcessorInfo.builder().supportedArchitecturesWithStrings("arm64").build(),
+                ).build()
+
+        whenever(mockEc2Client.describeInstanceTypes(any<DescribeInstanceTypesRequest>()))
+            .thenReturn(DescribeInstanceTypesResponse.builder().instanceTypes(typeInfo).build())
+
+        val result = ec2InstanceService.describeInstanceType(newType)
+
+        assertThat(result.hasInstanceStore).isTrue()
+        assertThat(result.supportedArchitectures).containsExactly("arm64")
+
+        // Verify the request used an instance-type filter carrying the raw string,
+        // not the SDK's InstanceType enum.
+        val captor = argumentCaptor<DescribeInstanceTypesRequest>()
+        verify(mockEc2Client).describeInstanceTypes(captor.capture())
+        val request = captor.firstValue
+        assertThat(request.instanceTypes()).isEmpty()
+        assertThat(request.filters()).anySatisfy { filter ->
+            assertThat(filter.name()).isEqualTo("instance-type")
+            assertThat(filter.values()).containsExactly(newType)
+        }
+    }
+
+    @Test
+    fun `describeInstanceType throws naming the type and region when the result is empty`() {
+        whenever(mockEc2Client.describeInstanceTypes(any<DescribeInstanceTypesRequest>()))
+            .thenReturn(DescribeInstanceTypesResponse.builder().instanceTypes(emptyList()).build())
+
+        assertThatThrownBy { ec2InstanceService.describeInstanceType("bogus.type") }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("bogus.type")
+            .hasMessageContaining("us-west-2")
     }
 
     @Test

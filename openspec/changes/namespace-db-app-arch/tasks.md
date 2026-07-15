@@ -8,23 +8,23 @@ for AWS retries.
 
 ## 1. Consolidated instance-type query (closes #783)
 
-- [ ] 1.1 Write a failing test: an instance type not present in the SDK's `InstanceType` enum
+- [x] 1.1 Write a failing test: an instance type not present in the SDK's `InstanceType` enum
   is resolved successfully — no `[null]` error — for both instance-store detection and
   architecture, because the query passes the type as an `instance-type` filter string.
-- [ ] 1.2 Add `EC2InstanceService.describeInstanceType(type)` returning a value with
+- [x] 1.2 Add `EC2InstanceService.describeInstanceType(type)` returning a value with
   `hasInstanceStore` and `supportedArchitectures`, built from a single filter-based
   `DescribeInstanceTypes` call wrapped in `RetryUtil`. An empty result throws naming the
   type and region.
-- [ ] 1.3 Reimplement `hasInstanceStore()` as a thin reader over `describeInstanceType`.
-- [ ] 1.4 Move the RunInstances path (`createSingleInstance`) off `InstanceType.fromValue`
+- [x] 1.3 Reimplement `hasInstanceStore()` as a thin reader over `describeInstanceType`.
+- [x] 1.4 Move the RunInstances path (`createSingleInstance`) off `InstanceType.fromValue`
   onto the string-accepting `instanceType(String)` overload; do not reintroduce
   `InstanceType.fromValue` for user-supplied types anywhere.
 
 ## 2. Architecture mapping helper
 
-- [ ] 2.1 Write a failing test for `Arch.fromEc2`: `x86_64` → AMD64, `arm64` → ARM64;
+- [x] 2.1 Write a failing test for `Arch.fromEc2`: `x86_64` → AMD64, `arm64` → ARM64;
   `i386`, empty, unrecognized, and multiple-mappable inputs each throw naming the cause.
-- [ ] 2.2 Add `Arch.fromEc2(...)` implementing that mapping.
+- [x] 2.2 Add `Arch.fromEc2(...)` implementing that mapping.
 
 ## 3. Namespaced options and precedence
 

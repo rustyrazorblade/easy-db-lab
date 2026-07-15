@@ -84,7 +84,7 @@ Database instances need a data disk separate from the root volume. This can come
 If the selected instance type has no instance store and `--ebs.type` is not specified, `up` will fail. For example:
 
 ```bash
-easy-db-lab init my-cluster --instance c5.2xlarge --ebs.type gp3 --ebs.size 200
+easy-db-lab init my-cluster --db.instance-type c5.2xlarge --ebs.type gp3 --ebs.size 200
 ```
 
 ## Part 2: Launch Infrastructure

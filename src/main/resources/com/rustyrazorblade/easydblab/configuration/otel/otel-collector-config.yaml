@@ -276,10 +276,14 @@ service:
       receivers: [hostmetrics, prometheus]
       processors: [resource/cluster, resourcedetection, k8sattributes, batch]
       exporters: [prometheusremotewrite]
-    # Remote metrics via OTLP (e.g., Spark nodes) — stamp cluster label to match local metrics
+    # Metrics received via OTLP from node-local workloads (e.g. the cqlite-flight DaemonSet,
+    # Spark nodes). resourcedetection stamps host.name so each node's counters form a distinct
+    # series — without it, per-pod cumulative counters collapse into one identity, VictoriaMetrics
+    # reads their staggered start-times as constant resets, and rate()/increase() extrapolate a
+    # ~1000x-inflated ramp (observed on cqlite_rpc_requests_total in the v0.15 flight soak).
     metrics/otlp:
       receivers: [otlp]
-      processors: [resource/cluster, batch]
+      processors: [resource/cluster, resourcedetection, batch]
       exporters: [prometheusremotewrite]
     logs/local:
       receivers: [filelog/system, filelog/tools, filelog/cassandra]

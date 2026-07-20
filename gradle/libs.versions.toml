@@ -16,7 +16,7 @@ jackson-dataformat = "2.21.2"
 jackson-kotlin = "2.21.+"
 
 # Kotlinx Serialization
-kotlinx-serialization = "1.10.0"
+kotlinx-serialization = "1.11.0"
 kaml = "0.104.0"
 
 # Kotlinx Coroutines

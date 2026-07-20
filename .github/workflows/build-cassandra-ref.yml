@@ -116,7 +116,7 @@ jobs:
       artifact_name: ${{ inputs.stable_version != '' && format('cassandra-tarball-{0}', inputs.stable_version) || format('cassandra-tarball-{0}', steps.meta.outputs.ref_tag) }}
     steps:
       - name: Check out this repo's image-assembly logic
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           path: edl
           sparse-checkout: .github/cassandra-image
@@ -136,7 +136,7 @@ jobs:
           resolve_ref >> "$GITHUB_OUTPUT"
 
       - name: Check out resolved SHA to read build.xml
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: ${{ inputs.repo }}
           ref: ${{ steps.resolve.outputs.sha }}
@@ -183,7 +183,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out resolved SHA
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: ${{ inputs.repo }}
           ref: ${{ needs.resolve.outputs.sha }}
@@ -246,7 +246,7 @@ jobs:
       contents: write
     steps:
       - name: Check out image-assembly files
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Download built tarball
         uses: actions/download-artifact@v8

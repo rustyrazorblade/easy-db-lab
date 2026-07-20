@@ -3,7 +3,7 @@
 kotlin = "2.3.21"
 
 # MCP SDK
-mcp-sdk = "0.9.0"
+mcp-sdk = "0.14.0"
 kotlinx-io = "0.9.0"
 
 

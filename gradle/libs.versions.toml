@@ -24,7 +24,7 @@ kotlinx-coroutines = "1.11.0"
 
 # Testing
 archunit = "1.4.2"
-jupiter = "5.10.2"
+jupiter = "6.1.2"
 assertj = "3.27.7"
 mockito-kotlin = "6.3.0"
 mockito = "5.23.0"

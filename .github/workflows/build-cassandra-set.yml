@@ -38,13 +38,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Quote every version: an unquoted 6.0 is a YAML float that GitHub
+          # Quote every version. The `-HEAD` labels are plain strings, but a bare
+          # numeric version (e.g. an unquoted 6.0) is a YAML float that GitHub
           # Actions stringifies to "6", producing apache-cassandra-6-bin.tar.gz
-          # instead of the apache-cassandra-6.0-bin.tar.gz the versions file needs.
+          # instead of the apache-cassandra-6.0-HEAD-bin.tar.gz the versions file
+          # references — so keep every version quoted regardless.
           - ref: cassandra-5.0
             version: "5.0-HEAD"
           - ref: cassandra-6.0
-            version: "6.0"
+            version: "6.0-HEAD"
           - ref: trunk
             version: "trunk"
     uses: ./.github/workflows/build-cassandra-ref.yml
@@ -123,7 +125,7 @@ jobs:
             are published under the moving `:cassandra-<ref>` tag.
 
             - **5.0-HEAD**: Latest from `cassandra-5.0` branch
-            - **6.0**: Latest from `cassandra-6.0` branch
+            - **6.0-HEAD**: Latest from `cassandra-6.0` branch
             - **trunk**: Latest from `trunk` branch
 
             ### Stable Download URLs
@@ -132,7 +134,7 @@ jobs:
 
             ```
             https://github.com/${{ github.repository }}/releases/download/nightly/apache-cassandra-5.0-HEAD-bin.tar.gz
-            https://github.com/${{ github.repository }}/releases/download/nightly/apache-cassandra-6.0-bin.tar.gz
+            https://github.com/${{ github.repository }}/releases/download/nightly/apache-cassandra-6.0-HEAD-bin.tar.gz
             https://github.com/${{ github.repository }}/releases/download/nightly/apache-cassandra-trunk-bin.tar.gz
             ```
 

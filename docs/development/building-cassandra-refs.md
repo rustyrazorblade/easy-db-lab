@@ -73,8 +73,12 @@ Authentication to GHCR uses the repository's `GITHUB_TOKEN`
 ## Where the artifacts land
 
 - **Image**: `ghcr.io/<owner>/<repo>/cassandra`, tagged with both an immutable
-  `sha-<short>` tag and a moving sanitized-ref tag. The `latest` tag is reserved
-  for the main CLI image and is **never** produced here.
+  `sha-<short>` tag and a moving sanitized-ref tag. When the build is driven by
+  the nightly matrix (`build-cassandra-set.yml`), each image also gets a stable
+  version-label tag (`5.0-HEAD`, `6.0-HEAD`, `trunk`) that matches the tarball
+  naming, giving a stable pull URL that always points at the latest build for
+  that line. The `latest` tag is reserved for the main CLI image and is
+  **never** produced here.
 - **Tarball**: `apache-cassandra-<version>-<short-sha>-bin.tar.gz`, attached to a
   GitHub release tagged `cassandra-<version>-<short-sha>`.
 

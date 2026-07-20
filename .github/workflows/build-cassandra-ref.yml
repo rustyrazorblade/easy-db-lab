@@ -262,6 +262,9 @@ jobs:
           IMAGE_REPO: ${{ needs.resolve.outputs.image_repo }}
           SHA_TAG: ${{ needs.resolve.outputs.sha_tag }}
           REF_TAG: ${{ needs.resolve.outputs.ref_tag }}
+          # Stable version label (e.g. 5.0-HEAD, 6.0-HEAD, trunk) from a matrix
+          # caller. Blank for direct/fork callers that don't pass stable_version.
+          STABLE_VERSION: ${{ inputs.stable_version }}
           BASE_IMAGE: ${{ needs.resolve.outputs.base_image }}
           TARBALL_NAME: ${{ needs.resolve.outputs.tarball_name }}
           # OCI provenance inputs (issue #767) — stamp the image so `docker
@@ -274,6 +277,18 @@ jobs:
           set -euo pipefail
           # RFC-3339 UTC build timestamp for org.opencontainers.image.created.
           created="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          # Always tag the immutable :sha-<short> and moving :<ref> tags. When a
+          # matrix caller supplies a stable_version, ADD a third stable tag
+          # (:5.0-HEAD / :6.0-HEAD / :trunk) so there is a stable pull URL that
+          # matches the tarball naming. Sanitize it with the SAME transform as
+          # ref_tag (tag-invalid chars -> '-', cap 128) for defensiveness; the
+          # 5.0-HEAD/6.0-HEAD/trunk values pass through unchanged. Guarded on
+          # non-empty so direct/fork callers are completely unaffected.
+          tag_args=(--tag "${IMAGE_REPO}:${SHA_TAG}" --tag "${IMAGE_REPO}:${REF_TAG}")
+          if [[ -n "$STABLE_VERSION" ]]; then
+            version_tag="$(echo "$STABLE_VERSION" | sed 's/[^a-zA-Z0-9._-]/-/g' | cut -c1-128)"
+            tag_args+=(--tag "${IMAGE_REPO}:${version_tag}")
+          fi
           docker build \
             --build-arg BASE_IMAGE="$BASE_IMAGE" \
             --build-arg TARBALL="$TARBALL_NAME" \
@@ -282,8 +297,7 @@ jobs:
             --build-arg OCI_VERSION="$OCI_VERSION" \
             --build-arg OCI_CREATED="$created" \
             --build-arg OCI_REF_NAME="$OCI_REF_NAME" \
-            --tag "${IMAGE_REPO}:${SHA_TAG}" \
-            --tag "${IMAGE_REPO}:${REF_TAG}" \
+            "${tag_args[@]}" \
             .github/cassandra-image
 
       # Gate the publish on a real smoke test against the locally-built image.
@@ -383,10 +397,18 @@ jobs:
           IMAGE_REPO: ${{ needs.resolve.outputs.image_repo }}
           SHA_TAG: ${{ needs.resolve.outputs.sha_tag }}
           REF_TAG: ${{ needs.resolve.outputs.ref_tag }}
+          STABLE_VERSION: ${{ inputs.stable_version }}
         run: |
           set -euo pipefail
           docker push "${IMAGE_REPO}:${SHA_TAG}"
           docker push "${IMAGE_REPO}:${REF_TAG}"
+          # Also push the stable version tag when a matrix caller supplied one.
+          # Same sanitization as the build step; guarded so direct/fork callers
+          # (empty STABLE_VERSION) push only :sha and :ref.
+          if [[ -n "$STABLE_VERSION" ]]; then
+            version_tag="$(echo "$STABLE_VERSION" | sed 's/[^a-zA-Z0-9._-]/-/g' | cut -c1-128)"
+            docker push "${IMAGE_REPO}:${version_tag}"
+          fi
 
       # Create the release only after the smoke test passed and the image pushed.
       - name: Create per-build release with tarball
@@ -415,6 +437,7 @@ jobs:
           IMAGE_REPO: ${{ needs.resolve.outputs.image_repo }}
           SHA_TAG: ${{ needs.resolve.outputs.sha_tag }}
           REF_TAG: ${{ needs.resolve.outputs.ref_tag }}
+          STABLE_VERSION: ${{ inputs.stable_version }}
           VERSION: ${{ needs.resolve.outputs.version }}
           SHA: ${{ needs.resolve.outputs.sha }}
           RELEASE_TAG: ${{ needs.resolve.outputs.release_tag }}
@@ -431,6 +454,11 @@ jobs:
             echo "| Commit | \`${SHA}\` |"
             echo "| Image (immutable) | \`${IMAGE_REPO}:${SHA_TAG}\` |"
             echo "| Image (ref) | \`${IMAGE_REPO}:${REF_TAG}\` |"
+            # Only present when a matrix caller supplied a stable_version.
+            if [[ -n "$STABLE_VERSION" ]]; then
+              version_tag="$(echo "$STABLE_VERSION" | sed 's/[^a-zA-Z0-9._-]/-/g' | cut -c1-128)"
+              echo "| Image (version) | \`${IMAGE_REPO}:${version_tag}\` |"
+            fi
             echo "| Tarball | ${tarball_url} |"
             echo ""
             echo "Pull: \`docker pull ${IMAGE_REPO}:${SHA_TAG}\`"

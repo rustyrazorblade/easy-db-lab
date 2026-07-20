@@ -161,7 +161,7 @@ This command:
 - Downloads configuration files to your local directory
 - Applies any existing patch configuration
 
-Available versions: 3.0, 3.11, 4.0, 4.1, 5.0, 5.0-HEAD, trunk
+Available versions: 3.0, 3.11, 4.0, 4.1, 5.0, 5.0-HEAD, 6.0-HEAD, trunk
 
 ### Step 2: Customize Configuration (Optional)
 

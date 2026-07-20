@@ -1,4 +1,3 @@
----
 # the version uniquely identifes the cassandra version
 # and will be used as the name in /usr/local/cassandra-<version>
 

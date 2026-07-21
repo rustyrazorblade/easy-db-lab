@@ -4,8 +4,12 @@ metadata:
   name: cluster-init
   namespace: default
 spec:
-  backoffLimit: 0
-  activeDeadlineSeconds: 120
+  # backoffLimit + activeDeadlineSeconds are the outer safety net; the container's
+  # own retry loop is the primary mechanism. If the whole Pod dies mid-init (node
+  # eviction, OOM), the Job restarts it — and `cluster init` is idempotent (a re-run
+  # against an already-initialized cluster still exits 0), so retries are safe.
+  backoffLimit: 5
+  activeDeadlineSeconds: 600
   template:
     spec:
       restartPolicy: Never
@@ -17,8 +21,29 @@ spec:
           imagePullPolicy: IfNotPresent
           command:
             - /bin/sh
-            - -ec
+            - -c
             - |
-              /opt/ignite3cli/bin/ignite3 cluster init \
-                --name=ignite \
-                --url=http://ignite-svc-headless:10300
+              # Self-retrying, idempotent cluster init. `cluster init` fails while REST
+              # (:10300) is not yet bound or peers have not finished discovery on :3344;
+              # once both are ready it succeeds (exit 0). It is idempotent: a re-run
+              # against an already-initialized cluster also exits 0. As a belt-and-braces
+              # fallback we also treat a live `cluster status` reporting "status: active"
+              # as success — note the exact substring "status: active", because the
+              # pre-init status line is "status: not initialized" (matching a bare
+              # "initialized" would false-positive).
+              URL=http://ignite-svc-headless:10300
+              for i in $(seq 1 60); do
+                if /opt/ignite3cli/bin/ignite3 cluster init --name=ignite --url="${URL}"; then
+                  echo "cluster init succeeded"
+                  exit 0
+                fi
+                if /opt/ignite3cli/bin/ignite3 cluster status --url="${URL}" 2>/dev/null \
+                     | grep -qi 'status: active'; then
+                  echo "cluster already initialized"
+                  exit 0
+                fi
+                echo "cluster init attempt ${i}/60 failed (REST not ready or peers not yet discovered); retrying in 5s..."
+                sleep 5
+              done
+              echo "ERROR: cluster init did not succeed after retries" >&2
+              exit 1

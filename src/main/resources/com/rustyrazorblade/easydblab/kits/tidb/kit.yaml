@@ -51,7 +51,7 @@ args:
 install:
   - type: helm-repo
     name: pingcap
-    url: https://charts.pingcap.org
+    url: https://charts.pingcap.com/
   - type: manifest-url
     url: https://raw.githubusercontent.com/pingcap/tidb-operator/v1.6.5/manifests/crd.yaml
   - type: namespace

@@ -38,17 +38,37 @@ spec:
               containerPort: 10800
             - name: discovery
               containerPort: 3344
-          # Readiness probes the REST port (10300), which opens as soon as the node
-          # process starts — BEFORE cluster init. The client/SQL connector (10800) does
-          # NOT open until `cluster init` runs, and init is gated behind pods being Ready,
-          # so probing 10800 here would deadlock. 10300 lets pods go Ready pre-init; the
-          # cluster-init Job (and its wait-for-Complete) is the real "cluster ready" gate.
-          readinessProbe:
+          # Probe design (init is decoupled from readiness):
+          #   startup/liveness -> REST (10300): the process/REST endpoint is up.
+          #   readiness        -> SQL  (10800): the node can serve SQL, which only
+          #                       opens AFTER `cluster init`.
+          # The runtime image (apacheignite/ignite:__IGNITE_VERSION__) is NOT baked into
+          # the AMI, so a cold node may pull the image and boot the JVM slowly. The image
+          # pull happens before the container starts and is not counted against any probe;
+          # the startupProbe then gives REST up to ~600s (60 x 10s) to bind before
+          # liveness/readiness begin. livenessProbe restarts a node whose REST wedges after
+          # startup. readinessProbe on 10800 means pods stay NotReady until cluster init
+          # completes — which is fine now: init runs against not-Ready pods (headless svc
+          # publishes not-Ready addresses), and the post-init Ready gate in kit.yaml is the
+          # real "cluster can serve SQL" barrier.
+          startupProbe:
             tcpSocket:
               port: 10300
-            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 60
+            timeoutSeconds: 2
+          livenessProbe:
+            tcpSocket:
+              port: 10300
             periodSeconds: 10
             failureThreshold: 6
+            timeoutSeconds: 2
+          readinessProbe:
+            tcpSocket:
+              port: 10800
+            periodSeconds: 10
+            failureThreshold: 6
+            timeoutSeconds: 2
           volumeMounts:
             - name: config-vol
               mountPath: /opt/ignite/etc/ignite-config.conf

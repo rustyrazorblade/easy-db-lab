@@ -78,13 +78,13 @@ start:
     script: |
       #!/usr/bin/env bash
       set -euo pipefail
+      # Wait only for the pods to be CREATED, not Ready. Readiness now means the
+      # SQL port (10800) is open, which does not happen until AFTER `cluster init`.
+      # Gating init on Ready would deadlock. The headless service publishes
+      # not-Ready addresses, so the init Job can reach :10300 on not-Ready pods.
       echo "Waiting for Ignite 3 pods to be created..."
       until kubectl get pods -l app=ignite -n default --no-headers 2>/dev/null | grep -q .; do sleep 5; done
-      echo "Pods found, waiting for Ready..."
-      kubectl wait --for=condition=Ready pods \
-        -l app=ignite \
-        --namespace default \
-        --timeout=300s
+      echo "Pods found."
 
   - type: manifest
     template: cluster-init-job.yaml
@@ -94,7 +94,23 @@ start:
     name: cluster-init
     condition: Complete
     namespace: default
-    timeout: 120s
+    # The init Job self-retries internally (~300s of attempts) and the outer Job
+    # retries the Pod up to backoffLimit times, so give the wait a generous ceiling.
+    timeout: 600s
+
+  - type: shell
+    script: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      # Now that cluster init has completed, readiness is meaningful: a Ready pod
+      # has its SQL port (10800) open and can serve queries. Gate nodeport/OTLP
+      # setup on real SQL-readiness so downstream steps hit live nodes.
+      echo "Waiting for Ignite 3 pods to become Ready (SQL port open)..."
+      kubectl wait --for=condition=Ready pods \
+        -l app=ignite \
+        --namespace default \
+        --timeout=300s
+      echo "Pods Ready."
 
   - type: manifest
     template: nodeport-service.yaml

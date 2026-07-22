@@ -70,6 +70,12 @@ Runs the benchmark for `--duration` seconds, streaming sysbench's interval outpu
 your terminal. Each 10-second interval report (TPS, QPS, p99 latency, errors/s) is also
 pushed to VictoriaMetrics.
 
+When the run finishes, the final sysbench summary (SQL statistics, throughput, latency
+percentiles, and errors) is written to `last-run.txt` in the kit's workspace directory
+(e.g. `sysbench-tidb/last-run.txt`), prefixed with the run's parameters. Each run
+overwrites the file, so a completed run's numbers survive after the terminal output
+scrolls away.
+
 ### stop
 
 ```bash

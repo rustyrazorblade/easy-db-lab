@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-LABELS="easydblab/kit=${KIT_NAME},easydblab/role=sysbench-run"
+# stop has no args of its own, so default any prepare/start-only vars safely
+# to keep the script working under `set -u`. Defaults match the kit.yaml
+# prepare defaults so cleanup drops the standard set of sbtest tables.
+TABLES="${TABLES:-10}"
+WORKLOAD="${WORKLOAD:-oltp_read_write}"
 
-echo "Stopping sysbench run pod..."
-kubectl --kubeconfig="${KUBECONFIG}" delete pods -l "${LABELS}" --ignore-not-found
+echo "Stopping sysbench pods for kit ${KIT_NAME}..."
+kubectl --kubeconfig="${KUBECONFIG}" delete pods \
+  -l "easydblab/kit=${KIT_NAME}" --ignore-not-found
 
 if [ -n "${TARGET_MYSQL_HOST:-}" ]; then
   DB_ARGS="--db-driver=mysql \
@@ -40,5 +45,6 @@ kubectl --kubeconfig="${KUBECONFIG}" wait \
   --timeout=300s \
   pod/"${CLEANUP_POD}"
 
-kubectl --kubeconfig="${KUBECONFIG}" delete pod "${CLEANUP_POD}" --ignore-not-found
+kubectl --kubeconfig="${KUBECONFIG}" delete pods \
+  -l "${CLEANUP_LABELS}" --ignore-not-found
 echo "Sysbench stopped and data cleaned up."

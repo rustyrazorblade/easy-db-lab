@@ -1,9 +1,65 @@
-// Discover all host processes for eBPF profiling
-discovery.process "all" {
-  refresh_interval = "60s"
+// Discover the Kubernetes pods scheduled on THIS node so their processes can be
+// attributed. The node filter keeps each DaemonSet replica watching only its own
+// node's pods, which minimizes load on the API server.
+discovery.kubernetes "pods" {
+  role = "pod"
+
+  selectors {
+    role  = "pod"
+    field = "spec.nodeName=" + sys.env("HOSTNAME")
+  }
 }
 
-// Add hostname and cluster labels via relabeling
+// Turn raw Kubernetes meta labels into the dimensions Pyroscope filters on.
+// `__meta_kubernetes_pod_container_id` is intentionally left untouched — it is the
+// key discovery.process joins on below to attach these labels to the right process.
+discovery.relabel "kubernetes_pods" {
+  targets = discovery.kubernetes.pods.targets
+
+  // Drop terminated containers — they have no live process to profile.
+  rule {
+    action        = "drop"
+    source_labels = ["__meta_kubernetes_pod_phase"]
+    regex         = "Succeeded|Failed|Completed"
+  }
+  rule {
+    action        = "replace"
+    source_labels = ["__meta_kubernetes_namespace"]
+    target_label  = "namespace"
+  }
+  rule {
+    action        = "replace"
+    source_labels = ["__meta_kubernetes_pod_name"]
+    target_label  = "pod"
+  }
+  rule {
+    action        = "replace"
+    source_labels = ["__meta_kubernetes_pod_container_name"]
+    target_label  = "container"
+  }
+  // service_name is the primary filter dimension in the Pyroscope UI. Deriving it
+  // from namespace + container (e.g. "tidb-cluster/tikv") makes tikv/tidb/pd and
+  // every other kit component selectable instead of collapsing into "unspecified".
+  rule {
+    action        = "replace"
+    source_labels = ["__meta_kubernetes_namespace", "__meta_kubernetes_pod_container_name"]
+    separator     = "/"
+    regex         = "(.*)"
+    replacement   = "$1"
+    target_label  = "service_name"
+  }
+}
+
+// Discover every host process, then join the Kubernetes metadata above by matching
+// container id. Processes that belong to a pod inherit namespace/pod/container/
+// service_name labels; processes that don't (e.g. the host Cassandra systemd service)
+// are still profiled, just without pod labels.
+discovery.process "all" {
+  refresh_interval = "60s"
+  join             = discovery.relabel.kubernetes_pods.output
+}
+
+// Add the node-level hostname and cluster labels to every target.
 discovery.relabel "ebpf_targets" {
   targets = discovery.process.all.targets
 

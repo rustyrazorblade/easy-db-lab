@@ -279,6 +279,9 @@ class K8sServiceIntegrationTest {
         assertConfigMapExists("pyroscope-config", "config.yaml")
         assertServiceExists("pyroscope")
         assertDeploymentExists("pyroscope")
+        assertServiceAccountExists("pyroscope-ebpf")
+        assertClusterRoleExists("pyroscope-ebpf")
+        assertClusterRoleBindingExists("pyroscope-ebpf")
         assertConfigMapExists("pyroscope-ebpf-config", "config.alloy")
         assertDaemonSetExists("pyroscope-ebpf")
     }

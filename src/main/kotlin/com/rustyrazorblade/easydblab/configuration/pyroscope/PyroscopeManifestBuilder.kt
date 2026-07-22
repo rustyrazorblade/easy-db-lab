@@ -7,10 +7,13 @@ import io.fabric8.kubernetes.api.model.Container
 import io.fabric8.kubernetes.api.model.ContainerBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.SecurityContextBuilder
+import io.fabric8.kubernetes.api.model.ServiceAccountBuilder
 import io.fabric8.kubernetes.api.model.ServiceBuilder
 import io.fabric8.kubernetes.api.model.VolumeMountBuilder
 import io.fabric8.kubernetes.api.model.apps.DaemonSetBuilder
 import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
+import io.fabric8.kubernetes.api.model.rbac.ClusterRoleBindingBuilder
+import io.fabric8.kubernetes.api.model.rbac.ClusterRoleBuilder
 
 /**
  * Builds all Pyroscope K8s resources as typed Fabric8 objects.
@@ -44,12 +47,18 @@ class PyroscopeManifestBuilder(
         private const val EBPF_CONFIGMAP_NAME = "pyroscope-ebpf-config"
         private const val ALLOY_IMAGE = "grafana/alloy:v1.13.1"
         private const val ALLOY_PORT = 12345
+
+        // RBAC constants — the Alloy `discovery.kubernetes` component lists pods on the
+        // node so eBPF samples can be attributed to a pod/container/service_name.
+        private const val EBPF_SERVICE_ACCOUNT_NAME = "pyroscope-ebpf"
+        private const val EBPF_CLUSTER_ROLE_NAME = "pyroscope-ebpf"
     }
 
     /**
      * Builds all Pyroscope K8s resources in apply order.
      *
      * @return List of: server ConfigMap, server Service, server Deployment,
+     *   eBPF ServiceAccount, eBPF ClusterRole, eBPF ClusterRoleBinding,
      *   eBPF ConfigMap, eBPF DaemonSet
      */
     fun buildAllResources(): List<HasMetadata> =
@@ -57,9 +66,67 @@ class PyroscopeManifestBuilder(
             buildServerConfigMap(),
             buildServerService(),
             buildServerDeployment(),
+            buildEbpfServiceAccount(),
+            buildEbpfClusterRole(),
+            buildEbpfClusterRoleBinding(),
             buildEbpfConfigMap(),
             buildEbpfDaemonSet(),
         )
+
+    /**
+     * Builds the ServiceAccount used by the Alloy eBPF DaemonSet.
+     *
+     * Required so the `discovery.kubernetes` component in config.alloy can list pods
+     * to attribute eBPF samples to the owning pod/container/service_name.
+     */
+    fun buildEbpfServiceAccount() =
+        ServiceAccountBuilder()
+            .withNewMetadata()
+            .withName(EBPF_SERVICE_ACCOUNT_NAME)
+            .withNamespace(NAMESPACE)
+            .addToLabels("app.kubernetes.io/name", EBPF_APP_LABEL)
+            .endMetadata()
+            .build()
+
+    /**
+     * Builds the ClusterRole granting the eBPF agent read access to pods.
+     *
+     * `discovery.kubernetes` with `role = "pod"` needs list/watch on pods cluster-wide
+     * (scoped per-node at query time via a field selector) to resolve container id → pod.
+     */
+    fun buildEbpfClusterRole() =
+        ClusterRoleBuilder()
+            .withNewMetadata()
+            .withName(EBPF_CLUSTER_ROLE_NAME)
+            .addToLabels("app.kubernetes.io/name", EBPF_APP_LABEL)
+            .endMetadata()
+            .addNewRule()
+            .withApiGroups("")
+            .withResources("pods")
+            .withVerbs("get", "watch", "list")
+            .endRule()
+            .build()
+
+    /**
+     * Builds the ClusterRoleBinding linking the eBPF ServiceAccount to its ClusterRole.
+     */
+    fun buildEbpfClusterRoleBinding() =
+        ClusterRoleBindingBuilder()
+            .withNewMetadata()
+            .withName(EBPF_CLUSTER_ROLE_NAME)
+            .addToLabels("app.kubernetes.io/name", EBPF_APP_LABEL)
+            .endMetadata()
+            .withNewRoleRef()
+            .withApiGroup("rbac.authorization.k8s.io")
+            .withKind("ClusterRole")
+            .withName(EBPF_CLUSTER_ROLE_NAME)
+            .endRoleRef()
+            .addNewSubject()
+            .withKind("ServiceAccount")
+            .withName(EBPF_SERVICE_ACCOUNT_NAME)
+            .withNamespace(NAMESPACE)
+            .endSubject()
+            .build()
 
     /**
      * Builds the Pyroscope server ConfigMap containing config.yaml.
@@ -205,7 +272,9 @@ class PyroscopeManifestBuilder(
      * Builds the eBPF agent DaemonSet.
      *
      * Runs Grafana Alloy with pyroscope.ebpf on all nodes (tolerates everything).
-     * Requires hostPID and privileged mode for eBPF access.
+     * Requires hostPID and privileged mode for eBPF access. Uses the
+     * [EBPF_SERVICE_ACCOUNT_NAME] ServiceAccount so the `discovery.kubernetes`
+     * component can list pods and attribute samples to pod/container/service_name.
      */
     @Suppress("LongMethod")
     fun buildEbpfDaemonSet() =
@@ -224,6 +293,7 @@ class PyroscopeManifestBuilder(
             .addToLabels("app.kubernetes.io/name", EBPF_APP_LABEL)
             .endMetadata()
             .withNewSpec()
+            .withServiceAccountName(EBPF_SERVICE_ACCOUNT_NAME)
             .withHostNetwork(true)
             .withHostPID(true)
             .withDnsPolicy("ClusterFirstWithHostNet")

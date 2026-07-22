@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+KIT_DIR="$(dirname "${SCRIPT_DIR}")"
+# Persist the final sysbench summary so a run's numbers survive after stdout scrolls away.
+LAST_RUN_FILE="${KIT_DIR}/last-run.txt"
+
 SYSBENCH_IMAGE="docker.io/severalnines/sysbench"
 POD_NAME="sysbench-${KIT_NAME}-$(date +%s)"
 LABELS="easydblab/kit=${KIT_NAME},easydblab/role=sysbench-run"
@@ -46,15 +51,38 @@ kubectl --kubeconfig="${KUBECONFIG}" wait \
   --timeout=60s \
   pod/"${POD_NAME}"
 
-# Stream logs, echo every line, capture the full log, and push interval stats to
-# VictoriaMetrics. Interval lines match:
+# Seed the persisted summary file with run metadata; the final sysbench report
+# (SQL statistics / Throughput / Latency percentiles / errors) is appended below.
+{
+  echo "sysbench run summary"
+  echo "workload:  ${WORKLOAD}"
+  echo "threads:   ${THREADS}"
+  echo "duration:  ${DURATION}s"
+  echo "rate:      ${RATE}"
+  echo "skip-trx:  ${SKIP_TRX}"
+  echo "rand-type: ${RAND_TYPE}"
+  echo "started:   $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  echo
+} > "${LAST_RUN_FILE}"
+
+# Stream logs, echo every line, capture the full log, push interval stats to
+# VictoriaMetrics, and persist the final summary block to LAST_RUN_FILE.
+# Interval lines match:
 #   "[ Ns ] thds: N tps: N.NN qps: N.NN ... lat (ms,99%): N.NN err/s: N.NN ..."
 # sysbench interval reports only ever emit the single configured percentile (99%),
 # so p50/p95 cannot be derived per-interval. The full run log is teed to a file so
 # the final --histogram section can be parsed for whole-run p50/p95/p99 below.
+# The summary block starts at "SQL statistics:" and runs to the end of the log.
+IN_SUMMARY=0
 LOG_FILE="$(mktemp)"
 kubectl --kubeconfig="${KUBECONFIG}" logs -f "${POD_NAME}" | tee "${LOG_FILE}" | while IFS= read -r line; do
   echo "$line"
+  if [[ "$line" == "SQL statistics:"* ]]; then
+    IN_SUMMARY=1
+  fi
+  if [[ "${IN_SUMMARY}" == "1" ]]; then
+    printf '%s\n' "$line" >> "${LAST_RUN_FILE}"
+  fi
   if [[ "$line" =~ ^\[\ [0-9]+s\ \] ]]; then
     read -r TPS QPS LAT ERR <<< "$(echo "$line" | awk '{
       for (i=1; i<=NF; i++) {
@@ -99,3 +127,5 @@ curl -sf --max-time 2 -X POST "${VICTORIA_URL}" \
 sysbench_lat_p95_ms{kit=\"${KIT_NAME}\"} ${P95:-0}
 sysbench_lat_p99_ms{kit=\"${KIT_NAME}\"} ${P99:-0}" 2>/dev/null || true
 rm -f "${LOG_FILE}"
+
+echo "Run summary written to ${LAST_RUN_FILE}"

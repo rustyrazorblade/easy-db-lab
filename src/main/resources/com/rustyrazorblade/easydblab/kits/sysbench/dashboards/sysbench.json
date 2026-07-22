@@ -146,12 +146,24 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sysbench_lat_p99_ms{kit=~\"$kit\"}",
-          "legendFormat": "{{kit}}",
+          "expr": "sysbench_lat_p50_ms{kit=~\"$kit\"}",
+          "legendFormat": "p50 {{kit}}",
           "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sysbench_lat_p95_ms{kit=~\"$kit\"}",
+          "legendFormat": "p95 {{kit}}",
+          "refId": "B"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sysbench_lat_p99_ms{kit=~\"$kit\"}",
+          "legendFormat": "p99 {{kit}}",
+          "refId": "C"
         }
       ],
-      "title": "P99 Latency (ms)",
+      "title": "Latency Percentiles (ms)",
       "type": "timeseries"
     },
     {

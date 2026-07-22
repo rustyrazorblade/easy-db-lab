@@ -111,8 +111,15 @@ a run, these metrics are pushed to VictoriaMetrics, labelled by instance (`kit`)
 |--------|-------------|
 | `sysbench_tps` | Transactions per second |
 | `sysbench_qps` | Queries per second |
-| `sysbench_lat_p99_ms` | 99th percentile latency (ms) |
+| `sysbench_lat_p99_ms` | 99th percentile latency (ms) — pushed per interval, plus a whole-run value at completion |
+| `sysbench_lat_p95_ms` | 95th percentile latency (ms), whole-run |
+| `sysbench_lat_p50_ms` | 50th percentile (median) latency (ms), whole-run |
 | `sysbench_errors_per_second` | Errors per second |
 
 The `kit` label carries the instance name (e.g. `sysbench-tidb`), so runs against
 different targets plot as separate series on the same panel.
+
+sysbench's interval reports only emit the single configured percentile (p99), so
+p50/p95 cannot be sampled per interval. The kit runs sysbench with `--histogram` and
+parses the final latency histogram to derive whole-run p50/p95/p99, pushed once when
+the run completes.

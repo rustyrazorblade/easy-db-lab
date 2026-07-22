@@ -109,6 +109,37 @@ class MetricsRegistryServiceTest : BaseKoinTest() {
     }
 
     @Test
+    fun `register writes pod-selector into ConfigMap data for pod-discovery target`() {
+        val target =
+            KitMetrics.Scrape(
+                port = 20180,
+                path = "/metrics",
+                job = "tikv",
+                podSelector = "app.kubernetes.io/component=tikv,app.kubernetes.io/instance=tidb",
+            )
+        service.register(controlHost = controlHost, kitName = "tidb", targets = listOf(target))
+
+        verify(mockK8sService).createConfigMap(
+            controlHost = controlHost,
+            namespace = "default",
+            name = "easydblab-metrics-tidb-tikv",
+            data =
+                mapOf(
+                    "kit-name" to "tidb",
+                    "job-name" to "tikv",
+                    "port" to "20180",
+                    "path" to "/metrics",
+                    "pod-selector" to "app.kubernetes.io/component=tikv,app.kubernetes.io/instance=tidb",
+                ),
+            labels =
+                mapOf(
+                    Constants.K8s.WORKLOAD_METRICS_LABEL to "true",
+                    Constants.K8s.KIT_LABEL to "tidb",
+                ),
+        )
+    }
+
+    @Test
     fun `register creates one ConfigMap per target for multi-target kit`() {
         val targets =
             listOf(

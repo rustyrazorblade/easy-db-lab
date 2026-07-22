@@ -152,7 +152,7 @@ The OTel collector DaemonSet runs with `hostNetwork: true` so it can scrape both
 | ClickHouse | Prometheus | 9363 | 30936 | NodePort |
 | TiDB | MySQL (SQL layer) | 4000 | 30400 | NodePort |
 | TiDB | Prometheus (tidb-sql) | — | 31080 | NodePort |
-| TiDB | Prometheus (tikv) | — | 32180 | NodePort |
+| TiDB | Prometheus (tikv) | 20180 | — | pod SD (per-store) |
 | TiDB | Prometheus (pd) | — | 32379 | NodePort |
 | TiDB | Prometheus (tiflash) | — | 32234 | NodePort |
 | Presto | HTTP (coordinator) | 8080 | 8080 | hostPort |
@@ -167,17 +167,27 @@ Each kit declares its metrics targets in `kit.yaml`. `metrics` is a list — kit
 
 ```yaml
 metrics:
-  - type: scrape     # Prometheus endpoint — OTel DaemonSet scrapes it
+  - type: scrape     # Prometheus endpoint — OTel DaemonSet scrapes it at localhost:<port>
     port: 31080
     path: /metrics
     job: tidb-sql
-  - type: scrape
-    port: 32180
-    path: /metrics
+  - type: scrape     # pod service discovery — each pod scraped directly, per-pod `instance`
     job: tikv
+    pod-selector: "app.kubernetes.io/component=tikv,app.kubernetes.io/instance=tidb"
+    port: 20180      # container metrics port, not a NodePort
+    path: /metrics
 ```
 
 If `job` is omitted, the kit name is used.
+
+**Static NodePort vs. pod discovery.** By default a scrape target is a static `localhost:<port>`
+NodePort — every collector scrapes it and `instance` is the collector's hostname. When a target
+sets `pod-selector` (a comma-separated K8s label selector), the OTel collector instead uses
+Prometheus pod service discovery (`kubernetes_sd_configs`, role: pod): each collector scrapes only
+the matching pods co-located on its own node, and `instance` becomes the pod name. Use this when a
+component has multiple pods behind one service and you need per-pod attribution — a NodePort
+load-balances scrapes across all pods, so a single store/pod cannot be distinguished. TiKV uses this
+so each of the 3 stores reports under its own `instance` (e.g. `tidb-tikv-0`).
 
 Three modes are supported:
 

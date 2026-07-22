@@ -8,10 +8,15 @@ metrics:
     port: 31080
     path: /metrics
     job: tidb-sql
+  # TiKV is scraped per-pod (not via a shared NodePort) so `instance` carries the store's
+  # pod name. A NodePort load-balances each scrape across all stores, making per-store
+  # attribution (leader hotspots, per-store CPU/compaction) impossible. `port` here is the
+  # TiKV status/metrics container port (20180), not a NodePort.
   - type: scrape
-    port: 32180
-    path: /metrics
     job: tikv
+    pod-selector: "app.kubernetes.io/component=tikv,app.kubernetes.io/instance=tidb"
+    port: 20180
+    path: /metrics
   - type: scrape
     port: 32379
     path: /metrics
@@ -103,10 +108,6 @@ stop:
   - type: delete
     kind: Service
     name: tidb-nodeport
-    namespace: default
-  - type: delete
-    kind: Service
-    name: tikv-nodeport
     namespace: default
   - type: delete
     kind: Service

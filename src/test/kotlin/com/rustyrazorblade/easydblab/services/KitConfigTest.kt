@@ -539,6 +539,38 @@ class KitConfigTest {
     }
 
     @Test
+    fun `parses scrape pod-selector for pod discovery`() {
+        val config =
+            parse(
+                """
+                name: tidb
+                metrics:
+                  - type: scrape
+                    job: tikv
+                    pod-selector: "app.kubernetes.io/component=tikv,app.kubernetes.io/instance=tidb"
+                    port: 20180
+                """.trimIndent(),
+            )
+        val metrics = config.metrics[0] as KitMetrics.Scrape
+        assertThat(metrics.podSelector).isEqualTo("app.kubernetes.io/component=tikv,app.kubernetes.io/instance=tidb")
+    }
+
+    @Test
+    fun `scrape pod-selector defaults to empty string`() {
+        val config =
+            parse(
+                """
+                name: clickhouse
+                metrics:
+                  - type: scrape
+                    port: 9363
+                """.trimIndent(),
+            )
+        val metrics = config.metrics[0] as KitMetrics.Scrape
+        assertThat(metrics.podSelector).isEmpty()
+    }
+
+    @Test
     fun `parses java-agent metrics`() {
         val config =
             parse(

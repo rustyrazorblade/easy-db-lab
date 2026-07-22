@@ -71,9 +71,17 @@ class OtelManifestBuilder(
             val port = data["port"]?.toIntOrNull() ?: return@mapNotNull null
             val path = data["path"] ?: "/metrics"
             val username = data["username"] ?: ""
+            val podSelector = data["pod-selector"] ?: ""
             // Falls back to jobName for ConfigMaps written before the kit-name key was added
             val kitName = data["kit-name"] ?: jobName
-            WorkloadScrapeConfig(kitName = kitName, jobName = jobName, port = port, path = path, username = username)
+            WorkloadScrapeConfig(
+                kitName = kitName,
+                jobName = jobName,
+                port = port,
+                path = path,
+                username = username,
+                podSelector = podSelector,
+            )
         }
     }
 
@@ -171,33 +179,7 @@ class OtelManifestBuilder(
         if (configs.isEmpty()) return ""
         val jobs =
             configs.map { config ->
-                PrometheusScrapeJob(
-                    // Use kitName-jobName compound key to ensure uniqueness in all cases:
-                    // - Same kit with multiple scrape targets (e.g. kafka-exporter and kafka-jmx)
-                    // - Multiple kit instances sharing the same jobName (e.g. postgres-duckdb and postgres-postgis)
-                    jobName = "${config.kitName}-${config.jobName}",
-                    scrapeInterval = SCRAPE_INTERVAL,
-                    staticConfigs = listOf(PrometheusStaticConfig(targets = listOf("localhost:${config.port}"))),
-                    metricsPath = config.path,
-                    relabelConfigs =
-                        listOf(
-                            // Preserve the logical job name from kit.yaml as the `job` label so
-                            // Prometheus queries like job="postgres" continue to work across instances.
-                            PrometheusRelabelConfig(
-                                targetLabel = "job",
-                                replacement = config.jobName,
-                            ),
-                            PrometheusRelabelConfig(
-                                targetLabel = "instance",
-                                replacement = "\${env:HOSTNAME}:${config.port}",
-                            ),
-                            PrometheusRelabelConfig(
-                                targetLabel = "cluster",
-                                replacement = "\${env:CLUSTER_NAME}",
-                            ),
-                        ),
-                    basicAuth = if (config.username.isNotBlank()) PrometheusBasicAuth(username = config.username) else null,
-                )
+                if (config.podSelector.isNotBlank()) buildPodScrapeJob(config) else buildStaticScrapeJob(config)
             }
         // 8-space indent matches the depth of `- job_name:` entries under
         // `receivers.prometheus.config.scrape_configs` in otel-collector-config.yaml.
@@ -207,6 +189,101 @@ class OtelManifestBuilder(
             .trimEnd()
             .lines()
             .joinToString("\n") { line -> if (line.isEmpty()) "" else "        $line" }
+    }
+
+    /**
+     * Builds a static NodePort scrape job. Every collector on every node scrapes the same
+     * `localhost:<nodePort>` target, so `instance` is stamped with the collector's own hostname.
+     */
+    private fun buildStaticScrapeJob(config: WorkloadScrapeConfig) =
+        PrometheusScrapeJob(
+            // Use kitName-jobName compound key to ensure uniqueness in all cases:
+            // - Same kit with multiple scrape targets (e.g. kafka-exporter and kafka-jmx)
+            // - Multiple kit instances sharing the same jobName (e.g. postgres-duckdb and postgres-postgis)
+            jobName = "${config.kitName}-${config.jobName}",
+            scrapeInterval = SCRAPE_INTERVAL,
+            staticConfigs = listOf(PrometheusStaticConfig(targets = listOf("localhost:${config.port}"))),
+            metricsPath = config.path,
+            relabelConfigs =
+                listOf(
+                    // Preserve the logical job name from kit.yaml as the `job` label so
+                    // Prometheus queries like job="postgres" continue to work across instances.
+                    PrometheusRelabelConfig(targetLabel = "job", replacement = config.jobName),
+                    PrometheusRelabelConfig(targetLabel = "instance", replacement = "\${env:HOSTNAME}:${config.port}"),
+                    PrometheusRelabelConfig(targetLabel = "cluster", replacement = "\${env:CLUSTER_NAME}"),
+                ),
+            basicAuth = if (config.username.isNotBlank()) PrometheusBasicAuth(username = config.username) else null,
+        )
+
+    /**
+     * Builds a pod service-discovery scrape job. Each pod is scraped directly on its own IP, so
+     * `instance` carries the pod name (e.g. `tidb-tikv-0`) — the stable per-store identity a shared
+     * NodePort cannot provide. Discovery is filtered to pods matching [WorkloadScrapeConfig.podSelector]
+     * that are co-located on the scraping collector's node (`__meta_kubernetes_pod_node_name` == the
+     * collector's `HOSTNAME`). Node-local filtering is essential: without it, every collector in the
+     * DaemonSet would scrape every pod, producing duplicate series for the same `instance`.
+     */
+    private fun buildPodScrapeJob(config: WorkloadScrapeConfig): PrometheusScrapeJob {
+        val selectorRelabels =
+            config.podSelector
+                .split(",")
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .map { pair ->
+                    val (key, value) = pair.split("=", limit = 2).let { it[0].trim() to it.getOrElse(1) { "" }.trim() }
+                    PrometheusRelabelConfig(
+                        sourceLabels = listOf(podLabelMetaKey(key)),
+                        regex = value,
+                        action = "keep",
+                    )
+                }
+        return PrometheusScrapeJob(
+            jobName = "${config.kitName}-${config.jobName}",
+            scrapeInterval = SCRAPE_INTERVAL,
+            kubernetesSdConfigs =
+                listOf(
+                    PrometheusKubernetesSdConfig(
+                        role = "pod",
+                        namespaces = PrometheusSdNamespaces(names = listOf(NAMESPACE)),
+                    ),
+                ),
+            metricsPath = config.path,
+            relabelConfigs =
+                selectorRelabels +
+                    listOf(
+                        // Only scrape pods on this collector's node — one TiKV pod per db node.
+                        PrometheusRelabelConfig(
+                            sourceLabels = listOf("__meta_kubernetes_pod_node_name"),
+                            regex = "\${env:HOSTNAME}",
+                            action = "keep",
+                        ),
+                        // Target the pod IP directly on its container metrics port (not the NodePort).
+                        // OTel expands $$ to a literal $, leaving Prometheus its $1 capture group.
+                        PrometheusRelabelConfig(
+                            sourceLabels = listOf("__meta_kubernetes_pod_ip"),
+                            targetLabel = "__address__",
+                            replacement = "\$\$1:${config.port}",
+                        ),
+                        // Per-pod identity: instance = pod name (the store), not the NodePort.
+                        PrometheusRelabelConfig(
+                            sourceLabels = listOf("__meta_kubernetes_pod_name"),
+                            targetLabel = "instance",
+                        ),
+                        PrometheusRelabelConfig(targetLabel = "job", replacement = config.jobName),
+                        PrometheusRelabelConfig(targetLabel = "cluster", replacement = "\${env:CLUSTER_NAME}"),
+                    ),
+            basicAuth = if (config.username.isNotBlank()) PrometheusBasicAuth(username = config.username) else null,
+        )
+    }
+
+    /**
+     * Converts a K8s pod label key (e.g. `app.kubernetes.io/component`) into the Prometheus
+     * pod-discovery meta-label (`__meta_kubernetes_pod_label_app_kubernetes_io_component`).
+     * Prometheus sanitizes label names by replacing every non-alphanumeric character with `_`.
+     */
+    private fun podLabelMetaKey(key: String): String {
+        val sanitized = key.map { if (it.isLetterOrDigit()) it else '_' }.joinToString("")
+        return "__meta_kubernetes_pod_label_$sanitized"
     }
 
     /**

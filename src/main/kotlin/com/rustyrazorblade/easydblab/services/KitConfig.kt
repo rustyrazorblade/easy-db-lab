@@ -26,6 +26,8 @@ sealed class KitMetrics {
         val path: String = "/metrics",
         val job: String = "",
         val username: String = "",
+        @SerialName("pod-selector")
+        val podSelector: String = "",
     ) : KitMetrics()
 
     @Serializable

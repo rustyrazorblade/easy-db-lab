@@ -49,3 +49,18 @@ commands:
         type: int
         description: "Benchmark duration in seconds"
         default: "60"
+      - flag: --rate
+        variable: RATE
+        type: int
+        description: "Target transactions/sec (0 = unlimited, thread-bound)"
+        default: "0"
+      - flag: --skip-trx
+        variable: SKIP_TRX
+        type: string
+        description: "Run statements in autocommit instead of BEGIN/COMMIT transactions (on|off; default off)"
+        default: "off"
+      - flag: --rand-type
+        variable: RAND_TYPE
+        type: string
+        description: "Key access distribution: uniform | gaussian | special | pareto (default special, sysbench's own default)"
+        default: "special"

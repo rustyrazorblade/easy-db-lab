@@ -2,14 +2,23 @@
 
 TiDB exposes Prometheus metrics across four components, each with its own scrape target:
 
-| Component | Job label   | NodePort | Description                              |
-|-----------|-------------|----------|------------------------------------------|
-| TiDB SQL  | `tidb-sql`  | 31080    | SQL layer — connections, queries, errors |
-| PD        | `pd`        | 32379    | Placement Driver — TSO, region scheduling |
-| TiKV      | `tikv`      | 32180    | Row storage engine (RocksDB + Raft)      |
-| TiFlash   | `tiflash`   | 32234    | Columnar storage engine (MPP)            |
+| Component | Job label   | Scrape target       | Description                              |
+|-----------|-------------|---------------------|------------------------------------------|
+| TiDB SQL  | `tidb-sql`  | NodePort 31080      | SQL layer — connections, queries, errors |
+| PD        | `pd`        | NodePort 32379      | Placement Driver — TSO, region scheduling |
+| TiKV      | `tikv`      | pod SD, port 20180  | Row storage engine (RocksDB + Raft)      |
+| TiFlash   | `tiflash`   | NodePort 32234      | Columnar storage engine (MPP)            |
 
 All metrics also carry `cluster=<cluster-name>`.
+
+### TiKV `instance` = store identity
+
+TiKV is scraped **per pod** via Prometheus pod service discovery, not through a shared NodePort.
+Each collector scrapes only the TiKV pod on its own node (one store per db node), so every TiKV
+series carries `instance=<pod-name>` (e.g. `tidb-tikv-0`) — a stable per-store identity. This is
+what makes per-store attribution possible: leader hotspots, per-store CPU, per-store compaction,
+and RocksDB engine size all break down by `instance`. A NodePort would load-balance each scrape
+across all stores, collapsing them into an indistinguishable node-port `instance`.
 
 ---
 

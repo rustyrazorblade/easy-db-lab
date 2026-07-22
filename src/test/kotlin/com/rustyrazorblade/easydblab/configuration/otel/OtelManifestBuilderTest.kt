@@ -81,6 +81,48 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         assertThat(yaml).contains("job_name: \"opensearch-opensearch\"")
         assertThat(yaml).contains("localhost:9600")
         assertThat(yaml).contains("metrics_path: \"/_prometheus/metrics\"")
+        // Without a pod-selector, targets are static NodePorts — no pod discovery.
+        assertThat(yaml).contains("static_configs")
+        assertThat(yaml).doesNotContain("kubernetes_sd_configs")
+    }
+
+    @Test
+    fun `buildConfigMap generates pod service discovery job when podSelector is set`() {
+        val scrapeConfigs =
+            listOf(
+                WorkloadScrapeConfig(
+                    kitName = "tidb",
+                    jobName = "tikv",
+                    port = 20180,
+                    path = "/metrics",
+                    podSelector = "app.kubernetes.io/component=tikv,app.kubernetes.io/instance=tidb",
+                ),
+            )
+
+        val configMap = builder.buildConfigMap(scrapeConfigs)
+        val yaml = yamlFrom(configMap)
+
+        assertThat(yaml).contains("job_name: \"tidb-tikv\"")
+        // Uses pod service discovery, not a static localhost NodePort target.
+        assertThat(yaml).contains("kubernetes_sd_configs")
+        assertThat(yaml).contains("role: \"pod\"")
+        assertThat(yaml).doesNotContain("localhost:20180")
+        // Selector becomes keep relabels on sanitized pod meta-labels.
+        assertThat(yaml).contains("__meta_kubernetes_pod_label_app_kubernetes_io_component")
+        assertThat(yaml).contains("__meta_kubernetes_pod_label_app_kubernetes_io_instance")
+        assertThat(yaml).contains("action: \"keep\"")
+        // Node-local filtering so each collector scrapes only its own node's pod (no duplicate series).
+        assertThat(yaml).contains("__meta_kubernetes_pod_node_name")
+        assertThat(yaml).contains("\${env:HOSTNAME}")
+        // instance = pod name — the per-store identity, sourced from the pod name meta-label.
+        assertThat(yaml).contains("__meta_kubernetes_pod_name")
+        assertThat(yaml).contains("target_label: \"instance\"")
+        // Scrape the pod IP on the container metrics port; $$ escapes to a literal $ for Prometheus.
+        assertThat(yaml).contains("__meta_kubernetes_pod_ip")
+        assertThat(yaml).contains("\$\$1:20180")
+        // Logical job label preserved.
+        assertThat(yaml).contains("target_label: \"job\"")
+        assertThat(yaml).contains("replacement: \"tikv\"")
     }
 
     @Test

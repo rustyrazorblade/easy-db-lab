@@ -107,6 +107,12 @@ class ProcessSocksProxyService(
                         return@withLock reused
                     } else {
                         log.info { "Stale SOCKS5 proxy state, starting fresh" }
+                        // The recorded proxy is not reusable (e.g. a live PID whose port stopped
+                        // accepting — a zombie tunnel). startNewProxy() below overwrites the state
+                        // file with a new PID, so this one becomes unrecorded and `Down` could
+                        // never find it. Kill it now, before it is forgotten, or it leaks and
+                        // survives teardown (issue #741).
+                        terminateStaleProxy(loaded.pid)
                     }
                 } catch (e: Exception) {
                     log.warn(e) { "Failed to read proxy state file, starting fresh" }
@@ -291,6 +297,37 @@ class ProcessSocksProxyService(
             return false
         }
         return true
+    }
+
+    /**
+     * Force-kills a superseded proxy `ssh` process so it does not leak.
+     *
+     * Called when a recorded proxy is being replaced rather than reused (e.g. a zombie tunnel:
+     * PID alive but its `-D` port stopped accepting). Once [startNewProxy] overwrites the state
+     * file, [stalePid] is the last reference to that process — `Down` reads only the current state
+     * file, so an un-killed stale PID survives even `easy-db-lab down`. A no-op if the PID is
+     * non-positive or already gone.
+     *
+     * Best-effort by design: killing the stale tunnel must never break starting its replacement, so
+     * any failure (including the JVM refusing to destroy its own process, should the PID ever match
+     * this one) is logged, not thrown. A no-op if the PID is non-positive, already gone, or this JVM.
+     *
+     * Internal (not private) purely so a test can drive it against a real spawned process without
+     * exercising the whole [ensureRunning] state-file path.
+     */
+    @Suppress("TooGenericExceptionCaught")
+    internal fun terminateStaleProxy(stalePid: Int) {
+        if (stalePid <= 0 || stalePid.toLong() == ProcessHandle.current().pid()) {
+            return
+        }
+        ProcessHandle.of(stalePid.toLong()).ifPresent { handle ->
+            log.info { "Terminating superseded SOCKS5 proxy process [PID $stalePid]" }
+            try {
+                handle.destroyForcibly()
+            } catch (e: Exception) {
+                log.warn(e) { "Failed to kill superseded SOCKS5 proxy process [PID $stalePid]" }
+            }
+        }
     }
 
     private fun isAlive(processPid: Int): Boolean = processPid > 0 && ProcessHandle.of(processPid.toLong()).isPresent

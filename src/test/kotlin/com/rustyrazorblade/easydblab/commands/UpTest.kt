@@ -562,6 +562,19 @@ class UpTest : BaseKoinTest() {
     }
 
     @Test
+    fun `ssh readiness still covers the control host under a scale-out --hosts filter`() {
+        // A scale-out run like `up --hosts db0` must not narrow the control readiness check to the
+        // db filter — control0 never matches "db0", so filtering it would verify zero hosts and
+        // reopen the control-node readiness gap (issue #741). The db filter applies only to the
+        // db/app check.
+        val up = newUp().also { it.hosts.hostList = "db0" }
+
+        assertThatCode { up.execute() }.doesNotThrowAnyException()
+
+        assertThat(sshCheckedAliases).contains("control0", "db0")
+    }
+
+    @Test
     fun `up aborts when the control node never accepts ssh`() {
         sshFailureAlias = "control0"
         // A non-retryable exception type: RetryUtil's SSH retry config only retries

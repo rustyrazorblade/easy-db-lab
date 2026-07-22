@@ -9,6 +9,9 @@ spec:
   # Delete PVs when the TidbCluster is removed so clusters stay ephemeral.
   pvReclaimPolicy: Delete
   enableDynamicConfiguration: true
+  # Roll pods when spec.<component>.config changes; the default InPlace only updates
+  # the ConfigMap and never restarts TiKV, so config changes would silently not apply.
+  configUpdateStrategy: RollingUpdate
 
   pd:
     baseImage: pingcap/pd

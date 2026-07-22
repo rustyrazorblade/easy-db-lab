@@ -43,6 +43,7 @@ kubectl --kubeconfig="${KUBECONFIG}" run "${POD_NAME}" \
     --rand-type="${RAND_TYPE}" \
     --report-interval=10 \
     --percentile=99 \
+    --histogram \
     "${WORKLOAD}" run
 
 kubectl --kubeconfig="${KUBECONFIG}" wait \
@@ -64,12 +65,17 @@ kubectl --kubeconfig="${KUBECONFIG}" wait \
   echo
 } > "${LAST_RUN_FILE}"
 
-# Stream logs, echo every line, push interval stats to VictoriaMetrics, and
-# persist the final summary block to LAST_RUN_FILE.
-# Interval lines match: "[ Ns ] thds: N tps: N.NN qps: N.NN ... lat (ms,99%): N.NN err/s: N.NN ..."
+# Stream logs, echo every line, capture the full log, push interval stats to
+# VictoriaMetrics, and persist the final summary block to LAST_RUN_FILE.
+# Interval lines match:
+#   "[ Ns ] thds: N tps: N.NN qps: N.NN ... lat (ms,99%): N.NN err/s: N.NN ..."
+# sysbench interval reports only ever emit the single configured percentile (99%),
+# so p50/p95 cannot be derived per-interval. The full run log is teed to a file so
+# the final --histogram section can be parsed for whole-run p50/p95/p99 below.
 # The summary block starts at "SQL statistics:" and runs to the end of the log.
 IN_SUMMARY=0
-kubectl --kubeconfig="${KUBECONFIG}" logs -f "${POD_NAME}" | while IFS= read -r line; do
+LOG_FILE="$(mktemp)"
+kubectl --kubeconfig="${KUBECONFIG}" logs -f "${POD_NAME}" | tee "${LOG_FILE}" | while IFS= read -r line; do
   echo "$line"
   if [[ "$line" == "SQL statistics:"* ]]; then
     IN_SUMMARY=1
@@ -94,5 +100,32 @@ sysbench_lat_p99_ms{kit=\"${KIT_NAME}\"} ${LAT:-0}
 sysbench_errors_per_second{kit=\"${KIT_NAME}\"} ${ERR:-0}" 2>/dev/null || true
   fi
 done
+
+# Derive whole-run p50/p95/p99 from the final latency histogram (values in ms).
+# Histogram data lines look like: "       1.412 |***...     123" — first field is
+# the bucket value, last field is the count. Percentiles are the bucket value at
+# which the cumulative count first crosses the target fraction of the total.
+read -r P50 P95 P99 <<< "$(awk '
+  /Latency histogram/ { inhist = 1; next }
+  inhist && /^[[:space:]]*[0-9.]+[[:space:]]*\|/ {
+    val[++n] = $1; cnt[n] = $NF; total += $NF
+  }
+  END {
+    if (total == 0) { print "0 0 0"; exit }
+    c = 0
+    for (i = 1; i <= n; i++) {
+      c += cnt[i]
+      if (p50 == "" && c >= 0.50 * total) p50 = val[i]
+      if (p95 == "" && c >= 0.95 * total) p95 = val[i]
+      if (p99 == "" && c >= 0.99 * total) p99 = val[i]
+    }
+    print p50, p95, p99
+  }
+' "${LOG_FILE}")"
+curl -sf --max-time 2 -X POST "${VICTORIA_URL}" \
+  --data-binary "sysbench_lat_p50_ms{kit=\"${KIT_NAME}\"} ${P50:-0}
+sysbench_lat_p95_ms{kit=\"${KIT_NAME}\"} ${P95:-0}
+sysbench_lat_p99_ms{kit=\"${KIT_NAME}\"} ${P99:-0}" 2>/dev/null || true
+rm -f "${LOG_FILE}"
 
 echo "Run summary written to ${LAST_RUN_FILE}"

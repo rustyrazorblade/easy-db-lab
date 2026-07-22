@@ -279,7 +279,7 @@ service:
     # Remote metrics via OTLP (e.g., Spark nodes) — stamp cluster label to match local metrics
     metrics/otlp:
       receivers: [otlp]
-      processors: [resource/cluster, batch]
+      processors: [resource/cluster, resourcedetection, batch]
       exporters: [prometheusremotewrite]
     logs/local:
       receivers: [filelog/system, filelog/tools, filelog/cassandra]

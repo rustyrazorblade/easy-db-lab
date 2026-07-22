@@ -1,9 +1,9 @@
 [versions]
 # Kotlin
-kotlin = "2.3.21"
+kotlin = "2.4.10"
 
 # MCP SDK
-mcp-sdk = "0.9.0"
+mcp-sdk = "0.14.0"
 kotlinx-io = "0.9.0"
 
 
@@ -16,7 +16,7 @@ jackson-dataformat = "2.21.2"
 jackson-kotlin = "2.21.+"
 
 # Kotlinx Serialization
-kotlinx-serialization = "1.10.0"
+kotlinx-serialization = "1.11.0"
 kaml = "0.104.0"
 
 # Kotlinx Coroutines
@@ -24,7 +24,7 @@ kotlinx-coroutines = "1.11.0"
 
 # Testing
 archunit = "1.4.2"
-jupiter = "5.10.2"
+jupiter = "6.1.2"
 assertj = "3.27.7"
 mockito-kotlin = "6.3.0"
 mockito = "5.23.0"
@@ -39,11 +39,11 @@ mordant = "1.2.1"
 ktor = "3.5.1"
 
 # Koin DI
-koin = "4.2.1"
+koin = "4.2.2"
 
 # AWS SDK
-awssdk = "2.47.5"
-awssdk-kotlin = "1.4.92"
+awssdk = "2.48.3"
+awssdk-kotlin = "1.8.9"
 
 # Docker
 docker-java = "3.7.1"
@@ -60,18 +60,18 @@ commons-text = "1.15.0"
 cassandra-driver = "4.19.2"
 
 # Redis
-jedis = "7.4.0"
+jedis = "7.5.3"
 
 # Other
 classgraph = "4.8.184"
 presto-jdbc = "0.289"
 trino-jdbc = "474"
 clickhouse-jdbc = "0.7.2"
-mysql-connector-j = "9.3.0"
+mysql-connector-j = "9.7.0"
 postgresql-jdbc = "42.7.4"
 ignite3 = "3.1.0"
 resilience4j = "2.4.0"
-fabric8-kubernetes = "7.5.0"
+fabric8-kubernetes = "7.8.0"
 
 # OpenTelemetry
 opentelemetry-agent = "2.26.0"

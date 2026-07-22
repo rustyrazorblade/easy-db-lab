@@ -30,7 +30,10 @@ processors:
   resource/role:
     attributes:
       - key: node_role
-        value: spark
+        # __NODE_ROLE__ is intentionally left unresolved by TemplateService at S3
+        # upload time. The bootstrap action patches it per-node to spark-master or
+        # spark-worker so master and worker telemetry can be filtered independently.
+        value: __NODE_ROLE__
         action: upsert
 
 exporters:

@@ -71,6 +71,9 @@ while true; do
 done
 
 echo "Nodetool reporting node as up. Waiting on port 9042."
+# Reset the clock so the CQL-port wait gets its own full READY_TIMEOUT budget
+# rather than sharing the one already partly consumed by the nodetool loop.
+start_time=$(date +%s)
 # Bounded wait for the CQL port; keep checking the service so a late crash is
 # caught rather than looping forever.
 while ! ss -tulwn | grep -q ':9042'; do

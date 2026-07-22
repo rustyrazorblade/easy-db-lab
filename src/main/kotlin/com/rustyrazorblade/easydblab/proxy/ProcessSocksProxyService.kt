@@ -305,8 +305,7 @@ class ProcessSocksProxyService(
      * Called when a recorded proxy is being replaced rather than reused (e.g. a zombie tunnel:
      * PID alive but its `-D` port stopped accepting). Once [startNewProxy] overwrites the state
      * file, [stalePid] is the last reference to that process — `Down` reads only the current state
-     * file, so an un-killed stale PID survives even `easy-db-lab down`. A no-op if the PID is
-     * non-positive or already gone.
+     * file, so an un-killed stale PID survives even `easy-db-lab down`.
      *
      * Best-effort by design: killing the stale tunnel must never break starting its replacement, so
      * any failure (including the JVM refusing to destroy its own process, should the PID ever match

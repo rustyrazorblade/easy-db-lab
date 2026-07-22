@@ -33,6 +33,9 @@ kubectl --kubeconfig="${KUBECONFIG}" run "${POD_NAME}" \
     ${DB_ARGS} \
     --threads="${THREADS}" \
     --time="${DURATION}" \
+    --rate="${RATE}" \
+    --skip-trx="${SKIP_TRX}" \
+    --rand-type="${RAND_TYPE}" \
     --report-interval=10 \
     --percentile=99 \
     "${WORKLOAD}" run

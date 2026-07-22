@@ -294,10 +294,13 @@ class DefaultTailscaleService(
         runCatching {
             eventBus.emit(Event.Tailscale.DaemonStarting(host.alias))
 
-            // Start the daemon
+            // Enable the daemon for boot and start it now. `enable --now` makes tailscaled
+            // boot-persistent so it auto-starts after a node reboot; without this the daemon
+            // stays disabled and a control-node reboot silently kills all operator CLI and
+            // observability access over the Tailscale subnet route.
             remoteOps.executeRemotely(
                 host,
-                "sudo systemctl start tailscaled",
+                "sudo systemctl enable --now tailscaled",
             )
 
             // Give the daemon a moment to initialize

@@ -10,7 +10,7 @@ Profiling data is collected from multiple sources and sent to the Pyroscope serv
 - **Pyroscope Java agent (Stress jobs)** — Runs as a `-javaagent` inside cassandra-easy-stress K8s Jobs. Collects the same profile types as Cassandra (CPU, allocation, lock). The agent JAR is mounted from the host via a hostPath volume.
 - **Pyroscope Java agent (Presto)** — Runs as a `-javaagent` inside both the Presto coordinator and worker JVMs. Injected via `JAVA_TOOL_OPTIONS` during the `presto start` phase. Profiles appear under `service_name=presto` with `component=coordinator` or `component=worker` labels.
 - **Pyroscope Java agent (Spark/EMR)** — Runs as a `-javaagent` on Spark driver and executor JVMs. Installed via EMR bootstrap action to `/opt/pyroscope/pyroscope.jar`. Collects CPU, allocation (512k threshold), and lock (10ms threshold) profiles in JFR format. Profiles appear under `service_name=spark-<job-name>`.
-- **Grafana Alloy eBPF profiler** — Runs as a DaemonSet on all nodes via [Grafana Alloy](https://grafana.com/docs/alloy/latest/). Profiles all processes (Cassandra, ClickHouse, Presto, stress jobs) at the system level using eBPF. Provides CPU flame graphs including kernel stack frames.
+- **Grafana Alloy eBPF profiler** — Runs as a DaemonSet on all nodes via [Grafana Alloy](https://grafana.com/docs/alloy/latest/). Profiles all processes (Cassandra, ClickHouse, TiDB/TiKV/PD, Presto, stress jobs) at the system level using eBPF. Provides CPU flame graphs including kernel stack frames. Pod processes are attributed per pod/container/service_name; see the eBPF Agent section below.
 
 ## Accessing Profiles
 
@@ -59,7 +59,9 @@ For ad-hoc profile exploration:
 |---------|-------------|
 | `process_cpu` | CPU usage by process, including kernel frames |
 
-The eBPF agent profiles **all processes** on every node, including ClickHouse. Since ClickHouse is written in C++, only CPU profiles are available (no allocation or lock profiles). ClickHouse profiles appear in Pyroscope under the `clickhouse-server` service name when ClickHouse is running.
+The eBPF agent profiles **all processes** on every node, including ClickHouse and other kit databases (TiDB, TiKV, PD). Since these are written in C++/Go, only CPU profiles are available (no allocation or lock profiles).
+
+Processes that run inside Kubernetes pods are attributed to their pod: they carry `namespace`, `pod`, `container`, and a `service_name` derived as `<namespace>/<container>` (for example `tidb-cluster/tikv`). This makes each kit component individually selectable in the Pyroscope UI instead of collapsing into a single `unspecified` service. Host processes that don't run in a pod (for example the Cassandra systemd service) are still profiled, just without pod labels.
 
 ## Stress Job Profiling
 
@@ -99,7 +101,7 @@ The agent JAR is installed at `/usr/local/pyroscope/pyroscope.jar`.
 
 ### eBPF Agent
 
-The eBPF profiler runs as a privileged Grafana Alloy DaemonSet (`pyroscope-ebpf`) and profiles all processes on each node. Configuration is in the `pyroscope-ebpf-config` ConfigMap (Alloy River format). It uses `discovery.process` to discover host processes and `pyroscope.ebpf` to collect CPU profiles.
+The eBPF profiler runs as a privileged Grafana Alloy DaemonSet (`pyroscope-ebpf`) and profiles all processes on each node. Configuration is in the `pyroscope-ebpf-config` ConfigMap (Alloy River format). It uses `discovery.kubernetes` to discover the pods on each node, `discovery.process` (joined to those pods by container id) to discover host processes, and `pyroscope.ebpf` to collect CPU profiles. The DaemonSet runs under the `pyroscope-ebpf` ServiceAccount, whose ClusterRole grants read access to pods so samples can be attributed to a pod/container/service_name.
 
 ### Pyroscope Server
 

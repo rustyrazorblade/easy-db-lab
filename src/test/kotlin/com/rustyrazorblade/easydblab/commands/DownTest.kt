@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.parallel.ResourceLock
 import java.io.File
+import java.util.concurrent.TimeUnit
 
 class DownTest : BaseKoinTest() {
     @BeforeEach
@@ -61,6 +62,43 @@ class DownTest : BaseKoinTest() {
         }
 
         assertThat(proxyStateFile).doesNotExist()
+    }
+
+    @Test
+    fun `cleanupSocks5Proxy resolves the state file against workingDirectory and kills the tunnel`() {
+        // The state file lives in the cluster working directory, NOT the process cwd. This test
+        // proves Down resolves it against context.workingDirectory: the test process cwd is the
+        // project root (never the temp workingDirectory), so a cwd-relative resolver would miss
+        // the file, skip the kill, and orphan the ssh tunnel (issue #738).
+        val workingDir = context.workingDirectory
+
+        // A real, killable stand-in for the `ssh -N -D` tunnel process.
+        val tunnel = ProcessBuilder("sleep", "60").start()
+        try {
+            val proxyStateFile = File(workingDir, Constants.Vpc.SOCKS5_PROXY_STATE_FILE)
+            proxyStateFile.writeText(
+                """
+                {
+                  "pid": ${tunnel.pid()},
+                  "port": 1080,
+                  "controlHost": "control0",
+                  "controlIP": "10.0.1.5",
+                  "clusterName": "test",
+                  "startTime": "2025-01-19T10:30:00Z",
+                  "sshConfig": "$workingDir/sshConfig"
+                }
+                """.trimIndent(),
+            )
+
+            Down().cleanupSocks5Proxy()
+
+            assertThat(tunnel.waitFor(5, TimeUnit.SECONDS))
+                .withFailMessage("cleanupSocks5Proxy should have killed the tunnel process")
+                .isTrue()
+            assertThat(proxyStateFile).doesNotExist()
+        } finally {
+            tunnel.destroyForcibly()
+        }
     }
 
     @Test

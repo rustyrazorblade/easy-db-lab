@@ -72,6 +72,7 @@ class DefaultMetricsRegistryService(
                                 put("port", target.port.toString())
                                 put("path", target.path)
                                 if (target.username.isNotBlank()) put("username", target.username)
+                                if (target.podSelector.isNotBlank()) put("pod-selector", target.podSelector)
                             },
                         labels =
                             mapOf(

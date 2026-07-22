@@ -58,16 +58,7 @@ class HostOperationsService(
         parallel: Boolean = false,
         action: (ClusterHost) -> Unit,
     ) {
-        val hostSet =
-            hostFilter
-                .split(",")
-                .filter { it.isNotBlank() }
-                .toSet()
-
-        val filteredHosts =
-            hosts[serverType]?.filter {
-                hostSet.isEmpty() || it.alias in hostSet
-            } ?: emptyList()
+        val filteredHosts = filteredHosts(hosts, serverType, hostFilter)
 
         if (parallel && filteredHosts.size > 1) {
             val threads =
@@ -80,6 +71,34 @@ class HostOperationsService(
         } else {
             filteredHosts.forEach(action)
         }
+    }
+
+    /**
+     * Returns the hosts of a given server type after applying a comma-separated alias filter.
+     *
+     * This is the same selection logic [withHosts] uses to decide which hosts to act on, exposed
+     * so callers (e.g. pre-flight validation) can inspect the exact target set without executing
+     * an action against it.
+     *
+     * @param hosts Map of server types to their hosts
+     * @param serverType The type of server to filter
+     * @param hostFilter Comma-separated list of host aliases to include (empty means all)
+     * @return The filtered hosts, in declaration order
+     */
+    fun filteredHosts(
+        hosts: Map<ServerType, List<ClusterHost>>,
+        serverType: ServerType,
+        hostFilter: String = "",
+    ): List<ClusterHost> {
+        val hostSet =
+            hostFilter
+                .split(",")
+                .filter { it.isNotBlank() }
+                .toSet()
+
+        return hosts[serverType]?.filter {
+            hostSet.isEmpty() || it.alias in hostSet
+        } ?: emptyList()
     }
 
     /**

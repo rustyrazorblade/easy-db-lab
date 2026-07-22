@@ -178,3 +178,8 @@ profiles/
 .claude/scheduled_tasks*
 
 /.memsearch
+
+# stray run/build logs
+nohup.out
+build-image.log
+build-cassandra.log

@@ -305,10 +305,16 @@ class Down : PicoBaseCommand() {
 
     /**
      * Cleanup SOCKS5 proxy if it exists.
+     *
+     * Resolves the state file against [Context.workingDirectory] — the same location
+     * [com.rustyrazorblade.easydblab.proxy.ProcessSocksProxyService] writes it to. Resolving it
+     * against the process cwd instead would miss the file whenever `workingDirectory` is set
+     * explicitly rather than inherited from cwd (long-running `Server`/`Repl`, tests), orphaning
+     * the `ssh -N -D` tunnel process at teardown.
      */
     @Suppress("TooGenericExceptionCaught")
-    private fun cleanupSocks5Proxy() {
-        val proxyStateFile = File(Constants.Vpc.SOCKS5_PROXY_STATE_FILE)
+    internal fun cleanupSocks5Proxy() {
+        val proxyStateFile = File(context.workingDirectory, Constants.Vpc.SOCKS5_PROXY_STATE_FILE)
         if (!proxyStateFile.exists()) {
             return
         }

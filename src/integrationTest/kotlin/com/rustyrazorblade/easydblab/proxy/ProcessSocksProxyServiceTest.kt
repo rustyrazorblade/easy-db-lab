@@ -18,6 +18,7 @@ import java.io.File
 import java.net.ServerSocket
 import java.time.Duration
 import java.time.Instant
+import java.util.concurrent.TimeUnit
 
 /**
  * Integration-tier tests for [ProcessSocksProxyService] that genuinely require real socket I/O: the
@@ -179,6 +180,30 @@ class ProcessSocksProxyServiceTest {
         // The zombie's port must never be republished — it was rejected as invalid, and the fresh
         // attempt also failed.
         assertThat(System.getProperty(Constants.Proxy.PORT_PROPERTY)).isNull()
+    }
+
+    @Test
+    fun `a superseded zombie tunnel process is killed when a replacement is started`() {
+        // A real, killable stand-in for a zombie ssh tunnel: the process is alive, but its recorded
+        // `-D` port is not listening, so isValidProxy() rejects it and a replacement is started.
+        // Before the fix, startNewProxy() overwrote the state file with the new PID and this one was
+        // never killed — it leaked and survived `down` (issue #741).
+        val zombie = ProcessBuilder("sleep", "60").start()
+        try {
+            val deadPort = reserveFreePort() // recorded but nothing is listening on it
+            writeStateFile(pid = zombie.pid().toInt(), port = deadPort)
+
+            // The fresh start fails fast (fake dead launcher); we only care that the stale zombie
+            // was reaped on the way through.
+            assertThatThrownBy { service(launcher = { _, _ -> deadProcess(exitCode = 255) }).ensureRunning(testHost) }
+                .isInstanceOf(IllegalStateException::class.java)
+
+            assertThat(zombie.waitFor(5, TimeUnit.SECONDS))
+                .withFailMessage("the superseded zombie tunnel process should have been killed")
+                .isTrue()
+        } finally {
+            zombie.destroyForcibly()
+        }
     }
 
     @Test

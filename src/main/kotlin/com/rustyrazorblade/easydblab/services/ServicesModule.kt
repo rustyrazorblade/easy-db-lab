@@ -92,7 +92,9 @@ val servicesModule =
         singleOf(::DefaultVictoriaLogsService) bind VictoriaLogsService::class
         factoryOf(::SidecarManifestBuilder)
         factoryOf(::DefaultSidecarService) bind SidecarService::class
-        singleOf(::DefaultStressJobService) bind StressJobService::class
+        // Explicit single (not singleOf) so the jobPollInterval constructor default applies
+        // instead of Koin trying to resolve a Duration binding.
+        single<StressJobService> { DefaultStressJobService(get(), get(), get(), get()) }
         singleOf(::HostOperationsService)
 
         // Kit command scanner — discovers @KitCommand-annotated classes across all JARs

@@ -1,41 +1,89 @@
 #!/bin/bash
+#
+# Restart Cassandra and wait for it to come back available.
+#
+# Fails fast with a clear error (including recent journalctl output) if the
+# service fails to start -- for example when an invalid JVM/config change is
+# pushed up. Previously this script would wait out its full timeout and then
+# exit 0 (and the port check looped forever), hiding startup failures from the
+# operator. It now polls the systemd unit state and exits non-zero the moment
+# startup is detected to have failed.
+
+set -uo pipefail
+
+SERVICE="cassandra"
+NODETOOL="/usr/local/cassandra/current/bin/nodetool"
+READY_TIMEOUT=240   # seconds to wait for the node to become available
+JOURNAL_LINES=50
+
+# Print a clear error with recent service logs and exit non-zero so the caller
+# (the SSH layer / CassandraService.restart) surfaces the failure.
+fail() {
+    echo "ERROR: $1" >&2
+    echo "----- Recent ${SERVICE} logs (journalctl -u ${SERVICE} -n ${JOURNAL_LINES}) -----" >&2
+    sudo journalctl -u "${SERVICE}" -n "${JOURNAL_LINES}" --no-pager >&2 || true
+    exit 1
+}
+
+# Fail fast if systemd reports the unit has failed or exited. The cassandra unit
+# is Type=simple running "cassandra -f" in the foreground, so a crash on a bad
+# config lands the unit in the "failed" state rather than "active".
+check_service_alive() {
+    local state
+    state=$(systemctl is-active "${SERVICE}" 2>/dev/null)
+    case "${state}" in
+        active | activating)
+            return 0
+            ;;
+        *)
+            fail "${SERVICE} is not running (systemctl is-active reported '${state}'). Startup failed."
+            ;;
+    esac
+}
 
 echo "Maybe restarting Cassandra..."
 
 nodetool drain || true
-sudo systemctl restart cassandra
 
-# Get the start time in seconds
+if ! sudo systemctl restart "${SERVICE}"; then
+    fail "'systemctl restart ${SERVICE}' failed."
+fi
+
 start_time=$(date +%s)
 
-echo "Waiting for Cassandra to be available"
-# Loop until nodetool status exits with 0 or 60 seconds have gone by
+echo "Waiting for Cassandra to be available (timeout ${READY_TIMEOUT}s)"
+# Loop until nodetool status succeeds, the service dies, or we time out.
 while true; do
-    # Run the nodetool status command
-    /usr/local/cassandra/current/bin/nodetool status > /dev/null 2>&1
-    status=$?
+    # Detect a failed startup (e.g. invalid JVM options) instead of waiting.
+    check_service_alive
 
-    # If the command was successful, exit the loop
-    if [ $status -eq 0 ]; then
+    if "${NODETOOL}" status > /dev/null 2>&1; then
         echo "nodetool status was successful."
         break
     fi
 
-    # Calculate the elapsed time
-    current_time=$(date +%s)
-    elapsed=$((current_time - start_time))
-
-    # Check if 2 minutes seconds have passed
-    if [ $elapsed -ge 240 ]; then
-        echo "Timeout: nodetool status did not exit with 0 within 60 seconds."
-        break
+    elapsed=$(( $(date +%s) - start_time ))
+    if [[ "${elapsed}" -ge "${READY_TIMEOUT}" ]]; then
+        fail "Timed out after ${READY_TIMEOUT}s waiting for '${NODETOOL} status' to succeed. Cassandra did not become available."
     fi
 
-    # Optional: sleep for a bit before retrying to reduce load
     sleep 2
 done
 
-echo "Nodetool reporting node as up.  Waiting on port 9042."
+echo "Nodetool reporting node as up. Waiting on port 9042."
+# Reset the clock so the CQL-port wait gets its own full READY_TIMEOUT budget
+# rather than sharing the one already partly consumed by the nodetool loop.
+start_time=$(date +%s)
+# Bounded wait for the CQL port; keep checking the service so a late crash is
+# caught rather than looping forever.
+while ! ss -tulwn | grep -q ':9042'; do
+    check_service_alive
 
-while ! ss -tulwn | grep ':9042' ; do sleep 1; done
+    elapsed=$(( $(date +%s) - start_time ))
+    if [[ "${elapsed}" -ge "${READY_TIMEOUT}" ]]; then
+        fail "Timed out after ${READY_TIMEOUT}s waiting for CQL port 9042 to open."
+    fi
+
+    sleep 1
+done
 echo "Port 9042 available"

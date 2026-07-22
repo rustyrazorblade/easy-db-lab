@@ -57,14 +57,14 @@ class TailscaleServiceTest : BaseKoinTest() {
     // ========== START TAILSCALE TESTS ==========
 
     @Test
-    fun `startTailscale should start daemon and authenticate`() {
+    fun `startTailscale should enable daemon for boot and authenticate`() {
         // Given
         val authKey = "tskey-auth-xxx"
         val hostname = "control0"
         val cidr = "10.0.0.0/16"
         val successResponse = Response(text = "", stderr = "")
 
-        whenever(mockRemoteOps.executeRemotely(eq(testHost), eq("sudo systemctl start tailscaled"), any(), any()))
+        whenever(mockRemoteOps.executeRemotely(eq(testHost), eq("sudo systemctl enable --now tailscaled"), any(), any()))
             .thenReturn(successResponse)
         whenever(
             mockRemoteOps.executeRemotely(
@@ -80,7 +80,8 @@ class TailscaleServiceTest : BaseKoinTest() {
 
         // Then
         assertThat(result.isSuccess).isTrue()
-        verify(mockRemoteOps).executeRemotely(eq(testHost), eq("sudo systemctl start tailscaled"), any(), any())
+        // `enable --now` (not plain `start`) so the daemon survives a node reboot.
+        verify(mockRemoteOps).executeRemotely(eq(testHost), eq("sudo systemctl enable --now tailscaled"), any(), any())
         verify(mockRemoteOps).executeRemotely(
             eq(testHost),
             argThat {
@@ -101,7 +102,7 @@ class TailscaleServiceTest : BaseKoinTest() {
         val hostname = "control0"
         val cidr = "10.0.0.0/16"
 
-        whenever(mockRemoteOps.executeRemotely(eq(testHost), eq("sudo systemctl start tailscaled"), any(), any()))
+        whenever(mockRemoteOps.executeRemotely(eq(testHost), eq("sudo systemctl enable --now tailscaled"), any(), any()))
             .thenThrow(RuntimeException("Failed to start tailscaled"))
 
         // When
@@ -121,7 +122,7 @@ class TailscaleServiceTest : BaseKoinTest() {
         val cidr = "10.0.0.0/16"
         val successResponse = Response(text = "", stderr = "")
 
-        whenever(mockRemoteOps.executeRemotely(eq(testHost), eq("sudo systemctl start tailscaled"), any(), any()))
+        whenever(mockRemoteOps.executeRemotely(eq(testHost), eq("sudo systemctl enable --now tailscaled"), any(), any()))
             .thenReturn(successResponse)
         whenever(
             mockRemoteOps.executeRemotely(

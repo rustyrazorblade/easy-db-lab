@@ -115,6 +115,13 @@ The system SHALL upload a bootstrap action script to S3 and configure EMR cluste
 - **WHEN** the bootstrap script is invoked by EMR
 - **THEN** the control node's private IP is passed as a script argument and used in the OTel Collector config's OTLP exporter endpoint
 
+#### Scenario: Collector tags telemetry with the node's master/worker role
+
+- **WHEN** the bootstrap script runs on an EMR node
+- **THEN** it detects whether the node is the master (from `/mnt/var/lib/info/instance.json` `isMaster`) and resolves a role of `spark-master` or `spark-worker`
+- **AND** it patches the `__NODE_ROLE__` placeholder in the OTel Collector config so the `resource/role` processor sets `node_role` to that role
+- **AND** every metric, log, and trace the collector forwards from that node is tagged with `node_role=spark-master` or `node_role=spark-worker`, so master and worker telemetry can be filtered independently
+
 #### Scenario: EMRClusterConfig supports bootstrap actions
 
 - **WHEN** `EMRService.createCluster()` is called with an `EMRClusterConfig` containing `bootstrapActions`

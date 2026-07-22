@@ -198,6 +198,42 @@ internal class EMRProvisioningServiceTest {
     }
 
     @Test
+    fun `uploaded bootstrap script resolves control node IP but leaves node role for per-node patching`() {
+        val clusterState = createTestClusterState(clusterId = "test-id")
+        setupEmrMocks("j-BOOT", "myenv-spark")
+
+        service.provisionEmrCluster(
+            EmrClusterProvisioningConfig(
+                clusterName = "myenv",
+                masterInstanceType = "m5.2xlarge",
+                workerInstanceType = "m5.4xlarge",
+                workerCount = 3,
+                subnetId = "subnet-123",
+                securityGroupId = "sg-456",
+                keyName = "my-key",
+                clusterState = clusterState,
+                tags = emptyMap(),
+            ),
+        )
+
+        val scriptCaptor = argumentCaptor<String>()
+        verify(mockObjectStore).uploadContent(scriptCaptor.capture(), any())
+        val script = scriptCaptor.firstValue
+
+        // TemplateService must resolve the control node IP into the embedded collector config...
+        assertThat(script).contains("endpoint: 10.0.1.5:4317")
+        // ...but must NOT resolve __NODE_ROLE__ — the bootstrap patches it per-node so master and
+        // worker telemetry are distinguishable. If TemplateService ever clobbered it, node_role
+        // would be blank/wrong on every EMR node and this assertion would fail.
+        assertThat(script).contains("value: __NODE_ROLE__")
+        // The bootstrap must detect the node's role and patch the placeholder before starting.
+        assertThat(script)
+            .contains("NODE_ROLE=\"spark-master\"")
+            .contains("NODE_ROLE=\"spark-worker\"")
+            .contains("sed -i \"s/__NODE_ROLE__/\$NODE_ROLE/g\" \"\$COLLECTOR_CONFIG\"")
+    }
+
+    @Test
     fun `provisionEmrCluster should call createCluster then waitForClusterReady`() {
         val clusterState =
             ClusterState(

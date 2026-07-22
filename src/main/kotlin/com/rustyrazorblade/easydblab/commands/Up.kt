@@ -603,16 +603,24 @@ class Up(
 
         Retry
             .decorateRunnable(retry) {
-                checkSshReady(ServerType.Control)
-                checkSshReady(ServerType.Cassandra)
+                // The control node is never what `--hosts` scopes — that filter targets db/app
+                // nodes for scale-out. Applying it here would make `up --hosts db2` filter the
+                // control check down to zero hosts (HostOperationsService.withHosts silently
+                // no-ops on an empty match), verifying nothing and reopening the readiness gap the
+                // control check exists to close. Always check control with no filter.
+                checkSshReady(ServerType.Control, hostFilter = "")
+                checkSshReady(ServerType.Cassandra, hostFilter = hosts.hostList)
             }.run()
     }
 
-    private fun checkSshReady(serverType: ServerType) {
+    private fun checkSshReady(
+        serverType: ServerType,
+        hostFilter: String,
+    ) {
         hostOperationsService.withHosts(
             workingState.hosts,
             serverType,
-            hosts.hostList,
+            hostFilter,
         ) { clusterHost ->
             remoteOps.executeRemotely(clusterHost.toHost(), "echo 1").text
         }

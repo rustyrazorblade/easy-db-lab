@@ -55,6 +55,8 @@ class Start : PicoBaseCommand() {
     var hosts = HostsMixin()
 
     override fun execute() {
+        validateVersionsAssigned()
+
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList) { host ->
             val h = host.toHost()
             eventBus.emit(Event.Cassandra.Starting(h.alias))
@@ -88,5 +90,27 @@ class Start : PicoBaseCommand() {
 
         clusterStateManager.addRunningWorkload("cassandra")
         kitHookExecutor.firePostKitStart("cassandra")
+    }
+
+    /**
+     * Fails fast when any targeted node has no version assigned.
+     *
+     * A node only gets a version once `cassandra use <version>` has run against it, which both
+     * records the version in cluster state and points `/usr/local/cassandra/current` at that
+     * install on the box. Starting a node without a version produces a confusing systemd failure
+     * far downstream, so we reject it up front with an actionable message before touching any node.
+     */
+    private fun validateVersionsAssigned() {
+        val versions = clusterState.versions.orEmpty()
+        val missing =
+            hostOperationsService
+                .filteredHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList)
+                .map { it.alias }
+                .filter { versions[it].isNullOrBlank() }
+
+        check(missing.isEmpty()) {
+            "No version assigned for node(s): ${missing.joinToString(", ")}. " +
+                "Run 'cassandra use <version>' (e.g. 'cassandra use 5.0') to assign a version before starting."
+        }
     }
 }

@@ -42,6 +42,20 @@ else
     echo "✓ K3s server installed successfully"
 fi
 
+# Ensure the NVMe data volume is mounted before k3s starts on every boot.
+# The k3s data dir (/var/lib/rancher/k3s) is a symlink onto /mnt/db1. On a
+# reboot systemd could otherwise start k3s before /mnt/db1 is remounted, and
+# k3s crash-loops with "extracting data: no such file or directory".
+# RequiresMountsFor pulls in and orders k3s after the /mnt/db1 mount unit.
+if mountpoint -q /mnt/db1; then
+    mkdir -p /etc/systemd/system/k3s.service.d
+    cat > /etc/systemd/system/k3s.service.d/10-nvme-mount.conf <<'EOF'
+[Unit]
+RequiresMountsFor=/mnt/db1
+EOF
+    systemctl daemon-reload
+fi
+
 # Start the k3s service
 echo "Starting k3s.service..."
 systemctl start k3s

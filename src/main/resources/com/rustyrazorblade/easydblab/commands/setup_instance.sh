@@ -72,6 +72,27 @@ if [[ -n "$DISK" ]]; then
       sudo mount $DISK /mnt/db1
   fi
 
+  # Persist the mount so /mnt/db1 is restored automatically on every boot.
+  # Without this the NVMe is mounted only at provision time; after any reboot
+  # the mount is gone and k3s (whose data dir is a symlink onto /mnt/db1)
+  # crash-loops with "extracting data: no such file or directory".
+  #
+  # Instance-store NVMe device names (nvme0n1/nvme1n1/xvdb) can change across
+  # reboots, so key the fstab entry on the stable XFS filesystem UUID rather
+  # than the device path. 'nofail' keeps the node bootable if the instance
+  # store was wiped (a stop/terminate erases instance-store, unlike a reboot)
+  # and the filesystem no longer exists; 'x-systemd.device-timeout' avoids a
+  # long boot hang in that case.
+  FS_UUID=$(sudo blkid -o value -s UUID "$DISK")
+  if [[ -n "$FS_UUID" ]]; then
+    FSTAB_ENTRY="UUID=$FS_UUID /mnt/db1 xfs defaults,nofail,x-systemd.device-timeout=10s 0 2"
+    # Remove any previous /mnt/db1 entry (e.g. a stale device path) before adding the current one.
+    sudo sed -i '\#[[:space:]]/mnt/db1[[:space:]]#d' /etc/fstab
+    echo "$FSTAB_ENTRY" | sudo tee -a /etc/fstab
+    # Pick up the fstab-generated mnt-db1.mount unit so services can order against it.
+    sudo systemctl daemon-reload
+  fi
+
   sudo blockdev --setra $READAHEAD $DISK
 fi
 

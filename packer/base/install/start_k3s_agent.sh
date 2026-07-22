@@ -42,6 +42,20 @@ else
     echo "✓ K3s agent installed successfully"
 fi
 
+# Ensure the NVMe data volume is mounted before k3s-agent starts on every boot.
+# Container logs (/var/log/pods) and the k3s data dir live on /mnt/db1. On a
+# reboot systemd could otherwise start k3s-agent before /mnt/db1 is remounted,
+# leaving it unable to find its data. RequiresMountsFor pulls in and orders
+# k3s-agent after the /mnt/db1 mount unit.
+if mountpoint -q /mnt/db1; then
+    mkdir -p /etc/systemd/system/k3s-agent.service.d
+    cat > /etc/systemd/system/k3s-agent.service.d/10-nvme-mount.conf <<'EOF'
+[Unit]
+RequiresMountsFor=/mnt/db1
+EOF
+    systemctl daemon-reload
+fi
+
 # Start the k3s-agent service
 echo "Starting k3s-agent.service..."
 systemctl start k3s-agent

@@ -155,9 +155,12 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
         val hostIpEnv = sidecar.env.first { it.name == "HOST_IP" }
         assertThat(hostIpEnv.valueFrom.fieldRef.fieldPath).isEqualTo("status.hostIP")
 
+        // CLUSTER_NAME is injected directly from cluster state (issue #733) so the stress job no
+        // longer depends on a `cluster-config` ConfigMap that may not exist yet.
+        val clusterStateManager: ClusterStateManager = getKoin().get()
         val clusterNameEnv = sidecar.env.first { it.name == "CLUSTER_NAME" }
-        assertThat(clusterNameEnv.valueFrom.configMapKeyRef.name).isEqualTo("cluster-config")
-        assertThat(clusterNameEnv.valueFrom.configMapKeyRef.key).isEqualTo("cluster_name")
+        assertThat(clusterNameEnv.valueFrom).isNull()
+        assertThat(clusterNameEnv.value).isEqualTo(clusterStateManager.load().clusterLabelName())
 
         val goMemLimitEnv = sidecar.env.first { it.name == "GOMEMLIMIT" }
         assertThat(goMemLimitEnv.value).isEqualTo("64MiB")

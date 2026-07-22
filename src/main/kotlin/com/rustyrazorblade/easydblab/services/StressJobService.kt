@@ -369,7 +369,8 @@ class DefaultStressJobService(
 
         val stressContainer =
             buildStressContainer(config, region, controlNodeIp, clusterState.name)
-        val otelSidecar = buildOtelSidecarContainer(config.jobName, config.tags, config.promPort)
+        val otelSidecar =
+            buildOtelSidecarContainer(config.jobName, config.tags, config.promPort, clusterState.clusterLabelName())
 
         return assembleJob(config.jobName, labels, stressContainer, otelSidecar)
     }
@@ -433,6 +434,7 @@ class DefaultStressJobService(
         jobName: String,
         tags: Map<String, String>,
         promPort: Int,
+        clusterName: String,
     ): Container {
         val resourceAttributes = buildResourceAttributes(jobName, tags)
 
@@ -457,14 +459,16 @@ class DefaultStressJobService(
                     .endFieldRef()
                     .endValueFrom()
                     .build(),
+                // Inject the cluster label directly from cluster state rather than via a
+                // `cluster-config` ConfigMap. That ConfigMap is created by the separate
+                // `grafana update-config` command and is not guaranteed to exist when a stress
+                // job starts; a non-optional configMapKeyRef to a missing ConfigMap causes
+                // CreateContainerConfigError and fails the Job (issue #733). The value matches
+                // `clusterLabelName()` so the sidecar's `cluster` metric label lines up with the
+                // rest of the observability stack.
                 EnvVarBuilder()
                     .withName("CLUSTER_NAME")
-                    .withNewValueFrom()
-                    .withNewConfigMapKeyRef()
-                    .withName("cluster-config")
-                    .withKey("cluster_name")
-                    .endConfigMapKeyRef()
-                    .endValueFrom()
+                    .withValue(clusterName)
                     .build(),
                 EnvVarBuilder()
                     .withName("GOMEMLIMIT")

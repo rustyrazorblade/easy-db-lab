@@ -41,6 +41,28 @@ else
   exit 1
 fi
 
+# Drop any pre-existing sbtest tables before preparing. sysbench prepare issues a
+# plain CREATE TABLE, so re-preparing an existing dataset at a different --scale or
+# --tables fails with "error 1050: Table 'sbtest.sbtest1' already exists". sysbench
+# cleanup uses DROP TABLE IF EXISTS, so this is idempotent and safe on a fresh
+# cluster with no existing tables. It runs for whichever driver (mysql/pgsql) was
+# selected above via the shared ${DB_ARGS}.
+CLEANUP_POD="sysbench-cleanup-${KIT_NAME}-$(date +%s)"
+echo "Cleaning up any existing sysbench data before prepare..."
+kubectl --kubeconfig="${KUBECONFIG}" run "${CLEANUP_POD}" \
+  --image="${SYSBENCH_IMAGE}" \
+  --restart=Never \
+  --labels="easydblab/kit=${KIT_NAME},easydblab/role=sysbench-cleanup" \
+  --command -- sysbench \
+    ${DB_ARGS} \
+    --tables="${TABLES}" \
+    "${WORKLOAD}" cleanup
+kubectl --kubeconfig="${KUBECONFIG}" wait \
+  --for=jsonpath='{.status.phase}'=Succeeded \
+  --timeout=120s \
+  pod/"${CLEANUP_POD}"
+kubectl --kubeconfig="${KUBECONFIG}" delete pod "${CLEANUP_POD}" --ignore-not-found
+
 echo "Preparing sysbench data: ${TABLES} tables, ${SCALE}000 rows each..."
 
 kubectl --kubeconfig="${KUBECONFIG}" run "${POD_NAME}" \

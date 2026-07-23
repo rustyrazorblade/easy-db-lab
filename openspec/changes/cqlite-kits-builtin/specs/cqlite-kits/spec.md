@@ -44,9 +44,13 @@ The `cqlite-trino` kit SHALL register a Trino catalog named `cqlite` additively 
 - **WHEN** the `cqlite-trino` kit starts against a running Trino kit
 - **THEN** `SHOW CATALOGS` lists `cqlite` in addition to the existing `cassandra` catalog, which remains present and unchanged
 
-#### Scenario: Gradle-assemble plugin resolves from the classpath
-- **WHEN** the `cqlite-trino` kit start triggers the `gradle-assemble-plugin` assembly path from a built-in (classpath) install
-- **THEN** the connector plugin directory is assembled from the published `in.mcfad:cqlite-trino` artifact and loaded into Trino with no "file not found" / missing-source error
+#### Scenario: Connector wired via Helm values, surviving upgrade
+- **WHEN** the `cqlite-trino` kit starts against a running Trino kit
+- **THEN** its plugin wiring (assemble-plugin initContainer, plugin-dir volume mounts, and the Arrow `--add-opens` JVM flag) is applied through the trino kit's `helm upgrade` via a discovered sibling `trino-values.yaml` fragment — not via an out-of-band `kubectl patch` — so the connector plugin directory is assembled from the published `in.mcfad:cqlite-trino` artifact, loaded into Trino, and persists across subsequent `helm upgrade`s without a re-patch step
+
+#### Scenario: No out-of-band patch machinery remains
+- **WHEN** the `cqlite-trino` kit is inspected
+- **THEN** it contains no live-Deployment `kubectl patch` re-application scripts (`reapply-plugin-patch`, `ensure-catalog-registered`) and no `post-workload-*` re-patch hooks — the wiring lives entirely in the Helm values fragment
 
 ### Requirement: Read-only offline query surface
 

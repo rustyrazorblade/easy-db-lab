@@ -240,6 +240,61 @@ class InstallTemplateResolverTest : BaseKoinTest() {
         assertThat(config.name).isEqualTo("presto")
     }
 
+    // ── built-in cqlite kits (guard: parse + nested-resource listing) ────────
+
+    @Test
+    fun `loadInstallConfig parses cqlite-flight builtin config from classpath`() {
+        val source = resolver.resolve("cqlite-flight")
+        val config = requireNotNull(resolver.loadInstallConfig(source)) {
+            "expected cqlite-flight ${Constants.Kit.CONFIG_FILE} to be present on classpath"
+        }
+        assertThat(config.name).isEqualTo("cqlite-flight")
+        assertThat(config.type).isEqualTo(KitType.DB)
+    }
+
+    @Test
+    fun `loadInstallConfig parses cqlite-trino builtin config with catalog name cqlite`() {
+        // The resource directory is cqlite-trino (the install subcommand) but the
+        // kit.yaml name is cqlite (the installed dir and Trino catalog name), giving
+        // clean `cqlite.<ks>.<tbl>` addressing.
+        val source = resolver.resolve("cqlite-trino")
+        val config = requireNotNull(resolver.loadInstallConfig(source)) {
+            "expected cqlite-trino ${Constants.Kit.CONFIG_FILE} to be present on classpath"
+        }
+        assertThat(config.name).isEqualTo("cqlite")
+        assertThat(config.type).isEqualTo(KitType.APP)
+    }
+
+    @Test
+    fun `loadInstallConfig parses trino-loadtest builtin config from classpath`() {
+        val source = resolver.resolve("trino-loadtest")
+        val config = requireNotNull(resolver.loadInstallConfig(source)) {
+            "expected trino-loadtest ${Constants.Kit.CONFIG_FILE} to be present on classpath"
+        }
+        assertThat(config.name).isEqualTo("trino-loadtest")
+        assertThat(config.type).isEqualTo(KitType.APP)
+    }
+
+    @Test
+    fun `listTemplateFiles includes nested gradle-assemble resources for cqlite-trino builtin source`() {
+        val source = resolver.resolve("cqlite-trino")
+        val files = resolver.listTemplateFiles(source)
+
+        assertThat(files.map { it.name }).contains(
+            "gradle-assemble-plugin/build.gradle.kts.template",
+            "gradle-assemble-plugin/settings.gradle.kts",
+        )
+    }
+
+    @Test
+    fun `listTemplateFiles ships driver-py but not test_driver-py for trino-loadtest builtin source`() {
+        val source = resolver.resolve("trino-loadtest")
+        val names = resolver.listTemplateFiles(source).map { it.name }
+
+        assertThat(names).contains("driver.py")
+        assertThat(names).doesNotContain("test_driver.py")
+    }
+
     // ── additional sources ──────────────────────────────────────────────────
 
     private fun createAdditionalSource(vararg kitNames: String): File {

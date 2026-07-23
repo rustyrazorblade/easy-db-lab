@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# `easy-db-lab cqlite start` (assuming --kit cqlite at install time — see
+# README.md "Install order"). Requires the trino kit to already be running:
+# this overlay patches its live Deployments, it does not deploy Trino itself.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export KUBECONFIG="${SCRIPT_DIR}/../../__KUBECONFIG__"
+
+EXPECTED_TRINO_TAG="__TRINO_IMAGE_TAG__"
+
+echo "Checking the running trino kit's image tag against the connector's required Trino SPI..."
+if ! kubectl get deployment trino-coordinator --namespace default >/dev/null 2>&1; then
+  echo "ERROR: deployment/trino-coordinator not found." >&2
+  echo "Install and start the trino kit FIRST:" >&2
+  echo "  easy-db-lab kit install trino --version ${EXPECTED_TRINO_TAG}" >&2
+  echo "  easy-db-lab trino start" >&2
+  exit 1
+fi
+
+RUNNING_IMAGE=$(kubectl get deployment trino-coordinator --namespace default \
+  -o jsonpath='{.spec.template.spec.containers[?(@.name=="trino-coordinator")].image}')
+RUNNING_TAG="${RUNNING_IMAGE##*:}"
+
+if [ "${RUNNING_TAG}" != "${EXPECTED_TRINO_TAG}" ]; then
+  echo "ERROR: SPI mismatch. trino-coordinator is running image '${RUNNING_IMAGE}'" >&2
+  echo "(tag '${RUNNING_TAG}'), but this cqlite-trino connector build targets Trino SPI" >&2
+  echo "${EXPECTED_TRINO_TAG} (see trino-connector/build.gradle.kts: trinoVersion)." >&2
+  echo "The trino kit's own default is 474, which is INCOMPATIBLE with this connector." >&2
+  echo "This overlay cannot rewrite the trino kit's values.yaml — pin it yourself:" >&2
+  echo "  vi trino/values.yaml   # set image.tag: \"${EXPECTED_TRINO_TAG}\"" >&2
+  echo "  easy-db-lab trino start   # re-applies values.yaml" >&2
+  echo "or reinstall from scratch:" >&2
+  echo "  easy-db-lab kit install trino --version ${EXPECTED_TRINO_TAG}" >&2
+  echo "  easy-db-lab trino start" >&2
+  exit 1
+fi
+echo "  OK: trino-coordinator is running Trino ${RUNNING_TAG} (matches required SPI ${EXPECTED_TRINO_TAG})."
+
+"${SCRIPT_DIR}/reapply-plugin-patch.sh"
+
+echo "Waiting for rollout (plugin init container must fetch from Maven Central; this may take a"
+echo "minute or two on first run)..."
+kubectl rollout status deployment/trino-coordinator --namespace default --timeout=300s
+if kubectl get deployment trino-worker --namespace default >/dev/null 2>&1; then
+  kubectl rollout status deployment/trino-worker --namespace default --timeout=300s
+fi
+
+echo ""
+echo "cqlite plugin loaded into trino-coordinator/trino-worker at"
+echo "  /usr/lib/trino/plugin/cqlite_flight"
+echo ""
+
+# Issue #2159: don't just assume the trino kit's post-workload-start hook (which
+# re-runs trino/bin/update-catalogs.sh on ANY kit start, including this one) fired
+# and registered the catalog — verify it, and self-heal if it didn't. Independent
+# of plugin-patch/rollout success above, so a prior partial 'cqlite start' failure
+# (e.g. the #2158 coordinator deadlock aborting before this point) is recoverable
+# by simply re-running 'cqlite start'.
+if ! "${SCRIPT_DIR}/ensure-catalog-registered.sh"; then
+  echo "ERROR: cqlite plugin loaded, but catalog registration failed — see the" >&2
+  echo "  'ensure-catalog-registered' message above for the exact failing step and" >&2
+  echo "  what to rerun." >&2
+  exit 1
+fi
+
+echo "Verify with:"
+echo "  ${SCRIPT_DIR}/verify.sh <keyspace> <table>"

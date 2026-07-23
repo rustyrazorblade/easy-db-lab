@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# `easy-db-lab cqlite stop`. This overlay has no pods/resources of its own to
+# scale down — the plugin initContainer + volume patch stays on the
+# trino-coordinator/trino-worker Deployment specs (by design: `easy-db-lab
+# trino stop` only scales replicas to zero, it does not revert pod-template
+# patches, and this kit's hooks reapply the patch defensively anyway — see
+# bin/reapply-plugin-patch.sh). This is a no-op, kept only so `cqlite stop`
+# is a valid, documented command rather than an error.
+set -euo pipefail
+echo "cqlite overlay: nothing to stop. The plugin patch on trino-coordinator/trino-worker"
+echo "persists across 'trino stop'/'trino start' cycles; see bin/reapply-plugin-patch.sh."
+echo "Use 'easy-db-lab cqlite uninstall' to remove the plugin wiring entirely."

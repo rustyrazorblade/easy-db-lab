@@ -1,0 +1,31 @@
+// Assembles the Trino plugin directory from the PUBLISHED cqlite-trino Maven
+// artifact — mirrors the recipe documented in trino-connector/README.md
+// ("Maven Central / published artifact"). This project has no source files;
+// it only resolves a dependency and Syncs the resolved jars into a directory.
+//
+// trino-spi is intentionally ABSENT here: in the published POM, trino-spi is
+// a `compileOnly` dependency of cqlite-trino (trino-connector/build.gradle.kts),
+// so it carries no runtime scope and `configurations.runtimeClasspath` below
+// will never resolve it. Trino supplies trino-spi itself from the engine
+// classpath at load time — bundling it in the plugin dir would clash with
+// Trino's own copy. Do not add trino-spi as a dependency here.
+plugins {
+    java
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation("in.mcfad:cqlite-trino:__CONNECTOR_VERSION__")
+}
+
+// Trino loads each plugin from its own isolated classloader directory, so the
+// connector jar must sit alongside all of its runtime dependencies (arrow
+// flight-core, jackson-databind, and their transitives) rather than as a bare
+// jar. This task produces exactly that directory.
+tasks.register<Sync>("assemblePlugin") {
+    into(layout.buildDirectory.dir("plugin/cqlite_flight"))
+    from(configurations.runtimeClasspath)
+}

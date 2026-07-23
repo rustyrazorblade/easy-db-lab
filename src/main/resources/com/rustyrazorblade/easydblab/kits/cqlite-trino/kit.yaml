@@ -65,16 +65,9 @@ args:
     type: string
     default: "481"
 
-hooks:
-  # No `workloads:` filter — fires on ANY kit start/stop, matching how the
-  # trino kit's own post-workload-start hook (bin/update-catalogs.sh) is
-  # declared. Necessary because a `helm upgrade` (triggered by ANY other
-  # kit's start/stop through that same trino hook) re-applies the trino
-  # Helm chart's rendered pod template, which can drop the out-of-band
-  # initContainer/volume patch this kit adds in bin/start.sh — the same
-  # risk the trino kit itself defends against by re-patching its Pyroscope
-  # wiring on every `trino start` (see kits/trino/bin/start.sh.template).
-  post-workload-start:
-    script: bin/reapply-plugin-patch.sh
-  post-workload-stop:
-    script: bin/reapply-plugin-patch.sh
+# No hooks (D1 revised, PR #859): the plugin wiring is a Helm values fragment
+# (trino-values.yaml) the trino kit's own update-catalogs.sh discovers and
+# renders into the pod template, so it survives every `helm upgrade` natively.
+# There is nothing to reapply on other kits' start/stop — the fleet of
+# re-patch / self-heal hooks the earlier out-of-band `kubectl patch` port
+# needed is gone.

@@ -1,0 +1,93 @@
+# Helm values fragment auto-discovered by the trino kit's own
+# bin/update-catalogs.sh, which globs every sibling kit directory for a
+# `trino-values.yaml` file and passes each as an additional `--values` to its
+# single `helm upgrade` (symmetric to the `trino-catalog.properties` catalog
+# discovery it already does).
+#
+# This wires the CQLite Trino connector plugin into the Trino coordinator and
+# workers NATIVELY through the chart — so it renders into the pod template and
+# survives every subsequent `helm upgrade` — instead of the out-of-band
+# `kubectl patch` the earlier port used (which each upgrade wiped, forcing a
+# fleet of re-patch/self-heal scripts). Because the wiring is now part of the
+# chart values, there is nothing to reapply on other kits' start/stop.
+#
+# Two DIFFERENT catalog/connector names are in play (issue #2123): the Trino
+# CATALOG is `cqlite` (this kit's installed dir / trino-catalog.properties),
+# while `connector.name=cqlite_flight` is the Trino factory name. This file
+# concerns neither — it only stages and mounts the plugin JAR tree.
+#
+# The plugin cannot be a single mounted jar: `cqlite_flight` is a third-party
+# connector Trino loads from an isolated classloader dir needing the jar PLUS
+# its full pinned runtime tree (Arrow flight-core 19.0.0, 11 pinned io.netty
+# modules, jackson-databind) — tens of MB, over the ~1 MB ConfigMap ceiling.
+# So a Gradle `Sync` assembly step (initContainer) is load-bearing: it resolves
+# the published `in.mcfad:cqlite-trino` artifact from Maven Central at pod-start
+# and Syncs the resolved runtime classpath into a shared emptyDir, which the
+# Trino container then mounts read-only at a SUBDIRECTORY of its plugin path
+# (/usr/lib/trino/plugin/cqlite_flight) so the image's baked-in plugins are
+# never shadowed.
+#
+# The Gradle recipe the initContainer runs lives in the `cqlite-trino-plugin-src`
+# ConfigMap, created/refreshed from gradle-assemble-plugin/ by bin/start.sh
+# BEFORE it triggers the helm upgrade (a ConfigMap is a cluster object Helm does
+# not create from a values fragment).
+
+coordinator:
+  # Arrow-java's MemoryUtil static initializer needs java.nio opened to it on
+  # JDK 17+ (issues #2193/#2290). additionalJVMConfig is appended to the
+  # coordinator's jvm.config — additive by construction, so it never clobbers
+  # the image's stock JVM options (unlike the old JAVA_TOOL_OPTIONS patch).
+  additionalJVMConfig:
+    - "--add-opens=java.base/java.nio=org.apache.arrow.memory.core,ALL-UNNAMED"
+  additionalVolumes:
+    - name: cqlite-plugin-src
+      configMap:
+        name: cqlite-trino-plugin-src
+    - name: cqlite-plugin-dir
+      emptyDir: {}
+  additionalVolumeMounts:
+    - name: cqlite-plugin-dir
+      mountPath: /usr/lib/trino/plugin/cqlite_flight
+      readOnly: true
+  initContainers:
+    - name: cqlite-plugin-fetch
+      # JDK MUST be >= the connector's build target (Java 25 / Trino SPI 481).
+      # The published `in.mcfad:cqlite-trino` artifact carries a
+      # org.gradle.jvm.version=25 capability; a JDK-21 Gradle refuses to resolve
+      # it (issue #2122). Keep in lockstep with the connector's target.
+      image: gradle:9.1.0-jdk25
+      command: ["sh", "-c"]
+      args:
+        - "set -eu; mkdir -p /tmp/build; cp /workspace/build.gradle.kts /workspace/settings.gradle.kts /tmp/build/; cd /tmp/build; gradle --no-daemon --console=plain assemblePlugin; cp -r build/plugin/cqlite_flight/. /plugin-out/"
+      volumeMounts:
+        - name: cqlite-plugin-src
+          mountPath: /workspace
+          readOnly: true
+        - name: cqlite-plugin-dir
+          mountPath: /plugin-out
+
+worker:
+  additionalJVMConfig:
+    - "--add-opens=java.base/java.nio=org.apache.arrow.memory.core,ALL-UNNAMED"
+  additionalVolumes:
+    - name: cqlite-plugin-src
+      configMap:
+        name: cqlite-trino-plugin-src
+    - name: cqlite-plugin-dir
+      emptyDir: {}
+  additionalVolumeMounts:
+    - name: cqlite-plugin-dir
+      mountPath: /usr/lib/trino/plugin/cqlite_flight
+      readOnly: true
+  initContainers:
+    - name: cqlite-plugin-fetch
+      image: gradle:9.1.0-jdk25
+      command: ["sh", "-c"]
+      args:
+        - "set -eu; mkdir -p /tmp/build; cp /workspace/build.gradle.kts /workspace/settings.gradle.kts /tmp/build/; cd /tmp/build; gradle --no-daemon --console=plain assemblePlugin; cp -r build/plugin/cqlite_flight/. /plugin-out/"
+      volumeMounts:
+        - name: cqlite-plugin-src
+          mountPath: /workspace
+          readOnly: true
+        - name: cqlite-plugin-dir
+          mountPath: /plugin-out

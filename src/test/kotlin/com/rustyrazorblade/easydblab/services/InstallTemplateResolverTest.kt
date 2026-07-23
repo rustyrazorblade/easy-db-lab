@@ -290,6 +290,24 @@ class InstallTemplateResolverTest : BaseKoinTest() {
     }
 
     @Test
+    fun `cqlite-trino wires the connector via a Helm values fragment not out-of-band kubectl patch`() {
+        // D1 revised (PR #859 feedback): the plugin/initContainer/volume/add-opens
+        // wiring lives entirely in a discovered `trino-values.yaml` fragment applied
+        // through the trino kit's own `helm upgrade` — NOT in live-Deployment
+        // `kubectl patch` re-application scripts. Guard that the fragment ships and
+        // that none of the retired out-of-band machinery lingers on the classpath.
+        val source = resolver.resolve("cqlite-trino")
+        val names = resolver.listTemplateFiles(source).map { it.name }
+
+        assertThat(names).contains("trino-values.yaml.template")
+        assertThat(names).doesNotContain(
+            "bin/reapply-plugin-patch.sh.template",
+            "bin/ensure-catalog-registered.sh.template",
+            "bin/install.sh.template",
+        )
+    }
+
+    @Test
     fun `listTemplateFiles ships driver-py but not test_driver-py for trino-loadtest builtin source`() {
         val source = resolver.resolve("trino-loadtest")
         val names = resolver.listTemplateFiles(source).map { it.name }

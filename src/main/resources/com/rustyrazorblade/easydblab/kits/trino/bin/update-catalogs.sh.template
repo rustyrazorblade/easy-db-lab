@@ -52,6 +52,22 @@ if [ -n "$catalog_content" ]; then
     printf "additionalCatalogs:\n%s" "$catalog_content" > "$CATALOG_YAML"
     EXTRA_VALUES=(--values "$CATALOG_YAML")
 fi
+
+# Sibling kit values fragments: scan sibling kit directories for a
+# `trino-values.yaml` file and pass each as an additional --values to the SAME
+# helm upgrade below (symmetric to the trino-catalog.properties discovery
+# above). This lets an overlay kit (e.g. cqlite-trino) wire extra pod-template
+# pieces — initContainers, additionalVolumes/Mounts, additionalJVMConfig —
+# natively through the Trino chart so they render into the pod template and
+# survive every subsequent `helm upgrade`, instead of an out-of-band
+# `kubectl patch` that each upgrade would wipe.
+for values in "${WORKLOAD_ROOT}"/*/trino-values.yaml; do
+    [ -f "$values" ] || continue
+    workload=$(basename "$(dirname "$values")")
+    echo "Adding Helm values fragment from custom workload: $workload"
+    EXTRA_VALUES+=(--values "$values")
+done
+
 helm upgrade --install trino trinodb/trino \
   --namespace default \
   --create-namespace \

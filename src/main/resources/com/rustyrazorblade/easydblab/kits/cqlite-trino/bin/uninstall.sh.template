@@ -1,93 +1,40 @@
 #!/usr/bin/env bash
-# `easy-db-lab cqlite uninstall`. Best-effort reversal of bin/start.sh /
-# bin/reapply-plugin-patch.sh: strips the cqlite volumeMount, initContainer,
-# and volumes back out of trino-coordinator/trino-worker via a targeted
-# JSON Patch (RFC 6902) computed from each Deployment's current indices, then
-# deletes the ConfigMap. Finally re-runs the trino kit's own
-# update-catalogs.sh (if present) so the cqlite catalog drops immediately,
-# rather than staying registered until some unrelated kit's next start/stop
-# happens to fire the trino post-workload hook — this kit's own directory
-# (and its trino-catalog.properties) is deleted by the framework right after
-# this script returns, so this is the last chance to trigger that refresh
-# from here.
+# `easy-db-lab cqlite uninstall`. D1 revised (PR #859): the plugin wiring is a
+# Helm values fragment (trino-values.yaml) applied through the trino kit's own
+# `helm upgrade`, not an out-of-band `kubectl patch`. So teardown is symmetric:
+# once this kit's directory is removed, the fragment (and its sibling
+# trino-catalog.properties) is no longer discovered, and a single re-run of the
+# trino kit's update-catalogs.sh renders the plugin wiring AND the cqlite
+# catalog back out of the pod template in one `helm upgrade`.
 #
-# Safe to re-run: any already-absent entry is simply skipped (indices are
-# recomputed from the live object on every invocation).
+# The easy-db-lab framework deletes this kit's installed directory right AFTER
+# this script returns, so we must delete the fragment ourselves here first (this
+# is the last chance to make update-catalogs.sh see the tree already stripped),
+# then re-run it. We also delete the ConfigMap the initContainer mounted.
+#
+# Safe to re-run: every step is idempotent / --ignore-not-found.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export KUBECONFIG="${SCRIPT_DIR}/../../__KUBECONFIG__"
 
 CONFIGMAP_NAME="cqlite-trino-plugin-src"
-PLUGIN_MOUNT_PATH="/usr/lib/trino/plugin/cqlite_flight"
+TRINO_UPDATE_CATALOGS="${SCRIPT_DIR}/../../trino/bin/update-catalogs.sh"
 
-strip_deployment() {
-  local dep="$1"
+echo "Removing the cqlite Helm values fragment and catalog properties so the trino"
+echo "kit's update-catalogs.sh stops discovering them..."
+rm -f "${SCRIPT_DIR}/../trino-values.yaml" "${SCRIPT_DIR}/../trino-catalog.properties"
 
-  if ! kubectl get deployment "${dep}" --namespace default >/dev/null 2>&1; then
-    echo "  - deployment/${dep} not found — skipping"
-    return 0
-  fi
-
-  local dep_json
-  dep_json=$(kubectl get deployment "${dep}" --namespace default -o json)
-
-  local ops="[]"
-
-  # 1. volumeMount on the main container (matched by mountPath).
-  local cidx
-  cidx=$(echo "${dep_json}" | jq -r --arg c "${dep}" '[.spec.template.spec.containers[].name] | index($c) // -1')
-  if [ "${cidx}" != "-1" ]; then
-    local vmidx
-    vmidx=$(echo "${dep_json}" | jq -r --argjson ci "${cidx}" --arg m "${PLUGIN_MOUNT_PATH}" \
-      '(.spec.template.spec.containers[$ci].volumeMounts // []) | map(.mountPath) | index($m) // -1')
-    if [ "${vmidx}" != "-1" ]; then
-      ops=$(echo "${ops}" | jq --argjson ci "${cidx}" --argjson vi "${vmidx}" \
-        '. + [{"op":"remove","path":("/spec/template/spec/containers/" + ($ci|tostring) + "/volumeMounts/" + ($vi|tostring))}]')
-    fi
-  fi
-
-  # 2. initContainer (matched by name).
-  local icidx
-  icidx=$(echo "${dep_json}" | jq -r '[(.spec.template.spec.initContainers // [])[].name] | index("cqlite-plugin-fetch") // -1')
-  if [ "${icidx}" != "-1" ]; then
-    ops=$(echo "${ops}" | jq --argjson i "${icidx}" \
-      '. + [{"op":"remove","path":("/spec/template/spec/initContainers/" + ($i|tostring))}]')
-  fi
-
-  # 3. volumes (matched by name). Remove highest index first so removing one
-  #    never shifts the other out from under its own computed index.
-  local vol_indices
-  vol_indices=$(echo "${dep_json}" | jq -r \
-    '[(.spec.template.spec.volumes // []) | to_entries[] | select(.value.name=="cqlite-plugin-src" or .value.name=="cqlite-plugin-dir") | .key] | sort | reverse | .[]')
-  for vi in ${vol_indices}; do
-    ops=$(echo "${ops}" | jq --argjson i "${vi}" \
-      '. + [{"op":"remove","path":("/spec/template/spec/volumes/" + ($i|tostring))}]')
-  done
-
-  if [ "$(echo "${ops}" | jq 'length')" = "0" ]; then
-    echo "  - deployment/${dep}: nothing to remove (already clean)"
-    return 0
-  fi
-
-  echo "  - patching deployment/${dep}: removing cqlite plugin wiring..."
-  kubectl patch deployment "${dep}" --namespace default --type=json -p="${ops}"
-}
-
-echo "Removing cqlite plugin wiring from trino-coordinator/trino-worker..."
-strip_deployment trino-coordinator
-strip_deployment trino-worker
+if [ -x "${TRINO_UPDATE_CATALOGS}" ]; then
+  echo "Re-running the trino kit's update-catalogs.sh to render the cqlite plugin"
+  echo "wiring and catalog out of the Trino pod template now..."
+  "${TRINO_UPDATE_CATALOGS}"
+else
+  echo "trino kit's update-catalogs.sh not found — the cqlite plugin/catalog will drop"
+  echo "on its own the next time any kit starts or stops (or the trino kit restarts)."
+fi
 
 echo "Deleting ConfigMap ${CONFIGMAP_NAME}..."
 kubectl delete configmap "${CONFIGMAP_NAME}" --namespace default --ignore-not-found
-
-TRINO_UPDATE_CATALOGS="${SCRIPT_DIR}/../../trino/bin/update-catalogs.sh"
-if [ -x "${TRINO_UPDATE_CATALOGS}" ]; then
-  echo "Re-running the trino kit's update-catalogs.sh to drop the cqlite catalog now..."
-  "${TRINO_UPDATE_CATALOGS}"
-else
-  echo "trino kit's update-catalogs.sh not found — the cqlite catalog will drop on its own"
-  echo "the next time any kit starts or stops."
-fi
 
 echo "cqlite overlay uninstalled."

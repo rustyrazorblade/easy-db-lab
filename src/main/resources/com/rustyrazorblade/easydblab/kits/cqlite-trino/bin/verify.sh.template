@@ -18,15 +18,6 @@ export KUBECONFIG="${SCRIPT_DIR}/../../__KUBECONFIG__"
 KEYSPACE="${1:-}"
 TABLE="${2:-}"
 
-# Issue #2159: verify (and self-heal) catalog registration BEFORE running any
-# check below, so this script alone can recover a 'cqlite start' that aborted
-# before the trino kit's post-workload-start hook registered the catalog.
-if ! "${SCRIPT_DIR}/ensure-catalog-registered.sh"; then
-  echo "ERROR: cqlite catalog registration check/self-heal failed — see the" >&2
-  echo "  'ensure-catalog-registered' message above for the exact failing step." >&2
-  exit 1
-fi
-
 COORD_POD=$(kubectl get pods --namespace default \
   -l 'app.kubernetes.io/name=trino,app.kubernetes.io/component=coordinator' \
   -o jsonpath='{.items[0].metadata.name}')

@@ -4,11 +4,12 @@
 #
 # Two DIFFERENT names are in play here — do not conflate them (issue #2123):
 #   - The CATALOG name (what you type in SQL, e.g. `cqlite.<ks>.<tbl>`) comes
-#     from this kit's INSTALLED DIRECTORY name, i.e. whatever `--kit <name>`
-#     was passed to `easy-db-lab kit install --from ...` — install with
-#     `--kit cqlite` to get the clean `cqlite.<keyspace>.<table>` addressing
-#     used throughout the connector's own docs (see this kit's README,
-#     "Install order"). It is NOT set by anything in this file.
+#     from this kit's INSTALLED DIRECTORY name, which for a built-in kit is its
+#     `kit.yaml` `name:` — `cqlite` here — giving the clean
+#     `cqlite.<keyspace>.<table>` addressing used throughout the connector's
+#     own docs (see this kit's README, "Install order"). The install
+#     subcommand is the resource-dir name `cqlite-trino`; the two are
+#     deliberately decoupled. It is NOT set by anything in this file.
 #   - `connector.name` below MUST equal the registered Trino connector
 #     factory name, `cqlite_flight` (`CqliteFlightConnectorFactory.getName()`
 #     — see `CqliteFlightConfig.java` javadoc). Trino resolves catalogs by

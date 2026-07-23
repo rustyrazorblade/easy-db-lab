@@ -74,8 +74,8 @@ present and unchanged.
 ```bash
 easy-db-lab cqlite start       # load the plugin and register the catalog
 easy-db-lab cqlite status      # show catalog registration state
-easy-db-lab cqlite stop        # deregister the catalog
-easy-db-lab cqlite uninstall   # remove all kit resources
+easy-db-lab cqlite stop        # no-op — the plugin is wired into the Trino Helm values
+easy-db-lab cqlite uninstall   # remove all kit resources and deregister the catalog
 ```
 
 Stop/uninstall remove the `cqlite` catalog and return the catalog list and Trino pods to

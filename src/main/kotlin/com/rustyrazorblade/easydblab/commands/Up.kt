@@ -12,6 +12,7 @@ import com.rustyrazorblade.easydblab.commands.tailscale.TailscaleStart
 import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.InfrastructureState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
@@ -711,7 +712,7 @@ class Up(
         // Configure registry TLS before K3s starts so registries.yaml is in place
         configureRegistryTls()
 
-        val ciliumEnabled = workingState.initConfig?.ciliumEnabled ?: false
+        val ciliumEnabled = workingState.initConfig?.cni == CniMode.Cilium
         val config =
             K3sClusterConfig(
                 controlHost = controlHosts.first(),

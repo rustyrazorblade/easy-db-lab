@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
@@ -21,6 +22,7 @@ import com.rustyrazorblade.easydblab.services.ClusterConfigurationService
 import com.rustyrazorblade.easydblab.services.ClusterProvisioningService
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.HostOperationsService
+import com.rustyrazorblade.easydblab.services.K3sClusterConfig
 import com.rustyrazorblade.easydblab.services.K3sClusterService
 import com.rustyrazorblade.easydblab.services.K3sSetupResult
 import com.rustyrazorblade.easydblab.services.K8sService
@@ -43,6 +45,7 @@ import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
@@ -72,6 +75,7 @@ class UpTest : BaseKoinTest() {
     private lateinit var mockClusterProvisioningService: ClusterProvisioningService
     private lateinit var mockClusterConfigurationService: ClusterConfigurationService
     private lateinit var mockK3sClusterService: K3sClusterService
+    private lateinit var mockCiliumService: CiliumService
     private lateinit var mockK8sService: K8sService
     private lateinit var mockCommandExecutor: CommandExecutor
     private lateinit var outputHandler: BufferedOutputHandler
@@ -115,7 +119,7 @@ class UpTest : BaseKoinTest() {
                 single<ClusterProvisioningService> { mock<ClusterProvisioningService>().also { mockClusterProvisioningService = it } }
                 single<ClusterConfigurationService> { mock<ClusterConfigurationService>().also { mockClusterConfigurationService = it } }
                 single<K3sClusterService> { mock<K3sClusterService>().also { mockK3sClusterService = it } }
-                single<CiliumService> { mock<CiliumService>() }
+                single<CiliumService> { mock<CiliumService>().also { mockCiliumService = it } }
                 single<K8sService> { mock<K8sService>().also { mockK8sService = it } }
                 single<RegistryService> { mock<RegistryService>() }
                 single<SocksProxyService> { mock<SocksProxyService>() }
@@ -189,6 +193,7 @@ class UpTest : BaseKoinTest() {
         mockClusterProvisioningService = getKoin().get()
         mockClusterConfigurationService = getKoin().get()
         mockK3sClusterService = getKoin().get()
+        mockCiliumService = getKoin().get()
         mockK8sService = getKoin().get()
         mockCommandExecutor = getKoin().get()
         outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
@@ -228,6 +233,7 @@ class UpTest : BaseKoinTest() {
             .thenReturn(Result.success(Unit))
 
         whenever(mockK3sClusterService.setupCluster(any())).thenReturn(K3sSetupResult(serverStarted = true))
+        whenever(mockCiliumService.install(any())).thenReturn(Result.success(Unit))
 
         whenever(mockK8sService.labelNode(any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.ensureLocalStorageClass(any())).thenReturn(Result.success(Unit))
@@ -302,6 +308,43 @@ class UpTest : BaseKoinTest() {
         verify(mockK8sService).labelNode(eq(testControlHost), eq("app0"), any())
         verify(mockK8sService).ensureLocalStorageClass(eq(testControlHost))
         verify(mockK8sService).ensureLocalStorageWfcClass(eq(testControlHost))
+    }
+
+    // =========================================================================
+    // Group: CNI selection (`--cni`, replacing the old `--cilium` boolean)
+    // =========================================================================
+
+    @Test
+    fun `up starts K3s with Flannel by default and never installs Cilium`() {
+        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
+
+        val configCaptor = argumentCaptor<K3sClusterConfig>()
+        verify(mockK3sClusterService).setupCluster(configCaptor.capture())
+        assertThat(configCaptor.firstValue.useCustomCni).isFalse()
+        assertThat(configCaptor.firstValue.onServerReady == null).isTrue()
+
+        verify(mockCiliumService, never()).install(any())
+    }
+
+    @Test
+    fun `up starts K3s with a custom CNI and installs Cilium via onServerReady when cni is Cilium`() {
+        val ciliumState = happyState()
+        whenever(mockClusterStateManager.load()).thenReturn(
+            ciliumState.copy(initConfig = ciliumState.initConfig?.copy(cni = CniMode.Cilium)),
+        )
+
+        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
+
+        val configCaptor = argumentCaptor<K3sClusterConfig>()
+        verify(mockK3sClusterService).setupCluster(configCaptor.capture())
+        val config = configCaptor.firstValue
+        assertThat(config.useCustomCni).isTrue()
+
+        val onServerReady = config.onServerReady
+        assertThat(onServerReady == null).isFalse()
+        onServerReady?.invoke()
+
+        verify(mockCiliumService).install(testControlHost.toHost())
     }
 
     // =========================================================================

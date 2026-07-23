@@ -39,6 +39,19 @@ enum class InfrastructureStatus {
 }
 
 /**
+ * Container Network Interface (CNI) selection for the K3s pod network.
+ *
+ * The datapath is mutually exclusive by construction — a cluster runs exactly one CNI.
+ * [Flannel] is K3s's built-in VXLAN-overlay CNI (the current default). [Cilium] selects
+ * Cilium (see [com.rustyrazorblade.easydblab.services.CiliumService]). Modeled as an enum
+ * rather than a boolean so future datapaths can be added without another flag.
+ */
+enum class CniMode {
+    Cilium,
+    Flannel,
+}
+
+/**
  * EMR cluster state tracking for Spark jobs
  */
 data class EMRClusterState(
@@ -108,7 +121,7 @@ data class InitConfig(
     val opensearchVersion: String = "2.11",
     val opensearchEbsSize: Int = 100,
     val cidr: String? = null,
-    val ciliumEnabled: Boolean = false,
+    val cni: CniMode = CniMode.Flannel,
 ) {
     companion object {
         /**
@@ -164,7 +177,7 @@ data class InitConfig(
                 opensearchVersion = init.opensearch.version,
                 opensearchEbsSize = init.opensearch.ebsSize,
                 cidr = init.cidr,
-                ciliumEnabled = init.cilium,
+                cni = init.cni,
             )
     }
 }

@@ -245,9 +245,10 @@ class InstallTemplateResolverTest : BaseKoinTest() {
     @Test
     fun `loadInstallConfig parses cqlite-flight builtin config from classpath`() {
         val source = resolver.resolve("cqlite-flight")
-        val config = requireNotNull(resolver.loadInstallConfig(source)) {
-            "expected cqlite-flight ${Constants.Kit.CONFIG_FILE} to be present on classpath"
-        }
+        val config =
+            requireNotNull(resolver.loadInstallConfig(source)) {
+                "expected cqlite-flight ${Constants.Kit.CONFIG_FILE} to be present on classpath"
+            }
         assertThat(config.name).isEqualTo("cqlite-flight")
         assertThat(config.type).isEqualTo(KitType.DB)
     }
@@ -258,9 +259,10 @@ class InstallTemplateResolverTest : BaseKoinTest() {
         // kit.yaml name is cqlite (the installed dir and Trino catalog name), giving
         // clean `cqlite.<ks>.<tbl>` addressing.
         val source = resolver.resolve("cqlite-trino")
-        val config = requireNotNull(resolver.loadInstallConfig(source)) {
-            "expected cqlite-trino ${Constants.Kit.CONFIG_FILE} to be present on classpath"
-        }
+        val config =
+            requireNotNull(resolver.loadInstallConfig(source)) {
+                "expected cqlite-trino ${Constants.Kit.CONFIG_FILE} to be present on classpath"
+            }
         assertThat(config.name).isEqualTo("cqlite")
         assertThat(config.type).isEqualTo(KitType.APP)
     }
@@ -268,9 +270,10 @@ class InstallTemplateResolverTest : BaseKoinTest() {
     @Test
     fun `loadInstallConfig parses trino-loadtest builtin config from classpath`() {
         val source = resolver.resolve("trino-loadtest")
-        val config = requireNotNull(resolver.loadInstallConfig(source)) {
-            "expected trino-loadtest ${Constants.Kit.CONFIG_FILE} to be present on classpath"
-        }
+        val config =
+            requireNotNull(resolver.loadInstallConfig(source)) {
+                "expected trino-loadtest ${Constants.Kit.CONFIG_FILE} to be present on classpath"
+            }
         assertThat(config.name).isEqualTo("trino-loadtest")
         assertThat(config.type).isEqualTo(KitType.APP)
     }

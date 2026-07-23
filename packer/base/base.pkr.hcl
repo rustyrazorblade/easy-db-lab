@@ -191,6 +191,13 @@ build {
     script = "install/install_cilium_cli.sh"
   }
 
+  # Leave Cilium's secondary ENIs (ens6+) unmanaged by systemd-networkd so the OS does not
+  # DHCP them and hijack host routing (see the script header for the full rationale). Inert on
+  # Flannel; must be baked in because the ENIs are attached at runtime.
+  provisioner "shell" {
+    script = "install/configure_cilium_eni_networkd.sh"
+  }
+
   # install OpenTelemetry Java agent for workload instrumentation
   provisioner "shell" {
     script = "install/install_otel_agent.sh"

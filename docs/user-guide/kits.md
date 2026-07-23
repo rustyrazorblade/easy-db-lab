@@ -4,8 +4,20 @@ A kit is a self-contained package of configuration and scripts that installs, st
 and optionally backs up a workload on your cluster. Each kit defines its full lifecycle in a
 `kit.yaml` file using typed steps — no Kubernetes YAML wrangling required.
 
-easy-db-lab ships with built-in kits (ClickHouse, Presto, Trino, TiDB, sysbench). You can
-also create your own kits for any workload you want to benchmark or test.
+easy-db-lab ships with built-in kits (ClickHouse, Presto, Trino, TiDB, sysbench, and the
+cqlite offline-query kits). You can also create your own kits for any workload you want to
+benchmark or test.
+
+### Offline SSTable query kits (cqlite)
+
+Three built-in kits work together to query a database's SSTables offline — read-only,
+flushed-SSTables-only, and eventually stale (never a live consistent view):
+
+- [cqlite-flight](cqlite-flight.md) — Arrow Flight data plane, one pod per db node,
+  reading local SSTables.
+- [cqlite-trino](cqlite-trino.md) — registers a `cqlite` Trino catalog for
+  `SELECT * FROM cqlite.<keyspace>.<table>` addressing.
+- [trino-loadtest](trino-loadtest.md) — drives concurrent read load against that catalog.
 
 ## Discovering kits
 

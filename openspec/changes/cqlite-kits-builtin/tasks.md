@@ -12,6 +12,14 @@
 - [ ] 2.3 Port `gradle-assemble-plugin/{build.gradle.kts.template,settings.gradle.kts}` verbatim (D1 — relies on full-tree materialization at install)
 - [ ] 2.4 Confirm `bin/*.sh.template` (install, start, stop, uninstall, verify, reapply-plugin-patch, ensure-catalog-registered) ported verbatim, incl. #2290 add-opens handling and the required `--sidecar-uri` arg; README.md.template kept as-is
 
+## 2b. Refactor cqlite-trino wiring to Helm values (D1 revised — maintainer feedback)
+
+- [ ] 2b.1 Extend `kits/trino/bin/update-catalogs.sh.template` to also glob sibling kit dirs for a `trino-values.yaml` fragment and pass each as an additional `--values` to the existing `helm upgrade` (symmetric to the current `trino-catalog.properties` discovery)
+- [ ] 2b.2 Add `cqlite-trino/trino-values.yaml.template` declaring, under `coordinator:`/`worker:`: the assemble-plugin `initContainers`, an `emptyDir` in `additionalVolumes` (+ the gradle-recipe ConfigMap), `additionalVolumeMounts` at `/usr/lib/trino/plugin/cqlite_flight`, and the `--add-opens=java.base/java.nio=org.apache.arrow.memory.core,ALL-UNNAMED` flag via `additionalJVMConfig`
+- [ ] 2b.3 Delete the out-of-band machinery: `bin/reapply-plugin-patch.sh.template`, `bin/ensure-catalog-registered.sh.template`, `bin/install.sh.template`, the unfiltered `post-workload-*` hooks in `kit.yaml`, and the RFC-6902 patch-stripping in `bin/uninstall.sh.template` (uninstall becomes: remove the fragment + re-run update-catalogs)
+- [ ] 2b.4 Keep: `bin/start.sh` SPI-tag preflight, `trino-catalog.properties.template`, `bin/verify.sh`, and `gradle-assemble-plugin/` (now consumed by the initContainer)
+- [ ] 2b.5 Update the guard test (4.x) and cqlite-trino README to reflect the values-fragment wiring; confirm no `kubectl patch` / re-patch-hook references remain
+
 ## 3. Port trino-loadtest kit
 
 - [ ] 3.1 Copy `trino-loadtest/` into `src/main/resources/com/rustyrazorblade/easydblab/kits/trino-loadtest/` (kit.yaml, driver.py, bin/*.sh.template, README.md)

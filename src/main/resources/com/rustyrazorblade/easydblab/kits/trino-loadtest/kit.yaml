@@ -1,0 +1,53 @@
+name: trino-loadtest
+type: app
+description: Concurrent read-load driver against the Trino coordinator's cqlite catalog — install with --target to point at a running trino kit
+version: "1.0.0"
+collision-check: true
+
+args:
+  - flag: --target
+    variable: TARGET
+    type: kit-ref
+    capability: sql
+    description: "Name of the running trino kit to load-test (must expose an http endpoint on the app nodes)"
+    required: true
+
+commands:
+  start:
+    description: "Run the concurrent read-load driver against cqlite.<ks>.<tbl>"
+    args:
+      - flag: --ks
+        variable: TRINO_LOADTEST_KEYSPACE
+        type: string
+        description: "cqlite keyspace to query (ignored when --queries-file is set)"
+        default: ""
+      - flag: --tbl
+        variable: TRINO_LOADTEST_TABLE
+        type: string
+        description: "cqlite table to query (ignored when --queries-file is set)"
+        default: ""
+      - flag: --queries-file
+        variable: TRINO_LOADTEST_QUERIES_FILE
+        type: string
+        description: "Path on the control host to a file with one SQL query per line; overrides the built-in scan+aggregate default set"
+        default: ""
+      - flag: --threads
+        variable: THREADS
+        type: int
+        description: "Number of concurrent persistent Trino connections"
+        default: "4"
+      - flag: --duration
+        variable: DURATION
+        type: int
+        description: "Load duration in seconds"
+        default: "60"
+      - flag: --interval
+        variable: INTERVAL
+        type: int
+        description: "Interval stats reporting period in seconds"
+        default: "10"
+      - flag: --traceparent
+        variable: TRACEPARENT
+        type: boolean
+        description: "Attach a random W3C traceparent header to every query, for end-to-end Tempo traces (off by default)"
+        default: "false"

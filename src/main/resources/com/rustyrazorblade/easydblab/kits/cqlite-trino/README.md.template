@@ -1,0 +1,238 @@
+# cqlite overlay for the trino kit
+
+Loads the CQLite Trino connector plugin into an **already-running** `trino`
+kit's coordinator/worker pods and registers a `cqlite` catalog, so
+`SELECT * FROM cqlite.<keyspace>.<table>` reads Apache Cassandra directly from
+SSTables via the [`cqlite-flight`](../cqlite-flight) Arrow Flight service —
+no live Cassandra read path involved. This is an **overlay**, not a
+standalone kit that deploys its own pods: it patches the trino kit's
+Deployments and drops a catalog file the trino kit's own hook already knows
+how to pick up.
+
+## Cluster on __KIT_NAME__
+
+- Connector version: `__CONNECTOR_VERSION__` (`in.mcfad:cqlite-trino`, Maven Central)
+- Flight port: `__FLIGHT_PORT__`
+- Sidecar URI: `__SIDECAR_URI__`
+- Read mode: `__READ_MODE__` (`snapshot` | `live`)
+- Required Trino image tag (SPI pin): `__TRINO_IMAGE_TAG__`
+
+## Approach: init-container, not a baked image
+
+The connector jar plus its runtime deps (Arrow `flight-core`, Jackson) have to
+land in `/usr/lib/trino/plugin/cqlite_flight/` inside the running Trino
+coordinator/worker pods — Trino loads each plugin from its own isolated
+classloader directory (see `trino-connector/README.md`). Two ways to get
+there:
+
+1. **Init container** (chosen): a `gradle:9.1.0-jdk25` initContainer runs the
+   throwaway `assemblePlugin` Sync recipe from `gradle-assemble-plugin/`
+   against the published `in.mcfad:cqlite-trino:__CONNECTOR_VERSION__`
+   artifact, writing the result to a shared `emptyDir` that's also mounted
+   into the main Trino container. The init image's JDK level must stay in
+   lockstep with the connector's own build target — `trino-connector/build.gradle.kts`
+   targets **Java 25 / Trino SPI 481**, and the published artifact carries a
+   `org.gradle.jvm.version=25` Gradle capability attribute that a JDK-21
+   Gradle image cannot resolve at all (issue #2122). If
+   `trino-connector/build.gradle.kts`'s JDK target ever moves, bump
+   `INIT_IMAGE` in `bin/reapply-plugin-patch.sh` to match.
+2. Custom baked Trino image with the plugin pre-installed.
+
+Init container wins here: it needs no image-build/publish pipeline of its
+own, it re-resolves whatever `--connector-version` is passed without a new
+image per version, and it reuses the exact recipe already documented in
+`trino-connector/README.md` — nothing new to invent. Its cost is a slower
+first pod start (a Maven Central resolve + Gradle configuration pass) and a
+dependency on outbound HTTPS to `repo.maven.apache.org` from the app-node
+pods; both are one-time/per-restart costs, not per-query.
+
+The `emptyDir` is mounted at `/usr/lib/trino/plugin/cqlite_flight` — a
+*subdirectory* of Trino's plugin path that the `trinodb/trino` image does
+not already populate — never at `/usr/lib/trino/plugin` itself, which would
+shadow every plugin the image ships pre-baked (Cassandra, Hive, etc.). See
+`docs/development/kits.md` ("Never mount an emptyDir over a directory the
+image already populates").
+
+## SPI compatibility verdict — MUST READ
+
+Verified from source, not assumed:
+
+| Component | Value | Source |
+|---|---|---|
+| trino kit's default Trino version | **474** | `kits/trino/kit.yaml` (`args: --version, default: "474"`) |
+| cqlite-trino connector's target Trino SPI | **481** | `trino-connector/build.gradle.kts` (`val trinoVersion = "481"`), confirmed by `trino-connector/README.md` and its `docker-compose.yml` (`trinodb/trino:481`) |
+
+**These are incompatible.** A Trino SPI plugin must be built against (or be
+binary-compatible with) the SPI version the running coordinator/worker
+actually load; there is no cross-SPI compatibility guarantee between 474 and
+481. Running this connector against a stock `trino start` (which pins 474 by
+default) will fail at plugin-load time or with runtime `NoSuchMethodError`/
+`AbstractMethodError`-class failures on the SPI surface.
+
+**The fix is a pin, not a code change here:** install the trino kit itself
+with `--version 481` (see "Install order" below). `bin/start.sh` in this
+overlay fails closed if it detects a mismatch — it reads
+`trino-coordinator`'s live image tag and refuses to proceed (with the exact
+remediation command) unless it equals `__TRINO_IMAGE_TAG__` (481 by default).
+This overlay cannot rewrite the trino kit's own `values.yaml`, so the pin
+must happen at `trino` kit install time, or by hand-editing
+`trino/values.yaml` and re-running `easy-db-lab trino start`.
+
+If `trino-connector/build.gradle.kts`'s `trinoVersion` ever moves, update
+`--trino-image-tag`'s default here to match, and re-verify against
+`kits/trino/kit.yaml`'s default before assuming they've converged.
+
+## trino-spi is NOT bundled in the plugin dir
+
+Verified: `trino-connector/build.gradle.kts` declares
+`compileOnly("io.trino:trino-spi:$trinoVersion")`. `compileOnly` dependencies
+carry no runtime scope and are excluded from the published Maven POM (the
+`mavenPublishing { ... }` block publishes a standard `JavaLibrary` — no scope
+override adds `trino-spi` back in). Because `gradle-assemble-plugin/build.gradle.kts`
+Syncs `configurations.runtimeClasspath` (not `compileClasspath`), resolving
+the published `in.mcfad:cqlite-trino` artifact will **never** pull in
+`trino-spi` — Trino supplies its own copy of `trino-spi` from the engine
+classpath when it loads the plugin, and shipping a second copy in the plugin
+directory would clash with it. No code in this overlay needs to special-case
+this; it falls out of the POM's dependency scoping for free. Do not add
+`trino-spi` as a dependency in `gradle-assemble-plugin/build.gradle.kts`.
+
+## Install order
+
+1. **Trino, pinned to the connector's SPI version** (474 is NOT compatible — see above):
+   ```bash
+   easy-db-lab kit install trino --version __TRINO_IMAGE_TAG__
+   easy-db-lab trino start
+   ```
+2. **This overlay — install via a kit source, NOT `--from`.** The ad-hoc
+   `kit install --from <dir>` path never substitutes a kit's declared
+   `args:` (verified against `Install.kt` — `renderAndWrite` gets no
+   `extraVars`), so `__CONNECTOR_VERSION__`/`__SIDECAR_URI__`/
+   `__FLIGHT_PORT__` would stay literally unresolved. Register the kits
+   directory as a source once, then install by name:
+   ```bash
+   easy-db-lab kit source add cqlite /path/to/cqlite/easy-db-lab-kits
+   easy-db-lab kit install trino-cqlite \
+     --sidecar-uri "http://$(easy-db-lab ip db0 --private):9043" \
+     --connector-version __CONNECTOR_VERSION__ \
+     --flight-port __FLIGHT_PORT__ \
+     --read-mode snapshot            # optional: snapshot (default) | live
+   easy-db-lab cqlite start
+   ```
+   Add `--read-mode live` to opt into live-dir reads (races compaction; the
+   stress-hunting mode) and `--local-datacenter <dc>` to pin split placement —
+   both are threaded straight into the rendered catalog, no hand-edit needed.
+   Naming subtlety: the install verb is the *source directory* name
+   (`trino-cqlite`), but the installed directory/runner — and therefore the
+   catalog name derived by the trino kit's `update-catalogs.sh` — is this
+   kit's `kit.yaml` `name: cqlite`. That is what makes
+   `SELECT * FROM cqlite.<keyspace>.<table>` (not a quoted
+   `"trino-cqlite".<keyspace>.<table>`) work.
+   `cqlite start` patches `trino-coordinator`/`trino-worker` with the plugin
+   initContainer + volume, waits for the rollout, and then verifies the
+   `cqlite` catalog is registered — normally a side effect of any kit starting
+   triggering the trino kit's own `post-workload-start` hook (which re-runs
+   `trino/bin/update-catalogs.sh` and picks up this kit's
+   `trino-catalog.properties`; sibling-directory auto-discovery, see
+   `docs/user-guide/install-trino.md` "Adding Trino Catalogs for Custom
+   Kits"). If that hook never fired — e.g. `cqlite start` aborted partway
+   through on the #2158 coordinator deadlock — `bin/start.sh` registers the
+   catalog itself by invoking `trino/bin/update-catalogs.sh` directly (issue
+   #2159; see `bin/ensure-catalog-registered.sh`), so no manual catalog step
+   is ever needed and a partial failure is recoverable by simply re-running
+   `easy-db-lab cqlite start` (or `bin/verify.sh`, which runs the same check).
+3. **cqlite-flight** must be running on the db nodes this connector reads
+   from (see `../cqlite-flight/README.md` if present) — it is what actually
+   serves Arrow Flight; this overlay only wires the Trino side.
+
+## Resiliency: why hooks reapply the patch
+
+`trino/bin/update-catalogs.sh` runs a `helm upgrade --install trino
+trinodb/trino ...` every time it fires (on `trino start`/`stop`, and via its
+unfiltered `post-workload-start`/`post-workload-stop` hooks, on **any other
+kit's** start/stop too). A Helm upgrade re-applies the chart's rendered pod
+template, which can drop this overlay's out-of-band `kubectl patch`
+(initContainer + volumes + volumeMount) — exactly the risk the trino kit
+itself already defends against for its own Pyroscope profiling wiring by
+re-patching unconditionally on every `trino start`
+(`kits/trino/bin/start.sh.template`). This kit does the same thing: its own
+`post-workload-start`/`post-workload-stop` hooks (unfiltered, so they fire on
+any kit event) re-run `bin/reapply-plugin-patch.sh`, which is a cheap,
+idempotent `kubectl patch --type=strategic` — safe to run on every event,
+even ones unrelated to Trino or Cassandra.
+
+## Resiliency: coordinator rollout strategy (issue #2158)
+
+The trino kit runs `trino-coordinator` with `hostPort: 8080`. On a single app
+node, a `strategy: RollingUpdate` (the Helm chart's default, with maxSurge)
+can **never** converge once the pod template changes: the surge pod can't
+bind `hostPort: 8080` while the old pod still holds it, and the old
+ReplicaSet just keeps recreating that old pod — deleting the stuck pod alone
+doesn't help (this was the insufficient #2119 fix). `bin/reapply-plugin-patch.sh`
+now ensures `strategy: Recreate` (`rollingUpdate: null`) on
+`trino-coordinator` before every pod-template patch, idempotently. Because
+the Helm chart doesn't template a `strategy` field at all, this out-of-band
+patch survives every subsequent `helm upgrade` from `trino/bin/update-catalogs.sh`
+once applied. With `Recreate`, the controller tears down the old pod before
+starting the new one, so `hostPort: 8080` is always free — no manual pod
+deletion needed.
+
+## Resiliency: catalog registration is decoupled from a clean start (issue #2159)
+
+Catalog registration used to depend entirely on the trino kit's
+`post-workload-start` hook firing, which only happens on a **clean**
+`cqlite start`/`stop` (of this or any other kit). If `cqlite start` aborted
+partway — e.g. on the #2158 deadlock above — the hook never ran and the
+`cqlite` catalog was left unregistered with no automatic recovery path.
+`bin/start.sh` now calls `bin/ensure-catalog-registered.sh` after the plugin
+rollout: it checks `SHOW CATALOGS` on the coordinator and, if `cqlite` is
+missing, registers it itself by invoking the trino kit's own
+`bin/update-catalogs.sh` (never edited, only invoked). `bin/verify.sh` runs
+the same check first. Net effect: a partial `cqlite start` failure is
+recoverable by simply re-running `easy-db-lab cqlite start` or `bin/verify.sh`
+— no manual `update-catalogs.sh` invocation required.
+
+## Verify
+
+```bash
+bin/verify.sh                      # SHOW CATALOGS; SHOW SCHEMAS FROM cqlite
+bin/verify.sh <keyspace>           # SHOW TABLES FROM cqlite.<keyspace>
+bin/verify.sh <keyspace> <table>   # SELECT * FROM cqlite.<keyspace>.<table> LIMIT 10
+```
+
+Or directly:
+
+```bash
+easy-db-lab trino sql "SELECT * FROM cqlite.<keyspace>.<table> LIMIT 10"
+```
+
+## Catalog properties reference
+
+`trino-catalog.properties` (rendered at install time into this kit's own
+directory, picked up automatically by the trino kit — see "Install order"):
+
+| Property | Value here | Notes |
+|---|---|---|
+| `connector.name` | `cqlite_flight` | fixed — MUST equal the registered Trino connector factory name (`CqliteFlightConnectorFactory.getName()`), NOT this kit's catalog name. Setting it to `cqlite` crashes the coordinator at boot with "No factory for connector 'cqlite'" (issue #2123) |
+| `cqlite.sidecar-uri` | `__SIDECAR_URI__` | required; Sidecar runs as a hostNetwork DaemonSet on every db node (port 9043 fixed, no stable cluster Service) |
+| `cqlite.flight-port` | `__FLIGHT_PORT__` | matches the cqlite-flight kit's `--flight-port` |
+| `cqlite.local-datacenter` | `__LOCAL_DATACENTER__` | set with `--local-datacenter` at install; blank = no DC preference (== unset) |
+| `cqlite.read-mode` | `__READ_MODE__` | set with `--read-mode` at install (`snapshot` \| `live`); defaults to `snapshot` |
+
+See `trino-connector/README.md` "Catalog configuration" for the full property
+list this connector understands (aggregation-pushdown knobs, etc.) — this
+overlay only wires the properties the lab's own topology determines
+(sidecar/flight endpoints); anything else can be hand-added to the rendered
+`trino-catalog.properties` the same way.
+
+## Uninstall
+
+```bash
+easy-db-lab cqlite uninstall
+```
+
+Best-effort: strips the plugin volumeMount/initContainer/volumes back out of
+`trino-coordinator`/`trino-worker`, deletes the ConfigMap holding the Gradle
+recipe, and re-runs `trino/bin/update-catalogs.sh` so the `cqlite` catalog
+drops immediately rather than lingering until an unrelated kit's next
+start/stop.

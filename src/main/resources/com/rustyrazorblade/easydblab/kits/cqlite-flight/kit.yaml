@@ -1,0 +1,43 @@
+name: cqlite-flight
+type: db
+description: "Arrow Flight server exposing each Cassandra node's local SSTables as queryable Arrow streams (one co-located pod per db node)"
+version: "1.0.0"
+collision-check: true
+
+endpoints:
+  - name: "Arrow Flight gRPC"
+    node-type: db
+    port: 8815
+    type: native
+
+args:
+  - flag: --tag
+    variable: TAG
+    description: "cqlite-flight image tag (ghcr.io/pmcfadin/cqlite-flight:<tag>)"
+    type: string
+    default: "latest"
+  - flag: --flight-port
+    variable: FLIGHT_PORT
+    description: "Arrow Flight gRPC listen port (host + container, via hostNetwork)"
+    type: int
+    default: "8815"
+  - flag: --data-dir
+    variable: CASSANDRA_DATA_DIR
+    description: "Host path to the Cassandra data directory, mounted read-only into the pod. cqlite-flight serves EXACTLY ONE dir — on a multi-disk node (data spread across /mnt/db1, /mnt/db2, ...) the other disks are silently missed; see --data-root and issue #2114"
+    type: string
+    default: "/mnt/db1/cassandra/data"
+  - flag: --data-root
+    variable: CASSANDRA_DATA_ROOT
+    description: "Host path under which per-disk Cassandra data dirs live (e.g. /mnt, with /mnt/db1, /mnt/db2). An init container scans this read-only and prints a LOUD, non-fatal warning on more than one EXISTING candidate data dir — empty ones count, they receive SSTables later (multi-disk — silent partial results, issue #2114) — AND on zero candidates (absent/empty/mismatched root = cannot-verify, never a silent OK) AND on a lone candidate that is not the served --data-dir. Exactly one existing candidate matching --data-dir = quiet OK"
+    type: string
+    default: "/mnt"
+  - flag: --data-gid
+    variable: CASSANDRA_DATA_GID
+    description: "Host GID that owns the Cassandra data dir; added as a pod supplementalGroup so the image's uid-10001 process can read it"
+    type: int
+    default: "999"
+  - flag: --otel-endpoint
+    variable: OTEL_ENDPOINT
+    description: "OTLP gRPC endpoint for metrics/traces (default: the node-local OTel collector, reachable at localhost since this pod also runs with hostNetwork)"
+    type: string
+    default: "http://localhost:4317"

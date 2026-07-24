@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# End-to-end smoke check: runs SQL against the running Trino coordinator via
+# `kubectl exec` + the bundled Trino CLI (no local trino client needed).
+#
+# Usage:
+#   bin/verify.sh                       # SHOW CATALOGS; SHOW SCHEMAS FROM cqlite
+#   bin/verify.sh <keyspace>            # SHOW TABLES FROM cqlite.<keyspace>
+#   bin/verify.sh <keyspace> <table>    # SELECT * FROM cqlite.<keyspace>.<table> LIMIT 10
+#
+# Equivalently, from any shell with the JDBC driver / `easy-db-lab trino sql`
+# available (see docs/user-guide/install-trino.md "Connecting"):
+#   easy-db-lab trino sql "SELECT * FROM cqlite.<keyspace>.<table> LIMIT 10"
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export KUBECONFIG="${SCRIPT_DIR}/../../__KUBECONFIG__"
+
+KEYSPACE="${1:-}"
+TABLE="${2:-}"
+
+COORD_POD=$(kubectl get pods --namespace default \
+  -l 'app.kubernetes.io/name=trino,app.kubernetes.io/component=coordinator' \
+  -o jsonpath='{.items[0].metadata.name}')
+
+if [ -z "${COORD_POD}" ]; then
+  echo "ERROR: no running trino-coordinator pod found." >&2
+  exit 1
+fi
+
+run_sql() {
+  echo "+ ${1}"
+  kubectl exec --namespace default "${COORD_POD}" -- trino --execute "${1}"
+  echo
+}
+
+if [ -z "${KEYSPACE}" ]; then
+  run_sql "SHOW CATALOGS"
+  run_sql "SHOW SCHEMAS FROM cqlite"
+elif [ -z "${TABLE}" ]; then
+  run_sql "SHOW TABLES FROM cqlite.${KEYSPACE}"
+else
+  run_sql "SELECT * FROM cqlite.${KEYSPACE}.${TABLE} LIMIT 10"
+fi

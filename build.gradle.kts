@@ -369,6 +369,33 @@ tasks.register<Exec>("testCassandraResolveRef") {
     commandLine = listOf("bash", ".github/cassandra-image/resolve-ref.test.sh")
 }
 
+// Unit-test the trino-loadtest kit's driver.py pure logic (argument-error
+// contract, percentile math, cumulative-stats separation, snapshot-leak
+// parsing). The driver imports `trino` lazily, so the stdlib `unittest` runner
+// exercises every function under test with no third-party package and no
+// cluster. The tests live OUTSIDE the shipped kit resource dir (the kit ships
+// driver.py only), so this task points the runner at src/test/python.
+tasks.register<Exec>("testTrinoLoadtestDriver") {
+    group = "Verification"
+    description = "Unit-test the trino-loadtest kit driver.py pure logic"
+    workingDir = file(".")
+    commandLine =
+        listOf(
+            "python3",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "src/test/python/trino-loadtest",
+            "-p",
+            "test_*.py",
+        )
+}
+
+tasks.named("check") {
+    dependsOn("testTrinoLoadtestDriver")
+}
+
 tasks.register<Exec>("testPackerScript") {
     group = "Verification"
     description = "Test a specific packer script (use -Pscript=path/to/script.sh)"

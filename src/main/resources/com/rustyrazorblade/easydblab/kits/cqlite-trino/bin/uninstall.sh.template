@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# `easy-db-lab cqlite uninstall`. D1 revised (PR #859): the plugin wiring is a
+# Helm values fragment (trino-values.yaml) applied through the trino kit's own
+# `helm upgrade`, not an out-of-band `kubectl patch`. So teardown is symmetric:
+# once this kit's directory is removed, the fragment (and its sibling
+# trino-catalog.properties) is no longer discovered, and a single re-run of the
+# trino kit's update-catalogs.sh renders the plugin wiring AND the cqlite
+# catalog back out of the pod template in one `helm upgrade`.
+#
+# The easy-db-lab framework deletes this kit's installed directory right AFTER
+# this script returns, so we must delete the fragment ourselves here first (this
+# is the last chance to make update-catalogs.sh see the tree already stripped),
+# then re-run it. We also delete the ConfigMap the initContainer mounted.
+#
+# Safe to re-run: every step is idempotent / --ignore-not-found.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export KUBECONFIG="${SCRIPT_DIR}/../../__KUBECONFIG__"
+
+CONFIGMAP_NAME="cqlite-trino-plugin-src"
+TRINO_UPDATE_CATALOGS="${SCRIPT_DIR}/../../trino/bin/update-catalogs.sh"
+
+echo "Removing the cqlite Helm values fragment and catalog properties so the trino"
+echo "kit's update-catalogs.sh stops discovering them..."
+rm -f "${SCRIPT_DIR}/../trino-values.yaml" "${SCRIPT_DIR}/../trino-catalog.properties"
+
+if [ -x "${TRINO_UPDATE_CATALOGS}" ]; then
+  echo "Re-running the trino kit's update-catalogs.sh to render the cqlite plugin"
+  echo "wiring and catalog out of the Trino pod template now..."
+  "${TRINO_UPDATE_CATALOGS}"
+else
+  echo "trino kit's update-catalogs.sh not found — the cqlite plugin/catalog will drop"
+  echo "on its own the next time any kit starts or stops (or the trino kit restarts)."
+fi
+
+echo "Deleting ConfigMap ${CONFIGMAP_NAME}..."
+kubectl delete configmap "${CONFIGMAP_NAME}" --namespace default --ignore-not-found
+
+echo "cqlite overlay uninstalled."

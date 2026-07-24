@@ -1,0 +1,154 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+IMAGE="docker.io/library/python:3.12-slim"
+POD_NAME="trino-loadtest-${KIT_NAME}-$(date +%s)"
+CONFIGMAP_NAME="${POD_NAME}-driver"
+VICTORIA_URL="http://${CONTROL_HOST_PRIVATE}:8428/api/v1/import/prometheus"
+
+# The trino kit's "Trino UI" http endpoint resolves to TARGET_HTTP_URL
+# (KitEndpointResolver, kit-ref arg --target) — reuse it as the coordinator
+# address rather than hardcoding a port.
+if [ -z "${TARGET_HTTP_URL:-}" ]; then
+  echo "Error: TARGET_HTTP_URL not set. Install with --target pointing at a running trino kit that exposes an http endpoint." >&2
+  exit 1
+fi
+# Named TRINO_LOADTEST_* (not bare TRINO_HOST/TRINO_PORT/TRINO_USER) for
+# consistency with driver.py's env-var names (issue #2130) — these are local
+# to this script and are never exported into the pod's own environment (there
+# is no `env:` stanza in the podspec below; they're passed as explicit
+# --host/--port/--user CLI flags), so the bare names were never actually
+# exposed to the Kubernetes Service-injection collision driver.py hit. Still,
+# consistent naming avoids future confusion when grepping for these vars.
+TRINO_LOADTEST_HOST_PORT="${TARGET_HTTP_URL#http://}"
+TRINO_LOADTEST_HOST_PORT="${TRINO_LOADTEST_HOST_PORT#https://}"
+TRINO_LOADTEST_HOST="${TRINO_LOADTEST_HOST_PORT%%:*}"
+TRINO_LOADTEST_PORT="${TRINO_LOADTEST_HOST_PORT##*:}"
+TRINO_LOADTEST_USER="${TARGET_JDBC_USER:-cqlite-loadtest}"
+
+QUERIES_FLAG=""
+CONFIGMAP_FILE_ARGS=(--from-file="driver.py=${SCRIPT_DIR}/../driver.py")
+# Issue #2132: an unset optional --queries-file arrives here as the literal
+# string "null" (the easy-db-lab kit runner injects "null", not empty, for an
+# unset arg whose kit.yaml default is ""), not an empty/unset var. `[ -n ... ]`
+# alone is true for "null", so it must be rejected explicitly — otherwise this
+# tries `--from-file=queries.txt=null` (no such file) and the whole configmap
+# pipeline produces nothing for `kubectl apply -f -` to consume.
+if [ -n "${TRINO_LOADTEST_QUERIES_FILE:-}" ] && [ "${TRINO_LOADTEST_QUERIES_FILE}" != "null" ]; then
+  CONFIGMAP_FILE_ARGS+=(--from-file="queries.txt=${TRINO_LOADTEST_QUERIES_FILE}")
+  QUERIES_FLAG="--queries-file /driver/queries.txt"
+fi
+
+echo "Starting trino-loadtest: coordinator=${TRINO_LOADTEST_HOST}:${TRINO_LOADTEST_PORT}, ks=${TRINO_LOADTEST_KEYSPACE:-<none>}, tbl=${TRINO_LOADTEST_TABLE:-<none>}, threads=${THREADS}, duration=${DURATION}s, interval=${INTERVAL}s, traceparent=${TRACEPARENT}..."
+
+# Stage driver.py (and an optional queries file) into a labelled ConfigMap the
+# pod mounts read-only at /driver. Labelled so stop.sh's label-selector delete
+# also removes it — no per-run cleanup step needed beyond `stop`.
+kubectl --kubeconfig="${KUBECONFIG}" create configmap "${CONFIGMAP_NAME}" \
+  "${CONFIGMAP_FILE_ARGS[@]}" \
+  --dry-run=client -o yaml \
+  | kubectl --kubeconfig="${KUBECONFIG}" label --local -f - \
+      "easydblab.com/kit=${KIT_NAME}" "easydblab.com/role=trino-loadtest-run" \
+      --dry-run=client -o yaml \
+  | kubectl --kubeconfig="${KUBECONFIG}" apply -f -
+
+TRACEPARENT_FLAG=""
+if [ "${TRACEPARENT}" = "true" ]; then
+  TRACEPARENT_FLAG="--traceparent"
+fi
+
+# D12 snapshot-leak hygiene (issue #2399): both flags are optional and, like
+# --queries-file above, arrive as the literal "null" when unset (kit runner
+# injects "null" for an unset arg whose kit.yaml default is ""). Reject "null"
+# explicitly so we never pass `--snapshot-check-cmd null` to driver.py. The
+# probe command can contain spaces (it's a shell one-liner), so it is quoted
+# with printf %q before being folded into the pod's `sh -c` argv. The timeout
+# only matters alongside the command, so it is only threaded when set.
+SNAPSHOT_CHECK_FLAGS=""
+if [ -n "${TRINO_LOADTEST_SNAPSHOT_CHECK_CMD:-}" ] && [ "${TRINO_LOADTEST_SNAPSHOT_CHECK_CMD}" != "null" ]; then
+  SNAPSHOT_CHECK_FLAGS="--snapshot-check-cmd $(printf %q "${TRINO_LOADTEST_SNAPSHOT_CHECK_CMD}")"
+  if [ -n "${TRINO_LOADTEST_SNAPSHOT_CHECK_TIMEOUT_S:-}" ] && [ "${TRINO_LOADTEST_SNAPSHOT_CHECK_TIMEOUT_S}" != "null" ]; then
+    SNAPSHOT_CHECK_FLAGS="${SNAPSHOT_CHECK_FLAGS} --snapshot-check-timeout-s $(printf %q "${TRINO_LOADTEST_SNAPSHOT_CHECK_TIMEOUT_S}")"
+  fi
+fi
+
+kubectl --kubeconfig="${KUBECONFIG}" apply -f - <<PODSPEC
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ${POD_NAME}
+  labels:
+    easydblab.com/kit: "${KIT_NAME}"
+    easydblab.com/role: trino-loadtest-run
+spec:
+  restartPolicy: Never
+  containers:
+    - name: trino-loadtest
+      image: ${IMAGE}
+      command: ["sh", "-c"]
+      args:
+        - >-
+          pip install --quiet trino &&
+          python /driver/driver.py
+          --host "${TRINO_LOADTEST_HOST}" --port "${TRINO_LOADTEST_PORT}" --user "${TRINO_LOADTEST_USER}"
+          --ks "${TRINO_LOADTEST_KEYSPACE:-}" --tbl "${TRINO_LOADTEST_TABLE:-}"
+          ${QUERIES_FLAG}
+          --threads "${THREADS}" --duration "${DURATION}" --interval "${INTERVAL}"
+          ${TRACEPARENT_FLAG}
+          ${SNAPSHOT_CHECK_FLAGS}
+      volumeMounts:
+        - name: driver
+          mountPath: /driver
+          readOnly: true
+  volumes:
+    - name: driver
+      configMap:
+        name: ${CONFIGMAP_NAME}
+PODSPEC
+
+kubectl --kubeconfig="${KUBECONFIG}" wait \
+  --for=condition=ready \
+  --timeout=60s \
+  pod/"${POD_NAME}"
+
+# Stream logs, echo every line, and push interval stats to VictoriaMetrics.
+# Interval lines match: "[ Ns ] threads: N qps: N.NN rows_s: N.NN lat_p50_ms: N.NN lat_p99_ms: N.NN err_s: N.NN"
+# (driver.py's format_interval_line — the trailing "[ final ]" summary line
+# deliberately does not match this pattern and is only echoed, never pushed.)
+# Tracks whether we've already warned about a failing metrics push, so the
+# warning fires exactly once (on the FIRST failure) instead of on every
+# interval — a persistently-unreachable VictoriaMetrics must not drown out the
+# raw stats lines, but a silently-empty dashboard must not go unexplained either.
+METRICS_PUSH_WARNED=""
+kubectl --kubeconfig="${KUBECONFIG}" logs -f "${POD_NAME}" | while IFS= read -r line; do
+  echo "$line"
+  if [[ "$line" =~ ^\[\ [0-9]+s\ \] ]]; then
+    read -r QPS ROWS_S LAT_P50 LAT_P99 ERR_S <<< "$(echo "$line" | awk '{
+      for (i=1; i<=NF; i++) {
+        if ($i == "qps:") qps=$(i+1)
+        if ($i == "rows_s:") rows=$(i+1)
+        if ($i == "lat_p50_ms:") p50=$(i+1)
+        if ($i == "lat_p99_ms:") p99=$(i+1)
+        if ($i == "err_s:") errs=$(i+1)
+      }
+      print qps, rows, p50, p99, errs
+    }')"
+    # A push failure must not abort the load run (the raw interval line above is
+    # already on stdout), but the FIRST failure gets a single stderr warning so
+    # an empty dashboard is diagnosable instead of silent.
+    if ! curl -sf --max-time 2 -X POST "${VICTORIA_URL}" \
+      --data-binary "trino_loadtest_qps{kit=\"${KIT_NAME}\"} ${QPS:-0}
+trino_loadtest_rows_per_sec{kit=\"${KIT_NAME}\"} ${ROWS_S:-0}
+trino_loadtest_lat_p50_ms{kit=\"${KIT_NAME}\"} ${LAT_P50:-0}
+trino_loadtest_lat_p99_ms{kit=\"${KIT_NAME}\"} ${LAT_P99:-0}
+trino_loadtest_errors_per_second{kit=\"${KIT_NAME}\"} ${ERR_S:-0}" 2>/dev/null; then
+      if [ -z "${METRICS_PUSH_WARNED}" ]; then
+        echo "warning: metrics push to ${VICTORIA_URL} failing (dashboards will be empty); check CONTROL_HOST_PRIVATE / VictoriaMetrics" >&2
+        METRICS_PUSH_WARNED=1
+      fi
+    fi
+  fi
+done
+
+echo "trino-loadtest run complete (pod: ${POD_NAME}). Run '${KIT_NAME} stop' to clean up the pod and ConfigMap."

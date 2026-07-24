@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# `easy-db-lab cqlite stop`. This overlay has no pods/resources of its own to
+# scale down — the plugin wiring lives in the trino kit's Helm values fragment
+# (trino-values.yaml), rendered into the trino-coordinator/trino-worker pod
+# template. `easy-db-lab trino stop` only scales the trino replicas to zero; it
+# does not re-render the chart, so the wiring persists across trino stop/start
+# cycles and comes back with the pods. This is a no-op, kept only so
+# `cqlite stop` is a valid, documented command rather than an error.
+set -euo pipefail
+echo "cqlite overlay: nothing to stop. The connector plugin is wired into the trino"
+echo "Helm values (trino-values.yaml), so it persists across 'trino stop'/'trino start'"
+echo "and every 'helm upgrade'. Use 'easy-db-lab cqlite uninstall' to remove it entirely."

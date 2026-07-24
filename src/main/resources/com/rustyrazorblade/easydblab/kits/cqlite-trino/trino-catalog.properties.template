@@ -1,0 +1,29 @@
+# Auto-discovered by the trino kit's own bin/update-catalogs.sh, which scans
+# every sibling kit directory for a `trino-catalog.properties` file (see
+# docs/user-guide/install-trino.md "Adding Trino Catalogs for Custom Kits").
+#
+# Two DIFFERENT names are in play here — do not conflate them (issue #2123):
+#   - The CATALOG name (what you type in SQL, e.g. `cqlite.<ks>.<tbl>`) comes
+#     from this kit's INSTALLED DIRECTORY name, which for a built-in kit is its
+#     `kit.yaml` `name:` — `cqlite` here — giving the clean
+#     `cqlite.<keyspace>.<table>` addressing used throughout the connector's
+#     own docs (see this kit's README, "Install order"). The install
+#     subcommand is the resource-dir name `cqlite-trino`; the two are
+#     deliberately decoupled. It is NOT set by anything in this file.
+#   - `connector.name` below MUST equal the registered Trino connector
+#     factory name, `cqlite_flight` (`CqliteFlightConnectorFactory.getName()`
+#     — see `CqliteFlightConfig.java` javadoc). Trino resolves catalogs by
+#     looking up `connector.name` in its table of loaded factories; anything
+#     else (e.g. the catalog name `cqlite`) makes the coordinator CrashLoop at
+#     boot with "No factory for connector '...'".
+connector.name=cqlite_flight
+cqlite.sidecar-uri=__SIDECAR_URI__
+cqlite.flight-port=__FLIGHT_PORT__
+# Preferred datacenter for split placement. Set by the kit's --local-datacenter
+# arg; renders BLANK when the flag is not passed, which the connector treats as
+# "no DC preference" — functionally identical to leaving it unset (an empty DC
+# name matches no replica set, so split placement falls back to any replica).
+cqlite.local-datacenter=__LOCAL_DATACENTER__
+# How each scan resolves the SSTable file set. Set by the kit's --read-mode arg
+# (snapshot | live); defaults to snapshot (consistent per-query Sidecar snapshot).
+cqlite.read-mode=__READ_MODE__

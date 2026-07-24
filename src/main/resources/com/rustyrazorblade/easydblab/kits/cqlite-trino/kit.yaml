@@ -1,0 +1,73 @@
+# NOTE on naming (issue #2123): the resource directory is `cqlite-trino` (it is
+# an overlay FOR the trino kit), so the install subcommand is
+# `easy-db-lab kit install cqlite-trino`. The installed directory — and thus the
+# Trino catalog Trino registers — comes from `name:` below, NOT from the resource
+# directory name. `name: cqlite` gives the clean `cqlite.<keyspace>.<table>`
+# addressing used throughout the connector's own docs. See README.md.template
+# "Install order".
+name: cqlite
+type: app
+description: >-
+  Overlay for the trino kit: loads the CQLite Trino connector plugin into the
+  already-running Trino coordinator/worker pods and registers the `cqlite`
+  catalog, so `SELECT * FROM cqlite.<keyspace>.<table>` reads Cassandra
+  directly from SSTables via cqlite-flight/Arrow Flight — no live Cassandra
+  read path involved.
+version: "1.0.0"
+collision-check: false
+
+runtime:
+  type: deployment
+  name: trino-coordinator
+  namespace: default
+
+args:
+  - flag: --connector-version
+    variable: CONNECTOR_VERSION
+    description: "cqlite-trino version to install from Maven Central (in.mcfad:cqlite-trino:<version>)"
+    type: string
+    default: "0.13.0"
+  - flag: --flight-port
+    variable: FLIGHT_PORT
+    description: "Arrow Flight gRPC port cqlite-flight listens on, on each Cassandra node (matches the cqlite-flight kit's --flight-port)"
+    type: int
+    default: "8815"
+  - flag: --sidecar-uri
+    variable: SIDECAR_URI
+    description: >-
+      Cassandra Sidecar base URI, e.g. http://<db-node-private-ip>:9043 — the
+      Sidecar runs as a hostNetwork DaemonSet on every db node (fixed port
+      9043), not behind a stable cluster Service, so there is no safe
+      cluster-wide default. Get a reachable IP with:
+      `easy-db-lab ip db0 --private`. Required.
+    type: string
+    required: true
+  - flag: --local-datacenter
+    variable: LOCAL_DATACENTER
+    description: "Optional: preferred datacenter for split placement (cqlite.local-datacenter). Leave unset to disable (rendered blank = no DC preference)."
+    type: string
+    default: ""
+  - flag: --read-mode
+    variable: READ_MODE
+    description: >-
+      How the scan resolves the SSTable file set (cqlite.read-mode):
+      `snapshot` (default) reads a consistent per-query Sidecar snapshot;
+      `live` reads the current data dir (races compaction). Valid: snapshot | live.
+    type: string
+    default: "snapshot"
+  - flag: --trino-image-tag
+    variable: TRINO_IMAGE_TAG
+    description: >-
+      Trino image tag the running trino kit MUST be pinned to for SPI
+      compatibility with this connector version. Used only to fail fast with
+      a clear error when the running trino kit's image tag doesn't match —
+      this overlay cannot rewrite the trino kit's own values.yaml.
+    type: string
+    default: "481"
+
+# No hooks (D1 revised, PR #859): the plugin wiring is a Helm values fragment
+# (trino-values.yaml) the trino kit's own update-catalogs.sh discovers and
+# renders into the pod template, so it survives every `helm upgrade` natively.
+# There is nothing to reapply on other kits' start/stop — the fleet of
+# re-patch / self-heal hooks the earlier out-of-band `kubectl patch` port
+# needed is gone.

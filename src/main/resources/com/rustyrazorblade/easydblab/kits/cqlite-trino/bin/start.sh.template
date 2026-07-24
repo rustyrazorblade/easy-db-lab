@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+# `easy-db-lab cqlite start` (assuming --kit cqlite at install time — see
+# README.md "Install order"). Requires the trino kit to already be running:
+# this overlay wires its connector plugin into Trino's Helm values and re-runs
+# the trino kit's own `helm upgrade`; it does not deploy Trino itself.
+#
+# D1 (revised, PR #859): the plugin/initContainer/volume/add-opens wiring lives
+# entirely in the sibling `trino-values.yaml` fragment, which the trino kit's
+# bin/update-catalogs.sh discovers and passes to its single `helm upgrade`. So
+# `cqlite start` no longer hot-patches a live Deployment — it (1) primes the
+# ConfigMap the initContainer mounts, then (2) re-runs update-catalogs.sh, which
+# renders the fragment into the pod template (surviving future upgrades) and
+# registers the cqlite catalog in the same pass.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export KUBECONFIG="${SCRIPT_DIR}/../../__KUBECONFIG__"
+
+EXPECTED_TRINO_TAG="__TRINO_IMAGE_TAG__"
+CONFIGMAP_NAME="cqlite-trino-plugin-src"
+GRADLE_DIR="${SCRIPT_DIR}/../gradle-assemble-plugin"
+TRINO_UPDATE_CATALOGS="${SCRIPT_DIR}/../../trino/bin/update-catalogs.sh"
+
+echo "Checking the running trino kit's image tag against the connector's required Trino SPI..."
+if ! kubectl get deployment trino-coordinator --namespace default >/dev/null 2>&1; then
+  echo "ERROR: deployment/trino-coordinator not found." >&2
+  echo "Install and start the trino kit FIRST:" >&2
+  echo "  easy-db-lab kit install trino --version ${EXPECTED_TRINO_TAG}" >&2
+  echo "  easy-db-lab trino start" >&2
+  exit 1
+fi
+
+RUNNING_IMAGE=$(kubectl get deployment trino-coordinator --namespace default \
+  -o jsonpath='{.spec.template.spec.containers[?(@.name=="trino-coordinator")].image}')
+RUNNING_TAG="${RUNNING_IMAGE##*:}"
+
+if [ "${RUNNING_TAG}" != "${EXPECTED_TRINO_TAG}" ]; then
+  echo "ERROR: SPI mismatch. trino-coordinator is running image '${RUNNING_IMAGE}'" >&2
+  echo "(tag '${RUNNING_TAG}'), but this cqlite-trino connector build targets Trino SPI" >&2
+  echo "${EXPECTED_TRINO_TAG} (see trino-connector/build.gradle.kts: trinoVersion)." >&2
+  echo "The trino kit's own default is 474, which is INCOMPATIBLE with this connector." >&2
+  echo "Pin the trino kit's image tag and restart it:" >&2
+  echo "  vi trino/values.yaml   # set image.tag: \"${EXPECTED_TRINO_TAG}\"" >&2
+  echo "  easy-db-lab trino start   # re-applies values.yaml" >&2
+  echo "or reinstall from scratch:" >&2
+  echo "  easy-db-lab kit install trino --version ${EXPECTED_TRINO_TAG}" >&2
+  echo "  easy-db-lab trino start" >&2
+  exit 1
+fi
+echo "  OK: trino-coordinator is running Trino ${RUNNING_TAG} (matches required SPI ${EXPECTED_TRINO_TAG})."
+
+# The initContainer declared in trino-values.yaml mounts this ConfigMap to get
+# the throwaway Gradle recipe that resolves the published in.mcfad:cqlite-trino
+# artifact from Maven Central at pod-start. A ConfigMap is a cluster object Helm
+# does not create from a values fragment, so create/refresh it here BEFORE the
+# helm upgrade references it (idempotent create-or-update via dry-run|apply).
+echo "Ensuring ConfigMap ${CONFIGMAP_NAME} (Gradle assemble-plugin recipe) exists..."
+kubectl create configmap "${CONFIGMAP_NAME}" \
+  --namespace default \
+  --from-file="${GRADLE_DIR}/build.gradle.kts" \
+  --from-file="${GRADLE_DIR}/settings.gradle.kts" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+# Re-run the trino kit's own update-catalogs.sh. It globs sibling kit dirs for
+# BOTH trino-catalog.properties (registers the cqlite catalog) AND
+# trino-values.yaml (our plugin wiring fragment), passing each to its single
+# `helm upgrade`. So this one call both wires the plugin into the rendered pod
+# template — surviving future upgrades natively, no re-patch step — and
+# registers the catalog, then waits for the coordinator/worker rollout.
+if [ ! -x "${TRINO_UPDATE_CATALOGS}" ]; then
+  echo "ERROR: trino kit's bin/update-catalogs.sh not found or not executable at" >&2
+  echo "  ${TRINO_UPDATE_CATALOGS}." >&2
+  echo "  Is the trino kit installed as a sibling directory named 'trino'? Run:" >&2
+  echo "    easy-db-lab kit install trino --version ${EXPECTED_TRINO_TAG}" >&2
+  echo "    easy-db-lab trino start" >&2
+  exit 1
+fi
+
+echo "Applying the cqlite plugin wiring + catalog via the trino kit's helm upgrade"
+echo "(the plugin initContainer fetches from Maven Central on first run; this may"
+echo "take a minute or two)..."
+# update-catalogs.sh ends in a `kubectl rollout status ... --timeout` wait. If
+# the cqlite-plugin-fetch initContainer can't resolve in.mcfad:cqlite-trino from
+# Maven Central (network/socks/artifact resolution), that wait just times out
+# with no pointer to the real cause. On any non-zero exit, echo the exact
+# initContainer-log commands that reveal it (mirroring how cqlite-flight's
+# start.sh points at `kubectl logs -c detect-multidisk`).
+if ! "${TRINO_UPDATE_CATALOGS}"; then
+  echo "ERROR: applying the cqlite plugin wiring failed (helm upgrade or the coordinator/worker" >&2
+  echo "rollout did not become ready in time). The most common cause is the cqlite-plugin-fetch" >&2
+  echo "initContainer failing to resolve in.mcfad:cqlite-trino from Maven Central at pod-start." >&2
+  echo "Inspect that initContainer's logs on the coordinator and workers:" >&2
+  echo "  kubectl logs -l app.kubernetes.io/name=trino,app.kubernetes.io/component=coordinator -c cqlite-plugin-fetch --prefix" >&2
+  echo "  kubectl logs -l app.kubernetes.io/name=trino,app.kubernetes.io/component=worker -c cqlite-plugin-fetch --prefix" >&2
+  exit 1
+fi
+
+echo ""
+echo "cqlite plugin loaded into trino-coordinator/trino-worker at"
+echo "  /usr/lib/trino/plugin/cqlite_flight"
+echo "and the cqlite catalog is registered."
+echo ""
+echo "Verify with:"
+echo "  ${SCRIPT_DIR}/verify.sh <keyspace> <table>"

@@ -67,6 +67,16 @@ To manually rebuild:
 docker build -t easy-db-lab-packer-test .
 ```
 
+## Base AMI networking (Cilium ENI mode)
+
+Cilium ENI native-routing requires the OS to leave Cilium's runtime-attached secondary ENIs
+alone. `base/install/configure_cilium_eni_networkd.sh` bakes two systemd-networkd drop-ins into
+the image: `05-cilium-eni-primary.network` keeps the primary interface (`ens5`) OS-managed via
+DHCP, and `06-cilium-eni-unmanaged.network` marks secondary ENIs (`ens6+`) `Unmanaged=yes` so
+Cilium owns them. Without this the OS DHCPs `ens6` and adds a competing default route, multi-homing
+the host and breaking IMDS/egress/kubelet. The drop-ins are inert on Flannel (no secondary ENIs are
+ever attached) and are covered by `./gradlew testPackerBase`.
+
 ## Documentation
 
 See [TESTING.md](TESTING.md) for comprehensive testing documentation including:

@@ -41,6 +41,7 @@ services:
       bash /packer/base/install/install_helm.sh &&
       bash /packer/base/install/install_kubectl.sh &&
       bash /packer/base/install/install_cilium_cli.sh &&
+      bash /packer/base/install/configure_cilium_eni_networkd.sh &&
       bash /packer/base/install/install_otel_agent.sh &&
       echo 'Base provisioning complete!'
       "

@@ -6,6 +6,8 @@ import com.rustyrazorblade.easydblab.providers.aws.InstanceCreationConfig
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.EnumSource
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.mock
@@ -17,6 +19,7 @@ import software.amazon.awssdk.services.ec2.model.DescribeInstanceTypesRequest
 import software.amazon.awssdk.services.ec2.model.DescribeInstanceTypesResponse
 import software.amazon.awssdk.services.ec2.model.DescribeInstancesRequest
 import software.amazon.awssdk.services.ec2.model.DescribeInstancesResponse
+import software.amazon.awssdk.services.ec2.model.HttpTokensState
 import software.amazon.awssdk.services.ec2.model.Instance
 import software.amazon.awssdk.services.ec2.model.InstanceState
 import software.amazon.awssdk.services.ec2.model.InstanceStateName
@@ -378,6 +381,51 @@ internal class EC2InstanceServiceTest {
         // - Second instance (instanceIndex=4): subnet[4 % 3] = subnet-b
         assertThat(capturedRequests[0].subnetId()).isEqualTo("subnet-a")
         assertThat(capturedRequests[1].subnetId()).isEqualTo("subnet-b")
+    }
+
+    @ParameterizedTest
+    @EnumSource(ServerType::class)
+    fun `createInstances requires IMDSv2 with hop limit 2 for every node type`(serverType: ServerType) {
+        // The non-hostNetwork cilium-operator can schedule on a db or app node and must reach
+        // IMDS (two hops from inside a pod) to obtain credentials for ENI allocation. Previously
+        // only Control nodes received hop limit 2, which deadlocked ENI IPAM.
+        val config =
+            InstanceCreationConfig(
+                serverType = serverType,
+                count = 1,
+                instanceType = "m5.large",
+                amiId = "ami-123",
+                keyName = "test-key",
+                securityGroupId = "sg-123",
+                subnetIds = listOf("subnet-a"),
+                iamInstanceProfile = "test-profile",
+                ebsConfig = null,
+                tags = mapOf("easy_cass_lab" to "1"),
+                clusterName = "test-cluster",
+                startIndex = 0,
+            )
+
+        val mockInstance =
+            Instance
+                .builder()
+                .instanceId("i-test")
+                .publicIpAddress("1.2.3.4")
+                .privateIpAddress("10.0.0.1")
+                .placement(Placement.builder().availabilityZone("us-east-1a").build())
+                .build()
+
+        whenever(mockEc2Client.runInstances(any<RunInstancesRequest>()))
+            .thenReturn(RunInstancesResponse.builder().instances(mockInstance).build())
+
+        ec2InstanceService.createInstances(config)
+
+        val requestCaptor = argumentCaptor<RunInstancesRequest>()
+        verify(mockEc2Client).runInstances(requestCaptor.capture())
+
+        val metadataOptions = requestCaptor.firstValue.metadataOptions()
+        assertThat(metadataOptions).isNotNull
+        assertThat(metadataOptions.httpPutResponseHopLimit()).isEqualTo(2)
+        assertThat(metadataOptions.httpTokens()).isEqualTo(HttpTokensState.REQUIRED)
     }
 
     @Test

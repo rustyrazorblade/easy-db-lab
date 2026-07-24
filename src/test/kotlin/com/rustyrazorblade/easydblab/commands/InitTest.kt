@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.services.TemplateService
@@ -301,6 +302,32 @@ class InitTest : BaseKoinTest() {
             // save is called twice: once in prepareEnvironment, once after setting VPC
             verify(mockClusterStateManager, atLeastOnce()).save(
                 argThat { vpcId == "vpc-existing123" },
+            )
+        }
+    }
+
+    @Nested
+    inner class CniOptions {
+        @Test
+        fun `execute persists Flannel as the default cni when --cni is omitted`() {
+            val command = Init()
+            command.clean = true
+            command.execute()
+
+            verify(mockClusterStateManager).save(
+                argThat { initConfig?.cni == CniMode.Flannel },
+            )
+        }
+
+        @Test
+        fun `execute persists Cilium when cni is set to Cilium`() {
+            val command = Init()
+            command.clean = true
+            command.cni = CniMode.Cilium
+            command.execute()
+
+            verify(mockClusterStateManager).save(
+                argThat { initConfig?.cni == CniMode.Cilium },
             )
         }
     }

@@ -142,17 +142,17 @@ class EC2InstanceService(
             requestBuilder.blockDeviceMappings(blockDeviceMappings)
         }
 
-        // Control nodes need hop limit of 2 so containers (K3s pods) can access IMDS
-        if (config.serverType == ServerType.Control) {
-            requestBuilder.metadataOptions(
-                InstanceMetadataOptionsRequest
-                    .builder()
-                    .httpTokens(HttpTokensState.REQUIRED)
-                    .httpPutResponseHopLimit(2)
-                    .httpEndpoint("enabled")
-                    .build(),
-            )
-        }
+        // All node types need hop limit of 2 so containers (K3s pods) can access IMDS.
+        // In particular the non-hostNetwork cilium-operator pod may schedule on a db/app
+        // node and must reach IMDS to obtain credentials for ENI allocation.
+        requestBuilder.metadataOptions(
+            InstanceMetadataOptionsRequest
+                .builder()
+                .httpTokens(HttpTokensState.REQUIRED)
+                .httpPutResponseHopLimit(2)
+                .httpEndpoint("enabled")
+                .build(),
+        )
 
         val request = requestBuilder.build()
 

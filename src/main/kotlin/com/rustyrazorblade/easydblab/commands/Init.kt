@@ -4,10 +4,12 @@ import com.fasterxml.jackson.annotation.JsonIgnore
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.converters.PicoAZConverter
+import com.rustyrazorblade.easydblab.commands.converters.PicoCniModeConverter
 import com.rustyrazorblade.easydblab.commands.mixins.OpenSearchInitMixin
 import com.rustyrazorblade.easydblab.commands.mixins.SparkInitMixin
 import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
@@ -235,10 +237,14 @@ class Init : PicoBaseCommand() {
     var cidr: String? = null
 
     @Option(
-        names = ["--cilium"],
-        description = ["Install Cilium CNI instead of the default Flannel CNI"],
+        names = ["--cni"],
+        description = [
+            "Pod-network CNI: 'flannel' (default) uses K3s's built-in Flannel overlay; " +
+                "'cilium' uses Cilium (opt-in, installed in the standard VXLAN-tunnel mode).",
+        ],
+        converter = [PicoCniModeConverter::class],
     )
-    var cilium = false
+    var cni: CniMode = CniMode.Flannel
 
     /**
      * Resolved number of database instances: the namespaced `--db.count` when supplied, otherwise

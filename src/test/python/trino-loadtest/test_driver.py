@@ -21,6 +21,7 @@ from __future__ import annotations
 import contextlib
 import importlib.util
 import io
+import re
 import sys
 import unittest
 from argparse import Namespace
@@ -272,6 +273,94 @@ class SnapshotLeakResultTest(unittest.TestCase):
         self.assertTrue(result.ran)
         self.assertFalse(result.passed)
         self.assertEqual(result.leaked, ["cqlite-leak1"])
+
+
+class StatsLineScrapeContractTest(unittest.TestCase):
+    """Lock the producer↔consumer metrics-scrape contract between driver.py's
+    line formatters and ``trino-loadtest/bin/start.sh.template``.
+
+    start.sh matches interval lines with ``^\\[ [0-9]+s \\]``, then awk-splits on
+    whitespace and reads the field immediately AFTER each token key
+    (``qps:``, ``rows_s:``, ``lat_p50_ms:``, ``lat_p99_ms:``, ``err_s:``) to POST
+    them to VictoriaMetrics. A token rename/reorder or a format change would
+    silently break the scrape; the ``[ final ]`` summary must NOT match the
+    interval regex or it gets scraped as a bogus sample. These tests fail on any
+    such regression.
+    """
+
+    # Verbatim copy of start.sh.template's interval-line matcher (~line 126).
+    _INTERVAL_RE = re.compile(r"^\[ [0-9]+s \]")
+
+    # The token keys start.sh's awk reads, each expecting a float in the very
+    # next whitespace-delimited field (~lines 129-133).
+    _SCRAPED_TOKENS = ("qps:", "rows_s:", "lat_p50_ms:", "lat_p99_ms:", "err_s:")
+
+    @staticmethod
+    def _awk_scrape(line: str) -> dict[str, str]:
+        """Reproduce start.sh's awk: split on whitespace, and for each known
+        token key capture the immediately-following field as its value.
+        """
+        fields = line.split()
+        scraped: dict[str, str] = {}
+        for i, tok in enumerate(fields):
+            if tok in StatsLineScrapeContractTest._SCRAPED_TOKENS and i + 1 < len(
+                fields
+            ):
+                scraped[tok] = fields[i + 1]
+        return scraped
+
+    def _interval_line(self) -> str:
+        # Feed a realistic interval through the same StatsCollector path the
+        # reporter uses (record → drain), rather than hand-building IntervalStats.
+        stats = driver.StatsCollector()
+        for lat, rows in ((12.5, 100), (8.0, 50), (30.0, 200), (5.5, 10)):
+            stats.record_success(lat, rows)
+        stats.record_error(ValueError("boom"))
+        snap = stats.snapshot_and_reset()
+        return driver.format_interval_line(
+            elapsed_s=30, threads=4, interval_s=10.0, snap=snap
+        )
+
+    def test_interval_line_matches_scrape_regex(self) -> None:
+        self.assertRegex(self._interval_line(), self._INTERVAL_RE)
+
+    def test_interval_line_carries_every_scraped_token_with_float_value(self) -> None:
+        scraped = self._awk_scrape(self._interval_line())
+        # Every token start.sh reads must be present...
+        self.assertEqual(set(scraped), set(self._SCRAPED_TOKENS))
+        # ...and the field awk grabs after each must parse as a float, since
+        # start.sh POSTs it verbatim as a metric sample value.
+        for tok, value in scraped.items():
+            self.assertRegex(value, r"^\d+\.\d{2}$", msg=f"{tok} value {value!r}")
+            float(value)
+
+    def test_interval_line_scraped_values_reflect_the_interval(self) -> None:
+        # Guard the field-position contract: awk must pick up the actual rate
+        # values, not an adjacent token. qps/rows_s/err_s are per-second rates
+        # over interval_s; p50/p99 come from the recorded latencies.
+        line = self._interval_line()
+        scraped = self._awk_scrape(line)
+        # 5 queries (4 ok + 1 err) over 10s, 360 rows over 10s, 1 err over 10s.
+        self.assertEqual(scraped["qps:"], "0.50")
+        self.assertEqual(scraped["rows_s:"], "36.00")
+        self.assertEqual(scraped["err_s:"], "0.10")
+        # p50/p99 of [5.5, 8.0, 12.5, 30.0].
+        sorted_lat = [5.5, 8.0, 12.5, 30.0]
+        self.assertEqual(
+            scraped["lat_p50_ms:"], f"{driver.percentile(sorted_lat, 50):.2f}"
+        )
+        self.assertEqual(
+            scraped["lat_p99_ms:"], f"{driver.percentile(sorted_lat, 99):.2f}"
+        )
+
+    def test_final_line_does_not_match_interval_scrape_regex(self) -> None:
+        # The documented invariant: the cumulative summary must never be scraped
+        # as an interval sample.
+        stats = driver.StatsCollector()
+        stats.record_success(10.0, 100)
+        stats.record_error(ValueError("boom"))
+        final = driver.format_final_line(threads=4, snap=stats.cumulative_snapshot())
+        self.assertNotRegex(final, self._INTERVAL_RE)
 
 
 if __name__ == "__main__":

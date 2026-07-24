@@ -196,6 +196,27 @@ class StatsCollectorTest(unittest.TestCase):
         self.assertEqual((first.queries, first.rows), (second.queries, second.rows))
         self.assertEqual(second.queries, 1)
 
+    def test_record_error_captures_cause_and_resets_on_drain(self) -> None:
+        # OBS-2: the underlying error cause must be sampled (type + message) so a
+        # 100%-failure run is diagnosable, not just a bare err count. The sample
+        # is interval-scoped: it drains and resets with the rest of the interval.
+        stats = driver.StatsCollector()
+        stats.record_error(ValueError("bad column 'x'"))
+        snap = stats.snapshot_and_reset()
+        self.assertEqual(snap.errors, 1)
+        self.assertEqual(snap.last_error, "ValueError: bad column 'x'")
+        # After a drain the next interval starts with no error sample.
+        self.assertIsNone(stats.snapshot_and_reset().last_error)
+
+    def test_record_error_without_exception_has_no_sample(self) -> None:
+        # Counting-only callers (no exception passed) still increment errors but
+        # leave last_error unset — nothing to report.
+        stats = driver.StatsCollector()
+        stats.record_error()
+        snap = stats.snapshot_and_reset()
+        self.assertEqual(snap.errors, 1)
+        self.assertIsNone(snap.last_error)
+
 
 class FindLeakedSnapshotsTest(unittest.TestCase):
     """Only lines whose first token starts with the prefix count as leaks."""

@@ -79,7 +79,21 @@ fi
 echo "Applying the cqlite plugin wiring + catalog via the trino kit's helm upgrade"
 echo "(the plugin initContainer fetches from Maven Central on first run; this may"
 echo "take a minute or two)..."
-"${TRINO_UPDATE_CATALOGS}"
+# update-catalogs.sh ends in a `kubectl rollout status ... --timeout` wait. If
+# the cqlite-plugin-fetch initContainer can't resolve in.mcfad:cqlite-trino from
+# Maven Central (network/socks/artifact resolution), that wait just times out
+# with no pointer to the real cause. On any non-zero exit, echo the exact
+# initContainer-log commands that reveal it (mirroring how cqlite-flight's
+# start.sh points at `kubectl logs -c detect-multidisk`).
+if ! "${TRINO_UPDATE_CATALOGS}"; then
+  echo "ERROR: applying the cqlite plugin wiring failed (helm upgrade or the coordinator/worker" >&2
+  echo "rollout did not become ready in time). The most common cause is the cqlite-plugin-fetch" >&2
+  echo "initContainer failing to resolve in.mcfad:cqlite-trino from Maven Central at pod-start." >&2
+  echo "Inspect that initContainer's logs on the coordinator and workers:" >&2
+  echo "  kubectl logs -l app.kubernetes.io/name=trino,app.kubernetes.io/component=coordinator -c cqlite-plugin-fetch --prefix" >&2
+  echo "  kubectl logs -l app.kubernetes.io/name=trino,app.kubernetes.io/component=worker -c cqlite-plugin-fetch --prefix" >&2
+  exit 1
+fi
 
 echo ""
 echo "cqlite plugin loaded into trino-coordinator/trino-worker at"

@@ -123,6 +123,11 @@ class IntervalStats:
     rows: int = 0
     errors: int = 0
     latencies_ms: List[float] = field(default_factory=list)
+    # OBS-2: a rate-limited sample (``<ExcType>: <message>``) of the most recent
+    # per-query failure in this interval, so a failing run reports WHY, not just
+    # a bare error count. ``None`` when no query errored (or the caller counted
+    # an error without passing the exception).
+    last_error: Optional[str] = None
 
 
 class StatsCollector:
@@ -154,6 +159,7 @@ class StatsCollector:
         self._rows = 0
         self._errors = 0
         self._latencies_ms: List[float] = []
+        self._last_error: Optional[str] = None
 
     def record_success(self, latency_ms: float, row_count: int) -> None:
         with self._lock:
@@ -164,12 +170,21 @@ class StatsCollector:
             self._cum_rows += row_count
             self._cum_latencies_ms.append(latency_ms)
 
-    def record_error(self) -> None:
+    def record_error(self, exc: Optional[BaseException] = None) -> None:
+        """Count a failed query, optionally sampling its cause.
+
+        When ``exc`` is given, its ``<ExcType>: <message>`` string overwrites the
+        interval's ``last_error`` sample (OBS-2). Overwriting — rather than
+        keeping every message — is deliberate: the reporter prints one sample per
+        interval, so retaining more would waste memory on the failure hot path.
+        """
         with self._lock:
             self._queries += 1
             self._errors += 1
             self._cum_queries += 1
             self._cum_errors += 1
+            if exc is not None:
+                self._last_error = f"{type(exc).__name__}: {exc}"
 
     def snapshot_and_reset(self) -> IntervalStats:
         """Drain and reset the current interval's counters (used by ``reporter_loop``).
@@ -182,6 +197,7 @@ class StatsCollector:
                 rows=self._rows,
                 errors=self._errors,
                 latencies_ms=self._latencies_ms,
+                last_error=self._last_error,
             )
             self._reset_interval_locked()
             return snap
@@ -266,8 +282,8 @@ def run_worker(
             try:
                 row_count = exec_fn(conn, sql, headers)
                 stats.record_success((time.monotonic() - start) * 1000.0, row_count)
-            except Exception:  # noqa: BLE001 - a failed query is a load-test data point, not a crash
-                stats.record_error()
+            except Exception as exc:  # noqa: BLE001 - a failed query is a load-test data point, not a crash
+                stats.record_error(exc)
     finally:
         close = getattr(conn, "close", None)
         if callable(close):
@@ -291,6 +307,15 @@ def reporter_loop(
         snap = stats.snapshot_and_reset()
         elapsed = int(round(time.monotonic() - start_time))
         print(format_interval_line(elapsed, threads, interval, snap), flush=True)
+        # OBS-2: when this interval had failures, surface ONE sampled cause to
+        # stderr alongside the rate line so a failing run is diagnosable without
+        # per-query spam. stderr keeps it out of start.sh's stdout metric scrape.
+        if snap.errors and snap.last_error is not None:
+            print(
+                f"[ {elapsed}s ] last_error ({snap.errors} this interval): {snap.last_error}",
+                file=sys.stderr,
+                flush=True,
+            )
         next_tick += interval
 
 

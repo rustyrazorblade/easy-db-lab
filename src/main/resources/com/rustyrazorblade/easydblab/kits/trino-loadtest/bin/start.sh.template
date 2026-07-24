@@ -116,6 +116,11 @@ kubectl --kubeconfig="${KUBECONFIG}" wait \
 # Interval lines match: "[ Ns ] threads: N qps: N.NN rows_s: N.NN lat_p50_ms: N.NN lat_p99_ms: N.NN err_s: N.NN"
 # (driver.py's format_interval_line — the trailing "[ final ]" summary line
 # deliberately does not match this pattern and is only echoed, never pushed.)
+# Tracks whether we've already warned about a failing metrics push, so the
+# warning fires exactly once (on the FIRST failure) instead of on every
+# interval — a persistently-unreachable VictoriaMetrics must not drown out the
+# raw stats lines, but a silently-empty dashboard must not go unexplained either.
+METRICS_PUSH_WARNED=""
 kubectl --kubeconfig="${KUBECONFIG}" logs -f "${POD_NAME}" | while IFS= read -r line; do
   echo "$line"
   if [[ "$line" =~ ^\[\ [0-9]+s\ \] ]]; then
@@ -129,12 +134,20 @@ kubectl --kubeconfig="${KUBECONFIG}" logs -f "${POD_NAME}" | while IFS= read -r 
       }
       print qps, rows, p50, p99, errs
     }')"
-    curl -sf --max-time 2 -X POST "${VICTORIA_URL}" \
+    # A push failure must not abort the load run (the raw interval line above is
+    # already on stdout), but the FIRST failure gets a single stderr warning so
+    # an empty dashboard is diagnosable instead of silent.
+    if ! curl -sf --max-time 2 -X POST "${VICTORIA_URL}" \
       --data-binary "trino_loadtest_qps{kit=\"${KIT_NAME}\"} ${QPS:-0}
 trino_loadtest_rows_per_sec{kit=\"${KIT_NAME}\"} ${ROWS_S:-0}
 trino_loadtest_lat_p50_ms{kit=\"${KIT_NAME}\"} ${LAT_P50:-0}
 trino_loadtest_lat_p99_ms{kit=\"${KIT_NAME}\"} ${LAT_P99:-0}
-trino_loadtest_errors_per_second{kit=\"${KIT_NAME}\"} ${ERR_S:-0}" 2>/dev/null || true
+trino_loadtest_errors_per_second{kit=\"${KIT_NAME}\"} ${ERR_S:-0}" 2>/dev/null; then
+      if [ -z "${METRICS_PUSH_WARNED}" ]; then
+        echo "warning: metrics push to ${VICTORIA_URL} failing (dashboards will be empty); check CONTROL_HOST_PRIVATE / VictoriaMetrics" >&2
+        METRICS_PUSH_WARNED=1
+      fi
+    fi
   fi
 done
 

@@ -699,10 +699,14 @@ class Up(
         }
     }
 
-    /** Installs Cilium as the K3s CNI on the control node. */
+    /** Installs Cilium as the K3s CNI on the control node in ENI native-routing mode. */
     private fun installCilium() {
         val controlHosts = workingState.hosts[ServerType.Control] ?: emptyList()
-        ciliumService.install(controlHosts.first().toHost()).getOrThrow()
+        val vpcCidr =
+            requireNotNull(workingState.initConfig?.cidr) {
+                "VPC CIDR must be resolved before installing Cilium"
+            }
+        ciliumService.install(controlHosts.first().toHost(), vpcCidr).getOrThrow()
     }
 
     /** Starts K3s server on control node and joins Cassandra/Stress nodes as agents. */

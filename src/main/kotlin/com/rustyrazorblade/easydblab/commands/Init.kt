@@ -240,7 +240,7 @@ class Init : PicoBaseCommand() {
         names = ["--cni"],
         description = [
             "Pod-network CNI: 'flannel' (default) uses K3s's built-in Flannel overlay; " +
-                "'cilium' uses Cilium (opt-in, installed in the standard VXLAN-tunnel mode).",
+                "'cilium' uses Cilium ENI native routing (no encapsulation).",
         ],
         converter = [PicoCniModeConverter::class],
     )

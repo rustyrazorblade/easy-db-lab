@@ -327,7 +327,7 @@ The cluster runs a full observability stack on the control node. When modifying 
 
 All observability K8s resources are built programmatically using Fabric8 manifest builders in `configuration/` subpackages. No raw YAML files remain in the core observability stack. See [`configuration/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/configuration/CLAUDE.md) for detailed builder documentation.
 
-**CNI**: K3s uses Cilium (not Flannel) with Hubble enabled for L7 network visibility and Prometheus metrics at `localhost:9965`.
+**CNI**: K3s uses its built-in Flannel overlay by default. Cilium ENI native routing (no encapsulation; pods get VPC-routable ENI secondary IPs) is selectable via `--cni=cilium` at init. When Cilium is selected, Hubble is enabled for L7 network visibility and Prometheus metrics at `localhost:9965`.
 
 **Collectors** (run on cluster nodes): OTel Collector, Fluent Bit (journald), Grafana Alloy (eBPF profiling), Beyla (L7 RED metrics), ebpf_exporter (TCP/block I/O/VFS), YACE (CloudWatch), MAAC agent (Cassandra metrics)
 

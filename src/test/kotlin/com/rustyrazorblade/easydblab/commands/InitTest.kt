@@ -288,6 +288,32 @@ class InitTest : BaseKoinTest() {
     }
 
     @Nested
+    inner class CniSelection {
+        @Test
+        fun `defaults the persisted CNI to Flannel`() {
+            val command = Init()
+            command.clean = true
+            command.execute()
+
+            verify(mockClusterStateManager).save(
+                argThat { initConfig?.cni == CniMode.Flannel },
+            )
+        }
+
+        @Test
+        fun `persists Cilium when --cni cilium is selected`() {
+            val command = Init()
+            command.clean = true
+            command.cni = CniMode.Cilium
+            command.execute()
+
+            verify(mockClusterStateManager).save(
+                argThat { initConfig?.cni == CniMode.Cilium },
+            )
+        }
+    }
+
+    @Nested
     inner class ExistingVpc {
         @Test
         fun `execute sets existing VPC ID when provided`() {

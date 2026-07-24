@@ -43,8 +43,9 @@ enum class InfrastructureStatus {
  *
  * The datapath is mutually exclusive by construction — a cluster runs exactly one CNI.
  * [Flannel] is K3s's built-in VXLAN-overlay CNI (the current default). [Cilium] selects
- * Cilium (see [com.rustyrazorblade.easydblab.services.CiliumService]). Modeled as an enum
- * rather than a boolean so future datapaths can be added without another flag.
+ * Cilium in ENI IPAM native-routing mode, where pods receive VPC-routable secondary IPs
+ * so cross-AZ traffic is routed by the VPC without encapsulation. Modeled as an enum rather
+ * than a boolean so future datapaths can be added without another flag.
  */
 enum class CniMode {
     Cilium,

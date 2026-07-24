@@ -113,43 +113,19 @@ Genuinely spanning multiple dirs from one server would require a `--data-dir`
 multi-value change to `cqlite-flight` itself — a server feature, out of this kit's
 scope.
 
-## Installing out-of-tree
+## Install
 
-**The issue's assumed syntax, `easy-db-lab kit install <kit> --from <dir>`, does
-not exist.** Verified against `InstallTemplateResolver.kt` / `commands/kit/Install.kt`
-in the easy-db-lab source: the real ad-hoc flag set is `--from <dir> --kit <name>
---size <size>`, and — more importantly — **`--from` never wires a kit's declared
-`args:`**. `Install.execute()` calls `renderAndWrite(source, kitName, storageSize)`
-with no `extraVars`, so only the fixed `TemplateVariables` set (`CLUSTER_NAME`,
-`KIT_NAME`, `DB_NODE_IPS`, `KUBECONFIG`, etc.) gets substituted — **not**
-`__TAG__`, `__FLIGHT_PORT__`, `__CASSANDRA_DATA_DIR__`, `__CASSANDRA_DATA_ROOT__`,
-`__CASSANDRA_DATA_GID__`, or `__OTEL_ENDPOINT__`. `--from` also skips the
-`type: db` node-pool guard and any
-typed `install:` steps (irrelevant here — this kit has none).
-
-**Recommended path — register the kits directory as a source, then install by name**
-(this wires args correctly, exactly like a built-in kit):
+cqlite-flight is a **built-in kit**, shipped in-tree, so it is installed by name —
+there is no `kit source add` step. Its declared `args:` are substituted normally at
+install time:
 
 ```bash
-easy-db-lab kit source add cqlite /path/to/cqlite/easy-db-lab-kits
 easy-db-lab kit install cqlite-flight --tag v0.13.0 --flight-port 8815
 easy-db-lab cqlite-flight start
 ```
 
-**Fallback — ad-hoc `--from`** (only if you don't want to register a source).
-This scaffolds the kit with placeholders **unresolved**; you must hand-edit the
-written files before running `start`:
-
-```bash
-easy-db-lab kit install --from /path/to/cqlite/easy-db-lab-kits/cqlite-flight \
-  --kit cqlite-flight --size 0Gi
-# Edit the scaffolded files to replace remaining __TAG__ / __FLIGHT_PORT__ /
-# __CASSANDRA_DATA_DIR__ / __CASSANDRA_DATA_ROOT__ / __CASSANDRA_DATA_GID__ /
-# __OTEL_ENDPOINT__ tokens:
-#   <workdir>/cqlite-flight/daemonset.yaml
-#   <workdir>/cqlite-flight/bin/start.sh   (only __TAG__/__FLIGHT_PORT__/__CASSANDRA_DATA_DIR__/__CASSANDRA_DATA_ROOT__ appear here, for the echo lines)
-easy-db-lab cqlite-flight start
-```
+All [Args](#args) are optional named flags with the defaults listed above; pass only
+the ones you need to override.
 
 ## uid 10001 and the Cassandra data dir
 

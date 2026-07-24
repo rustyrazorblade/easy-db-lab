@@ -51,3 +51,13 @@ commands:
         type: boolean
         description: "Attach a random W3C traceparent header to every query, for end-to-end Tempo traces (off by default)"
         default: "false"
+      - flag: --snapshot-check-cmd
+        variable: TRINO_LOADTEST_SNAPSHOT_CHECK_CMD
+        type: string
+        description: "Shell command printing RAW `nodetool listsnapshots` output for every target node; if set, asserts zero cqlite- snapshots remain after the run (D12 hygiene) and fails on a leak. Emit the UNFILTERED listing — do NOT pipe through grep. Unset: the check is skipped."
+        default: ""
+      - flag: --snapshot-check-timeout-s
+        variable: TRINO_LOADTEST_SNAPSHOT_CHECK_TIMEOUT_S
+        type: string
+        description: "Seconds to allow the --snapshot-check-cmd probe to run before it is treated as a check failure. Ignored unless --snapshot-check-cmd is set."
+        default: ""

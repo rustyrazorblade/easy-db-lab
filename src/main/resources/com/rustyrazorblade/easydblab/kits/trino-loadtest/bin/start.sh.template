@@ -58,6 +58,21 @@ if [ "${TRACEPARENT}" = "true" ]; then
   TRACEPARENT_FLAG="--traceparent"
 fi
 
+# D12 snapshot-leak hygiene (issue #2399): both flags are optional and, like
+# --queries-file above, arrive as the literal "null" when unset (kit runner
+# injects "null" for an unset arg whose kit.yaml default is ""). Reject "null"
+# explicitly so we never pass `--snapshot-check-cmd null` to driver.py. The
+# probe command can contain spaces (it's a shell one-liner), so it is quoted
+# with printf %q before being folded into the pod's `sh -c` argv. The timeout
+# only matters alongside the command, so it is only threaded when set.
+SNAPSHOT_CHECK_FLAGS=""
+if [ -n "${TRINO_LOADTEST_SNAPSHOT_CHECK_CMD:-}" ] && [ "${TRINO_LOADTEST_SNAPSHOT_CHECK_CMD}" != "null" ]; then
+  SNAPSHOT_CHECK_FLAGS="--snapshot-check-cmd $(printf %q "${TRINO_LOADTEST_SNAPSHOT_CHECK_CMD}")"
+  if [ -n "${TRINO_LOADTEST_SNAPSHOT_CHECK_TIMEOUT_S:-}" ] && [ "${TRINO_LOADTEST_SNAPSHOT_CHECK_TIMEOUT_S}" != "null" ]; then
+    SNAPSHOT_CHECK_FLAGS="${SNAPSHOT_CHECK_FLAGS} --snapshot-check-timeout-s $(printf %q "${TRINO_LOADTEST_SNAPSHOT_CHECK_TIMEOUT_S}")"
+  fi
+fi
+
 kubectl --kubeconfig="${KUBECONFIG}" apply -f - <<PODSPEC
 apiVersion: v1
 kind: Pod
@@ -81,6 +96,7 @@ spec:
           ${QUERIES_FLAG}
           --threads "${THREADS}" --duration "${DURATION}" --interval "${INTERVAL}"
           ${TRACEPARENT_FLAG}
+          ${SNAPSHOT_CHECK_FLAGS}
       volumeMounts:
         - name: driver
           mountPath: /driver

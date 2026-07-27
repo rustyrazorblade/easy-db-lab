@@ -1,0 +1,44 @@
+# cqlite catalog — reads Cassandra SSTables offline via the cqlite_flight Trino
+# connector + the cqlite-flight Arrow Flight data plane (one pod per db node).
+# Auto-discovered by this kit's own bin/update-catalogs.sh alongside the
+# cassandra/clickhouse/opensearch/tidb catalog files, and applied through the
+# trino kit's single `helm upgrade`. The catalog is SQL-addressed as
+# `cqlite.<keyspace>.<table>`.
+#
+# ── DEFERRED: connector plugin delivery is blocked on pmcfadin/cqlite#2869 ──
+# `cqlite_flight` is a THIRD-PARTY Trino connector (unlike cassandra/clickhouse/
+# tidb, which are baked into the stock trinodb/trino image), so this catalog
+# only resolves once the connector plugin jar tree is present under
+# /usr/lib/trino/plugin/cqlite_flight/ on the coordinator and workers. Until the
+# plugin is delivered, registering this catalog makes the coordinator fail at
+# boot with "No factory for connector 'cqlite_flight'" — so this file ships as a
+# staged template and the plugin-jar delivery is intentionally NOT wired yet.
+#
+# The earlier approach (a pod-start Gradle initContainer resolving
+# in.mcfad:cqlite-trino from Maven Central into an emptyDir) was removed: it is
+# being replaced by a single self-contained Shadow fat jar, to be published in
+# the cqlite GitHub Releases and tracked in pmcfadin/cqlite#2869. Intended shape
+# once #2869 lands:
+#   - a versioned per-node hostPath cache (e.g. /var/lib/easydblab/cqlite-plugin/<version>/)
+#   - a download-if-missing initContainer that fetches the fat jar from the
+#     release URL into that hostPath on first use
+#   - nodeSelector: type=app (Trino coordinator/worker node pool)
+#   - mount the jar into /usr/lib/trino/plugin/cqlite_flight/ (a SUBDIRECTORY of
+#     the plugin path, never the plugin path itself, so image-baked plugins are
+#     not shadowed)
+# This is Helm-values shaped (initContainer + volumes on coordinator/worker), so
+# it will be wired into the trino chart values once the artifact exists. Do NOT
+# invent a jar URL or reintroduce a Gradle pod-start resolve here.
+#
+# connector.name MUST equal the registered Trino connector factory name,
+# `cqlite_flight` (CqliteFlightConnectorFactory.getName()); setting it to the
+# catalog name `cqlite` crashes the coordinator at boot (issue #2123).
+connector.name=cqlite_flight
+cqlite.sidecar-uri=__SIDECAR_URI__
+cqlite.flight-port=__FLIGHT_PORT__
+# Preferred datacenter for split placement. Renders BLANK when not supplied,
+# which the connector treats as "no DC preference".
+cqlite.local-datacenter=__LOCAL_DATACENTER__
+# How each scan resolves the SSTable file set: snapshot (consistent per-query
+# Sidecar snapshot) | live (current data dir, races compaction).
+cqlite.read-mode=__READ_MODE__

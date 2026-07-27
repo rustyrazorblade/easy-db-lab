@@ -4,17 +4,16 @@ The cqlite analytical stack — an Arrow Flight SSTable reader, a Trino connecto
 
 ## What Changes
 
-- Port three kits into `src/main/resources/com/rustyrazorblade/easydblab/kits/` as **built-in kits**, discoverable via the classpath resolver with **no `kit source add`**:
+- Port two kits into `src/main/resources/com/rustyrazorblade/easydblab/kits/` as **built-in kits**, discoverable via the classpath resolver with **no `kit source add`**:
   - `cqlite-flight` (`type: db`) — Arrow Flight server DaemonSet, one pod per db node, Cassandra data dir mounted in.
-  - `cqlite-trino` (resource dir; installs as kit/catalog name `cqlite` per its `kit.yaml`) — loads the published `in.mcfad:cqlite-trino` connector and registers the `cqlite` Trino catalog additively.
   - `trino-loadtest` (`type: app`) — generic Trino read-load driver with cqlite defaults.
-- This is a **port, not a rewrite**: the kits are pure resources; no Kotlin, DI, or build wiring changes. All hard-won pod-side logic (multi-disk `#2114` detector, Arrow `--add-opens` handling, Recreate-strategy fix) is carried over verbatim.
+- Fold cqlite Trino integration into the **trino kit as a catalog** (maintainer required change): `kits/trino/catalogs/cqlite.properties.template` with `connector.name=cqlite_flight`, auto-discovered by the trino kit's `update-catalogs.sh` and applied via its single `helm upgrade` — exactly like cassandra/clickhouse/opensearch/tidb. **There is no standalone `cqlite-trino` kit and no `kit install cqlite-trino` command.**
+- This is a **port, not a rewrite** for the two kits: pure resources; no Kotlin, DI, or build wiring changes. All hard-won pod-side logic (multi-disk `#2114` detector, Arrow `--add-opens` handling) is carried over verbatim.
+- **DEFERRED (blocked on pmcfadin/cqlite#2869):** the `cqlite_flight` connector plugin will ship as a single self-contained Shadow fat jar fetched once to a versioned per-node hostPath and mounted into `/usr/lib/trino/plugin/cqlite_flight/`. That artifact does not exist yet. The old pod-start Gradle resolve (`gradle-assemble-plugin/` + `trino-values.yaml` initContainer) is **removed**; the catalog file and update-catalogs.sh carry a documented TODO for the fat-jar delivery. The catalog ships staged and is not enabled until #2869 lands.
 - Owner-settled adaptations to built-in conventions:
-  - Resource dir `cqlite-trino` (→ `kit install cqlite-trino`) with `kit.yaml` `name: cqlite` (→ clean SQL `cqlite.<ks>.<tbl>` catalog).
   - Rename `cqlite-flight/README.md` → `README.md.template` (it contains `__VAR__` placeholders that must be rendered, not shipped literally).
   - Ship `trino-loadtest/driver.py` only; **drop** `test_driver.py` (non-runtime test code, not referenced by any script).
-  - Port `cqlite-trino/gradle-assemble-plugin/` verbatim (works via full-tree materialization at install time).
-- Add a guard unit test asserting the three new kits' `kit.yaml` parse and that `cqlite-trino`'s `gradle-assemble-plugin/{build.gradle.kts.template,settings.gradle.kts}` are listed by the resolver.
+- Add a guard unit test asserting the two new kits' `kit.yaml` parse, that the trino source lists `catalogs/cqlite.properties.template`, and that `cqlite-trino` no longer resolves as a standalone kit.
 - Plan migration:
   - Update `test-plans/cqlite-flight-production-readiness.md` to drop the `kit source add` prelude step and reference the built-in kits.
   - **Delete** the two version-pinned checkpoint plans (`cqlite-flight-milestone-snapshot-0.15.md`, `cqlite-flight-0.16.0-rc1-fixvalidation.md`) as superseded by the general plan.
@@ -23,15 +22,15 @@ The cqlite analytical stack — an Arrow Flight SSTable reader, a Trino connecto
 ## Capabilities
 
 ### New Capabilities
-- `cqlite-kits`: the three built-in cqlite kits (Flight SSTable reader, Trino connector/catalog, read-load driver), their lifecycle, dependency/fail-fast rules, node placement, catalog registration semantics, and read-only/offline/flushed-only guarantees.
+- `cqlite-kits`: the two built-in cqlite kits (Flight SSTable reader, read-load driver) plus the trino kit's `cqlite` catalog, their lifecycle, node placement, catalog registration semantics, and read-only/offline/flushed-only guarantees. Actual connector-plugin delivery is a deferred follow-up (pmcfadin/cqlite#2869).
 
 ### Modified Capabilities
-<!-- None: the resolver, installer, and existing kits are untouched. The port relies on existing install-command / workload-install-config / template-subdirectory-support behavior without changing their requirements. -->
+<!-- The trino kit gains a `cqlite` catalog property file; the resolver and installer are untouched. The port relies on existing install-command / workload-install-config / template-subdirectory-support behavior without changing their requirements. -->
 
 ## Impact
 
-- **New resources**: three kit directories under `src/main/resources/com/rustyrazorblade/easydblab/kits/{cqlite-flight,cqlite-trino,trino-loadtest}/`.
-- **New test**: extends `src/test/kotlin/com/rustyrazorblade/easydblab/services/InstallTemplateResolverTest.kt` (parse + gradle-assemble file-listing guards).
-- **Docs**: `docs/development/kits.md` and/or per-kit docs; `test-plans/cqlite-flight-production-readiness.md` edited; two checkpoint plans deleted.
-- **No code, DI, or build-config changes.** Additive-only blast radius; existing kits and the classpath resolver are untouched. Clusters are ephemeral — no backward-compat concern.
-- **External runtime dependencies (unchanged, not built here)**: published image `ghcr.io/pmcfadin/cqlite-flight:<tag>` and Maven artifact `in.mcfad:cqlite-trino:<version>`.
+- **New resources**: two kit directories under `src/main/resources/com/rustyrazorblade/easydblab/kits/{cqlite-flight,trino-loadtest}/`, plus `kits/trino/catalogs/cqlite.properties.template` added to the existing trino kit.
+- **New test**: extends `src/test/kotlin/com/rustyrazorblade/easydblab/services/InstallTemplateResolverTest.kt` (parse guards + trino-catalog listing + standalone-kit-absence guard).
+- **Docs**: `docs/development/kits.md`, `docs/user-guide/{kits,install-trino,cqlite-flight,trino-loadtest}.md`, `docs/SUMMARY.md`; the standalone `docs/user-guide/cqlite-trino.md` page is deleted; `test-plans/cqlite-flight-production-readiness.md` edited; two checkpoint plans deleted.
+- **No code, DI, or build-config changes.** Additive-only blast radius (plus one new catalog file in the trino kit); the classpath resolver is untouched. Clusters are ephemeral — no backward-compat concern.
+- **External runtime dependencies**: published image `ghcr.io/pmcfadin/cqlite-flight:<tag>`; the `cqlite_flight` connector fat jar is **deferred, tracked in pmcfadin/cqlite#2869** (not yet published).

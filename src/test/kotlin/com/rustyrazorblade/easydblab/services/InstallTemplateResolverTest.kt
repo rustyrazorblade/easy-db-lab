@@ -254,17 +254,24 @@ class InstallTemplateResolverTest : BaseKoinTest() {
     }
 
     @Test
-    fun `loadInstallConfig parses cqlite-trino builtin config with catalog name cqlite`() {
-        // The resource directory is cqlite-trino (the install subcommand) but the
-        // kit.yaml name is cqlite (the installed dir and Trino catalog name), giving
-        // clean `cqlite.<ks>.<tbl>` addressing.
-        val source = resolver.resolve("cqlite-trino")
-        val config =
-            requireNotNull(resolver.loadInstallConfig(source)) {
-                "expected cqlite-trino ${Constants.Kit.CONFIG_FILE} to be present on classpath"
-            }
-        assertThat(config.name).isEqualTo("cqlite")
-        assertThat(config.type).isEqualTo(KitType.APP)
+    fun `cqlite is a trino catalog like the other catalog files, not a standalone kit`() {
+        // The maintainer folded cqlite into the trino kit as a catalog property
+        // file, exactly like cassandra/clickhouse/opensearch/tidb — there is no
+        // standalone `cqlite-trino` kit and no `kit install cqlite-trino` command.
+        // The trino kit's own update-catalogs.sh auto-discovers this file and
+        // applies it via the single `helm upgrade`.
+        val source = resolver.resolve("trino")
+        val names = resolver.listTemplateFiles(source).map { it.name }
+
+        assertThat(names).contains(
+            "catalogs/cqlite.properties.template",
+            "catalogs/cassandra.properties.template",
+        )
+
+        // The standalone kit is gone: it must not resolve as a built-in.
+        assertThatThrownBy { resolver.resolve("cqlite-trino") }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("cqlite-trino")
     }
 
     @Test
@@ -276,35 +283,6 @@ class InstallTemplateResolverTest : BaseKoinTest() {
             }
         assertThat(config.name).isEqualTo("trino-loadtest")
         assertThat(config.type).isEqualTo(KitType.APP)
-    }
-
-    @Test
-    fun `listTemplateFiles includes nested gradle-assemble resources for cqlite-trino builtin source`() {
-        val source = resolver.resolve("cqlite-trino")
-        val files = resolver.listTemplateFiles(source)
-
-        assertThat(files.map { it.name }).contains(
-            "gradle-assemble-plugin/build.gradle.kts.template",
-            "gradle-assemble-plugin/settings.gradle.kts",
-        )
-    }
-
-    @Test
-    fun `cqlite-trino wires the connector via a Helm values fragment not out-of-band kubectl patch`() {
-        // D1 revised (PR #859 feedback): the plugin/initContainer/volume/add-opens
-        // wiring lives entirely in a discovered `trino-values.yaml` fragment applied
-        // through the trino kit's own `helm upgrade` — NOT in live-Deployment
-        // `kubectl patch` re-application scripts. Guard that the fragment ships and
-        // that none of the retired out-of-band machinery lingers on the classpath.
-        val source = resolver.resolve("cqlite-trino")
-        val names = resolver.listTemplateFiles(source).map { it.name }
-
-        assertThat(names).contains("trino-values.yaml.template")
-        assertThat(names).doesNotContain(
-            "bin/reapply-plugin-patch.sh.template",
-            "bin/ensure-catalog-registered.sh.template",
-            "bin/install.sh.template",
-        )
     }
 
     @Test

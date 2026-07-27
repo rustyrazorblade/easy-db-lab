@@ -53,20 +53,18 @@ if [ -n "$catalog_content" ]; then
     EXTRA_VALUES=(--values "$CATALOG_YAML")
 fi
 
-# Sibling kit values fragments: scan sibling kit directories for a
-# `trino-values.yaml` file and pass each as an additional --values to the SAME
-# helm upgrade below (symmetric to the trino-catalog.properties discovery
-# above). This lets an overlay kit (e.g. cqlite-trino) wire extra pod-template
-# pieces — initContainers, additionalVolumes/Mounts, additionalJVMConfig —
-# natively through the Trino chart so they render into the pod template and
-# survive every subsequent `helm upgrade`, instead of an out-of-band
-# `kubectl patch` that each upgrade would wipe.
-for values in "${WORKLOAD_ROOT}"/*/trino-values.yaml; do
-    [ -f "$values" ] || continue
-    workload=$(basename "$(dirname "$values")")
-    echo "Adding Helm values fragment from custom workload: $workload"
-    EXTRA_VALUES+=(--values "$values")
-done
+# DEFERRED (pmcfadin/cqlite#2869): the `cqlite` catalog (catalogs/cqlite.properties)
+# registers the third-party `cqlite_flight` connector, whose plugin jar tree is NOT
+# in the stock trinodb/trino image and so must be mounted into
+# /usr/lib/trino/plugin/cqlite_flight/ on the coordinator/workers. That plugin
+# delivery is blocked on the self-contained Shadow fat jar to be published in the
+# cqlite GitHub Releases (pmcfadin/cqlite#2869). Once it lands, wire it as an extra
+# --values fragment HERE (download-if-missing initContainer → versioned per-node
+# hostPath cache → volumeMount into the plugin subdir, nodeSelector type=app; see
+# catalogs/cqlite.properties.template for the intended shape). The earlier
+# pod-start Gradle resolve of in.mcfad:cqlite-trino was removed — do NOT
+# reintroduce a Gradle assemble step or a sibling `trino-values.yaml` discovery
+# loop; the fat-jar mount will be declared directly against this chart's values.
 
 helm upgrade --install trino trinodb/trino \
   --namespace default \

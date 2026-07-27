@@ -1,11 +1,21 @@
 # cqlite-flight Production Readiness
 
 End-to-end validation of the cqlite offline SSTable read path on a real AWS cluster:
-`cqlite-flight` (Arrow Flight data plane, one pod per db node) → `cqlite-trino` (registers
-the `cqlite` Trino catalog) → `trino-loadtest` (concurrent read-load driver). All three
-kits are **built in** to easy-db-lab — this plan installs them directly with
-`kit install`, with **no external kit-source registration** and no dependency on any
-out-of-tree cqlite checkout.
+`cqlite-flight` (Arrow Flight data plane, one pod per db node) → the trino kit's `cqlite`
+catalog → `trino-loadtest` (concurrent read-load driver). The `cqlite-flight` and
+`trino-loadtest` kits are **built in** to easy-db-lab (installed directly with `kit install`,
+no external kit-source registration); `cqlite` is a **catalog property file of the trino
+kit** (`kits/trino/catalogs/cqlite.properties`), like `cassandra`/`clickhouse` — there is no
+`kit install cqlite-trino` step. Nothing depends on an out-of-tree cqlite checkout.
+
+```admonish warning title="cqlite connector-plugin delivery deferred (pmcfadin/cqlite#2869)"
+The `cqlite` catalog registers the third-party `cqlite_flight` connector, whose plugin jar
+is NOT baked into the `trinodb/trino` image. Its delivery — a self-contained fat jar to be
+published in the cqlite GitHub Releases — is blocked on `pmcfadin/cqlite#2869`. Until that
+lands, the catalog file ships as a staged template and the plugin mount is not wired, so the
+end-to-end `SELECT ... FROM cqlite.*` steps below (6–9) cannot pass yet. Run steps 1–5 and 10
+to validate the Flight data plane and teardown; treat 6–9 as blocked-on-#2869 dry-runs.
+```
 
 The read path is **offline, read-only, flushed-SSTables-only, and eventually stale**: it
 reads SSTable files on disk via Arrow Flight, never the live read/write path. Writes not
@@ -141,19 +151,24 @@ $EDB cqlite-flight start
 Confirm one Flight pod per db node (`DaemonSet`, `nodeSelector: type=db`) and that each
 pod's `imageID` matches the pinned INDEX digest.
 
-### 6. Register the cqlite catalog (built-in cqlite-trino overlay)
+### 6. Register the cqlite catalog (trino kit catalog — BLOCKED ON #2869)
 
-```bash
-$EDB kit install cqlite-trino \
-  --flight-port 8815 \
-  --sidecar-uri "http://$($EDB ip db0 --private):9043" \
-  --read-mode snapshot
-$EDB cqlite start
-```
+`cqlite` is a catalog property file of the trino kit
+(`trino/catalogs/cqlite.properties`), auto-discovered by the trino kit's own
+`update-catalogs.sh` and applied via its single `helm upgrade` — the same mechanism as the
+`cassandra`/`clickhouse` catalogs. There is **no** `kit install cqlite-trino` step.
 
-If `SHOW CATALOGS` lacks `cqlite`, wait for the coordinator rollout to finish and re-check
-(self-heals). Confirm `cqlite` appears **in addition to** the existing `cassandra`
-catalog.
+The catalog's placeholders (`__SIDECAR_URI__`, `__FLIGHT_PORT__`, `__READ_MODE__`,
+`__LOCAL_DATACENTER__`) render from the trino kit's install-time template variables; edit
+`trino/catalogs/cqlite.properties` after `kit install trino` if you need to set the sidecar
+URI/flight port by hand, then re-run `trino/bin/update-catalogs.sh`.
+
+**This step is blocked on `pmcfadin/cqlite#2869`:** the `cqlite_flight` connector plugin jar
+is not yet delivered into `/usr/lib/trino/plugin/cqlite_flight/`, so registering the catalog
+would crash the coordinator with `No factory for connector 'cqlite_flight'`. Do not enable
+the catalog until the fat jar from #2869 is published and its hostPath-mount wiring is added
+to the trino chart values. Once wired, confirm `cqlite` appears **in addition to** the
+existing `cassandra` catalog.
 
 ### 7. Correctness read
 
@@ -191,12 +206,13 @@ driver does the `cqlite-` matching itself; do not pipe through `grep`).
 
 ```bash
 $EDB trino-loadtest-trino stop
-$EDB cqlite stop
 $EDB cqlite-flight stop
 $EDB trino stop
 $EDB cassandra stop
 $EDB down --auto-approve
 ```
+
+(There is no `cqlite stop` — `cqlite` is a trino catalog, torn down with the trino kit.)
 
 If teardown orphans the VPC (SSO token can expire mid-`down`), re-login and re-run
 `$EDB down --auto-approve` (idempotent), then verify AWS is clean.
@@ -205,14 +221,13 @@ If teardown orphans the VPC (SSO token can expire mid-`down`), re-login and re-r
 
 ## Validation Checklist
 
-- [ ] All three cqlite kits install with **no external kit-source registration** (built-in discovery)
+- [ ] `cqlite-flight` and `trino-loadtest` install with **no external kit-source registration** (built-in discovery); `cqlite` is the trino kit's catalog file, not a separate `kit install`
 - [ ] `cqlite-flight start` runs one Flight pod per db node with the data dir mounted
-- [ ] `cqlite start` registers the `cqlite` catalog additively — `cassandra` catalog remains
-- [ ] `SELECT * FROM cqlite.<ks>.<tbl> LIMIT 5` returns rows read from SSTables
-- [ ] `count(*)` fans out across all 3 Flight pods and returns a plausible ring total
-- [ ] `trino-loadtest-trino start` reports throughput/latency and pushes metrics
-- [ ] D12: zero `cqlite-` snapshots remain on every db node after the run
-- [ ] `cqlite stop` deregisters the catalog; `cassandra` catalog still present
+- [ ] (BLOCKED #2869) the trino kit's `cqlite` catalog registers additively — `cassandra` catalog remains
+- [ ] (BLOCKED #2869) `SELECT * FROM cqlite.<ks>.<tbl> LIMIT 5` returns rows read from SSTables
+- [ ] (BLOCKED #2869) `count(*)` fans out across all 3 Flight pods and returns a plausible ring total
+- [ ] (BLOCKED #2869) `trino-loadtest-trino start` reports throughput/latency and pushes metrics
+- [ ] (BLOCKED #2869) D12: zero `cqlite-` snapshots remain on every db node after the run
 - [ ] `down --auto-approve` terminates all EC2 instances; AWS clean
 
 ## Notes

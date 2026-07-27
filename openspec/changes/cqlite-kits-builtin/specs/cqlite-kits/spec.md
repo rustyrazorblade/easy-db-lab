@@ -2,19 +2,23 @@
 
 ### Requirement: Built-in kit discovery without external sources
 
-The three cqlite kits SHALL be discoverable as built-in kits from the classpath resource root, requiring no `kit source add` registration.
+The `cqlite-flight` and `trino-loadtest` kits SHALL be discoverable as built-in kits from the classpath resource root, requiring no `kit source add` registration. cqlite Trino integration SHALL be delivered as a catalog property file of the trino kit, not as a standalone kit.
 
-#### Scenario: All three kits discoverable with no external source
+#### Scenario: Both kits discoverable with no external source
 - **WHEN** the project is built and kit discovery runs on a checkout with no `kit source add` registered
-- **THEN** `cqlite-flight`, `cqlite-trino`, and `trino-loadtest` all appear as available built-in kits with `kit install` subcommands
+- **THEN** `cqlite-flight` and `trino-loadtest` appear as available built-in kits with `kit install` subcommands
+
+#### Scenario: No standalone cqlite-trino kit
+- **WHEN** kit discovery runs
+- **THEN** there is no `cqlite-trino` built-in kit and no `kit install cqlite-trino` subcommand; resolving `cqlite-trino` fails as an unknown template
 
 #### Scenario: Each kit descriptor parses at build time
-- **WHEN** the resolver loads each of the three new built-in kit sources
+- **WHEN** the resolver loads the `cqlite-flight` and `trino-loadtest` built-in kit sources
 - **THEN** `loadInstallConfig` parses each `kit.yaml` without error
 
-#### Scenario: Nested gradle-assemble resources are listed
-- **WHEN** the resolver lists template files for the `cqlite-trino` built-in source
-- **THEN** the listing includes `gradle-assemble-plugin/build.gradle.kts.template` and `gradle-assemble-plugin/settings.gradle.kts`
+#### Scenario: cqlite catalog file is listed for the trino kit
+- **WHEN** the resolver lists template files for the `trino` built-in source
+- **THEN** the listing includes `catalogs/cqlite.properties.template` alongside `catalogs/cassandra.properties.template`
 
 ### Requirement: cqlite-flight runs on every db node
 
@@ -28,36 +32,28 @@ The `cqlite-flight` kit (`type: db`) SHALL run an Arrow Flight server on every d
 - **WHEN** `cqlite-flight` starts
 - **THEN** an Arrow Flight server pod is running on every db node (DaemonSet, `nodeSelector: type=db`) with the Cassandra data directory mounted into the container
 
-### Requirement: cqlite catalog registration and dependency
+### Requirement: cqlite is a trino catalog, with deferred plugin delivery
 
-The `cqlite-trino` kit SHALL register a Trino catalog named `cqlite` additively alongside the existing `cassandra` catalog, and SHALL fail fast when its Trino dependency is absent. The kit resource directory is named `cqlite-trino` while its `kit.yaml` name (and therefore the installed catalog) is `cqlite`.
+cqlite Trino integration SHALL be delivered as a catalog property file of the trino kit (`kits/trino/catalogs/cqlite.properties.template`), auto-discovered by the trino kit's own `update-catalogs.sh` and applied via its single `helm upgrade` — exactly like the cassandra/clickhouse/opensearch/tidb catalogs. The catalog SHALL specify `connector.name=cqlite_flight`. The actual `cqlite_flight` connector plugin delivery is DEFERRED and blocked on pmcfadin/cqlite#2869.
 
-#### Scenario: Install subcommand vs catalog name
-- **WHEN** the kit is installed
-- **THEN** the install subcommand is `kit install cqlite-trino` (from the resource directory name) and the installed kit and Trino catalog are named `cqlite` (from `kit.yaml` `name: cqlite`), giving clean `SELECT ... FROM cqlite.<ks>.<tbl>` addressing
+#### Scenario: cqlite is a catalog, not a kit
+- **WHEN** the cqlite Trino integration is inspected
+- **THEN** it is the trino kit's `catalogs/cqlite.properties` file (naming the `cqlite` catalog and `connector.name=cqlite_flight`), not a standalone kit, and there is no `kit install cqlite-trino` command
 
-#### Scenario: Fail fast when Trino is not running
-- **WHEN** the `cqlite-trino` kit is installed/started and the Trino kit is not running
-- **THEN** it fails fast with an error naming the missing Trino dependency and does not register a broken catalog
+#### Scenario: Plugin delivery deferred to the fat jar
+- **WHEN** the `cqlite` catalog file is examined before pmcfadin/cqlite#2869 is delivered
+- **THEN** it ships as a staged template with a documented TODO for the fat-jar hostPath mount, and the trino kit contains no pod-start Gradle resolve (`gradle-assemble-plugin`), no `trino-values.yaml` initContainer fragment, and no fabricated jar URL
 
-#### Scenario: Catalog registered additively
-- **WHEN** the `cqlite-trino` kit starts against a running Trino kit
-- **THEN** `SHOW CATALOGS` lists `cqlite` in addition to the existing `cassandra` catalog, which remains present and unchanged
-
-#### Scenario: Connector wired via Helm values, surviving upgrade
-- **WHEN** the `cqlite-trino` kit starts against a running Trino kit
-- **THEN** its plugin wiring (assemble-plugin initContainer, plugin-dir volume mounts, and the Arrow `--add-opens` JVM flag) is applied through the trino kit's `helm upgrade` via a discovered sibling `trino-values.yaml` fragment — not via an out-of-band `kubectl patch` — so the connector plugin directory is assembled from the published `in.mcfad:cqlite-trino` artifact, loaded into Trino, and persists across subsequent `helm upgrade`s without a re-patch step
-
-#### Scenario: No out-of-band patch machinery remains
-- **WHEN** the `cqlite-trino` kit is inspected
-- **THEN** it contains no live-Deployment `kubectl patch` re-application scripts (`reapply-plugin-patch`, `ensure-catalog-registered`) and no `post-workload-*` re-patch hooks — the wiring lives entirely in the Helm values fragment
+#### Scenario: Intended additive registration once wired
+- **WHEN** pmcfadin/cqlite#2869 delivers the connector fat jar and the `cqlite` catalog is enabled against a running Trino kit
+- **THEN** `SHOW CATALOGS` SHALL list `cqlite` in addition to the existing `cassandra` catalog, which remains present and unchanged, giving `SELECT ... FROM cqlite.<ks>.<tbl>` addressing
 
 ### Requirement: Read-only offline query surface
 
-A query against the `cqlite` catalog SHALL return rows read from flushed SSTables via Arrow Flight, aggregated across db nodes.
+Once the connector plugin is delivered (pmcfadin/cqlite#2869), a query against the `cqlite` catalog SHALL return rows read from flushed SSTables via Arrow Flight, aggregated across db nodes.
 
-#### Scenario: SELECT returns rows from SSTables
-- **WHEN** a `SELECT` runs against a `cqlite` catalog table that has flushed SSTables
+#### Scenario: SELECT returns rows from SSTables (blocked on #2869)
+- **WHEN** the `cqlite_flight` plugin is present and a `SELECT` runs against a `cqlite` catalog table that has flushed SSTables
 - **THEN** rows are returned, read from SSTables via Arrow Flight and aggregated across db nodes
 
 ### Requirement: trino-loadtest generic read-load driver
@@ -90,7 +86,7 @@ The kit docs SHALL state the offline, read-only, flushed-SSTables-only, and even
 
 #### Scenario: Each kit has a user-guide page registered in nav
 - **WHEN** the user documentation is browsed
-- **THEN** each of the three kits has a `docs/user-guide/<kit>.md` page registered in `docs/SUMMARY.md`, following the existing per-kit page convention
+- **THEN** `cqlite-flight` and `trino-loadtest` each have a `docs/user-guide/<kit>.md` page registered in `docs/SUMMARY.md`, and the `cqlite` catalog is documented in the trino kit's `docs/user-guide/install-trino.md` page (there is no standalone `cqlite-trino` page)
 
 ### Requirement: Test plans depend only on in-tree kits
 

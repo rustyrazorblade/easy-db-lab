@@ -4,17 +4,20 @@ End-to-end validation of the cqlite offline SSTable read path on a real AWS clus
 `cqlite-flight` (Arrow Flight data plane, one pod per db node) → the trino kit's `cqlite`
 catalog → `trino-loadtest` (concurrent read-load driver). The `cqlite-flight` and
 `trino-loadtest` kits are **built in** to easy-db-lab (installed directly with `kit install`,
-no external kit-source registration); `cqlite` is a **catalog property file of the trino
-kit** (`kits/trino/catalogs/cqlite.properties`), like `cassandra`/`clickhouse` — there is no
-`kit install cqlite-trino` step. Nothing depends on an out-of-tree cqlite checkout.
+no external kit-source registration). The `cqlite` Trino catalog is **planned, not shipped
+yet**: `kit install trino` generates no `cqlite.properties` file today. When it lands it will
+be a **catalog property file of the trino kit** (like `cassandra`/`clickhouse`), not a
+`kit install cqlite-trino` step — its connector-plugin delivery is deferred to
+`pmcfadin/cqlite#2869` (see below). Nothing depends on an out-of-tree cqlite checkout.
 
 ```admonish warning title="cqlite connector-plugin delivery deferred (pmcfadin/cqlite#2869)"
 The `cqlite` catalog registers the third-party `cqlite_flight` connector, whose plugin jar
 is NOT baked into the `trinodb/trino` image. Its delivery — a self-contained fat jar to be
 published in the cqlite GitHub Releases — is blocked on `pmcfadin/cqlite#2869`. Until that
-lands, the catalog file ships as a staged template and the plugin mount is not wired, so the
-end-to-end `SELECT ... FROM cqlite.*` steps below (6–9) cannot pass yet. Run steps 1–5 and 10
-to validate the Flight data plane and teardown; treat 6–9 as blocked-on-#2869 dry-runs.
+lands, the trino kit ships **no** `cqlite.properties` file at all and the plugin mount is not
+wired, so the end-to-end `SELECT ... FROM cqlite.*` steps below (6–9) cannot run yet. Run
+steps 1–5 and 10 to validate the Flight data plane and teardown; treat 6–9 as
+blocked-on-#2869 — they cannot be performed today.
 ```
 
 The read path is **offline, read-only, flushed-SSTables-only, and eventually stale**: it
@@ -151,24 +154,23 @@ $EDB cqlite-flight start
 Confirm one Flight pod per db node (`DaemonSet`, `nodeSelector: type=db`) and that each
 pod's `imageID` matches the pinned INDEX digest.
 
-### 6. Register the cqlite catalog (trino kit catalog — BLOCKED ON #2869)
+### 6. Register the cqlite catalog (PENDING — BLOCKED ON #2869, cannot be performed today)
 
-`cqlite` is a catalog property file of the trino kit
+**This step cannot be run yet.** The trino kit ships **no** `cqlite.properties` file today —
+after `kit install trino` there is no `trino/catalogs/cqlite.properties` to look at or edit.
+The `cqlite` catalog is a planned addition, blocked on `pmcfadin/cqlite#2869`: the
+`cqlite_flight` connector plugin jar is not yet delivered into
+`/usr/lib/trino/plugin/cqlite_flight/`, so registering the catalog would crash the
+coordinator with `No factory for connector 'cqlite_flight'`.
+
+When #2869 lands, `cqlite` will be a catalog property file of the trino kit
 (`trino/catalogs/cqlite.properties`), auto-discovered by the trino kit's own
 `update-catalogs.sh` and applied via its single `helm upgrade` — the same mechanism as the
-`cassandra`/`clickhouse` catalogs. There is **no** `kit install cqlite-trino` step.
-
-The catalog's placeholders (`__SIDECAR_URI__`, `__FLIGHT_PORT__`, `__READ_MODE__`,
-`__LOCAL_DATACENTER__`) render from the trino kit's install-time template variables; edit
-`trino/catalogs/cqlite.properties` after `kit install trino` if you need to set the sidecar
-URI/flight port by hand, then re-run `trino/bin/update-catalogs.sh`.
-
-**This step is blocked on `pmcfadin/cqlite#2869`:** the `cqlite_flight` connector plugin jar
-is not yet delivered into `/usr/lib/trino/plugin/cqlite_flight/`, so registering the catalog
-would crash the coordinator with `No factory for connector 'cqlite_flight'`. Do not enable
-the catalog until the fat jar from #2869 is published and its hostPath-mount wiring is added
-to the trino chart values. Once wired, confirm `cqlite` appears **in addition to** the
-existing `cassandra` catalog.
+`cassandra`/`clickhouse` catalogs. There will be **no** `kit install cqlite-trino` step. Its
+placeholders (`__SIDECAR_URI__`, `__FLIGHT_PORT__`, `__READ_MODE__`, `__LOCAL_DATACENTER__`)
+will render from the trino kit's install-time template variables, and the plugin's
+hostPath-mount wiring will be added to the trino chart values. Once wired, confirm `cqlite`
+appears **in addition to** the existing `cassandra` catalog.
 
 ### 7. Correctness read
 

@@ -26,7 +26,6 @@
   - [Sysbench](user-guide/sysbench.md)
   - [clickhouse-benchmark](user-guide/clickhouse-benchmark.md)
   - [cqlite-flight](user-guide/cqlite-flight.md)
-  - [cqlite-trino](user-guide/cqlite-trino.md)
   - [trino-loadtest](user-guide/trino-loadtest.md)
   - [PostgreSQL](user-guide/install-postgres.md)
   - [Platform Substrate](user-guide/platform-substrate.md)

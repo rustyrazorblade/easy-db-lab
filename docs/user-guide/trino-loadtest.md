@@ -23,8 +23,9 @@ database:
 ## Prerequisites
 
 - Cluster is up (`easy-db-lab up`)
-- A [Trino](install-trino.md) kit is installed and running, with the
-  [cqlite-trino](cqlite-trino.md) overlay registering the `cqlite` catalog
+- A [Trino](install-trino.md) kit is installed and running, with its
+  [`cqlite` catalog](install-trino.md#the-cqlite-catalog-offline-sstable-reads) wired (plugin
+  delivery deferred to `pmcfadin/cqlite#2869`)
 - The target keyspace/table has flushed SSTables to read
 
 ## Quick Start
@@ -76,5 +77,6 @@ During a run, per-interval stats are pushed to VictoriaMetrics, labelled by inst
 
 ## Related kits
 
-- [cqlite-trino](cqlite-trino.md) — registers the `cqlite` catalog this kit queries.
+- The [Trino](install-trino.md) kit's `cqlite` catalog — the catalog this kit queries
+  (plugin delivery deferred to `pmcfadin/cqlite#2869`).
 - [cqlite-flight](cqlite-flight.md) — the Arrow Flight data plane behind that catalog.

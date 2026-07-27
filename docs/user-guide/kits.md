@@ -10,13 +10,16 @@ benchmark or test.
 
 ### Offline SSTable query kits (cqlite)
 
-Three built-in kits work together to query a database's SSTables offline — read-only,
+These built-in kits work together to query a database's SSTables offline — read-only,
 flushed-SSTables-only, and eventually stale (never a live consistent view):
 
 - [cqlite-flight](cqlite-flight.md) — Arrow Flight data plane, one pod per db node,
   reading local SSTables.
-- [cqlite-trino](cqlite-trino.md) — registers a `cqlite` Trino catalog for
-  `SELECT * FROM cqlite.<keyspace>.<table>` addressing.
+- The [Trino](install-trino.md) kit's `cqlite` catalog — reads SSTables through
+  cqlite-flight with `SELECT * FROM cqlite.<keyspace>.<table>` addressing. `cqlite` is a
+  catalog property file of the trino kit (like `cassandra`/`clickhouse`), not a standalone
+  kit. Its connector-plugin delivery is deferred to `pmcfadin/cqlite#2869` — see the Trino
+  page.
 - [trino-loadtest](trino-loadtest.md) — drives concurrent read load against that catalog.
 
 ## Discovering kits

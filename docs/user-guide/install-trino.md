@@ -33,7 +33,8 @@ trino/
 ├── values.yaml                  # Helm values for the Trino chart
 ├── catalogs/
 │   ├── cassandra.properties     # Cassandra connector config
-│   └── clickhouse.properties    # ClickHouse JDBC connector config
+│   ├── clickhouse.properties    # ClickHouse JDBC connector config
+│   └── cqlite.properties        # Offline SSTable read path (see note below)
 └── bin/
     ├── start.sh                 # Deploy sequence
     ├── stop.sh                  # Teardown sequence
@@ -71,6 +72,27 @@ easy-db-lab cassandra start
 # Start ClickHouse — Trino wires up the clickhouse catalog automatically
 easy-db-lab kit install clickhouse
 easy-db-lab clickhouse start
+```
+
+## The `cqlite` catalog (offline SSTable reads)
+
+The trino kit also ships a `cqlite` catalog (`catalogs/cqlite.properties`) that reads
+Cassandra SSTables **offline** — read-only, flushed-SSTables-only, and eventually stale
+(never a live consistent view) — through the third-party `cqlite_flight` connector and the
+[cqlite-flight](cqlite-flight.md) Arrow Flight data plane (one pod per db node). It is a
+catalog property file of the trino kit, exactly like `cassandra` and `clickhouse` — not a
+standalone kit and not a separate `kit install` command. When present and wired, it gives
+`SELECT * FROM cqlite.<keyspace>.<table>` addressing, registered additively alongside the
+`cassandra` catalog.
+
+```admonish warning title="Plugin delivery deferred (pmcfadin/cqlite#2869)"
+Unlike the `cassandra`/`clickhouse` connectors, `cqlite_flight` is **not** baked into the
+`trinodb/trino` image, so the `cqlite` catalog only resolves once the connector plugin jar is
+mounted into `/usr/lib/trino/plugin/cqlite_flight/` on the coordinator and workers. That
+plugin is a self-contained fat jar to be published in the cqlite GitHub Releases, tracked in
+`pmcfadin/cqlite#2869`. Until it lands, the catalog file ships as a staged template and the
+plugin mount is intentionally not wired — registering the catalog without the plugin present
+would crash the coordinator at boot with `No factory for connector 'cqlite_flight'`.
 ```
 
 ## Node Placement

@@ -23,6 +23,7 @@ import importlib.util
 import io
 import re
 import sys
+import threading
 import unittest
 from argparse import Namespace
 from pathlib import Path
@@ -273,6 +274,77 @@ class SnapshotLeakResultTest(unittest.TestCase):
         self.assertTrue(result.ran)
         self.assertFalse(result.passed)
         self.assertEqual(result.leaked, ["cqlite-leak1"])
+
+
+class RunWorkerConnectFailureTest(unittest.TestCase):
+    """A total connection failure must be counted as an error, not silently
+    swallowed into a `queries: 0 errors: 0` no-op run.
+    """
+
+    def test_connect_failure_is_recorded_as_error(self) -> None:
+        stats = driver.StatsCollector()
+        stop_event = threading.Event()
+
+        def failing_connect() -> object:
+            raise ConnectionError("coordinator unreachable")
+
+        def unused_exec(conn: object, sql: str, headers: object) -> int:
+            raise AssertionError("exec_fn must not run when connect fails")
+
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            driver.run_worker(
+                connect_fn=failing_connect,
+                exec_fn=unused_exec,
+                queries=["SELECT 1"],
+                stop_event=stop_event,
+                stats=stats,
+                traceparent_enabled=False,
+            )
+
+        # The failed connect is recorded as exactly one error (not zero), so a
+        # fully-failing run reports errors: 1 rather than a silent errors: 0.
+        cumulative = stats.cumulative_snapshot()
+        self.assertEqual(cumulative.errors, 1)
+        self.assertEqual(cumulative.queries, 1)
+        # The cause is sampled on the interval snapshot (what reporter_loop reads).
+        interval = stats.snapshot_and_reset()
+        self.assertEqual(interval.last_error, "ConnectionError: coordinator unreachable")
+        # And the cause is surfaced to stderr for diagnosis.
+        self.assertIn("worker connection failed", err.getvalue())
+        self.assertIn("coordinator unreachable", err.getvalue())
+
+    def test_successful_connect_still_closes_and_runs(self) -> None:
+        # Regression guard: moving the connect into the try must not break the
+        # normal path — a query runs and the connection is closed afterwards.
+        stats = driver.StatsCollector()
+        stop_event = threading.Event()
+        closed = {"value": False}
+
+        class FakeConn:
+            def close(self) -> None:
+                closed["value"] = True
+
+        def connect() -> object:
+            return FakeConn()
+
+        def exec_once(conn: object, sql: str, headers: object) -> int:
+            stop_event.set()  # run exactly one query, then stop the loop
+            return 7
+
+        driver.run_worker(
+            connect_fn=connect,
+            exec_fn=exec_once,
+            queries=["SELECT 1"],
+            stop_event=stop_event,
+            stats=stats,
+            traceparent_enabled=False,
+        )
+
+        snap = stats.cumulative_snapshot()
+        self.assertEqual(snap.queries, 1)
+        self.assertEqual(snap.errors, 0)
+        self.assertEqual(snap.rows, 7)
+        self.assertTrue(closed["value"])
 
 
 class StatsLineScrapeContractTest(unittest.TestCase):

@@ -1,7 +1,9 @@
 # trino-loadtest
 
 The `trino-loadtest` kit is a bench kit that drives concurrent read load against a running
-[Trino](install-trino.md) kit's `cqlite` catalog and reports throughput and latency. It
+[Trino](install-trino.md) kit's `cqlite` catalog and reports throughput and latency. (That
+`cqlite` catalog is a planned capability, not shipped yet — its plugin delivery is deferred
+to `pmcfadin/cqlite#2869`, so this kit cannot run end-to-end until #2869 lands.) It
 runs a fixed-size pool of persistent Trino connections, each issuing queries against
 `cqlite.<keyspace>.<table>` (or a custom query file) for a configured duration, and pushes
 per-interval stats (qps, rows/s, p50/p99 latency, error rate) to VictoriaMetrics.
@@ -24,8 +26,9 @@ database:
 
 - Cluster is up (`easy-db-lab up`)
 - A [Trino](install-trino.md) kit is installed and running, with its
-  [`cqlite` catalog](install-trino.md#the-cqlite-catalog-offline-sstable-reads) wired (plugin
-  delivery deferred to `pmcfadin/cqlite#2869`)
+  [`cqlite` catalog](install-trino.md#the-cqlite-catalog-offline-sstable-reads) wired. That
+  catalog is a planned capability, not shipped yet — its plugin delivery is deferred to
+  `pmcfadin/cqlite#2869`, so this kit cannot run end-to-end until #2869 lands.
 - The target keyspace/table has flushed SSTables to read
 
 ## Quick Start

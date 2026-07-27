@@ -3,9 +3,11 @@
 The `cqlite-flight` kit deploys the [`cqlite-flight`](https://github.com/pmcfadin/cqlite)
 Arrow Flight server as a DaemonSet co-located with your database nodes — one pod per
 `type=db` node, each reading that node's own local SSTables. It is the data plane that the
-Trino kit's [`cqlite` catalog](install-trino.md#the-cqlite-catalog-offline-sstable-reads)
-talks to: Trino asks each Flight pod for the SSTable data on its node, and cqlite-flight
-streams it back as Arrow record batches.
+Trino kit's planned [`cqlite` catalog](install-trino.md#the-cqlite-catalog-offline-sstable-reads)
+will talk to: Trino will ask each Flight pod for the SSTable data on its node, and
+cqlite-flight streams it back as Arrow record batches. That Trino catalog is not shipped yet
+— its connector-plugin delivery is deferred to `pmcfadin/cqlite#2869` — but the cqlite-flight
+data plane described here is fully functional today.
 
 ```admonish warning title="Offline, read-only, flushed-SSTables-only view"
 cqlite-flight reads **SSTable files on disk**, not the live database. This has three
@@ -72,7 +74,8 @@ easy-db-lab cqlite-flight uninstall   # remove all kit resources
 
 ## Related kits
 
-- The [Trino](install-trino.md) kit's `cqlite` catalog — reads through these Flight pods,
-  giving `SELECT * FROM cqlite.<keyspace>.<table>` addressing. It is a catalog property file
-  of the trino kit; its connector-plugin delivery is deferred to `pmcfadin/cqlite#2869`.
+- The [Trino](install-trino.md) kit's planned `cqlite` catalog — will read through these
+  Flight pods, giving `SELECT * FROM cqlite.<keyspace>.<table>` addressing. It is planned as
+  a catalog property file of the trino kit and is **not shipped yet**; its connector-plugin
+  delivery is deferred to `pmcfadin/cqlite#2869`.
 - [trino-loadtest](trino-loadtest.md) — drives concurrent read load against that catalog.

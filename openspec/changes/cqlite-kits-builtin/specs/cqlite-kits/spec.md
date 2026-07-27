@@ -16,9 +16,9 @@ The `cqlite-flight` and `trino-loadtest` kits SHALL be discoverable as built-in 
 - **WHEN** the resolver loads the `cqlite-flight` and `trino-loadtest` built-in kit sources
 - **THEN** `loadInstallConfig` parses each `kit.yaml` without error
 
-#### Scenario: cqlite catalog file is listed for the trino kit
+#### Scenario: cqlite catalog file is deferred, not shipped in the trino kit
 - **WHEN** the resolver lists template files for the `trino` built-in source
-- **THEN** the listing includes `catalogs/cqlite.properties.template` alongside `catalogs/cassandra.properties.template`
+- **THEN** the listing includes the real catalog files (e.g. `catalogs/cassandra.properties.template`) but does NOT include any cqlite catalog file — it is deferred until pmcfadin/cqlite#2869, so the `kit install trino` render path collects no unresolvable cqlite placeholders
 
 ### Requirement: cqlite-flight runs on every db node
 
@@ -32,20 +32,20 @@ The `cqlite-flight` kit (`type: db`) SHALL run an Arrow Flight server on every d
 - **WHEN** `cqlite-flight` starts
 - **THEN** an Arrow Flight server pod is running on every db node (DaemonSet, `nodeSelector: type=db`) with the Cassandra data directory mounted into the container
 
-### Requirement: cqlite is a trino catalog, with deferred plugin delivery
+### Requirement: cqlite will be a trino catalog, with deferred plugin delivery
 
-cqlite Trino integration SHALL be delivered as a catalog property file of the trino kit (`kits/trino/catalogs/cqlite.properties.template`), auto-discovered by the trino kit's own `update-catalogs.sh` and applied via its single `helm upgrade` — exactly like the cassandra/clickhouse/opensearch/tidb catalogs. The catalog SHALL specify `connector.name=cqlite_flight`. The actual `cqlite_flight` connector plugin delivery is DEFERRED and blocked on pmcfadin/cqlite#2869.
+cqlite Trino integration SHALL, when delivered, be a catalog property file of the trino kit (`kits/trino/catalogs/cqlite.properties.template`), auto-discovered by the trino kit's own `update-catalogs.sh` and applied via its single `helm upgrade` — exactly like the cassandra/clickhouse/opensearch/tidb catalogs — specifying `connector.name=cqlite_flight`. It SHALL NOT be a standalone kit. Both the catalog file AND the `cqlite_flight` connector plugin delivery are DEFERRED and blocked on pmcfadin/cqlite#2869; today the trino kit is unchanged by cqlite.
 
-#### Scenario: cqlite is a catalog, not a kit
+#### Scenario: cqlite is not a standalone kit
 - **WHEN** the cqlite Trino integration is inspected
-- **THEN** it is the trino kit's `catalogs/cqlite.properties` file (naming the `cqlite` catalog and `connector.name=cqlite_flight`), not a standalone kit, and there is no `kit install cqlite-trino` command
+- **THEN** there is no standalone `cqlite-trino` kit and no `kit install cqlite-trino` command; when eventually delivered it will be the trino kit's `catalogs/cqlite.properties` file (naming the `cqlite` catalog and `connector.name=cqlite_flight`)
 
-#### Scenario: Plugin delivery deferred to the fat jar
-- **WHEN** the `cqlite` catalog file is examined before pmcfadin/cqlite#2869 is delivered
-- **THEN** it ships as a staged template with a documented TODO for the fat-jar hostPath mount, and the trino kit contains no pod-start Gradle resolve (`gradle-assemble-plugin`), no `trino-values.yaml` initContainer fragment, and no fabricated jar URL
+#### Scenario: Catalog file deferred, trino kit unchanged today
+- **WHEN** the trino built-in kit is inspected before pmcfadin/cqlite#2869 is delivered
+- **THEN** the trino kit ships NO cqlite catalog file (so `kit install trino` renders no unresolvable cqlite placeholders and emits no unresolved-variable warning), and it contains no pod-start Gradle resolve (`gradle-assemble-plugin`), no `trino-values.yaml` initContainer fragment, and no fabricated jar URL; the intended catalog content and fat-jar hostPath-mount plan are recorded in the change's design.md
 
 #### Scenario: Intended additive registration once wired
-- **WHEN** pmcfadin/cqlite#2869 delivers the connector fat jar and the `cqlite` catalog is enabled against a running Trino kit
+- **WHEN** pmcfadin/cqlite#2869 delivers the connector fat jar, the `cqlite` catalog file is added (with its placeholders made resolvable), and the catalog is enabled against a running Trino kit
 - **THEN** `SHOW CATALOGS` SHALL list `cqlite` in addition to the existing `cassandra` catalog, which remains present and unchanged, giving `SELECT ... FROM cqlite.<ks>.<tbl>` addressing
 
 ### Requirement: Read-only offline query surface

@@ -7,7 +7,7 @@
 
 ## 2. Fold cqlite into the trino kit as a catalog (D1 — maintainer required change)
 
-- [x] 2.1 Add `kits/trino/catalogs/cqlite.properties.template` alongside cassandra/clickhouse/opensearch/tidb, with `connector.name=cqlite_flight` and the `__SIDECAR_URI__`/`__FLIGHT_PORT__`/`__READ_MODE__`/`__LOCAL_DATACENTER__` placeholders (auto-discovered by the trino kit's own `update-catalogs.sh`)
+- [x] 2.1 DEFERRED — do NOT ship `kits/trino/catalogs/cqlite.properties.template` yet. Its `__SIDECAR_URI__`/`__FLIGHT_PORT__`/`__READ_MODE__`/`__LOCAL_DATACENTER__` placeholders are neither global `TemplateVariables` nor trino kit args, so shipping it makes `BaseInstallCommand.renderAndWrite` render it on every `kit install trino` and emit a spurious `Event.Install.UnresolvedVariables` warning on the existing trino kit. The intended catalog content (`connector.name=cqlite_flight` + the 4 placeholders + fat-jar hostPath-mount plan) is recorded in design.md D1; add the file when #2869 lands (see 2b.4)
 - [x] 2.2 Delete the entire standalone `kits/cqlite-trino/` directory (kit.yaml, all `bin/*.sh.template`, README.md.template, gradle-assemble-plugin/, trino-values.yaml.template, trino-catalog.properties.template) — no `kit install cqlite-trino` command remains
 - [x] 2.3 Remove the sibling-`trino-values.yaml` discovery loop from `kits/trino/bin/update-catalogs.sh.template`; leave a documented TODO for the deferred fat-jar hostPath mount (blocked on pmcfadin/cqlite#2869)
 - [x] 2.4 Delete the standalone `docs/user-guide/cqlite-trino.md`; document the `cqlite` catalog as part of the trino kit (install-trino.md, trino README.md.template) and fix `docs/SUMMARY.md` nav
@@ -16,7 +16,8 @@
 
 - [ ] 2b.1 (BLOCKED) Once the self-contained Shadow fat jar is published in the cqlite GitHub Releases, wire a download-if-missing initContainer → versioned per-node hostPath cache → volumeMount into `/usr/lib/trino/plugin/cqlite_flight/` (nodeSelector type=app) as an extra `--values` fragment on the trino kit's `helm upgrade`
 - [ ] 2b.2 (BLOCKED) Enable the `cqlite` catalog end-to-end and un-block steps 6–9 of the production-readiness plan
-- [x] 2b.3 Removed the retired pod-start Gradle resolve (`gradle-assemble-plugin/`, `trino-values.yaml` initContainer) — no fake jar URL, no Gradle resolve shipped; TODO documented in the catalog file + update-catalogs.sh
+- [x] 2b.3 Removed the retired pod-start Gradle resolve (`gradle-assemble-plugin/`, `trino-values.yaml` initContainer) — no fake jar URL, no Gradle resolve shipped; TODO documented in update-catalogs.sh and design.md D1
+- [ ] 2b.4 (BLOCKED) Add `kits/trino/catalogs/cqlite.properties.template` when #2869 lands, ensuring its `__SIDECAR_URI__`/`__FLIGHT_PORT__`/`__READ_MODE__`/`__LOCAL_DATACENTER__` placeholders resolve cleanly (declare them as global `TemplateVariables` or as trino kit args) so it renders without the unresolved-variable warning. Also wire `cqlite` explicitly in `update-catalogs.sh` — special-case it like the opensearch infra-catalog check, since no running kit is named `cqlite` (the kit is `cqlite-flight`), so the basename-match loop over `RUNNING_KITS` will not pick it up on its own
 
 ## 3. Port trino-loadtest kit
 
@@ -27,7 +28,7 @@
 ## 4. Guard test
 
 - [x] 4.1 Extend `src/test/kotlin/com/rustyrazorblade/easydblab/services/InstallTemplateResolverTest.kt`: assert `loadInstallConfig` parses for `cqlite-flight` and `trino-loadtest` built-in sources
-- [x] 4.2 Assert the trino source listing includes `catalogs/cqlite.properties.template` (alongside `catalogs/cassandra.properties.template`) and that `cqlite-trino` no longer resolves as a standalone kit
+- [x] 4.2 Assert the trino source listing includes its real catalogs (e.g. `catalogs/cassandra.properties.template`) but NO cqlite catalog file (deferred — guards the install-time unresolved-variable regression), and that `cqlite-trino` no longer resolves as a standalone kit
 - [x] 4.3 Assert the `trino-loadtest` source listing includes `driver.py` and excludes `test_driver.py`
 
 ## 5. Plan migration

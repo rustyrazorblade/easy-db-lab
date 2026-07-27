@@ -254,19 +254,23 @@ class InstallTemplateResolverTest : BaseKoinTest() {
     }
 
     @Test
-    fun `cqlite is a trino catalog like the other catalog files, not a standalone kit`() {
-        // The maintainer folded cqlite into the trino kit as a catalog property
-        // file, exactly like cassandra/clickhouse/opensearch/tidb — there is no
-        // standalone `cqlite-trino` kit and no `kit install cqlite-trino` command.
-        // The trino kit's own update-catalogs.sh auto-discovers this file and
-        // applies it via the single `helm upgrade`.
+    fun `cqlite catalog file is deferred and not shipped in the trino kit yet`() {
+        // The cqlite catalog is intentionally NOT shipped until the cqlite_flight
+        // connector plugin lands (pmcfadin/cqlite#2869). Its placeholders
+        // (__SIDECAR_URI__/__FLIGHT_PORT__/__READ_MODE__/__LOCAL_DATACENTER__) are
+        // not global TemplateVariables nor trino kit args, so shipping it would make
+        // BaseInstallCommand.renderAndWrite render it on every `kit install trino`
+        // and emit a spurious Event.Install.UnresolvedVariables warning on the
+        // existing, widely-used trino kit. Guard the regression: the trino source
+        // lists its real catalogs but no cqlite catalog file, so the install/render
+        // path collects no cqlite placeholders. See the deferred item in
+        // openspec/changes/cqlite-kits-builtin/tasks.md.
         val source = resolver.resolve("trino")
         val names = resolver.listTemplateFiles(source).map { it.name }
 
-        assertThat(names).contains(
-            "catalogs/cqlite.properties.template",
-            "catalogs/cassandra.properties.template",
-        )
+        assertThat(names).contains("catalogs/cassandra.properties.template")
+        assertThat(names).doesNotContain("catalogs/cqlite.properties.template")
+        assertThat(names.none { it.contains("cqlite") }).isTrue()
 
         // The standalone kit is gone: it must not resolve as a built-in.
         assertThatThrownBy { resolver.resolve("cqlite-trino") }

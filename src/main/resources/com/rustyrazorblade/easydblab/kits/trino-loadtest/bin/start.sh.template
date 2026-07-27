@@ -58,6 +58,25 @@ if [ "${TRACEPARENT}" = "true" ]; then
   TRACEPARENT_FLAG="--traceparent"
 fi
 
+# --ks / --tbl are optional kit args whose kit.yaml default is "" — so an UNSET
+# value arrives here as the literal string "null" (the kit runner injects "null",
+# not empty, for an unset arg with an empty default), exactly like --queries-file
+# and --snapshot-check-cmd above. Passing `--ks "null" --tbl "null"` would make
+# driver.py query `cqlite.null.null` instead of failing fast, so reject "null"
+# (and empty) explicitly and OMIT the flag — an omitted --ks/--tbl lets
+# driver.py's validate_args fail fast with the required-arg message ("--ks/--tbl
+# are required unless --queries-file is given", exit 2). The values are folded
+# into the pod's `sh -c` argv (parsed a second time by the pod shell), so they
+# are quoted with `printf %q` — same shell-injection guard used for
+# --snapshot-check-cmd — before interpolation.
+KS_TBL_FLAGS=""
+if [ -n "${TRINO_LOADTEST_KEYSPACE:-}" ] && [ "${TRINO_LOADTEST_KEYSPACE}" != "null" ]; then
+  KS_TBL_FLAGS="--ks $(printf %q "${TRINO_LOADTEST_KEYSPACE}")"
+fi
+if [ -n "${TRINO_LOADTEST_TABLE:-}" ] && [ "${TRINO_LOADTEST_TABLE}" != "null" ]; then
+  KS_TBL_FLAGS="${KS_TBL_FLAGS} --tbl $(printf %q "${TRINO_LOADTEST_TABLE}")"
+fi
+
 # D12 snapshot-leak hygiene (issue #2399): both flags are optional and, like
 # --queries-file above, arrive as the literal "null" when unset (kit runner
 # injects "null" for an unset arg whose kit.yaml default is ""). Reject "null"
@@ -92,7 +111,7 @@ spec:
           pip install --quiet trino &&
           python /driver/driver.py
           --host "${TRINO_LOADTEST_HOST}" --port "${TRINO_LOADTEST_PORT}" --user "${TRINO_LOADTEST_USER}"
-          --ks "${TRINO_LOADTEST_KEYSPACE:-}" --tbl "${TRINO_LOADTEST_TABLE:-}"
+          ${KS_TBL_FLAGS}
           ${QUERIES_FLAG}
           --threads "${THREADS}" --duration "${DURATION}" --interval "${INTERVAL}"
           ${TRACEPARENT_FLAG}

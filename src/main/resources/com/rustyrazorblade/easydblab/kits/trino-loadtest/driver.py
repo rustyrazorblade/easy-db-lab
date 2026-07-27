@@ -272,8 +272,24 @@ def run_worker(
 ) -> None:
     """One persistent-connection worker: connect once, then loop issuing
     random queries from ``queries`` until ``stop_event`` is set.
+
+    The initial ``connect_fn()`` is inside the try/except so a connection that
+    fails outright (coordinator unreachable, auth rejected, bad host/port) is
+    recorded as an error and surfaced to stderr, then the worker returns
+    cleanly. Without this, a total connection failure would raise before any
+    query ran and the process would end with ``queries: 0 errors: 0`` — a
+    silent failure indistinguishable from "nothing was ever submitted".
     """
-    conn = connect_fn()
+    try:
+        conn = connect_fn()
+    except Exception as exc:  # noqa: BLE001 - a failed connect is a diagnosable load-test outcome, not a crash
+        stats.record_error(exc)
+        print(
+            f"trino-loadtest: worker connection failed: {type(exc).__name__}: {exc}",
+            file=sys.stderr,
+            flush=True,
+        )
+        return
     try:
         while not stop_event.is_set():
             sql = random.choice(queries)

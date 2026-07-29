@@ -33,6 +33,12 @@
   java: "21"
   python: "3.11.9"
 
+- version: "6.0-rustyrazorblade"
+  java: "21"
+  python: "3.11.9"
+  url: "https://github.com/rustyrazorblade/cassandra.git"
+  branch: "cassandra-6.0-rustyrazorblade"
+
 - version: "trunk"
   url: https://github.com/rustyrazorblade/easy-db-lab/releases/download/nightly/apache-cassandra-trunk-bin.tar.gz
   java: "21"

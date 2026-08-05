@@ -52,7 +52,7 @@ commands:
       - flag: --rate
         variable: RATE
         type: int
-        description: "Target transactions/sec (0 = unlimited, thread-bound)"
+        description: "Target transactions/sec (0 = unlimited, thread-bound). A rate well above the target's sustainable capacity overflows sysbench's internal event queue and hard-aborts the run within seconds instead of sustaining an overload window; see docs/user-guide/sysbench.md for overload testing"
         default: "0"
       - flag: --skip-trx
         variable: SKIP_TRX

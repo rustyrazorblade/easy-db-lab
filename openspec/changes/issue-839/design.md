@@ -16,7 +16,7 @@ Found during the TiDB×sysbench load-test investigation (2026-07-21); see issue 
 
 **Goals:**
 - Make the hard-abort-on-overflow behavior discoverable *before* a user hits it, via both
-  `kit info sysbench` output (kit.yaml description text) and the user guide.
+  `sysbench-<target> start --help` output (kit.yaml description text) and the user guide.
 - Recommend a concrete alternative for overload/latency testing: thread-bound runs
   (`--rate=0` with a chosen `--threads`) or a rate deliberately set closer to measured
   capacity.
@@ -54,9 +54,12 @@ detection — a documentation problem, not a code problem.
 
 **Decision: document in both `kit.yaml` and the user guide, not just one.**
 
-`kit.yaml`'s `--rate` `description` is rendered verbatim as CLI help text by `kit info
-sysbench` (`KitInfo.kt`) — it's the first place a user sees the flag, so it carries a short
-warning. `docs/user-guide/sysbench.md` carries the fuller explanation (why it aborts instead
+`kit.yaml`'s `--rate` `description` is rendered verbatim as picocli help text on the
+installed instance's start command — `sysbench-<target> start --help` — via
+`KitRunnerCommandFactory.argOptionSpec`. (Note: `kit info sysbench` does *not* show it;
+`KitInfo.buildInfoText` renders only top-level `config.args`, and `--rate` lives under
+`commands.start.args`.) The start command's help is where a user sees the flag while
+choosing a value, so it carries a short warning. `docs/user-guide/sysbench.md` carries the fuller explanation (why it aborts instead
 of degrading, and the recommended alternative) plus the completed Flags table. Putting the
 full explanation only in one place would leave the other as a dead end for users who land
 there first.

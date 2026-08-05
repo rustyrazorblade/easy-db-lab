@@ -323,6 +323,16 @@ tasks.withType<Test>().configureEach {
     }
 }
 
+// SysbenchFlagsDocumentedTest reads this user-guide page off the filesystem to check it
+// documents every kit.yaml flag. Gradle can't infer that dependency, so without declaring it
+// an edit that drops a flag row would be masked by an up-to-date or cached test result.
+tasks.named<Test>("test") {
+    inputs
+        .file("docs/user-guide/sysbench.md")
+        .withPropertyName("sysbenchUserGuide")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+}
+
 // `./gradlew check` must run BOTH tiers; `./gradlew test` stays UNIT-ONLY (fast, no Docker).
 tasks.named("check") {
     dependsOn(testing.suites.named("integrationTest"))

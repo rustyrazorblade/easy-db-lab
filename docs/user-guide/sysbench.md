@@ -48,8 +48,13 @@ cross-kit targeting works.
 | `--skip-trx` | `off` | Run statements in autocommit instead of `BEGIN`/`COMMIT` transactions (`on`/`off`) |
 | `--rand-type` | `special` | Key access distribution: `uniform`, `gaussian`, `special`, or `pareto` |
 
-Flags other than `--target` are baked in at install time and apply to every subsequent
-`prepare`/`start`/`stop`. To change them, reinstall the kit.
+`--target` is baked in at install time — to point sysbench at a different database, install
+another instance. Every other flag is passed per invocation, so you can vary them run to run
+without reinstalling:
+
+```bash
+easy-db-lab sysbench-tidb start --threads 32 --rate 2000
+```
 
 ## Lifecycle
 
@@ -105,14 +110,23 @@ event queue fills, and the run hard-aborts with:
 FATAL: event queue is full
 ```
 
-This typically happens within the first few seconds, so a `--rate` set well above capacity
-does not produce a sustained high-latency window — it produces a run that dies almost
-immediately with no useful results.
+The abort is fast — under 15 seconds into the run in the case that prompted this section,
+regardless of the `--duration` you asked for. A `--rate` set well above capacity does not
+produce a sustained high-latency window; it produces a run that dies almost immediately
+with no useful results.
+
+An aborted run is easy to miss after the fact, because it does not look like a failure
+downstream. `last-run.txt` holds only the seeded parameter header with no `SQL statistics`
+block, and the run's p50/p95/p99 series on the Grafana dashboard flatline at 0 — which
+reads as a suspiciously excellent result rather than a crash. If latency drops to zero and
+the summary is truncated, check the pod output for the `FATAL` line.
 
 For overload and latency testing, drive the target past its limit with concurrency instead
 of with a target rate: leave `--rate=0` and raise `--threads` until latency climbs. A
 thread-bound run applies backpressure naturally — slower responses mean fewer transactions
-issued — so it degrades into a high-latency window rather than aborting. If you do want a
+issued — so it degrades into a high-latency window instead of overflowing the event queue.
+It is not immune to aborting for other reasons: sysbench still exits on unhandled SQL
+errors, which a heavily overloaded target is more likely to return. If you do want a
 fixed rate, first measure the target's sustainable throughput with a thread-bound run, then
 set `--rate` at or just above that measured number rather than far above it.
 

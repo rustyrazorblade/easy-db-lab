@@ -2,12 +2,12 @@
 
 ### Requirement: CLI help text warns about over-capacity `--rate` abort behavior
 
-The sysbench kit's `--rate` flag description (`kit.yaml`, rendered verbatim by `kit info sysbench`) SHALL state that setting `--rate` well above the target's sustainable capacity causes sysbench's internal rate-limiter queue to overflow and the run to hard-abort within seconds, rather than sustaining a high-latency overload window, and SHALL point the user to the user guide for the recommended approach to overload/latency testing.
+The sysbench kit's `--rate` flag description (`kit.yaml`, rendered verbatim as picocli help text on the installed instance's start command, `sysbench-<target> start --help`) SHALL state that setting `--rate` well above the target's sustainable capacity causes sysbench's internal rate-limiter queue to overflow and the run to hard-abort within seconds, rather than sustaining a high-latency overload window, and SHALL point the user to the user guide for the recommended approach to overload/latency testing.
 
 #### Scenario: User inspects sysbench flag help
-- **WHEN** a user runs `easy-db-lab kit info sysbench`
+- **WHEN** a user runs `easy-db-lab sysbench-<target> start --help`
 - **THEN** the `--rate` flag's description mentions that over-capacity rates cause a fast
-  hard-abort (not a sustained overload window) and references the docs for guidance
+  hard-abort (not a sustained overload window) and references the user guide for guidance
 
 ### Requirement: User guide explains rate-limiting semantics and overload-testing guidance
 

@@ -12,7 +12,7 @@ investigation (2026-07-21); see GitHub issue #839.
 ## What Changes
 
 - Update the `--rate` flag's `description` in the sysbench kit's `kit.yaml` (rendered
-  verbatim as CLI help text by `kit info sysbench`) to warn that rates well above cluster
+  verbatim as picocli help text by `sysbench-<target> start --help`) to warn that rates well above cluster
   capacity cause a fast hard-abort rather than a sustained overload window, and to point at
   the docs for the recommended approach.
 - Add a "Rate limiting and overload testing" subsection to `docs/user-guide/sysbench.md`
@@ -45,6 +45,6 @@ not change. No existing spec's behavioral requirements change.
 ## Impact
 
 - `src/main/resources/com/rustyrazorblade/easydblab/kits/sysbench/kit.yaml` — `--rate`
-  flag description text (also affects `kit info sysbench` CLI output).
+  flag description text (also affects `sysbench-<target> start --help` CLI output).
 - `docs/user-guide/sysbench.md` — Flags table + new explanatory subsection.
 - No code, tests, or runtime behavior affected.

@@ -53,7 +53,7 @@ another instance. Every other flag is passed per invocation, so you can vary the
 without reinstalling:
 
 ```bash
-easy-db-lab sysbench-tidb start --threads 32 --rate 2000
+easy-db-lab sysbench-tidb start --threads 32 --duration 300
 ```
 
 ## Lifecycle

@@ -24,8 +24,11 @@ investigation (2026-07-21); see GitHub issue #839.
   table in `docs/user-guide/sysbench.md` (pre-existing gap in the same table this change is
   already editing; all three are real `start` args in `kit.yaml` today but none appear in
   the table).
-- No code, behavior, or interface changes. `--rate` continues to pass straight through to
-  the sysbench binary unmodified — this is a documentation and CLI-help-text change only.
+- Add a drift-guard test asserting every flag declared in the sysbench `kit.yaml` has a row
+  in the user guide's Flags table, so the gap this change closes cannot silently reopen.
+- No runtime code, behavior, or interface changes. `--rate` continues to pass straight
+  through to the sysbench binary unmodified — this is a documentation and CLI-help-text
+  change only.
 
 ## Capabilities
 
@@ -47,4 +50,10 @@ not change. No existing spec's behavioral requirements change.
 - `src/main/resources/com/rustyrazorblade/easydblab/kits/sysbench/kit.yaml` — `--rate`
   flag description text (also affects `sysbench-<target> start --help` CLI output).
 - `docs/user-guide/sysbench.md` — Flags table + new explanatory subsection.
-- No code, tests, or runtime behavior affected.
+- `src/test/kotlin/com/rustyrazorblade/easydblab/commands/kit/SysbenchFlagsDocumentedTest.kt`
+  — new drift-guard test asserting every `kit.yaml` flag appears in the user guide's Flags
+  table (presence only; never defaults or wording).
+- `build.gradle.kts` — declares `docs/user-guide/sysbench.md` as an input of the `test`
+  task, so a dropped flag row cannot be masked by an up-to-date or cached test result.
+- No runtime behavior affected — the only production artifacts touched are help text and
+  documentation.

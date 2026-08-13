@@ -67,9 +67,11 @@ class CiliumServiceTest : BaseKoinTest() {
             eventBus = getKoin().get(),
         )
 
+    private val vpcCidr = "10.0.0.0/16"
+
     @Test
-    fun `install calls executeRemotely with cilium install command`() {
-        makeService().install(controlHost)
+    fun `install issues cilium install with ENI native-routing flags and no VXLAN tunnel`() {
+        makeService().install(controlHost, vpcCidr)
 
         val commandCaptor = argumentCaptor<String>()
         verify(mockRemoteOps).executeRemotely(eq(controlHost), commandCaptor.capture(), any(), any())
@@ -79,17 +81,49 @@ class CiliumServiceTest : BaseKoinTest() {
         assertThat(command).contains("--version 1.19.4")
         assertThat(command).contains("k8sServiceHost=${controlHost.private}")
         assertThat(command).contains("k8sServicePort=6443")
-        assertThat(command).contains("tunnelProtocol=vxlan")
-        assertThat(command).contains("routingMode=tunnel")
+        assertThat(command).contains("ipam.mode=eni")
+        assertThat(command).contains("eni.enabled=true")
+        assertThat(command).contains("routingMode=native")
+        assertThat(command).contains("endpointRoutes.enabled=true")
+        assertThat(command).contains("enableIPv4Masquerade=true")
+        assertThat(command).contains("egressMasqueradeInterfaces=ens+")
+        assertThat(command).contains("kubeProxyReplacement=false")
+        assertThat(command).contains("bpf.hostLegacyRouting=true")
+        assertThat(command).contains("ipv4NativeRoutingCIDR=$vpcCidr")
         assertThat(command).contains("operator.replicas=1")
         assertThat(command).contains("hubble.relay.enabled=true")
         assertThat(command).contains("hubble.ui.enabled=true")
-        assertThat(command).contains("hubble.metrics.enabled=")
+        assertThat(command).doesNotContain("bpf.masquerade")
+        assertThat(command).doesNotContain("tunnelProtocol=vxlan")
+        assertThat(command).doesNotContain("routingMode=tunnel")
+    }
+
+    @Test
+    fun `install single-quotes the Hubble metrics list so the remote shell does not brace-expand it`() {
+        makeService().install(controlHost, vpcCidr)
+
+        val commandCaptor = argumentCaptor<String>()
+        verify(mockRemoteOps).executeRemotely(eq(controlHost), commandCaptor.capture(), any(), any())
+
+        val command = commandCaptor.firstValue
+        assertThat(command).contains("hubble.metrics.enabled='{dns,drop,tcp,flow,port-distribution,icmp,http}'")
+    }
+
+    @Test
+    fun `install threads the provided VPC CIDR verbatim into the native-routing flag`() {
+        val distinctCidr = "172.31.0.0/16"
+
+        makeService().install(controlHost, distinctCidr)
+
+        val commandCaptor = argumentCaptor<String>()
+        verify(mockRemoteOps).executeRemotely(eq(controlHost), commandCaptor.capture(), any(), any())
+
+        assertThat(commandCaptor.firstValue).contains("ipv4NativeRoutingCIDR=$distinctCidr")
     }
 
     @Test
     fun `install emits Installing, InstallingChart, and Installed events on success`() {
-        makeService().install(controlHost)
+        makeService().install(controlHost, vpcCidr)
 
         assertThat(emittedEvents).contains(Event.Cilium.Installing)
         assertThat(emittedEvents).contains(Event.Cilium.InstallingChart)
@@ -101,7 +135,7 @@ class CiliumServiceTest : BaseKoinTest() {
         whenever(mockRemoteOps.executeRemotely(any(), any(), any(), any()))
             .doThrow(RuntimeException("cilium install failed"))
 
-        val result = makeService().install(controlHost)
+        val result = makeService().install(controlHost, vpcCidr)
 
         assertThat(result.isFailure).isTrue()
         val failedEvents = emittedEvents.filterIsInstance<Event.Cilium.InstallFailed>()

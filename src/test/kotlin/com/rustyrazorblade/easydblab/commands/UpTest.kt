@@ -233,7 +233,7 @@ class UpTest : BaseKoinTest() {
             .thenReturn(Result.success(Unit))
 
         whenever(mockK3sClusterService.setupCluster(any())).thenReturn(K3sSetupResult(serverStarted = true))
-        whenever(mockCiliumService.install(any())).thenReturn(Result.success(Unit))
+        whenever(mockCiliumService.install(any(), any())).thenReturn(Result.success(Unit))
 
         whenever(mockK8sService.labelNode(any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.ensureLocalStorageClass(any())).thenReturn(Result.success(Unit))
@@ -265,6 +265,8 @@ class UpTest : BaseKoinTest() {
         controlInstances: Int = 1,
         cassandraInstances: Int = 1,
         stressInstances: Int = 1,
+        cni: CniMode = CniMode.Flannel,
+        cidr: String? = "10.0.0.0/16",
     ): ClusterState =
         ClusterState(
             name = "test-cluster",
@@ -275,8 +277,9 @@ class UpTest : BaseKoinTest() {
                     cassandraInstances = cassandraInstances,
                     stressInstances = stressInstances,
                     controlInstances = controlInstances,
-                    cidr = "10.0.0.0/16",
+                    cidr = cidr,
                     name = "test-cluster",
+                    cni = cni,
                 ),
         )
 
@@ -308,43 +311,6 @@ class UpTest : BaseKoinTest() {
         verify(mockK8sService).labelNode(eq(testControlHost), eq("app0"), any())
         verify(mockK8sService).ensureLocalStorageClass(eq(testControlHost))
         verify(mockK8sService).ensureLocalStorageWfcClass(eq(testControlHost))
-    }
-
-    // =========================================================================
-    // Group: CNI selection (`--cni`, replacing the old `--cilium` boolean)
-    // =========================================================================
-
-    @Test
-    fun `up starts K3s with Flannel by default and never installs Cilium`() {
-        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
-
-        val configCaptor = argumentCaptor<K3sClusterConfig>()
-        verify(mockK3sClusterService).setupCluster(configCaptor.capture())
-        assertThat(configCaptor.firstValue.useCustomCni).isFalse()
-        assertThat(configCaptor.firstValue.onServerReady == null).isTrue()
-
-        verify(mockCiliumService, never()).install(any())
-    }
-
-    @Test
-    fun `up starts K3s with a custom CNI and installs Cilium via onServerReady when cni is Cilium`() {
-        val ciliumState = happyState()
-        whenever(mockClusterStateManager.load()).thenReturn(
-            ciliumState.copy(initConfig = ciliumState.initConfig?.copy(cni = CniMode.Cilium)),
-        )
-
-        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
-
-        val configCaptor = argumentCaptor<K3sClusterConfig>()
-        verify(mockK3sClusterService).setupCluster(configCaptor.capture())
-        val config = configCaptor.firstValue
-        assertThat(config.useCustomCni).isTrue()
-
-        val onServerReady = config.onServerReady
-        assertThat(onServerReady == null).isFalse()
-        onServerReady?.invoke()
-
-        verify(mockCiliumService).install(testControlHost.toHost())
     }
 
     // =========================================================================
@@ -632,6 +598,82 @@ class UpTest : BaseKoinTest() {
             .hasMessageContaining("connection refused")
 
         verify(mockK3sClusterService, never()).setupCluster(any())
+    }
+
+    // =========================================================================
+    // Group 7: Cilium CNI installation on the server-ready hook
+    // =========================================================================
+
+    /**
+     * Stubs [K3sClusterService.setupCluster] to invoke the config's `onServerReady` hook, as the
+     * real implementation does once the K3s server is up. Without this, the mock would swallow the
+     * callback and the Cilium install side effect would never fire — masking the branch under test.
+     */
+    private fun setupClusterInvokingServerReadyHook() {
+        whenever(mockK3sClusterService.setupCluster(any())).thenAnswer { invocation ->
+            val config = invocation.arguments[0] as K3sClusterConfig
+            config.onServerReady?.invoke()
+            K3sSetupResult(serverStarted = true)
+        }
+    }
+
+    @Test
+    fun `up installs Cilium with the control host and resolved VPC CIDR when cni is Cilium`() {
+        whenever(mockClusterStateManager.load()).thenReturn(happyState(cni = CniMode.Cilium))
+        whenever(mockCiliumService.install(any(), any())).thenReturn(Result.success(Unit))
+        setupClusterInvokingServerReadyHook()
+
+        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
+
+        val hostCaptor = argumentCaptor<Host>()
+        val cidrCaptor = argumentCaptor<String>()
+        verify(mockCiliumService).install(hostCaptor.capture(), cidrCaptor.capture())
+        assertThat(hostCaptor.firstValue.alias).isEqualTo("control0")
+        assertThat(hostCaptor.firstValue.private).isEqualTo("10.0.0.1")
+        assertThat(cidrCaptor.firstValue).isEqualTo("10.0.0.0/16")
+    }
+
+    @Test
+    fun `up wires the K3s cluster for a custom CNI only when cni is Cilium`() {
+        whenever(mockClusterStateManager.load()).thenReturn(happyState(cni = CniMode.Cilium))
+        whenever(mockCiliumService.install(any(), any())).thenReturn(Result.success(Unit))
+        setupClusterInvokingServerReadyHook()
+
+        newUp().execute()
+
+        val configCaptor = argumentCaptor<K3sClusterConfig>()
+        verify(mockK3sClusterService).setupCluster(configCaptor.capture())
+        assertThat(configCaptor.firstValue.useCustomCni).isTrue()
+        assertThat(configCaptor.firstValue.onServerReady != null).isTrue()
+    }
+
+    @Test
+    fun `up never installs Cilium and uses the default CNI when cni is Flannel`() {
+        // happyState defaults to Flannel.
+        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
+
+        verify(mockCiliumService, never()).install(any(), any())
+        val configCaptor = argumentCaptor<K3sClusterConfig>()
+        verify(mockK3sClusterService).setupCluster(configCaptor.capture())
+        assertThat(configCaptor.firstValue.useCustomCni).isFalse()
+        assertThat(configCaptor.firstValue.onServerReady == null).isTrue()
+    }
+
+    @Test
+    fun `up auto-resolves an unset VPC CIDR and installs Cilium with the selected block`() {
+        // When init left the CIDR unset, `up` auto-selects one before installing Cilium — so the
+        // install must receive that resolved block, never a null. This is why installCilium's
+        // requireNotNull guard cannot fire through a full run: the CIDR is always resolved first.
+        whenever(mockClusterStateManager.load()).thenReturn(happyState(cni = CniMode.Cilium, cidr = null))
+        whenever(mockVpcService.listAllVpcCidrs()).thenReturn(emptyList())
+        whenever(mockCiliumService.install(any(), any())).thenReturn(Result.success(Unit))
+        setupClusterInvokingServerReadyHook()
+
+        newUp().execute()
+
+        val cidrCaptor = argumentCaptor<String>()
+        verify(mockCiliumService).install(any(), cidrCaptor.capture())
+        assertThat(cidrCaptor.firstValue).isNotBlank()
     }
 
     /**

@@ -11,14 +11,12 @@ class PicoCniModeConverterTest {
 
     @Test
     fun `converts cilium to CniMode Cilium`() {
-        val result = converter.convert("cilium")
-        assertThat(result).isEqualTo(CniMode.Cilium)
+        assertThat(converter.convert("cilium")).isEqualTo(CniMode.Cilium)
     }
 
     @Test
     fun `converts flannel to CniMode Flannel`() {
-        val result = converter.convert("flannel")
-        assertThat(result).isEqualTo(CniMode.Flannel)
+        assertThat(converter.convert("flannel")).isEqualTo(CniMode.Flannel)
     }
 
     @Test
@@ -40,10 +38,10 @@ class PicoCniModeConverterTest {
     }
 
     @Test
-    fun `throws TypeConversionException for invalid CNI`() {
-        assertThatThrownBy { converter.convert("calico") }
+    fun `throws TypeConversionException for invalid cni`() {
+        assertThatThrownBy { converter.convert("foo") }
             .isInstanceOf(TypeConversionException::class.java)
-            .hasMessageContaining("Invalid CNI: calico")
+            .hasMessageContaining("Invalid CNI: foo")
             .hasMessageContaining("cilium or flannel")
     }
 
@@ -52,6 +50,7 @@ class PicoCniModeConverterTest {
         assertThatThrownBy { converter.convert("") }
             .isInstanceOf(TypeConversionException::class.java)
             .hasMessageContaining("Invalid CNI")
+            .hasMessageContaining("cilium or flannel")
     }
 
     @Test
@@ -59,5 +58,6 @@ class PicoCniModeConverterTest {
         assertThatThrownBy { converter.convert("   ") }
             .isInstanceOf(TypeConversionException::class.java)
             .hasMessageContaining("Invalid CNI")
+            .hasMessageContaining("cilium or flannel")
     }
 }

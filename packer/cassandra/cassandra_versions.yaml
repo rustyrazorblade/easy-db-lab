@@ -24,16 +24,21 @@
   python: "3.11.9"
 
 - version: "5.0-HEAD"
-  url: https://github.com/rustyrazorblade/easy-db-lab/releases/download/nightly/apache-cassandra-5.0-HEAD-bin.tar.gz
+  url: https://github.com/rustyrazorblade/cassandra-builds/releases/download/nightly/apache-cassandra-5.0-HEAD-bin.tar.gz
   java: "11"
   python: "3.11.9"
 
 - version: "6.0-HEAD"
-  url: https://github.com/rustyrazorblade/easy-db-lab/releases/download/nightly/apache-cassandra-6.0-HEAD-bin.tar.gz
+  url: https://github.com/rustyrazorblade/cassandra-builds/releases/download/nightly/apache-cassandra-6.0-HEAD-bin.tar.gz
+  java: "21"
+  python: "3.11.9"
+
+- version: "6.0-rustyrazorblade-HEAD"
+  url: https://github.com/rustyrazorblade/cassandra-builds/releases/download/nightly/apache-cassandra-6.0-rustyrazorblade-HEAD-bin.tar.gz
   java: "21"
   python: "3.11.9"
 
 - version: "trunk"
-  url: https://github.com/rustyrazorblade/easy-db-lab/releases/download/nightly/apache-cassandra-trunk-bin.tar.gz
+  url: https://github.com/rustyrazorblade/cassandra-builds/releases/download/nightly/apache-cassandra-trunk-bin.tar.gz
   java: "21"
   python: "3.11.9"

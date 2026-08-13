@@ -240,6 +240,64 @@ class InstallTemplateResolverTest : BaseKoinTest() {
         assertThat(config.name).isEqualTo("presto")
     }
 
+    // ── built-in cqlite kits (guard: parse + nested-resource listing) ────────
+
+    @Test
+    fun `loadInstallConfig parses cqlite-flight builtin config from classpath`() {
+        val source = resolver.resolve("cqlite-flight")
+        val config =
+            requireNotNull(resolver.loadInstallConfig(source)) {
+                "expected cqlite-flight ${Constants.Kit.CONFIG_FILE} to be present on classpath"
+            }
+        assertThat(config.name).isEqualTo("cqlite-flight")
+        assertThat(config.type).isEqualTo(KitType.DB)
+    }
+
+    @Test
+    fun `cqlite catalog file is deferred and not shipped in the trino kit yet`() {
+        // The cqlite catalog is intentionally NOT shipped until the cqlite_flight
+        // connector plugin lands (pmcfadin/cqlite#2869). Its placeholders
+        // (__SIDECAR_URI__/__FLIGHT_PORT__/__READ_MODE__/__LOCAL_DATACENTER__) are
+        // not global TemplateVariables nor trino kit args, so shipping it would make
+        // BaseInstallCommand.renderAndWrite render it on every `kit install trino`
+        // and emit a spurious Event.Install.UnresolvedVariables warning on the
+        // existing, widely-used trino kit. Guard the regression: the trino source
+        // lists its real catalogs but no cqlite catalog file, so the install/render
+        // path collects no cqlite placeholders. See the deferred item in
+        // openspec/changes/cqlite-kits-builtin/tasks.md.
+        val source = resolver.resolve("trino")
+        val names = resolver.listTemplateFiles(source).map { it.name }
+
+        assertThat(names).contains("catalogs/cassandra.properties.template")
+        assertThat(names).doesNotContain("catalogs/cqlite.properties.template")
+        assertThat(names.none { it.contains("cqlite") }).isTrue()
+
+        // The standalone kit is gone: it must not resolve as a built-in.
+        assertThatThrownBy { resolver.resolve("cqlite-trino") }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("cqlite-trino")
+    }
+
+    @Test
+    fun `loadInstallConfig parses trino-loadtest builtin config from classpath`() {
+        val source = resolver.resolve("trino-loadtest")
+        val config =
+            requireNotNull(resolver.loadInstallConfig(source)) {
+                "expected trino-loadtest ${Constants.Kit.CONFIG_FILE} to be present on classpath"
+            }
+        assertThat(config.name).isEqualTo("trino-loadtest")
+        assertThat(config.type).isEqualTo(KitType.APP)
+    }
+
+    @Test
+    fun `listTemplateFiles ships driver-py but not test_driver-py for trino-loadtest builtin source`() {
+        val source = resolver.resolve("trino-loadtest")
+        val names = resolver.listTemplateFiles(source).map { it.name }
+
+        assertThat(names).contains("driver.py")
+        assertThat(names).doesNotContain("test_driver.py")
+    }
+
     // ── additional sources ──────────────────────────────────────────────────
 
     private fun createAdditionalSource(vararg kitNames: String): File {

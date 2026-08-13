@@ -52,6 +52,20 @@ if [ -n "$catalog_content" ]; then
     printf "additionalCatalogs:\n%s" "$catalog_content" > "$CATALOG_YAML"
     EXTRA_VALUES=(--values "$CATALOG_YAML")
 fi
+
+# DEFERRED (pmcfadin/cqlite#2869): the `cqlite` catalog (catalogs/cqlite.properties)
+# registers the third-party `cqlite_flight` connector, whose plugin jar tree is NOT
+# in the stock trinodb/trino image and so must be mounted into
+# /usr/lib/trino/plugin/cqlite_flight/ on the coordinator/workers. That plugin
+# delivery is blocked on the self-contained Shadow fat jar to be published in the
+# cqlite GitHub Releases (pmcfadin/cqlite#2869). Once it lands, wire it as an extra
+# --values fragment HERE (download-if-missing initContainer → versioned per-node
+# hostPath cache → volumeMount into the plugin subdir, nodeSelector type=app; see
+# catalogs/cqlite.properties.template for the intended shape). The earlier
+# pod-start Gradle resolve of in.mcfad:cqlite-trino was removed — do NOT
+# reintroduce a Gradle assemble step or a sibling `trino-values.yaml` discovery
+# loop; the fat-jar mount will be declared directly against this chart's values.
+
 helm upgrade --install trino trinodb/trino \
   --namespace default \
   --create-namespace \

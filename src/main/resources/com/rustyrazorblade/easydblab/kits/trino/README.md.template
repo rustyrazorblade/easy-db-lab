@@ -23,6 +23,19 @@ Catalogs for co-located databases are added automatically when their services ar
 | `clickhouse` | ClickHouse   | When `clickhouse` is in RUNNING_KITS |
 | `opensearch` | OpenSearch   | When cluster has an OpenSearch domain |
 | `tidb`       | MySQL        | When `tidb` is in RUNNING_KITS        |
+| `cqlite`     | `cqlite_flight` | Offline SSTable read path via [cqlite-flight](../cqlite-flight/README.md) (see note) |
+
+```admonish note title="cqlite catalog — plugin delivery deferred (pmcfadin/cqlite#2869)"
+`cqlite` reads Cassandra SSTables offline through the third-party `cqlite_flight`
+connector. Unlike the catalogs above, that connector is NOT baked into the
+`trinodb/trino` image, so the catalog only resolves once the connector plugin jar
+is mounted into `/usr/lib/trino/plugin/cqlite_flight/` on the coordinator/workers.
+That plugin delivery is a self-contained fat jar to be published in the cqlite
+GitHub Releases, tracked in `pmcfadin/cqlite#2869` — until it lands, the catalog
+file (`catalogs/cqlite.properties`) ships as a staged template and the plugin
+mount is intentionally not wired. See that file's header for the intended
+hostPath-cache/initContainer shape.
+```
 
 ## Custom catalogs
 

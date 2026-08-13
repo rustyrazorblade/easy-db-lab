@@ -23,6 +23,8 @@
   - [Trino](user-guide/install-trino.md)
   - [TiDB](user-guide/tidb.md)
   - [Sysbench](user-guide/sysbench.md)
+  - [cqlite-flight](user-guide/cqlite-flight.md)
+  - [trino-loadtest](user-guide/trino-loadtest.md)
   - [PostgreSQL](user-guide/install-postgres.md)
   - [Platform Substrate](user-guide/platform-substrate.md)
 - [Monitoring](user-guide/monitoring.md)

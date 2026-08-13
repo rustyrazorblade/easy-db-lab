@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export KUBECONFIG="${SCRIPT_DIR}/../../__KUBECONFIG__"
+
+MANIFEST="${SCRIPT_DIR}/../daemonset.yaml"
+
+echo "Deploying cqlite-flight (image tag: __TAG__, Flight port: __FLIGHT_PORT__, data dir: __CASSANDRA_DATA_DIR__)..."
+kubectl apply -f "${MANIFEST}"
+
+echo "Waiting for cqlite-flight DaemonSet rollout on db nodes..."
+kubectl rollout status daemonset/cqlite-flight --namespace default --timeout=180s
+
+echo "cqlite-flight is ready — Arrow Flight gRPC on <db-node-ip>:__FLIGHT_PORT__ (one pod per db node)."
+echo "Read path: live Cassandra data dir mount (__CASSANDRA_DATA_DIR__). Sidecar-snapshot reads are"
+echo "driven by the trino-connector's ticket, not by this kit."
+echo
+echo "NOTE (issue #2114): cqlite-flight serves EXACTLY ONE --data-dir (__CASSANDRA_DATA_DIR__) and"
+echo "cannot span disks. On a multi-disk node (data_file_directories across /mnt/db1, /mnt/db2, ...)"
+echo "the unserved disks are read as if absent — PARTIAL results with NO error. Each pod's"
+echo "'detect-multidisk' init container scans --data-root (__CASSANDRA_DATA_ROOT__) and warns on"
+echo "more than one candidate data dir, and on zero candidates (absent/empty/mismatched root ="
+echo "cannot-verify, never a silent OK). Review it per node with:"
+echo "  kubectl logs -l app.kubernetes.io/name=cqlite-flight -c detect-multidisk --prefix"

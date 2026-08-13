@@ -35,7 +35,7 @@ jobs:
       # (`integrationTest`, TestContainers/mock-server/real-I-O). GitHub's ubuntu runners ship
       # a running Docker daemon at /var/run/docker.sock, which the integration tier needs.
       - name: Run unit + integration tiers
-        run: ./gradlew test integrationTest koverXmlReport --no-daemon
+        run: ./gradlew test integrationTest testTrinoLoadtestDriver koverXmlReport --no-daemon
 
       - name: Upload test results
         if: always()

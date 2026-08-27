@@ -24,6 +24,7 @@ object Constants {
     // Time-related constants
     object Time {
         const val SECONDS_PER_MINUTE = 60
+        const val SECONDS_PER_HOUR = 3600L
         const val MILLIS_PER_SECOND = 1000L
         const val MILLIS_PER_MINUTE = 60_000L
         const val THREAD_SLEEP_DELAY_MS = 10L
@@ -299,11 +300,139 @@ object Constants {
     }
 
     // Pyroscope Java Agent configuration (for EMR Spark JVMs)
+    //
+    // Cassandra nodes no longer use this agent — they profile at runtime with async-profiler, see
+    // Constants.Profiling. The remaining JVM workloads (EMR/Spark, Trino, the sidecar, stress) still
+    // do, and they install the jar at two different paths: EMR bootstraps it to /opt/pyroscope,
+    // while the node AMI installs it to /usr/local/pyroscope (hostPath-mounted into stress pods by
+    // StressJobService). The name says EMR so one constant cannot be mistaken for both.
     object PyroscopeJavaAgent {
         const val VERSION = "2.3.0"
         const val DOWNLOAD_URL =
             "https://github.com/grafana/pyroscope-java/releases/download/v$VERSION/pyroscope.jar"
-        const val INSTALL_PATH = "/opt/pyroscope/pyroscope.jar"
+        const val EMR_INSTALL_PATH = "/opt/pyroscope/pyroscope.jar"
+    }
+
+    // Runtime async-profiler control for Cassandra nodes.
+    //
+    // Capture is driven by a node-resident reconciler (`edl-profiling-reconcile`, run by a systemd
+    // timer) which attaches async-profiler to the live Cassandra JVM, ships completed JFR chunks to
+    // Pyroscope, and prunes the profile directory. The CLI only writes DESIRED_STATE_PATH; the
+    // reconciler owns everything else.
+    object Profiling {
+        /** Where completed and in-flight JFR chunks live. Deliberately NOT the 777 artifacts dir. */
+        const val PROFILE_DIR = "/mnt/db1/cassandra/profiles"
+
+        /** Desired state, written atomically by the CLI and read by the reconciler. */
+        const val DESIRED_STATE_PATH = "/etc/easy-db-lab/profiling.json"
+
+        /** Directory holding DESIRED_STATE_PATH; created by the CLI before the first write. */
+        const val DESIRED_STATE_DIR = "/etc/easy-db-lab"
+
+        /** Effective state, rewritten by the reconciler at the end of every pass. */
+        const val EFFECTIVE_STATE_PATH = "$PROFILE_DIR/effective-state.json"
+
+        const val JFRCONV_BIN = "/usr/local/async-profiler/bin/jfrconv"
+
+        /** Systemd timer driving the reconciler. */
+        const val TIMER_UNIT = "edl-profiling-reconcile.timer"
+
+        /** How often that timer fires. Mirrors `OnUnitActiveSec` in `edl-profiling-reconcile.timer`. */
+        const val RECONCILE_INTERVAL_SECONDS = 60L
+
+        /**
+         * Age past which a node's effective-state document stops describing the present.
+         *
+         * The document is rewritten every pass, so with a healthy timer it is never more than one
+         * interval old. Five intervals is also `TimeoutStartSec` on the reconcile unit, so a pass
+         * being killed at that timeout is the shortest real fault this threshold can see — anything
+         * older means the timer is masked, disabled, or the unit is wedged.
+         */
+        const val STALE_AFTER_SECONDS = 5 * RECONCILE_INTERVAL_SECONDS
+
+        /** JFR rotation interval handed to `asprof --loop`. */
+        const val DEFAULT_LOOP_INTERVAL = "1m"
+
+        /** Age bound on the profile directory, in minutes. Applies to unshipped chunks too. */
+        const val DEFAULT_RETENTION_MINUTES = 60
+
+        /** Byte ceiling on the profile directory. Generous: if it engages, that is itself a signal. */
+        const val DEFAULT_MAX_BYTES = 2L * 1024 * 1024 * 1024
+
+        /**
+         * Smallest retention window the node can honour. Zero puts the prune cutoff at the current
+         * instant, deleting every chunk as it lands; negative makes the reconciler discard the whole
+         * desired-state document without attaching.
+         */
+        const val MIN_RETENTION_MINUTES = 1
+
+        /**
+         * Smallest byte ceiling the node can honour.
+         *
+         * One MiB rather than one byte, because the byte bound loses data the same way a too-short
+         * retention window does and needs the same floor. A JFR chunk carries its own constant pool
+         * and runs to hundreds of kilobytes, so any ceiling below this cannot hold a single chunk:
+         * every pass prunes what the previous one collected, and profiling can never produce a
+         * profile. A one-byte floor accepted exactly that configuration.
+         */
+        const val MIN_MAX_BYTES = 1L * 1024 * 1024
+
+        /**
+         * Margin the node adds to the rotation interval before a chunk counts as complete.
+         *
+         * Mirrors `GRACE_EXTRA_SECONDS` in `edl-profiling-reconcile`; the two must stay equal. It
+         * lives here as well as there because [requireProfilingBounds] uses it to refuse a
+         * retention window shorter than the window a chunk needs in order to be shipped at all.
+         */
+        const val SHIP_GRACE_SECONDS = 10L
+
+        /**
+         * The most chunks one reconcile pass uploads.
+         *
+         * Mirrors `SHIP_MAX_CHUNKS_PER_PASS` in `edl-profiling-reconcile`; the two must stay equal.
+         * The cap is what keeps a pass inside the unit's `TimeoutStartSec` of 300 seconds — six
+         * uploads at the node's 30-second upload timeout is 180 seconds worst case, leaving room for
+         * the metrics export and the directory walk — so it cannot simply be raised to match a
+         * faster rotation. [MIN_LOOP_SECONDS] is the other side of that trade.
+         */
+        const val SHIP_MAX_CHUNKS_PER_PASS = 6L
+
+        /**
+         * Fastest rotation the shipper can keep up with.
+         *
+         * A pass ships at most [SHIP_MAX_CHUNKS_PER_PASS] chunks and runs every
+         * [RECONCILE_INTERVAL_SECONDS], while the profiler produces one chunk per rotation. Any
+         * interval below this ratio produces more chunks per pass than a pass can drain, so the
+         * queue grows forever and every chunk aging past the retention window is deleted having
+         * never shipped. Nothing reports a fault: the per-pass truncation warning is indistinguishable
+         * from a backlog that is draining normally.
+         *
+         * Refused at the CLI rather than on the node, for the same reason as [SHIP_GRACE_SECONDS]:
+         * the failure is silent data loss, and the CLI is the one place every route passes through.
+         */
+        const val MIN_LOOP_SECONDS = RECONCILE_INTERVAL_SECONDS / SHIP_MAX_CHUNKS_PER_PASS
+
+        /**
+         * Event set seeded at cluster-up, so a fresh cluster profiles with no operator action.
+         *
+         * CPU, allocation and lock contention together — the same three the Pyroscope Java agent
+         * this replaced produced unconditionally, and what `dashboards/profiling.json`'s Memory,
+         * Lock and Mutex panels read. Only wall-clock sampling is exclusive of a CPU event; alloc
+         * and lock coexist with cpu in one session, so this is a single recording, not a compromise.
+         */
+        val DEFAULT_ASPROF_ARGS = listOf("-e", "cpu", "--alloc", "512k", "--lock", "10ms")
+
+        /** Default number of completed chunks `fetch` and `flamegraph` operate on. */
+        const val DEFAULT_LAST_CHUNKS = 5
+
+        /** Local workspace directory downloads land in. */
+        const val LOCAL_DOWNLOAD_DIR = "profiles"
+
+        /** Where node-side flame-graph conversions are written; world-writable, never auto-pruned. */
+        const val ARTIFACTS_DIR = "/mnt/db1/cassandra/artifacts"
+
+        /** Default flame-graph output format handed to `jfrconv -o`. */
+        const val DEFAULT_FLAMEGRAPH_FORMAT = "html"
     }
 
     // Cassandra node configuration
@@ -366,6 +495,25 @@ object Constants {
         const val DAEMON_STARTUP_DELAY_MS = 2000L
         const val DEFAULT_DEVICE_TAG = "tag:easy-db-lab"
         const val STATUS_TIMEOUT_SECONDS = 5L
+
+        /** How long to wait for the local `tailscale status` process before killing it. */
+        const val LOCAL_STATUS_TIMEOUT_SECONDS = 5L
+
+        /**
+         * Connect timeout for the pre-K3s probe of the control node over the tailnet. Short by
+         * design: the target is already listening, so anything slower than a local network
+         * round-trip means there is no route.
+         */
+        const val REACHABILITY_TIMEOUT_MS = 2000
+
+        /** `BackendState` the Tailscale client reports when it is logged in and routing. */
+        const val BACKEND_STATE_RUNNING = "Running"
+
+        /** Stand-in `BackendState` for a client whose status could not be read at all. */
+        const val BACKEND_STATE_UNKNOWN = "unknown"
+
+        /** Stand-in `BackendState` for a `tailscale status` that never returned. */
+        const val BACKEND_STATE_TIMED_OUT = "timed out"
     }
 
     // Container Registry configuration

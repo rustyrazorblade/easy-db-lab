@@ -115,24 +115,13 @@ fi
 # Reduce ring delay since we control the startup sequence
 export JVM_OPTS="$JVM_OPTS -Dcassandra.ring_delay_ms=1"
 
-# Pyroscope continuous profiling agent
-# Sends CPU, alloc, and lock profiles to the Pyroscope server on the control node.
-# profiler.event takes a single value; alloc and lock are configured separately with thresholds.
-# See: https://grafana.com/docs/pyroscope/latest/configure-client/language-sdks/java/
-# PYROSCOPE_SERVER_ADDRESS is set by easy-db-lab at cluster startup time via /etc/default/cassandra.
-PYROSCOPE_JAR="/usr/local/pyroscope/pyroscope.jar"
-if [ -f "$PYROSCOPE_JAR" ] && [ -n "$PYROSCOPE_SERVER_ADDRESS" ]; then
-    # PYROSCOPE_PROFILER_EVENT can be set in /etc/default/cassandra to override the default.
-    # Valid values: cpu (default), wall. Note: wall and cpu are mutually exclusive.
-    PYROSCOPE_EVENT="${PYROSCOPE_PROFILER_EVENT:-cpu}"
-    export JVM_OPTS="$JVM_OPTS -javaagent:${PYROSCOPE_JAR}"
-    export JVM_OPTS="$JVM_OPTS -Dpyroscope.application.name=cassandra"
-    export JVM_OPTS="$JVM_OPTS -Dpyroscope.server.address=${PYROSCOPE_SERVER_ADDRESS}"
-    export JVM_OPTS="$JVM_OPTS -Dpyroscope.format=jfr"
-    export JVM_OPTS="$JVM_OPTS -Dpyroscope.profiler.event=$PYROSCOPE_EVENT"
-    export JVM_OPTS="$JVM_OPTS -Dpyroscope.profiler.alloc=512k"
-    export JVM_OPTS="$JVM_OPTS -Dpyroscope.profiler.lock=10ms"
-    export JVM_OPTS="$JVM_OPTS -Dpyroscope.labels=hostname=$(hostname),cluster=${CLUSTER_NAME:-unknown}"
-elif [ ! -f "$PYROSCOPE_JAR" ]; then
-    echo "INFO: Pyroscope Java agent not found at $PYROSCOPE_JAR, skipping profiling" >&2
-fi
+# NOTE: nothing profiling-related belongs in this file any more.
+#
+# Cassandra used to load the Pyroscope Java agent here via -javaagent. It was removed because the
+# agent takes one primary profiler.event fixed for the JVM's lifetime, so changing what was being
+# profiled meant restarting Cassandra — which on a benchmarking rig discards exactly the page cache
+# and compaction state the operator is trying to measure. It also meant a bad profiler string could
+# abort JVM startup.
+#
+# Profiling is now attach-based and controlled at runtime by edl-profiling-reconcile. Do not
+# reintroduce an agent here.

@@ -54,6 +54,7 @@ Names are derived from the package path relative to `commands/`:
 | `Status` | `commands` | `status` |
 | `Start` | `commands.cassandra` | `cassandra_start` |
 | `StressStart` | `commands.cassandra.stress` | `cassandra_stress_start` |
+| `ProfilingStart` | `commands.cassandra.profiler` | `cassandra_profiler_start` |
 | `UpdateConfig` | `commands.cassandra` | `cassandra_update_config` |
 
 Hyphens in `@Command(name=...)` are converted to underscores.
@@ -63,6 +64,10 @@ Hyphens in `@Command(name=...)` are converted to underscores.
 `McpToolRegistry` generates JSON schemas from PicoCLI annotations:
 - `@Option` fields → JSON properties with types, defaults, descriptions
 - `@Mixin` fields → recursively scanned
+- `@Parameters` fields of a list type → JSON string arrays. These are the trailing passthrough
+  arguments a command forwards to another tool (`cassandra profile start -- -e wall`), and without
+  this such a tool's entire purpose would be unreachable over MCP. Scalar positionals are not
+  exposed — they have no name to key the schema on.
 - Kotlin types mapped to JSON types (String, Int, Boolean, Enum)
 
 ## Background Execution Pattern
@@ -108,6 +113,8 @@ Uses ClassGraph for classpath scanning (works inside JARs).
 ## Adding a New MCP Tool
 
 1. Add `@McpCommand` annotation to your command class
-2. Add the class to `mcpCommandClasses` list in `McpToolRegistry.kt`
-3. Ensure `@Option` fields have descriptions (used in JSON schema)
-4. Test with `McpToolNamespacingTest` for correct name generation
+2. Add the class to `mcpCommandClasses` list in `McpToolRegistry.kt` — the annotation alone does
+   nothing, and a class carrying it that is missing from the list is invisible to every MCP client
+3. Register the class in `CommandsModule.kt`; `getTools()` instantiates through Koin
+4. Ensure `@Option` fields have descriptions (used in JSON schema)
+5. Add a case to `McpToolNamespacingTest` asserting the tool name appears in `getTools()`

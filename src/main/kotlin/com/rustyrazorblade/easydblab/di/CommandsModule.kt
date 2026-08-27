@@ -29,6 +29,11 @@ import com.rustyrazorblade.easydblab.commands.cassandra.Stop
 import com.rustyrazorblade.easydblab.commands.cassandra.UpdateConfig
 import com.rustyrazorblade.easydblab.commands.cassandra.UseCassandra
 import com.rustyrazorblade.easydblab.commands.cassandra.WriteConfig
+import com.rustyrazorblade.easydblab.commands.cassandra.profiler.ProfilingFetch
+import com.rustyrazorblade.easydblab.commands.cassandra.profiler.ProfilingFlamegraph
+import com.rustyrazorblade.easydblab.commands.cassandra.profiler.ProfilingStart
+import com.rustyrazorblade.easydblab.commands.cassandra.profiler.ProfilingStatus
+import com.rustyrazorblade.easydblab.commands.cassandra.profiler.ProfilingStop
 import com.rustyrazorblade.easydblab.commands.cassandra.stress.StressFields
 import com.rustyrazorblade.easydblab.commands.cassandra.stress.StressInfo
 import com.rustyrazorblade.easydblab.commands.cassandra.stress.StressList
@@ -92,6 +97,13 @@ val commandsModule =
         factory { UpdateConfig() }
         factory { UseCassandra() }
         factory { WriteConfig() }
+
+        // Profiling subcommands
+        factory { ProfilingFetch() }
+        factory { ProfilingFlamegraph() }
+        factory { ProfilingStart() }
+        factory { ProfilingStatus() }
+        factory { ProfilingStop() }
 
         // Stress subcommands
         factory { StressFields() }

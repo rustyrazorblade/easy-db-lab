@@ -4,9 +4,15 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.commands.Status
 import com.rustyrazorblade.easydblab.commands.cassandra.Start
 import com.rustyrazorblade.easydblab.commands.cassandra.UpdateConfig
+import com.rustyrazorblade.easydblab.commands.cassandra.profiler.ProfilingStart
 import com.rustyrazorblade.easydblab.commands.cassandra.stress.StressStart
 import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearchStart
 import com.rustyrazorblade.easydblab.commands.spark.SparkSubmit
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.putJsonArray
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -96,5 +102,61 @@ class McpToolNamespacingTest : BaseKoinTest() {
         assertThat(toolNames).contains("status")
         assertThat(toolNames).contains("cassandra_start")
         assertThat(toolNames).contains("cassandra_stress_start")
+    }
+
+    @Test
+    fun `triple-level nested command generates full namespace_name`() {
+        assertThat(registry.generateToolName(ProfilingStart(), "start")).isEqualTo("cassandra_profiler_start")
+    }
+
+    @Test
+    fun `every command annotated for MCP is actually registered`() {
+        // The annotation is inert on its own — getTools() walks a hand-maintained list, so a class
+        // can carry @McpCommand and be invisible to every MCP client.
+        val toolNames = registry.getTools().map { it.name }
+
+        assertThat(toolNames).contains(
+            "cassandra_profiler_start",
+            "cassandra_profiler_stop",
+            "cassandra_profiler_status",
+            "cassandra_profiler_fetch",
+            "cassandra_profiler_flamegraph",
+        )
+    }
+
+    @Test
+    fun `a trailing passthrough parameter list is reachable over MCP`() {
+        // profile start's whole point is forwarding async-profiler arguments. The schema generator
+        // only walked @Option and @Mixin, so over MCP those arguments could not be supplied at all.
+        val schema = registry.generatePicoSchema(ProfilingStart())
+        val asprofArgs = schema["asprofArgs"]?.jsonObject
+
+        assertThat(asprofArgs).isNotNull
+        assertThat(asprofArgs?.get("type")?.jsonPrimitive?.content).isEqualTo("array")
+        assertThat(
+            asprofArgs
+                ?.get("items")
+                ?.jsonObject
+                ?.get("type")
+                ?.jsonPrimitive
+                ?.content,
+        ).isEqualTo("string")
+    }
+
+    @Test
+    fun `passthrough arguments supplied over MCP reach the command`() {
+        val command = ProfilingStart()
+
+        registry.mapArgumentsToPicoCommand(
+            command,
+            buildJsonObject {
+                putJsonArray("asprofArgs") {
+                    add("-e")
+                    add("wall")
+                }
+            },
+        )
+
+        assertThat(command.asprofArgs).containsExactly("-e", "wall")
     }
 }

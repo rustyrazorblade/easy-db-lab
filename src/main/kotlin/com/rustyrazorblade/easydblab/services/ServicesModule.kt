@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
@@ -19,6 +20,8 @@ import com.rustyrazorblade.easydblab.configuration.yace.YaceManifestBuilder
 import com.rustyrazorblade.easydblab.driver.CqlSessionFactory
 import com.rustyrazorblade.easydblab.driver.DefaultCqlSessionFactory
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.network.SocketTcpReachabilityProbe
+import com.rustyrazorblade.easydblab.network.TcpReachabilityProbe
 import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
@@ -47,12 +50,21 @@ val servicesModule =
         singleOf(::DefaultResourceManager) bind ResourceManager::class
 
         factoryOf(::DefaultCassandraService) bind CassandraService::class
+        factoryOf(::DefaultCassandraProfilingService) bind CassandraProfilingService::class
         factory<CiliumService> { DefaultCiliumService(get(), get()) }
         factory<HelmService> { DefaultHelmService(get()) }
         factory<KubectlService> { DefaultKubectlService(get()) }
         // Explicit factory (not factoryOf) so the daemonStartupDelay constructor default applies
         // instead of Koin trying to resolve a Duration binding.
         factory<TailscaleService> { DefaultTailscaleService(get(), get()) }
+
+        // Reads the Tailscale client on the developer's own machine. Explicit factory so the
+        // constructor defaults (the real CLI runner, the status timeout) apply.
+        factory<LocalTailscaleClient> { DefaultLocalTailscaleClient() }
+
+        // Proves this machine has a route to the cluster's private network before `up` relies
+        // on one. Short timeout: this is a fail-fast check, not a wait-for-ready loop.
+        factory<TcpReachabilityProbe> { SocketTcpReachabilityProbe(Constants.Tailscale.REACHABILITY_TIMEOUT_MS) }
 
         // CQL session factory and service - singleton for session caching in REPL/Server mode
         singleOf(::DefaultCqlSessionFactory) bind CqlSessionFactory::class

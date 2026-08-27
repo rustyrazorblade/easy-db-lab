@@ -5,11 +5,15 @@ import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.profiling.ProfilingConfig
+import com.rustyrazorblade.easydblab.profiling.pyroscopeIngestBaseUrl
+import com.rustyrazorblade.easydblab.services.CassandraProfilingService
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Mixin
 import java.nio.file.Path
+import java.time.Instant
 
 /**
  * Runs setup_instance.sh on all Cassandra instances.
@@ -22,6 +26,7 @@ import java.nio.file.Path
 )
 class SetupInstance : PicoBaseCommand() {
     private val hostOperationsService: HostOperationsService by inject()
+    private val profilingService: CassandraProfilingService by inject()
 
     @Mixin
     var hosts = HostsMixin()
@@ -58,24 +63,27 @@ class SetupInstance : PicoBaseCommand() {
             }
         }
 
-        fun setupCassandraSystemdEnv(
+        // Cluster-up is the only moment that knows both the Pyroscope address and the cluster name,
+        // so it seeds desired profiling state here. That is what makes a freshly provisioned cluster
+        // profile CPU with no operator action: the node's reconciler picks this up on its next pass.
+        fun seedProfilingConfig(
             host: Host,
             controlNodeIp: String,
             clusterName: String,
         ) {
-            val envFile = java.io.File.createTempFile("cassandra", ".env")
-            try {
-                envFile.bufferedWriter().use { writer ->
-                    writer.write("PYROSCOPE_SERVER_ADDRESS=http://$controlNodeIp:${Constants.K8s.PYROSCOPE_PORT}")
-                    writer.newLine()
-                    writer.write("CLUSTER_NAME=$clusterName")
-                    writer.newLine()
-                }
-                remoteOps.upload(host, envFile.toPath(), "cassandra.env")
-                remoteOps.executeRemotely(host, "sudo mv cassandra.env /etc/default/cassandra").text
-            } finally {
-                envFile.delete()
-            }
+            profilingService.writeDesiredState(
+                host,
+                ProfilingConfig(
+                    enabled = true,
+                    asprofArgs = Constants.Profiling.DEFAULT_ASPROF_ARGS,
+                    loopInterval = Constants.Profiling.DEFAULT_LOOP_INTERVAL,
+                    retentionMinutes = Constants.Profiling.DEFAULT_RETENTION_MINUTES,
+                    maxBytes = Constants.Profiling.DEFAULT_MAX_BYTES,
+                    pyroscopeUrl = pyroscopeIngestBaseUrl(controlNodeIp),
+                    clusterName = clusterName,
+                    updatedAt = Instant.now().toString(),
+                ),
+            )
         }
 
         // Get datacenter once from the first stress instance (all instances are in the same DC)
@@ -107,7 +115,7 @@ class SetupInstance : PicoBaseCommand() {
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, "") { host ->
             val h = host.toHost()
             setup(h)
-            setupCassandraSystemdEnv(h, controlNodeIp, clusterName)
+            seedProfilingConfig(h, controlNodeIp, clusterName)
             remoteOps.executeRemotely(h, "sudo hostnamectl set-hostname ${h.alias}").text
             remoteOps.upload(h, Path.of("setup_instance.sh"), "setup_instance.sh")
             remoteOps.executeRemotely(h, "sudo bash setup_instance.sh").text

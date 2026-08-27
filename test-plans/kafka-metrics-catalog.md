@@ -78,7 +78,7 @@ Defaults: 1 MM messages, topic `perf-test`, group `bench-consumer`, reads from e
 Wait ~2 minutes after `kafka start` for the OTel collector to scrape and forward metrics to VictoriaMetrics. Verify with a quick count.
 
 ```bash
-CONTROL_IP=$(jq -r '.hosts.Control[0].privateIp' state.json)
+CONTROL_IP=$($EDB ip --private control0)
 curl -s "http://${CONTROL_IP}:8428/api/v1/label/__name__/values" | \
   jq '[.data[] | select(startswith("kafka_"))] | length'
 ```
@@ -90,7 +90,7 @@ Expected: at least 25 metric names. If 0, wait another minute and retry.
 Query VictoriaMetrics for every series from both kafka scrape jobs and write to the catalog file.
 
 ```bash
-CONTROL_IP=$(jq -r '.hosts.Control[0].privateIp' state.json)
+CONTROL_IP=$($EDB ip --private control0)
 curl -s "http://${CONTROL_IP}:8428/api/v1/series?match[]={job=~\"kafka.*\"}" | \
   jq '{
     workload: "kafka",
@@ -114,7 +114,7 @@ The dashboard ships inside the kit and is installed automatically when `kafka st
 The Grafana URL is: `http://<CONTROL_IP>:3000` (default credentials: admin/admin)
 
 ```bash
-CONTROL_IP=$(jq -r '.hosts.Control[0].privateIp' state.json)
+CONTROL_IP=$($EDB ip --private control0)
 echo "Grafana: http://${CONTROL_IP}:3000"
 ```
 

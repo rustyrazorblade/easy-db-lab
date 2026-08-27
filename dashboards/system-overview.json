@@ -104,7 +104,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "100 - (avg by(host_name) (rate(system_cpu_time_seconds_total{state=\"idle\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[1m])) * 100)",
+          "expr": "100 * (1 - sum by(host_name) (rate(system_cpu_time_seconds_total{state=\"idle\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[1m])) / sum by(host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\"}[1m])))",
           "legendFormat": "{{host_name}}",
           "refId": "A"
         }

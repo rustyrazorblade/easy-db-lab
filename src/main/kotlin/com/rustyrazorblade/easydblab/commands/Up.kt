@@ -19,6 +19,7 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.network.CidrBlock
+import com.rustyrazorblade.easydblab.network.TcpReachabilityProbe
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredInstance
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import com.rustyrazorblade.easydblab.providers.aws.VpcNetworkingConfig
@@ -34,6 +35,8 @@ import com.rustyrazorblade.easydblab.services.InstanceProvisioningConfig
 import com.rustyrazorblade.easydblab.services.K3sClusterConfig
 import com.rustyrazorblade.easydblab.services.K3sClusterService
 import com.rustyrazorblade.easydblab.services.K8sService
+import com.rustyrazorblade.easydblab.services.LocalTailscaleClient
+import com.rustyrazorblade.easydblab.services.LocalTailscaleState
 import com.rustyrazorblade.easydblab.services.OptionalServicesConfig
 import com.rustyrazorblade.easydblab.services.ProvisioningCallbacks
 import com.rustyrazorblade.easydblab.services.ProvisioningResult
@@ -98,6 +101,8 @@ class Up(
     private val socksProxyService: SocksProxyService by inject()
     private val commandExecutor: CommandExecutor by inject()
     private val externalIpService: ExternalIpService by inject()
+    private val localTailscaleClient: LocalTailscaleClient by inject()
+    private val tcpReachabilityProbe: TcpReachabilityProbe by inject()
 
     // Working copy loaded during execute() - modified and saved
     private lateinit var workingState: ClusterState
@@ -123,6 +128,7 @@ class Up(
                 ?: error("No init config found. Please run 'easy-db-lab init' first.")
 
         validateControlNodeConfigured(initConfig)
+        validateLocalTailscaleConnected()
 
         configureAccountS3Bucket()
         validateS3BucketConfigured()
@@ -148,6 +154,45 @@ class Up(
                 "A control node is required to provision a cluster " +
                     "(configured control instances: ${initConfig.controlInstances}).",
             )
+        }
+    }
+
+    /**
+     * Validates that the Tailscale client on THIS machine can carry traffic, before any AWS
+     * resource is provisioned.
+     *
+     * A Tailscale cluster routes every connection over the tailnet and starts no SOCKS tunnel
+     * (see [startProxyIfNeeded]), so an operator whose own machine is logged out has no route to
+     * the cluster at all. Without this check that fault surfaces only after four instances and a
+     * K3s install, as a 30-second Fabric8 connect timeout naming a private IP — a symptom that
+     * says nothing about Tailscale. The check costs one local process invocation.
+     */
+    private fun validateLocalTailscaleConnected() {
+        if (!workingState.isTailscaleEnabled()) return
+
+        when (val state = localTailscaleClient.state()) {
+            is LocalTailscaleState.Connected -> return
+            is LocalTailscaleState.NotInstalled -> {
+                eventBus.emit(Event.Tailscale.LocalClientNotInstalled)
+                error(
+                    "Tailscale is enabled for this cluster, but the 'tailscale' command was not found on this machine. " +
+                        "Every connection to the cluster is routed over the tailnet, so provisioning cannot reach it. " +
+                        "Install Tailscale from https://tailscale.com/download and run 'tailscale up', " +
+                        "then run 'easy-db-lab up' again. " +
+                        "If you installed the macOS App Store build, its CLI is not on the PATH: " +
+                        "see https://tailscale.com/kb/1080/cli.",
+                )
+            }
+            is LocalTailscaleState.Disconnected -> {
+                eventBus.emit(Event.Tailscale.LocalClientDisconnected(state.backendState))
+                error(
+                    "Tailscale is enabled for this cluster, but the local Tailscale client is not connected " +
+                        "(state: ${state.backendState}). " +
+                        "Every connection to the cluster is routed over the tailnet, so provisioning has no route to it. " +
+                        "Run 'tailscale up' on this machine, confirm 'tailscale status' reports it connected, " +
+                        "then run 'easy-db-lab up' again.",
+                )
+            }
         }
     }
 
@@ -653,6 +698,7 @@ class Up(
         } else {
             runNestedCommand { SetupInstance() }
             startTailscaleIfConfigured()
+            verifyControlNodeReachableOverTailscale()
             startProxyIfNeeded()
             startK3sOnAllNodes()
 
@@ -697,6 +743,45 @@ class Up(
                 )
             }
         }
+    }
+
+    /**
+     * Proves this machine can reach the control node's private IP over the tailnet, before any
+     * step depends on that route.
+     *
+     * [startTailscaleIfConfigured] checks only that the *control node* joined the tailnet, which
+     * says nothing about whether this machine has a route to it: the subnet route the control
+     * node advertises has to be approved, and the operator's own client has to be up. Without
+     * this probe, that gap surfaces as a 30-second Fabric8 timeout to a private IP once K3s is
+     * running.
+     *
+     * The probe dials the control node's `sshd`, not the Kubernetes API, because K3s has not
+     * started yet at this point in `up`; `sshd` is definitionally listening, having just run
+     * setup. One connect with a short timeout is enough — this is fail-fast, not wait-for-ready.
+     */
+    private fun verifyControlNodeReachableOverTailscale() {
+        if (!workingState.isTailscaleEnabled()) return
+        val controlHost = workingState.hosts[ServerType.Control]?.firstOrNull() ?: return
+
+        if (tcpReachabilityProbe.isReachable(controlHost.privateIp, Constants.Network.SSH_PORT)) return
+
+        eventBus.emit(
+            Event.Tailscale.ControlNodeUnreachable(
+                alias = controlHost.alias,
+                address = controlHost.privateIp,
+                port = Constants.Network.SSH_PORT,
+            ),
+        )
+        val cidr = workingState.initConfig?.cidr ?: Constants.Vpc.DEFAULT_CIDR
+        error(
+            "Tailscale started on ${controlHost.alias}, but this machine cannot reach it at " +
+                "${controlHost.privateIp}:${Constants.Network.SSH_PORT} over the tailnet " +
+                "(${Constants.Tailscale.REACHABILITY_TIMEOUT_MS} ms timeout). " +
+                "The control node joined the tailnet, so the missing piece is the route from this machine. " +
+                "Confirm 'tailscale status' on this machine lists ${controlHost.alias}, and approve the subnet " +
+                "route $cidr for ${controlHost.alias} at https://login.tailscale.com/admin/machines. " +
+                "Then run 'easy-db-lab up' again.",
+        )
     }
 
     /** Installs Cilium as the K3s CNI on the control node. */

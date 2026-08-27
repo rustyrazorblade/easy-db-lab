@@ -1,0 +1,1253 @@
+#!/usr/bin/env bash
+#
+# edl-profiling-reconcile — make this node's actual profiling state match its desired state.
+#
+# One pure, idempotent pass, run by edl-profiling-reconcile.timer. Each pass:
+#
+#   1. reads desired state from /etc/easy-db-lab/profiling.json (written by the CLI),
+#   2. attaches, detaches, or replaces async-profiler against the LIVE Cassandra JVM,
+#   3. ships completed JFR chunks to Pyroscope's /ingest,
+#   4. prunes the profile directory under both an age bound and a byte bound,
+#   5. rewrites effective state, and reports counters both as a local Prometheus textfile and as
+#      OTLP pushed to the node-local collector.
+#
+# Those three jobs share the same PID lookup and the same directory listing, and splitting them
+# would race — pruning could delete a chunk mid-upload. This is one responsibility, "reconcile this
+# node's profiling state", not three.
+#
+# It exits 0 on every non-fatal condition, because a timer unit that fails is noise; problems are
+# reported as structured logfmt lines to journald (which Fluent Bit ships to VictoriaLogs) and as
+# counters pushed to the node's OTel collector, which remote-writes them to VictoriaMetrics.
+#
+# The textfile is a convenience for someone already SSH'd into the node; it is deliberately NOT the
+# collection path, because nothing on the node reads it — there is no node_exporter and no textfile
+# receiver. Counters reach a backend only via the OTLP push in export_metrics.
+#
+# Node tools relied on: asprof, yq, curl. Every JSON document below — reading desired state and
+# writing both the OTLP payload and the effective-state document — goes through yq (mikefarah v4).
+# jq is also on the base image and would do the job equally well; yq is used here only because it
+# reads the desired-state document already, so there is no reason to reach for a second parser.
+#
+# ## Never combine a CPU event with wall-clock sampling in one recording
+#
+# Pyroscope's JFR ingest delegates to github.com/grafana/jfr-parser (pinned at v0.18.0), whose
+# pprof/parser.go:56 declares the sample value buffer once, outside the event loop:
+#
+#     var values = [2]int64{1, 0}
+#
+# T_WALL_CLOCK_SAMPLE assigns values[0] = WallClockSample.Samples and never restores it, and
+# T_EXECUTION_SAMPLE passes values[:1] without re-initialising. After the first wall sample, every
+# subsequent CPU sample carries that wall event's batch count as its weight. Wall batching coalesces
+# idle threads up to 1000 and Cassandra runs hundreds of mostly-idle pool threads, so the error
+# reaches three orders of magnitude — silently. The contamination is scoped to a single parse() call,
+# i.e. one upload, so separate sessions are each clean: switch modes with stop/start instead.
+#
+# --nobatch is not a mitigation and must never be added: wallClock.cpp:162 selects WALL_LEGACY under
+# it, whose handler emits ExecutionEvent, so wall samples arrive indistinguishable from CPU samples
+# and Pyroscope merges them all into process_cpu. It causes the failure it appears to prevent. The
+# CLI rejects it in AsprofArgValidator, so it cannot reach this script through desired state.
+# asprof rejected the flag itself at 4.3 and accepts it at 4.5, which is why that guard exists.
+#
+# ## Never attach to a database that is not ready yet
+#
+# Every asprof call below signals the target. jattach sends SIGQUIT to make the JVM start its attach
+# listener, and a process that has not installed a SIGQUIT handler yet takes the signal's default
+# disposition: terminate and dump core. Attaching to a database that is still starting therefore
+# KILLS it, and jattach then reports "Process N not found" — the process it just signalled.
+#
+# This is not a theory. On a three-node cluster, `cassandra start` brought up db0, and db1 died 17
+# seconds into its own startup:
+#
+#   cassandra.service: Main process exited, code=dumped, status=3/QUIT
+#   Consumed 348ms CPU time over 16.826s wall clock time
+#
+# In the same second this script logged `jfr_attach_failed pid=5419 err="Process 5419 not found"`.
+# No system.log was ever written: the JVM died before logging initialised. 348ms of CPU over 17
+# seconds is not a starting JVM, so the process that took the signal was most likely still
+# cassandra.service's ExecStart shell, before it execs java — bash in a non-interactive shell has
+# the default SIGQUIT disposition too. Either way the cause is the same, and so is the fix.
+#
+# It is likely rather than unlucky: passes run every 60s and a database takes appreciably longer
+# than that to become ready, so a node starting with profiling enabled will usually have a pass land
+# inside the window.
+#
+# So no pass signals the target until cassandra-ready says the database is up — see DB_READY. That
+# probe reads the socket table rather than connecting anywhere, because the native transport binds to
+# `rpc_address`, which is the node's private IP and not loopback; its own header records what an
+# assumed address cost. A pass that wanted to attach and correctly did not is NOT a failure: it logs
+# jfr_attach_deferred, counts edl_jfr_attach_deferred_total, and ships, prunes and reports exactly as
+# any other pass does.
+#
+# No sudo anywhere below: the unit runs as `cassandra`, which owns both the target JVM and the
+# profile directory, and the `cassandra` user has no sudoers entry.
+
+set -uo pipefail
+
+CONFIG_PATH="${EDL_PROFILING_CONFIG:-/etc/easy-db-lab/profiling.json}"
+PROFILE_DIR="${EDL_PROFILE_DIR:-/mnt/db1/cassandra/profiles}"
+ASPROF="${EDL_ASPROF:-/usr/local/async-profiler/bin/asprof}"
+CASSANDRA_PID_BIN="${EDL_CASSANDRA_PID:-/usr/local/bin/cassandra-pid}"
+# Answers "is it safe to signal that process?" — see the readiness section in the header. A separate
+# node tool rather than an inline check, for the same reason cassandra-pid is one: it is a fact about
+# the database, useful on its own over SSH, and testable without this script.
+CASSANDRA_READY_BIN="${EDL_CASSANDRA_READY:-/usr/local/bin/cassandra-ready}"
+STATE_PATH="${PROFILE_DIR}/effective-state.json"
+METRICS_FILE="${EDL_METRICS_FILE:-${PROFILE_DIR}/metrics.prom}"
+HOSTNAME_LABEL="${EDL_HOSTNAME:-$(hostname)}"
+
+# The node-local OTel collector. It is a hostNetwork DaemonSet, so every cluster node answers here,
+# and its metrics/otlp pipeline stamps cluster and host.name before remote-writing to
+# VictoriaMetrics. Pushing is how these counters reach a backend at all: no node runs node_exporter
+# and no collector receiver reads Prometheus textfiles, so a file alone would be ungraphable.
+OTLP_METRICS_ENDPOINT="${EDL_OTLP_METRICS_ENDPOINT:-http://localhost:4318/v1/metrics}"
+
+# The clock is a seam so the bash test tier can assert the grace window and the age bound
+# deterministically. Nothing else reads the wall clock.
+NOW="${EDL_NOW:-$(date -u +%s)}"
+
+COUNTER_FAILURES="${PROFILE_DIR}/.ship_failures"
+COUNTER_REJECTED="${PROFILE_DIR}/.ship_rejected"
+COUNTER_LAST_SUCCESS="${PROFILE_DIR}/.ship_last_success"
+COUNTER_ATTACH_FAILURES="${PROFILE_DIR}/.attach_failures"
+# Passes that wanted to attach and had nothing to attach to. Kept apart from attach failures because
+# the two are diagnosed in completely different places: a refused jattach is a PrivateTmp,
+# java.io.tmpdir or perf_event_paranoid problem on this node, while this one means the database is
+# not running. Folding them together would make either signal unactionable.
+COUNTER_ATTACH_SKIPPED="${PROFILE_DIR}/.attach_skipped"
+# Passes that wanted to attach to a database that was present but not ready to be signalled. A third
+# case, not a variant of either counter above, because all three send the operator somewhere
+# different: a refused jattach is a node configuration problem, no process means the database is
+# stopped, and this one means the database is starting. The first two are conditions to act on; this
+# one resolves itself within a pass or two of a restart. It only becomes a fault when it does not —
+# which is exactly what a rate() over this counter that never returns to zero says, and what folding
+# it into either neighbour would hide.
+COUNTER_ATTACH_DEFERRED="${PROFILE_DIR}/.attach_deferred"
+# Cumulative attaches, counting every restart. A node whose fingerprint never converges re-attaches
+# a profiler to a live database JVM every pass forever; this counter is what makes that flapping
+# visible as a rate() instead of a silence.
+COUNTER_SESSION_STARTS="${PROFILE_DIR}/.session_starts"
+COUNTER_PRUNED_AGE="${PROFILE_DIR}/.pruned_age"
+COUNTER_PRUNED_SIZE="${PROFILE_DIR}/.pruned_size"
+# Chunks deleted before they ever reached Pyroscope, under either bound. This is the one pruning
+# number that means lost data rather than reclaimed disk, so it is counted on its own.
+COUNTER_PRUNED_UNSHIPPED="${PROFILE_DIR}/.pruned_unshipped"
+
+# A chunk must be at least one rotation plus this margin old before it is considered complete.
+# Skipping the newest file is the exact rule; this covers rotations landing in the same second.
+#
+# Mirrored by Constants.Profiling.SHIP_GRACE_SECONDS, which the CLI uses to refuse a retention
+# window shorter than the shipping window. The two must stay equal: a CLI that allowed a window this
+# script cannot ship inside would let every chunk be pruned before it was ever eligible to ship.
+readonly GRACE_EXTRA_SECONDS=10
+readonly UPLOAD_TIMEOUT_SECONDS=30
+readonly METRICS_EXPORT_TIMEOUT_SECONDS=10
+
+# `asprof metrics` is a jattach round-trip into the target JVM, so it blocks for as long as that JVM
+# is unable to answer — and it sits inside the one path that must complete when a pass is being
+# killed. See write_metrics. Short, because what it buys is a convenience line on a textfile nothing
+# reads automatically, and what it costs is the state document `profile status` depends on.
+readonly ASPROF_METRICS_TIMEOUT_SECONDS=5
+
+# The most chunks one pass will upload. The unit's TimeoutStartSec is 300s, so an unbounded queue
+# against a merely slow Pyroscope blows that budget: systemd SIGTERMs the pass mid-upload. Six
+# uploads at UPLOAD_TIMEOUT_SECONDS is 180s worst case, leaving room for the metrics export and the
+# directory walk. Twelve would be 360s and would be killed, so this number cannot be raised to match
+# a faster rotation — the rotation is bounded instead.
+#
+# The pass runs every 60s and the profiler produces one chunk per rotation, so six per pass keeps up
+# with any rotation of 10s or slower and drains a backlog on top of that. Below 10s the arithmetic
+# inverts and the queue grows every pass forever, so Constants.Profiling.MIN_LOOP_SECONDS —
+# 60 / SHIP_MAX_CHUNKS_PER_PASS — refuses that configuration at the CLI. The two must stay in step:
+# raising this cap without raising the upload budget's time cost, or lowering that floor, reintroduces
+# a queue that can only be drained by pruning chunks that never shipped.
+readonly SHIP_MAX_CHUNKS_PER_PASS=6
+
+# Bounds used when the desired-state document cannot be read and the last-known-good record carries
+# nothing usable. Mirrors Constants.Profiling.DEFAULT_LOOP_INTERVAL / DEFAULT_RETENTION_MINUTES /
+# DEFAULT_MAX_BYTES. Shipping and pruning continue under these rather than stopping, because a
+# directory that nothing prunes fills /mnt/db1 and takes the database down with it.
+readonly FALLBACK_LOOP_INTERVAL=1m
+readonly FALLBACK_RETENTION_MINUTES=60
+readonly FALLBACK_MAX_BYTES=2147483648
+
+# OTLP AGGREGATION_TEMPORALITY_CUMULATIVE. Counters must be cumulative or rate() is meaningless.
+readonly OTLP_CUMULATIVE=2
+
+# --- small helpers -----------------------------------------------------------
+
+# Structured logfmt to journald: level, event, then arbitrary key=value pairs.
+#
+# The `<N>` prefix is sd-daemon's syslog priority, which systemd's stdout parser strips and turns
+# into the journal entry's PRIORITY (SyslogLevelPrefix, on by default). That field is the *only*
+# thing carrying severity downstream: Fluent Bit's mapper derives severity from PRIORITY and ships
+# the rest of the line as an opaque body, so without this every failure would reach VictoriaLogs as
+# severity=INFO and no severity filter or alert in Grafana could ever see it.
+log() {
+  local priority
+  case "$1" in
+    error) priority=3 ;;
+    warn) priority=4 ;;
+    *) priority=6 ;;
+  esac
+  printf '<%s>level=%s event=%s %s\n' "$priority" "$1" "$2" "${3:-}"
+}
+
+# GNU coreutils on the nodes; the BSD branch keeps the bash test tier runnable on macOS.
+file_mtime() {
+  stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || echo 0
+}
+
+file_size() {
+  stat -c %s "$1" 2>/dev/null || stat -f %z "$1" 2>/dev/null || echo 0
+}
+
+# The rotation intervals this tool acts on: a whole number of seconds, or a number with an s/m/h
+# unit. Values reaching this script have already been rejected at the CLI if they are not one of
+# these; the check below keeps a value that arrived some other way out of the effective-state
+# document, where a stray quote would make the document unparseable for good.
+#
+# Narrower than asprof --loop itself, which also takes an hh:mm:ss time of day. That form rotates
+# once a day, and this shipper ships every completed chunk continuously and sizes both the
+# completion grace window and the Pyroscope upload window from a fixed interval — so a daily
+# rotation looks entirely valid and produces no usable profiles. Refused at the CLI with an
+# explanation, and refused again here.
+readonly LOOP_INTERVAL_FORM='^[1-9][0-9]*[smhSMH]?$'
+
+# Rotation period in seconds, which is what the completion grace window and the Pyroscope upload
+# window are both derived from.
+#
+# The interval is checked against LOOP_INTERVAL_FORM before this is called, so the branch below is
+# unreachable today. It logs instead of guessing silently, so that a second call site added later
+# cannot quietly turn an unparseable interval into a plausible-looking 60 seconds. The line goes to
+# stderr because this function's stdout is its return value; systemd journals both streams and
+# applies SyslogLevelPrefix to both.
+duration_seconds() {
+  local value="$1" number unit
+  number="${value%[smhSMH]}"
+  unit="${value#"$number"}"
+  if [[ ! "$number" =~ ^[0-9]+$ ]]; then
+    log error loop_interval_unparseable "value=${value} assumed_seconds=60" >&2
+    echo 60
+    return
+  fi
+  case "$unit" in
+    m | M) echo $((number * 60)) ;;
+    h | H) echo $((number * 3600)) ;;
+    *) echo "$number" ;;
+  esac
+}
+
+# Percent-encodes a Pyroscope series label.
+#
+# LC_ALL=C is the whole correctness of this function, not a tidiness flourish. Under a UTF-8 locale
+# bash slices and `printf '%%%02X'` operate on *characters*, so a cluster named `café` encodes as
+# `caf%E9` — the Latin-1 code point, which is not what those bytes are — and an emoji encodes as
+# `%1F600`, which is not a well-formed escape at all. Pyroscope answers 4xx, upload_chunk treats a
+# 4xx as permanent, and every chunk that cluster ever produces is renamed .rejected and never
+# retried: total, silent loss on a 60s timer. Under LC_ALL=C the same loop walks bytes and produces
+# `caf%C3%A9`, which is correct UTF-8 percent-encoding.
+urlencode() {
+  local LC_ALL=C
+  local raw="$1" encoded="" index character
+  for ((index = 0; index < ${#raw}; index++)); do
+    character="${raw:index:1}"
+    case "$character" in
+      [a-zA-Z0-9.~_-]) encoded+="$character" ;;
+      *) encoded+="$(printf '%%%02X' "'$character")" ;;
+    esac
+  done
+  printf '%s' "$encoded"
+}
+
+read_counter() {
+  local path="$1" value
+  value="$(cat "$path" 2>/dev/null)"
+  [[ "$value" =~ ^[0-9]+$ ]] || value=0
+  echo "$value"
+}
+
+# Renders a tool's stderr as one bounded, quotable token.
+#
+# The raw message is the only thing that distinguishes "PrivateTmp hid the attach socket" from
+# "perf_event_paranoid forbids it" from "wrong user", so it must survive — but it has to be safe to
+# embed in a logfmt field and in the JSON effective-state document, and it must not be able to flood
+# journald. Newlines collapse, double quotes and backslashes go, length is capped.
+#
+# The whitelist ends in a literal space rather than [:space:] deliberately. [:space:] also matches
+# vertical tab (0x0B) and form feed (0x0C), which RFC 8259 forbids raw inside a JSON string — so
+# keeping them would let a tool's stderr produce an effective-state document `status` can never
+# parse again, which is the exact failure this function exists to prevent.
+sanitize_error() {
+  printf '%s' "$1" | tr '\n\r\t\v\f' '     ' | tr -cd '[:alnum:] _.:/=,()@#$%!?+*|<>[]{};'\''-' | cut -c1-300
+}
+
+# A shipped chunk is marked by an infix, not by a new extension, so it keeps answering to `*.jfr`.
+# That matters because `profile fetch` and `profile flamegraph` list the node with `ls *.jfr` and
+# feed the results to jfrconv, which dispatches on the extension — and in steady state almost every
+# chunk on the node is already shipped, so a chunk hidden from that glob is a chunk no operator can
+# ever retrieve. "Pending" is therefore `*.jfr` minus `*-shipped.jfr`, not simply `*.jfr`.
+readonly SHIPPED_GLOB='*-shipped.jfr'
+readonly REJECTED_GLOB='*.jfr.rejected'
+
+# Emits the matching files in the profile directory, oldest first. The optional second argument is a
+# basename glob to exclude, which is how the pending set is expressed.
+list_by_mtime() {
+  local pattern="$1" exclude="${2:-}" path
+  for path in "${PROFILE_DIR}"/$pattern; do
+    [[ -f "$path" ]] || continue
+    # shellcheck disable=SC2053  # exclude is a glob on purpose.
+    [[ -n "$exclude" && "${path##*/}" == $exclude ]] && continue
+    printf '%s\t%s\n' "$(file_mtime "$path")" "$path"
+  done | sort -n -k1,1 | cut -f2-
+}
+
+# Total bytes of profiling output only. Deliberately excludes the state and metrics files so the
+# byte ceiling measures what pruning can actually reclaim.
+chunk_bytes() {
+  local total=0 path
+  for path in "${PROFILE_DIR}"/*.jfr "${PROFILE_DIR}"/$REJECTED_GLOB; do
+    [[ -f "$path" ]] || continue
+    total=$((total + $(file_size "$path")))
+  done
+  echo "$total"
+}
+
+count_matching() {
+  local pattern="$1" exclude="${2:-}" count=0 path
+  for path in "${PROFILE_DIR}"/$pattern; do
+    [[ -f "$path" ]] || continue
+    # shellcheck disable=SC2053  # exclude is a glob on purpose.
+    [[ -n "$exclude" && "${path##*/}" == $exclude ]] && continue
+    count=$((count + 1))
+  done
+  echo "$count"
+}
+
+# Chunks the shipper could have shipped and did not — which is the only definition that makes
+# "non-zero means a real backlog" true, and what the metric and the docs both promise.
+#
+# Both of ship_chunks' exclusions are applied, because either one alone leaves the gauge pinned above
+# zero on a healthy node. While a session is live the newest unshipped file is the open one, which no
+# pass will ever ship until it rotates. And no pass ships a file younger than one rotation plus the
+# grace margin — so with the default `--loop 1m` against a 60s timer, the chunk that rotated most
+# recently is always inside that window when this runs. Counting either made an alert on `> 0` a
+# permanent false positive on every node.
+count_pending() {
+  local grace=$((LOOP_SECONDS + GRACE_EXTRA_SECONDS)) pending=() path last index count=0
+  while IFS= read -r path; do
+    pending+=("$path")
+  done < <(list_by_mtime '*.jfr' "$SHIPPED_GLOB")
+
+  # Mirrors ship_chunks: the open chunk is the newest by mtime, and only while a session is live.
+  if [[ "${SESSION_RUNNING:-false}" == "true" ]]; then
+    last=$((${#pending[@]} - 1))
+  else
+    last=${#pending[@]}
+  fi
+
+  for ((index = 0; index < last; index++)); do
+    (($(file_mtime "${pending[$index]}") > NOW - grace)) && continue
+    count=$((count + 1))
+  done
+  echo "$count"
+}
+
+count_shipped() { count_matching "$SHIPPED_GLOB"; }
+
+# --- pass state --------------------------------------------------------------
+
+# Everything a pass can report, initialised before the first thing that can block or be killed.
+#
+# The order here is the point. The EXIT/TERM trap that persists these is installed immediately below,
+# above the config read, the liveness probe and the attach/detach block — and `set -u` is on, so a
+# trap firing before one of these existed would abort inside the handler and persist nothing at all.
+# Every value the persistence path reads therefore has a coherent default here, and is overwritten
+# further down by what the pass actually learns.
+
+# A failure here is not cosmetic: if /mnt/db1 is unmounted, every write below silently no-ops and
+# the pass still reports success, so the node looks like one that simply has no profiles yet.
+mkdir -p "$PROFILE_DIR" 2>/dev/null || log error profile_dir_unavailable "path=${PROFILE_DIR}"
+
+# Why the guards further down set CONFIG_ERROR instead of exiting.
+#
+# Refusing to act on a document we cannot read is correct — the operator asked for profiling and a
+# parse failure is not a request to stop. Going *dark* is not, and this script used to do both. The
+# profiler keeps rotating chunks on a timer, so a pass that returns before shipping and pruning
+# leaves the profile directory growing without bound on the same volume as the database's data;
+# every edl_jfr_* series stops being pushed, which silently resolves the `desired == 1 and attached
+# == 0` alert instead of firing it; and effective-state.json stops being rewritten, so `status`
+# reports the node as STALE and blames the one component that is healthy.
+#
+# So a pass with an unreadable config still ships, still prunes, and still reports — under the
+# last-known-good bounds from effective-state.json, falling back to the built-in defaults — and says
+# which of those it is doing via CONFIG_ERROR.
+CONFIG_ERROR=""
+ENABLED=false
+LOOP_INTERVAL="$FALLBACK_LOOP_INTERVAL"
+RETENTION_MINUTES="$FALLBACK_RETENTION_MINUTES"
+MAX_BYTES="$FALLBACK_MAX_BYTES"
+PYROSCOPE_URL=""
+CLUSTER_NAME=""
+USER_ARGS=()
+DESIRED_FINGERPRINT=""
+DESIRED_ARGS_JSON='[]'
+LOOP_SECONDS="$(duration_seconds "$FALLBACK_LOOP_INTERVAL")"
+
+# What the JVM has, before anything has asked it. A pass killed during the liveness probe reports
+# nothing attached rather than a session it never confirmed.
+CASSANDRA_PID=0
+SESSION_RUNNING=false
+APPLIED_ARGS_JSON='[]'
+SESSION_STARTED_AT=0
+LAST_ATTACH_ERROR=""
+LAST_ERROR=""
+
+# Whether the database can be signalled at all this pass. False until the gate says otherwise, so a
+# pass killed before the probe never signals anything on its way out — write_metrics reads this.
+DB_READY=false
+
+# Whether this pass is the one that wanted to attach and deferred. Distinct from the cumulative
+# counter because the gauge built from it has to say "right now", not "ever".
+ATTACH_DEFERRED_NOW=false
+
+# Why the gate is shut, when it is. The database still starting is the ordinary answer; the probe
+# being absent is not, and reporting it as the ordinary one would hide a stale node image.
+NOT_READY_REASON=database_not_ready
+
+# Which answer the probe gave — `listening`, `uptime`, `starting`, `no-process`, or `absent` when
+# there is no probe to ask. Carried into the attach and deferral lines because "ready" alone hides
+# the difference that matters: `listening` is the real signal, and `uptime` is the ten-minute
+# backstop, which is correct for a native transport that is deliberately off and a fault otherwise.
+# A probe that silently answered `uptime` on every node cost ten minutes of every node start.
+READY_VERDICT=unknown
+
+# Set when a pass hits SHIP_MAX_CHUNKS_PER_PASS with chunks still queued. Reported as its own gauge
+# so a slow Pyroscope reads as "shipping is behind" rather than as a dead reconciler.
+SHIP_TRUNCATED=0
+
+# The cumulative counters, read once here rather than beside the code that increments them. That is
+# what lets a pass killed at any point rewrite them unchanged, instead of leaving the previous pass's
+# file to be read as the current answer.
+ATTACH_FAILURES="$(read_counter "$COUNTER_ATTACH_FAILURES")"
+ATTACH_SKIPPED="$(read_counter "$COUNTER_ATTACH_SKIPPED")"
+ATTACH_DEFERRED="$(read_counter "$COUNTER_ATTACH_DEFERRED")"
+SESSION_STARTS="$(read_counter "$COUNTER_SESSION_STARTS")"
+FAILURES="$(read_counter "$COUNTER_FAILURES")"
+REJECTED="$(read_counter "$COUNTER_REJECTED")"
+LAST_SUCCESS="$(read_counter "$COUNTER_LAST_SUCCESS")"
+PRUNED_FOR_AGE="$(read_counter "$COUNTER_PRUNED_AGE")"
+PRUNED_FOR_SIZE="$(read_counter "$COUNTER_PRUNED_SIZE")"
+PRUNED_UNSHIPPED="$(read_counter "$COUNTER_PRUNED_UNSHIPPED")"
+
+# --- report ------------------------------------------------------------------
+
+write_counters() {
+  echo "$FAILURES" >"$COUNTER_FAILURES"
+  echo "$REJECTED" >"$COUNTER_REJECTED"
+  echo "$LAST_SUCCESS" >"$COUNTER_LAST_SUCCESS"
+  echo "$ATTACH_FAILURES" >"$COUNTER_ATTACH_FAILURES"
+  echo "$ATTACH_SKIPPED" >"$COUNTER_ATTACH_SKIPPED"
+  echo "$ATTACH_DEFERRED" >"$COUNTER_ATTACH_DEFERRED"
+  echo "$SESSION_STARTS" >"$COUNTER_SESSION_STARTS"
+  echo "$PRUNED_FOR_AGE" >"$COUNTER_PRUNED_AGE"
+  echo "$PRUNED_FOR_SIZE" >"$COUNTER_PRUNED_SIZE"
+  echo "$PRUNED_UNSHIPPED" >"$COUNTER_PRUNED_UNSHIPPED"
+}
+
+# What the operator asked for and what the JVM actually has, as two 0/1 gauges.
+#
+# Without them a metrics backend cannot tell "profiling is deliberately off" from "profiling is on
+# and attached" from "profiling is on and has been dead for hours": all three sit at the same flat
+# counters. With them the third case is `edl_jfr_profiling_desired == 1 and
+# edl_jfr_session_attached == 0`, which is a Grafana panel and an alert rule rather than an
+# SSH session.
+#
+# Under an unreadable config DESIRED_GAUGE carries the last-known-good answer rather than dropping
+# out, because a series that stops being written does not make that alert fire — it makes the `and`
+# empty, which resolves it. edl_jfr_config_unreadable is what says the number is a recollection.
+set_gauges() {
+  DESIRED_GAUGE=0
+  [[ "$ENABLED" == "true" ]] && DESIRED_GAUGE=1
+  ATTACHED_GAUGE=0
+  [[ "$SESSION_RUNNING" == "true" ]] && ATTACHED_GAUGE=1
+  CONFIG_UNREADABLE_GAUGE=0
+  [[ -n "$CONFIG_ERROR" ]] && CONFIG_UNREADABLE_GAUGE=1
+  # Every node start produces a pass or two with profiling desired and nothing attached, because the
+  # database is not yet ready to be signalled. This gauge is what keeps the documented
+  # `edl_jfr_profiling_desired == 1 and edl_jfr_session_attached == 0` alert able to exclude that
+  # window without also excluding a database that has genuinely stopped.
+  ATTACH_DEFERRED_GAUGE=0
+  [[ "$ATTACH_DEFERRED_NOW" == "true" ]] && ATTACH_DEFERRED_GAUGE=1
+}
+
+write_metrics() {
+  {
+    # asprof emits Prometheus format directly, so profiler-side numbers need no hand-rolled
+    # counters. It goes first in the group on purpose: a brace group's exit status is its *last*
+    # command's, and an `if` whose condition is false is 0 — so with this block trailing, a
+    # redirection that failed on ENOSPC still reported success and the `mv` below installed the
+    # truncation over the good file. With a plain `echo` last, the status is the write's own.
+    #
+    # Time-boxed because this is the only call in the persistence path that was not, and this
+    # function is what the TERM handler runs. `asprof metrics` is a jattach round-trip, so a JVM in
+    # a long safepoint blocks it — which is the very condition that gets a pass SIGTERMed in the
+    # first place. Unbounded, systemd escalated to SIGKILL at TimeoutStopSec and the state document
+    # written after this block never landed. `|| true` says a kill here is expected and survivable:
+    # what a timeout gives up is the profiler's own numbers, not the pass's.
+    #
+    # Gated on DB_READY as well, because this is a jattach round-trip like any other and jattach
+    # signals SIGQUIT: asking a starting database for its profiler counters would kill it just as
+    # surely as attaching to it would. See the readiness section in the header.
+    if [[ "$SESSION_RUNNING" == "true" && "$DB_READY" == "true" ]]; then
+      timeout "$ASPROF_METRICS_TIMEOUT_SECONDS" "$ASPROF" metrics "$CASSANDRA_PID" 2>/dev/null || true
+    fi
+    echo "edl_jfr_ship_failures_total ${FAILURES}"
+    echo "edl_jfr_ship_rejected_total ${REJECTED}"
+    echo "edl_jfr_attach_failures_total ${ATTACH_FAILURES}"
+    echo "edl_jfr_attach_skipped_total ${ATTACH_SKIPPED}"
+    echo "edl_jfr_attach_deferred_total ${ATTACH_DEFERRED}"
+    echo "edl_jfr_session_starts_total ${SESSION_STARTS}"
+    echo "edl_jfr_profiling_desired ${DESIRED_GAUGE}"
+    echo "edl_jfr_session_attached ${ATTACHED_GAUGE}"
+    echo "edl_jfr_config_unreadable ${CONFIG_UNREADABLE_GAUGE}"
+    echo "edl_jfr_attach_deferred ${ATTACH_DEFERRED_GAUGE}"
+    echo "edl_jfr_ship_truncated ${SHIP_TRUNCATED}"
+    echo "edl_jfr_pruned_for_age_total ${PRUNED_FOR_AGE}"
+    echo "edl_jfr_pruned_for_size_total ${PRUNED_FOR_SIZE}"
+    echo "edl_jfr_pruned_unshipped_total ${PRUNED_UNSHIPPED}"
+    echo "edl_jfr_chunks_pending $(count_pending)"
+    echo "edl_jfr_bytes_on_disk $(chunk_bytes)"
+    echo "edl_jfr_ship_last_success_timestamp_seconds ${LAST_SUCCESS}"
+  } >"${METRICS_FILE}.tmp" && mv -f "${METRICS_FILE}.tmp" "$METRICS_FILE"
+}
+
+# Builds the OTLP metrics document with yq's JSON constructor rather than string concatenation, so a
+# hostname or cluster name containing a quote produces valid JSON instead of a malformed request.
+#
+# Every value enters the document through strenv(), which hands yq the environment variable's bytes
+# as an opaque string: the value is never part of the expression yq parses, so there is nothing for a
+# hostile hostname or cluster name to break out of. That is the same property jq's --arg gives, and
+# it is the reason neither is replaced with string interpolation.
+#
+# yq rather than jq is not a safety distinction — jq --arg carries the same guarantee and jq is on
+# the base image too. yq is used here simply because it already reads the desired-state document a
+# few hundred lines up, so this file needs one JSON tool rather than two.
+otlp_metrics_payload() {
+  EDL_M_HOST="$HOSTNAME_LABEL" \
+    EDL_M_CLUSTER="$CLUSTER_NAME" \
+    EDL_M_TIME="${NOW}000000000" \
+    EDL_M_CUMULATIVE="$OTLP_CUMULATIVE" \
+    EDL_M_SHIP_FAILURES="$FAILURES" \
+    EDL_M_SHIP_REJECTED="$REJECTED" \
+    EDL_M_ATTACH_FAILURES="$ATTACH_FAILURES" \
+    EDL_M_ATTACH_SKIPPED="$ATTACH_SKIPPED" \
+    EDL_M_ATTACH_DEFERRED="$ATTACH_DEFERRED" \
+    EDL_M_DEFERRED_NOW="$ATTACH_DEFERRED_GAUGE" \
+    EDL_M_SESSION_STARTS="$SESSION_STARTS" \
+    EDL_M_DESIRED="$DESIRED_GAUGE" \
+    EDL_M_ATTACHED="$ATTACHED_GAUGE" \
+    EDL_M_CONFIG_UNREADABLE="$CONFIG_UNREADABLE_GAUGE" \
+    EDL_M_SHIP_TRUNCATED="$SHIP_TRUNCATED" \
+    EDL_M_PRUNED_AGE="$PRUNED_FOR_AGE" \
+    EDL_M_PRUNED_SIZE="$PRUNED_FOR_SIZE" \
+    EDL_M_PRUNED_UNSHIPPED="$PRUNED_UNSHIPPED" \
+    EDL_M_PENDING="$(count_pending)" \
+    EDL_M_BYTES="$(chunk_bytes)" \
+    EDL_M_LAST_SUCCESS="$LAST_SUCCESS" \
+    yq -n -o=json -I=0 '
+    strenv(EDL_M_TIME) as $time |
+    [
+      {"name": "edl_jfr_ship_failures_total", "value": strenv(EDL_M_SHIP_FAILURES)},
+      {"name": "edl_jfr_ship_rejected_total", "value": strenv(EDL_M_SHIP_REJECTED)},
+      {"name": "edl_jfr_attach_failures_total", "value": strenv(EDL_M_ATTACH_FAILURES)},
+      {"name": "edl_jfr_attach_skipped_total", "value": strenv(EDL_M_ATTACH_SKIPPED)},
+      {"name": "edl_jfr_attach_deferred_total", "value": strenv(EDL_M_ATTACH_DEFERRED)},
+      {"name": "edl_jfr_session_starts_total", "value": strenv(EDL_M_SESSION_STARTS)},
+      {"name": "edl_jfr_pruned_for_age_total", "value": strenv(EDL_M_PRUNED_AGE)},
+      {"name": "edl_jfr_pruned_for_size_total", "value": strenv(EDL_M_PRUNED_SIZE)},
+      {"name": "edl_jfr_pruned_unshipped_total", "value": strenv(EDL_M_PRUNED_UNSHIPPED)}
+    ] as $counters |
+    [
+      {"name": "edl_jfr_profiling_desired", "value": strenv(EDL_M_DESIRED)},
+      {"name": "edl_jfr_session_attached", "value": strenv(EDL_M_ATTACHED)},
+      {"name": "edl_jfr_config_unreadable", "value": strenv(EDL_M_CONFIG_UNREADABLE)},
+      {"name": "edl_jfr_attach_deferred", "value": strenv(EDL_M_DEFERRED_NOW)},
+      {"name": "edl_jfr_ship_truncated", "value": strenv(EDL_M_SHIP_TRUNCATED)},
+      {"name": "edl_jfr_chunks_pending", "value": strenv(EDL_M_PENDING)},
+      {"name": "edl_jfr_bytes_on_disk", "value": strenv(EDL_M_BYTES)},
+      {"name": "edl_jfr_ship_last_success_timestamp_seconds", "value": strenv(EDL_M_LAST_SUCCESS)}
+    ] as $gauges |
+    {
+      "resourceMetrics": [{
+        "resource": {
+          "attributes": [
+            {"key": "host.name", "value": {"stringValue": strenv(EDL_M_HOST)}},
+            {"key": "cluster", "value": {"stringValue": strenv(EDL_M_CLUSTER)}}
+          ]
+        },
+        "scopeMetrics": [{
+          "scope": {"name": "edl-profiling-reconcile"},
+          "metrics": (
+            ($counters | map({
+              "name": .name,
+              "sum": {
+                "aggregationTemporality": env(EDL_M_CUMULATIVE),
+                "isMonotonic": true,
+                "dataPoints": [{"asInt": .value, "timeUnixNano": $time}]
+              }
+            })) +
+            ($gauges | map({
+              "name": .name,
+              "gauge": {"dataPoints": [{"asInt": .value, "timeUnixNano": $time}]}
+            }))
+          )
+        }]
+      }]
+    }'
+}
+
+export_metrics() {
+  local status
+  status="$(otlp_metrics_payload | curl --silent --show-error \
+    --max-time "$METRICS_EXPORT_TIMEOUT_SECONDS" \
+    --output /dev/null \
+    --write-out '%{http_code}' \
+    --request POST \
+    --header 'Content-Type: application/json' \
+    --data-binary @- \
+    "$OTLP_METRICS_ENDPOINT" 2>/dev/null)"
+
+  case "$status" in
+    2??) ;;
+    # Never fatal: profiling that keeps working with unreported counters beats a timer unit in
+    # failure. The collector restarts on its own schedule and the next pass re-sends everything.
+    *) log warn jfr_metrics_export_failed "status=${status} endpoint=${OTLP_METRICS_ENDPOINT}" ;;
+  esac
+}
+
+write_effective_state() {
+  # `args` is what is applied to the JVM right now, never what the config asked for — see
+  # APPLIED_ARGS_JSON. `desiredEnabled` sits beside `running` so `profile status` can tell "the
+  # operator turned this off" apart from "the operator wants this on and the attach keeps failing",
+  # which otherwise render identically and send the operator looking in the wrong place.
+  #
+  # chunksPending/chunksShipped count what is on disk right now; chunksRejected, shipFailures and
+  # attachFailures are cumulative counters, deliberately, because a chunk that was rejected and has
+  # since been pruned still happened and is still what the operator needs to see.
+  #
+  # retentionMinutes, maxBytes, pyroscopeUrl and clusterName are recorded so a later pass whose
+  # desired-state document has gone unreadable can keep shipping and pruning under the operator's
+  # own numbers instead of silently reverting to the built-in defaults.
+  #
+  # prunedUnshipped is the one counter that means irreversible loss rather than reclaimed disk, and
+  # it lived only in journald and the metrics push — so `profile status`, which is where an
+  # operator asks "why did my profiles never show up?", could not answer.
+  #
+  # configError names why this pass refused to act, so `status` can say "the document on this node
+  # is corrupt" instead of blaming the reconcile timer, which is the one component still working.
+  #
+  # attachDeferred is the other reason a pass declines to act, and it is here for the same reason:
+  # without it, a node whose database is still starting reports `desired: enabled, attached: no` and
+  # nothing else — identical to one whose attach has been failing for hours. It says "waiting", and
+  # `status` renders it as such rather than as an unexplained absence of profiling.
+  #
+  # Built with yq's JSON constructor rather than a heredoc, for the same reason as the OTLP payload:
+  # every string here — a cluster name, an ingest URL, a tool's own error message — reaches the
+  # document through strenv(), which yq treats as opaque bytes. A quote or a backslash in any of
+  # them therefore produces a correctly escaped document instead of one that never parses again,
+  # rewritten identically every pass while `status` reports the node as unknown forever.
+  #
+  # The construction and the rename are joined with && on purpose: as two statements, a write that
+  # failed on ENOSPC still left mv to atomically install the truncation over the good document — and
+  # the next pass, unable to read `.pid` from it, would detach and reattach a converged session
+  # every single pass forever.
+  EDL_S_RUNNING="$SESSION_RUNNING" \
+    EDL_S_DESIRED_ENABLED="$ENABLED" \
+    EDL_S_PID="$CASSANDRA_PID" \
+    EDL_S_ARGS="$APPLIED_ARGS_JSON" \
+    EDL_S_LOOP_INTERVAL="$LOOP_INTERVAL" \
+    EDL_S_RETENTION_MINUTES="$RETENTION_MINUTES" \
+    EDL_S_MAX_BYTES="$MAX_BYTES" \
+    EDL_S_PYROSCOPE_URL="$PYROSCOPE_URL" \
+    EDL_S_CLUSTER_NAME="$CLUSTER_NAME" \
+    EDL_S_STARTED_AT="$SESSION_STARTED_AT" \
+    EDL_S_CHUNKS_PENDING="$(count_pending)" \
+    EDL_S_CHUNKS_SHIPPED="$(count_shipped)" \
+    EDL_S_CHUNKS_REJECTED="$REJECTED" \
+    EDL_S_SHIP_FAILURES="$FAILURES" \
+    EDL_S_PRUNED_FOR_AGE="$PRUNED_FOR_AGE" \
+    EDL_S_PRUNED_FOR_SIZE="$PRUNED_FOR_SIZE" \
+    EDL_S_PRUNED_UNSHIPPED="$PRUNED_UNSHIPPED" \
+    EDL_S_BYTES_ON_DISK="$(chunk_bytes)" \
+    EDL_S_LAST_ERROR="$LAST_ERROR" \
+    EDL_S_ATTACH_FAILURES="$ATTACH_FAILURES" \
+    EDL_S_LAST_ATTACH_ERROR="$LAST_ATTACH_ERROR" \
+    EDL_S_ATTACH_DEFERRED="$ATTACH_DEFERRED_NOW" \
+    EDL_S_CONFIG_ERROR="$CONFIG_ERROR" \
+    EDL_S_UPDATED_AT="$NOW" \
+    yq -n -o=json -I=2 '
+    {
+      "running": env(EDL_S_RUNNING),
+      "desiredEnabled": env(EDL_S_DESIRED_ENABLED),
+      "pid": env(EDL_S_PID),
+      "args": (strenv(EDL_S_ARGS) | from_json),
+      "loopInterval": strenv(EDL_S_LOOP_INTERVAL),
+      "retentionMinutes": env(EDL_S_RETENTION_MINUTES),
+      "maxBytes": env(EDL_S_MAX_BYTES),
+      "pyroscopeUrl": strenv(EDL_S_PYROSCOPE_URL),
+      "clusterName": strenv(EDL_S_CLUSTER_NAME),
+      "startedAt": env(EDL_S_STARTED_AT),
+      "chunksPending": env(EDL_S_CHUNKS_PENDING),
+      "chunksShipped": env(EDL_S_CHUNKS_SHIPPED),
+      "chunksRejected": env(EDL_S_CHUNKS_REJECTED),
+      "shipFailures": env(EDL_S_SHIP_FAILURES),
+      "prunedForAge": env(EDL_S_PRUNED_FOR_AGE),
+      "prunedForSize": env(EDL_S_PRUNED_FOR_SIZE),
+      "prunedUnshipped": env(EDL_S_PRUNED_UNSHIPPED),
+      "bytesOnDisk": env(EDL_S_BYTES_ON_DISK),
+      "lastError": strenv(EDL_S_LAST_ERROR),
+      "attachFailures": env(EDL_S_ATTACH_FAILURES),
+      "lastAttachError": strenv(EDL_S_LAST_ATTACH_ERROR),
+      "attachDeferred": env(EDL_S_ATTACH_DEFERRED),
+      "configError": strenv(EDL_S_CONFIG_ERROR),
+      "updatedAt": env(EDL_S_UPDATED_AT)
+    }' >"${STATE_PATH}.tmp" && mv -f "${STATE_PATH}.tmp" "$STATE_PATH"
+}
+
+# --- persist on the way out ---------------------------------------------------
+
+# Everything a pass learned, persisted however the pass ends.
+#
+# Without the traps below, systemd killing a slow pass at TimeoutStartSec discarded all of it: the
+# counters were never written, so a partly-working shipper reported a stale
+# edl_jfr_ship_last_success_timestamp_seconds, and effective-state.json was never rewritten, so
+# `status` reported the node as STALE and blamed the timer.
+#
+# They are installed here, above the config read and the attach/detach block, rather than just above
+# shipping. Shipping is already bounded by curl's --max-time; what can actually consume
+# TimeoutStartSec is `asprof status`, `stop` and `start`, each a jattach round-trip to a JVM that may
+# be in a long safepoint or wedged. Installed any lower, the trap did not cover the phase most likely
+# to trigger it — and the cost was more than the lost counters: a pass killed just after attaching
+# left no record for the PID, so the next pass read SESSION_ACTION as restart and tore down a healthy
+# session, which is the flapping edl_jfr_session_starts_total exists to expose.
+FINISHED=0
+finish() {
+  [[ "$FINISHED" == "1" ]] && return
+  FINISHED=1
+  set_gauges
+  write_counters
+  write_metrics
+  export_metrics
+  write_effective_state
+}
+
+# TERM is trapped separately because an untrapped SIGTERM kills the shell without running the EXIT
+# trap at all. INT is here for a hand-run pass.
+trap 'log warn jfr_pass_terminated "reason=signal hint=TimeoutStartSec"; finish; exit 0' TERM INT
+trap finish EXIT
+
+# --- desired state -----------------------------------------------------------
+
+read_scalar() {
+  yq -p=json -o=yaml "$1" "$2" 2>/dev/null
+}
+
+args_fingerprint() {
+  yq -0 -p=json -o=yaml "$1" "$2" 2>/dev/null | base64 | tr -d '\n'
+}
+
+if [[ ! -f "$CONFIG_PATH" ]]; then
+  CONFIG_ERROR=no_desired_state
+  log info profiling_idle "reason=no_desired_state path=${CONFIG_PATH}"
+else
+  ENABLED="$(read_scalar '.enabled' "$CONFIG_PATH")"
+  LOOP_INTERVAL="$(read_scalar '.loopInterval' "$CONFIG_PATH")"
+  RETENTION_MINUTES="$(read_scalar '.retentionMinutes' "$CONFIG_PATH")"
+  MAX_BYTES="$(read_scalar '.maxBytes' "$CONFIG_PATH")"
+  PYROSCOPE_URL="$(read_scalar '.pyroscopeUrl' "$CONFIG_PATH")"
+  CLUSTER_NAME="$(read_scalar '.clusterName' "$CONFIG_PATH")"
+  ARGS_TAG="$(read_scalar '.asprofArgs | tag' "$CONFIG_PATH")"
+
+  # The ingest URL is inside the guard rather than outside it because a missing one is not a
+  # survivable field: every upload would POST to `null/ingest?...`, fail forever, and be reported as
+  # jfr_ship_failed — a network problem the operator would go looking for on Pyroscope's side, when
+  # the document on this node is what is wrong.
+  if [[ "$ENABLED" != "true" && "$ENABLED" != "false" ]] ||
+    [[ ! "$RETENTION_MINUTES" =~ ^[0-9]+$ ]] ||
+    [[ ! "$MAX_BYTES" =~ ^[0-9]+$ ]] ||
+    [[ "$ARGS_TAG" != "!!seq" ]] ||
+    [[ ! "$PYROSCOPE_URL" =~ ^https?:// ]] ||
+    [[ ! "$LOOP_INTERVAL" =~ $LOOP_INTERVAL_FORM ]]; then
+    CONFIG_ERROR=config_unreadable
+    log error config_unreadable "path=${CONFIG_PATH}"
+  else
+    # argv, never a shell string: NUL-delimited out of yq, straight into a bash array, expanded as
+    # "${USER_ARGS[@]}". Nothing is re-parsed on the node, so the injection surface is structurally
+    # absent rather than escaped correctly — and NUL delimiting survives a newline in an argument.
+    while IFS= read -r -d '' argument; do
+      USER_ARGS+=("$argument")
+    done < <(yq -0 -p=json -o=yaml '.asprofArgs[]' "$CONFIG_PATH" 2>/dev/null)
+
+    DESIRED_FINGERPRINT="$(args_fingerprint '.asprofArgs[]' "$CONFIG_PATH")"
+    DESIRED_ARGS_JSON="$(yq -p=json -o=json -I=0 '.asprofArgs' "$CONFIG_PATH" 2>/dev/null)"
+    [[ -n "$DESIRED_ARGS_JSON" ]] || DESIRED_ARGS_JSON='[]'
+  fi
+fi
+
+# The bounds the last good pass ran under, recovered field by field so one unusable value does not
+# cost the others. Without this a corrupt config would prune to the built-in 60 minutes and 2 GiB,
+# discarding exactly the longer window an operator chose with --retention.
+#
+# A missing effective-state document needs no special case: read_scalar answers empty, the pattern
+# fails, and the fallback is returned.
+recover_bound() {
+  local expression="$1" pattern="$2" fallback="$3" value
+  value="$(read_scalar "$expression" "$STATE_PATH")"
+  if [[ "$value" =~ $pattern ]]; then echo "$value"; else echo "$fallback"; fi
+}
+
+# This block is the *only* place a rejected value is reset, so it runs whenever CONFIG_ERROR is set —
+# not only when there is a document to recover from. The validation above reads each field into its
+# variable before testing it, so on a failure the rejected bytes are already loaded; gating the reset
+# on effective-state.json existing left a node whose reconciler has never completed a pass running on
+# exactly the values it had just refused. RETENTION_MINUTES then reached
+# `$((NOW - RETENTION_MINUTES * 60))` and MAX_BYTES reached `((PRUNE_TOTAL <= MAX_BYTES))`, and bash
+# arithmetic expands array subscripts — so `NAME[$(command)]` executes the command as `cassandra`,
+# and with no array of that name `set -u` aborted the pass instead, leaving the directory unpruned
+# and the unit failed.
+if [[ -n "$CONFIG_ERROR" ]]; then
+  ENABLED="$(recover_bound '.desiredEnabled' '^(true|false)$' false)"
+  LOOP_INTERVAL="$(recover_bound '.loopInterval' "$LOOP_INTERVAL_FORM" "$FALLBACK_LOOP_INTERVAL")"
+  RETENTION_MINUTES="$(recover_bound '.retentionMinutes' '^[0-9]+$' "$FALLBACK_RETENTION_MINUTES")"
+  MAX_BYTES="$(recover_bound '.maxBytes' '^[0-9]+$' "$FALLBACK_MAX_BYTES")"
+  PYROSCOPE_URL="$(recover_bound '.pyroscopeUrl' '^https?://' '')"
+  # Not a bound, so there is no pattern to recover it against — but it is reset the same way. An
+  # absent document answers empty and an absent key answers "null"; both mean "nothing recollected".
+  CLUSTER_NAME="$(read_scalar '.clusterName' "$STATE_PATH")"
+  [[ "$CLUSTER_NAME" == "null" ]] && CLUSTER_NAME=""
+fi
+
+LOOP_SECONDS="$(duration_seconds "$LOOP_INTERVAL")"
+
+# Uploading needs somewhere to upload to. Only reachable when the config is unreadable and the
+# last-known-good record carried no usable URL either, so the pass prunes and reports rather than
+# POSTing every chunk at a URL that cannot work.
+CAN_SHIP=true
+if [[ ! "$PYROSCOPE_URL" =~ ^https?:// ]]; then
+  CAN_SHIP=false
+fi
+
+# --- liveness ----------------------------------------------------------------
+
+CASSANDRA_PID="$("$CASSANDRA_PID_BIN" 2>/dev/null | tr -d '[:space:]')"
+[[ "$CASSANDRA_PID" =~ ^[0-9]+$ ]] || CASSANDRA_PID=0
+
+# Whether this process can be signalled at all yet — the gate the header describes. Asked once,
+# before anything reaches for asprof, because every asprof call is a jattach round-trip and jattach
+# signals SIGQUIT, which terminates a process that has not installed a handler for it.
+#
+# A pid of 0 is handled as its own case further down, so it is short-circuited here rather than left
+# to the probe: "there is no database" and "the database is not ready" are different reports.
+#
+# A probe that is not there at all is a third report, and it is named rather than folded into the
+# second: this script and cassandra-ready are installed together, so a node missing one of them has
+# a stale image, and a node that says "the database is not ready" once a minute forever sends
+# whoever reads it to look at the database instead. Deferring is still the answer — attaching
+# without a readiness answer is what killed a node — but the reason has to be the true one.
+if [[ "$CASSANDRA_PID" != "0" ]]; then
+  if [[ ! -x "$CASSANDRA_READY_BIN" ]]; then
+    NOT_READY_REASON=readiness_probe_missing
+    READY_VERDICT=absent
+  else
+    # The probe's first word is its reason code and its exit status is the verdict; both are kept,
+    # because "ready" without "ready how" is what let a probe answering on the wrong address look
+    # exactly like a healthy one. Constrained to a bare word before it reaches a log line: it is our
+    # own tool's output, but nothing that ends up in a logfmt field is trusted to be well-formed.
+    if ready_answer="$("$CASSANDRA_READY_BIN" "$CASSANDRA_PID" 2>/dev/null)"; then
+      DB_READY=true
+    fi
+    READY_VERDICT="${ready_answer%%:*}"
+    [[ "$READY_VERDICT" =~ ^[a-z][a-z-]*$ ]] || READY_VERDICT=unknown
+  fi
+fi
+
+# Any record naming a process other than the current Cassandra PID describes a dead JVM. Discard it
+# before deciding, rather than letting it answer "what is running?" for a process that no longer is.
+#
+# RECORD_PRESENT is the "is there a record for this PID at all?" signal, and it has to be separate
+# from the fingerprint: an empty argument list — "profile with async-profiler's own defaults" —
+# fingerprints to the empty string, so testing the fingerprint for emptiness would read a converged
+# session as an unknown one and restart it on every single pass, forever.
+RECORD_PRESENT=false
+RECORDED_RUNNING=false
+RECORDED_FINGERPRINT=""
+RECORDED_STARTED_AT=0
+RECORDED_ARGS_JSON='[]'
+if [[ -f "$STATE_PATH" ]]; then
+  recorded_pid="$(read_scalar '.pid' "$STATE_PATH")"
+  if [[ "$recorded_pid" == "$CASSANDRA_PID" ]]; then
+    RECORD_PRESENT=true
+    [[ "$(read_scalar '.running' "$STATE_PATH")" == "true" ]] && RECORDED_RUNNING=true
+    RECORDED_FINGERPRINT="$(args_fingerprint '.args[]' "$STATE_PATH")"
+    recorded_started_at="$(read_scalar '.startedAt' "$STATE_PATH")"
+    [[ "$recorded_started_at" =~ ^[0-9]+$ ]] && RECORDED_STARTED_AT="$recorded_started_at"
+    recorded_args_json="$(yq -p=json -o=json -I=0 '.args' "$STATE_PATH" 2>/dev/null)"
+    [[ -n "$recorded_args_json" ]] && RECORDED_ARGS_JSON="$recorded_args_json"
+  fi
+fi
+
+# The live JVM is the sole authority on whether a session is running. async-profiler's session state
+# lives inside the target process and dies with it, so no stored record can be trusted for this —
+# and neither can the exit code of a detach we just attempted.
+#
+# Gated on DB_READY because `asprof status` is a jattach round-trip like every other: asking the
+# question would kill a database that is still starting.
+session_is_live() {
+  [[ "$DB_READY" == "true" ]] &&
+    "$ASPROF" status "$CASSANDRA_PID" 2>/dev/null | grep -qi 'is running'
+}
+
+SESSION_RUNNING=false
+if [[ "$DB_READY" == "true" ]]; then
+  if session_is_live; then
+    SESSION_RUNNING=true
+  fi
+elif [[ "$RECORD_PRESENT" == "true" ]]; then
+  # The one case where a stored record answers this question: the JVM cannot be asked, and the record
+  # names this very process. Carried forward rather than reported as "nothing attached", because a
+  # session is not detached by a probe going quiet — and reporting one that is still running as gone
+  # would rewrite the record with no arguments, so the next readable pass would read its own erasure
+  # as a spec change and tear down a healthy session. That is the flapping
+  # edl_jfr_session_starts_total exists to expose, manufactured by the reporting path itself.
+  SESSION_RUNNING="$RECORDED_RUNNING"
+fi
+
+# --- decide ------------------------------------------------------------------
+
+if [[ -n "$CONFIG_ERROR" ]]; then
+  # The attach/detach decision is the one thing an unreadable document cannot be trusted for, so it
+  # is the one thing this pass does not do. Everything below — shipping, pruning, reporting — runs.
+  SESSION_ACTION=none
+elif [[ "$ENABLED" == "false" ]]; then
+  if [[ "$SESSION_RUNNING" == "true" ]]; then SESSION_ACTION=stop; else SESSION_ACTION=none; fi
+elif [[ "$CASSANDRA_PID" == "0" ]]; then
+  # Profiling is wanted and there is no process to attach it to: the database is stopped,
+  # cassandra-pid is missing, or this unit is running as the wrong user. Shipping and pruning still
+  # run below, so this is not a reason to stop the pass — but it is a reason to say so.
+  SESSION_ACTION=no_process
+elif [[ "$SESSION_RUNNING" == "false" ]]; then
+  SESSION_ACTION=start
+elif [[ "$RECORD_PRESENT" == "true" && "$RECORDED_FINGERPRINT" == "$DESIRED_FINGERPRINT" ]]; then
+  SESSION_ACTION=none
+else
+  # Differing spec, or a session we cannot confirm matches (hand-attached, or the record was lost).
+  # Converge in one pass rather than guess: guessing leaves the node profiling something nobody
+  # asked for.
+  SESSION_ACTION=restart
+fi
+
+# The readiness gate is applied to the decision rather than folded into the table above, so the table
+# keeps saying what this node *should* do and this says only whether the JVM can be signalled yet.
+# Every action named here signals the target; `none` and `no_process` do not, and are left alone.
+#
+# What the pass would have done is carried into the deferral log line: "we deferred a start" and "we
+# deferred a stop" are the difference between a node coming up and an operator's stop not landing.
+SESSION_ACTION_WANTED="$SESSION_ACTION"
+case "$SESSION_ACTION" in
+  start | stop | restart)
+    [[ "$DB_READY" == "true" ]] || SESSION_ACTION=not_ready
+    ;;
+esac
+
+# What this pass leaves applied to the JVM, as opposed to what was requested. The distinction is the
+# whole point: recording the request would let the next pass read its own wish back, conclude it had
+# converged, and leave the node profiling the previous event forever.
+APPLIED_ARGS_JSON="$RECORDED_ARGS_JSON"
+SESSION_STARTED_AT="$RECORDED_STARTED_AT"
+
+stop_session() {
+  local error
+  if ! error="$("$ASPROF" stop "$CASSANDRA_PID" 2>&1 >/dev/null)"; then
+    LAST_ATTACH_ERROR="$(sanitize_error "$error")"
+    log error jfr_detach_failed "pid=${CASSANDRA_PID} err=\"${LAST_ATTACH_ERROR}\""
+  fi
+
+  # Ask the JVM rather than believing the exit code. A detach that silently failed and was recorded
+  # as a clean stop shows the operator a stopped session that is in fact still burning CPU.
+  if session_is_live; then
+    SESSION_RUNNING=true
+  else
+    SESSION_RUNNING=false
+    APPLIED_ARGS_JSON='[]'
+    SESSION_STARTED_AT=0
+    # Only on a confirmed transition, so this is one line per detach rather than one per pass.
+    log info jfr_session_stopped "pid=${CASSANDRA_PID} action=${SESSION_ACTION}"
+  fi
+}
+
+start_session() {
+  # Tool arguments last, so `status` can show the user's parameters first and the plumbing clearly
+  # separated. %t is mandatory: without it every rotation overwrites the previous chunk. %p is
+  # alongside it so a restart within the same wall-clock second cannot collide.
+  local error
+  if error="$("$ASPROF" start "${USER_ARGS[@]+"${USER_ARGS[@]}"}" \
+    -o jfr \
+    --loop "$LOOP_INTERVAL" \
+    -f "${PROFILE_DIR}/cassandra-%p-%t.jfr" \
+    "$CASSANDRA_PID" 2>&1 >/dev/null)"; then
+    SESSION_RUNNING=true
+    SESSION_STARTED_AT="$NOW"
+    APPLIED_ARGS_JSON="$DESIRED_ARGS_JSON"
+    SESSION_STARTS=$((SESSION_STARTS + 1))
+    # startedAt otherwise lives only in the node-local state file, reachable only over SSH, so
+    # nothing in VictoriaLogs would record that this node ever began profiling — or when.
+    # ready= names which answer the readiness gate gave, once per attach rather than once per pass.
+    # It is the only place the journal records that a node reached `listening` rather than waiting
+    # out the ten-minute backstop, and a whole cluster attaching on `uptime` is a broken probe.
+    log info jfr_session_started \
+      "pid=${CASSANDRA_PID} loop=${LOOP_INTERVAL} action=${SESSION_ACTION} ready=${READY_VERDICT}"
+  else
+    SESSION_RUNNING=false
+    SESSION_STARTED_AT=0
+    APPLIED_ARGS_JSON='[]'
+    ATTACH_FAILURES=$((ATTACH_FAILURES + 1))
+    LAST_ATTACH_ERROR="$(sanitize_error "$error")"
+    # The hint names the two settings that break jattach silently; the captured message is what
+    # actually says which of them — or neither — it was this time.
+    log error jfr_attach_failed \
+      "pid=${CASSANDRA_PID} err=\"${LAST_ATTACH_ERROR}\" hint=check_PrivateTmp_and_java.io.tmpdir"
+  fi
+}
+
+# The one outcome this script used to leave no trace of. Profiling is enabled, nothing is attached,
+# and the pass converges with no log line and no counter movement — identical, in both VictoriaLogs
+# and VictoriaMetrics, to a healthy node that is profiling normally. A node whose database died
+# hours ago looked exactly like one that never had a problem.
+#
+# Warned rather than errored: the database being stopped is usually a deliberate act, and a
+# maintenance window should not fill the log with errors. edl_jfr_profiling_desired and
+# edl_jfr_session_attached are what make the condition alertable.
+note_no_process() {
+  ATTACH_SKIPPED=$((ATTACH_SKIPPED + 1))
+  log warn jfr_attach_skipped \
+    "reason=no_database_process pid_source=${CASSANDRA_PID_BIN} hint=is_cassandra_running"
+}
+
+# The database is there, and it is not ready to be signalled. This pass wanted to attach, detach or
+# replace a session, and correctly did none of them.
+#
+# Not a failure, and deliberately not counted as one: ATTACH_FAILURES means jattach was refused,
+# which is a node configuration problem, and a starting database is not that. Warned rather than
+# errored for the same reason note_no_process is — every node restart passes through here, and a
+# restart should not fill the log with errors. What makes it actionable is that it does not stop:
+# a rate() over edl_jfr_attach_deferred_total that never returns to zero is a database that is not
+# coming up, or a native transport this node was not told about.
+note_not_ready() {
+  ATTACH_DEFERRED=$((ATTACH_DEFERRED + 1))
+  ATTACH_DEFERRED_NOW=true
+  # says= is the probe's own reason code, so the line distinguishes a database that is starting from
+  # a socket table nothing could be read from. The probe is named too, because running it by hand is
+  # the next thing an operator does and it prints the sentence behind that code.
+  local hint=database_still_starting
+  [[ "$NOT_READY_REASON" == "readiness_probe_missing" ]] && hint=node_image_is_stale
+  local fields="reason=${NOT_READY_REASON} pid=${CASSANDRA_PID} wanted=${SESSION_ACTION_WANTED}"
+  log warn jfr_attach_deferred \
+    "${fields} says=${READY_VERDICT} probe=${CASSANDRA_READY_BIN} hint=${hint}"
+}
+
+case "$SESSION_ACTION" in
+  stop) stop_session ;;
+  start) start_session ;;
+  no_process) note_no_process ;;
+  not_ready) note_not_ready ;;
+  restart)
+    # asprof stop finalizes the in-flight chunk, so a mode switch loses no data.
+    stop_session
+    # Only attach once the old session is confirmed gone. Starting on top of a session that refused
+    # to detach cannot work, and recording the new arguments anyway would fake convergence.
+    if [[ "$SESSION_RUNNING" == "false" ]]; then
+      start_session
+    fi
+    ;;
+esac
+
+# Nothing attached means nothing applied. Stated once here rather than in each branch above.
+[[ "$SESSION_RUNNING" == "true" ]] || APPLIED_ARGS_JSON='[]'
+
+# --- ship --------------------------------------------------------------------
+
+upload_chunk() {
+  local path="$1" mtime="$2" status url name curl_exit curl_error stderr_file
+  name="$(urlencode "cassandra{hostname=${HOSTNAME_LABEL},cluster=${CLUSTER_NAME}}")"
+  url="${PYROSCOPE_URL}/ingest?name=${name}&format=jfr&from=$((mtime - LOOP_SECONDS))&until=${mtime}"
+
+  # curl's stdout is the status code (--write-out) and its stderr is the only account of a failure
+  # that never reached HTTP at all, so the two are captured separately rather than discarded.
+  stderr_file="$(mktemp)"
+
+  # Raw bytes, not gzipped: JFR is already compressed. No protobuf labels either — ours are static
+  # and travel in the series name.
+  status="$(curl --silent --show-error \
+    --max-time "$UPLOAD_TIMEOUT_SECONDS" \
+    --output /dev/null \
+    --write-out '%{http_code}' \
+    --request POST \
+    --header 'Content-Type: application/octet-stream' \
+    --data-binary "@${path}" \
+    "$url" 2>"$stderr_file")"
+  curl_exit=$?
+  curl_error="$(sanitize_error "$(cat "$stderr_file" 2>/dev/null)")"
+  rm -f "$stderr_file"
+
+  case "$status" in
+    2??)
+      mv -f "$path" "${path%.jfr}-shipped.jfr"
+      LAST_SUCCESS="$NOW"
+      ;;
+    4??)
+      # Permanent: Pyroscope cannot parse this chunk, usually truncation after an unclean shutdown.
+      # Never retry it — one malformed chunk must not wedge the queue behind it.
+      mv -f "$path" "${path}.rejected"
+      REJECTED=$((REJECTED + 1))
+      log error jfr_ship_rejected "chunk=$(basename "$path") status=${status} err=\"${curl_error}\""
+      ;;
+    *)
+      # Transient: a server error or a network error. Leave it for the next pass. A status of 000
+      # means no HTTP response happened at all, in which case curl's exit code and message are the
+      # only thing that says why.
+      FAILURES=$((FAILURES + 1))
+      LAST_ERROR="http_${status}"
+      log error jfr_ship_failed \
+        "chunk=$(basename "$path") status=${status} curl_exit=${curl_exit} err=\"${curl_error}\""
+      ;;
+  esac
+}
+
+ship_chunks() {
+  local pending=() path index last grace mtime uploaded=0
+  while IFS= read -r path; do
+    pending+=("$path")
+  done < <(list_by_mtime '*.jfr' "$SHIPPED_GLOB")
+
+  ((${#pending[@]} == 0)) && return
+
+  # Checked after the queue is known, so a node nobody has configured stays quiet: there is nothing
+  # to strand, and an error line every 60s on an idle node is noise that trains an operator to
+  # ignore this event. With chunks waiting it is a real problem and says so.
+  if [[ "$CAN_SHIP" != "true" ]]; then
+    log error jfr_ship_skipped \
+      "reason=no_pyroscope_url pending=${#pending[@]} config_error=${CONFIG_ERROR:-none}"
+    return
+  fi
+
+  # While a session is live the newest file by mtime is by definition the one being written, and
+  # every older *.jfr is closed and complete. Exact, not heuristic.
+  #
+  # With no session live there is nothing writing, so that rule would strand the final chunk of every
+  # run forever — after `stop` the reconciler detaches, which finalizes that chunk, and nothing will
+  # ever be newer than it. The mtime grace check below is what protects a file still being written,
+  # and it holds in both cases.
+  if [[ "$SESSION_RUNNING" == "true" ]]; then
+    last=$((${#pending[@]} - 1))
+  else
+    last=${#pending[@]}
+  fi
+  grace=$((LOOP_SECONDS + GRACE_EXTRA_SECONDS))
+
+  for ((index = 0; index < last; index++)); do
+    path="${pending[$index]}"
+    mtime="$(file_mtime "$path")"
+    ((mtime > NOW - grace)) && continue
+    if ((uploaded >= SHIP_MAX_CHUNKS_PER_PASS)); then
+      # Stop while there is still budget left in TimeoutStartSec. Running past it means systemd
+      # SIGTERMs the pass, and the EXIT/TERM trap is what keeps that from losing this pass's
+      # counters — but a pass that persists nothing useful and is killed every time is a wedged
+      # unit, so the queue is drained a bounded number of chunks at a time instead.
+      SHIP_TRUNCATED=1
+      log warn jfr_ship_truncated \
+        "uploaded=${uploaded} budget=${SHIP_MAX_CHUNKS_PER_PASS} remaining=$((last - index)) hint=pyroscope_slow_or_backlog"
+      return
+    fi
+    upload_chunk "$path" "$mtime"
+    uploaded=$((uploaded + 1))
+  done
+}
+
+# --- prune -------------------------------------------------------------------
+
+# What a chunk about to be deleted is worth, which is the distinction that matters when pruning:
+#
+#   shipped  — Pyroscope has it; deleting the local copy costs nothing.
+#   rejected — Pyroscope refused it permanently and it is already counted by the rejection counter;
+#              deleting it is not a shipping problem and must not fire the data-loss signal.
+#   pending  — never shipped and still could have been. Deleting this destroys it, which is exactly
+#              what this loop does on a timer while shipping is failing.
+chunk_class() {
+  local name="${1##*/}"
+  # shellcheck disable=SC2053  # Both globs are globs on purpose.
+  case "$name" in
+    $SHIPPED_GLOB) echo shipped ;;
+    $REJECTED_GLOB) echo rejected ;;
+    *) echo pending ;;
+  esac
+}
+
+# Both bounds enforced in the same pass, because the failure mode is not "lost profiles" but "dead
+# node": filling /mnt/db1 takes Cassandra down via disk_failure_policy.
+# Deletes oldest-first from one class of chunk until the directory is back within MAX_BYTES.
+# Reads and updates PRUNE_TOTAL so successive classes share one running total.
+prune_class() {
+  local pattern="$1" exclude="${2:-}" path class
+  while IFS= read -r path; do
+    ((PRUNE_TOTAL <= MAX_BYTES)) && return
+    PRUNE_TOTAL=$((PRUNE_TOTAL - $(file_size "$path")))
+    class="$(chunk_class "$path")"
+    [[ "$class" == "pending" ]] && PRUNED_UNSHIPPED=$((PRUNED_UNSHIPPED + 1))
+    PRUNED_FOR_SIZE=$((PRUNED_FOR_SIZE + 1))
+    rm -f "$path"
+    # Always a warning: the byte ceiling engaging at all means the node is producing faster than it
+    # can ship or than retention can reclaim.
+    log warn jfr_pruned_for_size "chunk=${path##*/} class=${class}"
+  done < <(list_by_mtime "$pattern" "$exclude")
+}
+
+prune_chunks() {
+  local cutoff=$((NOW - RETENTION_MINUTES * 60)) path mtime class
+
+  for path in "${PROFILE_DIR}"/*.jfr "${PROFILE_DIR}"/$REJECTED_GLOB; do
+    [[ -f "$path" ]] || continue
+    mtime="$(file_mtime "$path")"
+    if ((mtime < cutoff)); then
+      class="$(chunk_class "$path")"
+      if [[ "$class" == "pending" ]]; then
+        # A profile that could still have reached Pyroscope and is now gone. Warned, not merely
+        # counted, because this is the mechanism by which "my profiles never showed up" becomes
+        # unanswerable after the fact.
+        PRUNED_UNSHIPPED=$((PRUNED_UNSHIPPED + 1))
+        log warn jfr_pruned_for_age "chunk=${path##*/} class=${class} age_seconds=$((NOW - mtime))"
+      else
+        log info jfr_pruned_for_age "chunk=${path##*/} class=${class} age_seconds=$((NOW - mtime))"
+      fi
+      PRUNED_FOR_AGE=$((PRUNED_FOR_AGE + 1))
+      rm -f "$path"
+    fi
+  done
+
+  PRUNE_TOTAL="$(chunk_bytes)"
+
+  # Oldest first, and shipped before rejected before unshipped — give up the least useful bytes
+  # first. The chunk being written sorts last within its class, so it goes only if nothing else is
+  # left, which needs no special case.
+  prune_class "$SHIPPED_GLOB"
+  prune_class "$REJECTED_GLOB"
+  prune_class '*.jfr' "$SHIPPED_GLOB"
+}
+
+# --- run ---------------------------------------------------------------------
+
+# Both are already covered by the trap installed far above, so a kill anywhere in here still
+# persists what the pass learned.
+ship_chunks
+prune_chunks
+
+exit 0

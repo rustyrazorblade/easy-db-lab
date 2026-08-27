@@ -1,0 +1,19 @@
+[Unit]
+Description=Reconcile easy-db-lab profiling state on this node
+Documentation=https://github.com/rustyrazorblade/easy-db-lab
+After=cassandra.service
+
+[Service]
+Type=oneshot
+# Runs as the user that owns both the Cassandra JVM and the profile directory. async-profiler's
+# jattach setegid/seteuid's to the target's credentials, so attaching to a cassandra-owned JVM as
+# the cassandra user needs no root and no capability grant of its own.
+User=cassandra
+Group=cassandra
+ExecStart=/usr/local/bin/edl-profiling-reconcile
+# The reconciler prefixes every line with a syslog priority (<3>, <4>, <6>). Stated explicitly
+# rather than left to the default, because severity in VictoriaLogs is derived from the journal's
+# PRIORITY and nothing else — turn this off and every attach failure arrives as severity=INFO.
+SyslogLevelPrefix=yes
+# One pass is a directory walk plus at most a few uploads; anything longer is wedged.
+TimeoutStartSec=300

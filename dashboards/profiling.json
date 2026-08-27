@@ -23,15 +23,36 @@
   "liveNow": false,
   "panels": [
     {
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 5,
+      "options": {
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "Cassandra runs one async-profiler session per JVM, so only one mode runs at a time. **These panels are mutually exclusive by design.**\n\n- The **default** session starts at cluster up: `-e cpu --alloc 512k --lock 10ms`. It fills CPU, Memory Allocation, Lock Contention and Mutex Contention. Wall Clock stays empty.\n- A **wall-clock** session fills Wall Clock. Memory Allocation, Lock Contention and Mutex Contention stay empty. CPU keeps data, because Pyroscope routes runnable-thread wall samples into `process_cpu` as well.\n\nEmpty panels for the mode that is not running are expected. They do not mean the dashboard or the pipeline is broken. Run `easy-db-lab cassandra profile status` to see what each node is actually running.\n\nTo switch modes:\n\n```\neasy-db-lab cassandra profile stop\neasy-db-lab cassandra profile start -- -e wall -i 100ms\n```\n\nNever combine a CPU event and wall-clock sampling in one recording. It corrupts the CPU sample weights silently. See the [profiling guide](https://rustyrazorblade.github.io/easy-db-lab/user-guide/profiling.html).",
+        "mode": "markdown"
+      },
+      "title": "One profiling mode at a time",
+      "type": "text"
+    },
+    {
       "datasource": {
         "type": "grafana-pyroscope-datasource",
         "uid": "pyroscope"
       },
+      "description": "Populated by a CPU session (`-e cpu`). A wall-clock session also feeds this panel, because Pyroscope routes runnable-thread wall samples into `process_cpu`.",
       "gridPos": {
         "h": 20,
         "w": 24,
         "x": 0,
-        "y": 0
+        "y": 7
       },
       "id": 1,
       "targets": [
@@ -57,11 +78,43 @@
         "type": "grafana-pyroscope-datasource",
         "uid": "pyroscope"
       },
+      "description": "Wall-clock time, for finding I/O and blocking. Populated only by a wall session (`-e wall`), which cannot run alongside a CPU event. Empty means no wall session is running.",
       "gridPos": {
         "h": 20,
         "w": 24,
         "x": 0,
-        "y": 20
+        "y": 27
+      },
+      "id": 6,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-pyroscope-datasource",
+            "uid": "pyroscope"
+          },
+          "profileTypeId": "wall:wall:nanoseconds:wall:nanoseconds",
+          "labelSelector": "{service_name=\"$application\",hostname=~\"$hostname\"}",
+          "queryType": "both",
+          "refId": "A",
+          "groupBy": [
+            "hostname"
+          ]
+        }
+      ],
+      "title": "Wall Clock Flame Graph",
+      "type": "flamegraph"
+    },
+    {
+      "datasource": {
+        "type": "grafana-pyroscope-datasource",
+        "uid": "pyroscope"
+      },
+      "description": "Populated by `--alloc <n>`, which runs alongside a CPU event. Empty during a wall-clock session.",
+      "gridPos": {
+        "h": 20,
+        "w": 24,
+        "x": 0,
+        "y": 47
       },
       "id": 2,
       "targets": [
@@ -87,11 +140,12 @@
         "type": "grafana-pyroscope-datasource",
         "uid": "pyroscope"
       },
+      "description": "Populated by `--lock <t>`, which runs alongside a CPU event. Empty during a wall-clock session.",
       "gridPos": {
         "h": 20,
         "w": 24,
         "x": 0,
-        "y": 40
+        "y": 67
       },
       "id": 3,
       "targets": [
@@ -117,11 +171,12 @@
         "type": "grafana-pyroscope-datasource",
         "uid": "pyroscope"
       },
+      "description": "Populated by `--lock <t>`, which runs alongside a CPU event. Empty during a wall-clock session.",
       "gridPos": {
         "h": 20,
         "w": 24,
         "x": 0,
-        "y": 60
+        "y": 87
       },
       "id": 4,
       "targets": [

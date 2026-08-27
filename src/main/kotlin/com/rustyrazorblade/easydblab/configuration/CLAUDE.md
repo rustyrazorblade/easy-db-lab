@@ -178,21 +178,69 @@ All Pyroscope K8s resources are built programmatically using Fabric8:
 
 ### Profiling Architecture
 
-Three independent profiling mechanisms run simultaneously:
+Two capture mechanisms coexist. **Cassandra does NOT use the Pyroscope Java agent** — it attaches
+async-profiler to the running JVM at runtime. Everything else still uses the agent.
 
-1. **Grafana Alloy eBPF DaemonSet** (all nodes) — `pyroscope.ebpf` component collects `process_cpu` profiles only (eBPF limitation). Image: `grafana/alloy:v1.13.1`. Labels: `hostname`, `cluster` from env vars, plus per-pod `namespace`, `pod`, `container`, and `service_name` (derived as `namespace/container`) for processes that run in K8s pods. Attribution works by discovering node-local pods via `discovery.kubernetes` and joining them to host processes by container id in `discovery.process` (see `config.alloy`); host processes with no pod (e.g. the Cassandra systemd service) are still profiled, just without pod labels. Also profiles ClickHouse and TiDB/TiKV/PD (CPU only, since they're C++/Go).
-2. **Pyroscope Java Agent (Cassandra)** — `/usr/local/pyroscope/pyroscope.jar` (v2.3.0, installed by packer). Collects `cpu`, `alloc`, `lock`, `wall` profiles via JFR/async-profiler. Activated only when `PYROSCOPE_SERVER_ADDRESS` env var is set AND agent JAR exists. The profiler event is configurable via `PYROSCOPE_PROFILER_EVENT` env var (default: `cpu`, alternative: `wall`).
-3. **Pyroscope Java Agent (Stress Jobs)** — Same agent JAR mounted into stress K8s Jobs via hostPath volume from `/usr/local/pyroscope`. Configured via `JAVA_TOOL_OPTIONS` env var in `StressJobService.buildJob()`. Collects `cpu`, `alloc`, `lock` profiles.
-4. **Pyroscope Java Agent (Spark/EMR)** — `/opt/pyroscope/pyroscope.jar` (installed by EMR bootstrap action). Added to Spark driver and executor via `extraJavaOptions` in `EMRSparkService.buildOtelSparkConf()`. Collects `cpu`, `alloc` (512k threshold), `lock` (10ms threshold) profiles in JFR format. Service name: `spark-<job-name>`. Sends to Pyroscope server at `http://<control-ip>:4040`.
+1. **Runtime async-profiler (Cassandra)** — No agent, nothing in `JVM_OPTS`. `edl-profiling-reconcile`
+   (`packer/cassandra/bin/`), driven by `edl-profiling-reconcile.timer` every 60s as the `cassandra`
+   user, reads desired state from `/etc/easy-db-lab/profiling.json`, attaches `asprof` to the live
+   JVM, writes rotating JFR chunks to `/mnt/db1/cassandra/profiles`, POSTs completed chunks to
+   Pyroscope `/ingest`, and prunes by age and by total bytes. Controlled by the
+   `cassandra profile` command group (`commands/cassandra/profiler/`) via
+   `CassandraProfilingService`. Changing the event set needs no Cassandra restart.
+
+   A shipped chunk is renamed with a `-shipped.jfr` **infix**, never a `.jfr.shipped` suffix: `fetch`
+   and `flamegraph` list the node with `ls *.jfr` and feed the results to `jfrconv`, so a suffix
+   would hide every already-uploaded chunk from the CLI. The shipping queue is `*.jfr` minus
+   `*-shipped.jfr`.
+
+   Its `edl_jfr_*` counters reach VictoriaMetrics by being **pushed as OTLP** to the node-local
+   collector (`localhost:4318/v1/metrics`, a hostNetwork DaemonSet, existing `metrics/otlp`
+   pipeline). The Prometheus textfile it also writes is a convenience for someone on the node — no
+   node_exporter and no textfile collector exists, so nothing reads it. Do not "simplify" the push
+   away in favour of the file.
+2. **Grafana Alloy eBPF DaemonSet** (all nodes) — `pyroscope.ebpf` component collects `process_cpu`
+   profiles only (eBPF limitation). Image: `grafana/alloy:v1.13.1`. Labels: `hostname`, `cluster`
+   from env vars, plus per-pod `namespace`, `pod`, `container`, and `service_name` (derived as
+   `namespace/container`) for processes that run in K8s pods. Attribution works by discovering
+   node-local pods via `discovery.kubernetes` and joining them to host processes by container id in
+   `discovery.process` (see `config.alloy`); host processes with no pod are still profiled, just
+   without pod labels. Also profiles ClickHouse and TiDB/TiKV/PD (CPU only, since they're C++/Go).
+3. **Pyroscope Java Agent (Stress Jobs)** — `/usr/local/pyroscope/pyroscope.jar` (v2.3.0, installed
+   by packer) mounted into stress K8s Jobs via hostPath volume. Configured via `JAVA_TOOL_OPTIONS`
+   in `StressJobService.buildJob()`. Collects `cpu`, `alloc`, `lock`. **This is why
+   `install_pyroscope_agent.sh` must stay** even though Cassandra no longer uses the jar.
+4. **Pyroscope Java Agent (Spark/EMR)** — `/opt/pyroscope/pyroscope.jar`, i.e.
+   `Constants.PyroscopeJavaAgent.EMR_INSTALL_PATH` (installed by EMR bootstrap action). Added to
+   Spark driver and executor via `extraJavaOptions`. Service name: `spark-<job-name>`. Note the two
+   install paths differ — EMR uses `/opt/pyroscope`, nodes use `/usr/local/pyroscope` — which is why
+   the constant is named for EMR.
+5. **Pyroscope Java Agent (Trino/Presto, Cassandra Sidecar)** — injected via `JAVA_TOOL_OPTIONS`,
+   governed by the `trino` and `sidecar-otel` specs. Out of scope of the Cassandra change.
+
+**Never add a combined cpu+wall mode.** `jfr-parser` v0.18.0 `pprof/parser.go:56` reuses one sample
+value buffer across event types, so after the first wall sample every CPU sample carries the wall
+event's batch count as its weight — silent corruption up to three orders of magnitude. `--nobatch`
+makes it worse, not better, and is rejected by `AsprofArgValidator` — async-profiler itself refused
+the flag until 4.5 accepted it. The full explanation lives on the reserved-set KDoc in
+`profiling/AsprofArgValidator.kt` and at the head of `edl-profiling-reconcile`.
 
 ### Activation Flow
 
-1. `SetupInstance` writes `/etc/default/cassandra` with `PYROSCOPE_SERVER_ADDRESS=http://<control_ip>:4040` and `CLUSTER_NAME`.
-2. `GrafanaUpdateConfig` deploys Pyroscope server to K8s (control plane, port 4040, hostNetwork).
-3. When Cassandra starts, `cassandra.in.sh` checks for the env var and JAR, then adds `-javaagent` JVM opts. `PYROSCOPE_PROFILER_EVENT` can override the profiler event (default: `cpu`).
-4. When a stress job starts, `StressJobService` mounts the agent JAR and sets `JAVA_TOOL_OPTIONS` with all Pyroscope properties.
+1. `SetupInstance` seeds `/etc/easy-db-lab/profiling.json` on each Cassandra node with
+   `enabled: true` and `["-e", "cpu"]`, plus the Pyroscope URL and cluster name — so a fresh cluster
+   profiles CPU with no operator action. It no longer writes `/etc/default/cassandra`.
+2. `setup_instance.sh` creates `/mnt/db1/cassandra/profiles` and enables
+   `edl-profiling-reconcile.timer` (guarded on the unit existing, so it is a no-op off Cassandra
+   nodes).
+3. `GrafanaUpdateConfig` deploys Pyroscope server to K8s (control plane, port 4040, hostNetwork).
+4. The reconciler attaches within one interval and starts shipping chunks. Nothing happens at
+   Cassandra JVM startup.
+5. When a stress job starts, `StressJobService` mounts the agent JAR and sets `JAVA_TOOL_OPTIONS`
+   with all Pyroscope properties.
 
-See `spec/PYROSCOPE.md` for full architecture details and debugging steps.
+See [`docs/user-guide/profiling.md`](../../../../../../docs/user-guide/profiling.md) for the
+operator-facing guide, including the reserved-parameter set and the cpu+wall hazard.
 
 ## Sidecar Subpackage (`sidecar/`)
 

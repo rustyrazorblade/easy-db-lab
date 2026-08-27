@@ -862,7 +862,7 @@
       "targets": [
         {
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "expr": "avg by (cluster) (1 - rate(system_cpu_time_seconds_total{state=\"idle\", cluster=~\"$cluster\"}[$__rate_interval]))",
+          "expr": "1 - sum by (cluster) (rate(system_cpu_time_seconds_total{state=\"idle\", cluster=~\"$cluster\"}[$__rate_interval])) / sum by (cluster) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\"}[$__rate_interval]))",
           "legendFormat": "{{cluster}}",
           "refId": "A"
         }

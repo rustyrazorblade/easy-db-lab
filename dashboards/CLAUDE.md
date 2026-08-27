@@ -243,3 +243,89 @@ When adding new dashboards or modifying existing ones:
 3. Run `<cluster>/easy-db-lab grafana update-config` to push to the cluster
 4. Push test data if the change affects trace/metric panels
 5. Grafana hot-reloads provisioned dashboards from ConfigMaps — no Grafana restart needed for dashboard changes (datasource config changes do require a restart)
+
+### Verify from Grafana, never from the deploy message
+
+`grafana update-config` prints "All Grafana resources applied successfully!" when it applies the
+ConfigMaps. That says nothing about whether the content changed — if `build/resources/main/` is
+stale, it will redeploy the old panel and still report success.
+
+Step 2 above is not optional and nothing else substitutes for it. `ktlintFormat` does not rebuild
+resources. Confirm the build actually picked up the edit:
+
+```bash
+diff <(jq -S . dashboards/system-overview.json) <(jq -S . build/resources/main/system-overview.json) \
+  && echo "in sync"
+```
+
+Then read the query back from Grafana, and evaluate it through Grafana's own datasource proxy:
+
+```bash
+G=http://<control-ip>:3000
+curl -s "$G/api/search" | jq -r '.[] | "\(.uid)  \(.title)"'
+curl -s "$G/api/dashboards/uid/<uid>" | jq -r '.dashboard.panels[] | select(.title|test("CPU";"i")) | .targets[].expr'
+
+DS=$(curl -s "$G/api/datasources" | jq -r '.[] | select(.type=="prometheus") | .uid' | head -1)
+curl -s -G "$G/api/datasources/proxy/uid/$DS/api/v1/query" --data-urlencode 'query=<expr>'
+```
+
+Testing PromQL against VictoriaMetrics directly proves the query is right. It does not prove
+Grafana is serving that query. Only the second failure is the one a user sees.
+
+### Never edit dashboard JSON with `jq`
+
+`jq` round-trips the whole document. In this repo that produced a 1,644-line reindent of
+`cluster-comparison.json` for a one-line fix, and unescaped `µ` to `µ` and `—` to `—`
+throughout `cassandra-overview.json`.
+
+Use a literal, byte-preserving replacement (`perl -0pi -e` with `\Q...\E`), then check the diff is
+the size you expect and the file still parses:
+
+```bash
+git diff --stat dashboards/     # expect 1 changed line per file
+jq empty dashboards/<name>.json # still valid JSON
+```
+
+### Match the panel's unit before changing scale
+
+Check `fieldConfig.defaults.unit` and `max` before adding or removing a `* 100`:
+
+- `percent` → 0..100, use the `100 * (...)` form
+- `percentunit` (often `max: 1`) → 0..1, use the bare fraction with **no** `* 100`
+
+`cluster-comparison.json`'s "CPU Usage by Cluster" is `percentunit` with `max: 1`.
+
+### `system_cpu_time_seconds_total` has no per-core label
+
+The OTel hostmetrics `cpuscraper` emits **one series per host**, summed across every core. There
+is no `cpu` label, so `avg by(host_name)` averages a single series and is a no-op.
+
+This idiom is wrong here and shipped in four dashboards, rendering about -190% under load:
+
+```promql
+100 - (avg by(host_name) (rate(system_cpu_time_seconds_total{state="idle"}[1m])) * 100)   # WRONG
+```
+
+On a 4-core node the idle rate is ~4.0, giving `100 - 400 = -300%`. Use idle as a fraction of
+total across all states — core-count independent, cannot leave 0..100:
+
+```promql
+100 * (1 - sum by(host_name) (rate(system_cpu_time_seconds_total{state="idle", ...}[1m]))
+          / sum by(host_name) (rate(system_cpu_time_seconds_total{...}[1m])))
+```
+
+Always verify against a real multi-core node. This bug is invisible on a single core.
+
+### Fix the class, not the reported panel
+
+One reported negative CPU panel turned out to be four. Before concluding, grep every dashboard for
+the same shape:
+
+```bash
+grep -l '<metric>' dashboards/*.json
+jq -r '.. | objects | select(has("expr")) | .expr | select(test("<metric>"))' dashboards/*.json
+```
+
+Grafana's Home dashboard is set by `GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH` on the grafana
+Deployment (currently `system-overview.json`). A bug there is the first thing a user sees, so
+always check Home as well as the dashboard that was reported.

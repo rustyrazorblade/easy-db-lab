@@ -191,7 +191,7 @@ class DefaultEMRProvisioningService(
         val otelAgentFlag = "-javaagent:${Constants.OtelJavaAgent.INSTALL_PATH}"
         val pyroscopeFlags =
             listOf(
-                "-javaagent:${Constants.PyroscopeJavaAgent.INSTALL_PATH}",
+                "-javaagent:${Constants.PyroscopeJavaAgent.EMR_INSTALL_PATH}",
                 "-Dpyroscope.application.name=spark",
                 "-Dpyroscope.server.address=http://$controlIp:${Constants.K8s.PYROSCOPE_PORT}",
                 "-Dpyroscope.format=jfr",

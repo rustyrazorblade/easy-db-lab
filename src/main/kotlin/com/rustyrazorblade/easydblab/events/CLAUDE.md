@@ -15,7 +15,7 @@ Command/Service → eventBus.emit(Event.Domain.Type(...)) → EventBus → Event
 
 | File | Purpose |
 |------|---------|
-| `Event.kt` | Sealed interface hierarchy with ~230+ concrete event types across 28 domain interfaces |
+| `Event.kt` | Sealed interface hierarchy with ~230+ concrete event types across 29 domain interfaces |
 | `EventBus.kt` | Central dispatcher: `emit(event)` → wraps in `EventEnvelope` → dispatches to listeners |
 | `EventContext.kt` | Stack-based `ThreadLocal` for tracking current command name |
 | `EventEnvelope.kt` | Wraps `Event` + timestamp + commandName; serializable to JSON |
@@ -29,6 +29,7 @@ Command/Service → eventBus.emit(Event.Domain.Type(...)) → EventBus → Event
 Events are organized by domain as sealed sub-interfaces of `Event`:
 
 - `Event.Cassandra.*` — Database lifecycle (start, stop, restart)
+- `Event.Profiling.*` — Runtime async-profiler control on Cassandra nodes (start/stop, attach and shipping health, fetch/flamegraph)
 - `Event.K3s.*` — K3s cluster management
 - `Event.K8s.*` — Kubernetes operations
 - `Event.Infra.*` — AWS infrastructure (VPC, subnet, security group)

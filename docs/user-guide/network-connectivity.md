@@ -67,6 +67,17 @@ easy-db-lab setup-profile
 
 Enter your Tailscale OAuth credentials when prompted.
 
+#### Step 4: Connect this machine
+
+Your own machine must be on the tailnet too. A Tailscale cluster routes every connection over the tailnet and starts no SOCKS proxy, so a logged-out client has no route to the cluster at all.
+
+```bash
+tailscale up
+tailscale status
+```
+
+`easy-db-lab up` checks this before it creates any AWS resource. If the local client is logged out, or the `tailscale` command is missing, `up` stops immediately and names the cause.
+
 ### Usage
 
 Tailscale starts automatically with `easy-db-lab up`. Once connected:
@@ -94,6 +105,12 @@ easy-db-lab tailscale stop
 **"requested tags are invalid or not permitted"** - Add the tag to your ACL (Step 1).
 
 **Can't reach private IPs** - Check subnet route is approved in [Tailscale admin](https://login.tailscale.com/admin/machines), or add `autoApprovers` to your ACL.
+
+**"the local Tailscale client is not connected"** - `up` found your own machine off the tailnet. Run `tailscale up`, confirm `tailscale status` reports it connected, then run `easy-db-lab up` again.
+
+**"the 'tailscale' command was not found"** - Install Tailscale from [tailscale.com/download](https://tailscale.com/download). If you use the macOS App Store build, its CLI is not on the PATH; see the [Tailscale CLI docs](https://tailscale.com/kb/1080/cli).
+
+**"cannot reach it ... over the tailnet"** - The control node joined the tailnet, but this machine has no route to the cluster's private network. Approve the subnet route for the control node in [Tailscale admin](https://login.tailscale.com/admin/machines).
 
 **Using a custom tag:**
 ```bash

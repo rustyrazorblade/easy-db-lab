@@ -391,6 +391,234 @@ sealed interface Event {
     }
 
     // =========================================================================
+    // Event.Profiling — runtime async-profiler control on Cassandra nodes
+    // =========================================================================
+
+    @Serializable
+    sealed interface Profiling : Event {
+        /**
+         * Profiling was enabled for a node, with the arguments the operator supplied and the
+         * rotation interval the tool supplies alongside them.
+         *
+         * No process ID here on purpose: the CLI records desired state and the node's reconciler
+         * attaches within one interval, so at this moment no session exists yet to have a pid.
+         * `profile status` reports the pid once there is one.
+         */
+        @Serializable
+        @SerialName("Profiling.Started")
+        data class Started(
+            val host: String,
+            val userArgs: List<String>,
+            val loopInterval: String,
+        ) : Profiling {
+            override fun toDisplayString(): String =
+                "Profiling enabled on $host: ${userArgs.joinToString(" ")} [rotating every $loopInterval]"
+        }
+
+        /** Profiling was explicitly disabled for a node. */
+        @Serializable
+        @SerialName("Profiling.Stopped")
+        data class Stopped(
+            val host: String,
+        ) : Profiling {
+            override fun toDisplayString(): String = "Profiling stopped on $host"
+        }
+
+        /**
+         * A node reported transient upload failures — a server error or a network error. Those
+         * chunks stay on disk and are retried on a later pass.
+         *
+         * Deliberately separate from [ChunksRejected]: a rising count here means Pyroscope or the
+         * network is unwell, which is a different problem with a different fix.
+         */
+        @Serializable
+        @SerialName("Profiling.ShippingFailed")
+        data class ShippingFailed(
+            val host: String,
+            val reason: String,
+            val failures: Long,
+        ) : Profiling {
+            override fun toDisplayString(): String =
+                "Profile shipping failing on $host: $reason ($failures failure(s), chunks retained for retry)"
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * A node reported chunks Pyroscope refused as unacceptable. Those are never retried.
+         *
+         * Deliberately separate from [ShippingFailed]: a rising count here means chunks are being
+         * produced that Pyroscope cannot parse — usually truncation after an unclean shutdown.
+         */
+        @Serializable
+        @SerialName("Profiling.ChunksRejected")
+        data class ChunksRejected(
+            val host: String,
+            val rejected: Long,
+        ) : Profiling {
+            override fun toDisplayString(): String = "Pyroscope rejected $rejected chunk(s) from $host; they will not be retried"
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * A node wants to be profiling but has no session attached to its database process.
+         *
+         * This is the feature's primary failure mode — `PrivateTmp` hiding the attach socket, a
+         * `java.io.tmpdir` mismatch, `perf_event_paranoid`, or simply no database process — and it
+         * is otherwise indistinguishable from a deliberate stop, because both leave the node with
+         * nothing running. Emitting it separately is what stops an operator reading "not profiling"
+         * as "that's what I asked for".
+         */
+        @Serializable
+        @SerialName("Profiling.AttachFailed")
+        data class AttachFailed(
+            val host: String,
+            val reason: String,
+        ) : Profiling {
+            override fun toDisplayString(): String = "Profiling is enabled on $host but nothing is attached: $reason"
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * A node wants to be profiling and is waiting for its database to finish starting.
+         *
+         * async-profiler attaches with jattach, which signals SIGQUIT, and a process that has not
+         * installed a handler for it yet dies on that signal — so attaching to a database that is
+         * still starting kills it. The node's reconciler therefore waits, and this says so.
+         *
+         * Emitted rather than folded into [AttachFailed] because it is not a failure and the answer
+         * is different: nothing is wrong, and the next pass after the database accepts connections
+         * attaches. It becomes a fault only if it persists, which is what
+         * `edl_jfr_attach_deferred_total` makes visible as a rate.
+         */
+        @Serializable
+        @SerialName("Profiling.AttachDeferred")
+        data class AttachDeferred(
+            val host: String,
+        ) : Profiling {
+            override fun toDisplayString(): String =
+                "Profiling is enabled on $host and is waiting for the database to become ready to attach to"
+        }
+
+        /**
+         * A node's desired-state document could not be decoded, so the command that had to rewrite
+         * it fell back to default bounds.
+         *
+         * This is emitted rather than left silent because the fallback does exactly what reading
+         * before writing exists to prevent: it replaces the retention window and byte ceiling the
+         * operator chose with defaults, and the node's next reconcile pass then prunes to them.
+         * Without this, that substitution is invisible until the profiles are already gone.
+         */
+        @Serializable
+        @SerialName("Profiling.DesiredStateUnreadable")
+        data class DesiredStateUnreadable(
+            val host: String,
+            val retentionMinutes: Int,
+            val maxBytes: Long,
+        ) : Profiling {
+            override fun toDisplayString(): String =
+                "Could not read the profiling configuration on $host; falling back to defaults " +
+                    "(retention $retentionMinutes minutes, ceiling $maxBytes bytes). " +
+                    "Any retention or size bounds previously set on this node are lost."
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * A node's profiling report describes a pass that is too old to be the current one.
+         *
+         * The report is a snapshot the reconciler leaves behind, not a live reading. If its timer is
+         * masked or disabled, or its oneshot is being killed at `TimeoutStartSec`, the document
+         * stops being rewritten and every field in it keeps reporting the last healthy pass —
+         * `attached: yes`, a session age that grows convincingly against the current clock, and no
+         * failure anywhere. Emitted separately from [AttachFailed] because the answer is different:
+         * nothing is wrong with the profiler, the thing that manages it has stopped running.
+         */
+        @Serializable
+        @SerialName("Profiling.StateStale")
+        data class StateStale(
+            val host: String,
+            val ageSeconds: Long,
+            val expectedIntervalSeconds: Long,
+        ) : Profiling {
+            override fun toDisplayString(): String =
+                "Profiling state from $host is $ageSeconds seconds old and is rewritten every " +
+                    "$expectedIntervalSeconds seconds: the node's reconciler is not running, so the " +
+                    "report describes a pass that may be long over."
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * A node's reconciler could not read the desired-state document on its last pass.
+         *
+         * The pass still ships, prunes and reports; it declines only to attach or detach on the
+         * strength of a document it cannot read. Emitted separately from [StateStale] because the
+         * answers are opposite: here the reconciler is running perfectly and the file it reads is
+         * wrong, so telling the operator to go and check the timer sends them at the one component
+         * that is healthy.
+         */
+        @Serializable
+        @SerialName("Profiling.NodeConfigUnreadable")
+        data class NodeConfigUnreadable(
+            val host: String,
+            val reason: String,
+        ) : Profiling {
+            override fun toDisplayString(): String =
+                "The profiling configuration on $host could not be read ($reason), so the node is " +
+                    "shipping and pruning under its last known bounds but will not change what it " +
+                    "profiles. Run 'cassandra profile start' to rewrite it."
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * A node destroyed profile chunks that had never reached Pyroscope.
+         *
+         * The only pruning number that means irreversible loss rather than reclaimed disk. It is
+         * how "my profiles never showed up" stops being unanswerable after the fact: the chunks are
+         * gone, but the count of them is not, so an operator can tell a shipping outage apart from
+         * a profiler that never attached.
+         */
+        @Serializable
+        @SerialName("Profiling.ChunksLost")
+        data class ChunksLost(
+            val host: String,
+            val lost: Long,
+        ) : Profiling {
+            override fun toDisplayString(): String =
+                "$lost profile chunk(s) on $host were pruned before they ever reached Pyroscope and " +
+                    "cannot be recovered; raise --retention or --max-bytes, or fix shipping."
+
+            override fun isError(): Boolean = true
+        }
+
+        /** Raw JFR chunks were downloaded from a node into the local workspace. */
+        @Serializable
+        @SerialName("Profiling.ChunksFetched")
+        data class ChunksFetched(
+            val host: String,
+            val chunks: Int,
+            val destination: String,
+        ) : Profiling {
+            override fun toDisplayString(): String = "Fetched $chunks chunk(s) from $host into $destination"
+        }
+
+        /** A flame graph was converted on a node and downloaded into the local workspace. */
+        @Serializable
+        @SerialName("Profiling.FlamegraphCreated")
+        data class FlamegraphCreated(
+            val host: String,
+            val chunks: Int,
+            val path: String,
+        ) : Profiling {
+            override fun toDisplayString(): String = "Flame graph from $chunks chunk(s) on $host written to $path"
+        }
+    }
+
+    // =========================================================================
     // Event.K3s — K3s cluster management
     // =========================================================================
 
@@ -2307,6 +2535,38 @@ sealed interface Event {
             val host: String,
         ) : Tailscale {
             override fun toDisplayString(): String = "Tailscale connected on $host"
+        }
+
+        @Serializable
+        @SerialName("Tailscale.LocalClientNotInstalled")
+        data object LocalClientNotInstalled : Tailscale {
+            override fun toDisplayString(): String =
+                "This cluster uses Tailscale, but the 'tailscale' command was not found on this machine."
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        @SerialName("Tailscale.LocalClientDisconnected")
+        data class LocalClientDisconnected(
+            val backendState: String,
+        ) : Tailscale {
+            override fun toDisplayString(): String =
+                "This cluster uses Tailscale, but the local Tailscale client is not connected (state: $backendState)."
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        @SerialName("Tailscale.ControlNodeUnreachable")
+        data class ControlNodeUnreachable(
+            val alias: String,
+            val address: String,
+            val port: Int,
+        ) : Tailscale {
+            override fun toDisplayString(): String = "This machine cannot reach $alias at $address:$port over Tailscale."
+
+            override fun isError(): Boolean = true
         }
 
         @Serializable

@@ -2,6 +2,13 @@
 Description=Apache Cassandra
 
 [Service]
+# DO NOT add PrivateTmp=yes or RootDirectory= here, and do not set -Djava.io.tmpdir anywhere in
+# Cassandra's JVM options. Runtime profiling attaches with async-profiler's jattach, which finds
+# the HotSpot attach socket by falling back to /tmp when /proc/<pid>/root/tmp is unreadable — and
+# it is unreadable here, because setup_instance.sh setcaps every java binary, making execve a
+# secureexec that re-owns /proc/<pid> to root (OpenJDK JDK-8226919). Isolating or relocating /tmp
+# breaks that fallback and profiling silently stops attaching, long after whoever changed this
+# moved on. See packer/cassandra/bin/edl-profiling-reconcile.
 ExecStart=/usr/local/cassandra/current/bin/cassandra -f
 ExecStop=/usr/local/cassandra/current/bin/nodetool drain
 User=cassandra
@@ -11,4 +18,3 @@ Environment=CASSANDRA_HEAPDUMP_DIR=/mnt/db1/cassandra/artifacts
 
 [Install]
 WantedBy=multi-user.target
-

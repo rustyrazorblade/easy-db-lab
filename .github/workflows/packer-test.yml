@@ -29,6 +29,39 @@ jobs:
       - name: Run ref-resolution unit tests
         run: bash .github/cassandra-image/resolve-ref.test.sh
 
+  test-profiling-reconciler:
+    name: Test edl-profiling-reconcile
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      # The reconciler parses JSON with mikefarah's Go yq, which is what the node AMI carries. The
+      # python `yq` wrapper answers to the same name and takes different flags, so the version is
+      # pinned and verified rather than assumed — a wrong yq would fail every test for a reason
+      # that has nothing to do with the change under test.
+      - name: Install mikefarah yq
+        run: |
+          sudo curl -fsSL -o /usr/local/bin/yq \
+            https://github.com/mikefarah/yq/releases/download/v4.45.1/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Verify node tooling
+        run: |
+          yq --version
+          yq --version | grep -q 'mikefarah' || {
+            echo "yq on PATH is not mikefarah's Go implementation; the reconciler needs that one."
+            exit 1
+          }
+          jq --version
+
+      # The reconciler stubs asprof, cassandra-pid and curl and injects the clock, so this is a
+      # pure-bash tier: no Docker, no network, no JVM. It is wired here rather than left as a
+      # `gradle check` dependency because no workflow runs `check` — pr-checks.yml runs
+      # `test integrationTest koverXmlReport` — so the whole decision table had no CI gate at all.
+      - name: Run reconciler unit tests
+        run: bash packer/cassandra/bin/edl-profiling-reconcile.test.sh
+
   test-individual-scripts:
     name: Test Individual Scripts
     runs-on: ubuntu-latest

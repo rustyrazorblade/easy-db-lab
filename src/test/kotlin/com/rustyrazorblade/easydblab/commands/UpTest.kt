@@ -11,6 +11,7 @@ import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.network.TcpReachabilityProbe
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.VpcInfrastructure
@@ -26,6 +27,8 @@ import com.rustyrazorblade.easydblab.services.K3sClusterConfig
 import com.rustyrazorblade.easydblab.services.K3sClusterService
 import com.rustyrazorblade.easydblab.services.K3sSetupResult
 import com.rustyrazorblade.easydblab.services.K8sService
+import com.rustyrazorblade.easydblab.services.LocalTailscaleClient
+import com.rustyrazorblade.easydblab.services.LocalTailscaleState
 import com.rustyrazorblade.easydblab.services.ProvisioningResult
 import com.rustyrazorblade.easydblab.services.RegistryService
 import com.rustyrazorblade.easydblab.services.aws.AMIResolver
@@ -86,6 +89,14 @@ class UpTest : BaseKoinTest() {
     /** simple class names of every nested command routed through the fake CommandExecutor, in order */
     private val invokedCommandNames = mutableListOf<String>()
 
+    /** state the fake LocalTailscaleClient reports, and how many times `up` asked for it */
+    private var localTailscaleState: LocalTailscaleState = LocalTailscaleState.Connected
+    private var localTailscaleQueries = 0
+
+    /** answer the fake TcpReachabilityProbe gives, and every "host:port" it was asked about */
+    private var tailnetReachable = true
+    private val probedTargets = mutableListOf<String>()
+
     /** when non-null, remoteOps.executeRemotely throws this for the given host alias */
     private var sshFailureAlias: String? = null
     private var sshFailureException: Exception? = null
@@ -124,6 +135,19 @@ class UpTest : BaseKoinTest() {
                 single<RegistryService> { mock<RegistryService>() }
                 single<SocksProxyService> { mock<SocksProxyService>() }
                 single<CommandExecutor> { mock<CommandExecutor>().also { mockCommandExecutor = it } }
+
+                single<LocalTailscaleClient> {
+                    LocalTailscaleClient {
+                        localTailscaleQueries++
+                        localTailscaleState
+                    }
+                }
+                single<TcpReachabilityProbe> {
+                    TcpReachabilityProbe { host, port ->
+                        probedTargets.add("$host:$port")
+                        tailnetReachable
+                    }
+                }
 
                 factory<RemoteOperationsService> {
                     object : RemoteOperationsService {
@@ -200,6 +224,10 @@ class UpTest : BaseKoinTest() {
 
         nestedCommandExitCodes.clear()
         invokedCommandNames.clear()
+        localTailscaleState = LocalTailscaleState.Connected
+        localTailscaleQueries = 0
+        tailnetReachable = true
+        probedTargets.clear()
         sshFailureAlias = null
         sshFailureException = null
         sshCheckedAliases.clear()
@@ -630,6 +658,76 @@ class UpTest : BaseKoinTest() {
         assertThatThrownBy { newUp().execute() }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("connection refused")
+
+        verify(mockK3sClusterService, never()).setupCluster(any())
+    }
+
+    // =========================================================================
+    // Group 7: Tailscale routing pre-flight
+    //
+    // A Tailscale cluster starts no SOCKS tunnel, so an operator whose own machine is off the
+    // tailnet has no route at all. These assert on the operator-facing message, not just the
+    // exception type: the message is the whole point of failing early.
+    // =========================================================================
+
+    @Test
+    fun `up fails before any EC2 instance is launched when the local Tailscale client is logged out`() {
+        localTailscaleState = LocalTailscaleState.Disconnected("Stopped")
+
+        assertThatThrownBy { newUp().execute() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("local Tailscale client is not connected")
+            .hasMessageContaining("state: Stopped")
+            .hasMessageContaining("Run 'tailscale up' on this machine")
+
+        verify(mockClusterProvisioningService, never()).provisionAll(any(), any(), any(), any())
+        verify(mockEc2InstanceService, never()).findInstancesByClusterId(any())
+    }
+
+    @Test
+    fun `up names the missing binary, not a logged-out client, when tailscale is not installed`() {
+        localTailscaleState = LocalTailscaleState.NotInstalled
+
+        assertThatThrownBy { newUp().execute() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("the 'tailscale' command was not found on this machine")
+            .hasMessageContaining("https://tailscale.com/download")
+            // The remedy for an absent binary is to install it, not to run `tailscale up`.
+            .hasMessageNotContaining("local Tailscale client is not connected")
+
+        verify(mockClusterProvisioningService, never()).provisionAll(any(), any(), any(), any())
+    }
+
+    @Test
+    fun `up skips both Tailscale checks entirely when the cluster does not use Tailscale`() {
+        whenever(mockClusterStateManager.load()).thenReturn(happyState().copy(tailscaleActive = false))
+        // Both checks would fail outright if they ran; a non-Tailscale cluster must not consult
+        // them at all, and must not pay for a local process invocation or a socket connect.
+        localTailscaleState = LocalTailscaleState.NotInstalled
+        tailnetReachable = false
+
+        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
+
+        assertThat(localTailscaleQueries).isZero()
+        assertThat(probedTargets).isEmpty()
+    }
+
+    @Test
+    fun `up probes the control node's private IP over ssh before starting K3s`() {
+        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
+
+        // sshd, not the Kubernetes API: K3s has not started yet at this point in `up`.
+        assertThat(probedTargets).containsExactly("10.0.0.1:22")
+    }
+
+    @Test
+    fun `up aborts before K3s when this machine cannot reach the control node over the tailnet`() {
+        tailnetReachable = false
+
+        assertThatThrownBy { newUp().execute() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("cannot reach it at 10.0.0.1:22 over the tailnet")
+            .hasMessageContaining("approve the subnet route 10.0.0.0/16")
 
         verify(mockK3sClusterService, never()).setupCluster(any())
     }

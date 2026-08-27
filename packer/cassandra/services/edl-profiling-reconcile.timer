@@ -1,0 +1,15 @@
+[Unit]
+Description=Periodically reconcile easy-db-lab profiling state
+
+[Timer]
+# Attach-based profiling dies with the JVM, so the reconcile interval is also the worst-case
+# window with no profiling after a Cassandra restart or a mode switch.
+OnBootSec=60s
+OnUnitActiveSec=60s
+# No Persistent= here: systemd honours it only for OnCalendar= timers, so on a monotonic timer it
+# was a line that read like catch-up behaviour while doing nothing at all. OnBootSec covers the case
+# it appeared to address — after a reboot the first pass runs 60s in, whatever happened before.
+Unit=edl-profiling-reconcile.service
+
+[Install]
+WantedBy=timers.target

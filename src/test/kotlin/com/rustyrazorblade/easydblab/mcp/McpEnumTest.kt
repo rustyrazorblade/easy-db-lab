@@ -2,7 +2,6 @@ package com.rustyrazorblade.easydblab.mcp
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
-import com.rustyrazorblade.easydblab.commands.PicoCommand
 import com.rustyrazorblade.easydblab.events.Event
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -64,16 +63,7 @@ class McpEnumTest : BaseKoinTest() {
                 put("mode", "production")
             }
 
-        // Map arguments to PicoCLI command using reflection
-        val mapArgumentsMethod =
-            McpToolRegistry::class.java
-                .getDeclaredMethod(
-                    "mapArgumentsToPicoCommand",
-                    PicoCommand::class.java,
-                    JsonObject::class.java,
-                ).apply { isAccessible = true }
-
-        mapArgumentsMethod.invoke(registry, testCommand, arguments)
+        registry.mapArgumentsToPicoCommand(testCommand, arguments)
 
         // Verify enum fields were set correctly
         assertThat(testCommand.arch).isEqualTo(TestArch.ARM64)

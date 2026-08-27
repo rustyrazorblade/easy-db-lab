@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonArrayBuilder
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -20,6 +21,7 @@ import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import picocli.CommandLine.Mixin
 import picocli.CommandLine.Option
+import picocli.CommandLine.Parameters
 import java.lang.reflect.Field
 import kotlin.reflect.KClass
 import kotlin.reflect.KProperty1
@@ -50,6 +52,11 @@ open class McpToolRegistry : KoinComponent {
                 com.rustyrazorblade.easydblab.commands.cassandra.UseCassandra::class,
                 com.rustyrazorblade.easydblab.commands.cassandra.DownloadConfig::class,
                 com.rustyrazorblade.easydblab.commands.cassandra.UpdateConfig::class,
+                com.rustyrazorblade.easydblab.commands.cassandra.profiler.ProfilingStart::class,
+                com.rustyrazorblade.easydblab.commands.cassandra.profiler.ProfilingStop::class,
+                com.rustyrazorblade.easydblab.commands.cassandra.profiler.ProfilingStatus::class,
+                com.rustyrazorblade.easydblab.commands.cassandra.profiler.ProfilingFetch::class,
+                com.rustyrazorblade.easydblab.commands.cassandra.profiler.ProfilingFlamegraph::class,
                 com.rustyrazorblade.easydblab.commands.cassandra.stress.StressStart::class,
                 com.rustyrazorblade.easydblab.commands.cassandra.stress.StressStop::class,
                 com.rustyrazorblade.easydblab.commands.cassandra.stress.StressStatus::class,
@@ -203,7 +210,7 @@ open class McpToolRegistry : KoinComponent {
         return commandAnnotation?.description?.firstOrNull() ?: "No description available"
     }
 
-    /** Generate JSON schema from PicoCLI @Option and @Mixin annotations. */
+    /** Generate JSON schema from PicoCLI @Option, @Mixin, and @Parameters annotations. */
     fun generatePicoSchema(command: PicoCommand): JsonObject {
         val properties = mutableMapOf<String, JsonElement>()
         val requiredFields = mutableListOf<String>()
@@ -225,6 +232,39 @@ open class McpToolRegistry : KoinComponent {
 
         processOptionAnnotation(javaField, property.name, command, properties, requiredFields)
         processMixinAnnotation(javaField, command, properties, requiredFields)
+        processParametersAnnotation(javaField, property.name, properties)
+    }
+
+    // ==================== PicoCLI @Parameters Processing ====================
+
+    /**
+     * Exposes a trailing passthrough argument list as a string array.
+     *
+     * Commands like `cassandra profile start` exist to forward another tool's arguments verbatim,
+     * and those arrive as `@Parameters` rather than `@Option`. Without this, such a command is
+     * registered as an MCP tool whose entire purpose is unreachable.
+     *
+     * Only list-typed parameters are exposed: a scalar positional would need a name for the schema
+     * and does not have one, and none of the registered tools has one.
+     */
+    private fun processParametersAnnotation(
+        javaField: Field,
+        fieldName: String,
+        properties: MutableMap<String, JsonElement>,
+    ) {
+        val parametersAnnotation = javaField.getAnnotation(Parameters::class.java) ?: return
+        if (!List::class.java.isAssignableFrom(javaField.type)) return
+
+        properties[fieldName] =
+            buildJsonObject {
+                put("type", "array")
+                put("items", buildJsonObject { put("type", "string") })
+                put(
+                    "description",
+                    parametersAnnotation.description.firstOrNull()?.takeIf { it.isNotEmpty() }
+                        ?: "Passthrough arguments: $fieldName",
+                )
+            }
     }
 
     // ==================== PicoCLI @Option Processing ====================
@@ -392,7 +432,7 @@ open class McpToolRegistry : KoinComponent {
 
     // ==================== PicoCLI Argument Mapping ====================
 
-    private fun mapArgumentsToPicoCommand(
+    internal fun mapArgumentsToPicoCommand(
         command: PicoCommand,
         arguments: JsonObject,
     ) {
@@ -400,6 +440,26 @@ open class McpToolRegistry : KoinComponent {
         command::class.memberProperties.forEach { property ->
             mapPicoOptionArgument(property, command, arguments)
             mapPicoMixinArguments(property, command, arguments)
+            mapPicoParametersArgument(property, command, arguments)
+        }
+    }
+
+    /** Assigns a JSON string array to a trailing `@Parameters` passthrough list. */
+    private fun mapPicoParametersArgument(
+        property: KProperty1<out PicoCommand, *>,
+        command: PicoCommand,
+        arguments: JsonObject,
+    ) {
+        val javaField = property.javaField ?: return
+        javaField.getAnnotation(Parameters::class.java) ?: return
+        if (!List::class.java.isAssignableFrom(javaField.type)) return
+
+        val values = arguments[property.name] as? JsonArray ?: return
+        try {
+            javaField.isAccessible = true
+            javaField.set(command, values.map { it.jsonPrimitive.content })
+        } catch (e: Exception) {
+            log.warn { "Unable to set passthrough parameters '${property.name}': ${e.message}" }
         }
     }
 

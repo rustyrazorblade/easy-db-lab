@@ -297,6 +297,97 @@ easy-db-lab cassandra list
 
 ---
 
+## Cassandra Profiling Commands
+
+Runtime async-profiler control under `cassandra profile`. Every command applies to all Cassandra
+nodes by default; `--hosts` narrows it to a subset. A cluster profiles CPU automatically from
+cluster-up, so these are for changing what is profiled and for pulling profiles out.
+
+See [Profiling](../user-guide/profiling.md) for the full guide.
+
+### cassandra profile start
+
+Enable profiling with a given set of async-profiler arguments. Arguments after `--` are passed to
+`asprof` untouched.
+
+```bash
+easy-db-lab cassandra profile start -- -e cpu
+easy-db-lab cassandra profile start --loop 30s -- -e wall -i 10ms
+easy-db-lab cassandra profile start --hosts db0,db1 -- -e cpu --alloc 512k
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--loop` | `1m` | JFR rotation interval |
+| `--retention` | `60` | Minutes of profile data to keep on each node |
+| `--max-bytes` | `2147483648` | Byte ceiling for each node's profile directory |
+| `--hosts` | all | Comma-separated host aliases |
+
+easy-db-lab supplies async-profiler's output file, output format, rotation, and session duration, so
+`-f`/`--file`, `-o`/`--output`, bare format words, `--loop`, `-d`/`--duration` and `--timeout` are
+rejected at the CLI before any node is contacted. Use `--loop` above to set rotation.
+
+```admonish warning
+Never combine a CPU event with wall-clock sampling in one recording. Switch modes with `stop`/`start`
+instead — see [the cpu+wall hazard](../user-guide/profiling.md#the-cpuwall-hazard).
+```
+
+### cassandra profile stop
+
+Disable profiling. Records an explicit disabled state; the running session is stopped cleanly so its
+in-flight chunk is finalized and still ships.
+
+```bash
+easy-db-lab cassandra profile stop
+easy-db-lab cassandra profile stop --hosts db0
+```
+
+### cassandra profile status
+
+Report per node: enabled state, the process being profiled, session age, your arguments verbatim, the
+full command line as actually invoked, chunks pending/shipped/rejected, bytes on disk, and the last
+shipping error.
+
+```bash
+easy-db-lab cassandra profile status
+```
+
+### cassandra profile fetch
+
+Download completed JFR chunks into `./profiles/<host>/`. The chunk currently being written is never
+offered — it has no constant pool yet and no tool can read it.
+
+```bash
+easy-db-lab cassandra profile fetch
+easy-db-lab cassandra profile fetch --last 20 --hosts db0
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--last` | `5` | How many of the most recent completed chunks to download |
+| `--hosts` | all | Comma-separated host aliases |
+
+### cassandra profile flamegraph
+
+Convert recent chunks into a flame graph on the node and download the result. `jfrconv` arguments
+after `--` pass through untouched; its input and output are reserved.
+
+```bash
+easy-db-lab cassandra profile flamegraph --last 10
+easy-db-lab cassandra profile flamegraph --last 20 -- --threads
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--last` | `5` | How many of the most recent completed chunks to convert |
+| `--format` | `html` | Output format handed to `jfrconv` |
+| `--hosts` | all | Comma-separated host aliases |
+
+`--threads` is the only way to get Cassandra thread-pool attribution: Pyroscope's ingest discards
+thread identity.
+
+---
+
 ## Cassandra Stress Commands
 
 Stress testing commands under `cassandra stress`.

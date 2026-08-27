@@ -336,6 +336,8 @@ tasks.named<Test>("test") {
 // `./gradlew check` must run BOTH tiers; `./gradlew test` stays UNIT-ONLY (fast, no Docker).
 tasks.named("check") {
     dependsOn(testing.suites.named("integrationTest"))
+    // Pure-bash tiers: no Docker, no network, seconds to run.
+    dependsOn("testProfilingReconcile")
 }
 
 // Packer testing tasks
@@ -377,6 +379,16 @@ tasks.register<Exec>("testCassandraResolveRef") {
     description = "Unit-test the build-cassandra-ref ref-resolution logic"
     workingDir = file(".")
     commandLine = listOf("bash", ".github/cassandra-image/resolve-ref.test.sh")
+}
+
+// Unit-test the node-resident profiling reconciler (decision table, chunk shipping, retention).
+// `asprof`, `cassandra-pid` and `curl` are stubbed and the clock is injected, so there is no
+// Docker, no network, and no real JVM.
+tasks.register<Exec>("testProfilingReconcile") {
+    group = "Verification"
+    description = "Unit-test the edl-profiling-reconcile node script"
+    workingDir = file(".")
+    commandLine = listOf("bash", "packer/cassandra/bin/edl-profiling-reconcile.test.sh")
 }
 
 tasks.register<Exec>("testPackerScript") {

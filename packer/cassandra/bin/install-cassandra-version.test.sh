@@ -181,6 +181,92 @@ assert_fails_with "a missing cassandra.in.sh snippet is reported" \
 assert_no_reach_out "a missing snippet fails before downloading anything"
 mv "${SANDBOX}/held" "$CASSANDRA_IN_SH_SNIPPET"
 
+# --- netty-codec-http is added to the releases that need it ------------------
+# The MCAC metrics agent's Prometheus endpoint is a Netty HTTP server and netty-codec-http is not
+# bundled in the agent jar. Cassandra 4.x carried the classes inside its fat netty-all; 5.0 and
+# later do not, so without this step the endpoint dies on NoClassDefFoundError HttpServerCodec and
+# the node publishes no metrics.
+#
+# Sourcing brings in the functions only (see INSTALL_CASSANDRA_VERSION_SOURCE_ONLY). It also
+# brings the script's `set -euo pipefail`, which this harness does not want.
+INSTALL_CASSANDRA_VERSION_SOURCE_ONLY=1
+export INSTALL_CASSANDRA_VERSION_SOURCE_ONLY
+# shellcheck source=/dev/null
+source "$SCRIPT"
+set +eu
+
+# Stand in for the S3-cached download: record what was asked for and produce a file.
+FETCH_LOG="${SANDBOX}/fetches.log"
+cached_fetch() {
+  echo "$1 $2 $3" >>"$FETCH_LOG"
+  echo "stub jar" >"$3"
+}
+
+make_lib() {
+  local dir="${SANDBOX}/lib-$1"
+  rm -rf "$dir"
+  mkdir -p "$dir"
+  shift
+  local jar
+  for jar in "$@"; do
+    echo "stub" >"${dir}/${jar}"
+  done
+  echo "$dir"
+}
+
+# 5.0+ layout: granular netty modules, no codec-http.
+: >"$FETCH_LOG"
+LIB="$(make_lib granular netty-common-4.1.130.Final.jar netty-transport-4.1.130.Final.jar netty-all-4.1.130.Final.jar)"
+if ensure_netty_codec_http "$LIB" >/dev/null 2>&1; then
+  pass "a granular-netty release is handled"
+else
+  fail "a granular-netty release should succeed"
+fi
+
+if [[ -f "${LIB}/netty-codec-http-4.1.130.Final.jar" ]]; then
+  pass "netty-codec-http lands in the release's lib directory"
+else
+  fail "expected netty-codec-http-4.1.130.Final.jar in ${LIB}, got: $(ls "$LIB")"
+fi
+
+# The version must come from the release's own netty-common, not a pinned constant, or a Cassandra
+# build that moves to a new Netty gets a mismatched codec-http.
+if grep -q "io/netty/netty-codec-http/4.1.130.Final/netty-codec-http-4.1.130.Final.jar" "$FETCH_LOG"; then
+  pass "the codec-http version is taken from the release's netty-common"
+else
+  fail "expected a 4.1.130.Final codec-http download, got: $(cat "$FETCH_LOG")"
+fi
+
+# A different Netty must produce a different download, not the one above.
+: >"$FETCH_LOG"
+LIB="$(make_lib newer netty-common-4.2.7.Final.jar)"
+ensure_netty_codec_http "$LIB" >/dev/null 2>&1
+if [[ -f "${LIB}/netty-codec-http-4.2.7.Final.jar" ]]; then
+  pass "a release on a different Netty gets the matching codec-http"
+else
+  fail "expected netty-codec-http-4.2.7.Final.jar in ${LIB}, got: $(ls "$LIB")"
+fi
+
+# 4.0/4.1 layout: one fat netty-all that already contains the codec-http classes.
+: >"$FETCH_LOG"
+LIB="$(make_lib fat netty-all-4.1.58.Final.jar)"
+ensure_netty_codec_http "$LIB" >/dev/null 2>&1
+if [[ -s "$FETCH_LOG" ]]; then
+  fail "a fat netty-all release must not download codec-http, but did: $(cat "$FETCH_LOG")"
+else
+  pass "a fat netty-all release downloads nothing"
+fi
+
+# Already present (a re-run, or a distribution that ships it): leave it alone.
+: >"$FETCH_LOG"
+LIB="$(make_lib present netty-common-4.1.130.Final.jar netty-codec-http-4.1.130.Final.jar)"
+ensure_netty_codec_http "$LIB" >/dev/null 2>&1
+if [[ -s "$FETCH_LOG" ]]; then
+  fail "an existing codec-http must not be re-downloaded, but was: $(cat "$FETCH_LOG")"
+else
+  pass "an existing codec-http is left alone"
+fi
+
 echo
 echo "${tests_run} tests, ${tests_failed} failed"
 [[ "$tests_failed" -eq 0 ]]

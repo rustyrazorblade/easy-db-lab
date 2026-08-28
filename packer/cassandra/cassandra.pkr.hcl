@@ -197,6 +197,12 @@ build {
     destination = "/tmp/cassandra.in.sh"
   }
 
+  # Sourced by cassandra.in.sh on every Cassandra start to pick the AxonOps and MCAC agents.
+  provisioner "file" {
+    source = "lib/edl-cassandra-agents.sh"
+    destination = "/tmp/edl-cassandra-agents.sh"
+  }
+
   provisioner "shell" {
     environment_vars = [
       # we need this to be set because install_cassandra checks for it and exits if it's not there

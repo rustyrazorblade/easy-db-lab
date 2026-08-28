@@ -36,36 +36,38 @@ BRANCH=""
 JAVA_VERSION=""
 ANT_FLAGS=""
 
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --url) URL="$2"; shift 2 ;;
-        --branch) BRANCH="$2"; shift 2 ;;
-        --java) JAVA_VERSION="$2"; shift 2 ;;
-        --ant-flags) ANT_FLAGS="$2"; shift 2 ;;
-        -h|--help) usage; exit 0 ;;
-        --*) echo "ERROR: unknown option $1" >&2; usage >&2; exit 1 ;;
-        *)
-            if [ -z "$VERSION" ]; then
-                VERSION="$1"; shift
-            else
-                echo "ERROR: unexpected argument $1" >&2; usage >&2; exit 1
-            fi
-            ;;
-    esac
-done
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --url) URL="$2"; shift 2 ;;
+            --branch) BRANCH="$2"; shift 2 ;;
+            --java) JAVA_VERSION="$2"; shift 2 ;;
+            --ant-flags) ANT_FLAGS="$2"; shift 2 ;;
+            -h|--help) usage; exit 0 ;;
+            --*) echo "ERROR: unknown option $1" >&2; usage >&2; exit 1 ;;
+            *)
+                if [ -z "$VERSION" ]; then
+                    VERSION="$1"; shift
+                else
+                    echo "ERROR: unexpected argument $1" >&2; usage >&2; exit 1
+                fi
+                ;;
+        esac
+    done
 
-if [ -z "$VERSION" ]; then
-    echo "ERROR: <version> is required" >&2
-    usage >&2
-    exit 1
-fi
+    if [ -z "$VERSION" ]; then
+        echo "ERROR: <version> is required" >&2
+        usage >&2
+        exit 1
+    fi
 
-# A tarball is unpacked as-is; there is nothing to check a branch out of. Silently ignoring
-# --branch here would install something other than what was asked for.
-if [[ -n "$BRANCH" && "$URL" == *.tar.gz ]]; then
-    echo "ERROR: --branch $BRANCH cannot be used with a tarball --url ($URL); pass a git repository URL" >&2
-    exit 1
-fi
+    # A tarball is unpacked as-is; there is nothing to check a branch out of. Silently ignoring
+    # --branch here would install something other than what was asked for.
+    if [[ -n "$BRANCH" && "$URL" == *.tar.gz ]]; then
+        echo "ERROR: --branch $BRANCH cannot be used with a tarball --url ($URL); pass a git repository URL" >&2
+        exit 1
+    fi
+}
 
 # Written into every installed version's bin/cassandra.in.sh (Pyroscope, MAAC, GC logging, log
 # dirs). Installed to this durable path by install_cassandra.sh at bake time so a runtime install
@@ -89,6 +91,51 @@ if [ -f /usr/local/lib/edl-cache.sh ]; then
 else
     cached_fetch() { echo "no S3 cache; downloading $1"; curl -fsSL --retry 3 "$1" -o "$3"; }
 fi
+
+## Puts netty-codec-http in an installed version's lib directory when it is missing.
+##
+## The MCAC metrics agent serves its Prometheus endpoint from a Netty HTTP server, but
+## netty-codec-http is `provided` in the agent build and is not bundled in the agent jar - the
+## upstream k8ssandra images add it to Cassandra's lib for exactly this reason. Cassandra 4.x got
+## away without it because its fat netty-all-4.1.58 contained the codec-http classes. From 5.0 the
+## distribution ships granular netty modules plus an empty netty-all aggregator, so the endpoint
+## died on NoClassDefFoundError io/netty/handler/codec/http/HttpServerCodec and the node published
+## no metrics at all, quietly, on every release from 5.0 onwards.
+##
+## The version is taken from the release's own netty-common jar, so a Cassandra build that moves to
+## a new Netty always gets the matching codec-http rather than a pinned one.
+ensure_netty_codec_http() {
+  local lib_dir="$1"
+  local netty_common netty_version jar url
+
+  if compgen -G "${lib_dir}/netty-codec-http-*.jar" >/dev/null; then
+    return 0
+  fi
+
+  # No netty-common means the fat netty-all layout (4.0/4.1), which already carries codec-http.
+  netty_common=$(find "$lib_dir" -maxdepth 1 -name 'netty-common-*.jar' | head -n 1)
+  if [ -z "$netty_common" ]; then
+    return 0
+  fi
+
+  netty_version=$(basename "$netty_common" | sed -E 's/^netty-common-(.+)\.jar$/\1/')
+  if [ -z "$netty_version" ]; then
+    echo "ERROR: could not read a Netty version from $netty_common" >&2
+    return 1
+  fi
+
+  jar="netty-codec-http-${netty_version}.jar"
+  url="https://repo1.maven.org/maven2/io/netty/netty-codec-http/${netty_version}/${jar}"
+
+  echo "Adding ${jar} for the MCAC metrics endpoint"
+  cached_fetch "$url" "netty/${netty_version}/${jar}" "/tmp/${jar}" || {
+    echo "ERROR: Failed to download ${url}; the MCAC metrics endpoint will not start" >&2
+    return 1
+  }
+
+  sudo cp "/tmp/${jar}" "${lib_dir}/${jar}"
+  rm -f "/tmp/${jar}"
+}
 
 ## Downloads the latest patch release of a cassandra version
 ## This saves us from having to update cassandra_versions.yaml
@@ -346,6 +393,7 @@ install_cassandra_version() {
       # create a pristine backup of the original conf
       sudo cp conf/cassandra.yaml conf/cassandra.orig.yaml
       cat "$CASSANDRA_IN_SH_SNIPPET" >> bin/cassandra.in.sh
+      ensure_netty_codec_http "$CASSANDRA_INSTALL_DIR/$version/lib"
   ) || {
       # Leave nothing behind: the directory's existence is what marks a version installed, so a
       # half-configured one would make every retry a no-op.
@@ -366,4 +414,8 @@ install_cassandra_version() {
   echo "✓ Successfully installed and configured version $version"
 }
 
-install_cassandra_version "$VERSION"
+# Sourced by the unit tests for the functions above; then nothing here runs.
+if [ -z "${INSTALL_CASSANDRA_VERSION_SOURCE_ONLY:-}" ]; then
+    parse_args "$@"
+    install_cassandra_version "$VERSION"
+fi

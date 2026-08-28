@@ -26,7 +26,7 @@ This page documents the ports used by easy-db-lab and the services it provisions
 
 | Port | Service |
 |------|---------|
-| 9000 | MAAC metrics agent (Prometheus) — Cassandra 4.0, 4.1, 5.0 only |
+| 9000 | MAAC metrics agent (Prometheus) — Cassandra 4.0, 4.1, 5.0, 6.0, 7.0/trunk |
 
 ## Observability Ports (All Nodes — DaemonSets)
 

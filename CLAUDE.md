@@ -308,6 +308,13 @@ Scripts in `packer/cassandra/bin/` are **not bake-time-only** — the AMI puts t
 `cassandra use`). Their flags and output are a contract with Kotlin callers; see
 [`commands/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/commands/CLAUDE.md).
 
+`packer/cassandra/lib/edl-cassandra-agents.sh` (installed to `/usr/local/lib/`) picks the AxonOps
+and MCAC metrics agents from the release's own jar name. It is sourced by `cassandra.in.sh`, which
+Cassandra's `bin/cassandra` runs under **`/bin/sh` (dash), not bash** — so it must stay POSIX sh.
+A bashism there does not degrade to "no metrics"; dash fails to parse the file and Cassandra will
+not start. `edl-cassandra-agents.test.sh` exercises the functions through a real `/bin/sh` for
+exactly this reason.
+
 For more details, see [packer/README.md](packer/README.md) and [packer/TESTING.md](packer/TESTING.md).
 
 ## Documentation & Specifications

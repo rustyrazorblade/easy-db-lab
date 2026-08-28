@@ -94,6 +94,10 @@ lsblk
 # which does not survive a reboot - install it durably so a runtime `cassandra install` finds it.
 sudo install -D -m 0644 /tmp/cassandra.in.sh /usr/local/share/easy-db-lab/cassandra.in.sh
 
+# The agent selection helpers that snippet sources on every Cassandra start. Same reason it cannot
+# live in /tmp: a runtime `cassandra install` has to find it long after the bake.
+sudo install -D -m 0644 /tmp/edl-cassandra-agents.sh /usr/local/lib/edl-cassandra-agents.sh
+
 VERSIONS=$(yq '.[].version' "$YAML")
 echo "Installing versions: $VERSIONS"
 

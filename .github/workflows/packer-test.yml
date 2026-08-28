@@ -29,6 +29,31 @@ jobs:
       - name: Run ref-resolution unit tests
         run: bash .github/cassandra-image/resolve-ref.test.sh
 
+  test-cassandra-install-scripts:
+    name: Test Cassandra install/use script logic
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      # Not `snap install yq`: the snap is strictly confined and gets a private /tmp, so it
+      # cannot read the mktemp -d fixtures these tests build. Pinned to the version the AMI
+      # bakes (packer/base/install/install_yq.sh) so CI exercises the same yq the nodes run.
+      - name: Install yq
+        run: |
+          curl -fsSL --retry 3 \
+            https://github.com/mikefarah/yq/releases/download/v4.41.1/yq_linux_amd64 -o /tmp/yq
+          sudo install -m 0755 /tmp/yq /usr/local/bin/yq
+
+      - name: Test install-cassandra-version
+        run: bash packer/cassandra/bin/install-cassandra-version.test.sh
+
+      - name: Test the bake-time install loop
+        run: bash packer/cassandra/install/install_cassandra.test.sh
+
+      - name: Test use-cassandra
+        run: bash packer/cassandra/bin/use-cassandra.test.sh
+
   test-profiling-reconciler:
     name: Test edl-profiling-reconcile
     runs-on: ubuntu-latest

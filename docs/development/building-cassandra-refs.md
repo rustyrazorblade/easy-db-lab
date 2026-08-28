@@ -111,8 +111,16 @@ Pin the release's tarball URL in `packer/cassandra/cassandra_versions.yaml`:
   python: "3.11.9"
 ```
 
-`install_cassandra.sh` downloads the URL and expects it to unpack into a single
-top-level `*cassandra*` directory, which the `ant artifacts` tarball satisfies.
+`install-cassandra-version` downloads the URL and expects it to unpack into a
+single top-level `*cassandra*` directory, which the `ant artifacts` tarball
+satisfies. The same script runs at AMI bake time and at runtime, so you can skip
+the rebuild entirely and install the tarball onto a running cluster:
+
+```bash
+easy-db-lab cassandra install my-branch \
+  --url https://github.com/<owner>/<repo>/releases/download/.../apache-cassandra-<version>-<short-sha>-bin.tar.gz \
+  --java 17
+```
 
 ## Image assembly
 

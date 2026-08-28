@@ -79,6 +79,25 @@ RetryUtil.withVpcTeardownRetry("delete-sg") { ec2Client.deleteSecurityGroup(requ
 - `RemoteOperationsService` — high-level SSH ops (execute, upload, download)
 - Registered in `SSHModule.kt`: provider as **singleton**, remote ops as **factory**
 
+### Credential Redaction Is A Boundary, Not A Call-Site Convention
+
+Remote commands legitimately carry a URL with an embedded credential — a git clone of a private
+fork is the common case — and the remote side echoes the command straight back on failure.
+`ssh/SSHClient` therefore redacts at the single point every remote command passes through, covering
+all four sinks at once: the debug log, the emitted `Event.Ssh.CommandOutput`, the returned
+`Response`, and the thrown `RemoteCommandFailedException`. The helper is
+`ssh/Redaction.kt`'s `redactUrlCredentials`.
+
+Rules that follow from this:
+
+- **Do not redact per call site.** A convention only has to be forgotten once to leak. If a new
+  sink appears (a new exception type, a new event), redact it inside `SSHClient` too.
+- **Do not lower `org.apache.sshd` below `INFO`** in `easydblab-logback.xml`. MINA logs every
+  remote command verbatim at DEBUG, one layer *below* this boundary, straight into `debug.log` and
+  its 30 days of archives. `LogbackConfigurationTest` locks this in.
+- `executeRemotely(secret = true)` is stronger still: neither the command nor any of its output is
+  repeated anywhere, because a failing secret command routinely echoes its own argument back.
+
 ## Docker Provider
 
 - `DockerClientProvider` — lazy-initialized Docker client (expensive to create)

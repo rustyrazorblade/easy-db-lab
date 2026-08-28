@@ -1,21 +1,36 @@
 #!/bin/bash
 
-CASSANDRA_VERSIONS="/etc/cassandra_versions.yaml"
+# Node paths. Each defaults to where it lives on a real node; they are overridable only so
+# use-cassandra.test.sh can exercise this script in a sandbox instead of against /usr/local.
+CASSANDRA_VERSIONS="${CASSANDRA_VERSIONS:-/etc/cassandra_versions.yaml}"
+CASSANDRA_INSTALL_DIR="${CASSANDRA_INSTALL_DIR:-/usr/local/cassandra}"
+CASSANDRA_CONF_LINK="${CASSANDRA_CONF_LINK:-/etc/cassandra}"
+PYTHON_BIN_DIR="${PYTHON_BIN_DIR:-/usr/bin}"
+
+# Fail before the symlink swap rather than leaving the `current` symlink dangling, which
+# surfaces later as a confusing startup failure instead of a missing version.
+if [ ! -d "$CASSANDRA_INSTALL_DIR/$1" ]; then
+  echo "Cassandra version $1 is not installed on this node ($CASSANDRA_INSTALL_DIR/$1 does not exist)."
+  echo "Installed versions:"
+  ls "$CASSANDRA_INSTALL_DIR"
+  echo "Run 'easy-db-lab cassandra install $1' to install it first."
+  exit 1
+fi
 
 # set cassandra version to $1
-sudo ln -vfns /usr/local/cassandra/$1 /usr/local/cassandra/current
-sudo ln -vfns /usr/local/cassandra/$1/conf /etc/cassandra
+sudo ln -vfns "$CASSANDRA_INSTALL_DIR/$1" "$CASSANDRA_INSTALL_DIR/current"
+sudo ln -vfns "$CASSANDRA_INSTALL_DIR/$1/conf" "$CASSANDRA_CONF_LINK"
 
 # hacky, not really what I want long term but whatever.
-sudo chown -R cassandra:cassandra /usr/local/cassandra
+sudo chown -R cassandra:cassandra "$CASSANDRA_INSTALL_DIR"
 
 # set the java version
 export VERSION=$1
 
-export JAVA_VERSION=$(yq e '.[] | select(.version == env(VERSION)).java' $CASSANDRA_VERSIONS)
+export JAVA_VERSION=$(yq e '.[] | select(.version == env(VERSION)).java' "$CASSANDRA_VERSIONS")
 echo "Using java version from cassandra_versions.yaml: $JAVA_VERSION"
 
-export PY_VERSION=$(yq e '.[] | select(.version == env(VERSION)).python' $CASSANDRA_VERSIONS)
+export PY_VERSION=$(yq e '.[] | select(.version == env(VERSION)).python' "$CASSANDRA_VERSIONS")
 
 if [ -z "$JAVA_VERSION" ]; then
   echo "No java version found for $VERSION"
@@ -58,7 +73,7 @@ fi
 # set python version using update-alternatives
 # Extract major.minor version from full version (e.g., "3.10.6" -> "3.10", "2.7.18" -> "2.7")
 PY_MAJOR_MINOR=$(echo "$PY_VERSION" | cut -d. -f1,2)
-PY_ALTERNATIVE="/usr/bin/python${PY_MAJOR_MINOR}"
+PY_ALTERNATIVE="${PYTHON_BIN_DIR}/python${PY_MAJOR_MINOR}"
 
 # Validate that the requested Python version is installed
 if [ ! -f "$PY_ALTERNATIVE" ]; then

@@ -55,17 +55,28 @@ This command:
 2. Downloads current configuration files locally
 3. Applies any existing `cassandra.patch.yaml`
 
+It fails if the version is not installed on a targeted node rather than leaving
+the node pointed at something that isn't there. Install it first — see
+[Custom Builds](#custom-builds).
+
 ### Specify Java Version
 
 ```bash
 easy-db-lab cassandra use 5.0 --java 11
 ```
 
+This selects the JDK the already-installed build runs under. It does not
+reinstall or rebuild anything.
+
 ### List Available Versions
 
 ```bash
 easy-db-lab ls
 ```
+
+Versions installed on the node are listed first. A version declared with
+`lazy: true` that has not been installed is listed too, marked
+`(declared, not installed)`.
 
 ## Configuration
 
@@ -182,8 +193,98 @@ Configuration is located at `/etc/cassandra-sidecar/cassandra-sidecar.yaml` on e
 ## Custom Builds
 
 To run a custom Cassandra build (your own fork, a feature branch, or a prebuilt
-tarball), add a version entry and rebuild the AMI. easy-db-lab bakes every listed
-version into the image — there is no separate build-from-path command.
+tarball), you can either install it onto a cluster that is already running, or
+bake it into the AMI so every future cluster has it.
+
+### Install onto a running cluster
+
+```bash
+easy-db-lab cassandra install <version>
+easy-db-lab cassandra use <version>
+```
+
+This downloads (or clones and builds) the version on every Cassandra node and
+records it in each node's version list, so `cassandra use` works afterward. It
+never rebuilds the AMI, so nothing is preserved across a `down`/`up` cycle —
+install it again on the new cluster.
+
+Where the install parameters come from:
+
+- **A declared entry** (the default): whatever you declared in your profile's
+  extras directory, described below. Nothing else to pass.
+- **CLI options**, for a genuinely one-off test with no file to edit:
+
+  ```bash
+  easy-db-lab cassandra install my-build \
+    --url https://example.com/apache-cassandra-my-build-bin.tar.gz \
+    --java 11
+  ```
+
+  Or from a branch, built with ant on each node:
+
+  ```bash
+  easy-db-lab cassandra install my-build \
+    --url https://github.com/myuser/cassandra.git \
+    --branch my-feature-branch \
+    --java 11 \
+    --ant-flags "-Duse.jdk11=true"
+  ```
+
+  An option you pass overrides the declared entry's value for that field;
+  anything you leave out falls back to the declared entry. `--python` defaults
+  to `3.11.9`.
+
+Useful details:
+
+- `--hosts db0,db1` installs on a subset of nodes only.
+- Re-installing a version a node already has is a no-op, as long as you ask for
+  the same parameters it was built with. See
+  [Re-installing with different options](#re-installing-with-different-options).
+- If a node fails, the command exits non-zero and names the node and the reason;
+  nodes that succeeded keep their install.
+- A branch build runs a full `ant` build on every targeted node, which is
+  CPU-heavy and takes several minutes. It is safe while Cassandra is running —
+  the install only writes to `/usr/local/cassandra/<version>` — but it is not
+  free. Tarball installs are much cheaper.
+
+#### Re-installing with different options
+
+A version that is already on a node is never rebuilt. If you re-run `install`
+for it with options that contradict what the node recorded when it was built —
+a different `--java`, `--python`, or `--ant-flags` — the command changes nothing,
+names the node and the fields that disagree, and exits non-zero:
+
+```
+db0: my-build is already installed, built with the parameters this node declares —
+java: declared 11, requested 17. Nothing was changed. To change the java version
+in use, run: cassandra use my-build --java <version>
+```
+
+This is deliberate: the bits on disk were compiled against Java 11, so silently
+recording them as a Java 17 build would leave every later `cassandra use`
+picking the wrong JDK.
+
+What to do instead depends on what you actually want:
+
+- **Run the existing build under a different JDK** — no reinstall needed:
+
+  ```bash
+  easy-db-lab cassandra use my-build --java 17
+  ```
+
+- **Genuinely rebuild with the new options** — install it under a different
+  version name (`my-build-jdk17`), or remove `/usr/local/cassandra/<version>` on
+  the affected nodes and install again.
+
+```admonish tip title="Credentials in --url"
+A `--url` pointing at a private fork may carry a token
+(`https://<token>@github.com/...`). The token is used for the clone and is never
+written to the node's version list, never stored in the cluster workspace, and is
+stripped from log lines, error messages, and emitted events. It does still live
+in your shell history like any other command argument.
+```
+
+### Bake into the AMI
 
 You don't edit the repository's `cassandra_versions.yaml`. Instead, drop one or
 more YAML files into your profile's extras directory:
@@ -233,6 +334,25 @@ easy-db-lab build-cassandra
 ```bash
 easy-db-lab cassandra use my-build
 ```
+
+### Declaring a version without baking it
+
+Add `lazy: true` to an entry to declare a version without spending AMI build
+time on it:
+
+```yaml
+- version: "my-build"
+  java: "11"
+  python: "3.11.9"
+  url: "https://github.com/myuser/cassandra.git"
+  branch: "my-feature-branch"
+  lazy: true
+```
+
+The AMI build skips the download/clone/build for that entry, but the entry
+still ships in the image. `easy-db-lab cassandra list` shows it as
+`(declared, not installed)`, and `easy-db-lab cassandra install my-build`
+installs it on a running cluster without you re-specifying any of its fields.
 
 ## Next Steps
 

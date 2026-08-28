@@ -439,6 +439,9 @@ object Constants {
     object Cassandra {
         /** UID of the cassandra OS user — must match the cassandra-sidecar container image */
         const val USER_ID = 999L
+
+        /** Python version cqlsh runs under when a version declares none — matches every shipped entry */
+        const val DEFAULT_PYTHON_VERSION = "3.11.9"
     }
 
     // Cassandra stress testing configuration

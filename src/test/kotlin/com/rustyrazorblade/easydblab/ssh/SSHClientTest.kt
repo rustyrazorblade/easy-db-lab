@@ -1,6 +1,9 @@
 package com.rustyrazorblade.easydblab.ssh
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
+import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
+import com.rustyrazorblade.easydblab.output.OutputHandler
 import org.apache.sshd.client.session.ClientSession
 import org.apache.sshd.common.io.IoSession
 import org.assertj.core.api.Assertions.assertThat
@@ -14,8 +17,10 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.io.File
+import java.io.OutputStream
 import java.net.InetSocketAddress
 import java.nio.charset.Charset
+import java.rmi.RemoteException
 
 /**
  * Unit tests for SSHClient
@@ -33,9 +38,11 @@ class SSHClientTest :
     private lateinit var mockSession: ClientSession
     private lateinit var mockIoSession: IoSession
     private lateinit var sshClient: SSHClient
+    private lateinit var outputHandler: BufferedOutputHandler
 
     @BeforeEach
     fun setup() {
+        outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
         mockSession = mock()
         mockIoSession = mock()
 
@@ -48,19 +55,119 @@ class SSHClientTest :
 
     // ========== Command Execution Tests ==========
 
+    /** Stubs the session to write [stdout]/[stderr], then fail the way MINA does on a non-zero exit. */
+    private fun stubRemoteCommand(
+        stdout: String = "",
+        stderr: String = "",
+        failWith: RemoteException? = null,
+    ) {
+        whenever(mockSession.executeRemoteCommand(any(), any(), any(), any<Charset>())).thenAnswer { invocation ->
+            invocation.getArgument<OutputStream>(1).write(stdout.toByteArray())
+            invocation.getArgument<OutputStream>(2).write(stderr.toByteArray())
+            failWith?.let { throw it }
+            null
+        }
+    }
+
     @Test
     fun `executeRemoteCommand should execute command and return response`() {
         // Given
         val command = "ls -la"
         val expectedOutput = "total 0\ndrwxr-xr-x 1 root root 0 Jan 1 00:00 ."
-        whenever(mockSession.executeRemoteCommand(eq(command), any(), any())).thenReturn(expectedOutput)
+        stubRemoteCommand(stdout = expectedOutput, stderr = "a warning")
 
         // When
         val response = sshClient.executeRemoteCommand(command, output = false, secret = false)
 
         // Then
         assertThat(response.text).isEqualTo(expectedOutput)
-        verify(mockSession).executeRemoteCommand(eq(command), any(), eq(Charset.defaultCharset()))
+        assertThat(response.stderr).isEqualTo("a warning")
+        verify(mockSession).executeRemoteCommand(eq(command), any(), any(), eq(Charset.defaultCharset()))
+    }
+
+    @Test
+    fun `a non-zero exit surfaces what the remote command actually said`() {
+        val command = "sudo use-cassandra 5.1"
+        stubRemoteCommand(
+            stdout = "Cassandra version 5.1 is not installed on this node.\nRun 'cassandra install 5.1' first.",
+            stderr = "",
+            failWith = RemoteException("Remote command failed (1): $command"),
+        )
+
+        assertThatThrownBy { sshClient.executeRemoteCommand(command, output = false, secret = false) }
+            .isInstanceOf(RemoteCommandFailedException::class.java)
+            .hasMessageContaining("Cassandra version 5.1 is not installed on this node.")
+            .hasMessageContaining("cassandra install 5.1")
+    }
+
+    @Test
+    fun `a non-zero exit surfaces stderr as well as stdout`() {
+        stubRemoteCommand(
+            stdout = "Building version trunk with ant",
+            stderr = "ERROR: Ant build failed for version trunk\ncompile: BUILD FAILED",
+            failWith = RemoteException("Remote command failed (1): install-cassandra-version trunk"),
+        )
+
+        assertThatThrownBy {
+            sshClient.executeRemoteCommand("install-cassandra-version trunk", output = false, secret = false)
+        }.isInstanceOf(RemoteCommandFailedException::class.java)
+            .hasMessageContaining("ERROR: Ant build failed for version trunk")
+            .hasMessageContaining("Building version trunk with ant")
+    }
+
+    @Test
+    fun `a failure never leaks credentials embedded in the command`() {
+        val command = "install-cassandra-version fork --url https://alice:ghp_secrettoken@github.com/acme/cassandra.git"
+        stubRemoteCommand(
+            stderr = "ERROR: Git clone failed for https://alice:ghp_secrettoken@github.com/acme/cassandra.git",
+            failWith = RemoteException("Remote command failed (1): $command"),
+        )
+
+        assertThatThrownBy { sshClient.executeRemoteCommand(command, output = false, secret = false) }
+            .isInstanceOf(RemoteCommandFailedException::class.java)
+            .hasMessageNotContaining("ghp_secrettoken")
+            .hasMessageContaining("***@github.com")
+    }
+
+    @Test
+    fun `a failure on a secret command repeats neither the command nor its output`() {
+        // A secret command routinely echoes its own argument back: a usage line, an error naming
+        // the key it just rejected.
+        stubRemoteCommand(
+            stdout = "usage: tailscale up --authkey=tskey-auth-hunter2",
+            stderr = "invalid key: tskey-auth-hunter2",
+            failWith = RemoteException("Remote command failed (1): tailscale up --authkey=tskey-auth-hunter2"),
+        )
+
+        assertThatThrownBy {
+            sshClient.executeRemoteCommand("tailscale up --authkey=tskey-auth-hunter2", output = false, secret = true)
+        }.isInstanceOf(RemoteCommandFailedException::class.java)
+            .hasMessageNotContaining("hunter2")
+    }
+
+    @Test
+    fun `a successful command's output is redacted before it reaches the event bus`() {
+        // install-cassandra-version echoes the clone URL it was given; that output is emitted as a
+        // @Serializable event reaching every MCP and Redis subscriber.
+        stubRemoteCommand(
+            stdout = "Cloning repo for version fork from https://ghp_secrettoken@github.com/acme/cassandra.git",
+        )
+
+        val response = sshClient.executeRemoteCommand("install-cassandra-version fork", output = true, secret = false)
+
+        assertThat(response.text).doesNotContain("ghp_secrettoken")
+        assertThat(response.text).contains("***@github.com")
+        val emitted = outputHandler.messages.joinToString("\n")
+        assertThat(emitted).doesNotContain("ghp_secrettoken")
+    }
+
+    @Test
+    fun `a successful command's stderr is redacted too`() {
+        stubRemoteCommand(stderr = "warning: fetching https://ghp_secrettoken@github.com/acme/cassandra.git")
+
+        val response = sshClient.executeRemoteCommand("git fetch", output = false, secret = false)
+
+        assertThat(response.stderr).doesNotContain("ghp_secrettoken")
     }
 
     @Test
@@ -75,7 +182,7 @@ class SSHClientTest :
     fun `executeRemoteCommand with secret flag should hide command in output`() {
         // Given
         val command = "echo secret"
-        whenever(mockSession.executeRemoteCommand(eq(command), any(), any())).thenReturn("secret")
+        stubRemoteCommand(stdout = "secret")
 
         // When
         sshClient.executeRemoteCommand(command, output = true, secret = true)

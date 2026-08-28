@@ -295,6 +295,26 @@ Test packer provisioning scripts locally using Docker (no AWS required):
 ./gradlew testPackerScript -Pscript=cassandra/install/install_cassandra_easy_stress.sh
 ```
 
+Shell scripts whose logic (argument handling, already-installed short-circuits, JDK selection)
+matters more than their side effects also have plain shell unit tests that stub `sudo`/`curl`/`git`
+and need no Docker:
+
+```bash
+./gradlew testCassandraScripts
+```
+
+Scripts in `packer/cassandra/bin/` are **not bake-time-only** — the AMI puts them on the node's
+`PATH` and the CLI invokes them over SSH against a running cluster (`cassandra install`,
+`cassandra use`). Their flags and output are a contract with Kotlin callers; see
+[`commands/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/commands/CLAUDE.md).
+
+`packer/cassandra/lib/edl-cassandra-agents.sh` (installed to `/usr/local/lib/`) picks the AxonOps
+and MCAC metrics agents from the release's own jar name. It is sourced by `cassandra.in.sh`, which
+Cassandra's `bin/cassandra` runs under **`/bin/sh` (dash), not bash** — so it must stay POSIX sh.
+A bashism there does not degrade to "no metrics"; dash fails to parse the file and Cassandra will
+not start. `edl-cassandra-agents.test.sh` exercises the functions through a real `/bin/sh` for
+exactly this reason.
+
 For more details, see [packer/README.md](packer/README.md) and [packer/TESTING.md](packer/TESTING.md).
 
 ## Documentation & Specifications

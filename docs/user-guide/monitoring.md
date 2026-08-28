@@ -93,7 +93,12 @@ A single-pane-of-glass summary of the most important Cassandra metrics, powered 
 - **Cluster Overview:** Nodes up/down, compaction rates, CQL request throughput, dropped messages, connected clients, timeouts, hints, data size, GC time
 - **Condensed Metrics:** Request throughput, coordinator latency percentiles, memtable space, compaction activity, table-level latency, streaming bandwidth
 
-Requires the MAAC agent to be loaded (Cassandra 4.0, 4.1, or 5.0). Metrics are exposed on port 9000 and scraped by the OTel collector.
+Requires the MAAC agent to be loaded (Cassandra 4.0, 4.1, 5.0, 6.0, or 7.0/trunk). Metrics are exposed on port 9000 and scraped by the OTel collector.
+
+The agent is chosen at Cassandra startup from the release's own jar name, so a version installed
+with `cassandra install --url` or `--branch` gets the right agent too. If a release has no agent,
+or the agent cannot start, Cassandra says so on stderr at startup — check `journalctl -u cassandra`
+on the node when a dashboard is empty.
 
 ### Cassandra Overview
 

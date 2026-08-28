@@ -36,6 +36,15 @@
 
     <!-- Note: Log instrumentation is handled automatically by the OpenTelemetry Java agent -->
 
+    <!--
+      Apache MINA logs every remote command verbatim at DEBUG ("send SSH_MSG_CHANNEL_REQUEST exec
+      command={}"), one layer below where this codebase redacts. A remote command legitimately
+      carries a git URL with an embedded token, so at DEBUG that credential would land unredacted
+      in debug.log and its 30 days of gzipped archives. Narrowed to INFO: this silences only the
+      SSH transport's own chatter, not application debug logging.
+    -->
+    <logger name="org.apache.sshd" level="INFO" />
+
     <root level="DEBUG">
         <appender-ref ref="INFO_FILE" />
         <appender-ref ref="DEBUG_FILE" />

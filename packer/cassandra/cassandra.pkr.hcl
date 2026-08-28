@@ -152,6 +152,7 @@ build {
   }
   provisioner "shell" {
     inline = [
+      "rm -fv bin-cassandra/*.test.sh",
       "sudo mv -v bin-cassandra/* /usr/local/bin/",
       # Test scripts live next to the script under test but have no business on a node.
       "sudo rm -f /usr/local/bin/*.test.sh",
@@ -194,6 +195,12 @@ build {
   provisioner "file" {
     source = "cassandra.in.sh"
     destination = "/tmp/cassandra.in.sh"
+  }
+
+  # Sourced by cassandra.in.sh on every Cassandra start to pick the AxonOps and MCAC agents.
+  provisioner "file" {
+    source = "lib/edl-cassandra-agents.sh"
+    destination = "/tmp/edl-cassandra-agents.sh"
   }
 
   provisioner "shell" {

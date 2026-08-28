@@ -1,0 +1,421 @@
+#!/bin/bash
+#
+# Installs a single Cassandra version into /usr/local/cassandra/<version>.
+#
+# Used identically at AMI bake time (install_cassandra.sh's version loop) and at runtime
+# (`easy-db-lab cassandra install <version>`), so there is one install code path rather than two
+# kept in sync by hand.
+#
+# Usage:
+#   install-cassandra-version <version> [--url URL] [--branch BRANCH] [--java N] [--ant-flags FLAGS]
+#
+# Install mode is chosen from the flags, matching a cassandra_versions.yaml entry:
+#   no --url, no --branch  -> download the latest official patch release for <version>
+#   --url ending in .tar.gz -> download and unpack that tarball
+#   --url + --branch        -> git clone the branch and build it with ant (--java selects the JDK)
+#
+# Re-running for an already-installed version is a no-op.
+
+set -euo pipefail
+
+usage() {
+    cat <<'USAGE'
+Usage: install-cassandra-version <version> [options]
+
+Options:
+  --url URL           Tarball URL (.tar.gz) or git repository URL (with --branch)
+  --branch BRANCH     Git branch to clone and build (requires --url)
+  --java VERSION      JDK major version used for the ant build (e.g. 8, 11, 17, 21)
+  --ant-flags FLAGS   Extra flags passed to ant (e.g. "-Duse.jdk11=true")
+USAGE
+}
+
+VERSION=""
+URL=""
+BRANCH=""
+JAVA_VERSION=""
+ANT_FLAGS=""
+
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --url) URL="$2"; shift 2 ;;
+            --branch) BRANCH="$2"; shift 2 ;;
+            --java) JAVA_VERSION="$2"; shift 2 ;;
+            --ant-flags) ANT_FLAGS="$2"; shift 2 ;;
+            -h|--help) usage; exit 0 ;;
+            --*) echo "ERROR: unknown option $1" >&2; usage >&2; exit 1 ;;
+            *)
+                if [ -z "$VERSION" ]; then
+                    VERSION="$1"; shift
+                else
+                    echo "ERROR: unexpected argument $1" >&2; usage >&2; exit 1
+                fi
+                ;;
+        esac
+    done
+
+    if [ -z "$VERSION" ]; then
+        echo "ERROR: <version> is required" >&2
+        usage >&2
+        exit 1
+    fi
+
+    # A tarball is unpacked as-is; there is nothing to check a branch out of. Silently ignoring
+    # --branch here would install something other than what was asked for.
+    if [[ -n "$BRANCH" && "$URL" == *.tar.gz ]]; then
+        echo "ERROR: --branch $BRANCH cannot be used with a tarball --url ($URL); pass a git repository URL" >&2
+        exit 1
+    fi
+}
+
+# Written into every installed version's bin/cassandra.in.sh (Pyroscope, MAAC, GC logging, log
+# dirs). Installed to this durable path by install_cassandra.sh at bake time so a runtime install
+# can find it too - /tmp does not survive a reboot.
+CASSANDRA_IN_SH_SNIPPET=${CASSANDRA_IN_SH_SNIPPET:-/usr/local/share/easy-db-lab/cassandra.in.sh}
+
+# Where versions land. Overridable so the script can be exercised outside a node.
+CASSANDRA_INSTALL_DIR=${CASSANDRA_INSTALL_DIR:-/usr/local/cassandra}
+
+# Private working directory for this run, removed on every exit path — not just the successful
+# one. A failed git clone leaves the credentialed remote behind in <workdir>/<version>/.git/config,
+# and a failed build is the common case when testing an unmerged branch.
+WORKDIR=""
+trap 'cd /; [ -n "$WORKDIR" ] && rm -rf "$WORKDIR"' EXIT
+
+# Shared S3 download cache (provides cached_fetch). Falls back to a direct download when the cache
+# lib is absent (local script tests / no cache).
+if [ -f /usr/local/lib/edl-cache.sh ]; then
+    # shellcheck disable=SC1091
+    source /usr/local/lib/edl-cache.sh
+else
+    cached_fetch() { echo "no S3 cache; downloading $1"; curl -fsSL --retry 3 "$1" -o "$3"; }
+fi
+
+## Puts netty-codec-http in an installed version's lib directory when it is missing.
+##
+## The MCAC metrics agent serves its Prometheus endpoint from a Netty HTTP server, but
+## netty-codec-http is `provided` in the agent build and is not bundled in the agent jar - the
+## upstream k8ssandra images add it to Cassandra's lib for exactly this reason. Cassandra 4.x got
+## away without it because its fat netty-all-4.1.58 contained the codec-http classes. From 5.0 the
+## distribution ships granular netty modules plus an empty netty-all aggregator, so the endpoint
+## died on NoClassDefFoundError io/netty/handler/codec/http/HttpServerCodec and the node published
+## no metrics at all, quietly, on every release from 5.0 onwards.
+##
+## The version is taken from the release's own netty-common jar, so a Cassandra build that moves to
+## a new Netty always gets the matching codec-http rather than a pinned one.
+ensure_netty_codec_http() {
+  local lib_dir="$1"
+  local netty_common netty_version jar url
+
+  if compgen -G "${lib_dir}/netty-codec-http-*.jar" >/dev/null; then
+    return 0
+  fi
+
+  # No netty-common means the fat netty-all layout (4.0/4.1), which already carries codec-http.
+  netty_common=$(find "$lib_dir" -maxdepth 1 -name 'netty-common-*.jar' | head -n 1)
+  if [ -z "$netty_common" ]; then
+    return 0
+  fi
+
+  netty_version=$(basename "$netty_common" | sed -E 's/^netty-common-(.+)\.jar$/\1/')
+  if [ -z "$netty_version" ]; then
+    echo "ERROR: could not read a Netty version from $netty_common" >&2
+    return 1
+  fi
+
+  jar="netty-codec-http-${netty_version}.jar"
+  url="https://repo1.maven.org/maven2/io/netty/netty-codec-http/${netty_version}/${jar}"
+
+  echo "Adding ${jar} for the MCAC metrics endpoint"
+  cached_fetch "$url" "netty/${netty_version}/${jar}" "/tmp/${jar}" || {
+    echo "ERROR: Failed to download ${url}; the MCAC metrics endpoint will not start" >&2
+    return 1
+  }
+
+  sudo cp "/tmp/${jar}" "${lib_dir}/${jar}"
+  rm -f "/tmp/${jar}"
+}
+
+## Downloads the latest patch release of a cassandra version
+## This saves us from having to update cassandra_versions.yaml
+## every time a new patch release is made
+download_cassandra_version() {
+    # Check if version prefix is provided
+    if [ -z "$1" ]; then
+        echo "Usage: download_cassandra_version <version-prefix>"
+        return 1
+    fi
+
+    # Assign the version prefix from the first argument
+    version_prefix="$1"
+
+    # Get the list of versions from the Cassandra download page
+    versions=$(curl -s https://dlcdn.apache.org/cassandra/ | grep -o 'href="[0-9]\+\.[0-9]\+\.[0-9]\+/\"' | sed 's/href="//' | sed 's/\/"//')
+
+    # Find the latest version that matches the given prefix
+    full_version=$(echo "$versions" | grep "^$version_prefix" | sort -V | tail -n 1)
+
+    # Check if a version was found
+    if [ -z "$full_version" ]; then
+        echo "ERROR: No matching version found for prefix $version_prefix" >&2
+        return 1
+    fi
+
+    # Construct the download URL
+    archive="apache-cassandra-$full_version-bin.tar.gz"
+    download_url="https://dlcdn.apache.org/cassandra/$full_version/$archive"
+
+    # Download the file (via S3 cache, keyed by the resolved patch version)
+    echo "Downloading Cassandra version $full_version from $download_url..."
+    cached_fetch "$download_url" "cassandra-dist/$full_version/$archive" "$archive" || {
+        echo "ERROR: Failed to download Cassandra version $full_version from $download_url" >&2
+        return 1
+    }
+
+    # Verify download was successful and file is not empty
+    if [[ ! -f "$archive" || ! -s "$archive" ]]; then
+        echo "ERROR: Downloaded file $archive is missing or empty for version $full_version" >&2
+        return 1
+    fi
+
+    echo "Download completed successfully."
+
+    # Extract the archive (quiet: verbose file listing floods packer's SSH stream and drops it)
+    tar zxf "$archive" || {
+        echo "ERROR: Failed to extract $archive for version $full_version" >&2
+        return 1
+    }
+
+    # Move and verify
+    mv "apache-cassandra-$full_version" "$version_prefix" || {
+        echo "ERROR: Failed to rename apache-cassandra-$full_version to $version_prefix" >&2
+        return 1
+    }
+
+    # Verify the directory exists
+    if [[ ! -d "$version_prefix" ]]; then
+        echo "ERROR: Directory $version_prefix does not exist after extraction and rename" >&2
+        return 1
+    fi
+
+    return 0
+}
+
+## Resolves JAVA_HOME for a JDK major version. The build must use the JDK the version declares,
+## never the node's current default alternative, and must not change that default - switching it
+## would disturb whichever Cassandra version is currently active on the node.
+resolve_java_home() {
+    local java_version="$1"
+    local arch
+    arch=$(dpkg --print-architecture)
+
+    local candidate
+    for candidate in \
+        "/usr/lib/jvm/java-${java_version}-openjdk-${arch}" \
+        "/usr/lib/jvm/java-1.${java_version}.0-openjdk-${arch}"; do
+        if [ -x "$candidate/bin/java" ]; then
+            echo "$candidate"
+            return 0
+        fi
+    done
+
+    echo "ERROR: No JDK found on this node for java version $java_version" >&2
+    return 1
+}
+
+## Installs a single Cassandra version end-to-end: download (or git build), place under
+## /usr/local/cassandra/$version, and apply the per-version configuration.
+##
+## Safe to run as a background job: it operates in its own private temp working directory
+## (so concurrent versions never share extraction state, e.g. the `find . -name '*cassandra*'`
+## below only ever sees its own tarball) and otherwise writes only version-specific paths.
+## Genuinely shared/global steps (user + directory creation, the Maven cache cleanup) are the
+## caller's responsibility.
+install_cassandra_version() {
+  local version="$1"
+
+  if [[ -d "$CASSANDRA_INSTALL_DIR/$version" ]]; then
+    echo "Version $version is already installed at $CASSANDRA_INSTALL_DIR/$version, nothing to do"
+    return 0
+  fi
+
+  if [[ ! -f "$CASSANDRA_IN_SH_SNIPPET" ]]; then
+      echo "ERROR: Missing $CASSANDRA_IN_SH_SNIPPET, cannot configure version $version" >&2
+      return 1
+  fi
+
+  # Script-scoped, not local: the EXIT trap below runs after this function has returned.
+  WORKDIR=$(mktemp -d) || {
+      echo "ERROR: Failed to create temp working directory for version $version" >&2
+      return 1
+  }
+
+  cd "$WORKDIR" || {
+      echo "ERROR: Cannot change to working directory $WORKDIR for version $version" >&2
+      return 1
+  }
+
+  echo "Configuring version: $version"
+
+  sudo mkdir -p "$CASSANDRA_INSTALL_DIR"
+
+  # if $version is set, $URL is blank, and $BRANCH is blank
+  if [[ $version != "" && $URL == "" && $BRANCH == "" ]]; then
+    download_cassandra_version "$version" || {
+        echo "ERROR: download_cassandra_version failed for version $version" >&2
+        return 1
+    }
+
+    # check if $version exists in the current directory
+    if [[ ! -d $version ]]; then
+      echo "ERROR: Failed to download Cassandra version $version - directory not found" >&2
+      return 1
+    fi
+
+    sudo mv "$version" "$CASSANDRA_INSTALL_DIR/$version" || {
+        echo "ERROR: Failed to move $version to $CASSANDRA_INSTALL_DIR/" >&2
+        return 1
+    }
+
+  # if a URL is set and ends in .tar.gz, download it (via the S3 cache, version-keyed)
+  elif [[ $URL == *.tar.gz ]]; then
+    echo "Downloading $URL for version $version"
+
+    local archive_file
+    archive_file=$(basename "$URL")
+
+    # Route the tarball through the S3 download cache (keyed by version) so it is not re-fetched
+    # cold from GitHub on every build. cached_fetch falls back to a direct download when no cache
+    # bucket is configured (local packer Docker tests).
+    cached_fetch "$URL" "cassandra-dist/$version/$archive_file" "$archive_file" || {
+        echo "ERROR: Failed to download version $version from $URL" >&2
+        return 1
+    }
+
+    # Verify download succeeded and file is not empty
+    if [[ ! -f "$archive_file" || ! -s "$archive_file" ]]; then
+        echo "ERROR: Downloaded file $archive_file is missing or empty for version $version" >&2
+        return 1
+    fi
+
+    echo "Extracting $archive_file"
+    tar zxf "$archive_file" || {
+        echo "ERROR: Failed to extract $archive_file for version $version" >&2
+        return 1
+    }
+
+    rm -f "$archive_file"
+
+    # Find the extracted directory (should be the only directory created)
+    # Look for directories starting with 'apache-cassandra' or 'cassandra'
+    local f
+    f=$(find . -maxdepth 1 -type d -name '*cassandra*' ! -name '.' -printf '%f\n' | head -n 1)
+
+    # Verify extracted directory exists
+    if [[ -z "$f" || ! -d "$f" ]]; then
+        echo "ERROR: Could not find extracted Cassandra directory for version $version" >&2
+        echo "Available directories:"
+        ls -la
+        return 1
+    fi
+
+    echo "Found extracted directory: $f"
+
+    sudo mv "$f" "$CASSANDRA_INSTALL_DIR/$version" || {
+        echo "ERROR: Failed to move $f to $CASSANDRA_INSTALL_DIR/$version" >&2
+        return 1
+    }
+
+  else
+    # Clone the git repo specified by --url, check out --branch, and build it with ant.
+    if [[ -z "$URL" || -z "$BRANCH" ]]; then
+        echo "ERROR: Building version $version from source requires both --url and --branch" >&2
+        return 1
+    fi
+    if [[ -z "$JAVA_VERSION" ]]; then
+        echo "ERROR: Building version $version from source requires --java" >&2
+        return 1
+    fi
+
+    local java_home
+    java_home=$(resolve_java_home "$JAVA_VERSION") || return 1
+    echo "Building version $version with JDK $JAVA_VERSION at $java_home"
+
+    echo "Cloning repo for version $version from $URL branch $BRANCH"
+    git clone --depth=1 --single-branch --branch "$BRANCH" "$URL" "$version" || {
+        echo "ERROR: Git clone failed for version $version from $URL branch $BRANCH" >&2
+        return 1
+    }
+
+    # Verify clone was successful
+    if [[ ! -d "$version/.git" ]]; then
+        echo "ERROR: Git clone incomplete for version $version - .git directory not found" >&2
+        return 1
+    fi
+
+    echo "Building version $version with ant"
+    # Per-version build log so concurrent builds do not clobber a shared file.
+    local ant_log="/tmp/ant-build-$version.log"
+    (
+      cd "$version" || exit 1
+      export JAVA_HOME="$java_home"
+      export PATH="$java_home/bin:$PATH"
+      # Quiet: ant output is voluminous and floods packer's SSH stream
+      # shellcheck disable=SC2086
+      ant realclean >"$ant_log" 2>&1 && ant -Dno-checkstyle=true $ANT_FLAGS >>"$ant_log" 2>&1 || exit 1
+      rm -rf .git
+    ) || {
+        echo "ERROR: Ant build failed for version $version, see $ant_log" >&2
+        tail -n 50 "$ant_log" >&2 || true
+        return 1
+    }
+
+    sudo mv "$version" "$CASSANDRA_INSTALL_DIR/$version" || {
+        echo "ERROR: Failed to move built version $version to $CASSANDRA_INSTALL_DIR/" >&2
+        return 1
+    }
+  fi
+
+  # Verify the version was successfully moved into place
+  if [[ ! -d "$CASSANDRA_INSTALL_DIR/$version" ]]; then
+      echo "ERROR: Version $version not found in $CASSANDRA_INSTALL_DIR/ after installation" >&2
+      return 1
+  fi
+
+  # at this point the $version is in place, however it was installed
+  # do any general customizations in the below subshell
+  echo "Configuring version $version"
+  (
+      cd "$CASSANDRA_INSTALL_DIR/$version" || exit 1
+      rm -rf data
+      cp -R conf conf.orig
+      # create a pristine backup of the original conf
+      sudo cp conf/cassandra.yaml conf/cassandra.orig.yaml
+      cat "$CASSANDRA_IN_SH_SNIPPET" >> bin/cassandra.in.sh
+      ensure_netty_codec_http "$CASSANDRA_INSTALL_DIR/$version/lib"
+  ) || {
+      # Leave nothing behind: the directory's existence is what marks a version installed, so a
+      # half-configured one would make every retry a no-op.
+      sudo rm -rf "$CASSANDRA_INSTALL_DIR/$version"
+      echo "ERROR: Configuration failed for version $version" >&2
+      return 1
+  }
+
+  # Remove bundled cqlsh from Cassandra 2.x and 3.x to use uv-installed version
+  if [[ "$version" == 2.* || "$version" == 3.* ]]; then
+    echo "Removing bundled cqlsh from Cassandra $version (using uv-installed version instead)"
+    rm -f "$CASSANDRA_INSTALL_DIR/$version/bin/cqlsh"
+    rm -f "$CASSANDRA_INSTALL_DIR/$version/bin/cqlsh.py"
+  fi
+
+  sudo chown -R cassandra:cassandra "$CASSANDRA_INSTALL_DIR/$version"
+
+  echo "✓ Successfully installed and configured version $version"
+}
+
+# Sourced by the unit tests for the functions above; then nothing here runs.
+if [ -z "${INSTALL_CASSANDRA_VERSION_SOURCE_ONLY:-}" ]; then
+    parse_args "$@"
+    install_cassandra_version "$VERSION"
+fi

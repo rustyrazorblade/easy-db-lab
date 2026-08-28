@@ -381,6 +381,38 @@ tasks.register<Exec>("testCassandraResolveRef") {
     commandLine = listOf("bash", ".github/cassandra-image/resolve-ref.test.sh")
 }
 
+// Unit-test install-cassandra-version's decisions (argument handling, already-installed no-op,
+// source-build guards, JDK selection). sudo/curl/git/dpkg are stubbed; no Docker, no network.
+tasks.register<Exec>("testCassandraInstallScript") {
+    group = "Verification"
+    description = "Unit-test the install-cassandra-version script"
+    workingDir = file(".")
+    commandLine = listOf("bash", "packer/cassandra/bin/install-cassandra-version.test.sh")
+}
+
+// Unit-test the bake-time loop's version resolution (yq-driven flags, lazy skip). Sources
+// install_cassandra.sh without INSTALL_CASSANDRA, so none of its effects run.
+tasks.register<Exec>("testCassandraInstallLoop") {
+    group = "Verification"
+    description = "Unit-test the bake-time Cassandra version install loop"
+    workingDir = file(".")
+    commandLine = listOf("bash", "packer/cassandra/install/install_cassandra.test.sh")
+}
+
+// Unit-test use-cassandra's guard against selecting a version the node never installed.
+tasks.register<Exec>("testCassandraUseScript") {
+    group = "Verification"
+    description = "Unit-test the use-cassandra script"
+    workingDir = file(".")
+    commandLine = listOf("bash", "packer/cassandra/bin/use-cassandra.test.sh")
+}
+
+tasks.register("testCassandraScripts") {
+    group = "Verification"
+    description = "Run all Cassandra shell script unit tests"
+    dependsOn("testCassandraInstallScript", "testCassandraInstallLoop", "testCassandraUseScript")
+}
+
 // Unit-test the node-resident profiling reconciler (decision table, chunk shipping, retention).
 // `asprof`, `cassandra-pid` and `curl` are stubbed and the clock is injected, so there is no
 // Docker, no network, and no real JVM.

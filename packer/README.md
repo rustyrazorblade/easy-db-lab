@@ -20,6 +20,40 @@ This directory contains packer configurations and testing tools for building eas
 ./gradlew testPackerScript -Pscript=cassandra/install/install_cassandra_easy_stress.sh
 ```
 
+## Shell Unit Tests (no Docker)
+
+Scripts whose value is in their *decisions* rather than their side effects have unit tests that
+stub `sudo`/`curl`/`git`/`dpkg` and assert on what would have run. They need no Docker and no
+network:
+
+```shell
+# Run them all
+./gradlew testCassandraScripts
+
+# Or individually
+./gradlew testCassandraInstallScript   # bin/install-cassandra-version
+./gradlew testCassandraInstallLoop     # the bake-time version loop in install_cassandra.sh
+./gradlew testCassandraUseScript       # bin/use-cassandra
+```
+
+Each test lives next to its script as `<script>.test.sh` and also runs in CI
+(`.github/workflows/packer-test.yml`). This is the tier to extend when changing argument handling,
+already-installed short-circuits, or JDK selection — the Docker tiers above are for scripts that
+must actually install something.
+
+## Scripts Invoked At Runtime, Not Just At Bake Time
+
+`cassandra/bin/` holds scripts the AMI build puts on the node's `PATH` and which the CLI then
+invokes over SSH against a *running* cluster:
+
+- `install-cassandra-version` — one install code path shared by the bake-time loop and
+  `easy-db-lab cassandra install <version>`
+- `use-cassandra` — selects the active version, called by `easy-db-lab cassandra use`
+
+Their flags and output are a contract with Kotlin callers in
+`src/main/kotlin/com/rustyrazorblade/easydblab/commands/cassandra/`. Changing them without updating
+the caller breaks a CLI command, not just a build.
+
 ### Using test-script.sh Directly
 
 ```shell
@@ -94,6 +128,7 @@ packer/
 │   └── install/            # Base installation scripts
 ├── cassandra/              # Cassandra AMI configuration
 │   ├── cassandra.pkr.hcl  # Packer config for Cassandra image
+│   ├── bin/                # Scripts placed on the node's PATH, also called at runtime
 │   └── install/            # Cassandra installation scripts
 ├── Dockerfile              # Test environment (mimics Ubuntu 24.04 AMI)
 ├── docker-compose.yml      # Test orchestration

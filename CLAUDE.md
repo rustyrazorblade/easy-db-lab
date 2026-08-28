@@ -295,6 +295,19 @@ Test packer provisioning scripts locally using Docker (no AWS required):
 ./gradlew testPackerScript -Pscript=cassandra/install/install_cassandra_easy_stress.sh
 ```
 
+Shell scripts whose logic (argument handling, already-installed short-circuits, JDK selection)
+matters more than their side effects also have plain shell unit tests that stub `sudo`/`curl`/`git`
+and need no Docker:
+
+```bash
+./gradlew testCassandraScripts
+```
+
+Scripts in `packer/cassandra/bin/` are **not bake-time-only** — the AMI puts them on the node's
+`PATH` and the CLI invokes them over SSH against a running cluster (`cassandra install`,
+`cassandra use`). Their flags and output are a contract with Kotlin callers; see
+[`commands/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/commands/CLAUDE.md).
+
 For more details, see [packer/README.md](packer/README.md) and [packer/TESTING.md](packer/TESTING.md).
 
 ## Documentation & Specifications

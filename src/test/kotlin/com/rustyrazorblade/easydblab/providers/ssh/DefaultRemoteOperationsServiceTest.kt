@@ -2,17 +2,22 @@ package com.rustyrazorblade.easydblab.providers.ssh
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.Host
+import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
 import com.rustyrazorblade.easydblab.ssh.ISSHClient
 import com.rustyrazorblade.easydblab.ssh.Response
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import org.koin.core.module.Module
 import org.mockito.kotlin.any
+import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.times
+import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 
 class DefaultRemoteOperationsServiceTest :
@@ -167,5 +172,40 @@ class DefaultRemoteOperationsServiceTest :
         // Then verify the result
         assertThat(result).isNotNull()
         assertThat(result.text).isEqualTo(expectedOutput)
+    }
+
+    @Test
+    fun `a command that exits non-zero is not retried`() {
+        val command = "install-cassandra-version trunk"
+        val failure =
+            RemoteCommandFailedException(
+                command = command,
+                stdout = "",
+                stderr = "ERROR: Ant build failed",
+                summary = "Remote command failed (1): $command",
+            )
+        // doAnswer, not thenThrow: Kotlin emits no `throws` clause, so Mockito rejects stubbing a
+        // checked exception on this method even though it propagates fine at runtime.
+        doAnswer { throw failure }.whenever(mockSSHClient).executeRemoteCommand(eq(command), any(), any())
+
+        assertThatThrownBy { service.executeRemotely(host, command) }
+            .isInstanceOf(RemoteCommandFailedException::class.java)
+            .hasMessageContaining("ERROR: Ant build failed")
+
+        // A deterministic command failure must run once — re-running a failed build wastes minutes
+        verify(mockSSHClient, times(1)).executeRemoteCommand(eq(command), any(), any())
+    }
+
+    @Test
+    fun `a transient transport failure is still retried`() {
+        val command = "echo 1"
+        var attempts = 0
+        doAnswer {
+            attempts++
+            if (attempts < 3) error("connection reset") else Response("1")
+        }.whenever(mockSSHClient).executeRemoteCommand(eq(command), any(), any())
+
+        assertThat(service.executeRemotely(host, command).text).isEqualTo("1")
+        verify(mockSSHClient, times(3)).executeRemoteCommand(eq(command), any(), any())
     }
 }

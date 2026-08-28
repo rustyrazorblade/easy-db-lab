@@ -153,7 +153,7 @@ val result = template.substitute(mapOf("EXTRA" to "value"))  // extra vars overr
 
 ## Other Configuration Classes
 
-- **`CassandraVersion`** — version definition (Cassandra, Java, Python versions)
+- **`CassandraVersion`** — version definition (Cassandra, Java, Python versions). `lazy: true` declares a version without baking it: the entry still ships in every node's `/etc/cassandra_versions.yaml`, so it is discoverable and installable at runtime via `cassandra install`, but the AMI bake skips it. Loaded from `packer/cassandra/cassandra_versions.yaml` merged with the profile's `cassandra_versions/` extras.
 - **`CassandraYaml`** — cassandra.yaml manipulation (Jackson-based)
 - **`Seeds`** — seed list management
 - **`Host`** — legacy host data class (use `ClusterHost` for new code)

@@ -198,6 +198,44 @@ easy-db-lab cassandra use <version> [options]
 
 Versions: 3.0, 3.11, 4.0, 4.1, 5.0, 5.0-HEAD, 6.0-HEAD, trunk
 
+Fails if the version is not installed on a targeted node — install it first with
+`cassandra install`.
+
+### cassandra install
+
+Install an additional Cassandra version onto a running cluster, without rebuilding the AMI.
+
+```bash
+easy-db-lab cassandra install <version> [options]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--url` | Tarball URL (`.tar.gz`) or git repository URL (with `--branch`) | from the declared entry |
+| `--branch` | Git branch to clone and build, requires `--url` | from the declared entry |
+| `--java`, `-j` | Java version to build and run this version with | from the declared entry |
+| `--python` | Python version cqlsh runs under | `3.11.9` |
+| `--ant-flags` | Extra flags passed to ant when building from a branch | from the declared entry |
+| `--hosts` | Filter to specific hosts | all Cassandra nodes |
+
+Each option falls back to the version's `cassandra_versions.yaml` entry when not supplied, so a
+declared version needs no options at all. Every targeted node is attempted regardless of what
+happens on the others, and each node's outcome is reported individually.
+
+A version already installed on a node is never rebuilt:
+
+- Asking for the parameters it was built with is a no-op.
+- Asking for different `--java`, `--python`, or `--ant-flags` changes nothing on that node, reports
+  which fields disagree, and exits non-zero. To run the existing build under a different JDK, use
+  `cassandra use <version> --java <version>` instead.
+
+A failure on any node also exits non-zero, with the reason reported against that node. A token
+embedded in `--url` is used for the clone but never persisted to the node and never appears in logs,
+errors, or events.
+
+See [Configuring Cassandra](../user-guide/installing-cassandra.md#custom-builds) for the full
+workflow.
+
 ### cassandra write-config
 
 Generate a new configuration patch file.
@@ -294,6 +332,9 @@ easy-db-lab cassandra list
 ```
 
 **Aliases:** `ls`
+
+Versions installed on the node are listed first. A version declared with `lazy: true` that is not
+installed on that node is listed too, marked `(declared, not installed)`.
 
 ---
 

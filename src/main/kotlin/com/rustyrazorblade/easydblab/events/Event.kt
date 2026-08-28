@@ -337,8 +337,68 @@ sealed interface Event {
         @SerialName("Cassandra.VersionList")
         data class VersionList(
             val versions: List<String>,
+            val declaredNotInstalled: List<String> = emptyList(),
         ) : Cassandra {
-            override fun toDisplayString(): String = versions.joinToString("\n")
+            override fun toDisplayString(): String =
+                (
+                    versions +
+                        declaredNotInstalled.map { "$it (declared, not installed - run: cassandra install $it)" }
+                ).joinToString("\n")
+        }
+
+        @Serializable
+        @SerialName("Cassandra.InstallingVersion")
+        data class InstallingVersion(
+            val version: String,
+            val hostCount: Int,
+            val hostsFilter: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String = "Installing version $version on $hostCount hosts, filter: $hostsFilter"
+        }
+
+        @Serializable
+        @SerialName("Cassandra.VersionInstalled")
+        data class VersionInstalled(
+            val host: String,
+            val version: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String = "$host: installed $version"
+        }
+
+        @Serializable
+        @SerialName("Cassandra.VersionAlreadyInstalled")
+        data class VersionAlreadyInstalled(
+            val host: String,
+            val version: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String = "$host: $version is already installed, nothing to do"
+        }
+
+        @Serializable
+        @SerialName("Cassandra.VersionDeclarationMismatch")
+        data class VersionDeclarationMismatch(
+            val host: String,
+            val version: String,
+            val differences: List<String>,
+        ) : Cassandra {
+            override fun toDisplayString(): String =
+                "$host: $version is already installed, built with the parameters this node declares — " +
+                    "${differences.joinToString("; ")}. Nothing was changed. " +
+                    "To change the java version in use, run: cassandra use $version --java <version>"
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        @SerialName("Cassandra.VersionInstallFailed")
+        data class VersionInstallFailed(
+            val host: String,
+            val version: String,
+            val reason: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String = "$host: failed to install $version: $reason"
+
+            override fun isError(): Boolean = true
         }
 
         @Serializable

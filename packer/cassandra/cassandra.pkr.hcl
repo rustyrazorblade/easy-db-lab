@@ -152,6 +152,7 @@ build {
   }
   provisioner "shell" {
     inline = [
+      "rm -fv bin-cassandra/*.test.sh",
       "sudo mv -v bin-cassandra/* /usr/local/bin/",
       # Test scripts live next to the script under test but have no business on a node.
       "sudo rm -f /usr/local/bin/*.test.sh",

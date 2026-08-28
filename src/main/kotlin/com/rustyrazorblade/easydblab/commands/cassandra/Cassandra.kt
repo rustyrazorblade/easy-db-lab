@@ -23,6 +23,7 @@ import picocli.CommandLine.Spec
     description = ["Cassandra cluster management and tooling operations"],
     mixinStandardHelpOptions = true,
     subcommands = [
+        CassandraInstall::class,
         Cql::class,
         DownloadConfig::class,
         ListVersions::class,

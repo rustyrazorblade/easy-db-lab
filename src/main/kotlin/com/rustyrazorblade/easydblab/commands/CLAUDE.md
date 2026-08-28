@@ -211,7 +211,7 @@ Commands should delegate to these services:
 | `K8sService` | Kubernetes operations |
 | `K3sService` | K3s cluster management |
 | `StressJobService` | Stress testing jobs on K8s |
-| `HostOperationsService` | Parallel operations across hosts |
+| `HostOperationsService` | Parallel operations across hosts (see below) |
 | `ClusterProvisioningService` | EC2 instance provisioning |
 | `ClusterConfigurationService` | Cluster configuration management |
 | `AWSResourceSetupService` | IAM roles, security groups, VPC setup (`services.aws`) |
@@ -229,6 +229,38 @@ Commands should delegate to these services:
 | `InstallTemplateResolver` | Resolves install templates from profile dir, classpath, or `--from` path |
 | `ObjectStore` | S3 file operations |
 | `RemoteOperationsService` | SSH execution (use sparingly, prefer domain services) |
+
+## Running Something On Every Host
+
+`HostOperationsService` offers two ways to fan out across a cluster. Pick by what the command needs
+to report, not by convenience:
+
+- **`withHosts`** — the first failure aborts the command. Every host still runs; the remaining
+  failures are attached as suppressed exceptions, so an operator fixing a multi-node problem sees
+  all of them in one run. Use this when a partial result is not a meaningful outcome.
+- **`collectFromHosts`** — returns a `HostResult` per host (`host` + `Result`) and throws nothing.
+  Use this when the command reports per-host outcomes, or when hosts can legitimately end in
+  *different* states — installed here, already present there. `CassandraInstall` is the reference
+  implementation: it emits one event per host, then throws once at the end if anything went wrong.
+
+Results are keyed by position, never by alias — two hosts sharing an alias would otherwise
+misattribute each other's failure.
+
+## Invoking AMI-Baked Scripts At Runtime
+
+Some scripts under `packer/` are not bake-time-only. `packer/cassandra/bin/install-cassandra-version`
+and `use-cassandra` are installed onto the node's `PATH` by the AMI build and then invoked at
+runtime over SSH by `CassandraInstall` and `UseCassandra`. This is deliberate: one install code path
+serves both the bake and a running cluster, instead of two that have to be kept in sync by hand.
+
+Consequences when editing those scripts:
+
+- They are a **contract with Kotlin callers**, not just with the packer provisioner. Changing their
+  flags or output breaks a command.
+- Build the remote command with `String.shellQuote()` (`ShellQuoting.kt`, root package) — arguments can
+  carry URLs, branch names, and ant flags.
+- They have shell unit tests (`*.test.sh` next to each script) run by `./gradlew testCassandraScripts`
+  and in CI. Update them with the script.
 
 ## Output
 

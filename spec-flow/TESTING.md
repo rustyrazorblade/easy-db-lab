@@ -60,14 +60,21 @@ set. This contract is already wired. Do not break it when editing the workflow.
 
 ## Merge gate
 
-Green CI is necessary and not sufficient. **GitHub does not enforce it.** `main` has
-branch protection, but its required-status-check list is empty, so nothing blocks a merge
-mechanically. The gate is ours to hold:
+**GitHub enforces the CI gate.** An active repository ruleset on `main` requires three
+status checks — `test`, `quality`, `claude-review` — and adds `deletion` and
+`non_fast_forward` rules. A direct push to `main` is rejected. Read it with
+`gh api repos/OWNER/REPO/rulesets`; the classic
+`gh api repos/OWNER/REPO/branches/main/protection` endpoint reports an empty
+required-check list and is misleading here.
 
-1. Both CI jobs are green.
+Green CI is necessary and not sufficient. The rest of the gate is ours to hold:
+
+1. All three required checks are green.
 2. The owner has tested the change, on a real cluster where the change touches cluster
    behavior.
 3. The owner squash-merges.
+
+Every change reaches `main` through a pull request. There is no direct-push path.
 
 **Never use `gh pr merge --auto`.** It has merged a PR here before CI finished. Poll the
 checks and merge only on green.

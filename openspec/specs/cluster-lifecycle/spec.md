@@ -3,7 +3,6 @@
 ## Purpose
 
 Manages the full lifecycle of lab environments: initialization, provisioning, teardown, and status.
-
 ## Requirements
 
 ### REQ-CL-001: Cluster Initialization
@@ -129,6 +128,120 @@ The system MUST support restoring cluster configuration from S3 using VPC identi
 - **GIVEN** no backup exists for a VPC
 - **WHEN** restore is attempted
 - **THEN** the user is informed that no configuration was found.
+
+### Requirement: Architecture derived from instance type
+
+The system MUST derive each node group's CPU architecture from that group's resolved instance type at initialization time, and MUST persist the derived architecture per node group in cluster state. The system MUST NOT expose any option to set the architecture directly.
+
+Derivation MUST fail fast at initialization, before any EC2 instance is created, when the architecture cannot be determined. The system MUST NOT fall back to a default architecture.
+
+#### Scenario: Architecture is derived from the instance type
+
+- **GIVEN** a user initializes a cluster and specifies an instance type for a node group but does not — and cannot — specify an architecture
+- **WHEN** the cluster is initialized
+- **THEN** the architecture for that node group is derived from the instance type
+- **AND** the derived architecture is persisted per node group in cluster state.
+
+#### Scenario: Each node group may resolve to a different architecture
+
+- **GIVEN** a user specifies a database instance type of one architecture and an application instance type of another
+- **WHEN** the cluster is initialized
+- **THEN** each node group's architecture is derived independently from its own instance type.
+
+#### Scenario: Initialization fails fast when the architecture cannot be derived
+
+- **GIVEN** a user specifies an instance type whose architecture cannot be determined (the instance type is unknown in the region, or it maps to no single supported architecture)
+- **WHEN** the cluster is initialized
+- **THEN** initialization fails with an error naming the instance type
+- **AND** no EC2 instances are created
+- **AND** the system does not fall back to a default architecture.
+
+### Requirement: Provisioning reports success only when it fully succeeded
+
+The system MUST NOT report successful provisioning unless every provisioning step succeeded. When any provisioning step fails, `up` MUST abort at the point of failure and exit non-zero.
+
+There is no provisioning step whose failure may be logged and stepped over. A step that is skipped because there is nothing for it to do has not failed; a step that was attempted and threw has failed, and MUST abort provisioning.
+
+This applies to every step invoked during provisioning, including nested commands whose exit codes were previously discarded, and to operations whose results were previously reduced to a log line.
+
+#### Scenario: A failing provisioning step aborts `up`
+- **WHEN** any provisioning step fails during `up` — writing configuration files, node setup, K3s cluster setup, StorageClass creation, node labeling, Tailscale startup, IAM policy application, or observability deployment
+- **THEN** `up` SHALL abort at that step
+- **AND** `up` SHALL exit non-zero
+- **AND** the reported error SHALL identify the step that failed
+
+#### Scenario: A failing nested command aborts `up`
+- **WHEN** `up` invokes a nested command and that command returns a non-zero exit code
+- **THEN** `up` SHALL abort
+- **AND** `up` SHALL exit non-zero
+
+#### Scenario: Unreachable cluster API aborts `up`
+- **GIVEN** the cluster's Kubernetes API cannot be reached
+- **WHEN** `up` attempts to apply node labels, StorageClasses, or the observability stack
+- **THEN** `up` SHALL abort and exit non-zero
+- **AND** `up` SHALL NOT report a successfully provisioned cluster
+
+#### Scenario: Progress events assert only verified outcomes
+- **WHEN** a provisioning step emits an event announcing its completion
+- **THEN** that event SHALL be emitted only if the step actually succeeded
+
+#### Scenario: Explicit opt-out is not a failure
+- **WHEN** the user passes `--no-setup`
+- **THEN** node setup SHALL be skipped
+- **AND** `up` SHALL exit zero if all remaining steps succeeded
+
+### Requirement: Cluster shape invariants are validated before provisioning
+
+The system MUST validate the cluster's required shape before any AWS resource is provisioned, so that an unsatisfiable configuration fails before EC2 instances are launched rather than being discovered part-way through `up`.
+
+A cluster MUST have a control node. An S3 bucket MUST be configured. Neither may be treated as an optional condition that causes provisioning steps to be silently skipped.
+
+#### Scenario: Missing control node fails before provisioning
+- **GIVEN** a cluster configuration that would produce no control node
+- **WHEN** the user runs `up`
+- **THEN** the command SHALL fail before any EC2 instance is launched
+- **AND** the error SHALL state that a control node is required
+
+#### Scenario: Missing S3 bucket fails before provisioning
+- **GIVEN** no S3 bucket is configured
+- **WHEN** the user runs `up`
+- **THEN** the command SHALL fail before any EC2 instance is launched
+- **AND** the error SHALL state that an S3 bucket is required
+
+#### Scenario: Provisioning steps do not defend against missing invariants
+- **WHEN** provisioning proceeds past validation
+- **THEN** no provisioning step SHALL skip its work on the grounds that a control node or S3 bucket is absent
+
+### Requirement: A cluster with zero database nodes is a valid configuration
+
+The system MUST support provisioning a cluster with no database nodes. Workloads such as Trino with OpenSearch require a control node and application nodes but no database nodes.
+
+Work that exists solely to serve database nodes MUST be skipped without warning when there are none. A supported configuration MUST NOT produce warning output.
+
+#### Scenario: Zero database nodes provisions successfully
+- **GIVEN** a cluster configuration with a control node, application nodes, and zero database nodes
+- **WHEN** the user runs `up`
+- **THEN** provisioning SHALL complete successfully and exit zero
+
+#### Scenario: Database node labeling is skipped silently
+- **GIVEN** a cluster with zero database nodes
+- **WHEN** provisioning reaches database node labeling
+- **THEN** the step SHALL be skipped
+- **AND** no warning SHALL be emitted to the user
+
+### Requirement: Control node SSH readiness is confirmed before it is used
+
+The system MUST confirm that the control node is accepting SSH connections before any provisioning step depends on connecting to it.
+
+#### Scenario: Provisioning waits for control node SSH
+- **WHEN** `up` waits for instances to become reachable
+- **THEN** the wait SHALL include the control node, not only database nodes
+- **AND** provisioning SHALL NOT proceed to node setup or tunnel establishment until the control node accepts SSH connections
+
+#### Scenario: Control node that never accepts SSH aborts `up`
+- **GIVEN** the control node does not accept SSH connections within the retry window
+- **WHEN** `up` waits for SSH readiness
+- **THEN** `up` SHALL exit non-zero
 
 ## Success Criteria
 

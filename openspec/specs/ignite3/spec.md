@@ -1,8 +1,10 @@
 # Ignite 3
 
+## Purpose
+
 Manages Apache Ignite 3 deployment on K3s with configurable storage profiles and OTLP metrics integration.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Kit Lifecycle
 

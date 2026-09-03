@@ -1,8 +1,15 @@
 {
-  "agent": "project-manager",
   "enabledPlugins": {
     "cassandra-expert@rustyrazorblade-plugins": true,
     "easy-db-lab@rustyrazorblade-plugins": true,
-    "spec-flow@rustyrazorblade-plugins": true
+    "spec-flow@rustyrazorblade-plugins": true,
+    "dev-skills@rustyrazorblade-plugins": true
+  },
+  "agent": "spec-flow:project-manager",
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
+    "SPEC_FLOW_SEAM_VIEW": "explain",
+    "SPEC_FLOW_DEVELOPER_AGENT": "kotlin-dev",
+    "SPEC_FLOW_REFACTOR_BREAKER": "ask"
   }
 }

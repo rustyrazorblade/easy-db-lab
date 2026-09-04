@@ -1,10 +1,11 @@
 name: Build Cassandra Set
 
-# Nightly build of the set of Apache Cassandra versions the lab tracks.
+# Nightly build of the set of Cassandra versions/forks the lab tracks.
 #
 # Replaces the old hand-rolled nightly-cassandra-build.yml (JDK 11 for all, tarball
 # only, no 6.0). This drives the reusable build-cassandra-ref.yml engine once per
-# version, so every version gets:
+# matrix entry (each with its own source `repo`, defaulting to apache/cassandra but
+# overridable per entry for forks), so every entry gets:
 #   1. The correct per-version build JDK + runtime base image (auto-mapped in
 #      resolve-build-plan.sh: 5.0 -> JDK 17, 6.0/trunk -> JDK 21).
 #   2. BOTH artifacts — a GHCR container image (moving `:cassandra-<ref>` tag +
@@ -43,14 +44,25 @@ jobs:
           # Actions stringifies to "6", producing apache-cassandra-6-bin.tar.gz
           # instead of the apache-cassandra-6.0-HEAD-bin.tar.gz the versions file
           # references — so keep every version quoted regardless.
-          - ref: cassandra-5.0
+          #
+          # `repo` is explicit on every entry (rather than relying on the reusable
+          # workflow's own apache/cassandra default) so the matrix stays
+          # self-documenting now that not every entry is from apache/cassandra.
+          - repo: apache/cassandra
+            ref: cassandra-5.0
             version: "5.0-HEAD"
-          - ref: cassandra-6.0
+          - repo: apache/cassandra
+            ref: cassandra-6.0
             version: "6.0-HEAD"
-          - ref: trunk
+          - repo: apache/cassandra
+            ref: trunk
             version: "trunk"
+          - repo: rustyrazorblade/cassandra
+            ref: cassandra-6.0-rustyrazorblade
+            version: "6.0-rustyrazorblade-HEAD"
     uses: ./.github/workflows/build-cassandra-ref.yml
     with:
+      repo: ${{ matrix.repo }}
       ref: ${{ matrix.ref }}
       stable_version: ${{ matrix.version }}
     secrets: inherit
@@ -124,9 +136,10 @@ jobs:
             reusable `build-cassandra-ref.yml` engine. Matching GHCR container images
             are published under the moving `:cassandra-<ref>` tag.
 
-            - **5.0-HEAD**: Latest from `cassandra-5.0` branch
-            - **6.0-HEAD**: Latest from `cassandra-6.0` branch
-            - **trunk**: Latest from `trunk` branch
+            - **5.0-HEAD**: Latest from `cassandra-5.0` branch (apache/cassandra)
+            - **6.0-HEAD**: Latest from `cassandra-6.0` branch (apache/cassandra)
+            - **trunk**: Latest from `trunk` branch (apache/cassandra)
+            - **6.0-rustyrazorblade-HEAD**: Latest from `cassandra-6.0-rustyrazorblade` branch (rustyrazorblade/cassandra fork)
 
             ### Stable Download URLs
 
@@ -136,6 +149,7 @@ jobs:
             https://github.com/${{ github.repository }}/releases/download/nightly/apache-cassandra-5.0-HEAD-bin.tar.gz
             https://github.com/${{ github.repository }}/releases/download/nightly/apache-cassandra-6.0-HEAD-bin.tar.gz
             https://github.com/${{ github.repository }}/releases/download/nightly/apache-cassandra-trunk-bin.tar.gz
+            https://github.com/${{ github.repository }}/releases/download/nightly/apache-cassandra-6.0-rustyrazorblade-HEAD-bin.tar.gz
             ```
 
             ### Build Information

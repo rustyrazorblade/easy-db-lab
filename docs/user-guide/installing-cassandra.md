@@ -15,6 +15,7 @@ easy-db-lab supports the following Cassandra versions:
 | 5.0 | 11 | **Latest stable (recommended)** |
 | 5.0-HEAD | 11 | Nightly build from 5.0 branch |
 | 6.0-HEAD | 21 | Nightly build from 6.0 branch |
+| 6.0-rustyrazorblade | 21 | Personal fork build (rustyrazorblade/cassandra, branch cassandra-6.0-rustyrazorblade) |
 | trunk | 17 | Development branch |
 
 ## Quick Start

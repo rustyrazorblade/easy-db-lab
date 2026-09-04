@@ -196,7 +196,7 @@ easy-db-lab cassandra use <version> [options]
 | `--java` | Java version to use |
 | `--hosts` | Filter to specific hosts |
 
-Versions: 3.0, 3.11, 4.0, 4.1, 5.0, 5.0-HEAD, 6.0-HEAD, trunk
+Versions: 3.0, 3.11, 4.0, 4.1, 5.0, 5.0-HEAD, 6.0-HEAD, 6.0-rustyrazorblade, trunk
 
 Fails if the version is not installed on a targeted node — install it first with
 `cassandra install`.

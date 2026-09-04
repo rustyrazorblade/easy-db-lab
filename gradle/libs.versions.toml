@@ -82,7 +82,7 @@ versions = "0.54.0"
 ktlint = "14.2.0"
 detekt = "1.23.8"
 kover = "0.9.8"
-jib = "3.5.2"
+jib = "3.5.4"
 
 [libraries]
 # Kotlin

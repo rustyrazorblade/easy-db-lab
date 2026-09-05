@@ -20,6 +20,7 @@ import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.proxy.ProxyAvailability
 import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.StressJobService
+import com.rustyrazorblade.easydblab.services.WorkspaceKitScanner
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.EMRService
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
@@ -93,6 +94,7 @@ class Status :
     private val emrService: EMRService by inject()
     private val openSearchService: OpenSearchService by inject()
     private val stressJobService: StressJobService by inject()
+    private val workspaceKitScanner: WorkspaceKitScanner by inject()
 
     private data class NodeDetail(
         val alias: String,
@@ -415,22 +417,12 @@ class Status :
 
     /**
      * Display installed kits with a running indicator.
-     * Scans the working directory for kit directories (same detection as dynamic subcommand registration).
+     * Reads [WorkspaceKitScanner], the same discovery rule dynamic subcommand registration uses.
+     * Registration can still drop a discovered kit afterwards — on a name collision, or when
+     * building its command group fails — so this listing may name a kit that has no subcommand.
      */
     private fun displayKitsSection() {
-        val installedKits =
-            context.workingDirectory
-                .listFiles()
-                .orEmpty()
-                .filter { it.isDirectory }
-                .filter { kitDir ->
-                    (
-                        File(kitDir, "bin").isDirectory &&
-                            File(kitDir, "bin").listFiles().orEmpty().any { it.isFile && (it.canExecute() || it.name.endsWith(".sh")) }
-                    ) ||
-                        File(kitDir, Constants.Kit.CONFIG_FILE).isFile
-                }.map { it.name }
-                .sorted()
+        val installedKits = workspaceKitScanner.discover().map { it.name }.sorted()
 
         if (installedKits.isEmpty()) return
 

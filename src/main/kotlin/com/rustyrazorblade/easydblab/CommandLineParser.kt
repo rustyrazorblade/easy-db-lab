@@ -48,6 +48,7 @@ import com.rustyrazorblade.easydblab.services.InstallTemplateResolver
 import com.rustyrazorblade.easydblab.services.KitCommandScanner
 import com.rustyrazorblade.easydblab.services.ScannedKitCommand
 import com.rustyrazorblade.easydblab.services.TemplateVariables
+import com.rustyrazorblade.easydblab.services.WorkspaceKitScanner
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.get
@@ -56,7 +57,6 @@ import picocli.CommandLine
 import picocli.CommandLine.Command
 import picocli.CommandLine.Model.CommandSpec
 import picocli.CommandLine.Spec
-import java.io.File
 import kotlin.system.exitProcess
 
 /**
@@ -249,34 +249,20 @@ class CommandLineParser : KoinComponent {
     }
 
     /**
-     * Scans the working directory for installed kit directories and registers a top-level
-     * PicoCLI subcommand for each one. A directory qualifies if it contains either:
-     * - a `bin/` subdirectory with at least one executable script, or
-     * - a `kit.yaml` with at least one typed lifecycle phase.
+     * Registers a top-level PicoCLI subcommand for every installed kit directory found by
+     * [WorkspaceKitScanner]. A directory qualifies only when it contains a `kit.yaml`; a `bin/`
+     * directory alone does not, because source checkouts and virtualenvs have one too.
      *
-     * For example, `<cwd>/clickhouse/bin/start.sh` → `easy-db-lab clickhouse start`, or
-     * `<cwd>/clickhouse/kit.yaml` with a `start` phase → `easy-db-lab clickhouse start`.
+     * For example, `<cwd>/clickhouse/kit.yaml` alongside `<cwd>/clickhouse/bin/start.sh` →
+     * `easy-db-lab clickhouse start`.
      */
     @Suppress("TooGenericExceptionCaught")
     private fun registerDynamicKitSubcommands() {
-        val ctx = get<Context>()
         val factory = KitRunnerCommandFactory()
 
-        ctx.workingDirectory
-            .listFiles()
-            .orEmpty()
-            .filter { it.isDirectory }
+        get<WorkspaceKitScanner>()
+            .discover()
             .forEach { kitDir ->
-                val hasBinScripts =
-                    File(kitDir, "bin").isDirectory &&
-                        File(kitDir, "bin")
-                            .listFiles()
-                            .orEmpty()
-                            .any { it.isFile && (it.canExecute() || it.name.endsWith(".sh")) }
-                val hasConfigYaml = File(kitDir, Constants.Kit.CONFIG_FILE).isFile
-
-                if (!hasBinScripts && !hasConfigYaml) return@forEach
-
                 val kitName = kitDir.name
                 if (kitName in commandLine.subcommands.keys) return@forEach
 

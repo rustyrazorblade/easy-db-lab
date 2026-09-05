@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Version
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
@@ -28,6 +29,7 @@ import com.rustyrazorblade.easydblab.services.DefaultCommandExecutor
 import com.rustyrazorblade.easydblab.services.RequirementCheckDeps
 import com.rustyrazorblade.easydblab.services.ResourceManager
 import com.rustyrazorblade.easydblab.services.StressJobService
+import com.rustyrazorblade.easydblab.services.WorkspaceKitScanner
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.EMRService
 import org.assertj.core.api.Assertions.assertThat
@@ -41,6 +43,7 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.io.PrintStream
 import java.time.Instant
 
@@ -134,6 +137,9 @@ class StatusTest : BaseKoinTest() {
                 single<EMRService> { mockEmrService }
                 single<StressJobService> { mockStressJobService }
                 single<ProxyAvailability> { DefaultProxyAvailability() }
+                // Real instance: the scanner only reads the filesystem, so faking it would
+                // hide the very rule these tests exercise.
+                single { WorkspaceKitScanner(get()) }
             },
         )
 
@@ -305,6 +311,51 @@ class StatusTest : BaseKoinTest() {
         val output = capturedOutput()
         assertThat(output).contains("=== S3 BUCKET ===")
         assertThat(output).contains("(no S3 bucket configured)")
+    }
+
+    // ========== KITS SECTION ==========
+    //
+    // `kit.yaml` is the sole marker of an installed kit. A `bin/` directory holding an
+    // executable proves nothing — Cassandra checkouts and virtualenvs have one — so the
+    // section must list the descriptor-bearing directory and nothing else.
+
+    @Test
+    fun `execute lists only directories holding a kit descriptor under KITS`() {
+        setupBasicClusterState()
+        createWorkspaceDir("clickhouse").also { File(it, Constants.Kit.CONFIG_FILE).writeText("name: clickhouse\n") }
+        createExecutableBinScript("trunk", "cassandra")
+
+        Status().execute()
+
+        val output = capturedOutput()
+        assertThat(output).contains("=== KITS ===")
+        // The rendered kit line, not a bare substring: "ClickHouse" also appears in the
+        // ClickHouse section's heading, so a loose match would pass without a kits listing.
+        assertThat(output).contains("○ clickhouse")
+        assertThat(output).doesNotContain("trunk")
+    }
+
+    @Test
+    fun `execute omits the KITS section when only bin-holding directories exist`() {
+        setupBasicClusterState()
+        createExecutableBinScript("trunk", "cassandra")
+
+        Status().execute()
+
+        assertThat(capturedOutput()).doesNotContain("=== KITS ===")
+    }
+
+    private fun createWorkspaceDir(name: String): File = File(context.workingDirectory, name).also { it.mkdirs() }
+
+    private fun createExecutableBinScript(
+        dirName: String,
+        scriptName: String,
+    ): File {
+        val bin = File(createWorkspaceDir(dirName), "bin").also { it.mkdirs() }
+        return File(bin, scriptName).also {
+            it.writeText("#!/bin/bash\n")
+            it.setExecutable(true)
+        }
     }
 
     // ========== DEGRADED STATUS (PROXY FAILURE) TESTS ==========

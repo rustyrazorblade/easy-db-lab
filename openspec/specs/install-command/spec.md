@@ -2,9 +2,10 @@
 
 ## Purpose
 
-The `install` command group scaffolds kit-specific files (Helm values, scripts, README) into a
-local directory. Users then run the kit via `easy-db-lab <kit> start` — the CLI reads the
-generated `bin/` scripts and registers them as top-level subcommands automatically.
+The `install` command group scaffolds kit-specific files (`kit.yaml`, Helm values, scripts,
+README) into a local directory. Users then run the kit via `easy-db-lab <kit> start` — the CLI
+recognises the directory by its `kit.yaml` and registers its `bin/` scripts as top-level
+subcommands automatically.
 
 ## Requirements
 
@@ -206,8 +207,9 @@ No Kotlin code changes are needed.
 ### Kit runner subcommands
 
 At startup, `CommandLineParser` scans `context.workingDirectory` for directories that contain a
-`bin/` subdirectory with at least one executable script. Each such directory becomes a top-level
-subcommand group; each script in `bin/` becomes a subcommand of that group.
+`kit.yaml`. Each such directory becomes a top-level subcommand group; each script in `bin/`
+becomes a subcommand of that group. A `bin/` directory alone does not qualify a directory —
+source checkouts and virtualenvs have one too.
 
 For example, after `easy-db-lab install clickhouse`:
 
@@ -216,6 +218,7 @@ clickhouse/
 ├── bin/
 │   ├── start.sh    → easy-db-lab clickhouse start
 │   └── stop.sh     → easy-db-lab clickhouse stop
+├── kit.yaml        → marks the directory as an installed kit
 └── clickhouseinstallation.yaml
 ```
 

@@ -115,6 +115,9 @@ val servicesModule =
         // Kit source registry — persists additional kit parent directories in kit-sources.yaml
         singleOf(::KitSourcesProvider)
 
+        // Kit discovery — the single source of truth for which workspace directories are kits
+        singleOf(::WorkspaceKitScanner)
+
         // Cluster configuration service for writing config files
         factoryOf(::DefaultClusterConfigurationService) bind ClusterConfigurationService::class
 

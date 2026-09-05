@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Discovers installed workload directories as top-level CLI subcommands, executes their `bin/` scripts with cluster state injected as environment variables, and installs their dashboards after a successful start.
+Discovers installed workload directories — those holding a `kit.yaml` descriptor — as top-level CLI subcommands, executes their `bin/` scripts with cluster state injected as environment variables, and installs their dashboards after a successful start.
 
 ## Requirements
 

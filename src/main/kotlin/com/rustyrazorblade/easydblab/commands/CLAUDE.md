@@ -145,10 +145,17 @@ template files (including `bin/start.sh.template`, `bin/stop.sh.template`). No c
 
 ### &lt;kit&gt; start/stop subcommands
 
-`registerDynamicKitSubcommands()` scans `context.workingDirectory` for directories that
-contain a `bin/` subdirectory with at least one executable script. Each such directory becomes a
-top-level subcommand group (`easy-db-lab clickhouse`); each script becomes a subcommand
+`registerDynamicKitSubcommands()` registers the kit directories reported by
+`WorkspaceKitScanner` (`services/`). A working-directory subdirectory qualifies only when it
+contains a `kit.yaml`; a `bin/` directory alone does not, because Cassandra checkouts and
+virtualenvs have one too. Each qualifying directory becomes a top-level subcommand group
+(`easy-db-lab clickhouse`); each script in its `bin/` becomes a subcommand
 (`easy-db-lab clickhouse start`).
+
+`WorkspaceKitScanner` is the single source of truth for that rule, and the `=== KITS ===` section
+of `status` reads the same service, so both apply one discovery rule. Registration drops a
+discovered kit after the scan when its name collides with a core command, or when
+`buildKitGroup` throws, so `status` may list a kit that has no subcommand.
 
 Scripts are run by `KitRunnerCommand` with cluster state variables injected as environment
 variables. Dashboard JSON files in `<kit>/dashboards/` are installed into Grafana

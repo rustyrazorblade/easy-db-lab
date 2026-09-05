@@ -83,7 +83,7 @@ class Packer(
             )
 
         require(user.keyName.isNotEmpty() && secretKeyFile.exists()) {
-            "AWS keypair not configured (key: '${user.keyName}', file: ${secretKeyFile.absolutePath}). Run setup-profile first."
+            "AWS keypair not configured (key: '${user.keyName}', file: ${secretKeyFile.absolutePath}). Run profile setup first."
         }
 
         command.addAll(
@@ -133,7 +133,7 @@ class Packer(
 
     /**
      * Whether the EASY_DB_LAB_BUILD_KEEP_ON_FAILURE env var is set to a truthy value. Lets builds
-     * triggered indirectly (e.g. by setup-profile) keep the instance up on failure without a flag.
+     * triggered indirectly (e.g. by profile setup) keep the instance up on failure without a flag.
      */
     private fun keepOnErrorFromEnv(): Boolean =
         System.getenv(Constants.Environment.BUILD_KEEP_ON_FAILURE)?.lowercase() in setOf("1", "true", "yes", "on")

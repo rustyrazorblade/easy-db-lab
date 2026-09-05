@@ -1,4 +1,4 @@
-package com.rustyrazorblade.easydblab.commands
+package com.rustyrazorblade.easydblab.kernel
 
 import com.rustyrazorblade.easydblab.annotations.PostExecute
 import com.rustyrazorblade.easydblab.annotations.PreExecute
@@ -14,6 +14,12 @@ import kotlin.reflect.jvm.isAccessible
  * Implements Callable<Int> for PicoCLI compatibility.
  * Executes methods annotated with @PreExecute before the main execute() method,
  * and methods annotated with @PostExecute afterward.
+ *
+ * Lives in `kernel/`, not `commands/`, on purpose. `services/CommandExecutor` dispatches on this
+ * interface, and `commands/` already depends on `services/`; declaring it in `commands/` therefore
+ * made the two packages depend on each other. `kernel/` holds the small set of types both layers
+ * share, so neither has to name the other. Moving this file back into `commands/` restores the
+ * cycle. `PicoBaseCommand` is not shared that way and stays in `commands/`.
  */
 interface PicoCommand : Callable<Int> {
     /**

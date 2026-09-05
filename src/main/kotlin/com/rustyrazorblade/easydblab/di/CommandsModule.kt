@@ -14,7 +14,6 @@ import com.rustyrazorblade.easydblab.commands.PruneAMIs
 import com.rustyrazorblade.easydblab.commands.Repl
 import com.rustyrazorblade.easydblab.commands.Server
 import com.rustyrazorblade.easydblab.commands.SetupInstance
-import com.rustyrazorblade.easydblab.commands.SetupProfile
 import com.rustyrazorblade.easydblab.commands.ShowIamPolicies
 import com.rustyrazorblade.easydblab.commands.Status
 import com.rustyrazorblade.easydblab.commands.Up
@@ -48,10 +47,13 @@ import com.rustyrazorblade.easydblab.commands.grafana.GrafanaUpdateConfig
 import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearchStart
 import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearchStatus
 import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearchStop
+import com.rustyrazorblade.easydblab.commands.profile.ProfileShow
+import com.rustyrazorblade.easydblab.commands.profile.SetupProfile
 import com.rustyrazorblade.easydblab.commands.spark.SparkJobs
 import com.rustyrazorblade.easydblab.commands.spark.SparkLogs
 import com.rustyrazorblade.easydblab.commands.spark.SparkStatus
 import com.rustyrazorblade.easydblab.commands.spark.SparkSubmit
+import com.rustyrazorblade.easydblab.services.ProfileSetupCommandProvider
 import org.koin.dsl.module
 
 /**
@@ -77,6 +79,7 @@ val commandsModule =
         factory { Repl() }
         factory { Server() }
         factory { SetupInstance() }
+        factory { ProfileShow() }
         factory { SetupProfile() }
         factory { ShowIamPolicies() }
         factory { Status() }
@@ -127,4 +130,7 @@ val commandsModule =
         factory { SparkLogs() }
         factory { SparkStatus() }
         factory { SparkSubmit() }
+
+        // Supplies the profile setup command to CommandExecutor, which must not name a command class
+        single<ProfileSetupCommandProvider> { ProfileSetupCommandProvider { get<SetupProfile>() } }
     }

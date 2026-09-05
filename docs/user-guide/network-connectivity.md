@@ -62,7 +62,7 @@ The `autoApprovers` section automatically approves subnet routes, so you don't n
 #### Step 3: Configure easy-db-lab
 
 ```bash
-easy-db-lab setup-profile
+easy-db-lab profile setup
 ```
 
 Enter your Tailscale OAuth credentials when prompted.

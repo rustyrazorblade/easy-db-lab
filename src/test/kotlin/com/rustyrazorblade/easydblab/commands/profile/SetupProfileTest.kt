@@ -1,8 +1,10 @@
-package com.rustyrazorblade.easydblab.commands
+package com.rustyrazorblade.easydblab.commands.profile
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Prompter
 import com.rustyrazorblade.easydblab.TestPrompter
+import com.rustyrazorblade.easydblab.commands.BuildImage
+import com.rustyrazorblade.easydblab.commands.SetupProfileException
 import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider

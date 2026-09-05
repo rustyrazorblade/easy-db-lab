@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab
 
+import com.rustyrazorblade.easydblab.commands.profile.Profile
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.services.DefaultKitCommandScanner
 import com.rustyrazorblade.easydblab.services.InstallTemplateResolver
@@ -70,5 +71,21 @@ class CommandLineParserTest : BaseKoinTest() {
         val output = stdout.toString()
         assertThat(output).contains("clickhouse")
         assertThat(output).doesNotContain("trunk")
+    }
+
+    @Test
+    fun `a workspace directory named profile does not shadow the profile command group`() {
+        // registerDynamicKitSubcommands() drops a discovered kit whose name collides with a static
+        // top-level command. Without that guard a directory named "profile" replaces the command
+        // group with a kit runner, and `profile show` stops resolving.
+        val kitDir = File(context.workingDirectory, "profile")
+        kitDir.mkdirs()
+        File(kitDir, Constants.Kit.CONFIG_FILE).writeText("name: profile\n")
+
+        val commandLine = CommandLineParser().commandLine
+        val profileGroup = commandLine.subcommands.getValue("profile")
+
+        assertThat(profileGroup.commandSpec.userObject()).isInstanceOf(Profile::class.java)
+        assertThat(profileGroup.subcommands.keys).contains("show", "setup")
     }
 }

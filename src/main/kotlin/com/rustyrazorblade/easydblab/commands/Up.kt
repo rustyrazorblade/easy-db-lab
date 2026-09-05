@@ -18,6 +18,7 @@ import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.network.CidrBlock
 import com.rustyrazorblade.easydblab.network.TcpReachabilityProbe
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredInstance
@@ -240,7 +241,7 @@ class Up(
 
     /**
      * Configures the account-level S3 bucket and per-cluster data bucket.
-     * Uses the bucket name from the user profile (set during setup-profile).
+     * Uses the bucket name from the user profile (set during profile setup).
      * Applies bucket policy for IAM role access.
      * Creates a per-cluster data bucket for ClickHouse data and CloudWatch metrics.
      */
@@ -702,7 +703,7 @@ class Up(
             startProxyIfNeeded()
             startK3sOnAllNodes()
 
-            if (userConfig.axonOpsKey.isNotBlank() && userConfig.axonOpsOrg.isNotBlank()) {
+            if (userConfig.isAxonOpsEnabled()) {
                 eventBus.emit(Event.Provision.AxonOpsSetup(userConfig.axonOpsOrg))
                 runNestedCommand { ConfigureAxonOps() }
             }

@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.commands
 
+import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import org.koin.core.component.KoinComponent
 import picocli.CommandLine
 import picocli.CommandLine.Command

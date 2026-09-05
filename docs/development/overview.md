@@ -91,5 +91,6 @@ Commands (PicoCLI) → Services → External Systems (K8s, AWS, Filesystem)
 
 - **Commands** (`commands/`): Lightweight PicoCLI execution units
 - **Services** (`services/`, `providers/`): Business logic layer
+- **Kernel** (`kernel/`): Types both layers share, such as the `PicoCommand` interface. It keeps commands and services from depending on each other.
 
 For more details, see the project's `CLAUDE.md` file.

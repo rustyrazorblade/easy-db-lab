@@ -39,7 +39,7 @@ class AwsS3BucketService(
      *
      * This lets profiles that predate (or never completed) bucket setup migrate automatically —
      * `up` and the AMI build path call this so the bucket (and the S3 build cache it backs) come
-     * online without re-running `setup-profile`.
+     * online without re-running `profile setup`.
      */
     fun ensureAccountBucket(user: User): String {
         if (user.s3Bucket.isNotBlank()) {

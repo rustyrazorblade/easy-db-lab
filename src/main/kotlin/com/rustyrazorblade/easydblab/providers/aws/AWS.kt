@@ -257,7 +257,7 @@ class AWS(
                 log.error(e) { "Failed to apply S3 bucket policy: $bucketName - ${e.message}" }
                 throw IllegalStateException(
                     "Could not apply the S3 bucket policy because the easy-db-lab IAM roles are not yet " +
-                        "visible to S3 (IAM propagation delay). Wait a moment and re-run setup-profile.",
+                        "visible to S3 (IAM propagation delay). Wait a moment and re-run profile setup.",
                     e,
                 )
             }

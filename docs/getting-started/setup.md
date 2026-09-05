@@ -4,7 +4,7 @@ This guide walks you through the initial setup of easy-db-lab, including AWS cre
 
 ## Overview
 
-The `setup-profile` command handles all initial configuration interactively. It will:
+The `profile setup` command handles all initial configuration interactively. It will:
 
 1. Collect your email and AWS credentials
 2. Validate your AWS access
@@ -24,13 +24,7 @@ Before running setup:
 Run the interactive setup:
 
 ```bash
-easy-db-lab setup-profile
-```
-
-Or use the shorter alias:
-
-```bash
-easy-db-lab setup
+easy-db-lab profile setup
 ```
 
 The setup wizard will prompt you for:
@@ -49,7 +43,7 @@ The setup wizard will prompt you for:
 The AWS profile name is asked **first**. If you provide one, the access key and secret prompts are skipped — easy-db-lab resolves credentials through that profile (including [AWS SSO](#using-aws-sso-iam-identity-center) profiles). Static access keys are only collected when you leave the profile name blank.
 ```
 
-setup-profile validates your credentials against AWS immediately (and then provisions resources), so your credentials must be usable **before** you run it. For static keys this is automatic; for an SSO profile, run `aws sso login` first (see below).
+`profile setup` validates your credentials against AWS immediately (and then provisions resources), so your credentials must be usable **before** you run it. For static keys this is automatic; for an SSO profile, run `aws sso login` first (see below).
 
 ### What Gets Created
 
@@ -101,14 +95,14 @@ region = us-west-2
 aws sso login --profile edl
 ```
 
-**3. Run setup-profile** and enter `edl` when prompted for the AWS profile name (leave the access key and secret blank):
+**3. Run `profile setup`** and enter `edl` when prompted for the AWS profile name (leave the access key and secret blank):
 
 ```bash
-easy-db-lab setup-profile
+easy-db-lab profile setup
 ```
 
 ```admonish important
-Run `aws sso login` **before** `setup-profile`. setup-profile validates and provisions against AWS immediately, so it needs an active SSO session. This first-time `aws sso login` → `setup-profile` sequence is only needed once.
+Run `aws sso login` **before** `profile setup`. It validates and provisions against AWS immediately, so it needs an active SSO session. This first-time `aws sso login` → `profile setup` sequence is only needed once.
 ```
 
 #### Day-to-day usage

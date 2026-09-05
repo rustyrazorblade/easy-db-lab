@@ -47,7 +47,7 @@ The built distribution will be in `build/distributions/`.
 Run the interactive setup to configure your profile:
 
 ```bash
-easy-db-lab setup-profile
+easy-db-lab profile setup
 ```
 
 See the [Setup Guide](setup.md) for detailed instructions.

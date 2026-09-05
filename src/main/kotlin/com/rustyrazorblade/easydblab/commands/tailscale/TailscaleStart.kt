@@ -27,7 +27,7 @@ import picocli.CommandLine.Option
  *
  * OAuth credentials can be provided via:
  * - CLI arguments (--client-id, --client-secret)
- * - User configuration (setup-profile)
+ * - User configuration (profile setup)
  */
 @McpCommand
 @RequireProfileSetup
@@ -88,7 +88,7 @@ class TailscaleStart : PicoBaseCommand() {
 
                 Please provide credentials via:
                 1. CLI arguments: --client-id and --client-secret
-                2. Setup profile: easy-db-lab setup-profile
+                2. Setup profile: easy-db-lab profile setup
 
                 To get OAuth credentials:
                 1. Go to https://login.tailscale.com/admin/settings/oauth

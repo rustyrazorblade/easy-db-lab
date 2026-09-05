@@ -50,6 +50,8 @@ See [`commands/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/command
 
 See [`providers/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/providers/CLAUDE.md) for AWS/SSH/Docker patterns and retry logic.
 
+**Kernel (`kernel/`)**: The few types both of the layers above share. It holds `PicoCommand`, the interface `services/CommandExecutor` dispatches on and every command implements. Keeping it here is what stops `commands/` and `services/` from depending on each other. Add a type to `kernel/` only when both layers need it, and keep it free of dependencies on either.
+
 ### Server & REPL
 
 Two commands run as long-lived processes instead of the typical run-and-exit pattern:

@@ -51,6 +51,12 @@ data class User(
      */
     fun isTailscaleEnabled(): Boolean = tailscaleClientId.isNotBlank() && tailscaleClientSecret.isNotBlank()
 
+    /**
+     * Returns true when both AxonOps credentials are configured in this profile.
+     * Both are required: [Up] and [cassandra.Start] skip AxonOps unless the org and the key are set.
+     */
+    fun isAxonOpsEnabled(): Boolean = axonOpsOrg.isNotBlank() && axonOpsKey.isNotBlank()
+
     companion object {
         val log = KotlinLogging.logger {}
 

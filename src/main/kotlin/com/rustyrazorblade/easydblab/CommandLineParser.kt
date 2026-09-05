@@ -13,12 +13,10 @@ import com.rustyrazorblade.easydblab.commands.Down
 import com.rustyrazorblade.easydblab.commands.Hosts
 import com.rustyrazorblade.easydblab.commands.Init
 import com.rustyrazorblade.easydblab.commands.Ip
-import com.rustyrazorblade.easydblab.commands.PicoCommand
 import com.rustyrazorblade.easydblab.commands.PruneAMIs
 import com.rustyrazorblade.easydblab.commands.Repl
 import com.rustyrazorblade.easydblab.commands.Server
 import com.rustyrazorblade.easydblab.commands.SetupInstance
-import com.rustyrazorblade.easydblab.commands.SetupProfile
 import com.rustyrazorblade.easydblab.commands.ShowIamPolicies
 import com.rustyrazorblade.easydblab.commands.Status
 import com.rustyrazorblade.easydblab.commands.Up
@@ -35,6 +33,7 @@ import com.rustyrazorblade.easydblab.commands.logs.Logs
 import com.rustyrazorblade.easydblab.commands.metrics.Metrics
 import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearch
 import com.rustyrazorblade.easydblab.commands.platform.Platform
+import com.rustyrazorblade.easydblab.commands.profile.Profile
 import com.rustyrazorblade.easydblab.commands.spark.Spark
 import com.rustyrazorblade.easydblab.commands.tailscale.Tailscale
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -42,6 +41,7 @@ import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.di.KoinCommandFactory
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.DefaultCommandExecutor
 import com.rustyrazorblade.easydblab.services.InstallTemplateResolver
@@ -88,7 +88,6 @@ import kotlin.system.exitProcess
         Init::class,
         SetupInstance::class,
         Up::class,
-        SetupProfile::class,
         Repl::class,
         Server::class,
         // Parent command groups
@@ -102,6 +101,7 @@ import kotlin.system.exitProcess
         Tailscale::class,
         Platform::class,
         Kit::class,
+        Profile::class,
         Cleanup::class,
     ],
 )
@@ -124,8 +124,13 @@ class EasyDBLabCommand : Runnable {
 class CommandLineParser : KoinComponent {
     private val eventBus: EventBus by inject()
 
-    /** The main PicoCLI CommandLine instance with all subcommands registered. */
-    private val commandLine: CommandLine =
+    /**
+     * The main PicoCLI CommandLine instance with all subcommands registered.
+     *
+     * `internal` rather than private so a test can inspect the registered tree directly. Help
+     * output alone cannot tell a static command group from a kit runner that shadowed its name.
+     */
+    internal val commandLine: CommandLine =
         CommandLine(EasyDBLabCommand::class.java, KoinCommandFactory()).apply {
             // Set exception handler to ensure non-zero exit code on exceptions
             executionExceptionHandler =

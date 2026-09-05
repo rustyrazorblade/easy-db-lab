@@ -142,7 +142,7 @@ object Constants {
         const val S3_BUCKET = "EASY_DB_LAB_S3_BUCKET"
 
         // When truthy, AMI builds leave the instance running on failure (packer -on-error=abort),
-        // regardless of how the build was invoked (e.g. via setup-profile, which has no flag).
+        // regardless of how the build was invoked (e.g. via profile setup, which has no flag).
         const val BUILD_KEEP_ON_FAILURE = "EASY_DB_LAB_BUILD_KEEP_ON_FAILURE"
     }
 
@@ -184,6 +184,9 @@ object Constants {
     object ConfigPaths {
         // Local config files
         const val CASSANDRA_PATCH_FILE = "cassandra.patch.yaml"
+
+        // Per-profile user settings, written under the active profile directory
+        const val PROFILE_SETTINGS_FILE = "settings.yaml"
     }
 
     // K3s configuration

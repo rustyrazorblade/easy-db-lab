@@ -42,11 +42,14 @@ class MyCommand : PicoBaseCommand(context) {
 
 ## Package Organization
 
+The `PicoCommand` interface itself lives in `kernel/`, not here. `services/CommandExecutor` needs
+it, and keeping it in `commands/` made `services` depend on `commands` while `commands` already
+depended on `services`. `PicoBaseCommand` stays in this package.
+
 ```
 commands/
 ├── CLAUDE.md              # This file
 ├── PicoBaseCommand.kt     # Base class for all commands
-├── PicoCommand.kt         # Interface for commands
 ├── cassandra/             # Cassandra-related commands
 │   ├── Cassandra.kt       # Parent command group
 │   ├── stress/            # Stress testing subcommands
@@ -70,6 +73,7 @@ commands/
 ├── metrics/               # Metrics import/listing commands
 ├── opensearch/            # OpenSearch commands
 ├── platform/              # Platform substrate commands (platform create-pvs, platform info)
+├── profile/               # Profile inspection and setup (profile show, profile setup)
 ├── spark/                 # Spark commands
 ├── tailscale/             # Tailscale VPN commands
 ├── mixins/                # Reusable PicoCLI mixins

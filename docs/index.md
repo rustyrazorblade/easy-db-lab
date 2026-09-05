@@ -11,7 +11,7 @@ If you're looking for tools to help manage Cassandra in *production* environment
 ## Quick Start
 
 1. [Install easy-db-lab](getting-started/installation.md)
-2. [Set up your profile](getting-started/setup.md) - Run `easy-db-lab setup-profile`
+2. [Set up your profile](getting-started/setup.md) - Run `easy-db-lab profile setup`
 3. [Follow the tutorial](user-guide/tutorial.md)
 
 ## Features

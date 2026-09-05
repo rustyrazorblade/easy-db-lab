@@ -7,12 +7,11 @@ import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.annotations.TriggerBackup
-import com.rustyrazorblade.easydblab.commands.PicoCommand
-import com.rustyrazorblade.easydblab.commands.SetupProfile
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import com.rustyrazorblade.easydblab.proxy.ProxyAvailability
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
@@ -91,6 +90,7 @@ class DefaultCommandExecutor(
     private val eventBus: EventBus,
     private val socksProxyService: SocksProxyService,
     private val proxyAvailability: ProxyAvailability,
+    private val profileSetupProvider: ProfileSetupCommandProvider,
 ) : CommandExecutor,
     KoinComponent {
     // Lazy injection - only resolves when first accessed (defers AWS dependency chain)
@@ -228,7 +228,7 @@ class DefaultCommandExecutor(
         if (annotations.any { it is RequireProfileSetup }) {
             if (!requirementCheckDeps.userConfigProvider.isSetup()) {
                 // Run setup command with full lifecycle
-                executeWithLifecycle(SetupProfile())
+                executeWithLifecycle(profileSetupProvider.create())
 
                 // Show message and exit
                 eventBus.emit(Event.Command.RetryInstruction)

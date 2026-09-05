@@ -2,20 +2,20 @@
 
 ## 1. Close the `commands↔services` cycle
 
-- [ ] 1.1 Move the `PicoCommand` interface out of `commands/` to a kernel package in the main module
+- [x] 1.1 Move the `PicoCommand` interface out of `commands/` to a kernel package in the main module
       (not `core` — it imports `annotations.PreExecute`/`PostExecute`). `PicoBaseCommand` stays in
       `commands/`.
-- [ ] 1.2 Update the 5 `src/main` importers (`CommandLineParser.kt`, `commands/aws/Region.kt`,
+- [x] 1.2 Update the 5 `src/main` importers (`CommandLineParser.kt`, `commands/aws/Region.kt`,
       `commands/aws/S3Bucket.kt`, `mcp/McpToolRegistry.kt`, `services/CommandExecutor.kt`), the 3
       `src/test` importers (`TestModules.kt`, `mcp/McpAnnotationTest.kt`,
       `commands/cassandra/UseCassandraTest.kt`), and the 3 same-package files that gain an import
       (`commands/PicoBaseCommand.kt`, `commands/Commands.kt`, `commands/Ip.kt`).
-- [ ] 1.3 Add `services/ProfileSetupCommandProvider.kt` — a `fun interface` returning a
+- [x] 1.3 Add `services/ProfileSetupCommandProvider.kt` — a `fun interface` returning a
       `PicoCommand` — and bind it. Replace the direct `SetupProfile()` construction at
       `CommandExecutor.kt:231` with `profileSetupProvider.create()`.
-- [ ] 1.4 Add the constructor argument at the two direct `DefaultCommandExecutor(...)` construction
+- [x] 1.4 Add the constructor argument at the two direct `DefaultCommandExecutor(...)` construction
       sites in tests (`CommandExecutorTest.kt:86`, `StatusTest.kt:448`).
-- [ ] 1.5 Verify no file under `services/` references any type in `commands/`, by import **or**
+- [x] 1.5 Verify no file under `services/` references any type in `commands/`, by import **or**
       fully-qualified name.
 
 ## 2. Build the `profile` command group

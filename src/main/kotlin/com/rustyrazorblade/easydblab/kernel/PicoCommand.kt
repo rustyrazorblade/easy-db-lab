@@ -1,4 +1,4 @@
-package com.rustyrazorblade.easydblab.commands
+package com.rustyrazorblade.easydblab.kernel
 
 import com.rustyrazorblade.easydblab.annotations.PostExecute
 import com.rustyrazorblade.easydblab.annotations.PreExecute

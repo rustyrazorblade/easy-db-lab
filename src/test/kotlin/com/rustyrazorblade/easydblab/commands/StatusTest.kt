@@ -26,6 +26,7 @@ import com.rustyrazorblade.easydblab.proxy.ProxyAvailability
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.DefaultCommandExecutor
+import com.rustyrazorblade.easydblab.services.ProfileSetupCommandProvider
 import com.rustyrazorblade.easydblab.services.RequirementCheckDeps
 import com.rustyrazorblade.easydblab.services.ResourceManager
 import com.rustyrazorblade.easydblab.services.StressJobService
@@ -457,6 +458,7 @@ class StatusTest : BaseKoinTest() {
                 eventBus = getKoin().get(),
                 socksProxyService = mockSocksProxyService,
                 proxyAvailability = proxyAvailability,
+                profileSetupProvider = ProfileSetupCommandProvider { error("profile setup must not run here") },
             )
 
         // When - status is run through the real executor, exactly as it would be from the CLI

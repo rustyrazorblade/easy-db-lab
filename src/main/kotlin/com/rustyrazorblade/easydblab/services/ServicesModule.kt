@@ -189,6 +189,7 @@ val servicesModule =
                 get<EventBus>(),
                 get<SocksProxyService>(),
                 get<ProxyAvailability>(),
+                get<ProfileSetupCommandProvider>(),
             )
         }
     }

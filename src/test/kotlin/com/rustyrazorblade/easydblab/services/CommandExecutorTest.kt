@@ -95,6 +95,7 @@ class CommandExecutorTest : BaseKoinTest() {
                 eventBus = EventBus(),
                 socksProxyService = mockSocksProxyService,
                 proxyAvailability = proxyAvailability,
+                profileSetupProvider = ProfileSetupCommandProvider { error("profile setup must not run here") },
             )
     }
 

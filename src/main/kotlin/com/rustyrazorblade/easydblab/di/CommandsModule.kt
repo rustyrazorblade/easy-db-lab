@@ -52,6 +52,7 @@ import com.rustyrazorblade.easydblab.commands.spark.SparkJobs
 import com.rustyrazorblade.easydblab.commands.spark.SparkLogs
 import com.rustyrazorblade.easydblab.commands.spark.SparkStatus
 import com.rustyrazorblade.easydblab.commands.spark.SparkSubmit
+import com.rustyrazorblade.easydblab.services.ProfileSetupCommandProvider
 import org.koin.dsl.module
 
 /**
@@ -127,4 +128,7 @@ val commandsModule =
         factory { SparkLogs() }
         factory { SparkStatus() }
         factory { SparkSubmit() }
+
+        // Supplies the profile setup command to CommandExecutor, which must not name a command class
+        single<ProfileSetupCommandProvider> { ProfileSetupCommandProvider { get<SetupProfile>() } }
     }

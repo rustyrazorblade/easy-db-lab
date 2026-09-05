@@ -13,7 +13,6 @@ import com.rustyrazorblade.easydblab.commands.Down
 import com.rustyrazorblade.easydblab.commands.Hosts
 import com.rustyrazorblade.easydblab.commands.Init
 import com.rustyrazorblade.easydblab.commands.Ip
-import com.rustyrazorblade.easydblab.commands.PicoCommand
 import com.rustyrazorblade.easydblab.commands.PruneAMIs
 import com.rustyrazorblade.easydblab.commands.Repl
 import com.rustyrazorblade.easydblab.commands.Server
@@ -42,6 +41,7 @@ import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.di.KoinCommandFactory
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.DefaultCommandExecutor
 import com.rustyrazorblade.easydblab.services.InstallTemplateResolver

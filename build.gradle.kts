@@ -417,6 +417,17 @@ tasks.register<Exec>("testCassandraAgentSelection") {
     commandLine = listOf("bash", "packer/cassandra/lib/edl-cassandra-agents.test.sh")
 }
 
+// Unit-test cached_fetch, which every provisioning script and install-cassandra-version routes
+// downloads through. Covers the s3:// dispatch (curl has no s3 protocol, and an object already in
+// the account bucket must not be copied into the download cache), plus cache hit, cache miss and
+// no-bucket-configured. aws and curl are stubbed; no network, no credentials, no node.
+tasks.register<Exec>("testCacheLib") {
+    group = "Verification"
+    description = "Unit-test the S3-backed download cache helper"
+    workingDir = file(".")
+    commandLine = listOf("bash", "packer/base/install/edl-cache-lib.test.sh")
+}
+
 tasks.register("testCassandraScripts") {
     group = "Verification"
     description = "Run all Cassandra shell script unit tests"
@@ -425,6 +436,7 @@ tasks.register("testCassandraScripts") {
         "testCassandraInstallLoop",
         "testCassandraUseScript",
         "testCassandraAgentSelection",
+        "testCacheLib",
     )
 }
 

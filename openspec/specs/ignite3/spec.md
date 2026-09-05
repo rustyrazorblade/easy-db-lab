@@ -85,7 +85,7 @@ The kit SHALL configure Ignite 3 to push metrics to the cluster's OTel Collector
 ### Requirement: SQL Execution
 
 The `ignite3 sql` command SHALL execute SQL statements against a running Ignite 3 cluster via the thin client JDBC driver.
-SQL execution is provided via the `sql` capability declared in `ignite3/kit.yaml` — see REQ-KCAP-002.
+SQL execution is provided via the `sql` capability declared in `ignite3/kit.yaml` — see the `sql capability type` requirement in the `kit-capabilities` spec.
 
 #### Scenario: SQL query executes successfully
 

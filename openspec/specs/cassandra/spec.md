@@ -5,7 +5,7 @@
 Manages Apache Cassandra deployment, version selection, configuration, and cluster operations.
 ## Requirements
 
-### REQ-CA-001: Multi-Version Support
+### Requirement: Multi-Version Support
 
 The system MUST support multiple Cassandra versions (3.0 through trunk) on the same AMI.
 
@@ -21,7 +21,7 @@ The system MUST support multiple Cassandra versions (3.0 through trunk) on the s
 - **WHEN** the user starts the cluster
 - **THEN** all nodes run the selected Cassandra version and join the ring.
 
-### REQ-CA-002: Configuration Management
+### Requirement: Configuration Management
 
 The system MUST allow configuration of Cassandra via YAML patch files.
 
@@ -37,7 +37,7 @@ The system MUST allow configuration of Cassandra via YAML patch files.
 - **WHEN** the user requests a restart alongside the config push
 - **THEN** nodes are restarted with the new configuration.
 
-### REQ-CA-003: Cluster Lifecycle
+### Requirement: Cluster Lifecycle
 
 The system MUST support starting, stopping, and restarting Cassandra across cluster nodes. When starting, the system SHALL also deploy the Cassandra sidecar as a K3s DaemonSet after all Cassandra nodes are up.
 
@@ -58,7 +58,7 @@ The system MUST support starting, stopping, and restarting Cassandra across clus
 - **WHEN** the user runs `cassandra start`
 - **THEN** after all Cassandra nodes are up, the sidecar DaemonSet is applied to K3s.
 
-### REQ-CA-004: Mixed-Version Clusters
+### Requirement: Mixed-Version Clusters
 
 The system MUST support running different Cassandra versions on different nodes for upgrade testing.
 
@@ -68,7 +68,7 @@ The system MUST support running different Cassandra versions on different nodes 
 - **WHEN** the user selects different versions for different hosts
 - **THEN** each host runs its assigned version independently.
 
-### REQ-CA-005: CQL Access
+### Requirement: CQL Access
 
 The system MUST provide CQL query execution against the cluster via the Java driver, routed through the network access layer (SOCKS proxy or Tailscale).
 
@@ -84,7 +84,7 @@ The system MUST provide CQL query execution against the cluster via the Java dri
 - **WHEN** multiple CQL queries are executed
 - **THEN** the CQL session is reused across queries.
 
-### REQ-CA-006: Nodetool Access
+### Requirement: Nodetool Access
 
 The system MUST provide nodetool execution on cluster nodes.
 

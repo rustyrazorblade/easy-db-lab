@@ -5,7 +5,7 @@
 Manages the Presto kit lifecycle and provides SQL execution against a running Presto cluster.
 ## Requirements
 
-### REQ-PRS-001: Kit Lifecycle
+### Requirement: Kit Lifecycle
 
 The system MUST support installing, starting, stopping, and uninstalling Presto via the kit mechanism.
 
@@ -22,10 +22,10 @@ The system MUST support installing, starting, stopping, and uninstalling Presto 
 - **WHEN** the user runs `presto start` after a stop
 - **THEN** Presto is re-deployed without requiring re-installation.
 
-### REQ-PRS-002: SQL Execution
+### Requirement: SQL Execution
 
 The `presto sql` command SHALL execute SQL statements against a running Presto cluster.
-SQL execution is provided via the `sql` capability declared in `presto/kit.yaml` — see REQ-KCAP-002.
+SQL execution is provided via the `sql` capability declared in `presto/kit.yaml` — see the `sql capability type` requirement in the `kit-capabilities` spec.
 
 The Presto JDBC driver (`com.facebook.presto:presto-jdbc`) does not auto-register via
 ServiceLoader in fat-JAR environments. The `driver-class` field in the `sql` capability
@@ -43,7 +43,7 @@ SHALL be set to `com.facebook.presto.jdbc.PrestoDriver` to force-load it.
 - **WHEN** no app nodes exist in cluster state
 - **THEN** an error is emitted before any connection is made.
 
-### REQ-PRS-003: Catalog Sources
+### Requirement: Catalog Sources
 
 The system SHALL support automatic catalog injection for the following database kits when they are running alongside Presto: Cassandra, ClickHouse, and PostgreSQL.
 

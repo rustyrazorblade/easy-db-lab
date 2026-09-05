@@ -6,7 +6,7 @@ Structured event bus for all user-facing output, with pluggable output destinati
 
 ## Requirements
 
-### REQ-ES-001: Structured Domain Events
+### Requirement: Structured Domain Events
 
 The system MUST emit structured events containing: event type, timestamp, and command name (when available). Event constructors MUST carry only structured domain data fields — never pre-formatted display strings. The `toDisplayString()` method constructs human-readable output internally from those data fields.
 
@@ -28,7 +28,7 @@ The system MUST emit structured events containing: event type, timestamp, and co
 - **WHEN** it is defined
 - **THEN** it uses a singleton object form rather than carrying empty or dummy fields.
 
-### REQ-ES-002: Event Type Hierarchy
+### Requirement: Event Type Hierarchy
 
 Events MUST be organized into domain-specific groups, enabling consumers to filter by domain prefix or match on specific event types. Types follow the pattern `<Domain>.<Action>` (e.g., `Cassandra.Starting`, `K3s.ClusterStarted`).
 
@@ -44,7 +44,7 @@ Events MUST be organized into domain-specific groups, enabling consumers to filt
 - **WHEN** events are needed
 - **THEN** a new domain interface is added to the sealed hierarchy.
 
-### REQ-ES-003: Backward-Compatible Console Output
+### Requirement: Backward-Compatible Console Output
 
 The system MUST preserve existing console output behavior. The migration to structured events is transparent to CLI users.
 
@@ -60,7 +60,7 @@ The system MUST preserve existing console output behavior. The migration to stru
 - **WHEN** commands run
 - **THEN** only console output is produced with no errors about missing destinations.
 
-### REQ-ES-004: Multiple Output Destinations
+### Requirement: Multiple Output Destinations
 
 The system MUST support multiple simultaneous output destinations via fan-out. Adding a new destination requires no changes to event-emitting code.
 
@@ -76,7 +76,7 @@ The system MUST support multiple simultaneous output destinations via fan-out. A
 - **WHEN** an event is emitted
 - **THEN** only console output is produced.
 
-### REQ-ES-005: Redis Pub/Sub Destination
+### Requirement: Redis Pub/Sub Destination
 
 The system MUST support publishing events to a Redis pub/sub channel using the Jedis client library, configured via environment variable.
 
@@ -104,7 +104,7 @@ The system MUST support publishing events to a Redis pub/sub channel using the J
 - **WHEN** the tool starts
 - **THEN** the system uses the default channel from Constants.
 
-### REQ-ES-006: Wire Format Serialization
+### Requirement: Wire Format Serialization
 
 Events MUST be serializable to a JSON wire format suitable for cross-system consumption. The wire format uses a `type` discriminator field for polymorphic deserialization.
 
@@ -126,7 +126,7 @@ Events MUST be serializable to a JSON wire format suitable for cross-system cons
 - **WHEN** it is serialized
 - **THEN** no `message`, `text`, or `displayString` field appears in the wire format — only structured data fields.
 
-### REQ-ES-007: Command Context Tracking
+### Requirement: Command Context Tracking
 
 The system MUST track which command is currently executing and include this in event metadata. Nested command execution (e.g., `init` calling `up`) MUST reflect the innermost command.
 
@@ -142,7 +142,7 @@ The system MUST track which command is currently executing and include this in e
 - **WHEN** events are emitted
 - **THEN** the `commandName` metadata reads `init`.
 
-### REQ-ES-008: No Generic Event Types in Production
+### Requirement: No Generic Event Types in Production
 
 `Event.Message` and `Event.Error` generic types exist only for test convenience. All production output MUST use domain-specific typed events with structured data fields.
 

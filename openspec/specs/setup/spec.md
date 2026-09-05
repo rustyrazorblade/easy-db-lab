@@ -5,7 +5,7 @@
 Manages user profile creation, AWS credential configuration, and IAM resource initialization required before cluster provisioning.
 ## Requirements
 
-### REQ-SU-001: Profile Setup
+### Requirement: Profile Setup
 
 The system MUST provide an interactive workflow to create a user profile with AWS credentials, region, and key pair configuration.
 
@@ -21,7 +21,7 @@ The system MUST provide an interactive workflow to create a user profile with AW
 - **WHEN** the user runs setup again
 - **THEN** existing settings are available for review and modification.
 
-### REQ-SU-002: AWS Resource Initialization
+### Requirement: AWS Resource Initialization
 
 The system MUST initialize required AWS resources (IAM roles, S3 bucket, VPC) as part of setup.
 
@@ -37,7 +37,7 @@ The system MUST initialize required AWS resources (IAM roles, S3 bucket, VPC) as
 - **WHEN** setup runs
 - **THEN** missing resources are created and existing ones are reused.
 
-### REQ-SU-003: IAM Policy Visibility
+### Requirement: IAM Policy Visibility
 
 The system MUST allow users to view the IAM policies required for operation.
 
@@ -47,7 +47,7 @@ The system MUST allow users to view the IAM policies required for operation.
 - **WHEN** they request IAM policy display
 - **THEN** the required policies are shown with account-specific values substituted.
 
-### REQ-SU-004: AWS Reconfiguration
+### Requirement: AWS Reconfiguration
 
 The system MUST allow reconfiguring AWS resources without full profile re-setup.
 

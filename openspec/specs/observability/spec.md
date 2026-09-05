@@ -3,9 +3,7 @@
 ## Purpose
 
 Provides the cluster's metrics, logging, and tracing stack: dynamically generated OTel Collector scrape configuration, Grafana dashboards backed by VictoriaMetrics, Cilium/Hubble network visibility, hostPort-based metrics exposure, and a ClusterIP Service for pushing OTLP traces.
-
 ## Requirements
-
 ### Requirement: OTel Collector scrapes workload metrics dynamically
 The OTel Collector ConfigMap SHALL be generated dynamically by `OtelManifestBuilder`, combining a fixed set of static scrape jobs for host processes with a dynamic set of per-workload scrape jobs read from the K8s metrics registry (`easydblab-metrics-*` ConfigMaps). The static ClickHouse scrape job previously hardcoded in `otel-collector-config.yaml` SHALL be removed.
 
@@ -119,3 +117,25 @@ A Kubernetes ClusterIP Service named `otel-collector` SHALL be deployed in the `
 - **WHEN** the ClusterIP Service is added
 - **THEN** Fluent Bit SHALL continue to reach the OTel collector via `127.0.0.1:4318`
 - **AND** the OTel collector SHALL continue to scrape host-networked Prometheus targets via `localhost:<port>`
+
+### Requirement: OTel Collector collects logs from multiple sources including K8s pods
+The OTel Collector SHALL collect logs from the following sources, each in a dedicated pipeline:
+- **`logs/local`**: Host file-based logs — system (`/var/log/**`), tools (`/var/log/easydblab/tools/`), Cassandra (`/mnt/db1/cassandra/logs/`), ClickHouse server and keeper logs.
+- **`logs/containers`**: K8s pod stdout/stderr via `/var/log/containers/*.log`, enriched with Kubernetes metadata.
+- **`logs/otlp`**: OTLP-pushed logs from remote sources (e.g. Spark nodes).
+
+The `filelog/system` receiver in `logs/local` SHALL explicitly exclude `/var/log/containers/**` and `/var/log/pods/**` to prevent duplication with `logs/containers`.
+
+#### Scenario: Host file logs reach VictoriaLogs
+- **WHEN** a Cassandra or ClickHouse process writes to its log file on the host filesystem
+- **THEN** that log entry SHALL appear in VictoriaLogs via the `logs/local` pipeline
+
+#### Scenario: K8s pod logs reach VictoriaLogs with metadata
+- **WHEN** a K8s-native kit pod writes to stdout or stderr
+- **THEN** that log entry SHALL appear in VictoriaLogs via the `logs/containers` pipeline
+- **AND** the entry SHALL include `k8s.pod.name`, `k8s.namespace.name`, and `app.kubernetes.io/instance` attributes
+
+#### Scenario: Container logs are not duplicated in system logs
+- **WHEN** any K8s pod emits a log line
+- **THEN** that log line SHALL NOT appear in VictoriaLogs as a raw system log entry from `filelog/system`
+

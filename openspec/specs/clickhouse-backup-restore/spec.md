@@ -6,7 +6,7 @@ Covers backup, restore, and list-backups commands for ClickHouse clusters using 
 
 ## Requirements
 
-### REQ-CHBR-001: User Can Back Up a Running ClickHouse Cluster
+### Requirement: User Can Back Up a Running ClickHouse Cluster
 
 The system SHALL back up the full schema and data of a running ClickHouse cluster to a named location in the account S3 bucket using ClickHouse's native BACKUP command.
 
@@ -25,7 +25,7 @@ The system SHALL back up the full schema and data of a running ClickHouse cluste
 - **WHEN** a backup completes successfully
 - **THEN** the system writes a `backup-metadata.json` sidecar at `clickhouse-backups/<name>/backup-metadata.json` containing backupName, timestamp, sourceCluster, and totalSizeBytes.
 
-### REQ-CHBR-002: User Can Restore a ClickHouse Cluster from a Named Backup
+### Requirement: User Can Restore a ClickHouse Cluster from a Named Backup
 
 The system SHALL restore schema and data into a running ClickHouse cluster from a named backup in the account S3 bucket.
 
@@ -39,7 +39,7 @@ The system SHALL restore schema and data into a running ClickHouse cluster from 
 - **WHEN** the user runs `clickhouse restore <name>` and no backup with that name exists
 - **THEN** the system fails with a clear error message.
 
-### REQ-CHBR-003: User Can Restore on Cluster Startup
+### Requirement: User Can Restore on Cluster Startup
 
 The system SHALL support restoring from a named backup immediately after `clickhouse start` completes.
 
@@ -48,7 +48,7 @@ The system SHALL support restoring from a named backup immediately after `clickh
 - **WHEN** the user runs `clickhouse start --restore-from <name>`
 - **THEN** the system starts the ClickHouse cluster and, once pods are ready, automatically runs `clickhouse restore <name>`.
 
-### REQ-CHBR-004: User Can List Available Backups
+### Requirement: User Can List Available Backups
 
 The system SHALL list all named backups in the account S3 bucket with their metadata.
 
@@ -62,7 +62,7 @@ The system SHALL list all named backups in the account S3 bucket with their meta
 - **WHEN** the user runs `clickhouse list-backups` and no backups exist
 - **THEN** the system emits an event indicating no backups were found.
 
-### REQ-CHBR-005: User Can Back Up Before Cluster Teardown
+### Requirement: User Can Back Up Before Cluster Teardown
 
 The system SHALL support triggering a ClickHouse backup as part of the `down` command before AWS infrastructure is torn down.
 
@@ -71,7 +71,7 @@ The system SHALL support triggering a ClickHouse backup as part of the `down` co
 - **WHEN** the user runs `down --clickhouse.backup <name>`
 - **THEN** the system performs the ClickHouse backup before beginning AWS teardown, and fails the teardown if the backup fails.
 
-### REQ-CHBR-006: Backup S3 Path Is Decoupled from Cluster Lifecycle
+### Requirement: Backup S3 Path Is Decoupled from Cluster Lifecycle
 
 Backups SHALL be stored at `s3://<account-bucket>/clickhouse-backups/<name>/`, independent of any cluster prefix, so they persist across cluster runs.
 

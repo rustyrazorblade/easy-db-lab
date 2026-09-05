@@ -2,13 +2,11 @@
 
 ## Purpose
 
-The `install` command group scaffolds kit-specific files (`kit.yaml`, Helm values, scripts,
+The `kit install` command group scaffolds kit-specific files (`kit.yaml`, Helm values, scripts,
 README) into a local directory. Users then run the kit via `easy-db-lab <kit> start` — the CLI
 recognises the directory by its `kit.yaml` and registers its `bin/` scripts as top-level
 subcommands automatically.
-
 ## Requirements
-
 ### Requirement: Template discovery sources
 Templates SHALL be resolved from four sources in priority order:
 
@@ -62,7 +60,7 @@ The CLI loader SHALL look for `kit.yaml` when resolving a kit's configuration fr
 - **THEN** it reads `kit.yaml` from the template directory
 
 #### Scenario: Loader finds kit.yaml in profile directory
-- **WHEN** a user has a custom template at `~/.easy-db-lab/profiles/<profile>/install/<name>/kit.yaml`
+- **WHEN** a user has a custom template at `~/.easy-db-lab/profiles/<profile>/kits/<name>/kit.yaml`
 - **THEN** the CLI reads that file and it overrides the built-in
 
 #### Scenario: Loader ignores config.yaml
@@ -71,30 +69,57 @@ The CLI loader SHALL look for `kit.yaml` when resolving a kit's configuration fr
 
 ### Requirement: Kit node-type requirement field
 A kit MAY declare `type: db` or `type: app` in `kit.yaml`; when declared, the cluster MUST have at least
-one node of that type before installation proceeds.
+one node of that type before installation proceeds. The field is optional — a kit without it has no
+node-type requirement. The check runs at the start of `kit install`, before any templates are rendered or
+files are written, so a failure leaves nothing on disk.
 
 #### Scenario: Install fails when required node pool is absent
 - **GIVEN** a kit declares `type: app`
-- **WHEN** the user runs `easy-db-lab install <kit>` and the cluster has no app nodes
+- **WHEN** the user runs `easy-db-lab kit install <kit>` and the cluster has no app nodes
 - **THEN** the install fails immediately with `Event.Kit.RequirementNotMet`
 - **THEN** no files are written to disk
 
 #### Scenario: Install proceeds when required node pool is present
 - **GIVEN** a kit declares `type: db`
-- **WHEN** the user runs `easy-db-lab install <kit>` and the cluster has at least one db node
+- **WHEN** the user runs `easy-db-lab kit install <kit>` and the cluster has at least one db node
 - **THEN** the install proceeds normally
 
 #### Scenario: No type field means no requirement check
 - **GIVEN** a kit declares no `type` field
-- **WHEN** the user runs `easy-db-lab install <kit>`
+- **WHEN** the user runs `easy-db-lab kit install <kit>`
 - **THEN** no node-type check is performed
+
+### Requirement: Dynamic install subcommands registered under `kit install`
+At startup, `CommandLineParser` SHALL scan all available `kit.yaml` files (classpath + profile dir)
+and register a dynamic PicoCLI subcommand under `kit install` for each one found, with flags
+from the `args` list. There SHALL be no top-level `install` command; all install, list, and
+uninstall operations are rooted at the `kit` command group.
+
+Adding a new kit requires only:
+1. Creating a `kits/<name>/` template directory with `kit.yaml`
+2. Adding template files (including `bin/` scripts)
+
+No Kotlin code changes are needed.
+
+#### Scenario: Dynamic subcommands appear under `kit install`
+- **WHEN** the CLI starts and discovers built-in kit templates
+- **THEN** each kit appears as a subcommand of `kit install` (e.g. `easy-db-lab kit install clickhouse`)
+
+#### Scenario: Dynamic subcommands are NOT registered at root `install`
+- **WHEN** the CLI starts
+- **THEN** the top-level `install` command does NOT exist; all install operations are under `kit install`
+
+#### Scenario: Listing kits is a dedicated subcommand
+- **WHEN** the user wants to see available kits
+- **THEN** `easy-db-lab kit list` SHALL list them
+- **AND** no `--list` flag SHALL exist on `kit install`
 
 ## Template Structure
 
 Each template directory contains a `kit.yaml` descriptor and files with a `.template` suffix:
 
 ```
-install/<name>/
+kits/<name>/
 ├── kit.yaml              # Kit descriptor (flags, collision detection)
 ├── README.md.template
 ├── values.yaml.template  (or other config files)
@@ -193,17 +218,6 @@ Unresolved `__VAR__` placeholders emit a warning but do not fail the render.
 
 ## Dynamic Subcommand Registration
 
-### install subcommands
-
-At startup, `CommandLineParser` scans all available `kit.yaml` files (classpath + profile dir)
-and registers an `install <kit>` subcommand for each, with flags from the `args` list.
-
-Adding a new kit requires only:
-1. Creating an `install/<name>/` template directory with `kit.yaml`
-2. Adding template files (including `bin/` scripts)
-
-No Kotlin code changes are needed.
-
 ### Kit runner subcommands
 
 At startup, `CommandLineParser` scans `context.workingDirectory` for directories that contain a
@@ -211,7 +225,7 @@ At startup, `CommandLineParser` scans `context.workingDirectory` for directories
 becomes a subcommand of that group. A `bin/` directory alone does not qualify a directory —
 source checkouts and virtualenvs have one too.
 
-For example, after `easy-db-lab install clickhouse`:
+For example, after `easy-db-lab kit install clickhouse`:
 
 ```
 clickhouse/
@@ -228,10 +242,10 @@ Scripts are executed with cluster state variables injected as environment variab
 After a successful `start`, the CLI scans `<kit>/dashboards/*.json` and installs each
 dashboard into Grafana automatically.
 
-## `install clickhouse`
+## `kit install clickhouse`
 
 ```
-install clickhouse [--replicas N] [--size Gi] [--s3-cache Gi] [--s3-cache-on-write bool] [--s3-tier-move-factor N] [--force]
+kit install clickhouse [--replicas N] [--size Gi] [--s3-cache Gi] [--s3-cache-on-write bool] [--s3-tier-move-factor N] [--force]
 ```
 
 Adds extra template variables:
@@ -245,10 +259,10 @@ Adds extra template variables:
 
 Collision detection: if a `ClickHouseInstallation` CR already exists in the cluster, the command warns and requires `--force` to proceed.
 
-## `install presto`
+## `kit install presto`
 
 ```
-install presto [--workers N]
+kit install presto [--workers N]
 ```
 
 Adds extra template variables:

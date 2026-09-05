@@ -6,7 +6,7 @@ Manages Cassandra stress job lifecycle including starting, stopping, monitoring,
 
 ## Requirements
 
-### REQ-ST-001: Stress Job Lifecycle
+### Requirement: Stress Job Lifecycle
 
 The system MUST support starting, stopping, and monitoring stress jobs against a Cassandra cluster.
 
@@ -28,7 +28,7 @@ The system MUST support starting, stopping, and monitoring stress jobs against a
 - **WHEN** the user checks status
 - **THEN** running jobs and their states are displayed.
 
-### REQ-ST-002: Stress Job Monitoring
+### Requirement: Stress Job Monitoring
 
 The system MUST provide log access and job listing for stress operations.
 
@@ -44,7 +44,7 @@ The system MUST provide log access and job listing for stress operations.
 - **WHEN** the user requests logs
 - **THEN** aggregated log output from the job is displayed.
 
-### REQ-ST-003: Observability Sidecars
+### Requirement: Observability Sidecars
 
 The system MUST deploy observability sidecars alongside long-running stress jobs to collect metrics.
 

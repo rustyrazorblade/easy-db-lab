@@ -1,4 +1,4 @@
-# Install Command Spec
+# Kit Install Command Spec
 
 ## MODIFIED Requirements
 

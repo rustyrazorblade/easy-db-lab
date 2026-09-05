@@ -17,7 +17,6 @@ import com.rustyrazorblade.easydblab.commands.PruneAMIs
 import com.rustyrazorblade.easydblab.commands.Repl
 import com.rustyrazorblade.easydblab.commands.Server
 import com.rustyrazorblade.easydblab.commands.SetupInstance
-import com.rustyrazorblade.easydblab.commands.SetupProfile
 import com.rustyrazorblade.easydblab.commands.ShowIamPolicies
 import com.rustyrazorblade.easydblab.commands.Status
 import com.rustyrazorblade.easydblab.commands.Up
@@ -34,6 +33,7 @@ import com.rustyrazorblade.easydblab.commands.logs.Logs
 import com.rustyrazorblade.easydblab.commands.metrics.Metrics
 import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearch
 import com.rustyrazorblade.easydblab.commands.platform.Platform
+import com.rustyrazorblade.easydblab.commands.profile.Profile
 import com.rustyrazorblade.easydblab.commands.spark.Spark
 import com.rustyrazorblade.easydblab.commands.tailscale.Tailscale
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -88,7 +88,6 @@ import kotlin.system.exitProcess
         Init::class,
         SetupInstance::class,
         Up::class,
-        SetupProfile::class,
         Repl::class,
         Server::class,
         // Parent command groups
@@ -102,6 +101,7 @@ import kotlin.system.exitProcess
         Tailscale::class,
         Platform::class,
         Kit::class,
+        Profile::class,
         Cleanup::class,
     ],
 )

@@ -1,7 +1,10 @@
-package com.rustyrazorblade.easydblab.commands
+package com.rustyrazorblade.easydblab.commands.profile
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Prompter
+import com.rustyrazorblade.easydblab.commands.BuildImage
+import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
+import com.rustyrazorblade.easydblab.commands.SetupProfileException
 import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.Policy
 import com.rustyrazorblade.easydblab.configuration.User
@@ -30,8 +33,7 @@ import software.amazon.awssdk.regions.Region
  * 5. Ensure AWS resources exist (key pair, IAM roles, S3 bucket, VPC, AMI)
  */
 @Command(
-    name = "setup-profile",
-    aliases = ["setup"],
+    name = "setup",
     description = ["Set up user profile interactively"],
 )
 class SetupProfile : PicoBaseCommand() {

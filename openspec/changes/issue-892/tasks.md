@@ -20,16 +20,16 @@
 
 ## 2. Build the `profile` command group
 
-- [ ] 2.1 Add `commands/profile/Profile.kt` — a `Runnable` group, not a `PicoCommand`, so a bare
+- [x] 2.1 Add `commands/profile/Profile.kt` — a `Runnable` group, not a `PicoCommand`, so a bare
       invocation falls through to `CommandLine.RunLast()` and exits 0. Class-level KDoc required.
-- [ ] 2.2 Move `SetupProfile.kt` to `commands/profile/`, rename to `@Command(name = "setup")`, and
+- [x] 2.2 Move `SetupProfile.kt` to `commands/profile/`, rename to `@Command(name = "setup")`, and
       remove the `aliases = ["setup"]` entry.
-- [ ] 2.3 Register `Profile::class` in `CommandLineParser.kt` and remove `SetupProfile::class` from
+- [x] 2.3 Register `Profile::class` in `CommandLineParser.kt` and remove `SetupProfile::class` from
       the top-level list.
-- [ ] 2.4 Update `Repl.kt:61`'s `ShellCommands` entry — a second, hand-maintained copy of the
+- [x] 2.4 Update `Repl.kt:61`'s `ShellCommands` entry — a second, hand-maintained copy of the
       command tree. **No existing test catches this**; `ReplTest` asserts only on `status`,
       `cassandra`, `spark`, `cls`, and `cassandra stress`.
-- [ ] 2.5 Update the Koin binding in `di/CommandsModule.kt` for `SetupProfile`'s new package.
+- [x] 2.5 Update the Koin binding in `di/CommandsModule.kt` for `SetupProfile`'s new package.
 
 ## 3. Implement `profile show`
 

@@ -1,12 +1,29 @@
 package com.rustyrazorblade.easydblab.commands.profile
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.EasyDBLabCommand
+import com.rustyrazorblade.easydblab.annotations.RequireDocker
+import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
+import com.rustyrazorblade.easydblab.annotations.RequiresProxy
+import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.di.KoinCommandFactory
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatCode
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.koin.core.module.Module
+import org.koin.dsl.module
 import picocli.CommandLine
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.PrintStream
 import java.io.PrintWriter
 import java.io.StringWriter
 
@@ -14,12 +31,40 @@ import java.io.StringWriter
  * Lifecycle-level guards for the `profile` command group.
  *
  * `ProfileShow.buildReport` is a pure function of three plain values, so it cannot observe the
- * shape of the picocli tree or the annotations a command carries. Everything asserted here is
- * invisible at that surface and would stay green through exactly the regressions it guards
- * against.
+ * shape of the picocli tree, the annotations a command carries, or which collaborators the command
+ * lifecycle touched. Every assertion here is invisible at that surface and would stay green
+ * through exactly the regressions it guards against.
  */
 class ProfileCommandGroupTest : BaseKoinTest() {
+    private val stdout = ByteArrayOutputStream()
+    private val originalOut = System.out
+
+    override fun additionalTestModules(): List<Module> =
+        listOf(
+            module {
+                // A real manager over a state.json that does not exist: any read of clusterState
+                // throws FileNotFoundException, which is precisely the regression being guarded.
+                single { ClusterStateManager(File(get<Context>().workingDirectory, "state.json")) }
+                // Rebuilt on resolution rather than at module construction, so a test can point the
+                // context at another profile first.
+                single { UserConfigProvider(get<Context>().profileDir) }
+            },
+        )
+
+    @BeforeEach
+    fun captureStdout() {
+        System.setOut(PrintStream(stdout))
+    }
+
+    @AfterEach
+    fun restoreStdout() {
+        System.setOut(originalOut)
+        stdout.reset()
+    }
+
     private fun rootCommandLine() = CommandLine(EasyDBLabCommand::class.java, KoinCommandFactory())
+
+    private fun settingsFile(profileDir: File) = File(profileDir, Constants.ConfigPaths.PROFILE_SETTINGS_FILE)
 
     @Test
     fun `profile group exposes show and setup`() {
@@ -40,14 +85,14 @@ class ProfileCommandGroupTest : BaseKoinTest() {
     @Test
     fun `bare profile prints usage listing its subcommands and exits zero`() {
         val commandLine = rootCommandLine()
-        val output = StringWriter()
-        commandLine.out = PrintWriter(output)
+        val usage = StringWriter()
+        commandLine.out = PrintWriter(usage)
 
         val exitCode = commandLine.execute("profile")
 
         assertThat(exitCode).isZero()
-        assertThat(output.toString()).contains("show")
-        assertThat(output.toString()).contains("setup")
+        assertThat(usage.toString()).contains("show")
+        assertThat(usage.toString()).contains("setup")
     }
 
     @Test
@@ -60,4 +105,72 @@ class ProfileCommandGroupTest : BaseKoinTest() {
         assertThat(profileGroup.commandSpec.userObject()).isNotInstanceOf(PicoCommand::class.java)
         assertThat(profileGroup.commandSpec.userObject()).isInstanceOf(Runnable::class.java)
     }
+
+    @Test
+    fun `ProfileShow carries no requirement annotation`() {
+        // @RequireProfileSetup would make checkRequirements() run interactive setup and exit,
+        // replacing the report the command exists to print. The other three would refuse to run
+        // outside a provisioned cluster.
+        val annotations = ProfileShow::class.annotations
+
+        assertThat(annotations.filterIsInstance<RequireProfileSetup>()).isEmpty()
+        assertThat(annotations.filterIsInstance<RequireSSHKey>()).isEmpty()
+        assertThat(annotations.filterIsInstance<RequireDocker>()).isEmpty()
+        assertThat(annotations.filterIsInstance<RequiresProxy>()).isEmpty()
+    }
+
+    @Test
+    fun `profile show reports without loading cluster state`() {
+        // The working directory holds no state.json, so ClusterStateManager.load() throws. Reaching
+        // the assertions proves the command never touched clusterState.
+        assertThat(File(context.workingDirectory, "state.json")).doesNotExist()
+
+        ProfileShow().execute()
+
+        assertThat(stdout.toString()).contains("Profile:")
+    }
+
+    @Test
+    fun `profile show reports the profile named by the context rather than the default`() {
+        // EASY_DB_LAB_PROFILE is resolved into Context.profile/profileDir at Context.kt:49-51;
+        // this is that value's path through the command.
+        context.profile = "staging"
+        context.profileDir = File(context.profilesDir, "staging").apply { mkdirs() }
+        context.yaml.writeValue(
+            settingsFile(context.profileDir),
+            userWith(email = "staging-user@example.com"),
+        )
+
+        getKoin().get<ProfileShow>().execute()
+
+        val output = stdout.toString()
+        assertThat(output).contains("staging")
+        assertThat(output).contains(context.profileDir.absolutePath)
+        assertThat(output).contains("staging-user@example.com")
+    }
+
+    @Test
+    fun `profile show reports a truncated settings file instead of throwing`() {
+        // User has six constructor parameters with no defaults, so a file missing one of them
+        // fails deserialization. The command must report that, not surface the Jackson error.
+        settingsFile(context.profileDir).writeText("email: partial@example.com\n")
+
+        assertThatCode { getKoin().get<ProfileShow>().execute() }.doesNotThrowAnyException()
+
+        val output = stdout.toString()
+        assertThat(output).contains("could not be read")
+        assertThat(output).contains("easy-db-lab profile setup")
+        assertThat(output).doesNotContain("Exception")
+        assertThat(output).doesNotContain("com.fasterxml.jackson")
+    }
+
+    private fun userWith(email: String) =
+        User(
+            email = email,
+            region = "eu-west-1",
+            keyName = "staging-key",
+            awsProfile = "staging-aws",
+            awsAccessKey = "",
+            awsSecret = "",
+        )
 }

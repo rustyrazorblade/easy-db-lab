@@ -22,6 +22,7 @@ import picocli.CommandLine.Spec
     description = ["Profile management: show the active profile or set one up"],
     mixinStandardHelpOptions = true,
     subcommands = [
+        ProfileShow::class,
         SetupProfile::class,
     ],
 )

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.module.kotlin.readValue
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import com.rustyrazorblade.easydblab.Constants
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
 
@@ -20,7 +21,7 @@ class UserConfigProvider(
     }
 
     private val yaml: ObjectMapper = ObjectMapper(YAMLFactory()).registerKotlinModule()
-    private val userConfigFile = File(profileDir, "settings.yaml")
+    private val userConfigFile = File(profileDir, Constants.ConfigPaths.PROFILE_SETTINGS_FILE)
 
     /**
      * SSH key path is always ${profileDir}/secret.pem

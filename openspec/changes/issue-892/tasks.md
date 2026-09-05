@@ -33,31 +33,31 @@
 
 ## 3. Implement `profile show`
 
-- [ ] 3.1 Add `commands/profile/ProfileShow.kt` — `@Command(name = "show")`, extends
+- [x] 3.1 Add `commands/profile/ProfileShow.kt` — `@Command(name = "show")`, extends
       `PicoBaseCommand`, **no requirement annotations**, never references `clusterState`.
       Class-level KDoc required.
-- [ ] 3.2 Implement `buildReport(profileName, profileDir, user: User?)` as a `companion object`
+- [x] 3.2 Implement `buildReport(profileName, profileDir, user: User?)` as a `companion object`
       function returning one multiline string, following `KitList.buildListText` /
       `KitInfo.buildInfoText`. It must **not** call any masking helper.
-- [ ] 3.3 Handle all three branches: configured; `settings.yaml` absent (not-configured message
+- [x] 3.3 Handle all three branches: configured; `settings.yaml` absent (not-configured message
       naming `easy-db-lab profile setup`); `settings.yaml` present but undeserializable (report
       present-but-unreadable with the file path, no raw Jackson error).
-- [ ] 3.4 Read profile identity from `context.profile` / `context.profileDir.absolutePath`; use
+- [x] 3.4 Read profile identity from `context.profile` / `context.profileDir.absolutePath`; use
       `getUserConfig()` guarded by `isSetup()`; call `User.isTailscaleEnabled()` for the Tailscale
       flag and `axonOpsKey.isNotEmpty()` for AxonOps.
-- [ ] 3.5 Register `ProfileShow` in `di/CommandsModule.kt` — omission fails **silently** via
+- [x] 3.5 Register `ProfileShow` in `di/CommandsModule.kt` — omission fails **silently** via
       `KoinCommandFactory`'s fallback.
 
 ## 4. Tests
 
-- [ ] 4.1 `buildReport` unit tests: all five settings present; each secret absent from output
+- [x] 4.1 `buildReport` unit tests: all five settings present; each secret absent from output
       (sentinel values); AxonOps `ENABLED`/`DISABLED`; Tailscale `ENABLED`/`DISABLED` including the
       blank-credential case; not-configured message; malformed-profile message.
-- [ ] 4.2 Lifecycle-level test class for what `buildReport` cannot observe: bare `profile` exits 0
+- [x] 4.2 Lifecycle-level test class for what `buildReport` cannot observe: bare `profile` exits 0
       and lists `show` and `setup`; `setup` and `setup-profile` no longer resolve at top level;
       `ProfileShow::class.annotations` carries no `RequireProfileSetup`; `ClusterStateManager.load()`
       is never called for `profile show`; `EASY_DB_LAB_PROFILE` resolution through `Context`.
-- [ ] 4.3 Confirm the existing `SetupProfileTest` and `SetupProfileIntegrationTest` still pass after
+- [x] 4.3 Confirm the existing `SetupProfileTest` and `SetupProfileIntegrationTest` still pass after
       the move.
 
 ## 5. Docs and strings

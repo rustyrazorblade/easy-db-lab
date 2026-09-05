@@ -184,6 +184,9 @@ object Constants {
     object ConfigPaths {
         // Local config files
         const val CASSANDRA_PATCH_FILE = "cassandra.patch.yaml"
+
+        // Per-profile user settings, written under the active profile directory
+        const val PROFILE_SETTINGS_FILE = "settings.yaml"
     }
 
     // K3s configuration

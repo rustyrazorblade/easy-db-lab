@@ -180,6 +180,11 @@ object Constants {
         const val MAX_METRICS_CONFIG_ID_LENGTH = 32
     }
 
+    // Byte-size units for human-readable sizes
+    object Size {
+        const val BYTES_PER_MIB = 1024L * 1024
+    }
+
     // Configuration file paths
     object ConfigPaths {
         // Local config files

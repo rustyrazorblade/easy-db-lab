@@ -50,6 +50,7 @@ data class ClusterS3Path(
         internal const val VICTORIA_METRICS_DIR = "victoriametrics"
         internal const val VICTORIA_LOGS_DIR = "victorialogs"
         internal const val CLICKHOUSE_BACKUPS_DIR = "clickhouse-backups"
+        internal const val CASSANDRA_BUILDS_DIR = "cassandra-builds"
 
         /**
          * Create a ClusterS3Path from ClusterState.
@@ -109,6 +110,14 @@ data class ClusterS3Path(
 
         /** Root path for ClickHouse backups in the account bucket, decoupled from any cluster lifecycle. */
         fun clickhouseBackupsRoot(accountBucket: String): ClusterS3Path = root(accountBucket).resolve(CLICKHOUSE_BACKUPS_DIR)
+
+        /**
+         * Root path for locally-produced Cassandra builds in the account bucket.
+         *
+         * Account-level rather than per-cluster: a build is made before any cluster exists, and is
+         * installed onto whichever clusters the profile later brings up.
+         */
+        fun cassandraBuildsRoot(accountBucket: String): ClusterS3Path = root(accountBucket).resolve(CASSANDRA_BUILDS_DIR)
     }
 
     // Core Path-like methods

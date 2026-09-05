@@ -231,6 +231,72 @@ Versions: 3.0, 3.11, 4.0, 4.1, 5.0, 5.0-HEAD, 6.0-HEAD, trunk
 Fails if the version is not installed on a targeted node — install it first with
 `cassandra install`.
 
+### cassandra build
+
+Build a Cassandra branch checkout on your own machine and publish it to the profile's S3 bucket,
+where `cassandra install` can find it by name.
+
+```bash
+easy-db-lab cassandra build [<dir>] --java <N> [options]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `<dir>` | Cassandra source checkout to build | current directory |
+| `--java`, `-j` | JDK major version to build with. Required — it forms part of the build's name | — |
+| `--jira` | Ticket this build is for, e.g. `CASSANDRA-19000` | none |
+| `--name` | Label folded into the name, to tell your builds apart at a glance | none |
+| `--ant-flags` | Extra flags passed to ant | none |
+
+The build runs `ant realclean` then `ant artifacts` in the checkout, under the JDK you name.
+`JAVA_HOME` is set for ant only — your shell's default JDK is untouched.
+
+The version comes from the `base.version` property in the checkout's `build.xml`. Nothing is ever
+inferred from the branch name — not the version, not the ticket. A branch naming convention is a
+habit, not a contract, and this name is permanent once published, so `--jira` and `--name` are the
+only ways anything gets into it. The result is named for what identifies it:
+
+```
+5.1-CASSANDRA-19000-flushfix-20260905-a1b2c3d-jdk17
+<version>-<JIRA>------<--name>--<date>--<sha>--<jdk>
+```
+
+The ticket and `--name` segments are dropped entirely when absent, giving
+`5.1-20260905-a1b2c3d-jdk17`. `--name` is for the case the rest of the name cannot help with: two
+builds of the same commit that differ in something only you know. It sits after the ticket so the
+version stays the leading segment and a bucket listing still sorts by release. Letters, digits,
+`.`, `_` and `-` only, 40 characters or fewer — anything else is refused rather than quietly
+rewritten, because this name is the build's identity in S3 and on every node.
+That name is the build's S3 directory, the directory it installs into on a node, and the name
+`cassandra install` takes.
+
+A checkout with uncommitted changes builds normally — that is the case this command exists for —
+but you are warned, because the sha then does not fully describe what was built, and the manifest
+records the tree as dirty.
+
+No cluster is needed. Builds belong to the profile, so one made on your desktop installs from your
+laptop.
+
+**Published layout**, under the profile's account bucket:
+
+```
+cassandra-builds/5.1-CASSANDRA-19000-20260905-a1b2c3d-jdk17/
+    apache-cassandra-5.1-CASSANDRA-19000-20260905-a1b2c3d-jdk17-bin.tar.gz
+    manifest.json
+```
+
+`manifest.json` records the base version, the full and short sha, the branch and remote, whether
+the tree was dirty, the ticket, the ant flags, when it was built and by which profile, and the
+tarball's size and SHA-256.
+
+Then install it on a cluster:
+
+```bash
+easy-db-lab cassandra install 5.1-CASSANDRA-19000-20260905-a1b2c3d-jdk17
+```
+
+Nodes fetch the tarball straight from the bucket with their instance profile.
+
 ### cassandra install
 
 Install an additional Cassandra version onto a running cluster, without rebuilding the AMI.
@@ -249,7 +315,9 @@ easy-db-lab cassandra install <version> [options]
 | `--hosts` | Filter to specific hosts | all Cassandra nodes |
 
 Each option falls back to the version's `cassandra_versions.yaml` entry when not supplied, so a
-declared version needs no options at all. Every targeted node is attempted regardless of what
+declared version needs no options at all. A name that is not declared locally is looked up among
+the builds published by [`cassandra build`](#cassandra-build), so a build installs by name with no
+options either. Every targeted node is attempted regardless of what
 happens on the others, and each node's outcome is reported individually.
 
 A version already installed on a node is never rebuilt:
@@ -364,7 +432,9 @@ easy-db-lab cassandra list
 **Aliases:** `ls`
 
 Versions installed on the node are listed first. A version declared with `lazy: true` that is not
-installed on that node is listed too, marked `(declared, not installed)`.
+installed on that node is listed too, marked `(declared, not installed)`, as is any build published
+by [`cassandra build`](#cassandra-build) and not yet installed there, marked
+`(build, not installed)`.
 
 ---
 

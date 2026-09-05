@@ -17,6 +17,7 @@ import com.rustyrazorblade.easydblab.providers.ssh.DefaultSSHConfiguration
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.providers.ssh.SSHConfiguration
 import com.rustyrazorblade.easydblab.providers.ssh.SSHConnectionProvider
+import com.rustyrazorblade.easydblab.services.CassandraBuildCatalog
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.ExternalIpService
 import com.rustyrazorblade.easydblab.services.aws.AMIValidator
@@ -179,6 +180,11 @@ object TestModules {
 
             // AwsS3BucketService using mocked AWS
             single { AwsS3BucketService(get<AWS>()) }
+
+            // Published Cassandra builds. Mocked rather than real: resolving it for real would
+            // create the account bucket. Its defaults (no builds, no match) are what a profile
+            // that has never run `cassandra build` actually looks like.
+            single { mock<CassandraBuildCatalog>() }
 
             // Fake external IP resolver so tests never make a network call
             single<ExternalIpService> {

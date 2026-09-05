@@ -22,6 +22,18 @@ cached_fetch() {
     local url="$1" key="$2" dest="$3"
     local s3="s3://${EDL_S3_BUCKET}/download-cache/${key}"
 
+    # An s3:// source is already an object in the account bucket the node can read with its
+    # instance profile, so it is fetched directly and never cached: copying it under
+    # download-cache/ would store a second copy of a file that is already there. This is the path
+    # a locally-built Cassandra published by `cassandra build` arrives on.
+    case "$url" in
+        s3://*)
+            echo "s3 fetch:   $url"
+            aws s3 cp "$url" "$dest" --no-progress
+            return
+            ;;
+    esac
+
     # Note: no sudo on the aws calls. Instance-profile creds come from IMDS and work as any user,
     # and running as the build user keeps the downloaded file user-owned so callers can rm it
     # (a sudo-downloaded file in a sticky dir like /tmp can't be removed by the non-root user).

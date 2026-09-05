@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.exceptions.CommandExecutionException
+import com.rustyrazorblade.easydblab.services.CassandraBuildCatalog
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import com.rustyrazorblade.easydblab.shellQuote
 import com.rustyrazorblade.easydblab.ssh.redactUrlCredentials
@@ -24,7 +25,8 @@ import java.io.File
  * Installs one additional Cassandra version onto an already-running cluster, without an AMI rebuild.
  *
  * The version's install parameters come from a declared `cassandra_versions.yaml` entry (the same
- * merged candidate set an AMI bake resolves), or entirely from CLI flags for a one-off test. The
+ * merged candidate set an AMI bake resolves), from a build published to the profile's S3 bucket by
+ * `cassandra build`, or entirely from CLI flags for a one-off test. The
  * resolved entry is pushed into each targeted node's `/etc/cassandra_versions.yaml` — so a later
  * `cassandra use` finds the java/python it needs — and then `install-cassandra-version` runs
  * remotely, the same script the AMI bake uses.
@@ -36,6 +38,7 @@ import java.io.File
 )
 class CassandraInstall : PicoBaseCommand() {
     private val hostOperationsService: HostOperationsService by inject()
+    private val catalog: CassandraBuildCatalog by inject()
 
     @Parameters(description = ["Cassandra version to install"], index = "0")
     lateinit var version: String
@@ -92,7 +95,7 @@ class CassandraInstall : PicoBaseCommand() {
     override fun execute() {
         check(version.isNotBlank()) { "A version to install is required, e.g. 'cassandra install 5.0'" }
 
-        val resolved = resolveVersion(declaredCassandraVersions(context))
+        val resolved = resolveVersion(candidateVersions())
         val state = clusterState
         val available = state.getHosts(ServerType.Cassandra)
         val targeted = hostOperationsService.filteredHosts(state.hosts, ServerType.Cassandra, hosts.hostList)
@@ -165,6 +168,21 @@ class CassandraInstall : PicoBaseCommand() {
         if (problems.isNotEmpty()) {
             throw CommandExecutionException(problems.joinToString("\n"))
         }
+    }
+
+    /**
+     * The versions this install could be naming: everything declared, plus the published build of
+     * that name if there is one.
+     *
+     * S3 is only consulted when the name is not declared locally. A declared version is the common
+     * case and must not pay for a bucket lookup, and a build name is unique enough — it carries a
+     * sha — that it will never collide with a declared entry.
+     */
+    private fun candidateVersions(): List<CassandraVersion> {
+        val declared = declaredCassandraVersions(context)
+        if (declared.any { it.version == version }) return declared
+        val build = catalog.find(version) ?: return declared
+        return declared + catalog.asVersion(build)
     }
 
     /**

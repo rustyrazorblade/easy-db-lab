@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.events
 
+import com.rustyrazorblade.easydblab.Constants
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -338,12 +339,66 @@ sealed interface Event {
         data class VersionList(
             val versions: List<String>,
             val declaredNotInstalled: List<String> = emptyList(),
+            val builds: List<String> = emptyList(),
         ) : Cassandra {
             override fun toDisplayString(): String =
                 (
                     versions +
-                        declaredNotInstalled.map { "$it (declared, not installed - run: cassandra install $it)" }
+                        declaredNotInstalled.map { "$it (declared, not installed - run: cassandra install $it)" } +
+                        builds.map { "$it (build, not installed - run: cassandra install $it)" }
                 ).joinToString("\n")
+        }
+
+        @Serializable
+        @SerialName("Cassandra.BuildStarting")
+        data class BuildStarting(
+            val name: String,
+            val sourceDir: String,
+            val baseVersion: String,
+            val branch: String,
+            val shortSha: String,
+            val dirty: Boolean,
+            val javaVersion: String,
+            val javaHome: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String =
+                buildString {
+                    appendLine("Building $name")
+                    appendLine("  source     $sourceDir")
+                    appendLine("  version    $baseVersion (from build.xml)")
+                    appendLine("  branch     $branch @ $shortSha${if (dirty) " (dirty)" else ""}")
+                    append("  java       $javaVersion at $javaHome")
+                    if (dirty) {
+                        append(
+                            "\n\nWARNING: the working tree has uncommitted changes, so $shortSha does not " +
+                                "fully describe this build. It is recorded as dirty in the manifest.",
+                        )
+                    }
+                }
+        }
+
+        @Serializable
+        @SerialName("Cassandra.BuildArtifactReady")
+        data class BuildArtifactReady(
+            val name: String,
+            val sizeBytes: Long,
+        ) : Cassandra {
+            override fun toDisplayString(): String = "Built $name (${sizeBytes / Constants.Size.BYTES_PER_MIB} MiB)"
+        }
+
+        @Serializable
+        @SerialName("Cassandra.BuildPublished")
+        data class BuildPublished(
+            val name: String,
+            val location: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String =
+                """
+                Published $name
+                  $location
+
+                Install it with: easy-db-lab cassandra install $name
+                """.trimIndent()
         }
 
         @Serializable

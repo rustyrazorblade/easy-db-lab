@@ -193,8 +193,32 @@ Configuration is located at `/etc/cassandra-sidecar/cassandra-sidecar.yaml` on e
 ## Custom Builds
 
 To run a custom Cassandra build (your own fork, a feature branch, or a prebuilt
-tarball), you can either install it onto a cluster that is already running, or
-bake it into the AMI so every future cluster has it.
+tarball), you can build it on your own machine and publish it, install it onto a
+cluster that is already running, or bake it into the AMI so every future cluster
+has it.
+
+### Build your working branch and install it by name
+
+If you are developing Cassandra itself, build the checkout you are already
+working in and publish it once, rather than making every node build the same
+branch:
+
+```bash
+cd ~/dev/cassandra
+easy-db-lab cassandra build --java 17
+# -> 5.1-CASSANDRA-19000-20260905-a1b2c3d-jdk17
+
+easy-db-lab cassandra install 5.1-CASSANDRA-19000-20260905-a1b2c3d-jdk17
+easy-db-lab cassandra use 5.1-CASSANDRA-19000-20260905-a1b2c3d-jdk17
+```
+
+The build is published to your profile's S3 bucket, so it outlives the cluster
+and installs onto whatever you bring up next. Uncommitted changes are fine — the
+manifest records the tree as dirty so you can tell later. `cassandra list` shows
+everything you have published that is not yet on the node.
+
+See [`cassandra build`](../reference/commands.md#cassandra-build) for the naming
+scheme and what the manifest records.
 
 ### Install onto a running cluster
 

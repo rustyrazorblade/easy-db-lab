@@ -25,6 +25,7 @@ class ProfileShowTest {
     }
 
     private fun user(
+        axonOpsOrg: String = "tester-org",
         axonOpsKey: String = AXONOPS_KEY,
         tailscaleClientId: String = TAILSCALE_ID,
         tailscaleClientSecret: String = TAILSCALE_SECRET,
@@ -35,7 +36,7 @@ class ProfileShowTest {
         awsProfile = "tester-aws-profile",
         awsAccessKey = ACCESS_KEY,
         awsSecret = SECRET,
-        axonOpsOrg = "tester-org",
+        axonOpsOrg = axonOpsOrg,
         axonOpsKey = axonOpsKey,
         tailscaleClientId = tailscaleClientId,
         tailscaleClientSecret = tailscaleClientSecret,
@@ -80,13 +81,32 @@ class ProfileShowTest {
     }
 
     @Test
-    fun `AxonOps is ENABLED when a key is present`() {
-        assertThat(reportFor(user(axonOpsKey = AXONOPS_KEY))).contains("AxonOps").contains("ENABLED")
+    fun `AxonOps is ENABLED when both the org and the key are present`() {
+        // Anchored to the AxonOps line: the same fixture renders "Tailscale ENABLED", so two
+        // independent contains() calls would pass even if this line read DISABLED.
+        assertThat(reportFor(user())).containsPattern("AxonOps\\s+ENABLED")
     }
 
     @Test
     fun `AxonOps is DISABLED when no key is present`() {
         val report = reportFor(user(axonOpsKey = ""))
+
+        assertThat(report).containsPattern("AxonOps\\s+DISABLED")
+    }
+
+    @Test
+    fun `AxonOps is DISABLED when the key is set but the org is blank`() {
+        // SetupProfile prompts for the org and the key as independent skippable fields, so this
+        // state is reachable. Up and cassandra Start both skip AxonOps in it.
+        val report = reportFor(user(axonOpsOrg = "", axonOpsKey = AXONOPS_KEY))
+
+        assertThat(report).containsPattern("AxonOps\\s+DISABLED")
+    }
+
+    @Test
+    fun `AxonOps is DISABLED when the key is whitespace rather than empty`() {
+        // isAxonOpsEnabled() uses isNotBlank(), so whitespace must not read as configured.
+        val report = reportFor(user(axonOpsKey = "   "))
 
         assertThat(report).containsPattern("AxonOps\\s+DISABLED")
     }

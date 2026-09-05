@@ -75,7 +75,7 @@ class Start : PicoBaseCommand() {
         }
 
         // Start axon-agent on Cassandra nodes if configured
-        if (userConfig.axonOpsOrg.isNotBlank() && userConfig.axonOpsKey.isNotBlank()) {
+        if (userConfig.isAxonOpsEnabled()) {
             eventBus.emit(Event.Cassandra.AxonAgentStarting)
             hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, "", parallel = true) { host ->
                 remoteOps.executeRemotely(host.toHost(), "sudo systemctl start axon-agent")

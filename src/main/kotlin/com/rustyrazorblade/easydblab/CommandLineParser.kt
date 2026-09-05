@@ -124,8 +124,13 @@ class EasyDBLabCommand : Runnable {
 class CommandLineParser : KoinComponent {
     private val eventBus: EventBus by inject()
 
-    /** The main PicoCLI CommandLine instance with all subcommands registered. */
-    private val commandLine: CommandLine =
+    /**
+     * The main PicoCLI CommandLine instance with all subcommands registered.
+     *
+     * `internal` rather than private so a test can inspect the registered tree directly. Help
+     * output alone cannot tell a static command group from a kit runner that shadowed its name.
+     */
+    internal val commandLine: CommandLine =
         CommandLine(EasyDBLabCommand::class.java, KoinCommandFactory()).apply {
             // Set exception handler to ensure non-zero exit code on exceptions
             executionExceptionHandler =

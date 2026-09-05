@@ -703,7 +703,7 @@ class Up(
             startProxyIfNeeded()
             startK3sOnAllNodes()
 
-            if (userConfig.axonOpsKey.isNotBlank() && userConfig.axonOpsOrg.isNotBlank()) {
+            if (userConfig.isAxonOpsEnabled()) {
                 eventBus.emit(Event.Provision.AxonOpsSetup(userConfig.axonOpsOrg))
                 runNestedCommand { ConfigureAxonOps() }
             }

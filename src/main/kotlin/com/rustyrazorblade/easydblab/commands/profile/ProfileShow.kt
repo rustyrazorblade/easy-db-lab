@@ -60,7 +60,7 @@ class ProfileShow : PicoBaseCommand() {
                 try {
                     ProfileSettings.Loaded(userConfigProvider.getUserConfig())
                 } catch (e: Exception) {
-                    log.debug(e) { "Could not deserialize settings for profile ${context.profile}" }
+                    log.warn { "Could not deserialize settings for profile ${context.profile}: ${e::class.simpleName}" }
                     ProfileSettings.Unreadable
                 }
             }
@@ -118,7 +118,7 @@ class ProfileShow : PicoBaseCommand() {
             |  awsProfile  ${orNotSet(user.awsProfile)}
             |  s3Bucket    ${orNotSet(user.s3Bucket)}
             |
-            |  AxonOps     ${flag(user.axonOpsKey.isNotEmpty())}
+            |  AxonOps     ${flag(user.isAxonOpsEnabled())}
             |  Tailscale   ${flag(user.isTailscaleEnabled())}
             """.trimMargin()
 

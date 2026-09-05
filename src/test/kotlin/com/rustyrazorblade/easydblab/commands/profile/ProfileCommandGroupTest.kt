@@ -13,6 +13,9 @@ import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.di.KoinCommandFactory
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
+import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
+import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.services.ProfileSetupCommandProvider
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatCode
 import org.junit.jupiter.api.AfterEach
@@ -72,6 +75,27 @@ class ProfileCommandGroupTest : BaseKoinTest() {
 
         assertThat(profileGroup).isNotNull
         assertThat(profileGroup!!.subcommands.keys).contains("show", "setup")
+        // The names alone would stay green with either subcommand bound to the wrong class, which
+        // is the one thing the rename could plausibly get wrong.
+        assertThat(
+            profileGroup.subcommands
+                .getValue("show")
+                .commandSpec
+                .userObject(),
+        ).isInstanceOf(ProfileShow::class.java)
+        assertThat(
+            profileGroup.subcommands
+                .getValue("setup")
+                .commandSpec
+                .userObject(),
+        ).isInstanceOf(SetupProfile::class.java)
+    }
+
+    @Test
+    fun `the production graph binds the profile setup provider to SetupProfile`() {
+        // checkRequirements() runs whatever this provider yields. Bound to the wrong command, a
+        // first-run user gets a report printed instead of interactive setup, and then exit 0.
+        assertThat(getKoin().get<ProfileSetupCommandProvider>().create()).isInstanceOf(SetupProfile::class.java)
     }
 
     @Test
@@ -128,6 +152,19 @@ class ProfileCommandGroupTest : BaseKoinTest() {
         ProfileShow().execute()
 
         assertThat(stdout.toString()).contains("Profile:")
+    }
+
+    @Test
+    fun `profile show emits no event for the report it prints`() {
+        // The test EventBus forwards every emitted event to the BufferedOutputHandler, so an empty
+        // buffer alongside a printed report is direct proof the report went to stdout only. An
+        // event here would put profile settings on the MCP and Redis subscriber streams.
+        ProfileShow().execute()
+
+        val outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
+        assertThat(stdout.toString()).contains("Profile:")
+        assertThat(outputHandler.messages).isEmpty()
+        assertThat(outputHandler.errors).isEmpty()
     }
 
     @Test

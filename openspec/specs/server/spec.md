@@ -6,7 +6,7 @@ The server command (`easy-db-lab server`) provides a hybrid HTTP server exposing
 
 ## Requirements
 
-### REQ-SERVER-001: Server Lifecycle
+### Requirement: Server Lifecycle
 
 The system MUST provide a server that AI assistants and HTTP clients can connect to for cluster management.
 
@@ -20,7 +20,7 @@ The system MUST provide a server that AI assistants and HTTP clients can connect
 - **WHEN** an AI assistant connects via MCP
 - **THEN** cluster management tools are available for invocation.
 
-### REQ-SERVER-002: Structured Event Streaming
+### Requirement: Structured Event Streaming
 
 The system MUST stream structured events to connected MCP clients.
 
@@ -29,7 +29,7 @@ The system MUST stream structured events to connected MCP clients.
 - **WHEN** cluster operations produce events
 - **THEN** the client receives structured event data with type information and metadata.
 
-### REQ-SERVER-003: REST Status Endpoints
+### Requirement: REST Status Endpoints
 
 The server MUST expose REST HTTP endpoints for programmatic access to cluster status, independent of the MCP protocol.
 
@@ -54,7 +54,7 @@ The server MUST expose REST HTTP endpoints for programmatic access to cluster st
 - **THEN** the `accessInfo.observability` object SHALL include `tempo` and `pyroscope` URL fields alongside `grafana`, `victoriaMetrics`, and `victoriaLogs`
 - **AND** `tempo` is `http://<controlPrivateIp>:3200` and `pyroscope` is `http://<controlPrivateIp>:4040`
 
-### REQ-SERVER-004: Background Status Cache
+### Requirement: Background Status Cache
 
 The server MUST maintain a background cache of cluster status that refreshes periodically.
 
@@ -68,7 +68,7 @@ The server MUST maintain a background cache of cluster status that refreshes per
 - **WHEN** a client queries /status without ?live=true
 - **THEN** the server responds immediately from the in-memory cache.
 
-### REQ-SERVER-005: Optional Metrics Collection
+### Requirement: Optional Metrics Collection
 
 The server MUST optionally collect and publish live metrics when a Redis connection is configured.
 

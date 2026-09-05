@@ -4,8 +4,7 @@
 
 Manages access methods for reaching cluster nodes: SSH aliases, remote command execution, Tailscale VPN, a SOCKS5 proxy, and host discovery.
 ## Requirements
-
-### REQ-NET-001: SSH Access with Aliases
+### Requirement: SSH Access with Aliases
 
 The system MUST provide SSH access to all nodes with convenient shell aliases.
 
@@ -21,7 +20,7 @@ The system MUST provide SSH access to all nodes with convenient shell aliases.
 - **WHEN** the user invokes an alias
 - **THEN** an SSH session opens to the corresponding node using cluster-specific configuration.
 
-### REQ-NET-002: SSH Key Distribution
+### Requirement: SSH Key Distribution
 
 The system MUST allow uploading additional authorized SSH keys to cluster nodes.
 
@@ -31,7 +30,7 @@ The system MUST allow uploading additional authorized SSH keys to cluster nodes.
 - **WHEN** the user uploads keys
 - **THEN** the keys are added to all cluster nodes for shared access.
 
-### REQ-NET-003: Remote Command Execution
+### Requirement: Remote Command Execution
 
 The system MUST allow executing arbitrary commands on cluster nodes via SSH.
 
@@ -47,7 +46,7 @@ The system MUST allow executing arbitrary commands on cluster nodes via SSH.
 - **WHEN** a command is executed
 - **THEN** output from each node is distinguished (e.g., color-coded).
 
-### REQ-NET-004: Tailscale VPN
+### Requirement: Tailscale VPN
 
 The system MUST support Tailscale mesh VPN for secure access to cluster nodes.
 
@@ -69,41 +68,78 @@ The system MUST support Tailscale mesh VPN for secure access to cluster nodes.
 - **WHEN** the user stops it
 - **THEN** the VPN daemon is stopped on all nodes.
 
-### REQ-NET-005: SOCKS Proxy
+### Requirement: SOCKS Proxy
 
-The system MUST support a SOCKS5 proxy via SSH dynamic port forwarding as an alternative to Tailscale for routing traffic to internal cluster services.
+The system MUST support a SOCKS5 proxy via SSH dynamic port forwarding as the access path to internal cluster services when Tailscale is not active. The proxy runs as a detached OS process that persists across JVM restarts, shared across invocations until `down` is called; its PID and port are recorded in `.socks5-proxy-state`.
+
+The proxy MUST be started eagerly by the command executor rather than lazily by individual services: when cluster state exists, infrastructure is UP, and Tailscale is not active, the executor SHALL start (or reuse) the proxy before any command logic executes. Because starting the proxy is idempotent and the process persists, startup MUST be attempted unconditionally on every command invocation under those conditions, and no individual service SHALL be responsible for starting it.
+
+When `tailscaleActive` is `true` in cluster state, the SOCKS proxy SHALL NOT be started or used; all traffic connects directly to cluster private IPs.
+
+The `env.sh` environment file MUST NOT start the proxy itself. It SHALL read `SOCKS5_PROXY_PORT` from the proxy state file written by the CLI so that shell wrappers use the same port as the Kotlin CLI, rather than hardcoding a port.
 
 #### Scenario: Proxy starts before command logic
 
-- **GIVEN** a provisioned cluster with infrastructure UP and Tailscale not enabled
+- **GIVEN** a provisioned cluster with infrastructure UP and Tailscale not active
 - **WHEN** any CLI command is invoked
-- **THEN** the SOCKS5 proxy is started (or reused if already running) before any command logic executes.
+- **THEN** the SOCKS5 proxy is started (or reused if already running) before any command logic executes
 
-#### Scenario: Proxy auto-restarts after being killed
+#### Scenario: Proxy started as a detached process when Tailscale is not configured
 
-- **GIVEN** the SOCKS5 proxy OS process has been killed since the last invocation
+- **GIVEN** a cluster whose `state.json` has `tailscaleActive: false`
+- **WHEN** any component needs to reach internal cluster services
+- **THEN** a SOCKS5 proxy is started via `ssh -N -D <port> -F sshConfig control0` as a detached OS process
+- **AND** its PID and port are written to `.socks5-proxy-state`
+
+#### Scenario: Proxy reused across invocations
+
+- **GIVEN** `.socks5-proxy-state` exists with a live PID, matching `controlIP`, and matching `sshConfig` path
+- **WHEN** a new easy-db-lab invocation calls `ensureRunning()`
+- **THEN** the existing SSH process is reused rather than a new one being started
+
+#### Scenario: Stale proxy replaced without user intervention
+
+- **GIVEN** `.socks5-proxy-state` exists but the recorded PID is no longer alive
 - **WHEN** any CLI command is invoked next
-- **THEN** the proxy is automatically restarted without user intervention.
+- **THEN** a new SSH proxy process is started automatically and `.socks5-proxy-state` is updated
+
+#### Scenario: Proxy skipped when Tailscale is configured
+
+- **GIVEN** a cluster whose `state.json` has `tailscaleActive: true`
+- **WHEN** any component needs to reach internal cluster services
+- **THEN** no SOCKS proxy is started and connections are made directly to cluster private IPs
+
+#### Scenario: Tailscale detection is profile-based
+
+- **WHEN** the user runs `init`
+- **THEN** `tailscaleActive` is set to `true` if and only if `tailscaleClientId` and `tailscaleClientSecret` are both configured in the user profile
+- **AND** the `--no-tailscale` flag overrides this, forcing `tailscaleActive: false` regardless of credentials
+
+#### Scenario: Proxy skipped when cluster is not provisioned
+
+- **GIVEN** no cluster state file exists or infrastructure is not UP
+- **WHEN** a CLI command is invoked
+- **THEN** the SOCKS5 proxy is not started
 
 #### Scenario: Proxy persists for session lifetime
 
-- **GIVEN** the REPL or server is running
+- **GIVEN** the REPL or server is running and `tailscaleActive` is `false`
 - **WHEN** the proxy is needed
-- **THEN** it persists for the lifetime of the session rather than per-command.
+- **THEN** it persists for the lifetime of the session rather than per-command
 
-#### Scenario: Tailscale enabled bypasses the proxy
+#### Scenario: Proxy port exported to shell wrappers from state file
 
-- **GIVEN** Tailscale is enabled for the cluster
-- **WHEN** any CLI command is invoked
-- **THEN** the SOCKS5 proxy is not started and connections use direct private IP access.
-
-#### Scenario: Proxy port exported to shell wrappers
-
-- **GIVEN** a running cluster
+- **GIVEN** a running cluster whose proxy state file records the active port
 - **WHEN** the user sources `env.sh`
-- **THEN** `SOCKS5_PROXY_PORT` is populated from the state file written by the CLI so shell wrappers (kubectl, helm, curl) use the correct port.
+- **THEN** `SOCKS5_PROXY_PORT` is populated from the state file written by the CLI (not started by `env.sh`), so shell wrappers such as kubectl, helm, and curl use the correct port
 
-### REQ-NET-006: Host Discovery
+#### Scenario: Proxy cleaned up on teardown
+
+- **GIVEN** `.socks5-proxy-state` exists with an active PID
+- **WHEN** `down` is run
+- **THEN** the SSH proxy process is killed and `.socks5-proxy-state` is deleted
+
+### Requirement: Host Discovery
 
 The system MUST provide commands to list cluster hosts and retrieve IP addresses.
 
@@ -121,7 +157,7 @@ The system MUST provide commands to list cluster hosts and retrieve IP addresses
 
 ### Requirement: SOCKS Proxy Routes Only Cluster-Internal Traffic
 
-The SOCKS5 proxy (REQ-NET-005) MUST route only cluster-internal traffic (the K3s API and other private cluster services). It MUST NOT capture traffic to public endpoints — in particular AWS SDK calls (S3, EC2, IAM, STS) MUST connect directly, out the host's normal network path, regardless of whether the proxy is running.
+The SOCKS5 proxy MUST route only cluster-internal traffic (the K3s API and other private cluster services). It MUST NOT capture traffic to public endpoints — in particular AWS SDK calls (S3, EC2, IAM, STS) MUST connect directly, out the host's normal network path, regardless of whether the proxy is running.
 
 The system MUST NOT enable the proxy by setting the standard JVM-global `socksProxyHost`/`socksProxyPort` properties, because those route every socket the process opens through the tunnel. Instead, the active proxy port is published privately, and only the clients that need the tunnel (the Kubernetes client and the cluster HTTP client) configure the SOCKS proxy explicitly.
 

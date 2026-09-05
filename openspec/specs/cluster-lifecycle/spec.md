@@ -5,7 +5,7 @@
 Manages the full lifecycle of lab environments: initialization, provisioning, teardown, and status.
 ## Requirements
 
-### REQ-CL-001: Cluster Initialization
+### Requirement: Cluster Initialization
 
 The system MUST allow users to initialize a cluster configuration specifying a name and node counts.
 
@@ -21,7 +21,7 @@ The system MUST allow users to initialize a cluster configuration specifying a n
 - **WHEN** the user re-initializes with different parameters
 - **THEN** the configuration is updated.
 
-### REQ-CL-002: Infrastructure Provisioning
+### Requirement: Infrastructure Provisioning
 
 The system MUST provision EC2 instances in AWS with configurable instance types and counts. The system MUST create a per-cluster data bucket for high-volume storage and CloudWatch metrics.
 
@@ -49,7 +49,7 @@ The system MUST provision EC2 instances in AWS with configurable instance types 
 - **WHEN** provisioning completes
 - **THEN** CloudWatch S3 request metrics are configured on the data bucket.
 
-### REQ-CL-003: Cluster Teardown
+### Requirement: Cluster Teardown
 
 The system MUST clean up all AWS resources on cluster teardown. Data bucket cleanup MUST use lifecycle expiration rather than individual object deletion.
 
@@ -77,7 +77,7 @@ The system MUST clean up all AWS resources on cluster teardown. Data bucket clea
 - **WHEN** the command runs
 - **THEN** the user is prompted for approval before proceeding.
 
-### REQ-CL-004: Cluster Status
+### Requirement: Cluster Status
 
 The system MUST provide comprehensive status of cluster resources including nodes, networking, Kubernetes pods, and running workloads.
 
@@ -87,7 +87,7 @@ The system MUST provide comprehensive status of cluster resources including node
 - **WHEN** the user checks status
 - **THEN** the state of EC2 instances, VPC networking, K8s pods, stress jobs, and database versions is displayed.
 
-### REQ-CL-005: Local Cleanup
+### Requirement: Local Cleanup
 
 The system MUST allow cleanup of locally generated cluster files.
 
@@ -97,7 +97,7 @@ The system MUST allow cleanup of locally generated cluster files.
 - **WHEN** the user runs local cleanup
 - **THEN** state files, SSH config, and cached configuration are removed.
 
-### REQ-CL-006: Cluster State Backup
+### Requirement: Cluster State Backup
 
 The system MUST back up cluster configuration files to S3 for recovery.
 
@@ -113,7 +113,7 @@ The system MUST back up cluster configuration files to S3 for recovery.
 - **WHEN** the user triggers a full backup
 - **THEN** all configuration files (state, SSH config, kubeconfig, cassandra patches) are persisted to S3.
 
-### REQ-CL-007: Cluster State Restore
+### Requirement: Cluster State Restore
 
 The system MUST support restoring cluster configuration from S3 using VPC identification.
 

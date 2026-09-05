@@ -23,7 +23,7 @@ commit. Each earns its slot for a reason specific to this repo:
   It earns its slot because this repo holds AWS credentials, opens SSH sessions, and runs
   a SOCKS proxy whose global-property misuse caused a real incident. Never set the
   `socksProxyHost` / `socksProxyPort` JVM properties; see `Socks5ProxySelector` and
-  REQ-NET-005.
+  the `SOCKS Proxy` requirement in the networking spec.
 
 - **`test-rigor-reviewer`** — this repo bans mock-echo tests outright: a test that only
   verifies a mock was called with the values it was handed proves nothing. It also bans

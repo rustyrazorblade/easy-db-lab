@@ -11,6 +11,7 @@ import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import io.fabric8.kubernetes.api.model.Container
 import io.fabric8.kubernetes.api.model.ContainerBuilder
 import io.fabric8.kubernetes.api.model.EnvVarBuilder
+import io.fabric8.kubernetes.api.model.LocalObjectReferenceBuilder
 import io.fabric8.kubernetes.api.model.VolumeBuilder
 import io.fabric8.kubernetes.api.model.VolumeMountBuilder
 import io.fabric8.kubernetes.api.model.batch.v1.Job
@@ -134,6 +135,7 @@ class DefaultStressJobService(
     private val clusterStateManager: ClusterStateManager,
     private val eventBus: EventBus,
     private val templateService: TemplateService,
+    private val ecrPullSecrets: EcrPullSecretService,
     private val jobPollInterval: Duration = Duration.ofMillis(JOB_POLL_INTERVAL_MS),
 ) : StressJobService {
     private val log = KotlinLogging.logger {}
@@ -367,12 +369,21 @@ class DefaultStressJobService(
             clusterState.getControlHost()?.privateIp
                 ?: error("No control node found. Re-provision the cluster to fix this.")
 
+        // A custom stress image may live in the account's ECR, which containerd cannot read from
+        // the node's IAM role alone. Same treatment the sidecar already gets.
+        val pullSecretName =
+            clusterState
+                .getControlHost()
+                ?.let { control ->
+                    ecrPullSecrets.ensureFor(control, config.image, Constants.Stress.NAMESPACE)
+                }.orEmpty()
+
         val stressContainer =
             buildStressContainer(config, region, controlNodeIp, clusterState.name)
         val otelSidecar =
             buildOtelSidecarContainer(config.jobName, config.tags, config.promPort, clusterState.clusterLabelName())
 
-        return assembleJob(config.jobName, labels, stressContainer, otelSidecar)
+        return assembleJob(config.jobName, labels, stressContainer, otelSidecar, pullSecretName)
     }
 
     private fun buildStressContainer(
@@ -497,6 +508,7 @@ class DefaultStressJobService(
         labels: Map<String, String>,
         stressContainer: Container,
         otelSidecar: Container,
+        pullSecretName: String = "",
     ): Job =
         JobBuilder()
             .withNewMetadata()
@@ -516,7 +528,11 @@ class DefaultStressJobService(
             .withDnsPolicy("ClusterFirstWithHostNet")
             .withRestartPolicy("Never")
             .withNodeSelector<String, String>(mapOf("type" to ServerType.Stress.serverType))
-            .withInitContainers(otelSidecar)
+            .apply {
+                if (pullSecretName.isNotEmpty()) {
+                    withImagePullSecrets(LocalObjectReferenceBuilder().withName(pullSecretName).build())
+                }
+            }.withInitContainers(otelSidecar)
             .withContainers(stressContainer)
             .withVolumes(
                 VolumeBuilder()

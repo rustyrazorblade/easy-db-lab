@@ -12,6 +12,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
+import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 
@@ -24,6 +25,7 @@ import org.mockito.kotlin.whenever
 class DefaultStressJobServiceTest : BaseKoinTest() {
     private lateinit var service: DefaultStressJobService
     private lateinit var mockK8sService: K8sService
+    private lateinit var mockEcrPullSecrets: EcrPullSecretService
 
     override fun additionalTestModules(): List<Module> =
         listOf(
@@ -64,6 +66,9 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
     @BeforeEach
     fun setup() {
         mockK8sService = getKoin().get()
+        // The default stress image is public, so no pull secret is involved.
+        mockEcrPullSecrets = mock()
+        whenever(mockEcrPullSecrets.ensureFor(any(), any(), any())).thenReturn("")
         val clusterStateManager: ClusterStateManager = getKoin().get()
         service =
             DefaultStressJobService(
@@ -72,6 +77,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
                 com.rustyrazorblade.easydblab.events
                     .EventBus(),
                 getKoin().get(),
+                mockEcrPullSecrets,
             )
     }
 

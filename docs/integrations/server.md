@@ -255,6 +255,6 @@ This is useful when:
 ## Notes
 
 - The server requires Docker to be installed
-- Your AWS profile must be configured (`easy-db-lab setup-profile`)
+- Your AWS profile must be configured (`easy-db-lab profile setup`)
 - The server runs in the foreground and logs to stdout
 - Use Ctrl+C to stop the server

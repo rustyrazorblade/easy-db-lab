@@ -12,17 +12,47 @@ Complete reference for all easy-db-lab commands.
 
 ---
 
-## Setup Commands
+## Profile Commands
 
-### setup-profile
+Profile inspection and setup. Not to be confused with `cassandra profile`, which controls runtime
+profiling of a running cluster.
+
+### profile
+
+Parent command for the profile group. Run without a subcommand to list what is available.
+
+```bash
+easy-db-lab profile
+```
+
+### profile show
+
+Report the active profile: its name, its directory, and the settings it holds.
+
+```bash
+easy-db-lab profile show
+```
+
+Reads only the profile directory, so it runs from anywhere — no cluster workspace needed. Secret
+values are never printed: AxonOps and Tailscale are reported as `ENABLED` or `DISABLED`, and the
+AWS access key and secret are not shown at all.
+
+The profile reported is the one named by `EASY_DB_LAB_PROFILE`, or `default` when that is unset:
+
+```bash
+EASY_DB_LAB_PROFILE=staging easy-db-lab profile show
+```
+
+If the profile has no `settings.yaml`, the command says so and points at `easy-db-lab profile
+setup`. If the file is present but unreadable, it reports that instead, naming the file.
+
+### profile setup
 
 Set up user profile interactively.
 
 ```bash
-easy-db-lab setup-profile
+easy-db-lab profile setup
 ```
-
-**Aliases:** `setup`
 
 Guides you through:
 

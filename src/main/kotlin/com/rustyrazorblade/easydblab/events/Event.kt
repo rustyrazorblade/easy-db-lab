@@ -2878,7 +2878,7 @@ sealed interface Event {
                 |  1. Remove incorrect profile: rm -rf ~/.easy_cass_lab/profiles/<PROFILE>
                 |     (Replace <PROFILE> with your profile name, usually 'default')
                 |
-                |  2. Run: easy-db-lab setup-profile
+                |  2. Run: easy-db-lab profile setup
                 |
                 |  3. When prompted, enter your AWS access key and secret key
                 |
@@ -3629,7 +3629,7 @@ sealed interface Event {
         @SerialName("Command.ProfileNotConfigured")
         data object ProfileNotConfigured : Command {
             override fun toDisplayString(): String =
-                "\nProfile not configured. Please run 'easy-db-lab setup-profile' to configure your environment.\n"
+                "\nProfile not configured. Please run 'easy-db-lab profile setup' to configure your environment.\n"
         }
     }
 

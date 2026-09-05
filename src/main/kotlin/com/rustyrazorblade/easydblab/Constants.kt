@@ -142,7 +142,7 @@ object Constants {
         const val S3_BUCKET = "EASY_DB_LAB_S3_BUCKET"
 
         // When truthy, AMI builds leave the instance running on failure (packer -on-error=abort),
-        // regardless of how the build was invoked (e.g. via setup-profile, which has no flag).
+        // regardless of how the build was invoked (e.g. via profile setup, which has no flag).
         const val BUILD_KEEP_ON_FAILURE = "EASY_DB_LAB_BUILD_KEEP_ON_FAILURE"
     }
 

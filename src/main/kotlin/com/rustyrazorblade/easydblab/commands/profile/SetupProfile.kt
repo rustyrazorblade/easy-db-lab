@@ -359,7 +359,6 @@ class SetupProfile : PicoBaseCommand() {
     private fun maskValue(value: String): String =
         when {
             value.isEmpty() -> "(not set)"
-            value.length == 1 -> "${value[0]}****"
             else -> "${value[0]}****"
         }
 

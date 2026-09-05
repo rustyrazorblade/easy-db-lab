@@ -62,26 +62,26 @@
 
 ## 5. Docs and strings
 
-- [ ] 5.1 Update the 6 user-facing Kotlin strings: `Event.kt:2881`, `Event.kt:3632`
+- [x] 5.1 Update the 6 user-facing Kotlin strings: `Event.kt:2881`, `Event.kt:3632`
       (`ProfileNotConfigured`), `UserConfigProvider.kt:79`, `providers/aws/AWS.kt:260`,
       `containers/Packer.kt:86`, `commands/tailscale/TailscaleStart.kt:91`.
-- [ ] 5.2 Update the remaining 9 Kotlin KDoc/comment references.
-- [ ] 5.3 Update the 18 README and `docs/` references.
-- [ ] 5.4 Update the two bare-`setup` docs passages that contain no `setup-profile` string:
+- [x] 5.2 Update the remaining 9 Kotlin KDoc/comment references.
+- [x] 5.3 Update the 18 README and `docs/` references.
+- [x] 5.4 Update the two bare-`setup` docs passages that contain no `setup-profile` string:
       `docs/getting-started/setup.md:33` and `docs/reference/commands.md:25`.
-- [ ] 5.5 Document `profile` and `profile show` in `docs/reference/commands.md`. Note the existing
+- [x] 5.5 Document `profile` and `profile show` in `docs/reference/commands.md`. Note the existing
       unrelated `cassandra profile` group already documented there.
-- [ ] 5.6 Verify no live `setup-profile` or bare-`setup` reference remains outside
+- [x] 5.6 Verify no live `setup-profile` or bare-`setup` reference remains outside
       `openspec/archive/` and `openspec/changes/archive/`.
 
 ## 6. Folded-in debt
 
-- [ ] 6.1 Delete the dead branch in `SetupProfile.maskValue()` (`SetupProfile.kt:357-362`) — the
+- [x] 6.1 Delete the dead branch in `SetupProfile.maskValue()` (`SetupProfile.kt:357-362`) — the
       `value.length == 1` case returns exactly what `else` returns.
 
 ## 7. Verification
 
-- [ ] 7.1 `./gradlew ktlintFormat` then `./gradlew check` (JDK 21 — detekt 1.23.8 cannot run under
+- [x] 7.1 `./gradlew ktlintFormat` then `./gradlew check` (JDK 21 — detekt 1.23.8 cannot run under
       JDK 25).
-- [ ] 7.2 Run the command locally against a real profile: `profile`, `profile show`, a non-default
+- [x] 7.2 Run the command locally against a real profile: `profile`, `profile show`, a non-default
       `EASY_DB_LAB_PROFILE`, and from a directory with no cluster workspace.

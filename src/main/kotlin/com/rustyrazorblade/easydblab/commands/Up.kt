@@ -241,7 +241,7 @@ class Up(
 
     /**
      * Configures the account-level S3 bucket and per-cluster data bucket.
-     * Uses the bucket name from the user profile (set during setup-profile).
+     * Uses the bucket name from the user profile (set during profile setup).
      * Applies bucket policy for IAM role access.
      * Creates a per-cluster data bucket for ClickHouse data and CloudWatch metrics.
      */

@@ -77,7 +77,7 @@ class UserConfigProvider(
         if (!userConfigFile.exists()) {
             error(
                 "User configuration file not found: $userConfigFile\n" +
-                    "Please run 'easy-db-lab setup-profile' to create your profile.",
+                    "Please run 'easy-db-lab profile setup' to create your profile.",
             )
         }
 

@@ -92,7 +92,7 @@ See `bin/set-policies`.
 Run the interactive setup to configure your AWS credentials and create necessary resources:
 
 ```shell
-easy-db-lab setup-profile
+easy-db-lab profile setup
 ```
 
 This will:
@@ -168,7 +168,7 @@ alias easy-db-lab='docker run --rm \
 Then use it like the native command:
 
 ```shell
-easy-db-lab setup-profile
+easy-db-lab profile setup
 easy-db-lab init my-cluster --cassandra 5.0
 ```
 
@@ -247,7 +247,7 @@ You can skip this if you're using us-west-2
 This can be done once, and reused many times.
 The AMI should be rebuilt when updating easy-db-lab.
 
-If you haven't run `easy-db-lab setup-profile` yet, you'll be prompted to set up your profile before building.
+If you haven't run `easy-db-lab profile setup` yet, you'll be prompted to set up your profile before building.
 
 ```shell
 bin/easy-db-lab build-image
@@ -269,7 +269,7 @@ Run `easy-db-lab` without any parameters to view all the commands and all option
 
 ### Create The Environment
 
-Note: If you haven't run `easy-db-lab setup-profile` yet, you'll be prompted to set up your profile.
+Note: If you haven't run `easy-db-lab profile setup` yet, you'll be prompted to set up your profile.
 
 Important: If you've installed the project via homebrew or downloaded a release,
 please use the `us-west-2` region.  This limitation will be lifted soon.

@@ -43,4 +43,11 @@ class UserAxonOpsTest {
     fun `isAxonOpsEnabled returns false when the org is whitespace rather than empty`() {
         assertThat(user(org = "   ", key = "axon-key").isAxonOpsEnabled()).isFalse()
     }
+
+    @Test
+    fun `isAxonOpsEnabled returns false when the key is whitespace rather than empty`() {
+        // isNotEmpty() would accept "   "; isNotBlank() rejects it. Without this case the whole
+        // class stays green under a weakened key operand.
+        assertThat(user(org = "acme", key = "   ").isAxonOpsEnabled()).isFalse()
+    }
 }

@@ -44,7 +44,10 @@
       present-but-unreadable with the file path, no raw Jackson error).
 - [x] 3.4 Read profile identity from `context.profile` / `context.profileDir.absolutePath`; use
       `getUserConfig()` guarded by `isSetup()`; call `User.isTailscaleEnabled()` for the Tailscale
-      flag and `axonOpsKey.isNotEmpty()` for AxonOps.
+      flag and `User.isAxonOpsEnabled()` for AxonOps — both require BOTH credentials to be
+      non-blank, matching what `Up.kt:706` and `cassandra/Start.kt:78` require before enabling
+      each feature. (Amended after Seam 1: this task originally said `axonOpsKey.isNotEmpty()`,
+      which disagreed with both consumers. See `ac-coverage.md`'s Amendments section.)
 - [x] 3.5 Register `ProfileShow` in `di/CommandsModule.kt` — omission fails **silently** via
       `KoinCommandFactory`'s fallback.
 

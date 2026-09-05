@@ -36,16 +36,22 @@ helper, so that no partial or truncated form of a secret can reach the output.
 
 ### Requirement: `profile show` reports AxonOps and Tailscale as flags
 `profile show` SHALL report AxonOps and Tailscale as `ENABLED` or `DISABLED` rather than printing
-their credentials. Tailscale status SHALL be determined by calling `User.isTailscaleEnabled()`
-rather than re-deriving the rule.
+their credentials.
 
-#### Scenario: AxonOps enabled when a key is present
-- **GIVEN** `axonOpsKey` is non-empty
+Each flag SHALL be determined by calling the shared predicate on `User` rather than re-deriving the
+rule — `User.isAxonOpsEnabled()` and `User.isTailscaleEnabled()` respectively. A flag SHALL report
+`ENABLED` only where the feature will actually run: AxonOps requires **both** `axonOpsOrg` and
+`axonOpsKey` to be non-blank, matching what `Up` and `cassandra start` require before they enable
+it. A report that asserted a capability the next command would silently skip would be worse than no
+report at all.
+
+#### Scenario: AxonOps enabled when both the org and the key are present
+- **GIVEN** `axonOpsOrg` and `axonOpsKey` are both non-blank
 - **WHEN** the user runs `easy-db-lab profile show`
 - **THEN** the output reports AxonOps as `ENABLED`
 
-#### Scenario: AxonOps disabled when no key is present
-- **GIVEN** `axonOpsKey` is empty
+#### Scenario: AxonOps disabled when either credential is missing
+- **GIVEN** either `axonOpsOrg` or `axonOpsKey` is empty or blank
 - **WHEN** the user runs `easy-db-lab profile show`
 - **THEN** the output reports AxonOps as `DISABLED`
 

@@ -84,6 +84,9 @@ The `install` command can render templates from a custom directory:
 easy-db-lab kit install --from ./my-kit/ --kit my-kit --size 50Gi
 ```
 
+The directory must contain a `kit.yaml`. Without it the install is rejected before anything is
+written to the workspace, because `kit.yaml` is what marks an installed directory as a kit.
+
 ### Template Variable Contract
 
 All templates receive these standard variables from cluster state:

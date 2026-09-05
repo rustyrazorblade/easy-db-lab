@@ -95,12 +95,26 @@ class InstallTemplateResolverTest : BaseKoinTest() {
     // ── resolveAdHoc ────────────────────────────────────────────────────────
 
     @Test
-    fun `resolveAdHoc returns Directory source for existing directory`() {
+    fun `resolveAdHoc returns Directory source for a template holding a kit descriptor`() {
         val dir = File(tempDir, "my-templates").also { it.mkdirs() }
+        File(dir, Constants.Kit.CONFIG_FILE).writeText("name: my-templates\n")
 
         val source = resolver.resolveAdHoc(dir.toPath())
         assertThat(source).isInstanceOf(InstallTemplateResolver.TemplateSource.Directory::class.java)
         assertThat((source as InstallTemplateResolver.TemplateSource.Directory).dir).isEqualTo(dir)
+    }
+
+    @Test
+    fun `resolveAdHoc rejects a template with bin scripts but no kit descriptor`() {
+        // Installing such a template used to succeed and produce a kit directory that
+        // registers nothing — a silent failure. It is rejected before anything is written.
+        val dir = File(tempDir, "malformed").also { it.mkdirs() }
+        File(dir, "bin").mkdirs()
+        File(File(dir, "bin"), "start.sh").writeText("#!/bin/bash\n")
+
+        assertThatThrownBy { resolver.resolveAdHoc(dir.toPath()) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining(Constants.Kit.CONFIG_FILE)
     }
 
     @Test

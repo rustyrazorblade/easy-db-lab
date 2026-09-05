@@ -64,7 +64,7 @@ socket.
       (`openspec/changes/issue-888/specs/workload-runner/spec.md`) and are applied to the live
       spec by `openspec archive`, in its own batch commit. A feature branch never edits a
       requirement block here; doing so applies the delta twice.
-- [x] 5.2 `openspec/specs/install-command/spec.md`: edit the non-requirement narrative only — the
+- [x] 5.2 `openspec/specs/kit-install-command/spec.md`: edit the non-requirement narrative only — the
       Purpose clause (lines 5-7) and the "Kit runner subcommands" section (lines 208-210), both of
       which state the old rule, plus the example tree (lines 214-220), which depicts a kit
       directory with no `kit.yaml`. Archive never touches narrative prose, so these must be

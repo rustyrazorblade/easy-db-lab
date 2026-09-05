@@ -48,7 +48,7 @@ None.
 - `workload-runner` — the discovery requirement and its scenarios currently specify `bin/` as the
   marker. The requirement sentence, three scenarios under it, and one scenario under the `--help`
   requirement all change to `kit.yaml`. A new requirement states the invariant.
-- `install-command` — the narrative describing how an installed kit is detected currently states
+- `kit-install-command` — the narrative describing how an installed kit is detected currently states
   the `bin/` rule, and its example directory tree depicts a kit directory with no `kit.yaml`, which
   would not register under the corrected rule.
 

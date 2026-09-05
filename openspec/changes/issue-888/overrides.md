@@ -27,7 +27,7 @@ neither marker.
 **This change:** it keys on `./clickhouse/kit.yaml` existing, and a second scenario asserts a
 `bin/`-only directory is absent from the listing. The requirement sentence itself is unchanged.
 
-### install-command: Kit descriptor filename
+### kit-install-command: Kit descriptor filename
 
 **Currently:** `kit.yaml` is named as the descriptor the loader looks for, across classpath,
 profile directory, and ad-hoc `--from` sources. Nothing states that an installed kit directory must
@@ -48,12 +48,12 @@ The three existing scenarios are unchanged; three are added.
 
 ## Conflicts with other in-flight changes
 
-- `kit-node-type-requirement` also touches `install-command` — **no conflict.** It adds a new
+- `kit-node-type-requirement` also touches `kit-install-command` — **no conflict.** It adds a new
   requirement, "Kit node-type requirement field", about a `type:` field inside `kit.yaml`. This
   change modifies "Kit descriptor filename". Different requirements, and the two are complementary:
   one says the descriptor must exist, the other describes a field within it.
 
-- `kit-subcommand-restructure` also touches `install-command` — **no conflict.** It modifies
+- `kit-subcommand-restructure` also touches `kit-install-command` — **no conflict.** It modifies
   "Dynamic install subcommands registered under `kit install`" and removes the `install --list` flag
   and `install` as a top-level command. That is about where the *install* subcommands live in the
   command tree. This change is about which *workspace directories* register as kit subcommands.

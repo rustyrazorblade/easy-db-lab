@@ -20,7 +20,7 @@ surfaced.
 | AC | Docs name the new form, including bare-`setup` references | `setup: Guidance names the current command` | ✅ Covered — **verified by inspection, not by test.** Zero live `setup-profile` or bare-`setup` references remain outside the two archive paths. A guard test would be a grep-over-sources test: brittle, low value, deliberately not written. |
 | AC | The `commands↔services` cycle is closed | — | ⚠️ Excluded — a structural invariant, not observable product behavior. Verified by task 1.5 and enforced later by the ArchUnit rules that belong to 745; encoding it as a product requirement here would misplace ownership. |
 | Risk | `Repl.kt:38-68` holds a second command-tree copy; no existing test catches the drift | — | ⚠️ Excluded — internal wiring with no distinct user-visible contract beyond the two command-resolution scenarios already specified. Carried as task 2.4 with the "no test catches this" warning attached. |
-| Risk | `ProfileShow` must carry no `@RequireProfileSetup`, or setup launches instead of reporting | `profile-command-group: Missing settings.yaml reports not-configured` (the "interactive setup flow does not run" clause) | ✅ Covered |
+| Risk | `ProfileShow` must carry no `@RequireProfileSetup`, or setup launches instead of reporting | `profile-command-group: Missing settings.yaml reports not-configured` (the "interactive setup flow does not run" clause) | ✅ Covered — pinned by `ProfileCommandGroupTest`'s `ProfileShow carries no requirement annotation`, which checks all four requirement annotations directly. The scenario's own test is a pure `buildReport` call, which cannot see a class annotation and would stay green if one were added — the annotation test is what actually guards this |
 | Risk | `profile show` must not load cluster state, and must stay that way | `profile-command-group: Runs outside a cluster workspace` | ✅ Covered |
 | Risk | `buildReport` reusing `maskValue()` would leak a first character and still pass a sentinel test | `profile-command-group: Secret values are absent from the report` (requirement text forbids calling any masking helper) | ✅ Covered |
 | Risk | A workspace directory named `profile` with a `kit.yaml` shadows the group | `profile-command-group: A profile kit directory is skipped` | ✅ Covered — `CommandLineParserTest` creates `<tempCwd>/profile/kit.yaml` and asserts the `profile` subcommand is still a `Profile` instance (added in fix round 1, tr-2). Before that test the behavior rested on one untested line, `CommandLineParser.kt:272` |
@@ -51,10 +51,37 @@ definition replaces three copies of the rule.
 
 Issue AC5 and `tasks.md` 3.4 were updated to match.
 
+**`buildReport`'s signature.** `design.md` and `tasks.md` 3.2 both specify
+`buildReport(profileName: String, profileDir: String, user: User?)`. What shipped is
+`buildReport(profileName, profileDir, settings: ProfileSettings)`, where `ProfileSettings` is a new
+sealed interface with `Loaded(user)`, `Missing` and `Unreadable` cases.
+
+The approved signature was internally contradictory: a nullable `User` has two states, while
+`tasks.md` 3.3 required three branches and 4.1 required `buildReport` tests for both the
+not-configured and the malformed messages. Those cannot both be satisfied at that signature. The
+sealed type preserves what the design actually argued for — a pure function of three values with one
+call site, both branches testable without capturing stdout — and `Loaded` passes the `User` straight
+through, so the design's explicit "pass `User` directly" decision stands and the reason it rejected a
+`ProfileReportData` projection does not apply.
+
+No spec scenario constrains the signature, so this was correctly not raised as a `SPEC-DEFECT`. It is
+recorded here because the AxonOps amendment above was recorded and this deviation is the same kind of
+departure from an approved artifact; documenting one and not the other would misrepresent the branch.
+`design.md` and `tasks.md` 3.2 still carry the original signature — under the read-only-spec rule,
+editing them is the owner's call, and this section is the established place for the record.
+
 ## A note on what "Covered" means in this table
 
 The *Covering scenario(s)* column names **spec scenarios**, not tests. A reader who takes ✅ Covered
 to mean "verified by a test" can be misled, and was: three scenarios reached the review panel with
-no implementing test, and one row claimed an assertion that did not exist. Fix round 1 closed all
-four gaps, and each row above now names the test that pins it, or says plainly that it is verified
-by inspection instead.
+no implementing test, and one row claimed an assertion that did not exist.
+
+Fix round 1 closed all four gaps. The rows corrected as a result — the setup-binding row, the
+`println()`/no-events row, the docs-by-inspection row, the `profile` kit-directory risk row, and the
+`@RequireProfileSetup` risk row — now name the test that pins them, or say plainly that they are
+verified by inspection. The remaining ✅ rows still name only their spec scenario; the review panel
+walked each of those to a real implementing assertion, so none overclaims, but the column is not a
+test index and should not be read as one.
+
+Scenario-to-test traceability on the merged branch is 16 of 17. The one uncovered scenario is
+`setup: Guidance names the current command`, verified by inspection as its row states.

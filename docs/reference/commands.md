@@ -374,6 +374,9 @@ Runtime async-profiler control under `cassandra profile`. Every command applies 
 nodes by default; `--hosts` narrows it to a subset. A cluster profiles CPU automatically from
 cluster-up, so these are for changing what is profiled and for pulling profiles out.
 
+This is not the top-level `profile` group, which manages your easy-db-lab user profile. See
+[Profile Commands](#profile-commands) for that.
+
 See [Profiling](../user-guide/profiling.md) for the full guide.
 
 ### cassandra profile start

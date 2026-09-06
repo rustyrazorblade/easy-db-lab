@@ -1,9 +1,42 @@
-# Review panel policy — easy-db-lab
+# Delivery policy — easy-db-lab
 
 This repo owns this file. spec-flow reads it and ships no default; if it goes away, the
 pipeline stops rather than falling back to anything. Every line here is ours to change,
 including whether a panel runs at all. Keep it short — every implementation and review
 agent reads it on every run.
+
+## Before spawning: ask about AWS and the AMI
+
+`project-manager` asks the owner these two questions before it spawns an `issue-manager`,
+and labels the issue with the answers. Ask them. Never infer either one, and never let a
+later agent decide it qualifies.
+
+- **Will this need a real AWS test?** → `requires-aws`
+- **Does this change anything baked into the AMI?** → `requires-ami-bake`
+
+## `requires-aws`: a clean panel is not enough
+
+Static review cannot prove an EC2, S3, IAM, EMR or OpenSearch call works. A mocked AWS
+client passes happily on a wrong parameter, a wrong region, or a missing permission.
+
+An issue carrying this label must be exercised against real AWS before the merge seam:
+
+- The owner drives it. They decide when a cluster comes up and what it runs.
+- An agent executes it against that live cluster and reports what it observed — the
+  command, its output, the AWS-side result — not a reading of the code.
+- The evidence goes in the PR: a real run with real output, never "verified manually".
+
+A change that cannot be tested this way stops at the seam and goes to the owner.
+
+## `requires-ami-bake`: do not bake without it
+
+Baking is slow and quietly wrong by default. `build-image` bakes from
+`build/install/easy-db-lab/packer/`, so a bake with no preceding `./gradlew installDist`
+ships the previous build's copy and reports success.
+
+Bake only when the issue carries this label, which belongs on it only when the change
+touches `packer/` or something else baked into the image. Every other issue tests against
+the existing AMI. Never bake to be safe.
 
 ## The panel
 

@@ -32,8 +32,8 @@
             "mode": "absolute",
             "steps": [
               {"color": "green", "value": null},
-              {"color": "yellow", "value": 5000},
-              {"color": "red", "value": 20000}
+              {"color": "yellow", "value": 5},
+              {"color": "red", "value": 20}
             ]
           }
         },
@@ -49,16 +49,16 @@
           {
             "matcher": {"id": "byName", "options": "Write p99"},
             "properties": [
-              {"id": "unit", "value": "µs"},
-              {"id": "thresholds", "value": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 5000}, {"color": "red", "value": 20000}]}},
+              {"id": "unit", "value": "ms"},
+              {"id": "thresholds", "value": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 5}, {"color": "red", "value": 20}]}},
               {"id": "custom.cellOptions", "value": {"type": "color-background"}}
             ]
           },
           {
             "matcher": {"id": "byName", "options": "Read p99"},
             "properties": [
-              {"id": "unit", "value": "µs"},
-              {"id": "thresholds", "value": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 5000}, {"color": "red", "value": 20000}]}},
+              {"id": "unit", "value": "ms"},
+              {"id": "thresholds", "value": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 5}, {"color": "red", "value": 20}]}},
               {"id": "custom.cellOptions", "value": {"type": "color-background"}}
             ]
           },
@@ -455,11 +455,11 @@
             "mode": "absolute",
             "steps": [
               {"color": "green", "value": null},
-              {"color": "yellow", "value": 5000},
-              {"color": "red", "value": 20000}
+              {"color": "yellow", "value": 5},
+              {"color": "red", "value": 20}
             ]
           },
-          "unit": "µs"
+          "unit": "ms"
         },
         "overrides": []
       },
@@ -507,7 +507,7 @@
           },
           "mappings": [],
           "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]},
-          "unit": "µs"
+          "unit": "ms"
         },
         "overrides": [
           {
@@ -566,7 +566,7 @@
           },
           "mappings": [],
           "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]},
-          "unit": "µs"
+          "unit": "ms"
         },
         "overrides": [
           {
@@ -610,7 +610,7 @@
     },
     {
       "datasource": {"type": "prometheus", "uid": "${datasource}"},
-      "description": "Latency distribution shape per cluster. Y axis = latency bucket boundary (µs). Color intensity = request density. GC pauses appear as transient high-latency bands. One panel per selected cluster.",
+      "description": "Latency distribution shape per cluster. Y axis = latency bucket boundary (ms). Color intensity = request density. GC pauses appear as transient high-latency bands. One panel per selected cluster.",
       "fieldConfig": {
         "defaults": {
           "color": {"mode": "palette-classic"},
@@ -643,7 +643,7 @@
         "legend": {"show": true},
         "rowsFrame": {"layout": "auto"},
         "tooltip": {"mode": "single", "showColorScale": false, "yHistogram": false},
-        "yAxis": {"axisPlacement": "left", "reverse": false, "unit": "µs"}
+        "yAxis": {"axisPlacement": "left", "reverse": false, "unit": "ms"}
       },
       "targets": [
         {
@@ -767,11 +767,11 @@
             "mode": "absolute",
             "steps": [
               {"color": "green", "value": null},
-              {"color": "yellow", "value": 5000},
-              {"color": "red", "value": 20000}
+              {"color": "yellow", "value": 5},
+              {"color": "red", "value": 20}
             ]
           },
-          "unit": "µs"
+          "unit": "ms"
         },
         "overrides": [
           {

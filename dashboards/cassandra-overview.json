@@ -278,7 +278,7 @@
               }
             ]
           },
-          "unit": "\u00b5s"
+          "unit": "ms"
         },
         "overrides": []
       },
@@ -377,7 +377,7 @@
               }
             ]
           },
-          "unit": "\u00b5s"
+          "unit": "ms"
         },
         "overrides": []
       },
@@ -1228,7 +1228,7 @@
               }
             ]
           },
-          "unit": "\u00b5s"
+          "unit": "ms"
         },
         "overrides": []
       },
@@ -1319,7 +1319,7 @@
               }
             ]
           },
-          "unit": "\u00b5s"
+          "unit": "ms"
         },
         "overrides": []
       },

@@ -363,7 +363,7 @@ install_cassandra_version() {
       export PATH="$java_home/bin:$PATH"
       # Quiet: ant output is voluminous and floods packer's SSH stream
       # shellcheck disable=SC2086
-      ant realclean >"$ant_log" 2>&1 && ant -Dno-checkstyle=true $ANT_FLAGS >>"$ant_log" 2>&1 || exit 1
+      ant realclean >"$ant_log" 2>&1 && ant -Dcheck.skip=true -Dant.gen-doc.skip=true $ANT_FLAGS >>"$ant_log" 2>&1 || exit 1
       rm -rf .git
     ) || {
         echo "ERROR: Ant build failed for version $version, see $ant_log" >&2

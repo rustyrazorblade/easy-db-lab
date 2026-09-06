@@ -93,7 +93,7 @@ class CassandraBuildService(
         )
 
         runAnt(sourceDir, javaHome, listOf("realclean"))
-        runAnt(sourceDir, javaHome, listOf("artifacts", "-Dno-checkstyle=true") + antFlagList(request.antFlags))
+        runAnt(sourceDir, javaHome, listOf("artifacts", "-Dcheck.skip=true", "-Dant.gen-doc.skip=true") + antFlagList(request.antFlags))
 
         val tarball = locateTarball(File(sourceDir, BUILD_DIR))
         val manifest =

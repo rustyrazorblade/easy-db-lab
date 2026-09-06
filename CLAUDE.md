@@ -279,6 +279,12 @@ Before pushing code, verify it passes all checks:
 
 **Note**: `ktlintFormat` auto-fixes many violations but can't fix all issues (e.g., line length). Always run `ktlintCheck` after formatting to catch remaining issues.
 
+### Building AMIs
+
+**`build-image` / `build-base` / `build-cassandra` bake from `build/install/easy-db-lab/packer/`, not from the working tree.** `Context.appHome` points at the Gradle `installDist` output, so a change under `packer/` does not reach an AMI until `./gradlew installDist` has run — committing it is not enough, and nothing in the build output says which copy it used. Always run `./gradlew installDist` before baking, exactly as you would after changing Kotlin source.
+
+The images are stacked: `cassandra = base + Cassandra tarballs`, and `cassandra.pkr.hcl` selects the most recent base AMI. A change under `packer/base/` therefore needs **both** images rebuilt (`build-image`), not just the Cassandra one.
+
 ### Packer Script Testing
 
 Test packer provisioning scripts locally using Docker (no AWS required):

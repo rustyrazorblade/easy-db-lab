@@ -1,0 +1,512 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "VictoriaMetrics"
+        },
+        "enable": true,
+        "expr": "resets(jvm_cpu_time_seconds_total{job=\"cassandra\"}[$__interval]) > 0",
+        "hide": false,
+        "iconColor": "red",
+        "name": "Database restart",
+        "step": "60s",
+        "tagKeys": "host_name,cassandra_build",
+        "textFormat": "{{host_name}} restarted on build {{cassandra_build}}",
+        "titleFormat": "Database restart",
+        "useValueForTime": false
+      }
+    ]
+  },
+  "description": "Compare two continuous-profiling subjects side by side. Host against host, or cluster against cluster.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "Pick a subject in **Side A** and another in **Side B**, then pick a **Profile type**. The two flame graphs below show where that resource went inside each JVM. This is the question no metric answers: not that one side is slower, but which code path took the time.\n\n**Compare by** sets the axis. `hostname` compares one node against another, which is how you compare two builds, two JVM versions or two garbage collectors in one cluster. `cluster` compares one cluster against another. The side dropdowns follow whichever you choose.\n\n**Read the flame graph by width, not by height.** Width is the share of the selected resource. Height is only call depth. Click a frame to zoom into it; the search box filters frames by name, and the same search on both sides is the fastest manual diff.\n\n**The caveat that matters.** A flame graph compares SHAPE. If the two sides did very different amounts of work, the proportions still compare but the absolute numbers do not. Check **Profile weight** below before you trust a shape: if one side carries far more weight, you are comparing a busy node against an idle one, and a frame can grow in share while shrinking in real time.\n\nA red line marks a database restart. A restart ends the profiler session, so a window that crosses one holds two different recordings.",
+        "mode": "markdown"
+      },
+      "title": "How to use this page",
+      "transparent": false,
+      "type": "text"
+    },
+    {
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 8
+      },
+      "id": 2,
+      "options": {
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "### [Open the flame graph diff for these two sides](/a/grafana-pyroscope-app/explore?var-dataSource=pyroscope&var-serviceName=${service}&var-profileMetricId=${profile_type}&explorationType=diff-flame-graph&var-filtersBaseline=${compare_by}%7C%3D%7C${side_a}&var-filtersComparison=${compare_by}%7C%3D%7C${side_b}&from=${__from}&to=${__to}&diffFrom=${__from}&diffTo=${__to}&diffFrom-2=${__from}&diffTo-2=${__to})\n\nThe link carries the current sides, profile type and time range. It opens Grafana Profiles Drilldown, which colours one flame graph by where the time moved: red where **${side_b}** spends more than **${side_a}**, blue where it spends less.\n\n**A diff cannot live in a dashboard panel.** The Pyroscope datasource offers a dashboard panel only three query types: `profile`, `metrics` and `both`. None of them produces the two-sided data frame the flame graph panel needs to render a diff. The diff view is built into the Profiles Drilldown app, so that is where it stays. The two panels below are the dashboard equivalent: the same two queries, side by side.",
+        "mode": "markdown"
+      },
+      "title": "Flame graph diff",
+      "transparent": false,
+      "type": "text"
+    },
+    {
+      "datasource": {
+        "type": "grafana-pyroscope-datasource",
+        "uid": "pyroscope"
+      },
+      "description": "Total weight of the selected profile type for each side, over time. Read this before the flame graphs. Two sides at similar weight are directly comparable. Two sides at very different weight still compare by shape, but not by absolute value. The unit follows the profile type: cores for CPU, bytes per second for allocation, seconds per second for lock and mutex delay.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "profile weight",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Side A — ${side_a}"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Side B — ${side_b}"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "orange",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 14
+      },
+      "id": 3,
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-pyroscope-datasource",
+            "uid": "pyroscope"
+          },
+          "groupBy": [
+            "hostname",
+            "cluster"
+          ],
+          "labelSelector": "{service_name=\"${service}\",${compare_by}=\"${side_a}\"}",
+          "profileTypeId": "${profile_type}",
+          "queryType": "metrics",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "grafana-pyroscope-datasource",
+            "uid": "pyroscope"
+          },
+          "groupBy": [
+            "hostname",
+            "cluster"
+          ],
+          "labelSelector": "{service_name=\"${service}\",${compare_by}=\"${side_b}\"}",
+          "profileTypeId": "${profile_type}",
+          "queryType": "metrics",
+          "refId": "B"
+        }
+      ],
+      "title": "Profile weight — are the two sides comparable?",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-pyroscope-datasource",
+        "uid": "pyroscope"
+      },
+      "description": "Flame graph for Side A over the dashboard time range. Width is the share of the selected profile type. Compare it against Side B on the right.",
+      "gridPos": {
+        "h": 24,
+        "w": 12,
+        "x": 0,
+        "y": 22
+      },
+      "id": 4,
+      "links": [
+        {
+          "targetBlank": true,
+          "title": "Open the diff in Profiles Drilldown",
+          "url": "/a/grafana-pyroscope-app/explore?var-dataSource=pyroscope&var-serviceName=${service}&var-profileMetricId=${profile_type}&explorationType=diff-flame-graph&var-filtersBaseline=${compare_by}%7C%3D%7C${side_a}&var-filtersComparison=${compare_by}%7C%3D%7C${side_b}&from=${__from}&to=${__to}&diffFrom=${__from}&diffTo=${__to}&diffFrom-2=${__from}&diffTo-2=${__to}"
+        }
+      ],
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-pyroscope-datasource",
+            "uid": "pyroscope"
+          },
+          "groupBy": [],
+          "labelSelector": "{service_name=\"${service}\",${compare_by}=\"${side_a}\"}",
+          "profileTypeId": "${profile_type}",
+          "queryType": "profile",
+          "refId": "A"
+        }
+      ],
+      "title": "Side A — ${side_a}",
+      "type": "flamegraph"
+    },
+    {
+      "datasource": {
+        "type": "grafana-pyroscope-datasource",
+        "uid": "pyroscope"
+      },
+      "description": "Flame graph for Side B over the dashboard time range. Search the same frame name on both panels to compare one code path directly.",
+      "gridPos": {
+        "h": 24,
+        "w": 12,
+        "x": 12,
+        "y": 22
+      },
+      "id": 5,
+      "links": [
+        {
+          "targetBlank": true,
+          "title": "Open the diff in Profiles Drilldown",
+          "url": "/a/grafana-pyroscope-app/explore?var-dataSource=pyroscope&var-serviceName=${service}&var-profileMetricId=${profile_type}&explorationType=diff-flame-graph&var-filtersBaseline=${compare_by}%7C%3D%7C${side_a}&var-filtersComparison=${compare_by}%7C%3D%7C${side_b}&from=${__from}&to=${__to}&diffFrom=${__from}&diffTo=${__to}&diffFrom-2=${__from}&diffTo-2=${__to}"
+        }
+      ],
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-pyroscope-datasource",
+            "uid": "pyroscope"
+          },
+          "groupBy": [],
+          "labelSelector": "{service_name=\"${service}\",${compare_by}=\"${side_b}\"}",
+          "profileTypeId": "${profile_type}",
+          "queryType": "profile",
+          "refId": "A"
+        }
+      ],
+      "title": "Side B — ${side_b}",
+      "type": "flamegraph"
+    }
+  ],
+  "refresh": "",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": [
+    "cassandra",
+    "comparison",
+    "profiling",
+    "pyroscope"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "selected": true,
+          "text": "CPU time",
+          "value": "process_cpu:cpu:nanoseconds:cpu:nanoseconds"
+        },
+        "description": "Which resource the flame graphs measure. Only the types the running profiler session records hold data. A default session records CPU, allocation, lock and mutex.",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Profile type",
+        "multi": false,
+        "name": "profile_type",
+        "options": [
+          {
+            "selected": true,
+            "text": "CPU time",
+            "value": "process_cpu:cpu:nanoseconds:cpu:nanoseconds"
+          },
+          {
+            "selected": false,
+            "text": "Allocated bytes",
+            "value": "memory:alloc_in_new_tlab_bytes:bytes:space:bytes"
+          },
+          {
+            "selected": false,
+            "text": "Allocated objects",
+            "value": "memory:alloc_in_new_tlab_objects:count:space:bytes"
+          },
+          {
+            "selected": false,
+            "text": "Lock contentions",
+            "value": "block:contentions:count:block:count"
+          },
+          {
+            "selected": false,
+            "text": "Lock delay",
+            "value": "block:delay:nanoseconds:block:count"
+          },
+          {
+            "selected": false,
+            "text": "Mutex contentions",
+            "value": "mutex:contentions:count:mutex:count"
+          },
+          {
+            "selected": false,
+            "text": "Mutex delay",
+            "value": "mutex:delay:nanoseconds:mutex:count"
+          }
+        ],
+        "query": "CPU time : process_cpu:cpu:nanoseconds:cpu:nanoseconds,Allocated bytes : memory:alloc_in_new_tlab_bytes:bytes:space:bytes,Allocated objects : memory:alloc_in_new_tlab_objects:count:space:bytes,Lock contentions : block:contentions:count:block:count,Lock delay : block:delay:nanoseconds:block:count,Mutex contentions : mutex:contentions:count:mutex:count,Mutex delay : mutex:delay:nanoseconds:mutex:count",
+        "queryValue": "",
+        "skipUrlSync": false,
+        "type": "custom"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": "hostname",
+          "value": "hostname"
+        },
+        "description": "The comparison axis. hostname compares one node against another. cluster compares one cluster against another. Side A and Side B follow this choice.",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Compare by",
+        "multi": false,
+        "name": "compare_by",
+        "options": [
+          {
+            "selected": true,
+            "text": "hostname",
+            "value": "hostname"
+          },
+          {
+            "selected": false,
+            "text": "cluster",
+            "value": "cluster"
+          }
+        ],
+        "query": "hostname,cluster",
+        "queryValue": "",
+        "skipUrlSync": false,
+        "type": "custom"
+      },
+      {
+        "current": {
+          "selected": false,
+          "text": "cassandra",
+          "value": "cassandra"
+        },
+        "datasource": {
+          "type": "grafana-pyroscope-datasource",
+          "uid": "pyroscope"
+        },
+        "definition": "label_values(service_name)",
+        "description": "The profiled process. Every panel filters on it, so both sides always describe the same program.",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Service",
+        "multi": false,
+        "name": "service",
+        "options": [],
+        "query": {
+          "labelName": "service_name",
+          "profileTypeId": "${profile_type}",
+          "refId": "PyroscopeVariableQueryEditor-VariableQuery",
+          "type": "labelValue"
+        },
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "grafana-pyroscope-datasource",
+          "uid": "pyroscope"
+        },
+        "definition": "label_values(${compare_by})",
+        "description": "The left-hand subject. The list is every value of the chosen axis that reported a profile for the selected service.",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Side A",
+        "multi": false,
+        "name": "side_a",
+        "options": [],
+        "query": {
+          "labelName": "${compare_by}",
+          "labelSelector": "{service_name=\"${service}\"}",
+          "profileTypeId": "${profile_type}",
+          "refId": "PyroscopeVariableQueryEditor-VariableQuery",
+          "type": "labelValue"
+        },
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "grafana-pyroscope-datasource",
+          "uid": "pyroscope"
+        },
+        "definition": "label_values(${compare_by})",
+        "description": "The right-hand subject. Pick a different value from Side A, or the page compares a subject against itself.",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Side B",
+        "multi": false,
+        "name": "side_b",
+        "options": [],
+        "query": {
+          "labelName": "${compare_by}",
+          "labelSelector": "{service_name=\"${service}\"}",
+          "profileTypeId": "${profile_type}",
+          "refId": "PyroscopeVariableQueryEditor-VariableQuery",
+          "type": "labelValue"
+        },
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "datasource": {
+          "type": "grafana-pyroscope-datasource",
+          "uid": "pyroscope"
+        },
+        "description": "Adds any label filter to both sides at once. The Pyroscope datasource merges these into every label selector on the page, so a filter narrows Side A and Side B together and the comparison stays fair.",
+        "filters": [],
+        "hide": 0,
+        "label": "Ad-hoc filters",
+        "name": "adhoc",
+        "skipUrlSync": false,
+        "type": "adhoc"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Profile Comparison",
+  "uid": "profile-comparison",
+  "version": 1,
+  "weekStart": ""
+}

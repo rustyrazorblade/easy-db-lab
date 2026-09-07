@@ -122,6 +122,7 @@ environment.sh
 disk_setup.sh
 
 /setup_instance.sh
+/cassandra-jmx-rules.yaml
 cassandra_versions_extra.yaml
 state.json
 /cassandra_versions.yaml

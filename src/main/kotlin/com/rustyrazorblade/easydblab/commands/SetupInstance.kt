@@ -37,6 +37,19 @@ class SetupInstance : PicoBaseCommand() {
             remoteOps.executeRemotely(host, "sudo mv environment.sh /etc/profile.d/stress.sh").text
         }
 
+        // The OTel Java agent reads these JMX rules at Cassandra startup. They live in the cluster
+        // workspace rather than in the AMI, so an operator can change a rule, re-run this command
+        // and restart Cassandra - no rebake, no Gradle build.
+        fun writeJmxRules(host: Host) {
+            remoteOps.executeRemotely(host, "sudo mkdir -p ${Constants.Cassandra.NODE_CONFIG_DIR}").text
+            remoteOps.upload(host, Path.of(Constants.Cassandra.JMX_RULES_FILE), Constants.Cassandra.JMX_RULES_FILE)
+            remoteOps
+                .executeRemotely(
+                    host,
+                    "sudo mv ${Constants.Cassandra.JMX_RULES_FILE} ${Constants.Cassandra.JMX_RULES_PATH}",
+                ).text
+        }
+
         fun setupStressSystemdEnv(
             host: Host,
             cassandraHost: String,
@@ -115,6 +128,7 @@ class SetupInstance : PicoBaseCommand() {
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, "") { host ->
             val h = host.toHost()
             setup(h)
+            writeJmxRules(h)
             seedProfilingConfig(h, controlNodeIp, clusterName)
             remoteOps.executeRemotely(h, "sudo hostnamectl set-hostname ${h.alias}").text
             remoteOps.upload(h, Path.of("setup_instance.sh"), "setup_instance.sh")

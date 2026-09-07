@@ -319,7 +319,8 @@ Scripts in `packer/cassandra/bin/` are **not bake-time-only** — the AMI puts t
 [`commands/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/commands/CLAUDE.md).
 
 `packer/cassandra/lib/edl-cassandra-agents.sh` (installed to `/usr/local/lib/`) picks the AxonOps
-and MCAC metrics agents from the release's own jar name. It is sourced by `cassandra.in.sh`, which
+agent from the release's own jar name. Metrics come from the OpenTelemetry Java agent, which is one
+jar for every release and needs no such selection. The library is sourced by `cassandra.in.sh`, which
 Cassandra's `bin/cassandra` runs under **`/bin/sh` (dash), not bash** — so it must stay POSIX sh.
 A bashism there does not degrade to "no metrics"; dash fails to parse the file and Cassandra will
 not start. `edl-cassandra-agents.test.sh` exercises the functions through a real `/bin/sh` for
@@ -345,7 +346,7 @@ All observability K8s resources are built programmatically using Fabric8 manifes
 
 **CNI**: K3s uses Cilium (not Flannel) with Hubble enabled for L7 network visibility and Prometheus metrics at `localhost:9965`.
 
-**Collectors** (run on cluster nodes): OTel Collector, Fluent Bit (journald), Grafana Alloy (eBPF profiling), Beyla (L7 RED metrics), ebpf_exporter (TCP/block I/O/VFS), YACE (CloudWatch), MAAC agent (Cassandra metrics)
+**Collectors** (run on cluster nodes): OTel Collector, Fluent Bit (journald), Grafana Alloy (eBPF profiling), Beyla (L7 RED metrics), ebpf_exporter (TCP/block I/O/VFS), YACE (CloudWatch), OpenTelemetry Java agent (Cassandra metrics, over OTLP)
 
 **Dynamic OTel config**: `OtelManifestBuilder.buildConfigMap()` accepts `List<WorkloadScrapeConfig>` and injects one Prometheus scrape job per running kit. Kits register by writing `easydblab-metrics-<kit>` ConfigMaps (label: `easydblab.com/workload-metrics=true`). `MetricsRegistryService` creates/deletes these ConfigMaps; `OtelSyncService` reads them all and regenerates the OTel collector ConfigMap. Both are called automatically by `KitRunnerCommand` on successful `start`/`stop`.
 

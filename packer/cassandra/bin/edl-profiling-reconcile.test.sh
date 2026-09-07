@@ -1807,8 +1807,8 @@ test_a_pass_killed_while_attaching_still_persists_what_it_learned() {
 # property, and it is also what removes a whole failure class: a bad -agentpath string aborts JVM
 # startup, while a failed attach leaves the database running.
 #
-# Nothing else asserts it. cassandra.in.sh still injects the AxonOps and MAAC agents, so it is a file
-# that gets edited, and a reintroduced -javaagent:pyroscope.jar would be close to invisible — the
+# Nothing else asserts it. cassandra.in.sh still injects the AxonOps and OpenTelemetry agents, so it
+# is a file that gets edited, and a reintroduced -javaagent:pyroscope.jar would be close to invisible — the
 # reconciler would still attach, chunks would still ship, and the only symptom would be two profilers
 # competing inside one JVM for a session async-profiler allows only one of.
 #
@@ -1827,9 +1827,9 @@ test_cassandra_in_sh_injects_no_profiling_agent() {
   code="$(cassandra_in_sh_code)"
 
   # Vacuity check first: if the extraction ever stops yielding code, every assertion below passes
-  # while checking nothing. The MAAC agent is the file's own proof that agents are still injected
+  # while checking nothing. The OTel agent is the file's own proof that agents are still injected
   # here, which is precisely why this guard has to exist.
-  assert_contains "the file still injects the agents it is supposed to" "$code" "-javaagent:\${MAAC_AGENT_JAR}"
+  assert_contains "the file still injects the agents it is supposed to" "$code" "-javaagent:\${EDL_OTEL_AGENT_JAR}"
 
   assert_not_contains "no -agentpath: the profiler is attached at runtime, never at JVM startup" \
     "$code" "-agentpath"

@@ -3,13 +3,13 @@ set -euo pipefail
 
 echo "=== Running: install_otel_agent.sh ==="
 
-OTEL_VERSION="2.25.0"
+OTEL_VERSION="2.31.1"
 OTEL_JAR="opentelemetry-javaagent.jar"
 
 sudo mkdir -p /usr/local/otel
 
 # SHA-256 for each version: gh api repos/open-telemetry/opentelemetry-java-instrumentation/releases/tags/v${OTEL_VERSION} | jq -r '.assets[] | select(.name=="opentelemetry-javaagent.jar") | .digest'
-OTEL_SHA256="d6e809824176cf88792db359a9d928281ba2102fa8755453c1940f6c0289e396"
+OTEL_SHA256="bbf83c151b6400709e2f225bdd07a04f839d9d13b8b93464241333fd25d3e3ba"
 
 # Download the OpenTelemetry Java agent (via S3 cache)
 # Use the shared S3 download cache when present; otherwise download directly (local script

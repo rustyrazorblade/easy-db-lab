@@ -217,7 +217,6 @@ object Constants {
         const val PYROSCOPE_PORT = 4040
         const val BEYLA_METRICS_PORT = 9400
         const val EBPF_EXPORTER_METRICS_PORT = 9435
-        const val MAAC_METRICS_PORT = 9000
         const val OTEL_GRPC_PORT = 4317
         const val OTEL_HTTP_PORT = 4318
         const val OTEL_HEALTH_PORT = 13133
@@ -291,7 +290,7 @@ object Constants {
 
     // OTel Java Agent configuration (for EMR Spark JVMs)
     object OtelJavaAgent {
-        const val VERSION = "2.25.0"
+        const val VERSION = "2.31.1"
         const val DOWNLOAD_URL =
             "https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v$VERSION/opentelemetry-javaagent.jar"
         const val INSTALL_PATH = "/opt/otel/opentelemetry-javaagent.jar"
@@ -331,11 +330,11 @@ object Constants {
         /** Where completed and in-flight JFR chunks live. Deliberately NOT the 777 artifacts dir. */
         const val PROFILE_DIR = "/mnt/db1/cassandra/profiles"
 
-        /** Desired state, written atomically by the CLI and read by the reconciler. */
-        const val DESIRED_STATE_PATH = "/etc/easy-db-lab/profiling.json"
-
         /** Directory holding DESIRED_STATE_PATH; created by the CLI before the first write. */
-        const val DESIRED_STATE_DIR = "/etc/easy-db-lab"
+        const val DESIRED_STATE_DIR = Cassandra.NODE_CONFIG_DIR
+
+        /** Desired state, written atomically by the CLI and read by the reconciler. */
+        const val DESIRED_STATE_PATH = "$DESIRED_STATE_DIR/profiling.json"
 
         /** Effective state, rewritten by the reconciler at the end of every pass. */
         const val EFFECTIVE_STATE_PATH = "$PROFILE_DIR/effective-state.json"
@@ -450,6 +449,21 @@ object Constants {
 
         /** Python version cqlsh runs under when a version declares none — matches every shipped entry */
         const val DEFAULT_PYTHON_VERSION = "3.11.9"
+
+        /** Node-side directory easy-db-lab writes its own configuration into. */
+        const val NODE_CONFIG_DIR = "/etc/easy-db-lab"
+
+        /**
+         * Custom JMX Metric Insight rules the OTel Java agent reads on each Cassandra node.
+         *
+         * The file is a classpath resource, extracted into the cluster workspace by `init` and
+         * uploaded by `setup-instances`. `cassandra.in.sh` names the same path in
+         * `-Dotel.jmx.config`, so the two must not drift.
+         */
+        const val JMX_RULES_FILE = "cassandra-jmx-rules.yaml"
+
+        /** Where [JMX_RULES_FILE] lands on a Cassandra node. */
+        const val JMX_RULES_PATH = "$NODE_CONFIG_DIR/$JMX_RULES_FILE"
     }
 
     // Cassandra stress testing configuration

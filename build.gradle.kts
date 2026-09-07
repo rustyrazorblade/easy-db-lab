@@ -409,10 +409,11 @@ tasks.register<Exec>("testCassandraUseScript") {
 
 // Unit-test the agent selection cassandra.in.sh runs on every Cassandra start: deriving X.Y from
 // the release jar name (every shape, including the unparseable one) and mapping it to the AxonOps
-// and MCAC agents. Pure functions; no Docker, no network, no node.
+// agent. Also parses cassandra.in.sh under dash, which is the shell Cassandra actually sources it
+// with. Pure functions; no Docker, no network, no node.
 tasks.register<Exec>("testCassandraAgentSelection") {
     group = "Verification"
-    description = "Unit-test Cassandra version derivation and metrics-agent selection"
+    description = "Unit-test Cassandra version derivation and agent selection"
     workingDir = file(".")
     commandLine = listOf("bash", "packer/cassandra/lib/edl-cassandra-agents.test.sh")
 }

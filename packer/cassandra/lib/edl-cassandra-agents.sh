@@ -3,10 +3,12 @@
 #
 # Agent selection for Cassandra nodes, sourced by cassandra.in.sh at every Cassandra startup.
 #
-# It answers three questions, and nothing else:
+# It answers two questions, and nothing else:
 #   - which Cassandra release (X.Y) is this node about to start?
 #   - which AxonOps agent, if any, belongs to that release?
-#   - which MCAC/MAAC metrics agent, if any, belongs to that release?
+#
+# Metrics come from the OpenTelemetry Java agent, which is one jar for every release, so it needs
+# no selection and appears nowhere in here.
 #
 # It lives in its own file, holding pure functions with no side effects, because the version
 # derivation used to be an inline sed in cassandra.in.sh that only matched `X.Y.Z` jar names.
@@ -20,13 +22,6 @@
 # so a caller's names are never clobbered.
 #
 # Installed to /usr/local/lib/edl-cassandra-agents.sh by install_cassandra.sh.
-
-# Where install_maac.sh puts the per-release MCAC/MAAC agent jars. Overridable for tests.
-EDL_MAAC_BASE="${EDL_MAAC_BASE:-/opt/management-api}"
-
-# Cassandra releases we install an MCAC/MAAC agent for. A release outside this list gets a warning
-# naming it, never silence - see edl_maac_agent_jar_for.
-EDL_MAAC_VERSIONS="${EDL_MAAC_VERSIONS:-4.0 4.1 5.0 6.0 7.0}"
 
 # Where install_axon.sh puts the per-release AxonOps agents. Overridable for tests.
 EDL_AXONOPS_BASE="${EDL_AXONOPS_BASE:-/usr/share/axonops}"
@@ -82,21 +77,6 @@ edl_cassandra_version_from_jar() {
     edl_is_digits "$_edl_minor" || return 1
 
     printf '%s.%s\n' "$_edl_major" "$_edl_minor"
-}
-
-# edl_maac_agent_jar_for <X.Y>
-#
-# Prints the MCAC/MAAC agent jar path for that release. Returns 1 without printing when no agent
-# is installed for it, so the caller can say which release it is skipping.
-edl_maac_agent_jar_for() {
-    for _edl_supported in $EDL_MAAC_VERSIONS; do
-        if [ "$1" = "$_edl_supported" ]; then
-            printf '%s/%s/datastax-mgmtapi-agent.jar\n' "$EDL_MAAC_BASE" "$1"
-            return 0
-        fi
-    done
-
-    return 1
 }
 
 # edl_axonops_agent_for <X.Y> <java-major-version>

@@ -43,15 +43,6 @@ receivers:
               replacement: '${env:HOSTNAME}:9435'
             - target_label: cluster
               replacement: '${env:CLUSTER_NAME}'
-        - job_name: 'cassandra-maac'
-          scrape_interval: 15s
-          static_configs:
-            - targets: ['localhost:9000']
-          relabel_configs:
-            - target_label: instance
-              replacement: '${env:HOSTNAME}:9000'
-            - target_label: cluster
-              replacement: '${env:CLUSTER_NAME}'
         - job_name: 'yace'
           scrape_interval: 5s
           scrape_timeout: 5s

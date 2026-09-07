@@ -22,7 +22,7 @@ import kotlinx.serialization.builtins.ListSerializer
  * Builds all OpenTelemetry Collector K8s resources as typed Fabric8 objects.
  *
  * Creates a DaemonSet that runs on all nodes with hostNetwork, collecting
- * host metrics, Prometheus scrapes (Beyla, ebpf_exporter, MAAC, YACE, Hubble),
+ * host metrics, Prometheus scrapes (Beyla, ebpf_exporter, YACE, Hubble),
  * plus dynamic per-workload scrape jobs from the metrics registry ConfigMaps,
  * file-based logs (system, Cassandra, ClickHouse), and OTLP.
  * Exports to VictoriaMetrics, VictoriaLogs, and Tempo.

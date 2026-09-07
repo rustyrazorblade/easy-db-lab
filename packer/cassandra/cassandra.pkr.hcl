@@ -197,7 +197,7 @@ build {
     destination = "/tmp/cassandra.in.sh"
   }
 
-  # Sourced by cassandra.in.sh on every Cassandra start to pick the AxonOps and MCAC agents.
+  # Sourced by cassandra.in.sh on every Cassandra start to pick the AxonOps agent.
   provisioner "file" {
     source = "lib/edl-cassandra-agents.sh"
     destination = "/tmp/edl-cassandra-agents.sh"
@@ -215,11 +215,6 @@ build {
   # install Pyroscope Java agent for continuous profiling
   provisioner "shell" {
     script = "install/install_pyroscope_agent.sh"
-  }
-
-  # install MAAC (Management API for Apache Cassandra) metrics agent
-  provisioner "shell" {
-    script = "install/install_maac.sh"
   }
 
   # instal axonops

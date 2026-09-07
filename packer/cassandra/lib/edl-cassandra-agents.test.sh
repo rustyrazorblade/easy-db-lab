@@ -87,36 +87,6 @@ assert_unparseable "apache-cassandra-6.jar"
 assert_unparseable "apache-cassandra-trunk.jar"
 assert_unparseable ""
 
-# --- MCAC/MAAC agent selection -----------------------------------------------
-EDL_MAAC_BASE="/opt/management-api"
-EDL_MAAC_VERSIONS="4.0 4.1 5.0 6.0 7.0"
-
-for version in 4.0 4.1 5.0 6.0 7.0; do
-  expected="/opt/management-api/${version}/datastax-mgmtapi-agent.jar"
-  actual="$(edl_maac_agent_jar_for "$version")"
-  if [[ "$actual" == "$expected" ]]; then
-    pass "MAAC ${version} -> ${expected}"
-  else
-    fail "MAAC ${version} should give ${expected}, got '${actual}'"
-  fi
-done
-
-# 6.0 is the release that had no agent at all and is the reason for this change; assert it is
-# no longer an empty result.
-if [[ -n "$(edl_maac_agent_jar_for 6.0)" ]]; then
-  pass "MAAC 6.0 resolves to an agent (the regression this change fixes)"
-else
-  fail "MAAC 6.0 must resolve to an agent"
-fi
-
-for version in 3.0 3.11 5.1 8.0; do
-  if edl_maac_agent_jar_for "$version" >/dev/null; then
-    fail "MAAC ${version} should report no agent"
-  else
-    pass "MAAC ${version} reports no agent so the caller can say so"
-  fi
-done
-
 # --- AxonOps agent selection --------------------------------------------------
 assert_axonops() {
   local version="$1" java="$2" expected="$3" actual
@@ -171,11 +141,31 @@ else
   fail "an unparseable name printed '${sh_out}' under ${POSIX_SH}"
 fi
 
-if sh_out="$("$POSIX_SH" -c '. "$1"; edl_maac_agent_jar_for 6.0; edl_axonops_agent_for 4.0 8' _ "${SCRIPT_DIR}/edl-cassandra-agents.sh" 2>&1)" \
-   && [[ "$sh_out" == *"/opt/management-api/6.0/datastax-mgmtapi-agent.jar"* && "$sh_out" == *"4.0-agent-jdk8"* ]]; then
+if sh_out="$("$POSIX_SH" -c '. "$1"; edl_axonops_agent_for 4.0 8' _ "${SCRIPT_DIR}/edl-cassandra-agents.sh" 2>&1)" \
+   && [[ "$sh_out" == *"4.0-agent-jdk8"* ]]; then
   pass "agent selection works under ${POSIX_SH}"
 else
   fail "agent selection must work under ${POSIX_SH}, got: ${sh_out}"
+fi
+
+# --- cassandra.in.sh itself has to parse under /bin/sh -----------------------
+# The library above is exercised through dash, but the file that sources it never was, and that is
+# the file agents get added to. A bashism in it does not degrade to "no metrics": dash fails to
+# parse it and Cassandra does not start at all.
+if "$POSIX_SH" -n "${SCRIPT_DIR}/../cassandra.in.sh" 2>/dev/null; then
+  pass "cassandra.in.sh parses under ${POSIX_SH}"
+else
+  fail "cassandra.in.sh must parse under ${POSIX_SH}: $("$POSIX_SH" -n "${SCRIPT_DIR}/../cassandra.in.sh" 2>&1)"
+fi
+
+# The OTel agent must go on JVM_EXTRA_OPTS, never JVM_OPTS. bin/nodetool sources this file and puts
+# $JVM_OPTS on its own java command line, so an agent there starts again for every nodetool,
+# sstableloader and cassandra-stress run - each one a fresh agent minting its own service instance.
+# nodetool discards JVM_EXTRA_OPTS, which is exactly what an agent wants.
+if grep -v '^[[:space:]]*#' "${SCRIPT_DIR}/../cassandra.in.sh" | grep -q 'JVM_OPTS="\$JVM_OPTS.*-javaagent'; then
+  fail "a -javaagent is being appended to JVM_OPTS; it belongs on JVM_EXTRA_OPTS"
+else
+  pass "no -javaagent on JVM_OPTS"
 fi
 
 echo

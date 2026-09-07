@@ -44,6 +44,19 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         builder = OtelManifestBuilder(templateService)
     }
 
+    /**
+     * Cassandra metrics now arrive over OTLP from the OTel Java agent in the Cassandra JVM, not
+     * from a Prometheus endpoint on 9000. Leaving the scrape job behind would have the collector
+     * poll a port nothing listens on, once per node, for the life of every cluster.
+     */
+    @Test
+    fun `buildConfigMap no longer scrapes the MAAC Prometheus endpoint`() {
+        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+
+        assertThat(yaml).doesNotContain("cassandra-maac")
+        assertThat(yaml).doesNotContain("localhost:9000")
+    }
+
     @Test
     fun `buildConfigMap with empty list contains all static scrape jobs`() {
         val configMap = builder.buildConfigMap(emptyList())
@@ -51,7 +64,6 @@ class OtelManifestBuilderTest : BaseKoinTest() {
 
         assertThat(yaml).contains("job_name: 'beyla'")
         assertThat(yaml).contains("job_name: 'ebpf-exporter'")
-        assertThat(yaml).contains("job_name: 'cassandra-maac'")
         assertThat(yaml).contains("job_name: 'yace'")
         assertThat(yaml).contains("job_name: 'hubble'")
     }
@@ -154,7 +166,6 @@ class OtelManifestBuilderTest : BaseKoinTest() {
 
         assertThat(yaml).contains("job_name: 'beyla'")
         assertThat(yaml).contains("job_name: 'ebpf-exporter'")
-        assertThat(yaml).contains("job_name: 'cassandra-maac'")
         assertThat(yaml).contains("job_name: 'yace'")
         assertThat(yaml).contains("job_name: 'hubble'")
         assertThat(yaml).contains("job_name: \"clickhouse-clickhouse\"")

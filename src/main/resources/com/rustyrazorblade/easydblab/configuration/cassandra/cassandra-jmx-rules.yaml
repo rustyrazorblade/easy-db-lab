@@ -1,0 +1,142 @@
+---
+# Custom JMX Metric Insight rules for the OpenTelemetry Java agent on Cassandra nodes.
+#
+# How this file travels: it is a Kotlin classpath resource. `easy-db-lab init` extracts it into the
+# cluster workspace, and `easy-db-lab setup-instances` uploads it to /etc/easy-db-lab/ on every
+# Cassandra node. `cassandra.in.sh` names that path in `-Dotel.jmx.config`. Editing the copy in the
+# workspace and re-running `setup-instances` is therefore enough to change a rule: no AMI rebake,
+# and no Gradle rebuild.
+#
+# These rules sit ON TOP of the agent's built-in `experimental-cassandra` target. That target covers
+# client-request p50, p99 and max and nothing else, so every family below is one it does not supply:
+# the 99.9th percentile, the per-table series, the thread pools, and the dropped messages.
+#
+# One rule per MBean family, deliberately flat. The key is `metricAttribute`, singular.
+
+rules:
+  # --- client requests ---------------------------------------------------------------------------
+  # p999 only. The built-in target already maps p50, p99 and max from this same MBean, and these are
+  # pre-aggregated values off Cassandra's own EstimatedHistogram - the reservoir `nodetool
+  # proxyhistograms` prints. They are per node and cannot be re-aggregated into a cluster p999.
+  - bean: org.apache.cassandra.metrics:type=ClientRequest,scope=*,name=Latency
+    type: gauge
+    unit: us
+    metricAttribute:
+      operation: param(scope)
+    mapping:
+      999thPercentile:
+        metric: cassandra.client.request.latency.p999
+        desc: Coordinator request latency, 99.9th percentile
+
+  # --- per-table storage -------------------------------------------------------------------------
+  # keyspace and table are carried as attributes rather than rolled up, so a dashboard can name one
+  # table. `scope` is the table name on a type=Table MBean.
+  - bean: org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=LiveDiskSpaceUsed
+    type: gauge
+    unit: By
+    metricAttribute:
+      keyspace: param(keyspace)
+      table: param(scope)
+    mapping:
+      Count:
+        metric: cassandra.table.disk.space.live
+        desc: Disk space used by live SSTables
+
+  - bean: org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=TotalDiskSpaceUsed
+    type: gauge
+    unit: By
+    metricAttribute:
+      keyspace: param(keyspace)
+      table: param(scope)
+    mapping:
+      Count:
+        metric: cassandra.table.disk.space.total
+        desc: Disk space used by all SSTables, including those awaiting removal
+
+  - bean: org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=LiveSSTableCount
+    type: gauge
+    unit: "{sstable}"
+    metricAttribute:
+      keyspace: param(keyspace)
+      table: param(scope)
+    mapping:
+      Value:
+        metric: cassandra.table.sstable.count.live
+        desc: Number of live SSTables
+
+  - bean: org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=PendingCompactions
+    type: gauge
+    unit: "{task}"
+    metricAttribute:
+      keyspace: param(keyspace)
+      table: param(scope)
+    mapping:
+      Value:
+        metric: cassandra.table.compaction.pending
+        desc: Compaction tasks queued for this table
+
+  # SSTables touched per read. A Histogram MBean, so the percentiles are read directly rather than
+  # derived from buckets.
+  - bean: org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=SSTablesPerReadHistogram
+    type: gauge
+    unit: "{sstable}"
+    metricAttribute:
+      keyspace: param(keyspace)
+      table: param(scope)
+    mapping:
+      50thPercentile:
+        metric: cassandra.table.sstables.per.read.p50
+        desc: SSTables touched per read, 50th percentile
+      99thPercentile:
+        metric: cassandra.table.sstables.per.read.p99
+        desc: SSTables touched per read, 99th percentile
+      Max:
+        metric: cassandra.table.sstables.per.read.max
+        desc: SSTables touched per read, maximum
+
+  # --- thread pools ------------------------------------------------------------------------------
+  # `path` separates the internal pools from the request pools, and is kept so the two can be told
+  # apart; `scope` is the pool name.
+  - bean: org.apache.cassandra.metrics:type=ThreadPools,path=*,scope=*,name=ActiveTasks
+    type: gauge
+    unit: "{task}"
+    metricAttribute:
+      pool: param(scope)
+      pool_path: param(path)
+    mapping:
+      Value:
+        metric: cassandra.thread_pool.tasks.active
+        desc: Tasks currently running in the pool
+
+  - bean: org.apache.cassandra.metrics:type=ThreadPools,path=*,scope=*,name=PendingTasks
+    type: gauge
+    unit: "{task}"
+    metricAttribute:
+      pool: param(scope)
+      pool_path: param(path)
+    mapping:
+      Value:
+        metric: cassandra.thread_pool.tasks.pending
+        desc: Tasks queued for the pool
+
+  - bean: org.apache.cassandra.metrics:type=ThreadPools,path=*,scope=*,name=TotalBlockedTasks
+    type: counter
+    unit: "{task}"
+    metricAttribute:
+      pool: param(scope)
+      pool_path: param(path)
+    mapping:
+      Count:
+        metric: cassandra.thread_pool.tasks.blocked
+        desc: Tasks the pool has blocked on since startup
+
+  # --- dropped messages --------------------------------------------------------------------------
+  - bean: org.apache.cassandra.metrics:type=DroppedMessage,scope=*,name=Dropped
+    type: counter
+    unit: "{message}"
+    metricAttribute:
+      message_type: param(scope)
+    mapping:
+      Count:
+        metric: cassandra.messages.dropped
+        desc: Messages dropped since startup, by verb

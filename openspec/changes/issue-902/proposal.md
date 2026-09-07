@@ -123,6 +123,17 @@ import at `VictoriaStreamService.kt:12`.
   datasource resolves; it holds no traces until trace backup and import land in 901.
 - **The local Pyroscope UI's data-availability hint sees nothing** because the compactor is
   disabled. Flame graphs render normally with an explicit time range. Documented, not worked around.
-- Does **not** add the missing `cluster` label to the four OTel pipelines that lack it
-  (`logs/local`, `logs/otlp`, `metrics/spanmetrics`, `metrics/servicegraph`). Filed separately;
-  import-time labelling covers the local aggregate without it.
+- **Every OTel pipeline stamps the `cluster` attribute.** Five did not run the `resource/cluster`
+  processor — `traces`, `metrics/spanmetrics`, `metrics/servicegraph`, `logs/local`, `logs/otlp` —
+  so `traces_spanmetrics_*`, `traces_service_graph_*` and every system, tool, Cassandra and OTLP log
+  record reached the store carrying no cluster attribute at all. Scoping those dashboards without
+  fixing the producer blanks the panels instead of separating clusters: no dashboard filter can
+  separate records that never carried the label. The processor was already defined and already used
+  by three other pipelines.
+
+  This is a **fifth owner-approved exception to the collection-tier exclusion**, taken during
+  implementation rather than at Seam 1 — the need only became visible once the phase-4 audit showed
+  how many dashboards it affected. It supersedes **910: Four OTel pipelines emit records with no
+  cluster label, blocking per-cluster dashboard filtering**, which is closed by this work. The
+  enforcement is stronger than the five names suggest: the test asserts *every* pipeline stamps the
+  attribute, so a newly added pipeline cannot reintroduce the gap.

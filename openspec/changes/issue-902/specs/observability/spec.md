@@ -31,6 +31,42 @@ ingest time. Retention for observability data is unbounded on a cluster exactly 
 - **WHEN** its oldest metrics and logs are queried
 - **THEN** they are still present, so a backup taken later still contains them
 
+### Requirement: Every OTel pipeline stamps the cluster attribute
+
+Every pipeline in the OTel collector's configuration SHALL run the `resource/cluster` processor, so
+that no telemetry stream reaches the storage tier without a cluster attribute.
+
+Many clusters' telemetry lands in one store. A record that arrives with no cluster attribute cannot
+be told apart from another cluster's afterwards, and no dashboard filter can separate it — the label
+it would filter on was never written. Scoping a dashboard whose producer does not stamp the
+attribute blanks its panels rather than separating clusters.
+
+This SHALL be enforced as an invariant over all pipelines rather than as a fix to a named list, so a
+newly added pipeline cannot reintroduce the gap.
+
+#### Scenario: Every pipeline carries the processor
+
+- **WHEN** the OTel collector configuration is built
+- **THEN** every pipeline's `processors` list contains `resource/cluster`
+
+#### Scenario: Span metrics and service graph metrics carry the cluster
+
+- **GIVEN** two clusters exporting to one store
+- **WHEN** `traces_spanmetrics_*` or `traces_service_graph_*` series are queried with a cluster
+  filter
+- **THEN** only the named cluster's series are returned
+
+#### Scenario: System, tool, Cassandra and OTLP log records carry the cluster
+
+- **GIVEN** records emitted through the `logs/local` and `logs/otlp` pipelines
+- **WHEN** they reach the storage tier
+- **THEN** each carries the cluster attribute, so a log dashboard can filter on it
+
+#### Scenario: A newly added pipeline cannot omit it
+
+- **WHEN** a pipeline is added to the collector configuration without `resource/cluster`
+- **THEN** the enforcement test fails, naming that pipeline
+
 ## MODIFIED Requirements
 
 ### Requirement: Grafana Dashboards

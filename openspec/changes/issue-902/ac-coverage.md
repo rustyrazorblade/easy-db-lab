@@ -82,9 +82,11 @@ surfaced. Capability prefixes: `local` = `local-observability-stack`, `lifecycle
 | Risk | Four verification checks remain for implementation | — | ⚠️ Excluded — none affects the design's shape, per the owner-approved design; they are implementation-time confirmations, not requirements |
 | Risk | Node-local JFR retention is bounded, which reads as a conflict with the no-automatic-deletion constraint | — | ⚠️ Excluded — deliberately not changed. Those bounds cover the chunk buffer on a database node, not a store; removing them would let an unreachable Pyroscope fill the volume Cassandra stores data on. Reasoned in `overrides.md` |
 
+| AC | Every OTel pipeline stamps the `cluster` attribute, so no telemetry stream reaches the store unlabelled (in-scope item 17, added during implementation) | `obs: Every pipeline carries the processor` + `obs: Span metrics and service graph metrics carry the cluster` + `obs: System, tool, Cassandra and OTLP log records carry the cluster` + `obs: A newly added pipeline cannot omit it` | ✅ Covered — enforced as an invariant over all pipelines rather than a fix to a named list, so a newly added pipeline cannot reintroduce the gap |
+
 ## Totals
 
-74 rows — 55 acceptance criteria and 19 risks: **68 ✅ Covered**, **6 ⚠️ Excluded**. Every excluded
+75 rows — 56 acceptance criteria and 19 risks: **69 ✅ Covered**, **6 ⚠️ Excluded**. Every excluded
 row carries its reason inline, and each is carried by a named task rather than dropped.
 
 The 19th risk was surfaced during activation rather than by the issue body: an existing `state.json`

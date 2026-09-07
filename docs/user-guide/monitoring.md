@@ -86,30 +86,35 @@ Shows OpenSearch domain metrics via CloudWatch. Available when an OpenSearch dom
 
 Use the `Domain` dropdown to select which OpenSearch domain to view.
 
-### Cassandra Condensed
-
-A single-pane-of-glass summary of the most important Cassandra metrics, powered by the MAAC (Management API for Apache Cassandra) agent. Shows:
-
-- **Cluster Overview:** Nodes up/down, compaction rates, CQL request throughput, dropped messages, connected clients, timeouts, hints, data size, GC time
-- **Condensed Metrics:** Request throughput, coordinator latency percentiles, memtable space, compaction activity, table-level latency, streaming bandwidth
-
-Requires the MAAC agent to be loaded (Cassandra 4.0, 4.1, 5.0, 6.0, or 7.0/trunk). Metrics are exposed on port 9000 and scraped by the OTel collector.
-
-The agent is chosen at Cassandra startup from the release's own jar name, so a version installed
-with `cassandra install --url` or `--branch` gets the right agent too. If a release has no agent,
-or the agent cannot start, Cassandra says so on stderr at startup — check `journalctl -u cassandra`
-on the node when a dashboard is empty.
-
 ### Cassandra Overview
 
-A comprehensive deep-dive into Cassandra cluster health, also powered by the MAAC agent. Shows:
+A deep-dive into Cassandra cluster health. Shows:
 
-- **Request Throughput:** Read/write distribution, latency percentiles (P98-P999), error throughput
-- **Node Status:** Per-node up/down status (polystat panel), node count, status history
-- **Data Status:** Disk space usage, data size, SSTable count, pending compactions
-- **Internals:** Thread pool pending/blocked/active tasks, dropped messages, hinted handoff
-- **Hardware:** CPU, memory, disk I/O, network I/O, load average
-- **JVM/GC:** Application throughput, GC time, heap utilization
+- **Cluster Overview:** Request throughput, errors by status, read and write latency spread across nodes, pending compactions, active tasks by pool
+- **Hardware / Operating System:** CPU, load average, memory, disk throughput, network I/O
+- **Per-Node Latency:** Read and write latency per node
+- **Data Status:** Data size, SSTable count, compaction backlog against completion rate, SSTables per read
+- **Cassandra Internals:** Thread pool pending and blocked tasks, dropped messages, hinted handoff
+- **JVM / Garbage Collection:** Application throughput, GC time and pause percentiles, heap memory
+- **Storage & Capacity:** Live against total disk space per table, storage growth rate per node
+
+The metrics come from the OpenTelemetry Java Agent, which runs inside the Cassandra JVM and reads
+Cassandra's own MBeans. It exports over OTLP to the node's OTel collector on port 4318, so no
+Prometheus scrape port is involved. One agent serves every Cassandra release, and it needs no
+per-release selection: a version installed with `cassandra install --url` or `--branch` reports the
+same metrics as a stock release.
+
+Series carry the Prometheus label `job="cassandra"`, and each node also reports a `cassandra_build`
+label naming the build it is running. That label is what lets a dashboard compare two versions in
+one cluster. See [OpenTelemetry](../reference/opentelemetry.md) for the metric names, the rule file,
+and how a node derives its own labels.
+
+If the agent jar or the rule file is missing, Cassandra says so on stderr at startup — check
+`journalctl -u cassandra` on the node when a dashboard is empty.
+
+Latency arrives as pre-aggregated percentile gauges read from Cassandra's own `EstimatedHistogram`,
+the same reservoir `nodetool proxyhistograms` prints. `histogram_quantile()` does not apply to them,
+and they cannot be re-aggregated into a cluster-wide percentile.
 
 ## eBPF Observability
 

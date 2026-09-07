@@ -10,7 +10,7 @@ The OTel Collector ConfigMap SHALL be generated dynamically by `OtelManifestBuil
 #### Scenario: OTel config reflects currently running workloads
 - **WHEN** `install scylladb start` completes
 - **THEN** the OTel Collector ConfigMap SHALL include a prometheus scrape job for ScyllaDB targeting `localhost:<port>`
-- **AND** all static infrastructure scrape jobs (MAAC, Beyla, ebpf-exporter, YACE) SHALL remain present
+- **AND** all static infrastructure scrape jobs (Beyla, ebpf-exporter, YACE) SHALL remain present
 
 #### Scenario: OTel config updated when workload stops
 - **WHEN** `install scylladb stop` completes
@@ -95,7 +95,7 @@ K8s workloads installed via `config.yaml` SHALL use standard pod networking (not
 #### Scenario: OTel DaemonSet scrapes workload metrics via hostPort
 - **WHEN** a workload exposes metrics on `hostPort: 9180`
 - **THEN** the OTel DaemonSet (hostNetwork) can scrape `localhost:9180` on the same node
-- **AND** this is identical to how MAAC metrics are scraped at `localhost:9000`
+- **AND** this is identical to how ebpf-exporter metrics are scraped at `localhost:9435`
 
 ### Requirement: OTel Collector is reachable via ClusterIP Service
 

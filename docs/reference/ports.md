@@ -22,18 +22,12 @@ This page documents the ports used by easy-db-lab and the services it provisions
 | 3200 | Tempo (trace storage) |
 | 5001 | YACE CloudWatch exporter (Prometheus) |
 
-## Cassandra Agent Ports
-
-| Port | Service |
-|------|---------|
-| 9000 | MAAC metrics agent (Prometheus) — Cassandra 4.0, 4.1, 5.0, 6.0, 7.0/trunk |
-
 ## Observability Ports (All Nodes — DaemonSets)
 
 | Port | Service |
 |------|---------|
 | 4317 | OTel Collector gRPC |
-| 4318 | OTel Collector HTTP |
+| 4318 | OTel Collector HTTP — the Cassandra JVM agent exports here |
 | 9400 | Beyla eBPF metrics (Prometheus) |
 | 9435 | ebpf_exporter metrics (Prometheus) |
 

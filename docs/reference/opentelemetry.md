@@ -36,12 +36,13 @@ The OTel Collector on cluster nodes uses the `k8sattributes` processor to read t
 
 | Node Type | K8s Label | `node_role` Value | Source |
 |-----------|-----------|-------------------|--------|
-| Cassandra | `type=db` | `db` | K3s agent config |
+| Cassandra host metrics | `type=db` | `db` | K3s agent config |
+| Cassandra JVM | N/A | `db` | `otel.resource.attributes` in `cassandra.in.sh` |
 | Stress | `type=app` | `app` | K3s agent config |
 | Control | `type=control` | `control` | `Up` command node labeling |
 | Spark/EMR | N/A | `spark` | EMR OTel Collector `resource/role` processor |
 
-The `k8sattributes` processor runs in the `metrics/local` and `logs/local` pipelines only. Remote metrics arriving via OTLP (e.g., from Spark nodes) already carry `node_role` and are not modified.
+The `k8sattributes` processor runs in the `metrics/local` and `logs/local` pipelines only. Metrics arriving over OTLP take the `metrics/otlp` pipeline, which does not run it, so each OTLP source sets `node_role` itself: the Cassandra JVM agent and the stress sidecar declare it as a resource attribute, and Spark nodes set it in their own collector.
 
 The processor requires RBAC access to the K8s API. The OTel Collector DaemonSet runs with a dedicated ServiceAccount (`otel-collector`) that has read-only access to pods and nodes.
 
@@ -59,9 +60,111 @@ The Prometheus scrape job is named `cassandra-easy-stress`. The following labels
 
 Short-lived stress commands (`list`, `info`, `fields`) do not include the sidecar since they complete quickly and don't produce meaningful metrics.
 
+### Cassandra JVM Instrumentation
+
+The Cassandra JVM runs the OpenTelemetry Java Agent (v2.31.1).  Its JMX Metric Insight module reads Cassandra's own MBeans in process and exports them over OTLP.  The agent replaces the k8ssandra management-api (MCAC/MAAC) agent, which is removed.
+
+`packer/cassandra/cassandra.in.sh` adds the agent flags at JVM start.  Cassandra's `bin/cassandra` sources that file under `/bin/sh` (dash), so it must stay POSIX sh.  A bashism there does not degrade to "no metrics": dash fails to parse the file, and Cassandra does not start.
+
+Key configuration:
+- **OTel Agent JAR**: installed by Packer to `/usr/local/otel/opentelemetry-javaagent.jar`
+- **Service name**: `cassandra`, which the collector turns into the Prometheus label `job="cassandra"`
+- **Export endpoint**: `http://localhost:4318` (local OTel Collector DaemonSet)
+- **Export interval**: 5 seconds
+- **JMX discovery delay**: 5 seconds.  The agent default is 60 seconds, which holds the first metrics back for about a minute and delays picking up a new table by as much again.
+- **Rule file**: `/etc/easy-db-lab/cassandra-jmx-rules.yaml`, written by `setup-instances`
+
+Use port 4318, not 4317.  The agent's default OTLP protocol is `http/protobuf`, which the collector serves on 4318.  Port 4317 is the collector's gRPC port, and every export fails there.
+
+The agent goes on `JVM_EXTRA_OPTS`, never on `JVM_OPTS`.  `bin/nodetool` sources `cassandra.in.sh` and puts `$JVM_OPTS` on its own command line, so an agent on `JVM_OPTS` starts again for every `nodetool`, `sstableloader` and `cassandra-stress` run.  `nodetool` discards `JVM_EXTRA_OPTS`, which is what an agent wants.
+
+#### How a node labels its own metrics
+
+`cassandra.in.sh` derives one value at JVM start and interpolates it into an OTel resource attribute:
+
+```sh
+EDL_CASSANDRA_BUILD=$(basename "$(readlink -f /usr/local/cassandra/current 2>/dev/null)" 2>/dev/null)
+
+edl_add_jvm_extra_opt \
+    "-javaagent:${EDL_OTEL_AGENT_JAR}" \
+    "-Dotel.service.name=cassandra" \
+    "-Dotel.resource.attributes=service.instance.id=$(hostname),node_role=db,cassandra_build=${EDL_CASSANDRA_BUILD}" \
+    "-Dotel.exporter.otlp.endpoint=http://localhost:4318" \
+    "-Dotel.metric.export.interval=5s" \
+    "-Dotel.jmx.discovery.delay=5000"
+```
+
+`otel.resource.attributes` declares the SDK's **Resource**: comma-separated `key=value` pairs that the agent attaches once, at startup.  The Resource is stamped on every metric, span and log that JVM exports.  It is identity attached at the source, not bookkeeping added per metric.
+
+The collector turns Resource attributes into Prometheus labels.  The `prometheusremotewrite` exporter sets `resource_to_telemetry_conversion: enabled: true` in `otel-collector-config.yaml`.  That step is what makes `sum by (cassandra_build)` work.
+
+The value is read at JVM start from the symlink that `cassandra use` moves, so a node describes itself.  Run `cassandra use --hosts=db2 <version>` and restart that node, and it reports its new build.  Nothing is pushed, and no other node is touched.  This is what makes a mixed-version comparison work when the split changes between runs.
+
+An info metric carrying the version was rejected.  Such a metric sits on its own series, so `sum by (cassandra_build) (<any other metric>)` returns nothing and every panel needs a `group_left` join.  A resource attribute lands on every series instead.
+
+`ReleaseVersion` from the `StorageService` MBean was also rejected.  It reports `5.0.9` against a `5.0.9-SNAPSHOT` build, which separates a stock release from a branch but collapses every branch build into one value.  Two branches under test would be indistinguishable.  The symlink target carries the commit sha.
+
+The same hook is open for anything else the node knows about itself: instance type, availability zone, disk layout, or a test-run identifier.  Add a shell variable, interpolate it into the same list, and it becomes a dimension you can group and filter by across every metric that JVM emits.
+
+Two rules protect the value:
+
+- Keep the whole attribute value as one shell word.  It contains `=` and `,`, so it must stay quoted.
+- Keep the file POSIX sh, for the dash reason above.
+
+If the symlink cannot be read, the value falls back to `cassandra_build=unknown` and the script warns on stderr.  The attribute is never dropped.  Dropping it would silently merge that node into another variant's series.
+
+#### The JMX rule file
+
+The agent reads every rule from `/etc/easy-db-lab/cassandra-jmx-rules.yaml`.  `otel.jmx.target.system` is deliberately not set, so the built-in `experimental-cassandra` target supplies nothing.  That target is experimental upstream: its metric names can move between agent releases and empty every panel that reads them.  Owning the rules pins each name to this repo.
+
+The file ships from the CLI, not from the AMI.  It is a Kotlin classpath resource at `src/main/resources/com/rustyrazorblade/easydblab/configuration/cassandra/cassandra-jmx-rules.yaml`.  `init` extracts it into the cluster workspace, and `setup-instances` uploads it to each Cassandra node.  Changing a rule therefore costs `./gradlew installDist` and a Cassandra restart, never an AMI rebake.
+
+The rules define these families:
+
+| Metric | Attributes | Source MBean |
+|--------|-----------|--------------|
+| `cassandra.client.request.latency.{p50,p99,p999,max}` | `cassandra.operation` | `type=ClientRequest,scope={Read,Write,RangeSlice},name=Latency` |
+| `cassandra.client.request.count` | `cassandra.operation` | the same three beans, `Count` |
+| `cassandra.client.request.error` | `cassandra.operation`, `cassandra.status` | `name={Unavailables,Timeouts,Failures}` |
+| `cassandra.compaction.tasks.{completed,pending}` | — | `type=Compaction` |
+| `cassandra.storage.{load,hints.count,hints.in_progress}` | — | `type=Storage` |
+| `cassandra.table.disk.space.{live,total}` | `keyspace`, `table` | `type=Table` |
+| `cassandra.table.sstable.count.live` | `keyspace`, `table` | `type=Table,name=LiveSSTableCount` |
+| `cassandra.table.compaction.pending` | `keyspace`, `table` | `type=Table,name=PendingCompactions` |
+| `cassandra.table.{read,write}.latency.{p50,p99,p999,max}` | `keyspace`, `table` | `type=Table,name={Read,Write}Latency` |
+| `cassandra.table.sstables.per.read.{p50,p99,max}` | `keyspace`, `table` | `type=Table,name=SSTablesPerReadHistogram` |
+| `cassandra.thread_pool.tasks.{active,pending,blocked}` | `pool`, `pool_path` | `type=ThreadPools` |
+| `cassandra.messages.dropped` | `message_type` | `type=DroppedMessage` |
+
+Latency is reported in microseconds.  The rules set `unit: us` and no `sourceUnit`, so the raw MBean value passes through unconverted.  That is the unit `nodetool proxyhistograms` and `nodetool tablehistograms` print, so a dashboard and the oracle compare directly: 86 against 86, not 86 against 0.000086.  The Prometheus suffix follows the unit, so these series end `_microseconds`, for example `cassandra_client_request_latency_p99_microseconds`.
+
+#### Latency is a percentile gauge, not a histogram
+
+The MAAC agent emitted Prometheus histogram buckets.  Every bucket carried the same cumulative count, so the histogram held no distribution and `histogram_quantile()` returned a constant.
+
+The rules read Cassandra's own `EstimatedHistogram` instead, the same reservoir `nodetool proxyhistograms` prints, and report each percentile as a gauge.  Two consequences follow:
+
+- `histogram_quantile()` does not apply to these series.  There are no `_bucket` series to give it.
+- A pre-aggregated percentile cannot be re-aggregated, so there is no true cluster-wide p99.  Show the spread across nodes with `max by (cluster)` and `min by (cluster)` instead.
+
+#### Migrating from MAAC
+
+Metric names and the job label both change, and nothing translates between them.
+
+| | Before | After |
+|---|---|---|
+| Metric prefix | `org_apache_cassandra_metrics_*` | `cassandra_*` |
+| Job label | `job="cassandra-maac"` | `job="cassandra"` |
+| Transport | Prometheus scrape of `localhost:9000` | OTLP to `localhost:4318` |
+| Latency shape | histogram buckets | percentile gauges |
+
+A query that spans the change returns two disjoint sets of series.  A metrics backup taken before the change is not comparable with one taken after.
+
+An agent version bump is a dashboard-affecting change.  Re-verify every Cassandra panel under load after one.
+
 ### Spark JVM Instrumentation
 
-EMR Spark jobs are auto-instrumented with the OpenTelemetry Java Agent (v2.25.0) and Pyroscope Java Agent (v2.3.0), both installed via an EMR bootstrap action. The OTel agent is activated through `spark.driver.extraJavaOptions` and `spark.executor.extraJavaOptions`.
+EMR Spark jobs are auto-instrumented with the OpenTelemetry Java Agent (v2.31.1) and Pyroscope Java Agent (v2.3.0), both installed via an EMR bootstrap action. The OTel agent is activated through `spark.driver.extraJavaOptions` and `spark.executor.extraJavaOptions`.
 
 Each EMR node also runs an OTel Collector as a systemd service, collecting host metrics (CPU, memory, disk, network) and receiving OTLP from the Java agents. The collector forwards all telemetry to the control node's OTel Collector via OTLP gRPC.
 
@@ -114,10 +217,15 @@ YACE exposes scraped metrics as Prometheus-compatible metrics on port 5001, whic
 
 ## Resource Attributes
 
-Traces from the CLI tool and cluster nodes include the following resource attributes:
-- `service.name`: Service identifier (e.g., `easy-db-lab`, `cassandra-sidecar`, `spark-<job-name>`)
-- `service.version`: Application version (CLI tool only)
-- `host.name`: Hostname
+A resource attribute is declared once, when the SDK starts, and is stamped on every metric, span and log that process exports. The `prometheusremotewrite` exporter sets `resource_to_telemetry_conversion: enabled: true`, so each one also becomes a Prometheus label.
+
+Telemetry from the CLI tool and cluster nodes carries these resource attributes:
+- `service.name`: service identifier (e.g. `easy-db-lab`, `cassandra`, `cassandra-sidecar`, `spark-<job-name>`). The collector maps it to the Prometheus label `job`.
+- `service.instance.id`: instance identifier, mapped to the Prometheus label `instance`. Cassandra pins it to the hostname, because the agent default is a fresh UUID per JVM start and would mint a new series on every restart.
+- `service.version`: application version (CLI tool only)
+- `host.name`: hostname
+- `node_role`: node type — `db`, `app`, `control` or `spark`
+- `cassandra_build`: the build a Cassandra node is running, read from its own `current` symlink (Cassandra JVM only)
 
 ## Configuration
 

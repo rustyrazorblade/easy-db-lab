@@ -356,7 +356,12 @@ All observability K8s resources are built programmatically using Fabric8 manifes
 - **Kit dashboards (new, correct)**: JSON files in `src/main/resources/.../kits/<name>/dashboards/`. `KitRunnerCommand` auto-installs them from that directory after a successful `start`. No `GrafanaDashboard` enum entry needed — adding a JSON file is all that's required.
 - **Core/system dashboards (legacy)**: JSON files in the top-level `dashboards/` directory, registered in the `GrafanaDashboard` enum, loaded by `GrafanaManifestBuilder`. Use this only for non-kit dashboards (system-overview, profiling, etc.). **Do NOT add new kit dashboards here.**
 
-**Always use the `dashboard-editor` agent for any dashboard change** — editing a panel query, fixing a wrong-looking graph, changing units, adding a panel or a dashboard. Dashboard JSON files are Gradle resources: `grafana update-config` deploys from `build/resources/main/`, so an edit that skips `./gradlew installDist` silently redeploys the previous build's copy and still reports success. The agent enforces the full edit → `installDist` → `update-config` → read-back-from-Grafana sequence, and knows the metric traps (notably that `system_cpu_time_seconds_total` has no per-core label, which made four dashboards render CPU at -190%). See [`dashboards/CLAUDE.md`](dashboards/CLAUDE.md).
+**Always use the `dashboard-editor` agent for any dashboard change** — editing a panel query, fixing a wrong-looking graph, changing units, adding a panel or a dashboard. The agent enforces the full edit → deploy → read-back-from-Grafana sequence, and knows the metric traps (notably that `system_cpu_time_seconds_total` has no per-core label, which made four dashboards render CPU at -190%). See [`dashboards/CLAUDE.md`](dashboards/CLAUDE.md).
+
+Two commands deploy a dashboard, and they read from different places:
+
+- `grafana install <path> --folder=<name>` deploys **one** dashboard from the path handed to it (`GrafanaInstall.kt:31` is `File(dashboardPath)`). It needs no `installDist`. It updates the existing dashboard in place **only** if the JSON carries a top-level `uid`; without one, Grafana creates a duplicate on every run.
+- `grafana update-config` redeploys the whole set from `build/resources/main/`, so an edit that skips `./gradlew installDist` silently redeploys the previous build's copy and still reports success.
 
 See [`dashboards/CLAUDE.md`](dashboards/CLAUDE.md) for datasource UIDs, label conventions, spanmetrics metric names, and the correct pattern for cross-dashboard dataLinks (panes= URL format, TraceQL query strings).
 

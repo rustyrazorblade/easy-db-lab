@@ -242,7 +242,7 @@ Hardware/OS panels should filter to the node type that is the subject of the das
 - **Database dashboard** → `host_name=~"db.*"`
 - **App/stress dashboard** → `host_name=~"app.*"`
 
-Note: `node_role` label does **not** exist in this stack. Use `host_name` prefix matching only.
+Note: `node_role` exists on Cassandra JVM series (`db`), on the stress sidecar, and on Spark series, because each of those sources declares it as an OTel resource attribute. It does **not** exist on every series, so `host_name` prefix matching is still the portable filter. Check the label on the metric before you rely on it.
 
 Application-level metrics (e.g. `cassandra-easy-stress` throughput) can appear in a database dashboard — they describe the workload against the db nodes and belong in the Cluster Overview section.
 
@@ -268,13 +268,17 @@ Put the most specific label first — cluster is secondary since single-cluster 
 
 Never `{{cluster}} — {{host_name}}`.
 
-### MAAC Metric Types
+### Cassandra Metric Types
 
-Cassandra metrics from the MAAC exporter are **summaries** (they have a `quantile` label, not `le` buckets). This means:
+Cassandra metrics come from the OpenTelemetry Java Agent inside the Cassandra JVM, under `job="cassandra"`. Percentiles are **gauges**, one metric per percentile. There is no `quantile` label and there are no `le` buckets:
 
 - `histogram_quantile()` does **not** work on them — there are no `_bucket` series
-- Use `{quantile="0.99"}` directly to select a pre-computed percentile
-- `_count` and `_sum` suffixes are available for computing rates and means
+- Select a percentile by metric name, e.g. `cassandra_client_request_latency_p99_microseconds`
+- The percentiles are pre-aggregated per node, so they cannot be re-aggregated into a cluster p99. Show the spread with `max by (cluster)` and `min by (cluster)` instead.
+- Latency is in **microseconds**, matching `nodetool proxyhistograms`. The series name ends `_microseconds`.
+- Each node also carries a `cassandra_build` label naming the build it runs, so `sum by (cassandra_build)` splits a mixed-version cluster.
+
+Metrics written before the agent replaced MAAC use `org_apache_cassandra_metrics_*` and `job="cassandra-maac"`. Nothing translates between the two, so a query spanning that change returns two disjoint sets of series.
 
 ---
 
@@ -318,7 +322,7 @@ import json, sys; print(json.load(sys.stdin)['data'])
 ### Spot-check a PromQL expression
 
 ```bash
-curl -s "http://<control-ip>:8428/api/v1/query?query=rate(my_metric%7Bjob%3D%22cassandra-maac%22%7D%5B1m%5D)" | python3 -c "
+curl -s "http://<control-ip>:8428/api/v1/query?query=rate(my_metric%7Bjob%3D%22cassandra%22%7D%5B1m%5D)" | python3 -c "
 import json, sys
 r = json.load(sys.stdin)
 results = r['data']['result']

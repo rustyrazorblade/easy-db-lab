@@ -12,7 +12,7 @@ The OTel Collector ConfigMap is generated dynamically by `OtelManifestBuilder`, 
 #### Scenario: Scrape jobs generated for registered workloads
 - **WHEN** `OtelManifestBuilder.buildConfigMap(scrapeConfigs)` is called with one entry `{jobName: "scylladb", port: 9180, path: "/metrics"}`
 - **THEN** the resulting ConfigMap data SHALL contain a prometheus scrape job named `scylladb` targeting `localhost:9180` with path `/metrics`
-- **AND** all existing static scrape jobs (cassandra-maac, clickhouse, beyla, ebpf-exporter, yace) SHALL also be present
+- **AND** all existing static scrape jobs (beyla, ebpf-exporter, yace) SHALL also be present
 
 #### Scenario: Empty scrape configs produces only static jobs
 - **WHEN** `OtelManifestBuilder.buildConfigMap(emptyList())` is called
@@ -35,7 +35,19 @@ The install command SHALL list all ConfigMaps with label `easydblab.com/workload
 - **THEN** it is NOT included in the scrape config list
 
 ### Requirement: Static scrape jobs for host processes remain in the base OTel config
-The base `otel-collector-config.yaml` classpath resource SHALL continue to define static scrape jobs for host processes: `cassandra-maac` (`:9000`), `beyla` (`:9400`), `ebpf-exporter` (`:9435`), and `yace` (`:5001`). The existing bespoke `clickhouse` static scrape job SHALL be removed — ClickHouse metrics are registered dynamically when `install clickhouse start` runs.
+The base `otel-collector-config.yaml` classpath resource SHALL continue to define static scrape jobs for host processes: `beyla` (`:9400`), `ebpf-exporter` (`:9435`), and `yace` (`:5001`). The existing bespoke `clickhouse` static scrape job SHALL be removed — ClickHouse metrics are registered dynamically when `install clickhouse start` runs.
+
+Cassandra is NOT among them. It formerly had a `cassandra-maac` scrape job on `:9000`, serving the k8ssandra management-api agent. That agent emitted degenerate histograms and was replaced by the OpenTelemetry Java agent, which PUSHES over OTLP to `localhost:4318` rather than exposing a Prometheus endpoint to be pulled. Nothing listens on `:9000`, and the collector receives Cassandra metrics through the `otlp` receiver on the `metrics/otlp` pipeline instead of the `prometheus` receiver.
+
+#### Scenario: No Cassandra scrape job exists in the base config
+- **WHEN** `OtelManifestBuilder` builds the ConfigMap
+- **THEN** the resulting config SHALL NOT contain a `cassandra-maac` scrape job
+- **AND** the resulting config SHALL NOT reference port `9000`
+
+#### Scenario: Cassandra metrics arrive over OTLP rather than by scrape
+- **WHEN** a Cassandra node is running with the OpenTelemetry Java agent attached
+- **THEN** its metrics SHALL reach the collector via the `otlp` receiver
+- **AND** they SHALL carry `job="cassandra"`, derived from the agent's `service.name`
 
 #### Scenario: ClickHouse static scrape job removed from base config
 - **WHEN** `OtelManifestBuilder` builds the ConfigMap with an empty scrape config list

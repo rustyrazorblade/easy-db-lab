@@ -12,7 +12,7 @@
   "panels": [
     {
       "collapsed": false,
-      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0},
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 12},
       "id": 100,
       "title": "1. Fleet Snapshot — Current health at a glance across all clusters",
       "type": "row"
@@ -72,7 +72,7 @@
           }
         ]
       },
-      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 1},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 13},
       "id": 3,
       "options": {
         "cellHeight": "sm",
@@ -118,7 +118,7 @@
     },
     {
       "collapsed": false,
-      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 9},
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 21},
       "id": 200,
       "title": "2. Throughput — Trends and current-state ranking",
       "type": "row"
@@ -153,7 +153,7 @@
         },
         "overrides": []
       },
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 10},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 22},
       "id": 4,
       "options": {
         "legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true},
@@ -200,7 +200,7 @@
         },
         "overrides": []
       },
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 10},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 22},
       "id": 5,
       "options": {
         "legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true},
@@ -247,7 +247,7 @@
         },
         "overrides": []
       },
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 18},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 30},
       "id": 6,
       "options": {
         "legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true},
@@ -294,7 +294,7 @@
         },
         "overrides": []
       },
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 18},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 30},
       "id": 24,
       "options": {
         "legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true},
@@ -313,7 +313,7 @@
     },
     {
       "collapsed": false,
-      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 26},
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 38},
       "id": 300,
       "title": "3. Errors — Error trends and windowed incident history",
       "type": "row"
@@ -349,7 +349,7 @@
         },
         "overrides": []
       },
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 27},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 39},
       "id": 7,
       "options": {
         "legend": {"calcs": ["max"], "displayMode": "table", "placement": "bottom", "showLegend": true},
@@ -397,7 +397,7 @@
         },
         "overrides": []
       },
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 27},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 39},
       "id": 8,
       "options": {
         "colWidth": 0.9,
@@ -420,7 +420,7 @@
     },
     {
       "collapsed": false,
-      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 35},
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 47},
       "id": 400,
       "title": "4. Latency — Full representation spectrum",
       "type": "row"
@@ -463,7 +463,7 @@
         },
         "overrides": []
       },
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 36},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 48},
       "id": 9,
       "options": {
         "legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true},
@@ -516,7 +516,7 @@
           }
         ]
       },
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 36},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 56},
       "id": 10,
       "options": {
         "legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true},
@@ -585,7 +585,7 @@
           }
         ]
       },
-      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 44},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 64},
       "id": 11,
       "options": {
         "legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true},
@@ -638,7 +638,7 @@
           }
         ]
       },
-      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 52},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 80},
       "id": 12,
       "maxPerRow": 1,
       "repeat": "cluster",
@@ -678,7 +678,7 @@
     },
     {
       "collapsed": false,
-      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 60},
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 96},
       "id": 500,
       "title": "5. Activity Matrix — Which cluster was doing what, when",
       "type": "row"
@@ -703,7 +703,7 @@
         },
         "overrides": []
       },
-      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 61},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 97},
       "id": 14,
       "options": {
         "colWidth": 0.9,
@@ -743,7 +743,7 @@
         },
         "overrides": []
       },
-      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 69},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 105},
       "id": 15,
       "options": {
         "colWidth": 0.9,
@@ -766,7 +766,7 @@
     },
     {
       "collapsed": false,
-      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 77},
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 113},
       "id": 600,
       "title": "6. Percentile Ladder — Full distribution shape per cluster",
       "type": "row"
@@ -802,7 +802,7 @@
           }
         ]
       },
-      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 78},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 114},
       "id": 16,
       "options": {
         "cellHeight": "sm",
@@ -848,7 +848,7 @@
     },
     {
       "collapsed": false,
-      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 86},
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 122},
       "id": 700,
       "title": "7. System Resources — Infrastructure correlation per cluster",
       "type": "row"
@@ -886,7 +886,7 @@
         },
         "overrides": []
       },
-      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 87},
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 123},
       "id": 17,
       "options": {
         "legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true},
@@ -934,7 +934,7 @@
         },
         "overrides": []
       },
-      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 87},
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 123},
       "id": 18,
       "options": {
         "legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true},
@@ -982,7 +982,7 @@
         },
         "overrides": []
       },
-      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 87},
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 123},
       "id": 19,
       "options": {
         "legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true},
@@ -1001,9 +1001,9 @@
     },
     {
       "collapsed": false,
-      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 95},
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 197},
       "id": 800,
-      "title": "8. Stress Job — Client-observed throughput and latency",
+      "title": "10. Stress Job — Client-observed throughput and latency",
       "type": "row"
     },
     {
@@ -1037,7 +1037,7 @@
         },
         "overrides": []
       },
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 96},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 198},
       "id": 20,
       "maxPerRow": 2,
       "repeat": "job_name",
@@ -1100,7 +1100,7 @@
         },
         "overrides": []
       },
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 96},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 198},
       "id": 21,
       "maxPerRow": 2,
       "repeat": "job_name",
@@ -1158,7 +1158,7 @@
         },
         "overrides": []
       },
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 104},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 206},
       "id": 22,
       "maxPerRow": 2,
       "repeat": "job_name",
@@ -1216,7 +1216,7 @@
         },
         "overrides": []
       },
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 104},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 206},
       "id": 23,
       "maxPerRow": 2,
       "repeat": "job_name",
@@ -1234,6 +1234,2126 @@
         }
       ],
       "title": "Stress Read p99 Latency — $job_name",
+      "type": "timeseries"
+    },
+    {
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 900,
+      "options": {
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "Pick one cluster in **Cluster A** and another in **Cluster B**. Every number in the row below is cluster B measured against cluster A.\n\n**What the colours mean.** Green means B is better than A, red means worse. The direction is set per metric: for latency, GC pause and errors, lower is better; for throughput, higher is better. Read the sign, not just the colour.\n\n**Percent or absolute.** The latency, throughput, GC and allocation tiles are percent changes. The error tile is an **absolute** difference in errors per second per node, because a healthy baseline is zero and a percentage of zero is undefined.\n\n**A blank tile** means one side had no data: either the baseline was zero, or Cluster A and Cluster B are not both set. Set both dropdowns before reading anything here.\n\n**Comparing the same cluster with itself** reads 0% everywhere. That is the expected result, and a useful check that the section is wired up.\n\nEverything below this section is the multi-cluster fleet view. It overlays every cluster selected in the **Cluster** dropdown and is the right tool for looking at more than two.",
+        "mode": "markdown"
+      },
+      "transparent": false,
+      "type": "text"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 6
+      },
+      "id": 901,
+      "panels": [],
+      "title": "A/B verdict — cluster B measured against cluster A",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "Change in read latency at ${percentile}, cluster B against cluster A. Negative is better: B answers reads faster. The percentile is a pre-aggregated gauge from each node's EstimatedHistogram, averaged over the nodes of each cluster.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 1,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 0,
+        "y": 7
+      },
+      "id": 902,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "100 * (\n    avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cluster=\"${cluster_b}\", cassandra_operation=\"read\"})\n  - avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cluster=\"${cluster_a}\", cassandra_operation=\"read\"})\n) / avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cluster=\"${cluster_a}\", cassandra_operation=\"read\"})",
+          "legendFormat": "Read ${percentile}",
+          "refId": "A"
+        }
+      ],
+      "title": "Read ${percentile}",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "Change in write latency at ${percentile}, cluster B against cluster A. Negative is better: B acknowledges writes faster.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 1,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 4,
+        "y": 7
+      },
+      "id": 903,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "100 * (\n    avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cluster=\"${cluster_b}\", cassandra_operation=\"write\"})\n  - avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cluster=\"${cluster_a}\", cassandra_operation=\"write\"})\n) / avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cluster=\"${cluster_a}\", cassandra_operation=\"write\"})",
+          "legendFormat": "Write ${percentile}",
+          "refId": "A"
+        }
+      ],
+      "title": "Write ${percentile}",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "Change in coordinator requests per second per node. Positive is better: B serves more work. Averaged per node so clusters of different sizes stay comparable.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 1,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": -5
+              },
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 8,
+        "y": 7
+      },
+      "id": 904,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "100 * (\n    avg(sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cluster=\"${cluster_b}\"}[$__rate_interval])))\n  - avg(sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cluster=\"${cluster_a}\"}[$__rate_interval])))\n) / avg(sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cluster=\"${cluster_a}\"}[$__rate_interval])))",
+          "legendFormat": "Throughput",
+          "refId": "A"
+        }
+      ],
+      "title": "Throughput",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "Change in the share of wall clock time spent in stop-the-world GC pauses. Negative is better. Concurrent cycles are excluded with jvm_gc_name!~\".*Cycles\"; leaving them in counts a concurrent collector's background work as pause time and makes it look worse than a stop-the-world collector, which is backwards.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 1,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 12,
+        "y": 7
+      },
+      "id": 905,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "100 * (\n    avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cluster=\"${cluster_b}\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval])))\n  - avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cluster=\"${cluster_a}\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval])))\n) / avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cluster=\"${cluster_a}\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval])))",
+          "legendFormat": "GC pause overhead",
+          "refId": "A"
+        }
+      ],
+      "title": "GC pause overhead",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "Change in bytes allocated per second per node. Negative is better only at equal throughput: allocating less for the same work means less garbage to collect. Always read it beside the Throughput tile, because a cluster doing more work allocates more. jvm_memory_allocation_bytes is a histogram, so this is the _sum series, never a _total.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 1,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 16,
+        "y": 7
+      },
+      "id": 906,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "100 * (\n    avg(sum by (host_name) (rate(jvm_memory_allocation_bytes_sum{job=\"cassandra\", cluster=\"${cluster_b}\"}[$__rate_interval])))\n  - avg(sum by (host_name) (rate(jvm_memory_allocation_bytes_sum{job=\"cassandra\", cluster=\"${cluster_a}\"}[$__rate_interval])))\n) / avg(sum by (host_name) (rate(jvm_memory_allocation_bytes_sum{job=\"cassandra\", cluster=\"${cluster_a}\"}[$__rate_interval])))",
+          "legendFormat": "Allocation rate",
+          "refId": "A"
+        }
+      ],
+      "title": "Allocation rate",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "Errors per second per node on cluster B minus cluster A. Negative is better. This one is an absolute difference, not a percentage: a healthy cluster has zero errors, and a percentage change from zero is undefined and would blank the tile.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 4,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.0001
+              },
+              {
+                "color": "red",
+                "value": 0.01
+              }
+            ]
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 20,
+        "y": 7
+      },
+      "id": 907,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "  avg(sum by (host_name) (rate(cassandra_client_request_error_total{job=\"cassandra\", cluster=\"${cluster_b}\"}[$__rate_interval])))\n- avg(sum by (host_name) (rate(cassandra_client_request_error_total{job=\"cassandra\", cluster=\"${cluster_a}\"}[$__rate_interval])))",
+          "legendFormat": "Error rate (absolute)",
+          "refId": "A"
+        }
+      ],
+      "title": "Error rate (absolute)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "Slowest node in each cluster at ${percentile} for reads. The percentile arrives pre-aggregated per node and cannot be recombined into a cluster-wide percentile, so this reports the worst node rather than inventing one.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 48
+      },
+      "id": 910,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (cluster) (cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"read\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}",
+          "legendFormat": "${percentile} {{cluster}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Read Latency ${percentile} per Cluster (slowest node, ${latency_unit:text})",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "p50 overlaid with ${percentile} for reads, both from the slowest node. Shows typical and tail read latency together.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^p50 "
+            },
+            "properties": [
+              {
+                "id": "custom.lineWidth",
+                "value": 1
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "dash": [
+                    10,
+                    10
+                  ],
+                  "fill": "dash"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 56
+      },
+      "id": 911,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (cluster) (cassandra_client_request_latency_p50_microseconds{cassandra_operation=\"read\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}",
+          "legendFormat": "p50 {{cluster}}",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (cluster) (cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"read\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}",
+          "legendFormat": "${percentile} {{cluster}}",
+          "refId": "B"
+        }
+      ],
+      "title": "Read Latency p50 + ${percentile} per Cluster (slowest node, ${latency_unit:text})",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "Filled band showing the spread between the fastest and slowest node inside each cluster, for reads at ${percentile}. A wide band means high node-to-node variance. Works best with a single cluster selected.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^max "
+            },
+            "properties": [
+              {
+                "id": "custom.fillBelowTo",
+                "value": "min {{cluster}}"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^min "
+            },
+            "properties": [
+              {
+                "id": "custom.lineWidth",
+                "value": 1
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 72
+      },
+      "id": 912,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (cluster) (cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"read\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}",
+          "legendFormat": "max {{cluster}}",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "min by (cluster) (cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"read\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}",
+          "legendFormat": "min {{cluster}}",
+          "refId": "B"
+        }
+      ],
+      "title": "Read Latency ${percentile} Range (per-node spread, ${latency_unit:text})",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "The whole read percentile ladder at once, per node: p50, p99, p999 and max on a log axis. This panel deliberately ignores the $percentile variable — its job is the shape of the distribution, not one point on it.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "log": 10,
+              "type": "log"
+            },
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^p50 "
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "dash": [
+                    10,
+                    10
+                  ],
+                  "fill": "dash"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^max "
+            },
+            "properties": [
+              {
+                "id": "custom.lineWidth",
+                "value": 1
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 88
+      },
+      "id": 913,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "cassandra_client_request_latency_p50_microseconds{cassandra_operation=\"read\", cluster=~\"$cluster\", host_name=~\"$host\"} / ${latency_unit}",
+          "legendFormat": "p50 {{host_name}}",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "cassandra_client_request_latency_p99_microseconds{cassandra_operation=\"read\", cluster=~\"$cluster\", host_name=~\"$host\"} / ${latency_unit}",
+          "legendFormat": "p99 {{host_name}}",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "cassandra_client_request_latency_p999_microseconds{cassandra_operation=\"read\", cluster=~\"$cluster\", host_name=~\"$host\"} / ${latency_unit}",
+          "legendFormat": "p999 {{host_name}}",
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "cassandra_client_request_latency_max_microseconds{cassandra_operation=\"read\", cluster=~\"$cluster\", host_name=~\"$host\"} / ${latency_unit}",
+          "legendFormat": "max {{host_name}}",
+          "refId": "D"
+        }
+      ],
+      "title": "Read Latency Percentile Ladder — $cluster (${latency_unit:text})",
+      "type": "timeseries",
+      "repeat": "cluster",
+      "maxPerRow": 1,
+      "repeatDirection": "h"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "Bytes read from and written to the block devices of each cluster's database nodes, from the OTel host metrics scraper. Sits beside CPU, memory and network so an I/O-bound cluster is visible next to its other resources.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 131
+      },
+      "id": 920,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (cluster, direction) (rate(system_disk_io_bytes_total{host_name=~\"$host\"}[$__rate_interval]))",
+          "legendFormat": "{{cluster}} {{direction}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Disk Throughput by Cluster",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "Block device service time at p99, measured in the kernel by ebpf_exporter. This family is a real Prometheus histogram, so histogram_quantile is correct here, unlike the Cassandra latency gauges. It is the storage layer underneath the client latency panels: a jump here explains a jump there.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 131
+      },
+      "id": 921,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "histogram_quantile(0.99, sum by (le, cluster) (rate(ebpf_exporter_bio_latency_seconds_bucket{operation=\"read\", host_name=~\"$host\"}[$__rate_interval])))",
+          "legendFormat": "read p99 {{cluster}}",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "histogram_quantile(0.99, sum by (le, cluster) (rate(ebpf_exporter_bio_latency_seconds_bucket{operation=\"write\", host_name=~\"$host\"}[$__rate_interval])))",
+          "legendFormat": "write p99 {{cluster}}",
+          "refId": "B"
+        }
+      ],
+      "title": "Block I/O Latency p99 by Cluster",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 139
+      },
+      "id": 930,
+      "panels": [],
+      "title": "8. JVM and Garbage Collection — pauses, GC time and allocation",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "Share of wall clock time each cluster's nodes spend STOPPED in a GC pause, averaged per node. This is the number that costs you request latency. Concurrent cycles are excluded with jvm_gc_name!~\".*Cycles\". Compare it with the panel to its right: a concurrent collector moves work out of this panel and into that one, which is the whole point of using one.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 140
+      },
+      "id": 931,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "avg by (cluster) (sum by (cluster, host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", jvm_gc_name!~\".*Cycles\", cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])))",
+          "legendFormat": "{{cluster}}",
+          "refId": "A"
+        }
+      ],
+      "title": "GC Pause Overhead (stop-the-world only)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "Share of wall clock time spent in any GC activity, averaged per node, with concurrent cycles INCLUDED. This measures CPU the collector consumes, not time the application is stopped. A concurrent collector will read far higher here than in the pause panel to its left, and that is correct, not a regression. Never use this panel to compare collectors on latency.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 140
+      },
+      "id": 932,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "avg by (cluster) (sum by (cluster, host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])))",
+          "legendFormat": "{{cluster}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Time Spent in GC (including concurrent work)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "Stop-the-world pauses per second across each cluster. Read it with the pause duration panel beside it: overhead is rate multiplied by duration, and the two shapes tell you which one moved.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 148
+      },
+      "id": 933,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (cluster) (rate(jvm_gc_duration_seconds_count{job=\"cassandra\", jvm_gc_name!~\".*Cycles\", cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))",
+          "legendFormat": "pauses/s {{cluster}}",
+          "refId": "A"
+        }
+      ],
+      "title": "GC Pause Rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "How long an individual stop-the-world pause lasts. jvm_gc_duration_seconds is a genuine Prometheus histogram, so histogram_quantile is legitimate here — unlike the Cassandra latency gauges, which arrive pre-aggregated. The buckets are wide, so treat these as an order of magnitude rather than an exact figure.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 148
+      },
+      "id": 934,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "histogram_quantile(0.5, sum by (le, cluster) (rate(jvm_gc_duration_seconds_bucket{job=\"cassandra\", jvm_gc_name!~\".*Cycles\", cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])))",
+          "legendFormat": "p50 {{cluster}}",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "histogram_quantile(0.99, sum by (le, cluster) (rate(jvm_gc_duration_seconds_bucket{job=\"cassandra\", jvm_gc_name!~\".*Cycles\", cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])))",
+          "legendFormat": "p99 {{cluster}}",
+          "refId": "B"
+        }
+      ],
+      "title": "GC Pause Duration Percentiles",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "Bytes allocated per second, split into TLAB (thread-local, the fast path) and Main (allocated straight from the heap). Allocation rate is what drives collection frequency, so it is the upstream cause of most GC differences. jvm_memory_allocation_bytes is a histogram; this is the _sum series, and there is no _total.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 156
+      },
+      "id": 935,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (cluster, arena) (rate(jvm_memory_allocation_bytes_sum{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))",
+          "legendFormat": "{{cluster}} {{arena}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Allocation Rate by Arena",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "The same GC time broken out by collector phase, unfiltered, so you can see which phase dominates. G1 reports Young and Old Generation; generational ZGC reports Major and Minor, each split into Cycles (concurrent) and Pauses (stop-the-world). This is the panel that shows why the two panels above disagree.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 156
+      },
+      "id": 936,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "avg by (cluster, jvm_gc_name) (sum by (cluster, host_name, jvm_gc_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])))",
+          "legendFormat": "{{cluster}} {{jvm_gc_name}}",
+          "refId": "A"
+        }
+      ],
+      "title": "GC Time by Collector Phase",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "Heap in use against the heap ceiling, averaged per node. The ceiling uses max by (cluster, host_name), never a sum: generational ZGC reports the whole-heap limit on BOTH the young and the old pool, while G1 reports it only on G1 Old Gen, so summing the pools doubles the ceiling on a ZGC node alone.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 164
+      },
+      "id": 937,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "avg by (cluster) (sum by (cluster, host_name) (jvm_memory_used_bytes{jvm_memory_type=\"heap\", job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\"}))",
+          "legendFormat": "used {{cluster}}",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "avg by (cluster) (max by (cluster, host_name) (jvm_memory_limit_bytes{jvm_memory_type=\"heap\", job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\"}))",
+          "legendFormat": "ceiling {{cluster}}",
+          "refId": "B"
+        }
+      ],
+      "title": "Heap Used Against the Ceiling",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "Heap still occupied immediately after the last collection, averaged per node. This is the real working set: unlike heap used, it does not include garbage waiting to be collected, so it is the number to watch for a leak or for genuine memory growth under load.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 164
+      },
+      "id": 938,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "avg by (cluster) (sum by (cluster, host_name) (jvm_memory_used_after_last_gc_bytes{jvm_memory_type=\"heap\", job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\"}))",
+          "legendFormat": "{{cluster}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Live Set After Collection",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 172
+      },
+      "id": 940,
+      "panels": [],
+      "title": "9. Compaction, storage and internals",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "Compaction queue depth against how fast it is draining. A rising backlog with a flat completion rate means compaction cannot keep up, which shows up later as more SSTables per read and worse read latency.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 173
+      },
+      "id": 941,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (cluster) (cassandra_compaction_tasks_pending{cluster=~\"$cluster\", host_name=~\"$host\"})",
+          "legendFormat": "pending {{cluster}}",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (cluster) (rate(cassandra_compaction_tasks_completed_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))",
+          "legendFormat": "completed/s {{cluster}}",
+          "refId": "B"
+        }
+      ],
+      "title": "Compaction Backlog vs Completion Rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "The same backlog attributed to a table, so a single hot table is distinguishable from a cluster-wide problem. System and sidecar keyspaces are excluded.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 173
+      },
+      "id": 942,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (cluster, keyspace, table) (cassandra_table_compaction_pending{keyspace!~\"system.*|sidecar_internal\", cluster=~\"$cluster\", host_name=~\"$host\"})",
+          "legendFormat": "{{cluster}} {{keyspace}}.{{table}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Pending Compactions by Table",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "How many SSTables a read touches at p99. This is the mechanical cause behind most read latency differences, and the first thing to check when the read latency panels diverge between clusters. This gauge has no p999, so it does not follow the Percentile picker.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 181
+      },
+      "id": 943,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (cluster, keyspace, table) (cassandra_table_sstables_per_read_p99{keyspace!~\"system.*|sidecar_internal\", cluster=~\"$cluster\", host_name=~\"$host\"})",
+          "legendFormat": "{{cluster}} {{keyspace}}.{{table}}",
+          "refId": "A"
+        }
+      ],
+      "title": "SSTables per Read p99",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "The five most backed-up thread pools. Pending work here is queueing inside Cassandra and is the usual cause when latency rises without any change in disk or CPU.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 181
+      },
+      "id": 944,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "topk(5, sum by (cluster, pool) (cassandra_thread_pool_tasks_pending{cluster=~\"$cluster\", host_name=~\"$host\"}))",
+          "legendFormat": "{{cluster}} {{pool}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Thread Pool Pending (top 5)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "Messages the node gave up on rather than processed. Any sustained non-zero value here means the cluster is shedding work, and a latency comparison against a cluster that is not shedding work is not a fair one.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 189
+      },
+      "id": 945,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "topk(5, sum by (cluster, message_type) (rate(cassandra_messages_dropped_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])))",
+          "legendFormat": "{{cluster}} {{message_type}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Dropped Messages by Type (top 5)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "Hints being replayed, and the rate at which new ones are stored. Hints accrue when a replica is unreachable or too slow to accept a write, so a rising accrual rate marks the moment a cluster started failing writes internally.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 189
+      },
+      "id": 946,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (cluster) (cassandra_storage_hints_in_progress{cluster=~\"$cluster\", host_name=~\"$host\"})",
+          "legendFormat": "in progress {{cluster}}",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (cluster) (rate(cassandra_storage_hints_count_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))",
+          "legendFormat": "accrued/s {{cluster}}",
+          "refId": "B"
+        }
+      ],
+      "title": "Hints in Progress and Accrual Rate",
       "type": "timeseries"
     }
   ],
@@ -1278,6 +3398,38 @@
         "refresh": 2,
         "regex": "",
         "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {"type": "prometheus", "uid": "${datasource}"},
+        "description": "Baseline cluster for the A/B section at the top. Single select. Every delta up there is B measured against this.",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Cluster A (baseline)",
+        "multi": false,
+        "name": "cluster_a",
+        "options": [],
+        "query": "label_values(cassandra_storage_load_bytes, cluster)",
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {"type": "prometheus", "uid": "${datasource}"},
+        "description": "Candidate cluster for the A/B section at the top. Single select. Written with braces as ${cluster_b} in every query, because a bare $cluster_b would be read as a variable named cluster_b only by luck of the parser and $cluster already exists.",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Cluster B (candidate)",
+        "multi": false,
+        "name": "cluster_b",
+        "options": [],
+        "query": "label_values(cassandra_storage_load_bytes, cluster)",
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
         "type": "query"
       },
       {

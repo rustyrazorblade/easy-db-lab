@@ -212,7 +212,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         // neither may become a grouping key on any of the three metrics.
         val valueBlock = yaml.substringAfter("  signaltometrics:").substringBefore("  spanmetrics:")
         assertThat(Regex("- key: (\\S+)").findAll(valueBlock).map { it.groupValues[1] }.toList())
-            .containsOnly("gc_name")
+            .containsOnly("gc_name", "dropped_type")
     }
 
     @Test
@@ -230,7 +230,62 @@ class OtelManifestBuilderTest : BaseKoinTest() {
 
         assertThat(yaml).contains("cassandra.log.gc_events")
         assertThat(yaml).contains("cassandra.log.status_dumps")
-        assertThat(yaml).contains("cassandra.log.dropped_messages")
+        assertThat(yaml).contains("cassandra.log.dropped_message_reports")
+    }
+
+    @Test
+    fun `dropped messages are read from the logger that actually emits them`() {
+        // MessagingMetrics, confirmed against real lines. An earlier condition on MessagingService
+        // and NoSpamLogger - both plausible, both wrong - matched nothing at all while looking
+        // exactly like a cluster that never drops a message. Nothing errors in that state, which is
+        // why the logger name is pinned rather than described.
+        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+
+        // Settings only: the config explains at length why the other two names are wrong, and
+        // names them while doing it.
+        val settings = yaml.lines().filterNot { it.trimStart().startsWith("#") }.joinToString("\n")
+
+        assertThat(settings).contains("MessagingMetrics")
+        assertThat(settings).doesNotContain("NoSpamLogger")
+        assertThat(settings).doesNotContain("MessagingService")
+    }
+
+    @Test
+    fun `dropped messages split internal from cross-node, with the verb as the only label`() {
+        // The JMX counter says how many dropped. Only this line says of what type, and separates a
+        // node dropping its own work from a peer's messages dying in transit.
+        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+
+        assertThat(yaml).contains("cassandra.log.dropped_messages_internal")
+        assertThat(yaml).contains("cassandra.log.dropped_messages_cross_node")
+        assertThat(yaml).contains("cassandra.log.dropped_message_internal_latency_seconds")
+        assertThat(yaml).contains("cassandra.log.dropped_message_cross_node_latency_seconds")
+        assertThat(yaml).contains("- key: dropped_type")
+
+        // Counts are summed, latencies distributed - a count per 5s window adds up to a total,
+        // while a mean latency only means something as a distribution.
+        assertThat(yaml).contains("value: Double(attributes[\"dropped_cross_node\"])")
+        assertThat(yaml).contains("value: Double(attributes[\"dropped_cross_node_ms\"]) / 1000")
+    }
+
+    @Test
+    fun `every parsed number tolerates a thousands separator`() {
+        // Cassandra prints "in 520,866ms" and "31,471 internal". A [0-9]+ capture does not fail
+        // loudly on those: it matches nothing and drops exactly the largest events. Every numeric
+        // capture allows a comma, and every one is stripped before conversion.
+        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+        val captures = Regex("\\(\\?P<(\\w+)>\\[0-9([^\\]]*)\\]").findAll(yaml).toList()
+
+        assertThat(captures).isNotEmpty()
+        assertThat(captures).allSatisfy { match ->
+            assertThat(match.groupValues[2])
+                .describedAs("numeric capture ${match.groupValues[1]} must allow a comma")
+                .contains(",")
+        }
+        // And each one is stripped rather than merely tolerated.
+        captures.forEach { match ->
+            assertThat(yaml).contains("replace_pattern(attributes[\"${match.groupValues[1]}\"], \",\", \"\")")
+        }
     }
 
     @Test

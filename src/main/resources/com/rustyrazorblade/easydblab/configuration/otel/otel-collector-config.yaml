@@ -316,6 +316,34 @@ processors:
               ExtractPatterns(body, "of original\\) in (?P<compaction_ms>[0-9,]+)ms"),
               "upsert")
             where IsMatch(body, "^Compacted \\(")
+          # Dropped messages. One line per verb per 5-second window:
+          #   "MUTATION_RSP messages were dropped in last 5000 ms: 0 internal and 33 cross node.
+          #    Mean internal dropped latency: 0 ms and Mean cross-node dropped latency: 4 ms"
+          #
+          # The JMX counter says how many messages dropped. Only this line says of WHAT TYPE, and
+          # splits internal from cross-node - a distinction the counter cannot express and the one
+          # that separates "this node is overloaded" from "the network or a peer is".
+          #
+          # The logger is org.apache.cassandra.metrics.MessagingMetrics. It is neither
+          # MessagingService nor NoSpamLogger, which is what makes this worth pinning: a condition
+          # on the wrong logger matches nothing, forever, without an error.
+          #
+          # dropped_type is a verb name from a bounded set. Every count and latency is a value.
+          - >-
+            merge_maps(attributes,
+              ExtractPatterns(body,
+                "^(?P<dropped_type>[A-Z0-9_]+) messages were dropped in last [0-9,]+ ms: (?P<dropped_internal>[0-9,]+) internal and (?P<dropped_cross_node>[0-9,]+) cross node\\. Mean internal dropped latency: (?P<dropped_internal_ms>[0-9,]+) ms and Mean cross-node dropped latency: (?P<dropped_cross_node_ms>[0-9,]+) ms"),
+              "upsert")
+            where IsMatch(body, "messages were dropped in last")
+          - replace_pattern(attributes["dropped_internal"], ",", "") where attributes["dropped_internal"] != nil
+          - replace_pattern(attributes["dropped_cross_node"], ",", "") where attributes["dropped_cross_node"] != nil
+          - replace_pattern(attributes["dropped_internal_ms"], ",", "") where attributes["dropped_internal_ms"] != nil
+          - replace_pattern(attributes["dropped_cross_node_ms"], ",", "") where attributes["dropped_cross_node_ms"] != nil
+          - set(attributes["dropped_internal"], Double(attributes["dropped_internal"])) where attributes["dropped_internal"] != nil
+          - set(attributes["dropped_cross_node"], Double(attributes["dropped_cross_node"])) where attributes["dropped_cross_node"] != nil
+          - set(attributes["dropped_internal_ms"], Double(attributes["dropped_internal_ms"])) where attributes["dropped_internal_ms"] != nil
+          - set(attributes["dropped_cross_node_ms"], Double(attributes["dropped_cross_node_ms"])) where attributes["dropped_cross_node_ms"] != nil
+
           - replace_pattern(attributes["compaction_sstables"], ",", "") where attributes["compaction_sstables"] != nil
           - replace_pattern(attributes["compaction_ratio_pct"], ",", "") where attributes["compaction_ratio_pct"] != nil
           - replace_pattern(attributes["compaction_ms"], ",", "") where attributes["compaction_ms"] != nil
@@ -400,10 +428,13 @@ connectors:
         description: StatusLogger dumps, which Cassandra emits under pressure.
         conditions:
           - IsMatch(instrumentation_scope.name, ".*StatusLogger$")
-      cassandra.log.dropped_messages:
-        description: Log events about dropped messages, which name a reason the counter does not.
+      cassandra.log.dropped_message_reports:
+        description: MessagingMetrics drop reports - one per verb per 5s window in which anything dropped.
+        # MessagingMetrics, verified against real lines. An earlier guess at MessagingService and
+        # NoSpamLogger matched nothing at all, which is the failure this whole file keeps guarding
+        # against: a wrong name here is silent, permanent and looks exactly like "nothing dropped".
         conditions:
-          - IsMatch(instrumentation_scope.name, ".*(MessagingService|NoSpamLogger)$")
+          - IsMatch(instrumentation_scope.name, ".*MessagingMetrics$")
 
   # Turns the figures parsed out of a log body into metrics whose VALUE is the number, not the
   # number of records. The count connector above cannot do this: it only ever emits how many
@@ -449,6 +480,49 @@ connectors:
           - attributes["compaction_sstables"] != nil
         histogram:
           value: Double(attributes["compaction_sstables"])
+
+      # Dropped messages. Sums, not histograms: each line reports a count for a 5-second window, so
+      # adding them up is the total dropped. The latencies are means over that window, and their
+      # distribution is what says whether drops were a brief spike or a sustained condition.
+      - name: cassandra.log.dropped_messages_internal
+        description: Messages dropped inside this node, by verb.
+        unit: "{message}"
+        conditions:
+          - attributes["dropped_internal"] != nil
+        attributes:
+          - key: dropped_type
+        sum:
+          value: Double(attributes["dropped_internal"])
+
+      - name: cassandra.log.dropped_messages_cross_node
+        description: Messages dropped in transit from a peer, by verb.
+        unit: "{message}"
+        conditions:
+          - attributes["dropped_cross_node"] != nil
+        attributes:
+          - key: dropped_type
+        sum:
+          value: Double(attributes["dropped_cross_node"])
+
+      - name: cassandra.log.dropped_message_internal_latency_seconds
+        description: Mean latency of internally dropped messages over a 5s window, by verb.
+        unit: s
+        conditions:
+          - attributes["dropped_internal_ms"] != nil
+        attributes:
+          - key: dropped_type
+        histogram:
+          value: Double(attributes["dropped_internal_ms"]) / 1000
+
+      - name: cassandra.log.dropped_message_cross_node_latency_seconds
+        description: Mean latency of cross-node dropped messages over a 5s window, by verb.
+        unit: s
+        conditions:
+          - attributes["dropped_cross_node_ms"] != nil
+        attributes:
+          - key: dropped_type
+        histogram:
+          value: Double(attributes["dropped_cross_node_ms"]) / 1000
 
   # Converts spans to Prometheus metrics (calls_total, latency histograms).
   # Exemplars link metric data points back to individual traces in Tempo.

@@ -88,7 +88,7 @@ The OTel spanmetrics connector with `namespace: traces.spanmetrics` emits:
 - `traces_spanmetrics_duration_milliseconds_sum`
 - `traces_spanmetrics_duration_milliseconds_count`
 
-**Do NOT use `traces_spanmetrics_latency_bucket`** — that is emitted by Tempo's internal metrics generator and only has `le="+Inf"` (useless for `histogram_quantile`).
+**The OTel collector is the only producer of these metrics.** Tempo's own metrics generator wrote the same names from the same spans and doubled every rate, so its processors are now empty in `configuration/tempo/tempo.yaml`. Do not query `traces_spanmetrics_latency_*` or `traces_spanmetrics_size_total`; both were Tempo-only and nothing writes them. The collector has no span-size equivalent.
 
 Panel units for latency must be `ms` (not `s`) since the histogram buckets are in milliseconds.
 

@@ -2522,6 +2522,225 @@
       ],
       "title": "Block I/O Read Latency Spread",
       "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "description": "Round trip time on the internode messaging path. This is the cost that sits inside every read or write that has to leave the coordinator, so a node that diverges here diverges on every non-local request.",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 100
+      },
+      "id": 30,
+      "panels": [],
+      "title": "Inter-node messaging",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Round trip time each node measures to all of its peers, at ${percentile}. Read it as the internode network cost plus the peer response time that sits inside every non-local read or write: a node whose line sits above the others is either slow to reach its peers, or has peers that are slow to answer it. One series per node, three in total, with no extra label. These gauges are pre-aggregated on the node, so they are shown side by side and never summed or averaged across nodes.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "${latency_unit:text}",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 8,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 101
+      },
+      "id": 31,
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "cassandra_messaging_cross_node_latency_${percentile}_microseconds{job=\"cassandra\", host_name=~\"$host\"} / ${latency_unit}",
+          "legendFormat": "{{host_name}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Cross-Node Round Trip ${percentile} (${latency_unit:text})",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "The same round trip time, broken out per destination datacenter, at ${percentile}. Read it as: one datacenter far above the others points at a cross-region link, while a single node high in one datacenter points at that node. Two facts about the labels, both verified on the running cluster. First, the `datacenter` label value carries a `-Latency` suffix, because the JMX rule reads it from the bean name `name=<dc>-Latency`; the observed values are `us-west-2-Latency` and `UNKNOWN-DC-Latency`. The legend strips that suffix with a rename transformation, and the query is deliberately left alone, so what you see in the query editor still matches the stored series. Second, `UNKNOWN-DC` is genuine Cassandra behaviour and not a collection artefact: it holds messages sent to peers whose datacenter is not yet resolved, which is normal shortly after start-up and during topology changes. One series per node and destination; these gauges are pre-aggregated on the node and are never summed or averaged across nodes.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "${latency_unit:text}",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 8,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 101
+      },
+      "id": 32,
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "cassandra_messaging_datacenter_latency_${percentile}_microseconds{job=\"cassandra\", host_name=~\"$host\"} / ${latency_unit}",
+          "legendFormat": "{{host_name}} to {{datacenter}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "(.*)-Latency$",
+            "renamePattern": "$1"
+          }
+        }
+      ],
+      "title": "Per-Datacenter Round Trip ${percentile} (${latency_unit:text})",
+      "type": "timeseries"
     }
   ],
   "refresh": "30s",

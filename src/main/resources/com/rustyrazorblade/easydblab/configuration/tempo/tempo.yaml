@@ -26,6 +26,9 @@ compactor:
   compaction:
     block_retention: 48h
 
+# Configured but INERT: `overrides.defaults.metrics_generator.processors` is empty, so
+# nothing is generated and nothing is remote-written. Kept so re-enabling is one edit —
+# read the comment on that setting first, it explains why it is off.
 metrics_generator:
   registry:
     external_labels:
@@ -51,4 +54,29 @@ storage:
 overrides:
   defaults:
     metrics_generator:
-      processors: [service-graphs, span-metrics]
+      # DELIBERATELY EMPTY. Do not put [service-graphs, span-metrics] back without
+      # first removing the OTel collector's spanmetrics and servicegraph connectors.
+      #
+      # The collector's traces pipeline already exports to BOTH otlp/tempo and its own
+      # spanmetrics + servicegraph connectors, so enabling these processors makes Tempo
+      # compute the same two metric families a second time from the same spans. Tempo's
+      # namespaces for them are `traces_spanmetrics` and `traces_service_graph`, which
+      # are exactly the names the collector emits, and Tempo remote-writes straight to
+      # VictoriaMetrics — so both land in one store under one name.
+      #
+      # Measured on a live cluster: traces_spanmetrics_calls_total carried 25 collector
+      # series alongside 9 Tempo ones covering the IDENTICAL nine spans, and
+      # traces_service_graph_request_total 5 against 4. Every unfiltered rate over those
+      # names was ~2x reality, and `sum by (service_name)` dropped Tempo's half into an
+      # unnamed null bucket, since Tempo labels the service `service` rather than
+      # `service_name`.
+      #
+      # The collector's version wins because it is strictly richer: it carries the
+      # http.route, http.status_code and db.system dimensions, and the dashboards are
+      # built on its traces_spanmetrics_duration_milliseconds_* histogram. Tempo names
+      # its equivalent traces_spanmetrics_latency_*, which nothing reads.
+      #
+      # The one thing lost is traces_spanmetrics_size_total, a Tempo-only metric with no
+      # collector equivalent. The panel that used it was removed rather than left to
+      # render empty.
+      processors: []

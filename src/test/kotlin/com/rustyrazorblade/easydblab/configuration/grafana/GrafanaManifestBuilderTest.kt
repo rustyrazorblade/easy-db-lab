@@ -227,6 +227,7 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
             GrafanaDashboard.CLUSTER_COMPARISON,
             GrafanaDashboard.CASSANDRA_JVM,
             GrafanaDashboard.READ_PATH_ANATOMY,
+            GrafanaDashboard.TABLE_DEEP_DIVE,
             GrafanaDashboard.WRITE_PATH_BACKPRESSURE,
             GrafanaDashboard.NODE_DIVERGENCE,
             GrafanaDashboard.AB_COMPARISON,
@@ -235,11 +236,13 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
             GrafanaDashboard.COMPACTION_STORAGE,
             GrafanaDashboard.TRACE_RED,
             GrafanaDashboard.CASSANDRA_LOGS_ANALYSIS,
+            GrafanaDashboard.COMMITLOG_MEMTABLE,
         )
         assertThat(cassandra).allSatisfy { dashboard ->
             assertThat(dashboard.mountPath).startsWith("$GRAFANA_CASSANDRA_PATH/")
-            // Every dashboard in this folder is optional: four of the six are being written now,
-            // and a missing JSON must never stop Grafana from starting.
+            // Every dashboard in this folder is optional, and a missing JSON must never stop
+            // Grafana from starting. The set grows steadily, so this is a standing rule rather
+            // than a statement about how many are in flight at any moment.
             assertThat(dashboard.optional).isTrue()
         }
     }

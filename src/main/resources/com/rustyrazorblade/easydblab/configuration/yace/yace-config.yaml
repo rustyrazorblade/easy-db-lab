@@ -14,7 +14,8 @@ discovery:
       regions:
         - __AWS_REGION__
       period: 60
-      length: 120
+      length: 600
+      delay: 300
       searchTags:
         - key: easy_cass_lab
           value: "1"
@@ -43,7 +44,8 @@ discovery:
       regions:
         - __AWS_REGION__
       period: 60
-      length: 120
+      length: 600
+      delay: 300
       searchTags:
         - key: easy_cass_lab
           value: "1"
@@ -68,7 +70,8 @@ discovery:
       regions:
         - __AWS_REGION__
       period: 60
-      length: 120
+      length: 600
+      delay: 300
       searchTags:
         - key: easy_cass_lab
           value: "1"
@@ -87,7 +90,8 @@ discovery:
       regions:
         - __AWS_REGION__
       period: 60
-      length: 120
+      length: 600
+      delay: 300
       searchTags:
         - key: easy_cass_lab
           value: "1"

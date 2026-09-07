@@ -188,6 +188,22 @@ processors:
   batch:
     timeout: 10s
     send_batch_size: 1024
+  # Required by the metrics/logs pipeline, and the single most silent failure in this file.
+  #
+  # The count connector emits Sums with AggregationTemporality: Delta, and signaltometrics emits
+  # delta histograms. prometheusremotewrite accepts CUMULATIVE ONLY and discards delta points
+  # without an error log, without incrementing send_failed, and without any dropped-points counter.
+  # Every diagnostic surface reports a healthy pipeline while the data goes nowhere.
+  #
+  # That is not a hypothetical: it is exactly how this shipped the first time. The connectors were
+  # producing correct points carrying cassandra_build, host.name and node_role, the OTTL conditions
+  # matched, the pipeline was constructed - and cassandra_log_* never appeared in VictoriaMetrics.
+  # It was found only by attaching a debug exporter to the pipeline and reading the descriptor.
+  #
+  # Anything added to metrics/logs later inherits this constraint. A connector-derived metric that
+  # bypasses this processor disappears the same silent way.
+  deltatocumulative:
+    max_stale: 5m
   resource/cluster:
     attributes:
       - action: upsert
@@ -591,7 +607,7 @@ service:
     # metrics pipeline.
     metrics/logs:
       receivers: [count, signaltometrics]
-      processors: [resource/cluster, batch]
+      processors: [resource/cluster, deltatocumulative, batch]
       exporters: [prometheusremotewrite]
     # resource/cluster here rather than in each span producer's own resource attributes. Any
     # producer gets the cluster label for free — the stress job today, Beyla or a future client

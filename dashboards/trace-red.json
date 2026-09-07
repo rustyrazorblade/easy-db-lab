@@ -28,7 +28,7 @@
       "title": "",
       "options": {
         "mode": "markdown",
-        "content": "# Trace RED and Service Graph\n\n**What did the _caller_ actually experience?** Every latency figure on the Cassandra\ndashboards is what Cassandra says about itself. These come from spans, so they cover\neverything between the client and the answer: serialisation, network, coordinator\nqueueing and the replica read. When the two disagree, the difference is outside the\ndatabase.\n\n**Two producers write these metric names.** The OTel collector spanmetrics connector\n(no `source` label, carries `host_name`) and Tempo's metrics-generator (`source=\"tempo\"`,\nno `host_name`). Panels pin `source=\"\"` or `source=\"tempo\"`, so nothing is counted twice.\nThe **Host** variable only affects collector panels; the Tempo generator does not label by host.\n\n**Units differ across families.** `traces_spanmetrics_duration_milliseconds` is in\n**milliseconds**. `traces_service_graph_request_*_seconds` is in **seconds**. Cassandra's\n`cassandra_client_request_latency_*` is in **microseconds**. Every panel names its unit.\n\nDuration here is a real histogram, so `histogram_quantile` is correct on this page.\n"
+        "content": "# Trace RED and Service Graph\n\n**What did the _caller_ actually experience?** Every latency figure on the Cassandra\ndashboards is what Cassandra says about itself. These come from spans, so they cover\neverything between the client and the answer: serialisation, network, coordinator\nqueueing and the replica read. When the two disagree, the difference is outside the\ndatabase.\n\n**One producer writes these metric names.** The OTel collector spanmetrics and servicegraph\nconnectors, which carry no `source` label. Tempo's own metrics-generator is switched off: it wrote\nthe same metric names from the same spans and doubled every rate. Panels pin `source=\"\"` so only\nthe collector is read.\n\n**Units differ across families.** `traces_spanmetrics_duration_milliseconds` is in\n**milliseconds**. `traces_service_graph_request_*_seconds` is in **seconds**. Cassandra's\n`cassandra_client_request_latency_*` is in **microseconds**. Every panel names its unit.\n\nDuration here is a real histogram, so `histogram_quantile` is correct on this page.\n"
       },
       "transparent": false,
       "gridPos": {
@@ -831,106 +831,8 @@
       ],
       "gridPos": {
         "h": 8,
-        "w": 12,
+        "w": 24,
         "x": 0,
-        "y": 29
-      }
-    },
-    {
-      "type": "timeseries",
-      "id": 12,
-      "title": "Span Payload Bytes by Span Name (bytes/s)",
-      "description": "traces_spanmetrics_size_total, from the Tempo metrics-generator (source=\"tempo\"). It carries no host_name, so the Host variable does not apply here. Large spans cost ingest budget.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "VictoriaMetrics"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "bytes/s",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 8,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 2,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "never",
-            "spanNulls": true,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unit": "Bps",
-          "min": 0
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "calcs": [
-            "mean",
-            "max",
-            "lastNotNull"
-          ],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "expr": "sum by (span_name) (rate(traces_spanmetrics_size_total{source=\"tempo\"}[$__rate_interval]))",
-          "legendFormat": "{{span_name}}",
-          "range": true,
-          "instant": false,
-          "refId": "A"
-        }
-      ],
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
         "y": 29
       }
     },
@@ -1426,7 +1328,7 @@
       "type": "timeseries",
       "id": 18,
       "title": "Client minus Server p99 \u2014 network plus queueing (s)",
-      "description": "The gap between what the caller timed and what the callee timed. That gap is network plus queueing, measured from the trace side. It is a different answer to the coordinator-versus-replica question than the MBeans give. Unit: SECONDS. CAVEAT: for connection_type=database edges Tempo and the collector synthesise the server side from the same client span, so the delta is structurally zero until a genuine server span exists for the edge.",
+      "description": "The gap between what the caller timed and what the callee timed. That gap is network plus queueing, measured from the trace side. It is a different answer to the coordinator-versus-replica question than the MBeans give. Unit: SECONDS. CAVEAT: for connection_type=database edges the collector synthesises the server side from the same client span, so the delta is structurally zero until a genuine server span exists for the edge.",
       "datasource": {
         "type": "prometheus",
         "uid": "VictoriaMetrics"
@@ -1510,18 +1412,6 @@
           "range": true,
           "instant": false,
           "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (client, server, le) (rate(traces_service_graph_request_client_seconds_bucket{source=\"tempo\"}[$__rate_interval]))) - histogram_quantile(0.99, sum by (client, server, le) (rate(traces_service_graph_request_server_seconds_bucket{source=\"tempo\"}[$__rate_interval])))",
-          "legendFormat": "{{client}} -> {{server}} delta (tempo)",
-          "range": true,
-          "instant": false,
-          "refId": "B"
         }
       ],
       "gridPos": {

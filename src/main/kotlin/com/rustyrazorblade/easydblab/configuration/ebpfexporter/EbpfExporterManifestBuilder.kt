@@ -67,7 +67,18 @@ class EbpfExporterManifestBuilder {
             .withImage(IMAGE)
             .withArgs(
                 "--config.dir=/examples",
-                "--config.names=biolatency,xfsdist,cachestat",
+                // Every name here must be a file that exists in the image's /examples directory.
+                // An unknown one is FATAL, not ignored: the exporter exits with
+                // `Error parsing configs: open /examples/<name>.yaml: no such file or directory`,
+                // taking the working programs down with it. Verified against v2.5.1 by running the
+                // image, which is also how three plausible names were ruled out — `runqlat` and
+                // `biosnoop` do not exist in this release at all, and TCP retransmits are
+                // `tcp-retransmit`, not `tcpretrans`.
+                //
+                // `bio-trace` and `sched-trace` are NOT substitutes for the two missing ones: they
+                // are span exporters, labelled with trace_id and span_id, so their cardinality is
+                // unbounded by construction.
+                "--config.names=biolatency,xfsdist,cachestat,shrinklat,tcp-retransmit,oomkill",
                 "--web.listen-address=0.0.0.0:${Constants.K8s.EBPF_EXPORTER_METRICS_PORT}",
             ).withSecurityContext(
                 SecurityContextBuilder()

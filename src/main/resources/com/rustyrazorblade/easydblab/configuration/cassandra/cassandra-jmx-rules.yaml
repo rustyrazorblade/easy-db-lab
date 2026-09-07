@@ -342,3 +342,326 @@ rules:
         type: counter
         unit: "{message}"
         desc: Messages dropped since startup, by verb.
+
+  # --- tombstones --------------------------------------------------------------------------------
+  # The usual answer to "why did reads get slow". A Histogram of tombstones per read, so despite the
+  # name it counts objects, not time: unit is {tombstone}, NOT us. It carries no DurationUnit
+  # attribute, which is how the timers here are told apart from the plain histograms.
+  - bean: org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=TombstoneScannedHistogram
+    metricAttribute:
+      keyspace: param(keyspace)
+      table: param(scope)
+    type: gauge
+    unit: "{tombstone}"
+    mapping:
+      50thPercentile:
+        metric: cassandra.table.tombstones.scanned.p50
+        desc: Tombstones scanned per read, 50th percentile.
+      99thPercentile:
+        metric: cassandra.table.tombstones.scanned.p99
+        desc: Tombstones scanned per read, 99th percentile.
+      999thPercentile:
+        metric: cassandra.table.tombstones.scanned.p999
+        desc: Tombstones scanned per read, 99.9th percentile.
+      Max:
+        metric: cassandra.table.tombstones.scanned.max
+        desc: Maximum tombstones scanned in a single read.
+
+  # --- bloom filter ------------------------------------------------------------------------------
+  # Explains SSTables-per-read climbing without the data changing shape. Both are Gauges reporting
+  # a Value, not Counters.
+  - bean: org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=BloomFilterFalseRatio
+    metricAttribute:
+      keyspace: param(keyspace)
+      table: param(scope)
+    mapping:
+      Value:
+        metric: cassandra.table.bloom_filter.false_ratio
+        type: gauge
+        unit: "1"
+        desc: Fraction of bloom filter checks that were false positives.
+
+  - bean: org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=BloomFilterFalsePositives
+    metricAttribute:
+      keyspace: param(keyspace)
+      table: param(scope)
+    mapping:
+      Value:
+        metric: cassandra.table.bloom_filter.false_positives
+        type: gauge
+        unit: "{check}"
+        desc: Bloom filter false positives.
+
+  # --- caches ------------------------------------------------------------------------------------
+  # scope is the cache name: KeyCache, RowCache, CounterCache. Hits and Requests come as well as
+  # HitRate on purpose - a ratio computed from two counters can be re-windowed on a dashboard, and
+  # the pre-computed HitRate is a lifetime average that cannot.
+  - bean: org.apache.cassandra.metrics:type=Cache,scope=*,name=HitRate
+    metricAttribute:
+      cache: param(scope)
+    mapping:
+      Value:
+        metric: cassandra.cache.hit_ratio
+        type: gauge
+        unit: "1"
+        desc: Cache hit ratio since startup.
+
+  - bean: org.apache.cassandra.metrics:type=Cache,scope=*,name=Hits
+    metricAttribute:
+      cache: param(scope)
+    mapping:
+      Count:
+        metric: cassandra.cache.hits
+        type: counter
+        unit: "{hit}"
+        desc: Cache hits since startup.
+
+  - bean: org.apache.cassandra.metrics:type=Cache,scope=*,name=Requests
+    metricAttribute:
+      cache: param(scope)
+    mapping:
+      Count:
+        metric: cassandra.cache.requests
+        type: counter
+        unit: "{request}"
+        desc: Cache requests since startup.
+
+  - bean: org.apache.cassandra.metrics:type=Cache,scope=*,name=Size
+    metricAttribute:
+      cache: param(scope)
+    mapping:
+      Value:
+        metric: cassandra.cache.size
+        type: gauge
+        unit: By
+        desc: Cache size in bytes.
+
+  - bean: org.apache.cassandra.metrics:type=Cache,scope=*,name=Entries
+    metricAttribute:
+      cache: param(scope)
+    mapping:
+      Value:
+        metric: cassandra.cache.entries
+        type: gauge
+        unit: "{entry}"
+        desc: Number of entries in the cache.
+
+  # --- memtables ---------------------------------------------------------------------------------
+  # The flush half of the write path, opposite the compaction families above.
+  - bean: org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=MemtableOnHeapSize
+    metricAttribute:
+      keyspace: param(keyspace)
+      table: param(scope)
+    mapping:
+      Value:
+        metric: cassandra.table.memtable.heap.size
+        type: gauge
+        unit: By
+        desc: On-heap memtable size.
+
+  - bean: org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=MemtableOffHeapSize
+    metricAttribute:
+      keyspace: param(keyspace)
+      table: param(scope)
+    mapping:
+      Value:
+        metric: cassandra.table.memtable.offheap.size
+        type: gauge
+        unit: By
+        desc: Off-heap memtable size.
+
+  - bean: org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=MemtableLiveDataSize
+    metricAttribute:
+      keyspace: param(keyspace)
+      table: param(scope)
+    mapping:
+      Value:
+        metric: cassandra.table.memtable.live_data.size
+        type: gauge
+        unit: By
+        desc: Live data held in the memtable.
+
+  - bean: org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=MemtableColumnsCount
+    metricAttribute:
+      keyspace: param(keyspace)
+      table: param(scope)
+    mapping:
+      Value:
+        metric: cassandra.table.memtable.columns
+        type: gauge
+        unit: "{column}"
+        desc: Columns held in the memtable.
+
+  - bean: org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=MemtableSwitchCount
+    metricAttribute:
+      keyspace: param(keyspace)
+      table: param(scope)
+    mapping:
+      Count:
+        metric: cassandra.table.memtable.switches
+        type: counter
+        unit: "{switch}"
+        desc: Memtable flushes since startup.
+
+  # --- commit log --------------------------------------------------------------------------------
+  # Where a write path stalls before it ever reaches a memtable. The two waiting families are
+  # Timers, so they take the same microsecond treatment as every other latency here.
+  - bean: org.apache.cassandra.metrics:type=CommitLog,name=PendingTasks
+    mapping:
+      Value:
+        metric: cassandra.commitlog.tasks.pending
+        type: gauge
+        unit: "{task}"
+        desc: Commit log tasks queued.
+
+  - bean: org.apache.cassandra.metrics:type=CommitLog,name=TotalCommitLogSize
+    mapping:
+      Value:
+        metric: cassandra.commitlog.size
+        type: gauge
+        unit: By
+        desc: Size of all commit log segments on disk.
+
+  - bean: org.apache.cassandra.metrics:type=CommitLog,name=WaitingOnCommit
+    type: gauge
+    unit: us
+    mapping:
+      50thPercentile:
+        metric: cassandra.commitlog.waiting_on_commit.p50
+        desc: Time a write waited on the commit log, 50th percentile.
+      99thPercentile:
+        metric: cassandra.commitlog.waiting_on_commit.p99
+        desc: Time a write waited on the commit log, 99th percentile.
+      999thPercentile:
+        metric: cassandra.commitlog.waiting_on_commit.p999
+        desc: Time a write waited on the commit log, 99.9th percentile.
+      Max:
+        metric: cassandra.commitlog.waiting_on_commit.max
+        desc: Longest wait on the commit log.
+
+  - bean: org.apache.cassandra.metrics:type=CommitLog,name=WaitingOnSegmentAllocation
+    type: gauge
+    unit: us
+    mapping:
+      50thPercentile:
+        metric: cassandra.commitlog.waiting_on_segment_allocation.p50
+        desc: Time spent waiting for a commit log segment, 50th percentile.
+      99thPercentile:
+        metric: cassandra.commitlog.waiting_on_segment_allocation.p99
+        desc: Time spent waiting for a commit log segment, 99th percentile.
+      999thPercentile:
+        metric: cassandra.commitlog.waiting_on_segment_allocation.p999
+        desc: Time spent waiting for a commit log segment, 99.9th percentile.
+      Max:
+        metric: cassandra.commitlog.waiting_on_segment_allocation.max
+        desc: Longest wait for a commit log segment.
+
+  # --- speculative retries -----------------------------------------------------------------------
+  # Table level only. There is no ClientRequest speculative-retry bean on 5.0 - a scope=* query
+  # against type=ClientRequest,name=Speculative* returns nothing.
+  - bean: org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=SpeculativeRetries
+    metricAttribute:
+      keyspace: param(keyspace)
+      table: param(scope)
+    mapping:
+      Count:
+        metric: cassandra.table.speculative.retries
+        type: counter
+        unit: "{retry}"
+        desc: Speculative retries issued since startup.
+
+  # --- streaming and repair ----------------------------------------------------------------------
+  # The cluster-wide totals only. type=Streaming also carries per-peer beans keyed
+  # scope=/<ip>.<port>, and type=Repair carries a Retries-<VERB> bean per verb; both are left out
+  # deliberately, since they multiply series by peer count and by verb for little added signal.
+  - bean: org.apache.cassandra.metrics:type=Streaming,name=TotalIncomingBytes
+    mapping:
+      Count:
+        metric: cassandra.streaming.incoming
+        type: counter
+        unit: By
+        desc: Bytes streamed in since startup.
+
+  - bean: org.apache.cassandra.metrics:type=Streaming,name=TotalOutgoingBytes
+    mapping:
+      Count:
+        metric: cassandra.streaming.outgoing
+        type: counter
+        unit: By
+        desc: Bytes streamed out since startup.
+
+  - bean: org.apache.cassandra.metrics:type=Streaming,name=TotalOutgoingRepairBytes
+    mapping:
+      Count:
+        metric: cassandra.streaming.repair.outgoing
+        type: counter
+        unit: By
+        desc: Bytes streamed out for repair since startup.
+
+  - bean: org.apache.cassandra.metrics:type=Streaming,name=TotalOutgoingRepairSSTables
+    mapping:
+      Count:
+        metric: cassandra.streaming.repair.sstables
+        type: counter
+        unit: "{sstable}"
+        desc: SSTables streamed out for repair since startup.
+
+  - bean: org.apache.cassandra.metrics:type=Streaming,name=ActiveOutboundStreams
+    mapping:
+      Count:
+        metric: cassandra.streaming.active
+        type: gauge
+        unit: "{stream}"
+        desc: Outbound streams currently active.
+
+  - bean: org.apache.cassandra.metrics:type=Repair,name=Retries
+    mapping:
+      Count:
+        metric: cassandra.repair.retries
+        type: counter
+        unit: "{retry}"
+        desc: Repair message retries since startup.
+
+  # --- inter-node messaging latency --------------------------------------------------------------
+  # Two distinct beans, deliberately kept apart.
+  #
+  # CrossNodeLatency is the whole-node round trip. The per-datacenter beans are named
+  # <dc>-Latency (on this cluster, us-west-2-Latency), and `name=*-Latency` matches only those:
+  # the ~79 per-verb beans end in "WaitLatency" with no hyphen before Latency, so they are not
+  # swept up here. Those per-verb beans are left unmapped on purpose - mapping them would add
+  # roughly 320 series per node for a level of detail no dashboard asks for.
+  - bean: org.apache.cassandra.metrics:type=Messaging,name=CrossNodeLatency
+    type: gauge
+    unit: us
+    mapping:
+      50thPercentile:
+        metric: cassandra.messaging.cross_node.latency.p50
+        desc: Cross-node round trip, 50th percentile.
+      99thPercentile:
+        metric: cassandra.messaging.cross_node.latency.p99
+        desc: Cross-node round trip, 99th percentile.
+      999thPercentile:
+        metric: cassandra.messaging.cross_node.latency.p999
+        desc: Cross-node round trip, 99.9th percentile.
+      Max:
+        metric: cassandra.messaging.cross_node.latency.max
+        desc: Longest cross-node round trip.
+
+  - bean: org.apache.cassandra.metrics:type=Messaging,name=*-Latency
+    metricAttribute:
+      datacenter: param(name)
+    type: gauge
+    unit: us
+    mapping:
+      50thPercentile:
+        metric: cassandra.messaging.datacenter.latency.p50
+        desc: Round trip to a datacenter, 50th percentile.
+      99thPercentile:
+        metric: cassandra.messaging.datacenter.latency.p99
+        desc: Round trip to a datacenter, 99th percentile.
+      999thPercentile:
+        metric: cassandra.messaging.datacenter.latency.p999
+        desc: Round trip to a datacenter, 99.9th percentile.
+      Max:
+        metric: cassandra.messaging.datacenter.latency.max
+        desc: Longest round trip to a datacenter.

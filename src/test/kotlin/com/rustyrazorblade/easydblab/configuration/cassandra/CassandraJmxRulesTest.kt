@@ -139,9 +139,10 @@ class CassandraJmxRulesTest {
         // The p999 defect in one line: it carried param(scope) and produced operation="CASRead",
         // while its siblings produced cassandra_operation="rangeslice". Every attribute that names
         // a Cassandra operation or status must be normalized. The three families below are the
-        // deliberate exceptions - keyspace, table and thread-pool names are case-sensitive
-        // identifiers, and lowercasing them would merge distinct series.
-        val casePreserving = listOf("type=Table", "type=ThreadPools", "type=DroppedMessage")
+        // deliberate exceptions - keyspace, table, thread-pool, verb and cache names are all
+        // case-sensitive identifiers, and lowercasing them would merge distinct series or stop
+        // matching what `nodetool` prints.
+        val casePreserving = listOf("type=Table", "type=ThreadPools", "type=DroppedMessage", "type=Cache")
 
         val offenders =
             rules.rules
@@ -186,7 +187,61 @@ class CassandraJmxRulesTest {
             "cassandra.thread_pool.tasks.pending",
             "cassandra.thread_pool.tasks.blocked",
             "cassandra.messages.dropped",
+            // Every bean behind the families below was confirmed to exist by querying a live 5.0
+            // node's MBean server. A bean name that does not exist matches nothing and emits
+            // nothing, at no log level — so a typo here is invisible until a panel is empty.
+            "cassandra.table.tombstones.scanned.p99",
+            "cassandra.table.bloom_filter.false_ratio",
+            "cassandra.table.bloom_filter.false_positives",
+            "cassandra.cache.hit_ratio",
+            "cassandra.cache.hits",
+            "cassandra.cache.requests",
+            "cassandra.cache.size",
+            "cassandra.cache.entries",
+            "cassandra.table.memtable.heap.size",
+            "cassandra.table.memtable.offheap.size",
+            "cassandra.table.memtable.live_data.size",
+            "cassandra.table.memtable.columns",
+            "cassandra.table.memtable.switches",
+            "cassandra.commitlog.tasks.pending",
+            "cassandra.commitlog.size",
+            "cassandra.commitlog.waiting_on_commit.p99",
+            "cassandra.commitlog.waiting_on_segment_allocation.p99",
+            "cassandra.table.speculative.retries",
+            "cassandra.streaming.incoming",
+            "cassandra.streaming.outgoing",
+            "cassandra.streaming.repair.outgoing",
+            "cassandra.streaming.repair.sstables",
+            "cassandra.streaming.active",
+            "cassandra.repair.retries",
+            "cassandra.messaging.cross_node.latency.p99",
+            "cassandra.messaging.datacenter.latency.p99",
         )
+    }
+
+    @Test
+    fun `the tombstone histogram counts objects, so it is not measured in microseconds`() {
+        // TombstoneScannedHistogram reads like a latency and is not one: it is a plain Histogram of
+        // tombstones per read, with no DurationUnit attribute on the MBean. Declaring it `us` would
+        // give it a time suffix and put it on a latency axis.
+        val rule =
+            rules.rules.single { r -> r.mapping.values.any { it.metric == "cassandra.table.tombstones.scanned.p99" } }
+
+        assertThat(rule.unit).isEqualTo("{tombstone}")
+        assertThat(rule.mapping.keys).contains("999thPercentile", "Max")
+    }
+
+    @Test
+    fun `the per-datacenter latency bean cannot sweep up the per-verb ones`() {
+        // `name=*-Latency` is deliberately narrow. The ~79 per-verb beans are named
+        // <VERB>-WaitLatency, which does not end in "-Latency", so they stay out. If this pattern
+        // is ever widened, each node gains roughly 320 series in one step.
+        val rule =
+            rules.rules.single { r -> r.mapping.values.any { it.metric == "cassandra.messaging.datacenter.latency.p99" } }
+
+        assertThat(rule.bean).endsWith("name=*-Latency")
+        assertThat(rule.metricAttribute).containsEntry("datacenter", "param(name)")
+        assertThat(rule.unit).isEqualTo("us")
     }
 
     @Test

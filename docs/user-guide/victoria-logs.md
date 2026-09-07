@@ -45,7 +45,7 @@ Victoria Logs runs on the control node as a Kubernetes deployment:
 
 - **Port**: 9428 (HTTP API)
 - **Storage**: Local ephemeral storage
-- **Retention**: 7 days (configurable)
+- **Retention**: unbounded (`-retentionPeriod=100y`, plus `-futureRetention=100y`)
 - **Location**: Control node only (`node-role.kubernetes.io/control-plane`)
 
 ### OTel Collector
@@ -313,7 +313,7 @@ Using snapshots ensures data consistency, since VictoriaLogs may be actively wri
 ### What Gets Backed Up
 
 - All log partitions (organized by date)
-- Complete log history up to retention period (7 days default)
+- The complete log history, because retention is unbounded
 
 ### Notes
 

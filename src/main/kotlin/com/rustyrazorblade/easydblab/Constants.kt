@@ -243,6 +243,19 @@ object Constants {
         const val KIT_LABEL = "easydblab.com/kit"
     }
 
+    // Observability data retention.
+    //
+    // Observability data is never dropped on a timer. A cluster that outlives a bounded window
+    // drops its own oldest data before anything backs it up, and VictoriaMetrics enforces retention
+    // as a sliding window against the current clock rather than against ingest time, so a restored
+    // backup older than the window disappears silently.
+    //
+    // ALWAYS write the unit. A bare number means MONTHS in both VictoriaMetrics and VictoriaLogs,
+    // so "100" is a little over eight years, not a century.
+    object Observability {
+        const val UNBOUNDED_RETENTION_PERIOD = "100y"
+    }
+
     // OpenSearch configuration
     object OpenSearch {
         const val DEFAULT_VERSION = "2.11"

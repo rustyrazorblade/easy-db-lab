@@ -12,6 +12,7 @@ import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredResources
 import com.rustyrazorblade.easydblab.providers.aws.TeardownResult
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
+import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
@@ -21,12 +22,14 @@ import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 
 class DownCommandTest : BaseKoinTest() {
     private lateinit var mockTeardownService: AwsInfrastructureService
     private lateinit var mockClusterStateManager: ClusterStateManager
+    private lateinit var mockS3BucketService: AwsS3BucketService
     private lateinit var outputHandler: BufferedOutputHandler
 
     private val testControlHost =
@@ -43,6 +46,7 @@ class DownCommandTest : BaseKoinTest() {
             name = "test-cluster",
             versions = mutableMapOf(),
             s3Bucket = "test-bucket",
+            dataBucket = "easy-db-lab-data-test-id",
             initConfig = InitConfig(region = "us-west-2"),
             hosts =
                 mapOf(
@@ -73,6 +77,7 @@ class DownCommandTest : BaseKoinTest() {
             module {
                 single<AwsInfrastructureService> { mockTeardownService }
                 single<ClusterStateManager> { mockClusterStateManager }
+                single<AwsS3BucketService> { mockS3BucketService }
             },
         )
 
@@ -80,6 +85,7 @@ class DownCommandTest : BaseKoinTest() {
     fun setupMocks() {
         mockTeardownService = mock()
         mockClusterStateManager = mock()
+        mockS3BucketService = mock()
         outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
 
         whenever(mockClusterStateManager.exists()).thenReturn(true)
@@ -173,6 +179,40 @@ class DownCommandTest : BaseKoinTest() {
 
             val output = outputHandler.messages.joinToString("\n")
             assertThat(output).contains("No resources found")
+        }
+    }
+
+    @Nested
+    inner class ObservabilityDataRetention {
+        private fun tearDownSuccessfully() {
+            whenever(mockTeardownService.teardownVpc(eq("vpc-test123"), any()))
+                .thenReturn(TeardownResult.success(testDiscoveredResources))
+
+            val command = Down()
+            command.autoApprove = true
+            command.execute()
+        }
+
+        @Test
+        fun `teardown applies no lifecycle rule to the account bucket's cluster prefix`() {
+            // S3 measures Expiration.Days from object creation, so a rule applied at teardown
+            // expires every metrics and logs backup already older than the window at the next
+            // evaluation — including ones taken minutes earlier.
+            tearDownSuccessfully()
+
+            verify(mockS3BucketService, never())
+                .setLifecycleExpirationRule(any(), any(), any())
+        }
+
+        @Test
+        fun `teardown still expires the ephemeral per-cluster data bucket`() {
+            tearDownSuccessfully()
+
+            verify(mockS3BucketService).teardownDataBucket(
+                eq("easy-db-lab-data-test-id"),
+                any(),
+                eq(1),
+            )
         }
     }
 

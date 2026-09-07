@@ -72,9 +72,18 @@ class Down : PicoBaseCommand() {
     )
     var autoApprove = false
 
+    /**
+     * Days before the ephemeral per-cluster **data** bucket expires wholesale.
+     *
+     * It covers that bucket only. Metrics, logs, traces and profiles live in the account bucket
+     * under `clusters/<name>-<clusterId>`, which teardown never expires.
+     */
     @CommandLine.Option(
         names = ["--retention-days"],
-        description = ["Days to retain S3 data after teardown (default: 1)"],
+        description = [
+            "Days to retain the per-cluster data bucket after teardown (default: 1). " +
+                "Observability data in the account bucket is never expired.",
+        ],
         defaultValue = "1",
     )
     var retentionDays: Int = 1
@@ -356,8 +365,10 @@ class Down : PicoBaseCommand() {
                 // Delete Tailscale auth key if it exists
                 deleteTailscaleAuthKey(clusterState)
 
-                // Set lifecycle expiration rule on cluster prefix in account bucket
-                setClusterLifecycleRule(clusterState)
+                // No lifecycle rule is applied to the account bucket's cluster prefix. It holds
+                // every metrics and logs backup, and S3 measures Expiration.Days from object
+                // creation, so a rule set here expires anything already older than the window at
+                // the next evaluation.
 
                 // Disable metrics and set lifecycle expiration on the data bucket
                 teardownDataBucketIfNeeded(clusterState)
@@ -400,27 +411,6 @@ class Down : PicoBaseCommand() {
             eventBus.emit(Event.Tailscale.AuthKeyDeleted(keyId))
         } catch (e: Exception) {
             log.warn(e) { "Failed to delete Tailscale auth key: $keyId" }
-        }
-    }
-
-    /**
-     * Sets an S3 lifecycle expiration rule on the cluster's prefix.
-     * This schedules all objects under the cluster prefix for deletion after retentionDays.
-     */
-    @Suppress("TooGenericExceptionCaught")
-    private fun setClusterLifecycleRule(clusterState: ClusterState) {
-        val bucketName = clusterState.s3Bucket
-        if (bucketName.isNullOrBlank()) {
-            log.debug { "No S3 bucket configured, skipping lifecycle rule" }
-            return
-        }
-
-        try {
-            val clusterPrefix = clusterState.clusterPrefix() + "/"
-            s3BucketService.setLifecycleExpirationRule(bucketName, clusterPrefix, retentionDays)
-            eventBus.emit(Event.S3.LifecycleRuleSet(clusterPrefix, retentionDays))
-        } catch (e: Exception) {
-            log.warn(e) { "Failed to set S3 lifecycle rule" }
         }
     }
 

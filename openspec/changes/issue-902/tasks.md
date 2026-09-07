@@ -2,16 +2,16 @@
 
 ## 1. Stop the automatic deletion of observability data
 
-- [ ] 1.1 Remove `Down.setClusterLifecycleRule()` (`commands/Down.kt:359`, `:408-420`) and its call
+- [x] 1.1 Remove `Down.setClusterLifecycleRule()` (`commands/Down.kt:359`, `:408-420`) and its call
       site, so no S3 lifecycle expiration is applied to `clusters/<name>-<clusterId>`. Keep
       `teardownDataBucketIfNeeded` and its whole-bucket expiry on the per-cluster **data** bucket.
-- [ ] 1.2 Decide what `--retention-days` (`Down.kt:76-80`) still means and document it: it applies to
+- [x] 1.2 Decide what `--retention-days` (`Down.kt:76-80`) still means and document it: it applies to
       the data bucket's whole-bucket expiry only. Remove any event or message implying it covers the
       cluster prefix (`Event.S3.LifecycleRuleSet`).
-- [ ] 1.3 Change `VictoriaManifestBuilder.RETENTION_PERIOD` (`:28`) from `"7d"` to the unbounded
+- [x] 1.3 Change `VictoriaManifestBuilder.RETENTION_PERIOD` (`:28`) from `"7d"` to the unbounded
       value, applied at `:87` and `:131`. Add `-futureRetention=100y` to VictoriaLogs. **Always write
       the unit** — a bare number means months in both products.
-- [ ] 1.4 Tests: assert `down` applies no lifecycle rule to the account bucket's cluster prefix, and
+- [x] 1.4 Tests: assert `down` applies no lifecycle rule to the account bucket's cluster prefix, and
       that the deployed VictoriaMetrics and VictoriaLogs args carry the unbounded values.
 
 ## 2. Move Pyroscope's store to the account bucket

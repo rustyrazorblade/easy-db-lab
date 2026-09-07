@@ -2242,15 +2242,6 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("S3.LifecycleRuleSet")
-        data class LifecycleRuleSet(
-            val prefix: String,
-            val retentionDays: Int,
-        ) : S3 {
-            override fun toDisplayString(): String = "S3 lifecycle rule set: data under $prefix will expire in $retentionDays day(s)"
-        }
-
-        @Serializable
         @SerialName("S3.RequestMetricsDisabled")
         data class RequestMetricsDisabled(
             val clusterName: String,

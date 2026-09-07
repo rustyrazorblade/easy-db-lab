@@ -9,26 +9,40 @@ import java.nio.file.Files
 import java.nio.file.Paths
 
 /**
- * Guards the custom JMX Metric Insight rules the OTel Java agent reads on every Cassandra node.
+ * Guards the JMX Metric Insight rules the OTel Java agent reads on every Cassandra node.
  *
  * Nothing else can catch a mistake in this file before a cluster is provisioned. The agent reads it
  * inside the Cassandra JVM at startup, so a malformed document or a renamed key costs a whole bake
- * and provision cycle to discover, and shows up only as missing panels.
+ * and provision cycle to discover, and shows up only as an empty panel.
+ *
+ * The file is self-contained — `otel.jmx.target.system` is not set — so it also carries the
+ * families that used to come from the agent's built-in target. Owning those names is what protects
+ * the dashboards from an agent upgrade, and it is why they are asserted here rather than trusted.
  */
 class CassandraJmxRulesTest {
     @Serializable
     private data class JmxMapping(
         val metric: String,
-        val desc: String,
+        val desc: String = "",
+        val type: String = "",
+        val unit: String = "",
     )
 
+    /**
+     * The rule schema as JMX Metric Insight v2.31.1 defines it. Every key is optional there, so
+     * every key is optional here; kaml is strict, and an unknown key fails the parse.
+     */
     @Serializable
     private data class JmxRule(
-        val bean: String,
-        val type: String,
-        val unit: String,
-        val metricAttribute: Map<String, String>,
-        val mapping: Map<String, JmxMapping>,
+        val bean: String = "",
+        val beans: List<String> = emptyList(),
+        val prefix: String = "",
+        val handler: String = "",
+        val type: String = "",
+        val sourceUnit: String = "",
+        val unit: String = "",
+        val metricAttribute: Map<String, String> = emptyMap(),
+        val mapping: Map<String, JmxMapping> = emptyMap(),
     )
 
     @Serializable
@@ -37,15 +51,30 @@ class CassandraJmxRulesTest {
     )
 
     private val rules: JmxRules by lazy {
+        val path = "$RESOURCE_DIR/${Constants.Cassandra.JMX_RULES_FILE}"
         val yaml =
-            checkNotNull(javaClass.getResourceAsStream(RESOURCE_PATH)) {
-                "$RESOURCE_PATH is not on the classpath"
-            }.use { it.readBytes().decodeToString() }
+            checkNotNull(javaClass.getResourceAsStream(path)) { "$path is not on the classpath" }
+                .use { it.readBytes().decodeToString() }
 
         Yaml.default.decodeFromString(JmxRules.serializer(), yaml)
     }
 
-    private fun metricNames(): List<String> = rules.rules.flatMap { rule -> rule.mapping.values.map { it.metric } }
+    private val metricNames: List<String> by lazy { rules.rules.flatMap { rule -> rule.mapping.values.map { it.metric } } }
+
+    private val latencyRule: JmxRule by lazy {
+        rules.rules.single { rule -> rule.mapping.values.any { it.metric == "cassandra.client.request.latency.p99" } }
+    }
+
+    private val cassandraInSh: String by lazy { Files.readString(Paths.get("packer/cassandra/cassandra.in.sh")) }
+
+    /**
+     * Executable lines only. The file explains at length why it uses port 4318 and why it does not
+     * select the built-in target, and those comments name the very strings the guards below forbid.
+     * There are no trailing comments on code lines, so dropping whole-line comments is exact.
+     */
+    private val cassandraInShCode: String by lazy {
+        cassandraInSh.lines().filterNot { it.trimStart().startsWith("#") }.joinToString("\n")
+    }
 
     @Test
     fun `the rule file is valid YAML in the shape JMX Metric Insight reads`() {
@@ -53,16 +82,100 @@ class CassandraJmxRulesTest {
         // is the easy mistake) fails here rather than being ignored by the agent on a node.
         assertThat(rules.rules).isNotEmpty()
         assertThat(rules.rules).allSatisfy { rule ->
-            assertThat(rule.bean).startsWith("org.apache.cassandra.metrics:")
-            assertThat(rule.mapping).isNotEmpty()
+            assertThat(rule.bean + rule.beans.joinToString()).contains("org.apache.cassandra")
+            // A rule either maps attributes or delegates to a code-based handler.
+            assertThat(rule.mapping.isNotEmpty() || rule.handler.isNotEmpty()).isTrue()
         }
     }
 
     @Test
-    fun `the rules cover every family the built-in experimental-cassandra target omits`() {
-        // The built-in target supplies client-request p50, p99 and max and nothing else. Each name
-        // below is a family a dashboard needs and that target does not emit.
-        assertThat(metricNames()).contains(
+    fun `client request latency is reported in raw microseconds`() {
+        // No sourceUnit means no conversion: the MBean value as Cassandra records it, the same
+        // unit `nodetool proxyhistograms` prints, so the dashboard and the oracle are directly
+        // comparable. The Prometheus suffix follows the unit, so changing either half of this
+        // renames every latency series and empties the panels reading it. What an operator sees is
+        // a Grafana display unit, set by a dashboard variable, never here.
+        assertThat(latencyRule.unit).isEqualTo("us")
+        assertThat(latencyRule.sourceUnit).isEmpty()
+    }
+
+    @Test
+    fun `all four latency percentiles live in one rule, on the same three beans`() {
+        // p999 used to be a rule of its own, and drifted from its siblings in three ways at once:
+        // a different attribute name, an un-normalized value, and a wider bean pattern. Sharing a
+        // rule is what makes a single panel able to plot p50, p99, p999 and max together, and is
+        // what stops the three from ever separating again.
+        val rule = latencyRule
+
+        assertThat(rule.mapping.keys).containsExactlyInAnyOrder(
+            "50thPercentile",
+            "99thPercentile",
+            "999thPercentile",
+            "Max",
+        )
+        assertThat(rule.metricAttribute).containsEntry("cassandra.operation", "lowercase(param(scope))")
+
+        // Enumerated, never scope=*: a wildcard also matches CASRead, CASWrite and ViewWrite, which
+        // are not part of the read/write/rangeslice contract.
+        assertThat(rule.beans).containsExactlyInAnyOrder(
+            "org.apache.cassandra.metrics:type=ClientRequest,scope=RangeSlice,name=Latency",
+            "org.apache.cassandra.metrics:type=ClientRequest,scope=Read,name=Latency",
+            "org.apache.cassandra.metrics:type=ClientRequest,scope=Write,name=Latency",
+        )
+        assertThat(rule.bean).isEmpty()
+    }
+
+    @Test
+    fun `no rule selects client requests with a wildcard scope`() {
+        val clientRequestBeans =
+            rules.rules.flatMap { it.beans + it.bean }.filter { it.contains("type=ClientRequest") }
+
+        assertThat(clientRequestBeans).isNotEmpty()
+        assertThat(clientRequestBeans).allSatisfy { assertThat(it).doesNotContain("scope=*") }
+    }
+
+    @Test
+    fun `no rule emits a raw MBean scope where a normalized one is intended`() {
+        // The p999 defect in one line: it carried param(scope) and produced operation="CASRead",
+        // while its siblings produced cassandra_operation="rangeslice". Every attribute that names
+        // a Cassandra operation or status must be normalized. The three families below are the
+        // deliberate exceptions - keyspace, table and thread-pool names are case-sensitive
+        // identifiers, and lowercasing them would merge distinct series.
+        val casePreserving = listOf("type=Table", "type=ThreadPools", "type=DroppedMessage")
+
+        val offenders =
+            rules.rules
+                .filterNot { rule -> casePreserving.any { rule.bean.contains(it) } }
+                .filter { rule -> rule.metricAttribute.values.any { it == "param(scope)" } }
+
+        assertThat(offenders).isEmpty()
+    }
+
+    @Test
+    fun `the families the built-in target used to supply are all ported`() {
+        // Dropping otel.jmx.target.system means these are no longer supplied by the agent. If a
+        // port were missed, the metric would simply stop existing on the next bake.
+        assertThat(metricNames).contains(
+            "cassandra.compaction.tasks.completed",
+            "cassandra.compaction.tasks.pending",
+            "cassandra.storage.load",
+            "cassandra.storage.hints.count",
+            "cassandra.storage.hints.in_progress",
+            "cassandra.client.request.latency.p50",
+            "cassandra.client.request.latency.p99",
+            "cassandra.client.request.latency.max",
+            "cassandra.client.request.count",
+            "cassandra.client.request.error",
+        )
+        // The compaction byte progress rule is code-based and has no mapping to check by name.
+        assertThat(rules.rules).anySatisfy { rule ->
+            assertThat(rule.handler).isEqualTo("cassandra-compaction-progress")
+        }
+    }
+
+    @Test
+    fun `the rules the built-in target never covered are present too`() {
+        assertThat(metricNames).contains(
             "cassandra.client.request.latency.p999",
             "cassandra.table.disk.space.live",
             "cassandra.table.disk.space.total",
@@ -77,10 +190,85 @@ class CassandraJmxRulesTest {
     }
 
     @Test
-    fun `no metric name is defined twice`() {
-        // Two rules emitting one name give the same series conflicting attribute sets, which the
-        // collector accepts and the dashboard cannot untangle.
-        assertThat(metricNames()).doesNotHaveDuplicates()
+    fun `per-table local latency is mapped for both reads and writes`() {
+        // Coordinator latency alone cannot show network and coordination overhead: that is
+        // coordinator minus local, and local is what these two families supply. They carry the same
+        // four percentiles and the same unit as the ClientRequest family so a panel can subtract
+        // one from the other without relabelling anything.
+        listOf("read", "write").forEach { operation ->
+            val rule =
+                rules.rules.single { r -> r.mapping.values.any { it.metric == "cassandra.table.$operation.latency.p99" } }
+
+            assertThat(rule.mapping.keys).containsExactlyInAnyOrder(
+                "50thPercentile",
+                "99thPercentile",
+                "999thPercentile",
+                "Max",
+            )
+            assertThat(rule.unit).isEqualTo(latencyRule.unit)
+            assertThat(rule.sourceUnit).isEqualTo(latencyRule.sourceUnit)
+            assertThat(rule.metricAttribute).containsEntry("keyspace", "param(keyspace)")
+            assertThat(rule.metricAttribute).containsEntry("table", "param(scope)")
+        }
+    }
+
+    @Test
+    fun `cassandra_in_sh labels every metric with the build the node is running`() {
+        // A mixed-version A/B is the normal case here, and which nodes hold which build changes
+        // between runs. The label is what lets a dashboard group by variant instead of by host
+        // name. It rides on otel.resource.attributes, so it lands on every metric the JVM exports,
+        // which is what makes `sum by (cassandra_build)` work directly.
+        assertThat(cassandraInShCode).contains("cassandra_build=")
+        assertThat(cassandraInShCode).contains("-Dotel.resource.attributes=")
+
+        val resourceAttributes = cassandraInShCode.substringAfter("-Dotel.resource.attributes=").substringBefore("\"")
+        assertThat(resourceAttributes).contains("cassandra_build=")
+
+        // Read from the symlink `cassandra use` moves, so a version switch on a subset of hosts
+        // needs no re-push from the CLI: each node reports its own build on its next restart.
+        assertThat(cassandraInShCode).contains("readlink -f /usr/local/cassandra/current")
+    }
+
+    @Test
+    fun `cassandra_in_sh turns on both halves of the experimental runtime telemetry`() {
+        // The JFR half is what supplies an allocation metric. Its plausible-looking alternative,
+        // otel.instrumentation.runtime-telemetry-java17.enable-all, is a legacy name at agent
+        // v2.31.1 and does nothing — a wrong flag here fails silently, emitting no error and no
+        // metric, so the guard is that the two working names are present and stay present.
+        assertThat(cassandraInShCode)
+            .contains("-Dotel.instrumentation.runtime-telemetry.emit-experimental-jfr-metrics=true")
+        assertThat(cassandraInShCode)
+            .contains("-Dotel.instrumentation.runtime-telemetry.emit-experimental-telemetry=true")
+
+        // Both ride on JVM_EXTRA_OPTS with every other agent flag, never on JVM_OPTS.
+        assertThat(cassandraInShCode).doesNotContain("runtime-telemetry-java17")
+    }
+
+    @Test
+    fun `only the error family repeats a metric name`() {
+        // Two rules emitting one name give the same series conflicting attribute sets. The error
+        // family is the deliberate exception: three rules feed it, separated by cassandra.status.
+        val repeated =
+            metricNames
+                .groupingBy { it }
+                .eachCount()
+                .filterValues { it > 1 }
+
+        assertThat(repeated).containsOnlyKeys("cassandra.client.request.error")
+    }
+
+    @Test
+    fun `every error rule carries a distinct status`() {
+        val statuses =
+            rules.rules
+                .filter { rule -> rule.mapping.values.any { it.metric == "cassandra.client.request.error" } }
+                .map { it.metricAttribute["cassandra.status"] }
+
+        assertThat(statuses).containsExactlyInAnyOrder(
+            "const(unavailable)",
+            "const(timeout)",
+            "const(failure)",
+        )
     }
 
     @Test
@@ -89,6 +277,8 @@ class CassandraJmxRulesTest {
 
         assertThat(tableRules).isNotEmpty()
         assertThat(tableRules).allSatisfy { rule ->
+            // Not lowercased, unlike cassandra.operation: Cassandra identifiers are case-sensitive
+            // when quoted, so folding case would merge two distinct tables into one series.
             assertThat(rule.metricAttribute).containsEntry("keyspace", "param(keyspace)")
             assertThat(rule.metricAttribute).containsEntry("table", "param(scope)")
         }
@@ -99,15 +289,28 @@ class CassandraJmxRulesTest {
         // The node-side path is written in two places that never see each other: this Kotlin
         // constant, which decides where setup-instances puts the file, and the shell literal in
         // cassandra.in.sh, which decides where the agent looks for it. Drift between them is
-        // silent - Cassandra starts, and the custom families are simply absent.
-        val script = Files.readString(Paths.get("packer/cassandra/cassandra.in.sh"))
+        // silent - Cassandra starts, and no Cassandra metric is ever produced.
+        assertThat(cassandraInSh).contains(Constants.Cassandra.JMX_RULES_PATH)
+        assertThat(cassandraInSh).contains("-Dotel.jmx.config=")
+    }
 
-        assertThat(script).contains(Constants.Cassandra.JMX_RULES_PATH)
-        assertThat(script).contains("-Dotel.jmx.config=")
+    @Test
+    fun `cassandra_in_sh exports OTLP to the collector's HTTP port, not its gRPC port`() {
+        // The agent's default protocol is http/protobuf. Sent at 4317, the collector's gRPC port,
+        // every export fails with "HttpExporter - Failed to export" and no metric ever lands - a
+        // failure visible only at runtime, on a provisioned cluster.
+        assertThat(cassandraInShCode).contains("-Dotel.exporter.otlp.endpoint=http://localhost:4318")
+        assertThat(cassandraInShCode).doesNotContain("4317")
+    }
+
+    @Test
+    fun `cassandra_in_sh does not select the built-in target`() {
+        // The built-in experimental-cassandra target hardcodes sourceUnit us / unit s, which is
+        // what forced seconds. Selecting it again would also duplicate every ported rule above.
+        assertThat(cassandraInShCode).doesNotContain("otel.jmx.target.system")
     }
 
     private companion object {
-        const val RESOURCE_PATH =
-            "/com/rustyrazorblade/easydblab/configuration/cassandra/${Constants.Cassandra.JMX_RULES_FILE}"
+        const val RESOURCE_DIR = "/com/rustyrazorblade/easydblab/configuration/cassandra"
     }
 }

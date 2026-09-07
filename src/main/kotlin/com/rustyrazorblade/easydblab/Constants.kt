@@ -454,11 +454,14 @@ object Constants {
         const val NODE_CONFIG_DIR = "/etc/easy-db-lab"
 
         /**
-         * Custom JMX Metric Insight rules the OTel Java agent reads on each Cassandra node.
+         * JMX Metric Insight rules the OTel Java agent reads on each Cassandra node.
          *
          * The file is a classpath resource, extracted into the cluster workspace by `init` and
          * uploaded by `setup-instances`. `cassandra.in.sh` names the same path in
          * `-Dotel.jmx.config`, so the two must not drift.
+         *
+         * It is the agent's only rule source: no built-in target is selected, so every metric
+         * name the dashboards query is pinned in this repo.
          */
         const val JMX_RULES_FILE = "cassandra-jmx-rules.yaml"
 

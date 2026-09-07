@@ -1,5 +1,12 @@
 apiVersion: 1
 providers:
+  # Root dashboards. Every one is its own ConfigMap, mounted in its own subdirectory under this
+  # path, and this provider sweeps the tree and files them all under the same (empty) folder.
+  #
+  # foldersFromFilesStructure is deliberately NOT set. It derives a folder name from each
+  # subdirectory, and since every dashboard already sits in a subdirectory named after itself, it
+  # would scatter these into ten folders called "system", "s3", "emr" and so on. A named folder
+  # gets its own provider below instead.
   - name: 'default'
     orgId: 1
     folder: ''
@@ -10,3 +17,16 @@ providers:
     allowUiUpdates: true
     options:
       path: /var/lib/grafana/dashboards
+  # One provider per Grafana folder, naming the folder outright. A GrafanaDashboard entry with
+  # folder = "Cassandra" mounts under this provider's path, so adding a dashboard to the folder is
+  # an enum entry and nothing else. Adding a NEW folder needs a provider here too.
+  - name: 'cassandra'
+    orgId: 1
+    folder: 'Cassandra'
+    folderUid: 'cassandra'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards-cassandra

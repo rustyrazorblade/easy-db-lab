@@ -32,15 +32,40 @@ edl_add_jvm_extra_opt() {
 }
 
 # OpenTelemetry Java agent. Its JMX Metric Insight module reads Cassandra's own MBeans in-process
-# and reports them over OTLP to the node's collector on 4317.
+# and reports them over OTLP to the node's collector.
 #
 # It sits above the release and JDK derivation on purpose. The agent needs neither of them, so a
 # jar name this file cannot parse costs the node its AxonOps agent but never its metrics.
 EDL_OTEL_AGENT_JAR="${EDL_OTEL_AGENT_JAR:-/usr/local/otel/opentelemetry-javaagent.jar}"
 
-# Custom JMX rules, on top of the agent's built-in experimental-cassandra target. Written by the
-# CLI (`setup-instances`), not baked into the AMI, so a rule change needs no rebake.
+# The complete JMX rule set, and the agent's only rule source: `otel.jmx.target.system` is
+# deliberately not set. The built-in experimental-cassandra target is experimental upstream, so its
+# metric names can move between agent releases and take every dashboard panel with them. Owning the
+# rules pins those names to this repo.
+#
+# Written by the CLI (`setup-instances`), not baked into the AMI, so a rule change needs no rebake.
 EDL_OTEL_JMX_CONFIG="${EDL_OTEL_JMX_CONFIG:-/etc/easy-db-lab/cassandra-jmx-rules.yaml}"
+
+# Which build this node is actually running, as a metric label.
+#
+# A mixed-version A/B is the normal case on this rig: some nodes on a stock release, others on a
+# locally built branch, and not always the same nodes. Without this every comparison dashboard has
+# to hardcode host names, which is exactly what breaks when the split changes.
+#
+# The value is the target of /usr/local/cassandra/current - the directory name `cassandra use`
+# selects, e.g. "5.0" or "5.0.9-rrb-j21-20260906-8ba1639-jdk21". It is read here, at JVM start,
+# rather than pushed from the CLI, so `cassandra use` on a subset of hosts needs no re-push: the
+# next restart of that node picks up its own new value and no other node is touched.
+#
+# ReleaseVersion off the StorageService MBean is NOT used for this. It reports 5.0.9 against
+# 5.0.9-SNAPSHOT here, which separates stock from branch but collapses every branch build into one
+# value - two different branches under test would be indistinguishable.
+EDL_CASSANDRA_BUILD=$(basename "$(readlink -f /usr/local/cassandra/current 2>/dev/null)" 2>/dev/null)
+if [ -z "$EDL_CASSANDRA_BUILD" ]; then
+    EDL_CASSANDRA_BUILD="unknown"
+    echo "WARNING: could not read the target of /usr/local/cassandra/current;" >&2
+    echo "WARNING: this node reports cassandra_build=unknown and will not group with its variant." >&2
+fi
 
 if [ -f "$EDL_OTEL_AGENT_JAR" ]; then
     # service.instance.id is pinned to the hostname deliberately. The agent's default is a fresh
@@ -48,21 +73,44 @@ if [ -f "$EDL_OTEL_AGENT_JAR" ]; then
     #
     # otel.jmx.discovery.delay defaults to 60000ms. That would hold the first metrics back to
     # roughly 61 seconds and delay picking up a newly created table by up to a minute.
+    # Port 4318, not 4317. The agent's default OTLP protocol is http/protobuf, and the collector
+    # serves that on 4318; 4317 is its gRPC port, where every export failed with "HttpExporter -
+    # Failed to export". edl-profiling-reconcile posts to 4318 for the same reason.
     edl_add_jvm_extra_opt \
         "-javaagent:${EDL_OTEL_AGENT_JAR}" \
         "-Dotel.service.name=cassandra" \
-        "-Dotel.resource.attributes=service.instance.id=$(hostname),node_role=db" \
-        "-Dotel.exporter.otlp.endpoint=http://localhost:4317" \
+        "-Dotel.resource.attributes=service.instance.id=$(hostname),node_role=db,cassandra_build=${EDL_CASSANDRA_BUILD}" \
+        "-Dotel.exporter.otlp.endpoint=http://localhost:4318" \
         "-Dotel.metric.export.interval=5s" \
-        "-Dotel.jmx.target.system=experimental-cassandra" \
         "-Dotel.jmx.discovery.delay=5000"
+
+    # JVM runtime telemetry beyond the default set. Both flags were established by running the
+    # v2.31.1 agent against a throwaway JVM and reading what it emitted; none of the following is
+    # guessable from the property names, so it is written down here.
+    #
+    # - emit-experimental-jfr-metrics is what produces an allocation metric. The obvious-looking
+    #   `otel.instrumentation.runtime-telemetry-java17.enable-all` is a LEGACY name at 2.31.1 and
+    #   does nothing at all: the java8 and java17 modules are merged into one
+    #   io.opentelemetry.runtime-telemetry. Setting it looks right and ships inert.
+    # - The JFR flag needs JDK 17+. Below that it is silently inert rather than an error, so a node
+    #   on an older JDK loses these metrics without saying so. Every db node runs 17 or 21.
+    # - jvm.memory.allocation is a HISTOGRAM, not a counter, with attribute arena=TLAB|Main. An
+    #   allocation rate comes from its _sum, never a _total that does not exist.
+    # - JFR recording costs the measured JVM a little continuously. This is a benchmarking rig, so
+    #   that is a real if small cost, taken deliberately.
+    #
+    # emit-experimental-telemetry is the non-JFR half: file descriptors, buffer pools, system CPU
+    # load. It works on any JDK and carries no allocation metric of its own. The two combine.
+    edl_add_jvm_extra_opt \
+        "-Dotel.instrumentation.runtime-telemetry.emit-experimental-jfr-metrics=true" \
+        "-Dotel.instrumentation.runtime-telemetry.emit-experimental-telemetry=true"
 
     if [ -f "$EDL_OTEL_JMX_CONFIG" ]; then
         edl_add_jvm_extra_opt "-Dotel.jmx.config=${EDL_OTEL_JMX_CONFIG}"
     else
-        echo "WARNING: $EDL_OTEL_JMX_CONFIG is missing; this node reports only the built-in" >&2
-        echo "WARNING: experimental-cassandra metrics - no per-table, thread-pool, dropped-message" >&2
-        echo "WARNING: or p999 series. Run 'easy-db-lab setup-instances' to write it." >&2
+        echo "ERROR: $EDL_OTEL_JMX_CONFIG is missing. It holds every JMX rule, so this node will" >&2
+        echo "ERROR: report NO Cassandra metrics - only JVM and host telemetry." >&2
+        echo "ERROR: Run 'easy-db-lab setup-instances' to write it, then restart Cassandra." >&2
     fi
 else
     echo "ERROR: $EDL_OTEL_AGENT_JAR is missing; this node will report NO Cassandra metrics." >&2

@@ -98,6 +98,16 @@ class GrafanaManifestBuilder(
     }
 
     /**
+     * Whether this dashboard should get a ConfigMap.
+     *
+     * An optional dashboard whose JSON is not on the classpath is skipped: its volume mount already
+     * declares `optional: true`, so Grafana starts without it. That is what lets an enum entry be
+     * added before its JSON exists. A required dashboard is never skipped — a missing
+     * system-overview.json is a build error, not an empty Grafana.
+     */
+    private fun GrafanaDashboard.hasJson(): Boolean = !optional || GrafanaManifestBuilder::class.java.getResource("/$jsonFileName") != null
+
+    /**
      * Builds a ConfigMap for a single dashboard.
      *
      * Loads the dashboard JSON directly from the classpath without template substitution.
@@ -193,7 +203,7 @@ class GrafanaManifestBuilder(
      */
     fun buildAllResources(pyroscopeUrl: String = ""): List<HasMetadata> =
         listOf(buildDashboardProvisioningConfigMap()) +
-            GrafanaDashboard.entries.map { dashboard ->
+            GrafanaDashboard.entries.filter { it.hasJson() }.map { dashboard ->
                 val substitutions =
                     if (dashboard == GrafanaDashboard.PROFILING && pyroscopeUrl.isNotEmpty()) {
                         mapOf("__PYROSCOPE_URL__" to pyroscopeUrl)

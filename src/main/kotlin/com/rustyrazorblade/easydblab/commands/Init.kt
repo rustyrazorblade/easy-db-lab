@@ -70,9 +70,8 @@ class Init : PicoBaseCommand() {
         /** Control node instance type. Kept in sync with [InitConfig] control defaults. */
         const val DEFAULT_CONTROL_INSTANCE_TYPE = "m5d.xlarge"
 
-        /** Absolute classpath path of the OTel agent's Cassandra JMX rules. */
-        private const val JMX_RULES_RESOURCE =
-            "/com/rustyrazorblade/easydblab/configuration/cassandra/${Constants.Cassandra.JMX_RULES_FILE}"
+        /** Classpath directory holding the OTel agent's Cassandra JMX rule files. */
+        private const val CASSANDRA_RESOURCE_DIR = "/com/rustyrazorblade/easydblab/configuration/cassandra"
 
         @JsonIgnore val log = KotlinLogging.logger {}
     }
@@ -381,7 +380,10 @@ class Init : PicoBaseCommand() {
         extractResourceFile("setup_instance.sh", "setup_instance.sh")
         // The OTel agent's JMX rules live in the workspace so an operator can edit them and push
         // them again with `setup-instances`, without a Gradle rebuild.
-        extractResourceFile(JMX_RULES_RESOURCE, Constants.Cassandra.JMX_RULES_FILE)
+        extractResourceFile(
+            "$CASSANDRA_RESOURCE_DIR/${Constants.Cassandra.JMX_RULES_FILE}",
+            Constants.Cassandra.JMX_RULES_FILE,
+        )
     }
 
     private fun extractResourceFile(

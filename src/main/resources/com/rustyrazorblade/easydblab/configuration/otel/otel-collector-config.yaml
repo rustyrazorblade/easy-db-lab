@@ -14,13 +14,40 @@ receivers:
         endpoint: 0.0.0.0:6831
   hostmetrics:
     collection_interval: 10s
+    # The collector is a container, so without this the scrapers describe the container rather than
+    # the node. filesystem in particular saw nothing at all and reported no series, which is why
+    # every filesystem panel was empty. A receiver-level setting, not a per-scraper one; the host
+    # root is bind-mounted read-only at /hostfs by OtelManifestBuilder.
+    root_path: /hostfs
     scrapers:
       cpu:
       disk:
       load:
       filesystem:
+        # Virtual filesystems - overlay, tmpfs, devtmpfs, sysfs, proc, cgroup - are already absent:
+        # include_virtual_filesystems defaults to false, and the scraper passes that straight to
+        # gopsutil, which then lists only filesystems that are not `nodev` in /proc/filesystems.
+        #
+        # squashfs is the exception. It is device-backed, so it is not filtered by that default, and
+        # every snap on an Ubuntu host is a separate read-only squashfs mount at 100% full. Left in,
+        # they crowd out the real disks on any filesystem panel.
+        exclude_fs_types:
+          fs_types:
+            - squashfs
+          match_type: strict
+        # system.filesystem.utilization is an optional metric and is OFF by default - measured, not
+        # assumed. It is the ready-made 0-1 fraction the disk-usage panel wants; without it a panel
+        # has to derive the ratio from the used/free/reserved states itself.
+        metrics:
+          system.filesystem.utilization:
+            enabled: true
       memory:
       network:
+      paging:
+        # Same story: system.paging.utilization is optional and off by default.
+        metrics:
+          system.paging.utilization:
+            enabled: true
       processes:
   prometheus:
     config:
@@ -166,6 +193,49 @@ processors:
       - action: upsert
         key: cluster
         value: '${env:CLUSTER_NAME}'
+  # Strip the SDK's default resource from OTLP metrics.
+  #
+  # The OTel Java agent stamps every export with its own identity and the JVM's. None of it is
+  # queryable, and process.command_line is actively harmful: it carries the full argv, so it CHANGES
+  # on `cassandra use` and mints a whole new series set, breaking panel continuity across a version
+  # switch. The agent-side property otel.experimental.resource.disabled.keys does not work at
+  # v2.31.1, so the drop happens here.
+  #
+  # What survives is what a dashboard actually selects on: cluster, host.name, node_role, instance,
+  # job, service.name, service.instance.id, and the rule-supplied keyspace, table,
+  # cassandra.operation and cassandra.status.
+  resource/drop_sdk_metadata:
+    attributes:
+      - action: delete
+        key: process.command_line
+      - action: delete
+        key: process.executable.path
+      - action: delete
+        key: process.pid
+      - action: delete
+        key: process.runtime.description
+      - action: delete
+        key: process.runtime.name
+      - action: delete
+        key: process.runtime.version
+      - action: delete
+        key: os.description
+      - action: delete
+        key: os.type
+      - action: delete
+        key: os.version
+      - action: delete
+        key: host.arch
+      - action: delete
+        key: telemetry.distro.name
+      - action: delete
+        key: telemetry.distro.version
+      - action: delete
+        key: telemetry.sdk.language
+      - action: delete
+        key: telemetry.sdk.name
+      - action: delete
+        key: telemetry.sdk.version
   resourcedetection:
     detectors: [system]
     system:
@@ -267,10 +337,12 @@ service:
       receivers: [hostmetrics, prometheus]
       processors: [resource/cluster, resourcedetection, k8sattributes, batch]
       exporters: [prometheusremotewrite]
-    # Remote metrics via OTLP (e.g., Spark nodes) — stamp cluster label to match local metrics
+    # OTLP metrics — the Cassandra JVM agent, the stress sidecar, Spark nodes. resource/cluster
+    # stamps the cluster label to match local metrics; resource/drop_sdk_metadata removes the SDK's
+    # default resource, which would otherwise ride along as fifteen labels per series.
     metrics/otlp:
       receivers: [otlp]
-      processors: [resource/cluster, resourcedetection, batch]
+      processors: [resource/cluster, resourcedetection, resource/drop_sdk_metadata, batch]
       exporters: [prometheusremotewrite]
     logs/local:
       receivers: [filelog/system, filelog/tools, filelog/cassandra]

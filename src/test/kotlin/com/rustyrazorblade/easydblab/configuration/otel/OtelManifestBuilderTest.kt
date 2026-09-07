@@ -57,6 +57,93 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         assertThat(yaml).doesNotContain("localhost:9000")
     }
 
+    /**
+     * The OTel Java agent stamps its own identity and the JVM's onto every metric it exports.
+     * `process.command_line` is the harmful one: it carries the full argv, so it changes on
+     * `cassandra use` and mints a whole new series set, breaking panel continuity across a version
+     * switch. The agent-side property that would suppress it does not work at v2.31.1, so the drop
+     * has to happen in the pipeline that receives those metrics.
+     */
+    @Test
+    fun `buildConfigMap drops the SDK resource from the OTLP metrics pipeline`() {
+        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+
+        assertThat(yaml).contains("resource/drop_sdk_metadata:")
+        assertThat(yaml).contains("key: process.command_line")
+        assertThat(yaml).contains("key: telemetry.sdk.version")
+
+        val otlpPipeline = yaml.substringAfter("metrics/otlp:").substringBefore("exporters:")
+        assertThat(otlpPipeline).contains("resource/drop_sdk_metadata")
+    }
+
+    /**
+     * The collector is a container. Without the node's root filesystem mounted and `root_path`
+     * pointing at it, the hostmetrics scrapers describe the container, and the filesystem scraper
+     * finds nothing worth reporting at all — which is why every filesystem panel was empty while
+     * `filesystem:` sat in the scrapers list looking correct.
+     */
+    @Test
+    fun `hostmetrics reads the node through a read-only host root mount`() {
+        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+
+        // root_path belongs to the receiver, not to a scraper: indented two levels, beside
+        // collection_interval, not four levels under `scrapers:`.
+        assertThat(yaml).contains("\n    root_path: ${OtelManifestBuilder.HOST_ROOT_MOUNT_PATH}\n")
+
+        val container =
+            builder
+                .buildDaemonSet()
+                .spec.template.spec.containers
+                .first()
+        val mount = container.volumeMounts.first { it.name == OtelManifestBuilder.HOST_ROOT_VOLUME }
+
+        assertThat(mount.mountPath).isEqualTo(OtelManifestBuilder.HOST_ROOT_MOUNT_PATH)
+        assertThat(mount.readOnly).isTrue()
+
+        val volume =
+            builder
+                .buildDaemonSet()
+                .spec.template.spec.volumes
+                .first { it.name == OtelManifestBuilder.HOST_ROOT_VOLUME }
+
+        assertThat(volume.hostPath.path).isEqualTo("/")
+        assertThat(volume.hostPath.type).isEqualTo("Directory")
+    }
+
+    @Test
+    fun `hostmetrics scrapes paging alongside the scrapers it already had`() {
+        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+        val scrapers = yaml.substringAfter("scrapers:").substringBefore("prometheus:")
+
+        // paging is swap and page faults, and was simply never in the list.
+        assertThat(scrapers).contains("paging:")
+        // Regression guard: adding one scraper must not drop another.
+        assertThat(scrapers).contains("cpu:", "disk:", "load:", "filesystem:", "memory:", "network:", "processes:")
+    }
+
+    @Test
+    fun `the two utilization metrics are switched on explicitly`() {
+        // Measured against the collector image, not assumed: system.filesystem.utilization and
+        // system.paging.utilization are optional metrics and are NOT emitted by default. They are
+        // the ready-made 0-1 fractions the usage-percentage panels want.
+        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+
+        assertThat(yaml).contains("system.filesystem.utilization:")
+        assertThat(yaml).contains("system.paging.utilization:")
+    }
+
+    @Test
+    fun `the filesystem scraper drops squashfs, which the virtual-fs default does not`() {
+        // include_virtual_filesystems defaults to false, so overlay, tmpfs, devtmpfs, sysfs and
+        // proc are already gone. squashfs is device-backed, so it survives that default — and every
+        // snap on an Ubuntu host is one more read-only squashfs mount sitting at 100% full.
+        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+
+        assertThat(yaml).contains("exclude_fs_types:")
+        assertThat(yaml).contains("- squashfs")
+        assertThat(yaml).contains("match_type: strict")
+    }
+
     @Test
     fun `buildConfigMap with empty list contains all static scrape jobs`() {
         val configMap = builder.buildConfigMap(emptyList())

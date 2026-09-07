@@ -1,5 +1,28 @@
 ---
-# Custom JMX Metric Insight rules for the OpenTelemetry Java agent on Cassandra nodes.
+# JMX Metric Insight rules for the OpenTelemetry Java agent on Cassandra nodes.
+#
+# THIS FILE OWNS EVERY RULE. `otel.jmx.target.system` is deliberately NOT set; `-Dotel.jmx.config`
+# pointing here is the agent's only rule source.
+#
+# That is the point of it. The agent's built-in `experimental-cassandra` target is marked
+# experimental upstream, so its metric names may move between agent releases - and every dashboard
+# panel migrated onto them would go empty on an agent bump, silently. Owning the rules pins the
+# names to this repo, where a rename is a diff and a failing test rather than a surprise.
+#
+# The first half below is a faithful port of that built-in target as it stands at agent v2.31.1.
+# Metric names and attribute expressions are reproduced exactly - renaming any of them here is a
+# dashboard rewrite - with one deliberate exception, the latency unit below. The second half is
+# ours: the families the built-in never covered.
+#
+# LATENCY UNIT: microseconds. No `sourceUnit`, so no conversion happens and the raw MBean value is
+# reported. That is the same unit `nodetool proxyhistograms` and `nodetool tablehistograms` print,
+# which is what makes the dashboard and the oracle directly comparable: 86 against 86, not 86
+# against 0.000086. The Prometheus suffix follows the unit, so these series end `_microseconds`.
+#
+# What an operator reads is a Grafana concern, set by a dashboard variable that scales the query,
+# never by changing this file. Changing the unit here would silently rename every series and empty
+# every panel reading it. The built-in used `sourceUnit: us` / `unit: s`; that is the one thing
+# this file deliberately does not reproduce.
 #
 # How this file travels: it is a Kotlin classpath resource. `easy-db-lab init` extracts it into the
 # cluster workspace, and `easy-db-lab setup-instances` uploads it to /etc/easy-db-lab/ on every
@@ -7,136 +30,315 @@
 # workspace and re-running `setup-instances` is therefore enough to change a rule: no AMI rebake,
 # and no Gradle rebuild.
 #
-# These rules sit ON TOP of the agent's built-in `experimental-cassandra` target. That target covers
-# client-request p50, p99 and max and nothing else, so every family below is one it does not supply:
-# the 99.9th percentile, the per-table series, the thread pools, and the dropped messages.
-#
 # One rule per MBean family, deliberately flat. The key is `metricAttribute`, singular.
 
 rules:
-  # --- client requests ---------------------------------------------------------------------------
-  # p999 only. The built-in target already maps p50, p99 and max from this same MBean, and these are
-  # pre-aggregated values off Cassandra's own EstimatedHistogram - the reservoir `nodetool
-  # proxyhistograms` prints. They are per node and cannot be re-aggregated into a cluster p999.
-  - bean: org.apache.cassandra.metrics:type=ClientRequest,scope=*,name=Latency
-    type: gauge
-    unit: us
-    metricAttribute:
-      operation: param(scope)
+
+  # ==============================================================================================
+  # Ported from the agent's built-in experimental-cassandra target.
+  # ==============================================================================================
+
+  # --- compaction --------------------------------------------------------------------------------
+  - bean: org.apache.cassandra.metrics:type=Compaction,name=CompletedTasks
     mapping:
+      Value:
+        metric: cassandra.compaction.tasks.completed
+        type: counter
+        unit: "{task}"
+        desc: Number of completed compactions since server start.
+
+  - bean: org.apache.cassandra.metrics:type=Compaction,name=PendingTasks
+    mapping:
+      Value:
+        metric: cassandra.compaction.tasks.pending
+        type: gauge
+        unit: "{task}"
+        desc: Estimated number of compactions remaining to perform.
+
+  # Compaction byte progress. A code-based handler, because the Compactions attribute returns a
+  # list of maps that no declarative rule can express. The handler ships in the agent jar and is
+  # resolved by name, so it works from this file without the built-in target selected.
+  - bean: org.apache.cassandra.db:type=CompactionManager
+    handler: cassandra-compaction-progress
+
+  # --- storage -----------------------------------------------------------------------------------
+  - bean: org.apache.cassandra.metrics:type=Storage,name=Load
+    mapping:
+      Count:
+        metric: cassandra.storage.load
+        type: updowncounter
+        unit: By
+        desc: Size of the on disk data size this node manages.
+
+  - bean: org.apache.cassandra.metrics:type=Storage,name=TotalHints
+    mapping:
+      Count:
+        metric: cassandra.storage.hints.count
+        type: counter
+        unit: "{hint}"
+        desc: Number of hint messages written to this node since server start.
+
+  - bean: org.apache.cassandra.metrics:type=Storage,name=TotalHintsInProgress
+    mapping:
+      Count:
+        metric: cassandra.storage.hints.in_progress
+        type: updowncounter
+        unit: "{hint}"
+        desc: Number of hints attempting to be sent currently.
+
+  # --- client request latency --------------------------------------------------------------------
+  # Pre-aggregated percentiles off Cassandra's own EstimatedHistogram, the reservoir `nodetool
+  # proxyhistograms` prints. They are per node and cannot be re-aggregated into a cluster p99.
+  #
+  # p999 lives in this block rather than one of its own so it cannot drift from its siblings: it
+  # shares their attribute, their unit and their bean list, and a panel plots all four together.
+  #
+  # The three beans are enumerated rather than matched with scope=*. A wildcard also picks up
+  # CASRead, CASWrite and ViewWrite, which do not belong in the read/write/rangeslice contract.
+  - beans:
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=RangeSlice,name=Latency
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=Read,name=Latency
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=Write,name=Latency
+    metricAttribute:
+      cassandra.operation: lowercase(param(scope))
+    unit: us
+    type: gauge
+    mapping:
+      50thPercentile:
+        metric: cassandra.client.request.latency.p50
+        desc: Request latency 50th percentile by operation.
+      99thPercentile:
+        metric: cassandra.client.request.latency.p99
+        desc: Request latency 99th percentile by operation.
       999thPercentile:
         metric: cassandra.client.request.latency.p999
-        desc: Coordinator request latency, 99.9th percentile
+        desc: Request latency 99.9th percentile by operation.
+      Max:
+        metric: cassandra.client.request.latency.max
+        desc: Maximum request latency by operation.
+
+  - beans:
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=RangeSlice,name=Latency
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=Read,name=Latency
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=Write,name=Latency
+    metricAttribute:
+      cassandra.operation: lowercase(param(scope))
+    mapping:
+      Count:
+        metric: cassandra.client.request.count
+        type: counter
+        unit: "{request}"
+        desc: Number of requests by operation.
+
+  # --- client request errors ---------------------------------------------------------------------
+  # One rule per error type, with the status hardcoded. Written out longhand rather than with the
+  # YAML anchors the built-in uses, so every rule reads on its own.
+  - beans:
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=RangeSlice,name=Unavailables
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=Read,name=Unavailables
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=Write,name=Unavailables
+    metricAttribute:
+      cassandra.operation: lowercase(param(scope))
+      cassandra.status: const(unavailable)
+    mapping:
+      Count:
+        metric: cassandra.client.request.error
+        type: counter
+        unit: "{error}"
+        desc: Number of request errors by operation.
+
+  - beans:
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=RangeSlice,name=Timeouts
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=Read,name=Timeouts
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=Write,name=Timeouts
+    metricAttribute:
+      cassandra.operation: lowercase(param(scope))
+      cassandra.status: const(timeout)
+    mapping:
+      Count:
+        metric: cassandra.client.request.error
+        type: counter
+        unit: "{error}"
+        desc: Number of request errors by operation.
+
+  - beans:
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=RangeSlice,name=Failures
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=Read,name=Failures
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=Write,name=Failures
+    metricAttribute:
+      cassandra.operation: lowercase(param(scope))
+      cassandra.status: const(failure)
+    mapping:
+      Count:
+        metric: cassandra.client.request.error
+        type: counter
+        unit: "{error}"
+        desc: Number of request errors by operation.
+
+  # ==============================================================================================
+  # Ours. Families the built-in target does not cover.
+  # ==============================================================================================
 
   # --- per-table storage -------------------------------------------------------------------------
   # keyspace and table are carried as attributes rather than rolled up, so a dashboard can name one
   # table. `scope` is the table name on a type=Table MBean.
+  #
+  # Neither value is lowercased, unlike cassandra.operation above. Cassandra keyspace and table
+  # names are case-sensitive when quoted, so folding case here would merge two distinct tables into
+  # one series.
   - bean: org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=LiveDiskSpaceUsed
-    type: gauge
-    unit: By
     metricAttribute:
       keyspace: param(keyspace)
       table: param(scope)
     mapping:
       Count:
         metric: cassandra.table.disk.space.live
-        desc: Disk space used by live SSTables
+        type: updowncounter
+        unit: By
+        desc: Disk space used by live SSTables.
 
   - bean: org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=TotalDiskSpaceUsed
-    type: gauge
-    unit: By
     metricAttribute:
       keyspace: param(keyspace)
       table: param(scope)
     mapping:
       Count:
         metric: cassandra.table.disk.space.total
-        desc: Disk space used by all SSTables, including those awaiting removal
+        type: updowncounter
+        unit: By
+        desc: Disk space used by all SSTables, including those awaiting removal.
 
   - bean: org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=LiveSSTableCount
-    type: gauge
-    unit: "{sstable}"
     metricAttribute:
       keyspace: param(keyspace)
       table: param(scope)
     mapping:
       Value:
         metric: cassandra.table.sstable.count.live
-        desc: Number of live SSTables
+        type: gauge
+        unit: "{sstable}"
+        desc: Number of live SSTables.
 
   - bean: org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=PendingCompactions
-    type: gauge
-    unit: "{task}"
     metricAttribute:
       keyspace: param(keyspace)
       table: param(scope)
     mapping:
       Value:
         metric: cassandra.table.compaction.pending
-        desc: Compaction tasks queued for this table
+        type: gauge
+        unit: "{task}"
+        desc: Compaction tasks queued for this table.
+
+  # --- per-table local latency ------------------------------------------------------------------
+  # Local (replica-side) latency, as against the coordinator-side ClientRequest latency above.
+  # Coordinator minus local is the network and coordination overhead, which nothing else measures.
+  #
+  # Same percentiles, same unit and the same bare keyspace/table attributes as the rest of the
+  # per-table families, so a panel can subtract one from the other without relabelling.
+  - bean: org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=ReadLatency
+    metricAttribute:
+      keyspace: param(keyspace)
+      table: param(scope)
+    unit: us
+    type: gauge
+    mapping:
+      50thPercentile:
+        metric: cassandra.table.read.latency.p50
+        desc: Local read latency, 50th percentile.
+      99thPercentile:
+        metric: cassandra.table.read.latency.p99
+        desc: Local read latency, 99th percentile.
+      999thPercentile:
+        metric: cassandra.table.read.latency.p999
+        desc: Local read latency, 99.9th percentile.
+      Max:
+        metric: cassandra.table.read.latency.max
+        desc: Maximum local read latency.
+
+  - bean: org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=WriteLatency
+    metricAttribute:
+      keyspace: param(keyspace)
+      table: param(scope)
+    unit: us
+    type: gauge
+    mapping:
+      50thPercentile:
+        metric: cassandra.table.write.latency.p50
+        desc: Local write latency, 50th percentile.
+      99thPercentile:
+        metric: cassandra.table.write.latency.p99
+        desc: Local write latency, 99th percentile.
+      999thPercentile:
+        metric: cassandra.table.write.latency.p999
+        desc: Local write latency, 99.9th percentile.
+      Max:
+        metric: cassandra.table.write.latency.max
+        desc: Maximum local write latency.
 
   # SSTables touched per read. A Histogram MBean, so the percentiles are read directly rather than
   # derived from buckets.
   - bean: org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=SSTablesPerReadHistogram
-    type: gauge
-    unit: "{sstable}"
     metricAttribute:
       keyspace: param(keyspace)
       table: param(scope)
+    type: gauge
+    unit: "{sstable}"
     mapping:
       50thPercentile:
         metric: cassandra.table.sstables.per.read.p50
-        desc: SSTables touched per read, 50th percentile
+        desc: SSTables touched per read, 50th percentile.
       99thPercentile:
         metric: cassandra.table.sstables.per.read.p99
-        desc: SSTables touched per read, 99th percentile
+        desc: SSTables touched per read, 99th percentile.
       Max:
         metric: cassandra.table.sstables.per.read.max
-        desc: SSTables touched per read, maximum
+        desc: SSTables touched per read, maximum.
 
   # --- thread pools ------------------------------------------------------------------------------
   # `path` separates the internal pools from the request pools, and is kept so the two can be told
-  # apart; `scope` is the pool name.
+  # apart; `scope` is the pool name. Neither is lowercased: the pool names are the identifiers
+  # `nodetool tpstats` prints, and matching them exactly is what makes the two comparable.
   - bean: org.apache.cassandra.metrics:type=ThreadPools,path=*,scope=*,name=ActiveTasks
-    type: gauge
-    unit: "{task}"
     metricAttribute:
       pool: param(scope)
       pool_path: param(path)
     mapping:
       Value:
         metric: cassandra.thread_pool.tasks.active
-        desc: Tasks currently running in the pool
+        type: gauge
+        unit: "{task}"
+        desc: Tasks currently running in the pool.
 
   - bean: org.apache.cassandra.metrics:type=ThreadPools,path=*,scope=*,name=PendingTasks
-    type: gauge
-    unit: "{task}"
     metricAttribute:
       pool: param(scope)
       pool_path: param(path)
     mapping:
       Value:
         metric: cassandra.thread_pool.tasks.pending
-        desc: Tasks queued for the pool
+        type: gauge
+        unit: "{task}"
+        desc: Tasks queued for the pool.
 
   - bean: org.apache.cassandra.metrics:type=ThreadPools,path=*,scope=*,name=TotalBlockedTasks
-    type: counter
-    unit: "{task}"
     metricAttribute:
       pool: param(scope)
       pool_path: param(path)
     mapping:
       Count:
         metric: cassandra.thread_pool.tasks.blocked
-        desc: Tasks the pool has blocked on since startup
+        type: counter
+        unit: "{task}"
+        desc: Tasks the pool has blocked on since startup.
 
   # --- dropped messages --------------------------------------------------------------------------
   - bean: org.apache.cassandra.metrics:type=DroppedMessage,scope=*,name=Dropped
-    type: counter
-    unit: "{message}"
     metricAttribute:
       message_type: param(scope)
     mapping:
       Count:
         metric: cassandra.messages.dropped
-        desc: Messages dropped since startup, by verb
+        type: counter
+        unit: "{message}"
+        desc: Messages dropped since startup, by verb.

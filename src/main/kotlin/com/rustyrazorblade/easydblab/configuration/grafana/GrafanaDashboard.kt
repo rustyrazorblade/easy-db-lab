@@ -1,5 +1,17 @@
 package com.rustyrazorblade.easydblab.configuration.grafana
 
+/** Provider path for dashboards that appear at the root of Grafana's dashboard list. */
+const val GRAFANA_DASHBOARD_ROOT = "/var/lib/grafana/dashboards"
+
+/** Name of the Grafana folder holding the Cassandra dashboards. */
+const val GRAFANA_CASSANDRA_FOLDER = "Cassandra"
+
+/**
+ * Provider path backing [GRAFANA_CASSANDRA_FOLDER]. Must match `options.path` of the `cassandra`
+ * provider in `dashboards.yaml`.
+ */
+const val GRAFANA_CASSANDRA_PATH = "$GRAFANA_DASHBOARD_ROOT-cassandra"
+
 /**
  * Registry of all Grafana dashboards.
  *
@@ -7,11 +19,19 @@ package com.rustyrazorblade.easydblab.configuration.grafana
  * into the Grafana deployment as a volume mount. Adding a new dashboard requires
  * only a new enum entry and a JSON file in the top-level `dashboards/` directory.
  *
+ * Folders come from the provisioning provider a dashboard's [mountPath] falls under, not from the
+ * directory name: `dashboards.yaml` declares one provider per folder, each naming its folder
+ * outright. [folder] records which one an entry belongs to, so [folderPath] and the mount path can
+ * be checked against each other.
+ *
  * @property configMapName K8s ConfigMap name
  * @property volumeName Volume name in the Grafana Deployment spec
  * @property mountPath Where Grafana reads the dashboard JSON inside the container
  * @property jsonFileName File name used as the ConfigMap data key and classpath resource path
- * @property optional Whether the volume mount uses optional: true (for dashboards that may not exist)
+ * @property optional Whether the dashboard may be absent. An optional dashboard with no JSON on the
+ *   classpath is skipped when building ConfigMaps, and its volume mount uses `optional: true`, so a
+ *   missing file can never stop Grafana from starting.
+ * @property folder Grafana folder this dashboard belongs to; empty means the root of the list
  */
 enum class GrafanaDashboard(
     val configMapName: String,
@@ -19,6 +39,7 @@ enum class GrafanaDashboard(
     val mountPath: String,
     val jsonFileName: String,
     val optional: Boolean = false,
+    val folder: String = "",
 ) {
     SYSTEM(
         configMapName = "grafana-dashboard-system",
@@ -78,9 +99,10 @@ enum class GrafanaDashboard(
     CASSANDRA_OVERVIEW(
         configMapName = "grafana-dashboard-cassandra-overview",
         volumeName = "dashboard-cassandra-overview",
-        mountPath = "/var/lib/grafana/dashboards/cassandra-overview",
+        mountPath = "$GRAFANA_CASSANDRA_PATH/cassandra-overview",
         jsonFileName = "cassandra-overview.json",
         optional = true,
+        folder = GRAFANA_CASSANDRA_FOLDER,
     ),
     LOG_INVESTIGATION(
         configMapName = "grafana-dashboard-log-investigation",
@@ -92,9 +114,42 @@ enum class GrafanaDashboard(
     CLUSTER_COMPARISON(
         configMapName = "grafana-dashboard-cluster-comparison",
         volumeName = "dashboard-cluster-comparison",
-        mountPath = "/var/lib/grafana/dashboards/cluster-comparison",
+        mountPath = "$GRAFANA_CASSANDRA_PATH/cluster-comparison",
         jsonFileName = "cluster-comparison.json",
         optional = true,
+        folder = GRAFANA_CASSANDRA_FOLDER,
+    ),
+    CASSANDRA_JVM(
+        configMapName = "grafana-dashboard-cassandra-jvm",
+        volumeName = "dashboard-cassandra-jvm",
+        mountPath = "$GRAFANA_CASSANDRA_PATH/cassandra-jvm",
+        jsonFileName = "cassandra-jvm.json",
+        optional = true,
+        folder = GRAFANA_CASSANDRA_FOLDER,
+    ),
+    READ_PATH_ANATOMY(
+        configMapName = "grafana-dashboard-read-path-anatomy",
+        volumeName = "dashboard-read-path-anatomy",
+        mountPath = "$GRAFANA_CASSANDRA_PATH/read-path-anatomy",
+        jsonFileName = "read-path-anatomy.json",
+        optional = true,
+        folder = GRAFANA_CASSANDRA_FOLDER,
+    ),
+    WRITE_PATH_BACKPRESSURE(
+        configMapName = "grafana-dashboard-write-path-backpressure",
+        volumeName = "dashboard-write-path-backpressure",
+        mountPath = "$GRAFANA_CASSANDRA_PATH/write-path-backpressure",
+        jsonFileName = "write-path-backpressure.json",
+        optional = true,
+        folder = GRAFANA_CASSANDRA_FOLDER,
+    ),
+    NODE_DIVERGENCE(
+        configMapName = "grafana-dashboard-node-divergence",
+        volumeName = "dashboard-node-divergence",
+        mountPath = "$GRAFANA_CASSANDRA_PATH/node-divergence",
+        jsonFileName = "node-divergence.json",
+        optional = true,
+        folder = GRAFANA_CASSANDRA_FOLDER,
     ),
     TEMPO(
         configMapName = "grafana-dashboard-tempo",
@@ -103,4 +158,14 @@ enum class GrafanaDashboard(
         jsonFileName = "tempo.json",
         optional = true,
     ),
+    ;
+
+    /**
+     * Provisioning path whose provider owns this dashboard's folder.
+     *
+     * [mountPath] must sit under it, or the dashboard lands in the wrong folder - or in none,
+     * if no provider sweeps the path it was mounted at.
+     */
+    val folderPath: String
+        get() = if (folder.isEmpty()) GRAFANA_DASHBOARD_ROOT else "$GRAFANA_DASHBOARD_ROOT-${folder.lowercase()}"
 }

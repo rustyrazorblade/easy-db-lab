@@ -5,14 +5,17 @@ pipeline stops rather than falling back to anything. Every line here is ours to 
 including whether a panel runs at all. Keep it short — every implementation and review
 agent reads it on every run.
 
-## Before spawning: ask about AWS and the AMI
+## Before spawning: settle AWS and the AMI
 
-`project-manager` asks the owner these two questions before it spawns an `issue-manager`,
-and labels the issue with the answers. Ask them. Never infer either one, and never let a
-later agent decide it qualifies.
+`project-manager` settles these two questions before it spawns an `issue-manager`, and
+labels the issue with the answers. Never let a later agent decide either one qualifies.
 
-- **Will this need a real AWS test?** → `requires-aws`
-- **Does this change anything baked into the AMI?** → `requires-ami-bake`
+- **Will this need a real AWS test?** → `requires-aws`. Work it out from the issue's
+  scope, then state a recommendation with the evidence. The owner confirms or overrules,
+  because the owner drives the cluster.
+- **Does this change anything baked into the AMI?** → `requires-ami-bake`. Determine this
+  from the tree and apply it. Do not ask the owner. The label belongs on an issue only
+  when its scope touches `packer/` or something else baked into the image.
 
 ## `requires-aws`: a clean panel is not enough
 

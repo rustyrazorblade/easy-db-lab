@@ -1,0 +1,964 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "description": "Cassandra logs shipped by the OpenTelemetry Java agent, on the same label space as the metrics (cassandra_build, host.name, node_role, service_name). Logs and metrics share one time range and one set of variables. NOTE: the log records carry no trace_id or span_id, so there is no trace correlation on this dashboard.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": false,
+      "title": "Log Investigation",
+      "tooltip": "Free-form log search across every service",
+      "type": "link",
+      "url": "/d/log-investigation/log-investigation"
+    },
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": false,
+      "title": "Cassandra Overview",
+      "tooltip": "Cassandra metrics for the same time range",
+      "type": "link",
+      "url": "/d/cassandra-overview/cassandra-overview"
+    }
+  ],
+  "liveNow": false,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "panels": [],
+      "title": "Volume and severity",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+      "description": "Log records per interval, split by build and severity. This is what makes log volume comparable between builds. The panel deliberately ignores $severity so the whole mix stays visible; use $severity on the stream and problem panels.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" }
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 1 },
+      "id": 1,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "right", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+          "expr": "service_name:cassandra \"host.name\":~\"^(${host:pipe})$\" cassandra_build:~\"^(${build:pipe})$\" \"scope.name\":~\"^(${logger:pipe})$\" | stats by (cassandra_build, severity) count() as records",
+          "legendFormat": "{{cassandra_build}} {{severity}}",
+          "queryType": "statsRange",
+          "refId": "A"
+        }
+      ],
+      "title": "Log rate by severity and build",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+      "description": "WARN and ERROR records per interval by build. SEVERE and WARNING are included because the AxonOps and Digitalis agents log through java.util.logging, which uses those names.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 20,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 1 },
+      "id": 2,
+      "options": {
+        "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+          "expr": "service_name:cassandra \"host.name\":~\"^(${host:pipe})$\" cassandra_build:~\"^(${build:pipe})$\" severity:~\"^(WARN|WARNING|ERROR|SEVERE)$\" | stats by (cassandra_build) count() as problems",
+          "legendFormat": "{{cassandra_build}}",
+          "queryType": "statsRange",
+          "refId": "A"
+        }
+      ],
+      "title": "WARN and ERROR rate by build",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+      "description": "Loggers ranked by record count over the dashboard time range, with WARN and ERROR counts beside them. Sort any column to re-rank.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "auto", "cellOptions": { "type": "auto" } },
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "errors" },
+            "properties": [{ "id": "custom.cellOptions", "value": { "mode": "gradient", "type": "color-background" } }]
+          }
+        ]
+      },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 9 },
+      "id": 3,
+      "options": {
+        "cellHeight": "sm",
+        "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false },
+        "showHeader": true,
+        "sortBy": [{ "desc": true, "displayName": "records" }]
+      },
+      "targets": [
+        {
+          "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+          "expr": "service_name:cassandra \"host.name\":~\"^(${host:pipe})$\" cassandra_build:~\"^(${build:pipe})$\" \"scope.name\":~\"^(${logger:pipe})$\" | stats by (\"scope.name\") count() as records, count() if (severity:~\"^(WARN|WARNING)$\") as warnings, count() if (severity:~\"^(ERROR|SEVERE)$\") as errors | sort by (records) desc | limit 25",
+          "queryType": "stats",
+          "refId": "A"
+        }
+      ],
+      "title": "Top loggers by volume, with WARN and ERROR counts",
+      "transformations": [
+        { "id": "labelsToFields", "options": { "mode": "columns", "valueLabel": "__name__" } },
+        { "id": "merge", "options": {} },
+        { "id": "organize", "options": { "excludeByName": { "Time": true }, "indexByName": {}, "renameByName": {} } }
+      ],
+      "type": "table"
+    },
+    {
+      "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+      "description": "Which loggers are producing WARN and ERROR over time. A small number of loggers carry almost all of the problem records, so this stays readable.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "normal" }
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 9 },
+      "id": 4,
+      "options": {
+        "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "right", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+          "expr": "service_name:cassandra \"host.name\":~\"^(${host:pipe})$\" cassandra_build:~\"^(${build:pipe})$\" \"scope.name\":~\"^(${logger:pipe})$\" severity:~\"^(WARN|WARNING|ERROR|SEVERE)$\" | stats by (\"scope.name\") count() as records",
+          "legendFormat": "{{scope.name}}",
+          "queryType": "statsRange",
+          "refId": "A"
+        }
+      ],
+      "title": "WARN and ERROR rate by logger",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+      "description": "The agent attaches exception.type, exception.message and exception.stacktrace to records that carry a throwable. This table counts them by type and logger; open a matching line in the stream panel below to read the stack trace.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "auto", "cellOptions": { "type": "auto" } },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 18 },
+      "id": 5,
+      "options": {
+        "cellHeight": "sm",
+        "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false },
+        "showHeader": true,
+        "sortBy": [{ "desc": true, "displayName": "occurrences" }]
+      },
+      "targets": [
+        {
+          "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+          "expr": "service_name:cassandra \"host.name\":~\"^(${host:pipe})$\" cassandra_build:~\"^(${build:pipe})$\" \"exception.type\":* | stats by (\"exception.type\", \"scope.name\", cassandra_build) count() as occurrences | sort by (occurrences) desc | limit 20",
+          "queryType": "stats",
+          "refId": "A"
+        }
+      ],
+      "title": "Exceptions by type, logger and build",
+      "transformations": [
+        { "id": "labelsToFields", "options": { "mode": "columns", "valueLabel": "__name__" } },
+        { "id": "merge", "options": {} },
+        { "id": "organize", "options": { "excludeByName": { "Time": true }, "indexByName": {}, "renameByName": {} } }
+      ],
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 25 },
+      "id": 101,
+      "panels": [],
+      "title": "GCInspector - pause detail the JVM metrics do not carry",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+      "description": "Duration parsed out of the GCInspector line \"<collector> GC in <n>ms\", split by build and collector. Read the collector name before you compare: a series named \"... Cycles\" is a ZGC CONCURRENT phase, not a stop-the-world pause. The branch build logs those because gc_concurrent_phase_log_threshold and gc_concurrent_phase_warn_threshold are enabled on it, so it reports series the stock build never emits. Compare like with like.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "points",
+            "fillOpacity": 0,
+            "lineWidth": 1,
+            "pointSize": 5,
+            "showPoints": "always",
+            "spanNulls": false
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 26 },
+      "id": 10,
+      "options": {
+        "legend": { "calcs": ["max", "mean"], "displayMode": "table", "placement": "right", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+          "expr": "service_name:cassandra \"host.name\":~\"^(${host:pipe})$\" cassandra_build:~\"^(${build:pipe})$\" \"scope.name\":\"org.apache.cassandra.service.GCInspector\" _msg:\"GC in\" | extract \"<gc_name> GC in <pause_ms>ms\" | stats by (cassandra_build, gc_name) max(pause_ms) as max_ms",
+          "legendFormat": "{{cassandra_build}} {{gc_name}}",
+          "queryType": "statsRange",
+          "refId": "A"
+        }
+      ],
+      "title": "GCInspector reported GC duration, max ms by build and collector",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+      "description": "How often GCInspector logs at all, by build and collector. GCInspector only logs above its threshold, so this is a count of NOTABLE collections, not of every collection.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "normal" }
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 26 },
+      "id": 11,
+      "options": {
+        "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "right", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+          "expr": "service_name:cassandra \"host.name\":~\"^(${host:pipe})$\" cassandra_build:~\"^(${build:pipe})$\" \"scope.name\":\"org.apache.cassandra.service.GCInspector\" _msg:\"GC in\" | extract \"<gc_name> GC in <pause_ms>ms\" | stats by (cassandra_build, gc_name) count() as events",
+          "legendFormat": "{{cassandra_build}} {{gc_name}}",
+          "queryType": "statsRange",
+          "refId": "A"
+        }
+      ],
+      "title": "GCInspector events by build and collector",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 34 },
+      "id": 102,
+      "panels": [],
+      "title": "CompactionTask - what compacted, how big, how long",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+      "description": "Completed compactions per interval, counted from the CompactionTask \"Compacted (...)\" line. Ground truth against cassandra_compaction_tasks_completed_total.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 35 },
+      "id": 20,
+      "options": {
+        "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+          "expr": "service_name:cassandra \"host.name\":~\"^(${host:pipe})$\" cassandra_build:~\"^(${build:pipe})$\" \"scope.name\":\"org.apache.cassandra.db.compaction.CompactionTask\" _msg:\"Compacted (\" | stats by (cassandra_build) count() as compactions",
+          "legendFormat": "{{cassandra_build}}",
+          "queryType": "statsRange",
+          "refId": "A"
+        }
+      ],
+      "title": "Compactions completed by build",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+      "description": "Longest compaction in each interval, parsed from \"... in <n>ms.  Read Throughput = ...\". Cassandra prints these durations with thousands separators, so the query strips commas before it aggregates.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "points",
+            "fillOpacity": 0,
+            "lineWidth": 1,
+            "pointSize": 5,
+            "showPoints": "always",
+            "spanNulls": false
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 35 },
+      "id": 21,
+      "options": {
+        "legend": { "calcs": ["max", "mean"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+          "expr": "service_name:cassandra \"host.name\":~\"^(${host:pipe})$\" cassandra_build:~\"^(${build:pipe})$\" \"scope.name\":\"org.apache.cassandra.db.compaction.CompactionTask\" _msg:\"Compacted (\" | extract \"in <dur_ms>ms.  Read Throughput\" | replace (\",\" , \"\") at dur_ms | stats by (cassandra_build) max(dur_ms) as max_ms",
+          "legendFormat": "{{cassandra_build}}",
+          "queryType": "statsRange",
+          "refId": "A"
+        }
+      ],
+      "title": "Compaction duration, max ms by build",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+      "description": "Mean output size as a percentage of input size, parsed from \"(~<n>% of original)\". A rising value means compaction is reclaiming less; a falling value means more overwrite or tombstone removal.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisPlacement": "auto",
+            "axisSoftMax": 100,
+            "axisSoftMin": 0,
+            "drawStyle": "points",
+            "fillOpacity": 0,
+            "lineWidth": 1,
+            "pointSize": 5,
+            "showPoints": "always",
+            "spanNulls": false
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 35 },
+      "id": 22,
+      "options": {
+        "legend": { "calcs": ["mean"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+          "expr": "service_name:cassandra \"host.name\":~\"^(${host:pipe})$\" cassandra_build:~\"^(${build:pipe})$\" \"scope.name\":\"org.apache.cassandra.db.compaction.CompactionTask\" _msg:\"Compacted (\" | extract \"(~<pct_orig>% of original)\" | stats by (cassandra_build) avg(pct_orig) as avg_pct",
+          "legendFormat": "{{cassandra_build}}",
+          "queryType": "statsRange",
+          "refId": "A"
+        }
+      ],
+      "title": "Compaction output as percent of original, by build",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 43 },
+      "id": 103,
+      "panels": [],
+      "title": "Dropped messages - the reason, not just the counter",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+      "description": "Cross-node drops per message type, parsed out of the MessagingMetrics line. cassandra_messages_dropped_total gives the count only; this gives the count split into internal and cross-node, plus the latency below.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "normal" }
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 44 },
+      "id": 30,
+      "options": {
+        "legend": { "calcs": ["sum", "max"], "displayMode": "table", "placement": "right", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+          "expr": "service_name:cassandra \"host.name\":~\"^(${host:pipe})$\" cassandra_build:~\"^(${build:pipe})$\" _msg:\"messages were dropped\" | extract \"<mtype> messages were dropped in last <win> ms: <internal> internal and <cross> cross node. Mean internal dropped latency: <int_lat> ms and Mean cross-node dropped latency: <cross_lat> ms\" | replace (\",\" , \"\") at cross | stats by (mtype) sum(cross) as cross_node_dropped",
+          "legendFormat": "{{mtype}}",
+          "queryType": "statsRange",
+          "refId": "A"
+        }
+      ],
+      "title": "Dropped messages by type, cross-node",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+      "description": "Internal drops per message type, from the same MessagingMetrics line. An internal drop means the node timed out its own work; a cross-node drop means a peer did.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "normal" }
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 44 },
+      "id": 31,
+      "options": {
+        "legend": { "calcs": ["sum", "max"], "displayMode": "table", "placement": "right", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+          "expr": "service_name:cassandra \"host.name\":~\"^(${host:pipe})$\" cassandra_build:~\"^(${build:pipe})$\" _msg:\"messages were dropped\" | extract \"<mtype> messages were dropped in last <win> ms: <internal> internal and <cross> cross node. Mean internal dropped latency: <int_lat> ms and Mean cross-node dropped latency: <cross_lat> ms\" | replace (\",\" , \"\") at internal | stats by (mtype) sum(internal) as internal_dropped",
+          "legendFormat": "{{mtype}}",
+          "queryType": "statsRange",
+          "refId": "A"
+        }
+      ],
+      "title": "Dropped messages by type, internal",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+      "description": "Mean cross-node latency of the dropped messages, by type. This is the number the metric cannot give you: how late the message already was when it was thrown away.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "points",
+            "fillOpacity": 0,
+            "lineWidth": 1,
+            "pointSize": 5,
+            "showPoints": "always",
+            "spanNulls": false
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 52 },
+      "id": 32,
+      "options": {
+        "legend": { "calcs": ["max", "mean"], "displayMode": "table", "placement": "right", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+          "expr": "service_name:cassandra \"host.name\":~\"^(${host:pipe})$\" cassandra_build:~\"^(${build:pipe})$\" _msg:\"messages were dropped\" | extract \"<mtype> messages were dropped in last <win> ms: <internal> internal and <cross> cross node. Mean internal dropped latency: <int_lat> ms and Mean cross-node dropped latency: <cross_lat> ms\" | replace (\",\" , \"\") at cross_lat | stats by (mtype) max(cross_lat) as max_cross_node_latency_ms",
+          "legendFormat": "{{mtype}}",
+          "queryType": "statsRange",
+          "refId": "A"
+        }
+      ],
+      "title": "Mean cross-node latency of dropped messages, by type",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+      "description": "The raw drop lines, so you can read the exact numbers and the node that reported them.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 52 },
+      "id": 33,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+          "expr": "service_name:cassandra \"host.name\":~\"^(${host:pipe})$\" cassandra_build:~\"^(${build:pipe})$\" _msg:\"messages were dropped\"",
+          "maxLines": 500,
+          "queryType": "instant",
+          "refId": "A"
+        }
+      ],
+      "title": "Dropped message log lines",
+      "type": "logs"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 60 },
+      "id": 104,
+      "panels": [],
+      "title": "StatusLogger - Cassandra dumping its own state under pressure",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+      "description": "How often StatusLogger dumps thread-pool and memtable state, counted from its \"Pool Name\" header line. Cassandra only does this when it is unhappy, so the firing rate alone is a pressure signal.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "normal" }
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 61 },
+      "id": 40,
+      "options": {
+        "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "right", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+          "expr": "service_name:cassandra \"host.name\":~\"^(${host:pipe})$\" cassandra_build:~\"^(${build:pipe})$\" \"scope.name\":\"org.apache.cassandra.utils.StatusLogger\" _msg:\"Pool Name\" | stats by (cassandra_build, \"host.name\") count() as dumps",
+          "legendFormat": "{{cassandra_build}} {{host.name}}",
+          "queryType": "statsRange",
+          "refId": "A"
+        }
+      ],
+      "title": "StatusLogger dumps by build and node",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+      "description": "Total StatusLogger lines. One dump is many lines, one per pool, table and cache, so this tracks the volume the dumps add to the log.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 61 },
+      "id": 41,
+      "options": {
+        "legend": { "calcs": ["sum", "max"], "displayMode": "table", "placement": "right", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+          "expr": "service_name:cassandra \"host.name\":~\"^(${host:pipe})$\" cassandra_build:~\"^(${build:pipe})$\" \"scope.name\":\"org.apache.cassandra.utils.StatusLogger\" | stats by (cassandra_build, \"host.name\") count() as lines",
+          "legendFormat": "{{cassandra_build}} {{host.name}}",
+          "queryType": "statsRange",
+          "refId": "A"
+        }
+      ],
+      "title": "StatusLogger lines by build and node",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 69 },
+      "id": 105,
+      "panels": [],
+      "title": "Correlation - metrics and logs on one timeline",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "description": "Client request latency at ${percentile}, in milliseconds, by build and operation. The metric is emitted in microseconds, so the query divides by 1000 and the panel unit stays short. max by () reports the worst node in each build group, which is correct for any group size.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisLabel": "ms",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineWidth": 2,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 70 },
+      "id": 50,
+      "options": {
+        "legend": { "calcs": ["max", "mean"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "editorMode": "code",
+          "expr": "max by (cassandra_build, cassandra_operation) (cassandra_client_request_latency_${percentile}_microseconds{host_name=~\"$host\", cassandra_build=~\"$build\"}) / 1000",
+          "legendFormat": "{{cassandra_build}} {{cassandra_operation}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Client request latency ${percentile} (ms) by build",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "description": "Dropped messages per second from the metric, by type. The > 0 filter removes the ninety-odd verb types that never drop, so only the types that are actually dropping appear. Read this beside the log panels above, which carry the reason.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 20,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "normal" }
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 70 },
+      "id": 51,
+      "options": {
+        "legend": { "calcs": ["max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "editorMode": "code",
+          "expr": "sum by (message_type) (rate(cassandra_messages_dropped_total{host_name=~\"$host\", cassandra_build=~\"$build\"}[$__rate_interval])) > 0",
+          "legendFormat": "{{message_type}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Dropped messages rate by type (metric)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "description": "Stop-the-world GC time as a percentage of wall time, by build. jvm_gc_name!~\".*Cycles\" excludes the ZGC concurrent cycles; without it a ZGC build looks worse than a G1 build, which is backwards.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisPlacement": "auto",
+            "axisSoftMax": 1,
+            "axisSoftMin": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 2,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 70 },
+      "id": 52,
+      "options": {
+        "legend": { "calcs": ["max", "mean"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+          "editorMode": "code",
+          "expr": "100 * sum by (cassandra_build, host_name) (rate(jvm_gc_duration_seconds_sum{jvm_gc_name!~\".*Cycles\", host_name=~\"$host\", cassandra_build=~\"$build\"}[$__rate_interval]))",
+          "legendFormat": "{{cassandra_build}} {{host_name}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "GC pause overhead, percent of wall time",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+      "description": "The log lines for the same window as the three metric panels above, filtered by $build, $host, $severity and $logger. Add free LogsQL to the Search box to narrow further, for example: _msg:\"timeout\". The records carry no trace_id or span_id, so there is no link to Tempo from here.",
+      "gridPos": { "h": 16, "w": 24, "x": 0, "y": 78 },
+      "id": 53,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+          "expr": "service_name:cassandra \"host.name\":~\"^(${host:pipe})$\" cassandra_build:~\"^(${build:pipe})$\" severity:~\"^(${severity:pipe})$\" \"scope.name\":~\"^(${logger:pipe})$\" ${search}",
+          "maxLines": 1000,
+          "queryType": "instant",
+          "refId": "A"
+        }
+      ],
+      "title": "Cassandra log stream",
+      "type": "logs"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["cassandra", "logs", "otel"],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+        "definition": "label_values(cassandra_storage_load_bytes, cassandra_build)",
+        "description": "Cassandra build. The same label exists on the metrics and on the log records, so this filters both.",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Build",
+        "multi": true,
+        "name": "build",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(cassandra_storage_load_bytes, cassandra_build)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+        "definition": "label_values(cassandra_storage_load_bytes, host_name)",
+        "description": "Database nodes only. No allValue is set on purpose, so All expands to the real node list instead of a wildcard.",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Host",
+        "multi": true,
+        "name": "host",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(cassandra_storage_load_bytes, host_name)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": ["ERROR", "WARN"],
+          "value": ["ERROR", "WARN"]
+        },
+        "description": "Cassandra logs ERROR, WARN, INFO and DEBUG. The bundled agents log through java.util.logging, which uses SEVERE and WARNING instead.",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Severity",
+        "multi": true,
+        "name": "severity",
+        "options": [
+          { "selected": true, "text": "ERROR", "value": "ERROR" },
+          { "selected": false, "text": "SEVERE", "value": "SEVERE" },
+          { "selected": true, "text": "WARN", "value": "WARN" },
+          { "selected": false, "text": "WARNING", "value": "WARNING" },
+          { "selected": false, "text": "INFO", "value": "INFO" },
+          { "selected": false, "text": "DEBUG", "value": "DEBUG" },
+          { "selected": false, "text": "TRACE", "value": "TRACE" }
+        ],
+        "query": "ERROR,SEVERE,WARN,WARNING,INFO,DEBUG,TRACE",
+        "skipUrlSync": false,
+        "type": "custom"
+      },
+      {
+        "allValue": ".*",
+        "current": {},
+        "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+        "description": "Logger name, taken from the scope.name field on every record.",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Logger",
+        "multi": true,
+        "name": "logger",
+        "options": [],
+        "query": {
+          "field": "scope.name",
+          "query": "service_name:cassandra",
+          "type": "fieldValue"
+        },
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": "p99",
+          "value": "p99"
+        },
+        "description": "Latency percentile used by the correlation panel.",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Percentile",
+        "multi": false,
+        "name": "percentile",
+        "options": [
+          { "selected": false, "text": "p50", "value": "p50" },
+          { "selected": true, "text": "p99", "value": "p99" },
+          { "selected": false, "text": "p999", "value": "p999" },
+          { "selected": false, "text": "max", "value": "max" }
+        ],
+        "query": "p50,p99,p999,max",
+        "skipUrlSync": false,
+        "type": "custom"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": "",
+          "value": ""
+        },
+        "description": "Free LogsQL appended to the log stream panel, for example: _msg:\"timeout\"",
+        "hide": 0,
+        "label": "Search",
+        "name": "search",
+        "options": [
+          { "selected": true, "text": "", "value": "" }
+        ],
+        "query": "",
+        "skipUrlSync": false,
+        "type": "textbox"
+      },
+      {
+        "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+        "filters": [],
+        "hide": 0,
+        "label": "Ad-hoc filters",
+        "name": "adhoc",
+        "skipUrlSync": false,
+        "type": "adhoc"
+      }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Cassandra Log Analysis",
+  "uid": "cassandra-logs-analysis",
+  "version": 1,
+  "weekStart": ""
+}

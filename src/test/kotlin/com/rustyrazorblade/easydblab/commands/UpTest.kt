@@ -33,6 +33,7 @@ import com.rustyrazorblade.easydblab.services.LocalTailscaleState
 import com.rustyrazorblade.easydblab.services.ProvisioningResult
 import com.rustyrazorblade.easydblab.services.RegistryService
 import com.rustyrazorblade.easydblab.services.aws.AMIResolver
+import com.rustyrazorblade.easydblab.services.aws.AccountBucketRegionService
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import com.rustyrazorblade.easydblab.services.aws.DefaultInstanceSpecFactory
@@ -121,6 +122,8 @@ class UpTest : BaseKoinTest() {
             module {
                 single<ClusterStateManager> { mock<ClusterStateManager>().also { mockClusterStateManager = it } }
                 single<AwsS3BucketService> { mock<AwsS3BucketService>().also { mockS3BucketService = it } }
+                // Real: `up` must resolve the region through the same service every later command uses.
+                single { AccountBucketRegionService(get(), get()) }
                 single<OpenSearchService> { mock<OpenSearchService>() }
                 single<VpcService> { mock<VpcService>().also { mockVpcService = it } }
                 single<AwsInfrastructureService> { mock<AwsInfrastructureService>().also { mockAwsInfrastructureService = it } }
@@ -236,6 +239,7 @@ class UpTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(happyState())
 
         whenever(mockS3BucketService.ensureAccountBucket(any())).thenReturn("easy-db-lab-test-bucket")
+        whenever(mockS3BucketService.getBucketRegion(any())).thenReturn("eu-west-1")
 
         whenever(mockVpcService.createVpc(any(), any(), any())).thenReturn("vpc-123")
 
@@ -337,6 +341,38 @@ class UpTest : BaseKoinTest() {
         verify(mockK8sService).labelNode(eq(testControlHost), eq("app0"), any())
         verify(mockK8sService).ensureLocalStorageClass(eq(testControlHost))
         verify(mockK8sService).ensureLocalStorageWfcClass(eq(testControlHost))
+    }
+
+    // =========================================================================
+    // Group: the account bucket's region
+    // =========================================================================
+
+    @Test
+    fun `up records the account bucket's own region, not the cluster's`() {
+        // The cluster is in us-west-2 and the account bucket is in eu-west-1. Anything that builds
+        // an S3 endpoint for that bucket — Pyroscope's object store — reads this field, so taking
+        // the cluster's region here points every profile write at the wrong endpoint.
+        val state = happyState()
+        whenever(mockClusterStateManager.load()).thenReturn(state)
+
+        newUp().execute()
+
+        assertThat(state.accountBucketRegion).isEqualTo("eu-west-1")
+        assertThat(outputHandler.messages)
+            .contains("Account S3 bucket easy-db-lab-test-bucket is in region eu-west-1")
+    }
+
+    @Test
+    fun `a failed region lookup names the bucket and the call it attempted`() {
+        // GetBucketLocation is denied far more often than it fails, and the bare S3Exception names
+        // neither the bucket nor the operation. Every command resolves through one service so this
+        // message is the same wherever the lookup happens.
+        whenever(mockS3BucketService.getBucketRegion(any()))
+            .thenThrow(IllegalStateException("Access Denied"))
+
+        assertThatThrownBy { newUp().execute() }
+            .hasMessageContaining("easy-db-lab-test-bucket")
+            .hasMessageContaining("GetBucketLocation")
     }
 
     // =========================================================================

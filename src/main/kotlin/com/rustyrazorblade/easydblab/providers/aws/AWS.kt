@@ -184,19 +184,36 @@ class AWS(
     /**
      * Returns the region an S3 bucket lives in, via `GetBucketLocation`.
      *
-     * The API reports `us-east-1` as an empty location constraint, which this maps back to the
-     * region name so callers always receive a usable value.
+     * `GetBucketLocation` answers in the S3 *location constraint* vocabulary, which is not the
+     * region vocabulary. Two constraints have to be translated or the caller builds an endpoint
+     * that resolves to nothing:
+     * - An empty constraint means `us-east-1`, the original default, and would build
+     *   `s3..amazonaws.com`.
+     * - `EU` is the pre-region name of the original European location, and would build
+     *   `s3.EU.amazonaws.com`.
      *
      * @param bucketName The bucket to locate
      * @return The bucket's region name
      */
     fun getS3BucketRegion(bucketName: String): String {
-        val response =
-            s3Client.getBucketLocation(
-                GetBucketLocationRequest.builder().bucket(bucketName).build(),
-            )
-        // An empty constraint is how S3 reports the us-east-1 legacy default.
-        return response.locationConstraintAsString().orEmpty().ifBlank { Region.US_EAST_1.id() }
+        val constraint =
+            RetryUtil.withAwsRetry("s3-get-bucket-location") {
+                s3Client
+                    .getBucketLocation(
+                        GetBucketLocationRequest.builder().bucket(bucketName).build(),
+                    ).locationConstraintAsString()
+                    .orEmpty()
+            }
+
+        val region =
+            when {
+                constraint.isBlank() -> Region.US_EAST_1.id()
+                constraint == Constants.S3.LOCATION_CONSTRAINT_LEGACY_EU -> Region.EU_WEST_1.id()
+                else -> constraint
+            }
+
+        log.info { "Resolved region of S3 bucket $bucketName as $region (location constraint: '$constraint')" }
+        return region
     }
 
     /**

@@ -178,6 +178,14 @@ object Constants {
 
         /** Maximum length for S3 metrics configuration IDs */
         const val MAX_METRICS_CONFIG_ID_LENGTH = 32
+
+        /**
+         * The pre-region `GetBucketLocation` constraint for the original European location.
+         *
+         * It is a location name, not a region name, so it builds `s3.EU.amazonaws.com` unless it is
+         * translated to `eu-west-1`.
+         */
+        const val LOCATION_CONSTRAINT_LEGACY_EU = "EU"
     }
 
     // Byte-size units for human-readable sizes

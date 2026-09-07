@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.configuration.pyroscope
 
 import com.rustyrazorblade.easydblab.services.TemplateService
 import com.rustyrazorblade.easydblab.services.aws.AccountBucketRegionService
+import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.Container
@@ -141,8 +142,16 @@ class PyroscopeManifestBuilder(
      * The account bucket's region is passed in explicitly rather than read from the context map, so
      * an unresolved region fails the build instead of rendering an endpoint with a hole in it.
      */
-    fun buildServerConfigMap() =
-        ConfigMapBuilder()
+    fun buildServerConfigMap(): ConfigMap {
+        val region = accountBucketRegionService.resolve()
+        // S3 reports us-east-1 as no location constraint at all. A blank region reaching the
+        // template renders `endpoint: s3..amazonaws.com`, which resolves to nothing and fails at
+        // runtime, on the first profile write, rather than here.
+        require(region.isNotBlank()) {
+            "The account bucket's region resolved to an empty string, which would render " +
+                "the Pyroscope endpoint as s3..amazonaws.com."
+        }
+        return ConfigMapBuilder()
             .withNewMetadata()
             .withName(SERVER_CONFIGMAP_NAME)
             .withNamespace(NAMESPACE)
@@ -155,9 +164,10 @@ class PyroscopeManifestBuilder(
                         PyroscopeManifestBuilder::class.java,
                         "config.yaml",
                     ).substitute(
-                        mapOf("ACCOUNT_BUCKET_REGION" to accountBucketRegionService.resolve()),
+                        mapOf("ACCOUNT_BUCKET_REGION" to region),
                     ),
             ).build()
+    }
 
     /**
      * Builds the Pyroscope ClusterIP Service on port 4040.

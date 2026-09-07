@@ -12,10 +12,11 @@ import io.github.oshai.kotlinlogging.KotlinLogging
  * happen to match and points at the wrong endpoint whenever they do not, which is why no fallback
  * to the cluster's region exists here.
  *
- * `up` resolves and stores the region when it ensures the bucket. A `state.json` written before that
- * field existed carries no region, so this service resolves it on first use and persists it: the
- * `GetBucketLocation` call happens once per cluster, not once per command, and the user never has to
- * re-provision.
+ * Every caller goes through here, `up` included: it saves the bucket into `state.json` and then
+ * calls [resolve], so there is one resolution path, one failure message and one log line. A
+ * `state.json` written before the field existed carries no region, which this service resolves on
+ * first use and persists: the `GetBucketLocation` call happens once per cluster, not once per
+ * command, and the user never has to re-provision.
  *
  * @property clusterStateManager Reads and persists the cluster's `state.json`
  * @property s3BucketService Performs the `GetBucketLocation` call

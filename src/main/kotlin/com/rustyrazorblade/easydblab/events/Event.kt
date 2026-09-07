@@ -2258,6 +2258,15 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("S3.BucketRegionResolved")
+        data class BucketRegionResolved(
+            val bucket: String,
+            val region: String,
+        ) : S3 {
+            override fun toDisplayString(): String = "Account S3 bucket $bucket is in region $region"
+        }
+
+        @Serializable
         @SerialName("S3.DataBucketCreating")
         data class DataBucketCreating(
             val bucket: String,

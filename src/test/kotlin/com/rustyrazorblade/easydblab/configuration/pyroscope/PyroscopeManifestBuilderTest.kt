@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.services.TemplateService
 import com.rustyrazorblade.easydblab.services.aws.AccountBucketRegionService
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
@@ -79,6 +80,18 @@ class PyroscopeManifestBuilderTest : BaseKoinTest() {
         assertThat(config).contains("endpoint: s3.eu-west-1.amazonaws.com")
         assertThat(config).contains("region: eu-west-1")
         assertThat(config).doesNotContain("us-east-2")
+    }
+
+    @Test
+    fun `a blank region fails the build rather than rendering an endpoint with a hole in it`() {
+        // GetBucketLocation reports us-east-1 as no location constraint at all. If that reaches the
+        // template untranslated the config reads `endpoint: s3..amazonaws.com`, which resolves to
+        // nothing — and Pyroscope only finds out on its first profile write.
+        whenever(mockAccountBucketRegionService.resolve()).thenReturn("")
+
+        assertThatThrownBy { builder.buildServerConfigMap() }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("s3..amazonaws.com")
     }
 
     @Test

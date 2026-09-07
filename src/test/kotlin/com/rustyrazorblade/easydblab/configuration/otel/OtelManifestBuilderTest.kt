@@ -123,6 +123,18 @@ class OtelManifestBuilderTest : BaseKoinTest() {
     }
 
     @Test
+    fun `spans get the cluster label from the pipeline, not from each producer`() {
+        // Every metrics pipeline already stamps cluster this way. Doing it here too means any span
+        // producer is covered — the stress job today, Beyla or another client later — instead of
+        // each one carrying its own copy of the label and the next one silently missing it.
+        val tracesPipeline = pipeline("traces:")
+
+        assertThat(tracesPipeline).contains("resource/cluster")
+        // Before batch, as on the metrics pipelines.
+        assertThat(tracesPipeline.substringAfter("processors:")).containsSubsequence("resource/cluster", "batch")
+    }
+
+    @Test
     fun `hostmetrics scrapes paging alongside the scrapers it already had`() {
         val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
         val scrapers = yaml.substringAfter("scrapers:").substringBefore("prometheus:")

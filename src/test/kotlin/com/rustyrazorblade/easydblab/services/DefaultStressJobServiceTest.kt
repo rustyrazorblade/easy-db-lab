@@ -462,13 +462,19 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
     fun `buildJob should give spans the same identity as the sidecar's metrics`() {
         // Same helper as the sidecar's OTEL_RESOURCE_ATTRIBUTES, so a trace and the stress metrics
         // from one run line up on job_name and tags.
-        val javaToolOptions = javaToolOptionsOf(stressJobConfig(tags = mapOf("variant" to "baseline")))
+        // Just the agent's attribute list. Pyroscope's own -Dpyroscope.labels sits in the same
+        // string and legitimately carries cluster=, so asserting over the whole thing would pass
+        // for the wrong reason.
+        val resourceAttributes =
+            javaToolOptionsOf(stressJobConfig(tags = mapOf("variant" to "baseline")))
+                .substringAfter("-Dotel.resource.attributes=")
+                .substringBefore(" ")
 
-        assertThat(javaToolOptions).contains("job_name=stress-test-123")
-        assertThat(javaToolOptions).contains("variant=baseline")
+        assertThat(resourceAttributes).contains("job_name=stress-test-123")
+        assertThat(resourceAttributes).contains("variant=baseline")
         // The cluster label is NOT set here. The collector's traces pipeline stamps it with
         // resource/cluster, so every span producer gets it rather than each carrying its own copy.
-        assertThat(javaToolOptions).doesNotContain("cluster=")
+        assertThat(resourceAttributes).doesNotContain("cluster=")
     }
 
     @Test

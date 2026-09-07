@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
 import software.amazon.awssdk.core.exception.SdkServiceException
+import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.iam.IamClient
 import software.amazon.awssdk.services.iam.model.AddRoleToInstanceProfileRequest
 import software.amazon.awssdk.services.iam.model.AttachRolePolicyRequest
@@ -27,6 +28,7 @@ import software.amazon.awssdk.services.s3.model.DeleteBucketMetricsConfiguration
 import software.amazon.awssdk.services.s3.model.DeleteBucketRequest
 import software.amazon.awssdk.services.s3.model.ExpirationStatus
 import software.amazon.awssdk.services.s3.model.GetBucketLifecycleConfigurationRequest
+import software.amazon.awssdk.services.s3.model.GetBucketLocationRequest
 import software.amazon.awssdk.services.s3.model.GetBucketTaggingRequest
 import software.amazon.awssdk.services.s3.model.LifecycleExpiration
 import software.amazon.awssdk.services.s3.model.LifecycleRule
@@ -178,6 +180,24 @@ class AWS(
     }
 
     // IAM role operations are in AWSIamExtensions.kt
+
+    /**
+     * Returns the region an S3 bucket lives in, via `GetBucketLocation`.
+     *
+     * The API reports `us-east-1` as an empty location constraint, which this maps back to the
+     * region name so callers always receive a usable value.
+     *
+     * @param bucketName The bucket to locate
+     * @return The bucket's region name
+     */
+    fun getS3BucketRegion(bucketName: String): String {
+        val response =
+            s3Client.getBucketLocation(
+                GetBucketLocationRequest.builder().bucket(bucketName).build(),
+            )
+        // An empty constraint is how S3 reports the us-east-1 legacy default.
+        return response.locationConstraintAsString().orEmpty().ifBlank { Region.US_EAST_1.id() }
+    }
 
     /**
      * Creates an S3 bucket with the specified name.

@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.services.aws.AMIResolver
 import com.rustyrazorblade.easydblab.services.aws.AMIService
 import com.rustyrazorblade.easydblab.services.aws.AMIValidator
 import com.rustyrazorblade.easydblab.services.aws.AWSResourceSetupService
+import com.rustyrazorblade.easydblab.services.aws.AccountBucketRegionService
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import com.rustyrazorblade.easydblab.services.aws.DefaultAMIResolver
@@ -245,6 +246,10 @@ val awsModule =
 
         // Provide AwsS3BucketService as singleton
         single { AwsS3BucketService(get<AWS>()) }
+
+        // Resolves the account bucket's region once per cluster, lazily for a state.json
+        // written before the field existed.
+        single { AccountBucketRegionService(get(), get()) }
 
         // Provide AMIResolver as singleton
         single<AMIResolver> {

@@ -41,6 +41,7 @@ Central state data class persisted as `state.json`. Key fields:
 - `openSearchDomain: OpenSearchClusterState?` — optional OpenSearch state
 - `s3Bucket: String?` — account-level S3 bucket
 - `dataBucket: String` — per-cluster data bucket (`easy-db-lab-data-{clusterId}`) for ClickHouse data and CloudWatch metrics
+- `accountBucketRegion: String?` — region the account bucket lives in, resolved once via `GetBucketLocation`. Null on a `state.json` written before the field existed; `AccountBucketRegionService` then resolves it lazily and persists it. Never the cluster's own region
 - `backupHashes: Map<String, String>` — SHA-256 hashes of backed-up files
 - `infrastructureStatus: InfrastructureStatus` — UP, DOWN, or UNKNOWN
 
@@ -132,7 +133,7 @@ Factory methods: `from(clusterState)`, `root(bucket)`, `fromKey(bucket, key)`
 Handles `__KEY__` placeholder substitution in K8s manifests, YAML configs, etc. Uses `__` delimiters (not `${}`) to avoid conflicts with Grafana template syntax.
 
 **Context variables** (built from cluster state):
-- `BUCKET_NAME` (resolves to `dataBucket` when set, falls back to `s3Bucket`), `AWS_REGION`, `CLUSTER_NAME`, `CONTROL_NODE_IP`
+- `BUCKET_NAME` (resolves to `dataBucket` when set, falls back to `s3Bucket`), `ACCOUNT_BUCKET_NAME` (always the account bucket), `AWS_REGION`, `CLUSTER_NAME`, `CONTROL_NODE_IP`
 - `METRICS_FILTER_ID`, `CLUSTER_S3_PREFIX`
 
 **Key methods:**
@@ -173,7 +174,7 @@ All Grafana K8s resources are built programmatically using Fabric8:
 
 All Pyroscope K8s resources are built programmatically using Fabric8:
 
-- **`PyroscopeManifestBuilder`** — builds all Pyroscope K8s resources (server ConfigMap, Service, Deployment, eBPF ServiceAccount, eBPF ClusterRole, eBPF ClusterRoleBinding, eBPF ConfigMap, eBPF DaemonSet) as typed Fabric8 objects. The server runs on the control plane with S3 backend storage. Config values (`__BUCKET_NAME__`, `__AWS_REGION__`, `__PYROSCOPE_STORAGE_PREFIX__`) are substituted at build time via TemplateService — NOT runtime env var expansion. **Important:** Pyroscope's `storage.prefix` rejects forward slashes, so the prefix is flat (`pyroscope.{name}-{id}`). S3 auth uses the default AWS SDK credential chain (IMDS/instance role) — v1.18.0 lacks `native_aws_auth_enabled`. The eBPF DaemonSet runs under the `pyroscope-ebpf` ServiceAccount (RBAC granting pod read access) so the Alloy `discovery.kubernetes` component can attribute samples to a pod/container/service_name.
+- **`PyroscopeManifestBuilder`** — builds all Pyroscope K8s resources (server ConfigMap, Service, Deployment, eBPF ServiceAccount, eBPF ClusterRole, eBPF ClusterRoleBinding, eBPF ConfigMap, eBPF DaemonSet) as typed Fabric8 objects. The server runs on the control plane with S3 backend storage. Config values (`__ACCOUNT_BUCKET_NAME__`, `__ACCOUNT_BUCKET_REGION__`, `__PYROSCOPE_STORAGE_PREFIX__`) are substituted at build time via TemplateService — NOT runtime env var expansion. **Important:** profiles are stored in the **account** bucket, never the per-cluster data bucket that `down` expires wholesale, and the endpoint is built from the account bucket's own region (`AccountBucketRegionService`), never the cluster's — the two differ whenever a cluster is brought up outside the bucket's region. `storage.prefix` does accept forward slashes, so the prefix is `clusters/{name}-{id}/pyroscope` and all three observability tiers share one prefix tree. S3 auth uses the default AWS SDK credential chain (IMDS/instance role) — v1.18.0 lacks `native_aws_auth_enabled`. The eBPF DaemonSet runs under the `pyroscope-ebpf` ServiceAccount (RBAC granting pod read access) so the Alloy `discovery.kubernetes` component can attribute samples to a pod/container/service_name.
 - **Config resources** — `config.yaml` (Pyroscope server config with S3 backend, `__KEY__` placeholders) and `config.alloy` (Grafana Alloy eBPF config) stored in `resources/.../configuration/pyroscope/`.
 
 ### Profiling Architecture

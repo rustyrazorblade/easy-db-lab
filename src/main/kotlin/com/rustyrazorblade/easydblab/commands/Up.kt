@@ -246,7 +246,10 @@ class Up(
      * Creates a per-cluster data bucket for ClickHouse data and CloudWatch metrics.
      */
     private fun configureAccountS3Bucket() {
-        if (!workingState.s3Bucket.isNullOrBlank() && workingState.dataBucket.isNotBlank()) {
+        if (!workingState.s3Bucket.isNullOrBlank() &&
+            workingState.dataBucket.isNotBlank() &&
+            !workingState.accountBucketRegion.isNullOrBlank()
+        ) {
             log.info { "S3 buckets already configured: account=${workingState.s3Bucket}, data=${workingState.dataBucket}" }
             return
         }
@@ -258,6 +261,10 @@ class Up(
         eventBus.emit(Event.S3.BucketUsing(accountBucket))
         s3BucketService.putBucketPolicy(accountBucket)
         workingState.s3Bucket = accountBucket
+        // The account bucket is one per account while a cluster can be brought up in any region, so
+        // anything building an S3 endpoint for it needs the bucket's own region, never the
+        // cluster's. Resolve it here, once, rather than on first use.
+        workingState.accountBucketRegion = s3BucketService.getBucketRegion(accountBucket)
         eventBus.emit(Event.S3.BucketConfigured(accountBucket, workingState.clusterPrefix()))
 
         // Configure per-cluster data bucket

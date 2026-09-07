@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.configuration.pyroscope
 
 import com.rustyrazorblade.easydblab.services.TemplateService
+import com.rustyrazorblade.easydblab.services.aws.AccountBucketRegionService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.Container
@@ -21,10 +22,16 @@ import io.fabric8.kubernetes.api.model.rbac.ClusterRoleBuilder
  * Creates the Pyroscope server (Deployment + Service + ConfigMap) for continuous profiling storage,
  * and the Grafana Alloy eBPF agent (DaemonSet + ConfigMap) that collects CPU profiles from all nodes.
  *
+ * Profiles are stored in the accumulating account bucket rather than the ephemeral per-cluster data
+ * bucket, which `down` expires wholesale. The account bucket is one per account and a cluster can be
+ * brought up in a different region, so the S3 endpoint is built from the bucket's own region.
+ *
  * @property templateService Used for loading config files from classpath resources
+ * @property accountBucketRegionService Supplies the account bucket's region for the S3 endpoint
  */
 class PyroscopeManifestBuilder(
     private val templateService: TemplateService,
+    private val accountBucketRegionService: AccountBucketRegionService,
 ) {
     companion object {
         private const val NAMESPACE = "default"
@@ -130,6 +137,9 @@ class PyroscopeManifestBuilder(
 
     /**
      * Builds the Pyroscope server ConfigMap containing config.yaml.
+     *
+     * The account bucket's region is passed in explicitly rather than read from the context map, so
+     * an unresolved region fails the build instead of rendering an endpoint with a hole in it.
      */
     fun buildServerConfigMap() =
         ConfigMapBuilder()
@@ -144,7 +154,9 @@ class PyroscopeManifestBuilder(
                     .fromResource(
                         PyroscopeManifestBuilder::class.java,
                         "config.yaml",
-                    ).substitute(),
+                    ).substitute(
+                        mapOf("ACCOUNT_BUCKET_REGION" to accountBucketRegionService.resolve()),
+                    ),
             ).build()
 
     /**

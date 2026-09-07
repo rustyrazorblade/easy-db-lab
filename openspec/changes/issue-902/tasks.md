@@ -16,20 +16,20 @@
 
 ## 2. Move Pyroscope's store to the account bucket
 
-- [ ] 2.1 Resolve the account bucket's region once at bucket-ensure time via `GetBucketLocation` and
+- [x] 2.1 Resolve the account bucket's region once at bucket-ensure time via `GetBucketLocation` and
       store it on `ClusterState`.
-- [ ] 2.2 Expose that region as its own template variable. **Do not change `BUCKET_NAME`** — its
+- [x] 2.2 Expose that region as its own template variable. **Do not change `BUCKET_NAME`** — its
       other consumer is ClickHouse's S3 data disk, which must not move to the account bucket.
-- [ ] 2.3 Point `pyroscope/config.yaml`'s `bucket_name`, S3 endpoint and region at the account bucket
+- [x] 2.3 Point `pyroscope/config.yaml`'s `bucket_name`, S3 endpoint and region at the account bucket
       and the new region variable.
-- [ ] 2.4 Fix the incorrect KDoc at `services/TemplateService.kt:50` — Pyroscope's storage prefix
+- [x] 2.4 Fix the incorrect KDoc at `services/TemplateService.kt:50` — Pyroscope's storage prefix
       does allow forward slashes — and move the prefix inside `clusters/` so all three tiers share
       one prefix tree. Use `ClusterS3Path.pyroscope()`.
-- [ ] 2.5 Handle a `state.json` predating the field — **a live shared cluster is in this position**.
+- [x] 2.5 Handle a `state.json` predating the field — **a live shared cluster is in this position**.
       Resolve the region lazily on first use with the same `GetBucketLocation` call and persist it,
       so the resolution happens once per cluster. Never fall back to the cluster's region. Fail
       naming the bucket and the call when the lazy resolution itself fails.
-- [ ] 2.6 Tests: a cluster in a region other than the account bucket's renders a Pyroscope config
+- [x] 2.6 Tests: a cluster in a region other than the account bucket's renders a Pyroscope config
       whose endpoint and region come from the bucket, not the cluster; a `state.json` with no stored
       region resolves lazily, persists, and is not re-resolved on the next command; a failed
       resolution fails naming the bucket; `BUCKET_NAME` resolves unchanged.

@@ -19,6 +19,7 @@ import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.victoria.VictoriaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.yace.YaceManifestBuilder
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.services.aws.AccountBucketRegionService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.PersistentVolumeBuilder
@@ -77,6 +78,7 @@ class K8sServiceIntegrationTest {
 
     private lateinit var client: KubernetesClient
     private lateinit var templateService: TemplateService
+    private lateinit var accountBucketRegionService: AccountBucketRegionService
 
     @BeforeAll
     fun setup() {
@@ -101,6 +103,10 @@ class K8sServiceIntegrationTest {
                 awsSecret = "",
             )
         templateService = TemplateService(mockClusterStateManager, testUser)
+        accountBucketRegionService =
+            mock<AccountBucketRegionService>().also {
+                whenever(it.resolve()).thenReturn("us-west-2")
+            }
 
         val clusterConfig =
             ConfigMapBuilder()
@@ -273,7 +279,7 @@ class K8sServiceIntegrationTest {
     @Test
     @Order(18)
     fun `should apply Pyroscope resources`() {
-        val resources = PyroscopeManifestBuilder(templateService).buildAllResources()
+        val resources = PyroscopeManifestBuilder(templateService, accountBucketRegionService).buildAllResources()
         applyAndVerify(resources)
 
         assertConfigMapExists("pyroscope-config", "config.yaml")
@@ -653,7 +659,7 @@ class K8sServiceIntegrationTest {
             RegistryManifestBuilder().buildAllResources() +
             S3ManagerManifestBuilder(templateService).buildAllResources() +
             BeylaManifestBuilder(templateService).buildAllResources() +
-            PyroscopeManifestBuilder(templateService).buildAllResources() +
+            PyroscopeManifestBuilder(templateService, accountBucketRegionService).buildAllResources() +
             YaceManifestBuilder(templateService).buildAllResources() +
             GrafanaManifestBuilder(templateService).buildAllResources()
 

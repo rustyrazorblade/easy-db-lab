@@ -127,13 +127,62 @@ class StressStart : PicoBaseCommand() {
      */
     internal fun parseTags(tagsString: String?): Map<String, String> {
         if (tagsString.isNullOrBlank()) return emptyMap()
+
         return tagsString
             .split(",")
-            .filter { it.contains("=") }
-            .associate { entry ->
-                val (key, value) = entry.split("=", limit = 2)
-                key.trim() to value.trim()
-            }
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .associate { entry -> parseTag(entry, tagsString) }
+    }
+
+    /**
+     * Parses one `key=value` tag, refusing anything the telemetry sinks cannot carry.
+     *
+     * Rejecting is deliberate, and the alternative is worse. These tags are joined into a
+     * `k=v,k=v` string that reaches three parsers — the sidecar's `OTEL_RESOURCE_ATTRIBUTES`, the
+     * stress JVM's `-Dotel.resource.attributes`, and whatever is added next — so escaping would
+     * mean three encoders that all have to agree. One gate that says no is smaller and cannot
+     * disagree with itself.
+     *
+     * Whitespace is the one that stops a run dead rather than merely spoiling a label.
+     * `JAVA_TOOL_OPTIONS` is a single string the JVM splits on whitespace, so `--tags "note=first
+     * run"` used to yield `-Dotel.resource.attributes=...,note=first` followed by a bare `run`, and
+     * the JVM exited with `Unrecognized option: run` before cassandra-easy-stress ever started.
+     *
+     * Nothing here trims away or substitutes the offending character. Silently altering what the
+     * operator typed is how a run ends up labelled with something other than what they asked for,
+     * and a comparison keyed on that label then gives a confidently wrong answer.
+     *
+     * Space AROUND a tag is fine and is trimmed: `--tags "a=1, b=2"` is a normal way to type it.
+     */
+    private fun parseTag(
+        entry: String,
+        original: String,
+    ): Pair<String, String> {
+        require(entry.contains("=")) {
+            "Invalid --tags entry \"$entry\" in \"$original\": expected key=value. " +
+                "A comma always separates tags, so a value cannot contain one."
+        }
+
+        val key = entry.substringBefore("=").trim()
+        val value = entry.substringAfter("=").trim()
+
+        require(key.isNotEmpty()) {
+            "Invalid --tags entry \"$entry\": the key is empty. Expected key=value."
+        }
+        require(key.none { it.isWhitespace() }) {
+            "Invalid --tags key \"$key\": keys cannot contain whitespace."
+        }
+        require(value.none { it.isWhitespace() }) {
+            "Invalid --tags value for \"$key\": \"$value\" contains whitespace, which would split " +
+                "the stress JVM's options and stop the job starting. Use an underscore or a dash."
+        }
+        require(!value.contains("=")) {
+            "Invalid --tags value for \"$key\": \"$value\" contains '=', which the telemetry " +
+                "sinks cannot unambiguously parse."
+        }
+
+        return key to value
     }
 
     /**

@@ -1,0 +1,1608 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "VictoriaMetrics"
+        },
+        "enable": true,
+        "expr": "resets(jvm_cpu_time_seconds_total{job=\"cassandra\"}[$__interval]) > 0",
+        "hide": false,
+        "iconColor": "red",
+        "name": "Database restart",
+        "step": "60s",
+        "tagKeys": "host_name,cassandra_build",
+        "textFormat": "{{host_name}} restarted on build {{cassandra_build}}",
+        "titleFormat": "Database restart",
+        "useValueForTime": false
+      }
+    ]
+  },
+  "description": "Subtract coordinator-observed latency from client-observed latency to size the network, driver and dispatch cost. The client reports seconds and the server microseconds; every panel normalises before it compares.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "gridPos": {
+        "h": 11,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "This dashboard answers one question: **is it the database, or the path to it?**\n\n`cassandra-easy-stress` measures latency at the **client**, from just before the driver sends a\nstatement to just after the response lands. Cassandra measures latency at the **coordinator**, from\nthe moment a request is decoded to the moment a reply is written. The difference is everything in\nbetween: the network, the driver queue, connection contention, and coordinator dispatch. Nobody\nsubtracts the two numbers, so nobody sees that gap.\n\n**Units, because this is the trap.** The client summary reports **seconds**\n(`selects`, `mutations`, quantile label). The server gauges report **microseconds**\n(`cassandra_client_request_latency_*_microseconds`). Every client expression on this dashboard is\nmultiplied by `1000000` before it is compared, then both sides are divided by **Latency unit**.\nSubtracting them raw is wrong by a factor of one million.\n\n**Two percentile dropdowns, on purpose.** The server family encodes the percentile in the metric\nNAME (`p50`, `p99`, `p999`, `max`); the client summary encodes it in a numeric `quantile` LABEL\n(`0.5`, `0.99`, `0.999`). One variable cannot drive both. Set **Percentile** and **Client quantile**\nto the same percentile. Every delta panel prints both in its title, so a mismatch is visible in a\nscreenshot instead of silently wrong. The client summary has **no** `max`, so `max` has no\nclient counterpart.\n\n**How to read it.** Client and server lines that track each other with a small constant offset mean\na healthy path; the database owns the latency. A delta that grows while server latency stays flat\nmeans the path, not the database: the network, the driver, or a saturated client. Check the\nthroughput row first. If client and server request rates disagree, the two halves are not describing\nthe same work and no delta below is meaningful.\n\n**Set Workload to a single stress job before reading a delta.** With several workloads running, the\nclient side is averaged across workloads with different shapes.",
+        "mode": "markdown"
+      },
+      "title": "How to read this dashboard",
+      "type": "text"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 11
+      },
+      "id": 2,
+      "panels": [],
+      "title": "Client and server, side by side",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Client-observed read latency from the stress summary (`selects`, seconds, scaled to microseconds) overlaid on coordinator-observed read latency per node (`cassandra_client_request_latency_${percentile}_microseconds`, microseconds). Units: the client summary is emitted in SECONDS and the server gauge in MICROSECONDS. Every client expression here multiplies by 1000000 first, so both sides reach the axis in microseconds and are then divided by the Latency unit divisor.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "${latency_unit:text}",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 12
+      },
+      "id": 3,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "selects{job=\"cassandra-easy-stress\", job_name=~\"$workload\", quantile=\"$client_quantile\"} * 1000000 / ${latency_unit}",
+          "legendFormat": "client {{job_name}}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"read\", host_name=~\"$host\"} / ${latency_unit}",
+          "legendFormat": "server {{host_name}}",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Read latency — client vs server (client q=$client_quantile, server ${percentile})",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Client-observed write latency from the stress summary (`mutations`, seconds, scaled to microseconds) overlaid on coordinator-observed write latency per node. Units: the client summary is emitted in SECONDS and the server gauge in MICROSECONDS. Every client expression here multiplies by 1000000 first, so both sides reach the axis in microseconds and are then divided by the Latency unit divisor.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "${latency_unit:text}",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 12
+      },
+      "id": 4,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "mutations{job=\"cassandra-easy-stress\", job_name=~\"$workload\", quantile=\"$client_quantile\"} * 1000000 / ${latency_unit}",
+          "legendFormat": "client {{job_name}}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"write\", host_name=~\"$host\"} / ${latency_unit}",
+          "legendFormat": "server {{host_name}}",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Write latency — client vs server (client q=$client_quantile, server ${percentile})",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 21
+      },
+      "id": 5,
+      "panels": [],
+      "title": "The gap — client minus server",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "The point of this dashboard. Client read latency minus coordinator read latency, both in microseconds before the divide. What is left is network, driver queueing and coordinator dispatch. Both sides are averaged: the client across the selected workloads, the server across the selected hosts. A negative value is not an error; it means the slowest coordinator is slower than the client average, which happens when one node lags.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "${latency_unit:text}",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 22
+      },
+      "id": 6,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "(avg(selects{job=\"cassandra-easy-stress\", job_name=~\"$workload\", quantile=\"$client_quantile\"}) * 1000000 - avg(cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"read\", host_name=~\"$host\"})) / ${latency_unit}",
+          "legendFormat": "read delta",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Read delta — client q=$client_quantile minus server ${percentile}",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Client write latency minus coordinator write latency, both in microseconds before the divide. Writes normally show a smaller absolute gap than reads because the coordinator replies before every replica acknowledges.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "${latency_unit:text}",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 22
+      },
+      "id": 7,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "(avg(mutations{job=\"cassandra-easy-stress\", job_name=~\"$workload\", quantile=\"$client_quantile\"}) * 1000000 - avg(cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"write\", host_name=~\"$host\"})) / ${latency_unit}",
+          "legendFormat": "write delta",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Write delta — client q=$client_quantile minus server ${percentile}",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 31
+      },
+      "id": 8,
+      "panels": [],
+      "title": "The gap, split by node",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "The same subtraction, but the server term is left per node instead of averaged. The client term is a single average across the selected workloads, because the load generator does not attribute its own latency to a coordinator. One node standing apart here is a node problem; all of them moving together is a path problem.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "${latency_unit:text}",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 32
+      },
+      "id": 9,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "(scalar(avg(selects{job=\"cassandra-easy-stress\", job_name=~\"$workload\", quantile=\"$client_quantile\"})) * 1000000 - cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"read\", host_name=~\"$host\"}) / ${latency_unit}",
+          "legendFormat": "{{host_name}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Read delta by node — client q=$client_quantile minus that node's server ${percentile}",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Per-node write gap. Same construction as the read panel: a scalar client average minus the per-node coordinator gauge.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "${latency_unit:text}",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 32
+      },
+      "id": 10,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "(scalar(avg(mutations{job=\"cassandra-easy-stress\", job_name=~\"$workload\", quantile=\"$client_quantile\"})) * 1000000 - cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"write\", host_name=~\"$host\"}) / ${latency_unit}",
+          "legendFormat": "{{host_name}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Write delta by node — client q=$client_quantile minus that node's server ${percentile}",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 41
+      },
+      "id": 11,
+      "panels": [],
+      "title": "Are both sides describing the same work?",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Client selects per second against coordinator reads per second. These two lines should sit on top of each other. If they do not, the client is talking to something the server side does not count, or a host filter is hiding coordinators, and every delta panel above is comparing unrelated work.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "requests/s",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 42
+      },
+      "id": 12,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(selects_count{job=\"cassandra-easy-stress\", job_name=~\"$workload\"}[$__rate_interval]))",
+          "legendFormat": "client selects/s",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(cassandra_client_request_count_total{cassandra_operation=\"read\", host_name=~\"$host\"}[$__rate_interval]))",
+          "legendFormat": "server reads/s",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Read throughput — client vs server",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Client mutations per second against coordinator writes per second. The same agreement check as the read panel.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "requests/s",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 42
+      },
+      "id": 13,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(mutations_count{job=\"cassandra-easy-stress\", job_name=~\"$workload\"}[$__rate_interval]))",
+          "legendFormat": "client mutations/s",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(cassandra_client_request_count_total{cassandra_operation=\"write\", host_name=~\"$host\"}[$__rate_interval]))",
+          "legendFormat": "server writes/s",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Write throughput — client vs server",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 50
+      },
+      "id": 14,
+      "panels": [],
+      "title": "Errors — the two sides count different events",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "`errors_total` from the stress process: a request the driver could not complete, including everything the driver retried away and everything that never reached a coordinator. The client has no status breakdown, only a total.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "errors/s",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 51
+      },
+      "id": 15,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "sum by (job_name) (rate(errors_total{job=\"cassandra-easy-stress\", job_name=~\"$workload\"}[$__rate_interval]))",
+          "legendFormat": "{{job_name}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Client error rate, by workload",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "`cassandra_client_request_error_total` split by cassandra_status. unavailable, timeout and failure are three different events, and none of them is the same event as a client error: a request the coordinator never received cannot appear here, and a request the driver retried successfully appears here but not on the client.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "errors/s",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 51
+      },
+      "id": 16,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "sum by (cassandra_operation, cassandra_status) (rate(cassandra_client_request_error_total{host_name=~\"$host\"}[$__rate_interval]))",
+          "legendFormat": "{{cassandra_operation}} {{cassandra_status}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Server error rate, by operation and status",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 59
+      },
+      "id": 17,
+      "panels": [],
+      "title": "Slice and dice",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Coordinator latency aggregated by the Group by dimension. Honours host_name, cluster, cassandra_build and cassandra_operation; the client-request family carries no keyspace or table, so those choices collapse this panel to one series.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "${latency_unit:text}",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 60
+      },
+      "id": 18,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "avg by (${groupby}) (cassandra_client_request_latency_${percentile}_microseconds{host_name=~\"$host\"}) / ${latency_unit}",
+          "legendFormat": "{{$groupby}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Server latency ${percentile} by $groupby",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Coordinator request rate aggregated by the Group by dimension. Same label caveat as the panel on the left.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "requests/s",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 60
+      },
+      "id": 19,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "sum by (${groupby}) (rate(cassandra_client_request_count_total{host_name=~\"$host\"}[$__rate_interval]))",
+          "legendFormat": "{{$groupby}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Server request rate by $groupby",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": [
+    "cassandra",
+    "latency",
+    "client",
+    "stress"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "selected": true,
+          "text": "p99",
+          "value": "p99"
+        },
+        "description": "Which server-side latency gauge to read. The percentile is part of the metric name on the server side, so this variable rewrites the metric name. Pair it with Client quantile.",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Percentile",
+        "multi": false,
+        "name": "percentile",
+        "options": [
+          {
+            "selected": false,
+            "text": "p50",
+            "value": "p50"
+          },
+          {
+            "selected": true,
+            "text": "p99",
+            "value": "p99"
+          },
+          {
+            "selected": false,
+            "text": "p999",
+            "value": "p999"
+          },
+          {
+            "selected": false,
+            "text": "max",
+            "value": "max"
+          }
+        ],
+        "query": "p50,p99,p999,max",
+        "queryValue": "",
+        "skipUrlSync": false,
+        "type": "custom"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": "0.99",
+          "value": "0.99"
+        },
+        "description": "Which quantile to read from the client-side stress summary. The client publishes a Prometheus summary whose quantile label is numeric, so it cannot share the server Percentile dropdown. Set it to the same percentile as Percentile: 0.5 for p50, 0.99 for p99, 0.999 for p999. The client summary has no max, so Percentile max has no client counterpart and the delta panels are blank for it.",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Client quantile",
+        "multi": false,
+        "name": "client_quantile",
+        "options": [
+          {
+            "selected": false,
+            "text": "0.5",
+            "value": "0.5"
+          },
+          {
+            "selected": false,
+            "text": "0.75",
+            "value": "0.75"
+          },
+          {
+            "selected": false,
+            "text": "0.95",
+            "value": "0.95"
+          },
+          {
+            "selected": false,
+            "text": "0.98",
+            "value": "0.98"
+          },
+          {
+            "selected": true,
+            "text": "0.99",
+            "value": "0.99"
+          },
+          {
+            "selected": false,
+            "text": "0.999",
+            "value": "0.999"
+          }
+        ],
+        "query": "0.5,0.75,0.95,0.98,0.99,0.999",
+        "queryValue": "",
+        "skipUrlSync": false,
+        "type": "custom"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": "milliseconds",
+          "value": "1000"
+        },
+        "description": "Display unit for latency. Both sides are normalised to microseconds first, so the value is the divisor: milliseconds divides by 1000, microseconds divides by 1.",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Latency unit",
+        "multi": false,
+        "name": "latency_unit",
+        "options": [
+          {
+            "selected": true,
+            "text": "milliseconds",
+            "value": "1000"
+          },
+          {
+            "selected": false,
+            "text": "microseconds",
+            "value": "1"
+          }
+        ],
+        "query": "milliseconds : 1000,microseconds : 1",
+        "queryValue": "",
+        "skipUrlSync": false,
+        "type": "custom"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "VictoriaMetrics"
+        },
+        "definition": "label_values(cassandra_storage_load_bytes, host_name)",
+        "description": "Database nodes. Derived from a Cassandra-only metric, so All expands to the database nodes and never widens a panel to the load generator or the control node.",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Host",
+        "multi": true,
+        "name": "host",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(cassandra_storage_load_bytes, host_name)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "VictoriaMetrics"
+        },
+        "definition": "label_values(mutations{job=\"cassandra-easy-stress\"}, job_name)",
+        "description": "Which stress workload the client side reads. Every running cassandra-easy-stress process publishes its own job_name. Two workloads with different shapes produce different client latency, so narrow this to one workload before you trust a delta.",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Workload",
+        "multi": true,
+        "name": "workload",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(mutations{job=\"cassandra-easy-stress\"}, job_name)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": "host_name",
+          "value": "host_name"
+        },
+        "description": "Dimension for the panels that say so in their title. Not every metric carries every label; a label the metric does not carry collapses that panel to one unlabelled series. Each panel names the label families it honours.",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Group by",
+        "multi": false,
+        "name": "groupby",
+        "options": [
+          {
+            "selected": true,
+            "text": "host_name",
+            "value": "host_name"
+          },
+          {
+            "selected": false,
+            "text": "cassandra_build",
+            "value": "cassandra_build"
+          },
+          {
+            "selected": false,
+            "text": "cassandra_operation",
+            "value": "cassandra_operation"
+          },
+          {
+            "selected": false,
+            "text": "cassandra_status",
+            "value": "cassandra_status"
+          },
+          {
+            "selected": false,
+            "text": "cluster",
+            "value": "cluster"
+          },
+          {
+            "selected": false,
+            "text": "job_name",
+            "value": "job_name"
+          },
+          {
+            "selected": false,
+            "text": "keyspace",
+            "value": "keyspace"
+          },
+          {
+            "selected": false,
+            "text": "table",
+            "value": "table"
+          }
+        ],
+        "query": "host_name,cassandra_build,cassandra_operation,cassandra_status,cluster,job_name,keyspace,table",
+        "queryValue": "",
+        "skipUrlSync": false,
+        "type": "custom"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "VictoriaMetrics"
+        },
+        "filters": [],
+        "hide": 0,
+        "label": "Ad-hoc filters",
+        "name": "adhoc",
+        "skipUrlSync": false,
+        "type": "adhoc"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Client vs Server Latency",
+  "uid": "client-vs-server-latency",
+  "version": 1,
+  "weekStart": ""
+}

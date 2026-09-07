@@ -411,7 +411,7 @@
           "type": "prometheus",
           "uid": "${datasource}"
         },
-        "definition": "label_values(sysbench_tps, kit)",
+        "definition": "label_values(sysbench_tps{cluster=~\"$cluster\"}, kit)",
         "hide": 0,
         "includeAll": true,
         "label": "Kit",
@@ -419,7 +419,7 @@
         "name": "kit",
         "options": [],
         "query": {
-          "query": "label_values(sysbench_tps, kit)",
+          "query": "label_values(sysbench_tps{cluster=~\"$cluster\"}, kit)",
           "refId": "StandardVariableQuery"
         },
         "refresh": 2,

@@ -251,7 +251,8 @@
           "profileTypeId": "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
           "refId": "PyroscopeVariableQueryEditor-VariableQuery",
           "type": "labelValue",
-          "labelName": "service_name"
+          "labelName": "service_name",
+          "labelSelector": "{cluster=~\"${cluster:regex}\"}"
         },
         "refresh": 2,
         "regex": "",

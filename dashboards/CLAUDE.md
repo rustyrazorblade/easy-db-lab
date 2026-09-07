@@ -23,17 +23,36 @@ for dashboards here **and** for every kit's own, with no exclusions:
   `allValue` (`.*`). The `allValue` is what keeps a single-cluster deployment looking as it always
   did — All is a regex that matches the one cluster present.
 - Each query carries a cluster filter, in its datasource's own dialect: `cluster=~"$cluster"` in a
-  PromQL selector, `cluster:~"${cluster:regex}"` in LogsQL, and `cluster=~"${cluster:regex}"` inside
-  a Pyroscope `labelSelector`.
+  PromQL selector, `cluster:~"${cluster:regex}"` in LogsQL, `cluster=~"${cluster:regex}"` inside a
+  Pyroscope `labelSelector`, and `resource.cluster =~ "${cluster:regex}"` in TraceQL.
 
-Two traps live here:
+A cluster filter lives in five places, and the test walks all five because each has blended before:
+
+| Where | Field |
+|-------|-------|
+| PromQL and LogsQL panels | `expr` |
+| Pyroscope panels | `labelSelector` |
+| Tempo panels | `query` / `serviceMapQuery`, inside a `targets` entry |
+| Explore drill-throughs | a dataLink `url`, query encoded inside `panes=` |
+| Dropdowns | `templating.list[]` — `query`, `query.query`, `query.labelSelector`, `definition` |
+
+Three traps live here:
 
 - **The filter is not always in an `expr`.** Pyroscope panels carry it in `labelSelector`, so a
-  check that walks only `expr` passes `profiling.json` while it silently blends. The test walks both
-  fields for exactly this reason.
+  check that walks only `expr` passes `profiling.json` while it silently blends.
+- **`query` means two different things.** Inside a `targets` entry it is a Tempo query. Inside a
+  `templating.list[]` entry it is a variable definition wrapping `label_values(...)`. Reading the
+  second as the first turns every dropdown into a phantom offender.
 - **`${cluster:regex}` is not a different variable.** Grafana interpolates a multi-value variable as
-  a regex alternation on its own only for Prometheus-family datasources. Pyroscope and VictoriaLogs
-  need the explicit `:regex` format or a multi-select renders as a glob and matches nothing.
+  a regex alternation on its own only for Prometheus-family datasources. Pyroscope, VictoriaLogs and
+  Tempo need the explicit `:regex` format or a multi-select renders as a glob and matches nothing.
+
+A blank query is an offender, not an exemption: a blank `labelSelector` or `serviceMapQuery` means
+*match everything*, which is the blend the test exists to catch.
+
+The one exemption is the cluster picker itself — a variable whose name ends in `cluster`, which
+covers `cluster` everywhere and ClickHouse's second `KeeperCluster` picker. A list of clusters
+cannot be filtered by the selected cluster.
 
 The label exists on every stream because every OTel pipeline runs the `resource/cluster` processor.
 If you add a pipeline, stamp it there too, or its metrics arrive unattributable and no dashboard

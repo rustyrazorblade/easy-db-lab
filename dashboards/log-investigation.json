@@ -115,7 +115,7 @@
           "uid": "victorialogs"
         },
         "query": {
-          "query": "*",
+          "query": "cluster:~\"${cluster:regex}\"",
           "field": "service",
           "type": "fieldValue"
         },
@@ -137,7 +137,7 @@
           "uid": "victorialogs"
         },
         "query": {
-          "query": "*",
+          "query": "cluster:~\"${cluster:regex}\"",
           "field": "source",
           "type": "fieldValue"
         },
@@ -159,7 +159,7 @@
           "uid": "victorialogs"
         },
         "query": {
-          "query": "*",
+          "query": "cluster:~\"${cluster:regex}\"",
           "field": "severity",
           "type": "fieldValue"
         },

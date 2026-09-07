@@ -2377,7 +2377,7 @@
             "uid": "tempo"
           },
           "limit": 20,
-          "query": "{ resource.service.name = \"TiDB\" }",
+          "query": "{ resource.cluster =~ \"${cluster:regex}\" && resource.service.name = \"TiDB\" }",
           "queryType": "traceql",
           "refId": "A"
         }
@@ -2424,7 +2424,7 @@
           },
           "queryType": "serviceMap",
           "refId": "A",
-          "serviceMapQuery": "{}"
+          "serviceMapQuery": "{ resource.cluster =~ \"${cluster:regex}\" }"
         }
       ],
       "title": "Service Graph",

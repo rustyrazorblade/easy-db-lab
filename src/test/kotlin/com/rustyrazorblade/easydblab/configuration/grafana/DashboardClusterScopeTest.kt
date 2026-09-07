@@ -14,13 +14,26 @@ import java.io.File
 /**
  * Enforces that every packaged dashboard can tell two clusters apart.
  *
- * Metrics, logs and profiles from many clusters land in one store so clusters can be compared on a
- * single panel. A dashboard with no cluster field, or a query with no cluster filter, renders two
- * clusters as one series and nothing about the result looks broken.
+ * Metrics, logs, traces and profiles from many clusters land in one store so clusters can be
+ * compared on a single panel. A dashboard with no cluster field, or a query with no cluster filter,
+ * renders two clusters as one series and nothing about the result looks broken.
  *
- * The walk covers `labelSelector` fields as well as `expr` fields. A test that walked only `expr`
- * passed `profiling.json` — whose filters are all Pyroscope `labelSelector`s — while it silently
- * blended, which is also why an earlier survey reported that dashboard as "0 of 0 queries".
+ * A cluster filter can live in five places, and the walk reaches all five, because each one has
+ * silently blended in the past:
+ * - `expr` — PromQL and VictoriaLogs LogsQL.
+ * - `labelSelector` — Pyroscope. A walk that read only `expr` passed `profiling.json`, whose
+ *   filters are all `labelSelector`s, which is also why an earlier survey reported that dashboard
+ *   as "0 of 0 queries".
+ * - `query` and `serviceMapQuery` inside a `targets` entry — Tempo. Read only through `targets`,
+ *   because a template variable's own `query` object is a different thing entirely.
+ * - a dataLink `url` into Explore — the TraceQL, LogsQL or Pyroscope query rides inside the
+ *   URL-encoded `panes=` payload, so clicking through from a cluster-A panel opened every
+ *   cluster's traces.
+ * - `templating.list[]` — an unfiltered dropdown lists values from every cluster, and picking one
+ *   that exists only in another cluster gives an empty panel with no explanation.
+ *
+ * A blank query is an offender, not a skip. A blank `labelSelector` or `serviceMapQuery` means
+ * *match everything*, which is the exact blend this test exists to catch.
  *
  * Dashboards are read from the packaged resources rather than the source tree, so this checks what
  * actually ships.
@@ -28,8 +41,14 @@ import java.io.File
 class DashboardClusterScopeTest {
     private val json = Json { ignoreUnknownKeys = true }
 
-    /** Fields holding a datasource query, in every datasource dialect the dashboards use. */
+    /** Query fields that mean the same thing wherever they appear. */
     private val queryFields = setOf("expr", "labelSelector")
+
+    /** Tempo's query fields, which are only a query when they sit in a `targets` entry. */
+    private val targetQueryFields = setOf("query", "serviceMapQuery")
+
+    /** Every string in a template variable that could carry its filter. */
+    private val variableQueryFields = setOf("query", "labelSelector", "definition")
 
     private val resourceRoot: File =
         File(
@@ -56,25 +75,84 @@ class DashboardClusterScopeTest {
             ?.mapNotNull { it as? JsonObject }
             ?.firstOrNull { (it["name"] as? JsonPrimitive)?.content == "cluster" }
 
-    /** Yields every query string in the dashboard, paired with the field it came from. */
-    private fun queries(element: JsonElement): Sequence<Pair<String, String>> =
+    private fun stringOrNull(element: JsonElement?): String? = (element as? JsonPrimitive)?.takeIf { it.isString }?.content
+
+    /**
+     * Yields every query string in the dashboard, paired with the field it came from.
+     *
+     * @param insideTarget true while walking a `targets` entry, where Tempo's `query` and
+     *   `serviceMapQuery` are datasource queries rather than ordinary object keys.
+     */
+    private fun queries(
+        element: JsonElement,
+        insideTarget: Boolean = false,
+    ): Sequence<Pair<String, String>> =
         when (element) {
             is JsonObject ->
                 element.entries.asSequence().flatMap { (key, value) ->
-                    val literal = (value as? JsonPrimitive)?.takeIf { it.isString }?.content
-                    if (key in queryFields && literal != null) {
-                        sequenceOf(key to literal)
-                    } else {
-                        queries(value)
-                    }
+                    fieldQueries(key, value, insideTarget)
                 }
-            is JsonArray -> element.asSequence().flatMap { queries(it) }
+            is JsonArray -> element.asSequence().flatMap { queries(it, insideTarget) }
             else -> emptySequence()
         }
 
+    private fun fieldQueries(
+        key: String,
+        value: JsonElement,
+        insideTarget: Boolean,
+    ): Sequence<Pair<String, String>> {
+        val literal = stringOrNull(value)
+        return when {
+            key == "templating" -> templatingQueries(value)
+            key == "targets" && value is JsonArray -> value.asSequence().flatMap { queries(it, insideTarget = true) }
+            // A drill-through into Explore carries its whole query inside the URL-encoded payload.
+            key == "url" && literal != null && literal.contains("/explore?") -> sequenceOf("dataLink url" to literal)
+            key in queryFields && literal != null -> sequenceOf(key to literal)
+            insideTarget && key in targetQueryFields && literal != null -> sequenceOf(key to literal)
+            else -> queries(value, insideTarget)
+        }
+    }
+
+    /**
+     * Yields one entry per datasource-backed template variable, holding every string that could
+     * carry its cluster filter.
+     *
+     * The variable is the unit that is or is not scoped, not the individual field: Pyroscope keeps
+     * the filter in `query.labelSelector` while `definition` stays a human-readable label, and
+     * Prometheus keeps it in `query.query` with `definition` mirroring it. Joining them means the
+     * filter counts wherever the datasource actually reads it.
+     *
+     * The cluster picker itself is exempt — a list of clusters cannot be filtered by the selected
+     * cluster. ClickHouse declares a second one, `KeeperCluster`, hence the suffix match.
+     */
+    private fun templatingQueries(templating: JsonElement): Sequence<Pair<String, String>> {
+        val variables = (templating as? JsonObject)?.get("list") as? JsonArray ?: return emptySequence()
+        return variables
+            .asSequence()
+            .mapNotNull { it as? JsonObject }
+            .filter { stringOrNull(it["type"]) == "query" }
+            .filterNot { isClusterPicker(stringOrNull(it["name"]).orEmpty()) }
+            .map { variable ->
+                val name = stringOrNull(variable["name"]).orEmpty()
+                val nested = variable["query"] as? JsonObject
+                val strings =
+                    buildList {
+                        addAll(variableQueryFields.mapNotNull { stringOrNull(variable[it]) })
+                        addAll(variableQueryFields.mapNotNull { stringOrNull(nested?.get(it)) })
+                    }
+                "templating[$name]" to strings.joinToString(" | ")
+            }
+    }
+
+    /** True for a variable that enumerates clusters, whatever the dashboard chose to call it. */
+    private fun isClusterPicker(name: String): Boolean = name.endsWith("cluster", ignoreCase = true)
+
     // `${cluster:regex}` is the same variable with an explicit format: Grafana only interpolates a
     // multi-value variable as a regex alternation on its own for Prometheus-family datasources.
-    private fun isClusterScoped(query: String): Boolean = query.contains("\$cluster") || query.contains("\${cluster")
+    // The suffix match also accepts a dashboard's second cluster picker, e.g. `$KeeperCluster`.
+    private val clusterReference = Regex("""\$\{?[A-Za-z_]*[Cc]luster\b""")
+
+    private fun isClusterScoped(query: String): Boolean = clusterReference.containsMatchIn(query)
 
     @Test
     fun `every packaged dashboard exposes a cluster multi-select variable`() {
@@ -101,9 +179,9 @@ class DashboardClusterScopeTest {
         val offenders =
             packagedDashboards().flatMap { file ->
                 queries(json.parseToJsonElement(file.readText()))
-                    .filter { (_, query) -> query.isNotBlank() }
                     .filterNot { (_, query) -> isClusterScoped(query) }
                     .map { (field, query) -> "${describe(file)} [$field]: $query" }
+                    .distinct()
                     .toList()
             }
 
@@ -133,17 +211,59 @@ class DashboardClusterScopeTest {
     }
 
     @Test
-    fun `the walk reaches Pyroscope labelSelector fields, not only expr fields`() {
-        // Without this the previous test would pass a Pyroscope-only dashboard that carries no
-        // cluster filter at all, because such a dashboard has no `expr` field to inspect.
-        val pyroscopeOnly =
+    fun `the walk reaches every datasource dialect, not only expr fields`() {
+        // Each of these is a place a cluster filter has actually gone missing. Narrowing the walk
+        // back to a subset of them fails here rather than passing the dashboards silently.
+        val everyDialect =
             json.parseToJsonElement(
                 """
-                {"panels":[{"targets":[{"labelSelector":"{service_name=\"x\"}"}]}]}
+                {
+                  "templating": {"list": [
+                    {"name": "service", "type": "query", "query": {"query": "label_values(up, job)"}}
+                  ]},
+                  "panels": [
+                    {"targets": [{"expr": "up"}]},
+                    {"targets": [{"labelSelector": "{service_name=\"x\"}"}]},
+                    {"targets": [
+                      {"datasource": {"type": "tempo"}, "queryType": "traceql", "query": "{ name = \"x\" }"},
+                      {"datasource": {"type": "tempo"}, "queryType": "serviceMap", "serviceMapQuery": "{}"}
+                    ]},
+                    {"fieldConfig": {"defaults": {"links": [
+                      {"title": "Traces", "url": "/explore?panes=%7B%22query%22%3A%22%7B%7D%22%7D"}
+                    ]}}}
+                  ]
+                }
                 """.trimIndent(),
             )
 
-        assertThat(queries(pyroscopeOnly).toList())
-            .containsExactly("labelSelector" to """{service_name="x"}""")
+        assertThat(queries(everyDialect).toList())
+            .containsExactlyInAnyOrder(
+                "templating[service]" to "label_values(up, job)",
+                "expr" to "up",
+                "labelSelector" to """{service_name="x"}""",
+                "query" to """{ name = "x" }""",
+                "serviceMapQuery" to "{}",
+                "dataLink url" to "/explore?panes=%7B%22query%22%3A%22%7B%7D%22%7D",
+            )
+    }
+
+    @Test
+    fun `a template variable's own query object is not mistaken for a Tempo target`() {
+        // `query` outside a `targets` entry is a variable definition, not a datasource query.
+        // Reading it as one turns every `label_values(...)` wrapper into a phantom offender.
+        val variableOnly =
+            json.parseToJsonElement(
+                """
+                {"templating": {"list": [
+                  {"name": "cluster", "type": "query", "query": {"query": "label_values(up, cluster)"}},
+                  {"name": "datasource", "type": "datasource", "query": "prometheus"},
+                  {"name": "mode", "type": "custom", "query": "read,write"}
+                ]}}
+                """.trimIndent(),
+            )
+
+        // The cluster picker is exempt, and neither a datasource nor a custom variable queries
+        // anything — so nothing here is a query at all.
+        assertThat(queries(variableOnly).toList()).isEmpty()
     }
 }

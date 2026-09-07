@@ -60,7 +60,7 @@
         "includeAll": true,
         "query": {
           "qryType": 1,
-          "query": "label_values(traces_spanmetrics_calls_total, service_name)",
+          "query": "label_values(traces_spanmetrics_calls_total{cluster=~\"$cluster\"}, service_name)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "sort": 1
@@ -115,17 +115,17 @@
           "links": [
             {
               "title": "Logs",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22victorialogs%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22victorialogs%22%2C%22type%22%3A%22victoriametrics-logs-datasource%22%7D%2C%22expr%22%3A%22service_name%3A%3D%5C%22${__field.labels.service_name}%5C%22%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22victorialogs%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22victorialogs%22%2C%22type%22%3A%22victoriametrics-logs-datasource%22%7D%2C%22expr%22%3A%22cluster%3A~%5C%22${cluster:regex}%5C%22%20service_name%3A%3D%5C%22${__field.labels.service_name}%5C%22%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             },
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.service.name%20%3D%20%5C%22${__field.labels.service_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.cluster%20%3D~%20%5C%22${cluster:regex}%5C%22%20%26%26%20resource.service.name%20%3D%20%5C%22${__field.labels.service_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             },
             {
               "title": "Profiles",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22pyroscope%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22pyroscope%22%2C%22type%22%3A%22grafana-pyroscope-datasource%22%7D%2C%22profileTypeId%22%3A%22process_cpu%3Acpu%3Ananoseconds%3Acpu%3Ananoseconds%22%2C%22labelSelector%22%3A%22%7Bservice_name%3D%5C%22${__field.labels.service_name}%5C%22%7D%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22pyroscope%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22pyroscope%22%2C%22type%22%3A%22grafana-pyroscope-datasource%22%7D%2C%22profileTypeId%22%3A%22process_cpu%3Acpu%3Ananoseconds%3Acpu%3Ananoseconds%22%2C%22labelSelector%22%3A%22%7Bcluster%3D~%5C%22${cluster:regex}%5C%22%2Cservice_name%3D%5C%22${__field.labels.service_name}%5C%22%7D%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -184,17 +184,17 @@
           "links": [
             {
               "title": "Logs",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22victorialogs%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22victorialogs%22%2C%22type%22%3A%22victoriametrics-logs-datasource%22%7D%2C%22expr%22%3A%22service_name%3A%3D%5C%22${__field.labels.service_name}%5C%22%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22victorialogs%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22victorialogs%22%2C%22type%22%3A%22victoriametrics-logs-datasource%22%7D%2C%22expr%22%3A%22cluster%3A~%5C%22${cluster:regex}%5C%22%20service_name%3A%3D%5C%22${__field.labels.service_name}%5C%22%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             },
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.service.name%20%3D%20%5C%22${__field.labels.service_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.cluster%20%3D~%20%5C%22${cluster:regex}%5C%22%20%26%26%20resource.service.name%20%3D%20%5C%22${__field.labels.service_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             },
             {
               "title": "Profiles",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22pyroscope%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22pyroscope%22%2C%22type%22%3A%22grafana-pyroscope-datasource%22%7D%2C%22profileTypeId%22%3A%22process_cpu%3Acpu%3Ananoseconds%3Acpu%3Ananoseconds%22%2C%22labelSelector%22%3A%22%7Bservice_name%3D%5C%22${__field.labels.service_name}%5C%22%7D%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22pyroscope%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22pyroscope%22%2C%22type%22%3A%22grafana-pyroscope-datasource%22%7D%2C%22profileTypeId%22%3A%22process_cpu%3Acpu%3Ananoseconds%3Acpu%3Ananoseconds%22%2C%22labelSelector%22%3A%22%7Bcluster%3D~%5C%22${cluster:regex}%5C%22%2Cservice_name%3D%5C%22${__field.labels.service_name}%5C%22%7D%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -249,17 +249,17 @@
           "links": [
             {
               "title": "Logs",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22victorialogs%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22victorialogs%22%2C%22type%22%3A%22victoriametrics-logs-datasource%22%7D%2C%22expr%22%3A%22service_name%3A%3D%5C%22${__field.labels.service_name}%5C%22%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22victorialogs%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22victorialogs%22%2C%22type%22%3A%22victoriametrics-logs-datasource%22%7D%2C%22expr%22%3A%22cluster%3A~%5C%22${cluster:regex}%5C%22%20service_name%3A%3D%5C%22${__field.labels.service_name}%5C%22%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             },
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.service.name%20%3D%20%5C%22${__field.labels.service_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.cluster%20%3D~%20%5C%22${cluster:regex}%5C%22%20%26%26%20resource.service.name%20%3D%20%5C%22${__field.labels.service_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             },
             {
               "title": "Profiles",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22pyroscope%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22pyroscope%22%2C%22type%22%3A%22grafana-pyroscope-datasource%22%7D%2C%22profileTypeId%22%3A%22process_cpu%3Acpu%3Ananoseconds%3Acpu%3Ananoseconds%22%2C%22labelSelector%22%3A%22%7Bservice_name%3D%5C%22${__field.labels.service_name}%5C%22%7D%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22pyroscope%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22pyroscope%22%2C%22type%22%3A%22grafana-pyroscope-datasource%22%7D%2C%22profileTypeId%22%3A%22process_cpu%3Acpu%3Ananoseconds%3Acpu%3Ananoseconds%22%2C%22labelSelector%22%3A%22%7Bcluster%3D~%5C%22${cluster:regex}%5C%22%2Cservice_name%3D%5C%22${__field.labels.service_name}%5C%22%7D%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -314,17 +314,17 @@
           "links": [
             {
               "title": "Logs",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22victorialogs%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22victorialogs%22%2C%22type%22%3A%22victoriametrics-logs-datasource%22%7D%2C%22expr%22%3A%22service_name%3A%3D%5C%22${__field.labels.service_name}%5C%22%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22victorialogs%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22victorialogs%22%2C%22type%22%3A%22victoriametrics-logs-datasource%22%7D%2C%22expr%22%3A%22cluster%3A~%5C%22${cluster:regex}%5C%22%20service_name%3A%3D%5C%22${__field.labels.service_name}%5C%22%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             },
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.service.name%20%3D%20%5C%22${__field.labels.service_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.cluster%20%3D~%20%5C%22${cluster:regex}%5C%22%20%26%26%20resource.service.name%20%3D%20%5C%22${__field.labels.service_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             },
             {
               "title": "Profiles",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22pyroscope%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22pyroscope%22%2C%22type%22%3A%22grafana-pyroscope-datasource%22%7D%2C%22profileTypeId%22%3A%22process_cpu%3Acpu%3Ananoseconds%3Acpu%3Ananoseconds%22%2C%22labelSelector%22%3A%22%7Bservice_name%3D%5C%22${__field.labels.service_name}%5C%22%7D%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22pyroscope%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22pyroscope%22%2C%22type%22%3A%22grafana-pyroscope-datasource%22%7D%2C%22profileTypeId%22%3A%22process_cpu%3Acpu%3Ananoseconds%3Acpu%3Ananoseconds%22%2C%22labelSelector%22%3A%22%7Bcluster%3D~%5C%22${cluster:regex}%5C%22%2Cservice_name%3D%5C%22${__field.labels.service_name}%5C%22%7D%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -379,12 +379,12 @@
           "links": [
             {
               "title": "Logs",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22victorialogs%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22victorialogs%22%2C%22type%22%3A%22victoriametrics-logs-datasource%22%7D%2C%22expr%22%3A%22service_name%3A%3D%5C%22${__field.labels.service_name}%5C%22%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22victorialogs%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22victorialogs%22%2C%22type%22%3A%22victoriametrics-logs-datasource%22%7D%2C%22expr%22%3A%22cluster%3A~%5C%22${cluster:regex}%5C%22%20service_name%3A%3D%5C%22${__field.labels.service_name}%5C%22%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             },
             {
               "title": "Traces for operation",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.service.name%20%3D%20%5C%22${__field.labels.service_name}%5C%22%20%26%26%20name%20%3D%20%5C%22${__field.labels.span_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.cluster%20%3D~%20%5C%22${cluster:regex}%5C%22%20%26%26%20resource.service.name%20%3D%20%5C%22${__field.labels.service_name}%5C%22%20%26%26%20name%20%3D%20%5C%22${__field.labels.span_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -454,12 +454,12 @@
           "links": [
             {
               "title": "Traces (client)",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.service.name%20%3D%20%5C%22${__field.labels.client}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.cluster%20%3D~%20%5C%22${cluster:regex}%5C%22%20%26%26%20resource.service.name%20%3D%20%5C%22${__field.labels.client}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             },
             {
               "title": "Traces (server)",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.service.name%20%3D%20%5C%22${__field.labels.server}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.cluster%20%3D~%20%5C%22${cluster:regex}%5C%22%20%26%26%20resource.service.name%20%3D%20%5C%22${__field.labels.server}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -514,12 +514,12 @@
           "links": [
             {
               "title": "Traces (client)",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.service.name%20%3D%20%5C%22${__field.labels.client}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.cluster%20%3D~%20%5C%22${cluster:regex}%5C%22%20%26%26%20resource.service.name%20%3D%20%5C%22${__field.labels.client}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             },
             {
               "title": "Traces (server)",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.service.name%20%3D%20%5C%22${__field.labels.server}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.cluster%20%3D~%20%5C%22${cluster:regex}%5C%22%20%26%26%20resource.service.name%20%3D%20%5C%22${__field.labels.server}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -758,12 +758,12 @@
           "links": [
             {
               "title": "Logs",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22victorialogs%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22victorialogs%22%2C%22type%22%3A%22victoriametrics-logs-datasource%22%7D%2C%22expr%22%3A%22service_name%3A%3D%5C%22${__field.labels.service_name}%5C%22%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22victorialogs%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22victorialogs%22%2C%22type%22%3A%22victoriametrics-logs-datasource%22%7D%2C%22expr%22%3A%22cluster%3A~%5C%22${cluster:regex}%5C%22%20service_name%3A%3D%5C%22${__field.labels.service_name}%5C%22%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             },
             {
               "title": "Traces for operation",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.service.name%20%3D%20%5C%22${__field.labels.service_name}%5C%22%20%26%26%20name%20%3D%20%5C%22${__field.labels.span_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.cluster%20%3D~%20%5C%22${cluster:regex}%5C%22%20%26%26%20resource.service.name%20%3D%20%5C%22${__field.labels.service_name}%5C%22%20%26%26%20name%20%3D%20%5C%22${__field.labels.span_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -818,12 +818,12 @@
           "links": [
             {
               "title": "Logs",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22victorialogs%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22victorialogs%22%2C%22type%22%3A%22victoriametrics-logs-datasource%22%7D%2C%22expr%22%3A%22service_name%3A%3D%5C%22${__field.labels.service_name}%5C%22%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22victorialogs%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22victorialogs%22%2C%22type%22%3A%22victoriametrics-logs-datasource%22%7D%2C%22expr%22%3A%22cluster%3A~%5C%22${cluster:regex}%5C%22%20service_name%3A%3D%5C%22${__field.labels.service_name}%5C%22%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             },
             {
               "title": "Traces for operation",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.service.name%20%3D%20%5C%22${__field.labels.service_name}%5C%22%20%26%26%20name%20%3D%20%5C%22${__field.labels.span_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.cluster%20%3D~%20%5C%22${cluster:regex}%5C%22%20%26%26%20resource.service.name%20%3D%20%5C%22${__field.labels.service_name}%5C%22%20%26%26%20name%20%3D%20%5C%22${__field.labels.span_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]

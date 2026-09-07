@@ -37,7 +37,7 @@
             "type": "victoriametrics-logs-datasource",
             "uid": "victorialogs"
           },
-          "expr": "_time:5m k8s.container.name:clickhouse severity:ERROR",
+          "expr": "cluster:~\"${cluster:regex}\" _time:5m k8s.container.name:clickhouse severity:ERROR",
           "refId": "A"
         }
       ],
@@ -89,7 +89,7 @@
             "type": "victoriametrics-logs-datasource",
             "uid": "victorialogs"
           },
-          "expr": "_time:5m k8s.container.name:clickhouse severity:WARN",
+          "expr": "cluster:~\"${cluster:regex}\" _time:5m k8s.container.name:clickhouse severity:WARN",
           "refId": "A"
         }
       ],
@@ -141,7 +141,7 @@
             "type": "victoriametrics-logs-datasource",
             "uid": "victorialogs"
           },
-          "expr": "k8s.container.name:clickhouse",
+          "expr": "cluster:~\"${cluster:regex}\" k8s.container.name:clickhouse",
           "refId": "A"
         }
       ],

@@ -45,6 +45,26 @@ class OtelManifestBuilderTest : BaseKoinTest() {
     }
 
     @Test
+    fun `every telemetry pipeline stamps the cluster attribute`() {
+        // Many clusters' telemetry lands in one store, so a stream that reaches it without a
+        // cluster attribute cannot be told apart from another cluster's afterwards, and no
+        // dashboard filter can separate them. Spanmetrics, the service graph and the two
+        // non-container log streams each used to arrive unstamped.
+        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+
+        val pipelines =
+            yaml
+                .substringAfter("  pipelines:")
+                .split(Regex("\\n    (?=[a-z])"))
+                .filter { it.contains("processors:") }
+
+        assertThat(pipelines).isNotEmpty()
+        assertThat(pipelines).allSatisfy { pipeline ->
+            assertThat(pipeline).contains("resource/cluster")
+        }
+    }
+
+    @Test
     fun `buildConfigMap with empty list contains all static scrape jobs`() {
         val configMap = builder.buildConfigMap(emptyList())
         val yaml = yamlFrom(configMap)

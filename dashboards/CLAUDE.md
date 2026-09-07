@@ -13,6 +13,32 @@ Note: These dashboard are considered LEGACY.  Do not add any additional dashboar
 | Tempo             | `tempo`          | `tempo`                                 |
 | Pyroscope         | `pyroscope`      | `grafana-pyroscope-datasource`          |
 
+## Every Dashboard Is Cluster-Scoped
+
+Many clusters' telemetry lands in one store, so two clusters render as one series unless every
+dashboard can separate them. `DashboardClusterScopeTest` enforces this over the packaged resources,
+for dashboards here **and** for every kit's own, with no exclusions:
+
+- Each dashboard carries a `cluster` template variable with `multi: true`, `includeAll: true` and an
+  `allValue` (`.*`). The `allValue` is what keeps a single-cluster deployment looking as it always
+  did — All is a regex that matches the one cluster present.
+- Each query carries a cluster filter, in its datasource's own dialect: `cluster=~"$cluster"` in a
+  PromQL selector, `cluster:~"${cluster:regex}"` in LogsQL, and `cluster=~"${cluster:regex}"` inside
+  a Pyroscope `labelSelector`.
+
+Two traps live here:
+
+- **The filter is not always in an `expr`.** Pyroscope panels carry it in `labelSelector`, so a
+  check that walks only `expr` passes `profiling.json` while it silently blends. The test walks both
+  fields for exactly this reason.
+- **`${cluster:regex}` is not a different variable.** Grafana interpolates a multi-value variable as
+  a regex alternation on its own only for Prometheus-family datasources. Pyroscope and VictoriaLogs
+  need the explicit `:regex` format or a multi-select renders as a glob and matches nothing.
+
+The label exists on every stream because every OTel pipeline runs the `resource/cluster` processor.
+If you add a pipeline, stamp it there too, or its metrics arrive unattributable and no dashboard
+filter can recover them.
+
 ## Label Name Conventions
 
 Labels differ between VictoriaMetrics (Prometheus-style, underscores) and VictoriaLogs (OTel-style, dots):

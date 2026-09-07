@@ -283,7 +283,7 @@ service:
       exporters: [prometheusremotewrite]
     logs/local:
       receivers: [filelog/system, filelog/tools, filelog/cassandra]
-      processors: [resourcedetection, k8sattributes, transform/add_service_name, batch]
+      processors: [resource/cluster, resourcedetection, k8sattributes, transform/add_service_name, batch]
       exporters: [otlphttp/victorialogs]
     logs/containers:
       receivers: [filelog/containers, filelog/clickhouse-containers]
@@ -291,17 +291,20 @@ service:
       exporters: [otlphttp/victorialogs]
     logs/otlp:
       receivers: [otlp]
-      processors: [transform/add_service_name, batch]
+      processors: [resource/cluster, transform/add_service_name, batch]
       exporters: [otlphttp/victorialogs]
+    # Stamped before the spanmetrics and servicegraph connectors, so the metrics they derive
+    # carry the cluster attribute too. They are stamped again downstream: an upsert with the same
+    # value, kept so neither pipeline depends on where its input came from.
     traces:
       receivers: [otlp, jaeger]
-      processors: [batch]
+      processors: [resource/cluster, batch]
       exporters: [otlp/tempo, spanmetrics, servicegraph]
     metrics/spanmetrics:
       receivers: [spanmetrics]
-      processors: [batch]
+      processors: [resource/cluster, batch]
       exporters: [prometheusremotewrite]
     metrics/servicegraph:
       receivers: [servicegraph]
-      processors: [batch]
+      processors: [resource/cluster, batch]
       exporters: [prometheusremotewrite]

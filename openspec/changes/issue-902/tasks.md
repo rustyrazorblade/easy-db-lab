@@ -46,15 +46,15 @@
 
 ## 4. Cluster name on every dashboard
 
-- [ ] 4.1 Audit every dashboard in the top-level `dashboards/` directory and every kit dashboard for
+- [x] 4.1 Audit every dashboard in the top-level `dashboards/` directory and every kit dashboard for
       a cluster-name field and cluster-scoped panel queries. **No exclusions**,
       `dashboards/profiling.json` included.
-- [ ] 4.2 Fix the ones missing it. `dashboards/profiling.json`'s filter goes in the Pyroscope
+- [x] 4.2 Fix the ones missing it. `dashboards/profiling.json`'s filter goes in the Pyroscope
       `labelSelector`, not an `expr`.
-- [ ] 4.3 Extend the enforcement test to walk `labelSelector` fields as well as `expr` fields.
+- [x] 4.3 Extend the enforcement test to walk `labelSelector` fields as well as `expr` fields.
       Confirm the test **fails** on the pre-fix `profiling.json` — a test that walks only `expr`
       passes it while it silently blends.
-- [ ] 4.4 Verify these dashboards still behave as before for a single cluster when deployed by
+- [x] 4.4 Verify these dashboards still behave as before for a single cluster when deployed by
       `grafana update-config`.
 
 ## 5. The `local` command group

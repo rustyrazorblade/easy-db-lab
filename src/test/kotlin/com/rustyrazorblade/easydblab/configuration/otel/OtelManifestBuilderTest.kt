@@ -175,7 +175,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         // table, a host or an id, and grouping on one would be unbounded. That restraint is the
         // whole cardinality argument for this feature, so it is asserted rather than trusted.
         val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
-        val countBlock = yaml.substringAfter("  count:").substringBefore("  sum:")
+        val countBlock = yaml.substringAfter("  count:").substringBefore("  signaltometrics:")
 
         assertThat(countBlock).contains("cassandra.log.records")
         assertThat(countBlock).contains("- key: logger")
@@ -192,27 +192,27 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         // in 635ms" and "ZGC Major Cycles GC in 1465ms" share a shape, so one regex serves both.
         val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
 
-        assertThat(yaml).contains("GC in (?P<gc_pause_ms>[0-9]+)ms")
-        assertThat(yaml).contains("cassandra.log.gc.pause_time")
-        assertThat(yaml).contains("source_attribute: gc_pause_ms")
+        assertThat(yaml).contains("GC in (?P<gc_event_ms>[0-9,]+)ms")
+        assertThat(yaml).contains("cassandra.log.gc_event_duration_seconds")
+        assertThat(yaml).contains("value: Double(attributes[\"gc_event_ms\"]) / 1000")
         // The collector name is a bounded set, so it is safe as a label.
-        assertThat(yaml).contains("- key: gc_collector")
+        assertThat(yaml).contains("- key: gc_name")
     }
 
     @Test
     fun `compaction figures are parsed as values, never as labels`() {
         val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
 
-        assertThat(yaml).contains("cassandra.log.compaction.duration")
-        assertThat(yaml).contains("cassandra.log.compaction.sstables_merged")
-        assertThat(yaml).contains("cassandra.log.compaction.partitions_merged")
-        assertThat(yaml).contains("source_attribute: compaction_ms")
+        assertThat(yaml).contains("cassandra.log.compaction_duration_seconds")
+        assertThat(yaml).contains("cassandra.log.compaction_sstables_merged")
+        assertThat(yaml).contains("cassandra.log.compaction_ratio")
+        assertThat(yaml).contains("value: Double(attributes[\"compaction_ms\"]) / 1000")
 
         // The compaction line also carries a uuid and an sstable path. Neither is bounded, so
         // neither may become a grouping key on any of the three metrics.
-        val sumBlock = yaml.substringAfter("  sum:").substringBefore("  spanmetrics:")
-        assertThat(Regex("- key: (\\S+)").findAll(sumBlock).map { it.groupValues[1] }.toList())
-            .containsOnly("gc_collector")
+        val valueBlock = yaml.substringAfter("  signaltometrics:").substringBefore("  spanmetrics:")
+        assertThat(Regex("- key: (\\S+)").findAll(valueBlock).map { it.groupValues[1] }.toList())
+            .containsOnly("gc_name")
     }
 
     @Test
@@ -243,7 +243,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         val metricsFromLogs = pipeline("metrics/logs:")
 
         assertThat(logsPipeline).contains("count")
-        assertThat(metricsFromLogs).contains("receivers: [count, sum]")
+        assertThat(metricsFromLogs).contains("receivers: [count, signaltometrics]")
         assertThat(metricsFromLogs).contains("prometheusremotewrite")
 
         val processors = logsPipeline.substringAfter("processors:").substringBefore("exporters:")

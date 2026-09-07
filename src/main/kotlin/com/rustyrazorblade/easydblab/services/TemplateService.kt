@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
@@ -33,6 +34,7 @@ class TemplateService(
         val controlHost = state.getControlHost()
         return mapOf(
             "BUCKET_NAME" to state.dataBucket.ifBlank { state.s3Bucket.orEmpty() },
+            "ACCOUNT_BUCKET_NAME" to state.s3Bucket.orEmpty(),
             "AWS_REGION" to region,
             "CLUSTER_NAME" to state.clusterLabelName(),
             "CONTROL_NODE_IP" to (controlHost?.privateIp.orEmpty()),
@@ -47,14 +49,18 @@ class TemplateService(
     private fun buildClusterPrefix(state: ClusterState): String = state.clusterPrefix()
 
     /**
-     * Builds a flat storage prefix for Pyroscope (no forward slashes allowed).
-     * Converts "clusters/name-id" to "pyroscope.name-id".
+     * Builds the storage prefix for Pyroscope: `clusters/{name}-{id}/pyroscope`.
+     *
+     * Pyroscope's `storage.prefix` does allow forward slashes, so profiles sit inside the cluster
+     * prefix alongside the metrics and logs backups. All three observability tiers then share one
+     * prefix tree, so a single S3 key addresses a whole run.
      */
-    private fun buildPyroscopeStoragePrefix(state: ClusterState): String {
-        val name = state.initConfig?.name ?: "cluster"
-        val id = state.clusterId
-        return "pyroscope.$name-$id"
-    }
+    private fun buildPyroscopeStoragePrefix(state: ClusterState): String =
+        ClusterS3Path
+            .root(state.s3Bucket.orEmpty())
+            .resolve(state.clusterPrefix())
+            .pyroscope()
+            .getKey()
 
     fun renderKitTemplate(
         templateContent: String,

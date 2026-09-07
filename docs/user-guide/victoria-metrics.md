@@ -42,7 +42,7 @@ Victoria Metrics runs on the control node as a Kubernetes deployment:
 
 - **Port**: 8428 (HTTP API)
 - **Storage**: Persistent at `/mnt/db1/victoriametrics`
-- **Retention**: 7 days (configurable via `-retentionPeriod` flag)
+- **Retention**: unbounded (`-retentionPeriod=100y`)
 
 ## Accessing Metrics
 

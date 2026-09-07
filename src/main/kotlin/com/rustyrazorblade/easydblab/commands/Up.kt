@@ -43,6 +43,7 @@ import com.rustyrazorblade.easydblab.services.ProvisioningCallbacks
 import com.rustyrazorblade.easydblab.services.ProvisioningResult
 import com.rustyrazorblade.easydblab.services.RegistryService
 import com.rustyrazorblade.easydblab.services.aws.AMIResolver
+import com.rustyrazorblade.easydblab.services.aws.AccountBucketRegionService
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
@@ -86,6 +87,7 @@ class Up(
 ) : PicoBaseCommand() {
     private val userConfig: User by inject()
     private val s3BucketService: AwsS3BucketService by inject()
+    private val accountBucketRegionService: AccountBucketRegionService by inject()
     private val openSearchService: OpenSearchService by inject()
     private val vpcService: VpcService by inject()
     private val awsInfrastructureService: AwsInfrastructureService by inject()
@@ -132,7 +134,6 @@ class Up(
         validateLocalTailscaleConnected()
 
         configureAccountS3Bucket()
-        validateS3BucketConfigured()
         reapplyS3Policy()
         provisionInfrastructure(initConfig)
         writeConfigurationFiles()
@@ -198,10 +199,11 @@ class Up(
     }
 
     /**
-     * Validates that an S3 bucket is actually configured after [configureAccountS3Bucket] runs.
-     * That method is responsible for ensuring one exists; this is the assertion that it did, so
-     * a bug there fails loudly here rather than silently skipping registry TLS configuration and
-     * kubeconfig backup later.
+     * Asserts that [configureAccountS3Bucket] actually produced a bucket name.
+     *
+     * It runs inside that method, before the region lookup and before any instance is launched, so
+     * a bug in bucket resolution fails loudly and for free rather than silently skipping registry
+     * TLS configuration and kubeconfig backup later.
      */
     private fun validateS3BucketConfigured() {
         if (workingState.s3Bucket.isNullOrBlank()) {
@@ -246,7 +248,10 @@ class Up(
      * Creates a per-cluster data bucket for ClickHouse data and CloudWatch metrics.
      */
     private fun configureAccountS3Bucket() {
-        if (!workingState.s3Bucket.isNullOrBlank() && workingState.dataBucket.isNotBlank()) {
+        if (!workingState.s3Bucket.isNullOrBlank() &&
+            workingState.dataBucket.isNotBlank() &&
+            !workingState.accountBucketRegion.isNullOrBlank()
+        ) {
             log.info { "S3 buckets already configured: account=${workingState.s3Bucket}, data=${workingState.dataBucket}" }
             return
         }
@@ -258,6 +263,18 @@ class Up(
         eventBus.emit(Event.S3.BucketUsing(accountBucket))
         s3BucketService.putBucketPolicy(accountBucket)
         workingState.s3Bucket = accountBucket
+        // Nothing below can work without a bucket name, and every step below either calls AWS or
+        // provisions, so this is the last point at which `up` can fail for free.
+        validateS3BucketConfigured()
+        // The account bucket is one per account while a cluster can be brought up in any region, so
+        // anything building an S3 endpoint for it needs the bucket's own region, never the
+        // cluster's. Persist the bucket first so the resolver reads it from state, then go through
+        // the same resolver every later command uses: one resolution path, one failure message that
+        // names the bucket and GetBucketLocation, one log line.
+        clusterStateManager.save(workingState)
+        val accountBucketRegion = accountBucketRegionService.resolve()
+        workingState.accountBucketRegion = accountBucketRegion
+        eventBus.emit(Event.S3.BucketRegionResolved(accountBucket, accountBucketRegion))
         eventBus.emit(Event.S3.BucketConfigured(accountBucket, workingState.clusterPrefix()))
 
         // Configure per-cluster data bucket

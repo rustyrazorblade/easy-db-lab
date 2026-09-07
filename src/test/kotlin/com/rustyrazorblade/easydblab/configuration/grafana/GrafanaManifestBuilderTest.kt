@@ -4,6 +4,10 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.services.TemplateService
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -50,9 +54,33 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
     }
 
     @Test
+    fun `every registered dashboard builds a deployable ConfigMap carrying its cluster variable`() {
+        // What `grafana update-config` applies. A dashboard whose JSON no longer parses, or whose
+        // cluster variable was lost in an edit, fails here rather than on a live cluster.
+        GrafanaDashboard.entries.forEach { dashboard ->
+            val configMap = builder.buildDashboardConfigMap(dashboard)
+            val json = configMap.data.getValue(dashboard.jsonFileName)
+
+            val variables =
+                Json
+                    .parseToJsonElement(json)
+                    .jsonObject["templating"]
+                    ?.jsonObject
+                    ?.get("list") as? JsonArray
+
+            val names =
+                variables
+                    .orEmpty()
+                    .mapNotNull { (it.jsonObject["name"] as? JsonPrimitive)?.content }
+
+            assertThat(names).`as`("variables on ${dashboard.jsonFileName}").contains("cluster")
+        }
+    }
+
+    @Test
     fun `buildDashboardConfigMap preserves Grafana built-in variables`() {
-        val configMap = builder.buildDashboardConfigMap(GrafanaDashboard.CLICKHOUSE)
-        val json = configMap.data[GrafanaDashboard.CLICKHOUSE.jsonFileName]!!
+        val configMap = builder.buildDashboardConfigMap(GrafanaDashboard.CASSANDRA_OVERVIEW)
+        val json = configMap.data.getValue(GrafanaDashboard.CASSANDRA_OVERVIEW.jsonFileName)
 
         assertThat(json).contains("\$__rate_interval")
     }

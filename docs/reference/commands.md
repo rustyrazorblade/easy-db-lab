@@ -172,7 +172,7 @@ easy-db-lab down [vpc-id] [options]
 |--------|-------------|
 | `--all` | Tear down all VPCs tagged with easy_cass_lab |
 | `--packer` | Tear down the packer infrastructure VPC |
-| `--retention-days N` | Days to retain S3 data after teardown (default: 1) |
+| `--retention-days N` | Days to retain the per-cluster data bucket after teardown (default: 1). Observability data in the account bucket is never expired. |
 
 ### clean
 

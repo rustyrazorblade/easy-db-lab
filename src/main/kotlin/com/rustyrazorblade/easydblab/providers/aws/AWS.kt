@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
 import software.amazon.awssdk.core.exception.SdkServiceException
+import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.iam.IamClient
 import software.amazon.awssdk.services.iam.model.AddRoleToInstanceProfileRequest
 import software.amazon.awssdk.services.iam.model.AttachRolePolicyRequest
@@ -27,6 +28,7 @@ import software.amazon.awssdk.services.s3.model.DeleteBucketMetricsConfiguration
 import software.amazon.awssdk.services.s3.model.DeleteBucketRequest
 import software.amazon.awssdk.services.s3.model.ExpirationStatus
 import software.amazon.awssdk.services.s3.model.GetBucketLifecycleConfigurationRequest
+import software.amazon.awssdk.services.s3.model.GetBucketLocationRequest
 import software.amazon.awssdk.services.s3.model.GetBucketTaggingRequest
 import software.amazon.awssdk.services.s3.model.LifecycleExpiration
 import software.amazon.awssdk.services.s3.model.LifecycleRule
@@ -178,6 +180,41 @@ class AWS(
     }
 
     // IAM role operations are in AWSIamExtensions.kt
+
+    /**
+     * Returns the region an S3 bucket lives in, via `GetBucketLocation`.
+     *
+     * `GetBucketLocation` answers in the S3 *location constraint* vocabulary, which is not the
+     * region vocabulary. Two constraints have to be translated or the caller builds an endpoint
+     * that resolves to nothing:
+     * - An empty constraint means `us-east-1`, the original default, and would build
+     *   `s3..amazonaws.com`.
+     * - `EU` is the pre-region name of the original European location, and would build
+     *   `s3.EU.amazonaws.com`.
+     *
+     * @param bucketName The bucket to locate
+     * @return The bucket's region name
+     */
+    fun getS3BucketRegion(bucketName: String): String {
+        val constraint =
+            RetryUtil.withAwsRetry("s3-get-bucket-location") {
+                s3Client
+                    .getBucketLocation(
+                        GetBucketLocationRequest.builder().bucket(bucketName).build(),
+                    ).locationConstraintAsString()
+                    .orEmpty()
+            }
+
+        val region =
+            when {
+                constraint.isBlank() -> Region.US_EAST_1.id()
+                constraint == Constants.S3.LOCATION_CONSTRAINT_LEGACY_EU -> Region.EU_WEST_1.id()
+                else -> constraint
+            }
+
+        log.info { "Resolved region of S3 bucket $bucketName as $region (location constraint: '$constraint')" }
+        return region
+    }
 
     /**
      * Creates an S3 bucket with the specified name.

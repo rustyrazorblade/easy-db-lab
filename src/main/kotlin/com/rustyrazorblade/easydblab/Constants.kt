@@ -178,6 +178,14 @@ object Constants {
 
         /** Maximum length for S3 metrics configuration IDs */
         const val MAX_METRICS_CONFIG_ID_LENGTH = 32
+
+        /**
+         * The pre-region `GetBucketLocation` constraint for the original European location.
+         *
+         * It is a location name, not a region name, so it builds `s3.EU.amazonaws.com` unless it is
+         * translated to `eu-west-1`.
+         */
+        const val LOCATION_CONSTRAINT_LEGACY_EU = "EU"
     }
 
     // Byte-size units for human-readable sizes
@@ -241,6 +249,19 @@ object Constants {
         // MetricsRegistryService writes both labels; deregister deletes by both.
         const val WORKLOAD_METRICS_LABEL = "easydblab.com/workload-metrics"
         const val KIT_LABEL = "easydblab.com/kit"
+    }
+
+    // Observability data retention.
+    //
+    // Observability data is never dropped on a timer. A cluster that outlives a bounded window
+    // drops its own oldest data before anything backs it up, and VictoriaMetrics enforces retention
+    // as a sliding window against the current clock rather than against ingest time, so a restored
+    // backup older than the window disappears silently.
+    //
+    // ALWAYS write the unit. A bare number means MONTHS in both VictoriaMetrics and VictoriaLogs,
+    // so "100" is a little over eight years, not a century.
+    object Observability {
+        const val UNBOUNDED_RETENTION_PERIOD = "100y"
     }
 
     // OpenSearch configuration

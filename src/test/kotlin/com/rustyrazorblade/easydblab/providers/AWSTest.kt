@@ -24,12 +24,15 @@ import software.amazon.awssdk.services.iam.model.Role
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.Bucket
 import software.amazon.awssdk.services.s3.model.BucketAlreadyOwnedByYouException
+import software.amazon.awssdk.services.s3.model.BucketLocationConstraint
 import software.amazon.awssdk.services.s3.model.CreateBucketRequest
 import software.amazon.awssdk.services.s3.model.CreateBucketResponse
 import software.amazon.awssdk.services.s3.model.DeleteBucketMetricsConfigurationRequest
 import software.amazon.awssdk.services.s3.model.DeleteBucketMetricsConfigurationResponse
 import software.amazon.awssdk.services.s3.model.GetBucketLifecycleConfigurationRequest
 import software.amazon.awssdk.services.s3.model.GetBucketLifecycleConfigurationResponse
+import software.amazon.awssdk.services.s3.model.GetBucketLocationRequest
+import software.amazon.awssdk.services.s3.model.GetBucketLocationResponse
 import software.amazon.awssdk.services.s3.model.GetBucketTaggingRequest
 import software.amazon.awssdk.services.s3.model.GetBucketTaggingResponse
 import software.amazon.awssdk.services.s3.model.ListBucketsResponse
@@ -741,5 +744,56 @@ internal class AWSTest :
         assertThat(rules[0].filter().prefix()).isEqualTo(prefix)
         assertThat(rules[0].expiration().days()).isEqualTo(days)
         assertThat(rules[0].statusAsString()).isEqualTo("Enabled")
+    }
+
+    // `GetBucketLocation` answers in the S3 constraint vocabulary, not the region vocabulary, and
+    // the two differ in exactly the cases nobody exercises by hand: the default region and the
+    // pre-region European bucket. Both render an unusable S3 endpoint if they reach a caller
+    // untranslated — `s3..amazonaws.com` and `s3.EU.amazonaws.com` — so both are pinned here.
+
+    @Test
+    fun `getS3BucketRegion maps the empty constraint to us-east-1`() {
+        whenever(mockS3Client.getBucketLocation(any<GetBucketLocationRequest>()))
+            .thenReturn(GetBucketLocationResponse.builder().build())
+
+        assertThat(aws.getS3BucketRegion("easy-db-lab-account")).isEqualTo("us-east-1")
+    }
+
+    @Test
+    fun `getS3BucketRegion queries the bucket it was asked about`() {
+        whenever(mockS3Client.getBucketLocation(any<GetBucketLocationRequest>()))
+            .thenReturn(GetBucketLocationResponse.builder().build())
+
+        aws.getS3BucketRegion("easy-db-lab-account")
+
+        val captor = argumentCaptor<GetBucketLocationRequest>()
+        verify(mockS3Client).getBucketLocation(captor.capture())
+        assertThat(captor.firstValue.bucket()).isEqualTo("easy-db-lab-account")
+    }
+
+    @Test
+    fun `getS3BucketRegion passes a real region through unchanged`() {
+        whenever(mockS3Client.getBucketLocation(any<GetBucketLocationRequest>()))
+            .thenReturn(
+                GetBucketLocationResponse
+                    .builder()
+                    .locationConstraint(BucketLocationConstraint.EU_WEST_1)
+                    .build(),
+            )
+
+        assertThat(aws.getS3BucketRegion("easy-db-lab-account")).isEqualTo("eu-west-1")
+    }
+
+    @Test
+    fun `getS3BucketRegion maps the legacy EU constraint to eu-west-1`() {
+        whenever(mockS3Client.getBucketLocation(any<GetBucketLocationRequest>()))
+            .thenReturn(
+                GetBucketLocationResponse
+                    .builder()
+                    .locationConstraint(BucketLocationConstraint.EU)
+                    .build(),
+            )
+
+        assertThat(aws.getS3BucketRegion("easy-db-lab-account")).isEqualTo("eu-west-1")
     }
 }

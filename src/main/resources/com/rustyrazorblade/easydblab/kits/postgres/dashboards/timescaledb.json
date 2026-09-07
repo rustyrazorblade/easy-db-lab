@@ -73,6 +73,31 @@
         "query": "prometheus",
         "refresh": 1,
         "type": "datasource"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "definition": "label_values(up, cluster)",
+        "hide": 0,
+        "includeAll": true,
+        "allValue": ".*",
+        "label": "Cluster",
+        "multi": true,
+        "name": "cluster",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(up, cluster)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
       }
     ]
   },
@@ -139,7 +164,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(cnpg_pg_stat_database_xact_commit_total{job=\"postgres\",server_port=\"30989\",datname=\"postgres\"}[2m]))",
+          "expr": "sum(rate(cnpg_pg_stat_database_xact_commit_total{cluster=~\"$cluster\",job=\"postgres\",server_port=\"30989\",datname=\"postgres\"}[2m]))",
           "instant": true,
           "legendFormat": "__auto"
         }
@@ -194,7 +219,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "rate(cnpg_collector_wal_bytes{job=\"postgres\",server_port=\"30989\",host_name=\"db0\"}[2m])",
+          "expr": "rate(cnpg_collector_wal_bytes{cluster=~\"$cluster\",job=\"postgres\",server_port=\"30989\",host_name=\"db0\"}[2m])",
           "instant": true,
           "legendFormat": "__auto"
         }
@@ -257,7 +282,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(cnpg_pg_stat_database_blks_hit_total{job=\"postgres\",server_port=\"30989\",datname=\"postgres\"}[5m])) / clamp_min(sum(rate(cnpg_pg_stat_database_blks_hit_total{job=\"postgres\",server_port=\"30989\",datname=\"postgres\"}[5m])) + sum(rate(cnpg_pg_stat_database_blks_read_total{job=\"postgres\",server_port=\"30989\",datname=\"postgres\"}[5m])), 1)",
+          "expr": "sum(rate(cnpg_pg_stat_database_blks_hit_total{cluster=~\"$cluster\",job=\"postgres\",server_port=\"30989\",datname=\"postgres\"}[5m])) / clamp_min(sum(rate(cnpg_pg_stat_database_blks_hit_total{cluster=~\"$cluster\",job=\"postgres\",server_port=\"30989\",datname=\"postgres\"}[5m])) + sum(rate(cnpg_pg_stat_database_blks_read_total{cluster=~\"$cluster\",job=\"postgres\",server_port=\"30989\",datname=\"postgres\"}[5m])), 1)",
           "instant": true,
           "legendFormat": "__auto"
         }
@@ -312,7 +337,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "max(cnpg_pg_database_size_bytes{job=\"postgres\",server_port=\"30989\",datname=\"postgres\"})",
+          "expr": "max(cnpg_pg_database_size_bytes{cluster=~\"$cluster\",job=\"postgres\",server_port=\"30989\",datname=\"postgres\"})",
           "instant": true,
           "legendFormat": "__auto"
         }
@@ -358,7 +383,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "rate(cnpg_collector_wal_bytes{job=\"postgres\",server_port=\"30989\",host_name=\"db0\"}[2m])",
+          "expr": "rate(cnpg_collector_wal_bytes{cluster=~\"$cluster\",job=\"postgres\",server_port=\"30989\",host_name=\"db0\"}[2m])",
           "legendFormat": "WAL bytes/s"
         }
       ]
@@ -403,7 +428,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(cnpg_pg_stat_database_xact_commit_total{job=\"postgres\",server_port=\"30989\",datname=\"postgres\"}[2m]))",
+          "expr": "sum(rate(cnpg_pg_stat_database_xact_commit_total{cluster=~\"$cluster\",job=\"postgres\",server_port=\"30989\",datname=\"postgres\"}[2m]))",
           "legendFormat": "commits/s"
         },
         {
@@ -411,7 +436,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(cnpg_pg_stat_database_xact_rollback_total{job=\"postgres\",server_port=\"30989\",datname=\"postgres\"}[2m]))",
+          "expr": "sum(rate(cnpg_pg_stat_database_xact_rollback_total{cluster=~\"$cluster\",job=\"postgres\",server_port=\"30989\",datname=\"postgres\"}[2m]))",
           "legendFormat": "rollbacks/s"
         }
       ]
@@ -469,7 +494,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(cnpg_pg_stat_database_blks_hit_total{job=\"postgres\",server_port=\"30989\",datname=\"postgres\"}[2m])) / clamp_min(sum(rate(cnpg_pg_stat_database_blks_hit_total{job=\"postgres\",server_port=\"30989\",datname=\"postgres\"}[2m])) + sum(rate(cnpg_pg_stat_database_blks_read_total{job=\"postgres\",server_port=\"30989\",datname=\"postgres\"}[2m])), 1)",
+          "expr": "sum(rate(cnpg_pg_stat_database_blks_hit_total{cluster=~\"$cluster\",job=\"postgres\",server_port=\"30989\",datname=\"postgres\"}[2m])) / clamp_min(sum(rate(cnpg_pg_stat_database_blks_hit_total{cluster=~\"$cluster\",job=\"postgres\",server_port=\"30989\",datname=\"postgres\"}[2m])) + sum(rate(cnpg_pg_stat_database_blks_read_total{cluster=~\"$cluster\",job=\"postgres\",server_port=\"30989\",datname=\"postgres\"}[2m])), 1)",
           "legendFormat": "hit ratio"
         }
       ]
@@ -514,7 +539,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "rate(cnpg_pg_stat_checkpointer_buffers_written_total{job=\"postgres\",server_port=\"30989\",host_name=\"db0\"}[2m])",
+          "expr": "rate(cnpg_pg_stat_checkpointer_buffers_written_total{cluster=~\"$cluster\",job=\"postgres\",server_port=\"30989\",host_name=\"db0\"}[2m])",
           "legendFormat": "buffers written/s"
         },
         {
@@ -522,7 +547,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "rate(cnpg_pg_stat_bgwriter_buffers_clean_total{job=\"postgres\",server_port=\"30989\",host_name=\"db0\"}[2m])",
+          "expr": "rate(cnpg_pg_stat_bgwriter_buffers_clean_total{cluster=~\"$cluster\",job=\"postgres\",server_port=\"30989\",host_name=\"db0\"}[2m])",
           "legendFormat": "bgwriter clean/s"
         }
       ]
@@ -580,7 +605,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(cnpg_pg_stat_database_tup_inserted_total{job=\"postgres\",server_port=\"30989\",datname=\"postgres\"}[2m]))",
+          "expr": "sum(rate(cnpg_pg_stat_database_tup_inserted_total{cluster=~\"$cluster\",job=\"postgres\",server_port=\"30989\",datname=\"postgres\"}[2m]))",
           "legendFormat": "inserts/s"
         },
         {
@@ -588,7 +613,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(cnpg_pg_stat_database_tup_updated_total{job=\"postgres\",server_port=\"30989\",datname=\"postgres\"}[2m]))",
+          "expr": "sum(rate(cnpg_pg_stat_database_tup_updated_total{cluster=~\"$cluster\",job=\"postgres\",server_port=\"30989\",datname=\"postgres\"}[2m]))",
           "legendFormat": "updates/s"
         },
         {
@@ -596,7 +621,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(cnpg_pg_stat_database_tup_deleted_total{job=\"postgres\",server_port=\"30989\",datname=\"postgres\"}[2m]))",
+          "expr": "sum(rate(cnpg_pg_stat_database_tup_deleted_total{cluster=~\"$cluster\",job=\"postgres\",server_port=\"30989\",datname=\"postgres\"}[2m]))",
           "legendFormat": "deletes/s"
         }
       ]

@@ -216,6 +216,11 @@ data class ClusterState(
     var s3Bucket: String? = null,
     // Per-cluster data bucket for ClickHouse data and CloudWatch metrics
     var dataBucket: String = "",
+    // Region the account bucket lives in, resolved once via GetBucketLocation.
+    // The account bucket is one per account while a cluster can be brought up anywhere, so this is
+    // never the cluster's own region. Null on a state.json written before the field existed; it is
+    // then resolved lazily and persisted. See AccountBucketRegionService.
+    var accountBucketRegion: String? = null,
     // SHA-256 hashes of backed-up configuration files for incremental backup
     // Maps BackupTarget enum name to hex-encoded hash
     var backupHashes: Map<String, String> = emptyMap(),

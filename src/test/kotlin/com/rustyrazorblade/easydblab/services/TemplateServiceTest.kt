@@ -125,6 +125,30 @@ class TemplateServiceTest : BaseKoinTest() {
     }
 
     @Test
+    fun `ACCOUNT_BUCKET_NAME is the account bucket even when a data bucket is set`() {
+        // BUCKET_NAME prefers the per-cluster data bucket, which teardown expires wholesale.
+        // Anything that must accumulate needs the account bucket instead.
+        setupClusterState(bucketName = "my-account-bucket", dataBucket = "easy-db-lab-data-test-id")
+
+        val variables = createService().buildContextVariables()
+
+        assertThat(variables).containsEntry("ACCOUNT_BUCKET_NAME", "my-account-bucket")
+        assertThat(variables).containsEntry("BUCKET_NAME", "easy-db-lab-data-test-id")
+    }
+
+    @Test
+    fun `PYROSCOPE_STORAGE_PREFIX sits inside the cluster prefix`() {
+        // Pyroscope's storage prefix does allow forward slashes, so all three observability tiers
+        // share one prefix tree and one S3 key addresses a whole run.
+        setupClusterState(bucketName = "my-account-bucket")
+
+        val variables = createService().buildContextVariables()
+
+        assertThat(variables)
+            .containsEntry("PYROSCOPE_STORAGE_PREFIX", "clusters/test-cluster-test-id/pyroscope")
+    }
+
+    @Test
     fun `buildContextVariables uses empty string when no control host exists`() {
         setupClusterState(controlHost = null)
 

@@ -1,5 +1,10 @@
 package com.rustyrazorblade.easydblab.configuration.otel
 
+import com.charleskorn.kaml.Yaml
+import com.charleskorn.kaml.YamlList
+import com.charleskorn.kaml.YamlMap
+import com.charleskorn.kaml.yamlMap
+import com.charleskorn.kaml.yamlScalar
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -14,6 +19,11 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 
 class OtelManifestBuilderTest : BaseKoinTest() {
+    private companion object {
+        /** The processor that stamps `cluster` onto everything a pipeline exports. */
+        const val CLUSTER_PROCESSOR = "resource/cluster"
+    }
+
     private lateinit var builder: OtelManifestBuilder
     private lateinit var mockClusterStateManager: ClusterStateManager
 
@@ -42,6 +52,57 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         )
         val templateService = getKoin().get<TemplateService>()
         builder = OtelManifestBuilder(templateService)
+    }
+
+    /**
+     * Every `service.pipelines` entry, mapped to its declared processor list.
+     *
+     * A pipeline that declares no `processors` key at all maps to null rather than being dropped:
+     * that is legal collector config and the worst case, because it stamps nothing. Parsing the
+     * YAML rather than slicing the text is what makes it visible — a text scan that keeps only the
+     * chunks containing "processors:" throws exactly that pipeline away before the assertion.
+     */
+    private fun pipelineProcessors(yaml: String): Map<String, List<String>?> {
+        val service =
+            requireNotNull(
+                Yaml.default
+                    .parseToYamlNode(yaml)
+                    .yamlMap
+                    .get<YamlMap>("service"),
+            ) {
+                "collector config has no 'service' section"
+            }
+        val pipelines =
+            requireNotNull(service.get<YamlMap>("pipelines")) {
+                "collector config has no 'service.pipelines' section"
+            }
+        return pipelines.entries.entries.associate { (name, definition) ->
+            name.content to
+                definition.yamlMap
+                    .get<YamlList>("processors")
+                    ?.items
+                    ?.map { it.yamlScalar.content }
+        }
+    }
+
+    @Test
+    fun `every telemetry pipeline stamps the cluster attribute`() {
+        // Many clusters' telemetry lands in one store, so a stream that reaches it without a
+        // cluster attribute cannot be told apart from another cluster's afterwards, and no
+        // dashboard filter can separate them. Spanmetrics, the service graph and the two
+        // non-container log streams each used to arrive unstamped.
+        val pipelines = pipelineProcessors(yamlFrom(builder.buildConfigMap(emptyList())))
+
+        assertThat(pipelines).isNotEmpty()
+
+        val offenders =
+            pipelines
+                .filterValues { processors -> processors == null || CLUSTER_PROCESSOR !in processors }
+                .keys
+
+        assertThat(offenders)
+            .`as`("pipelines whose telemetry reaches the store with no cluster attribute")
+            .isEmpty()
     }
 
     @Test

@@ -70,6 +70,11 @@ class AwsS3BucketService(
     fun createBucket(bucketName: String): String = aws.createS3Bucket(bucketName)
 
     /**
+     * Returns the region a bucket lives in, via `GetBucketLocation`.
+     */
+    fun getBucketRegion(bucketName: String): String = aws.getS3BucketRegion(bucketName)
+
+    /**
      * Applies an S3 bucket policy granting access to all easy-db-lab IAM roles.
      */
     fun putBucketPolicy(bucketName: String) = aws.putS3BucketPolicy(bucketName)

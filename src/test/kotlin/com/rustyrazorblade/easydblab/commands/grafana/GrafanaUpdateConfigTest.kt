@@ -19,6 +19,7 @@ import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
 import com.rustyrazorblade.easydblab.services.K8sClientProvider
 import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.TemplateService
+import com.rustyrazorblade.easydblab.services.aws.AccountBucketRegionService
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.ConfigMapList
 import io.fabric8.kubernetes.api.model.HasMetadata
@@ -95,7 +96,12 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
                 single { EbpfExporterManifestBuilder() }
                 single { JournaldOtelManifestBuilder(get()) }
                 single { OtelManifestBuilder(get()) }
-                single { PyroscopeManifestBuilder(get()) }
+                single {
+                    mock<AccountBucketRegionService>().also {
+                        whenever(it.resolve()).thenReturn("us-west-2")
+                    }
+                }
+                single { PyroscopeManifestBuilder(get(), get()) }
                 single { TempoManifestBuilder(get()) }
                 single { VictoriaManifestBuilder() }
                 single { RegistryManifestBuilder() }

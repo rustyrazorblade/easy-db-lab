@@ -25,7 +25,9 @@ class VictoriaManifestBuilder {
         private const val VL_IMAGE = "victoriametrics/victoria-logs:v1.47.0"
         private const val VL_DATA_PATH = "/mnt/db1/victorialogs"
 
-        private const val RETENTION_PERIOD = "7d"
+        // Observability data is never dropped on a timer. See Constants.Observability — and note
+        // that a bare number means MONTHS to both products, so the unit is never optional.
+        private const val RETENTION_PERIOD = Constants.Observability.UNBOUNDED_RETENTION_PERIOD
         private const val MEMORY_ALLOWED_BYTES = "1073741824" // 1 GB
 
         private const val LIVENESS_INITIAL_DELAY = 30
@@ -129,6 +131,9 @@ class VictoriaManifestBuilder {
                 listOf(
                     "-storageDataPath=/victoria-logs-data",
                     "-retentionPeriod=$RETENTION_PERIOD",
+                    // VictoriaLogs rejects out-of-retention records at ingest, in both directions,
+                    // so a future-dated record needs this as well as -retentionPeriod.
+                    "-futureRetention=$RETENTION_PERIOD",
                     "-httpListenAddr=0.0.0.0:${Constants.K8s.VICTORIALOGS_PORT}",
                     "-memory.allowedBytes=$MEMORY_ALLOWED_BYTES",
                 ),

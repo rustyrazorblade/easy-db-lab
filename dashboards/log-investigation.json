@@ -37,7 +37,7 @@
             "type": "victoriametrics-logs-datasource",
             "uid": "victorialogs"
           },
-          "expr": "service:~\"${service}\" source:~\"${source}\" severity:~\"${severity}\" ${search}",
+          "expr": "cluster:~\"${cluster:regex}\" service:~\"${service}\" source:~\"${source}\" severity:~\"${severity}\" ${search}",
           "refId": "A"
         }
       ],
@@ -115,7 +115,7 @@
           "uid": "victorialogs"
         },
         "query": {
-          "query": "*",
+          "query": "cluster:~\"${cluster:regex}\"",
           "field": "service",
           "type": "fieldValue"
         },
@@ -137,7 +137,7 @@
           "uid": "victorialogs"
         },
         "query": {
-          "query": "*",
+          "query": "cluster:~\"${cluster:regex}\"",
           "field": "source",
           "type": "fieldValue"
         },
@@ -159,7 +159,7 @@
           "uid": "victorialogs"
         },
         "query": {
-          "query": "*",
+          "query": "cluster:~\"${cluster:regex}\"",
           "field": "severity",
           "type": "fieldValue"
         },

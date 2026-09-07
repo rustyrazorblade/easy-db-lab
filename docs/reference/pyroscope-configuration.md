@@ -236,6 +236,9 @@ Our Pyroscope deployment (`configuration/pyroscope/PyroscopeManifestBuilder.kt`)
 - **S3 backend** — IAM role auth via IMDS (no explicit credentials; v1.18.0 lacks `native_aws_auth_enabled`, SDK defaults to credential chain)
 - **Single-binary mode** (`target: all`)
 - **Port 4040** for HTTP API
-- **Flat storage prefix** — `pyroscope.{name}-{id}` (Pyroscope rejects `/` in `storage.prefix`)
+- **Storage prefix inside the cluster prefix** — `clusters/{name}-{id}/pyroscope`. `storage.prefix` does
+  accept `/`, so profiles share one prefix tree with the metrics and logs backups
+- **Account bucket, not the per-cluster data bucket** — `down` expires the data bucket wholesale.
+  The endpoint and region come from the account bucket's own region, resolved via `GetBucketLocation`
 - Config values substituted at build time via TemplateService (`__KEY__` placeholders)
 - Profiles received from: Java agent (Cassandra, Spark), eBPF agent (all nodes), stress jobs

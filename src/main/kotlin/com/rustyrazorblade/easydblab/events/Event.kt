@@ -2242,15 +2242,6 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("S3.LifecycleRuleSet")
-        data class LifecycleRuleSet(
-            val prefix: String,
-            val retentionDays: Int,
-        ) : S3 {
-            override fun toDisplayString(): String = "S3 lifecycle rule set: data under $prefix will expire in $retentionDays day(s)"
-        }
-
-        @Serializable
         @SerialName("S3.RequestMetricsDisabled")
         data class RequestMetricsDisabled(
             val clusterName: String,
@@ -2264,6 +2255,15 @@ sealed interface Event {
             val bucket: String,
         ) : S3 {
             override fun toDisplayString(): String = "Using account S3 bucket: $bucket"
+        }
+
+        @Serializable
+        @SerialName("S3.BucketRegionResolved")
+        data class BucketRegionResolved(
+            val bucket: String,
+            val region: String,
+        ) : S3 {
+            override fun toDisplayString(): String = "Account S3 bucket $bucket is in region $region"
         }
 
         @Serializable

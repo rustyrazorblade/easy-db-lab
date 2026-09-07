@@ -12,6 +12,15 @@ const val GRAFANA_CASSANDRA_FOLDER = "Cassandra"
  */
 const val GRAFANA_CASSANDRA_PATH = "$GRAFANA_DASHBOARD_ROOT-cassandra"
 
+/** Name of the Grafana folder holding the engine-agnostic host and system dashboards. */
+const val GRAFANA_INFRASTRUCTURE_FOLDER = "Infrastructure"
+
+/**
+ * Provider path backing [GRAFANA_INFRASTRUCTURE_FOLDER]. Must match `options.path` of the
+ * `infrastructure` provider in `dashboards.yaml`.
+ */
+const val GRAFANA_INFRASTRUCTURE_PATH = "$GRAFANA_DASHBOARD_ROOT-infrastructure"
+
 /**
  * Registry of all Grafana dashboards.
  *
@@ -41,11 +50,23 @@ enum class GrafanaDashboard(
     val optional: Boolean = false,
     val folder: String = "",
 ) {
+    // Not optional, unlike every other entry: this is the home dashboard, named by
+    // GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH, so a missing JSON should fail the build loudly
+    // rather than be skipped into a Grafana that opens on nothing.
     SYSTEM(
         configMapName = "grafana-dashboard-system",
         volumeName = "dashboard-system",
-        mountPath = "/var/lib/grafana/dashboards/system",
+        mountPath = "$GRAFANA_INFRASTRUCTURE_PATH/system",
         jsonFileName = "system-overview.json",
+        folder = GRAFANA_INFRASTRUCTURE_FOLDER,
+    ),
+    SYSTEM_AB_COMPARISON(
+        configMapName = "grafana-dashboard-system-ab-comparison",
+        volumeName = "dashboard-system-ab-comparison",
+        mountPath = "$GRAFANA_INFRASTRUCTURE_PATH/system-ab-comparison",
+        jsonFileName = "system-ab-comparison.json",
+        optional = true,
+        folder = GRAFANA_INFRASTRUCTURE_FOLDER,
     ),
     S3(
         configMapName = "grafana-dashboard-s3",
@@ -148,6 +169,14 @@ enum class GrafanaDashboard(
         volumeName = "dashboard-node-divergence",
         mountPath = "$GRAFANA_CASSANDRA_PATH/node-divergence",
         jsonFileName = "node-divergence.json",
+        optional = true,
+        folder = GRAFANA_CASSANDRA_FOLDER,
+    ),
+    AB_COMPARISON(
+        configMapName = "grafana-dashboard-ab-comparison",
+        volumeName = "dashboard-ab-comparison",
+        mountPath = "$GRAFANA_CASSANDRA_PATH/ab-comparison",
+        jsonFileName = "ab-comparison.json",
         optional = true,
         folder = GRAFANA_CASSANDRA_FOLDER,
     ),

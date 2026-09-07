@@ -30,3 +30,13 @@ providers:
     allowUiUpdates: true
     options:
       path: /var/lib/grafana/dashboards-cassandra
+  - name: 'infrastructure'
+    orgId: 1
+    folder: 'Infrastructure'
+    folderUid: 'infrastructure'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards-infrastructure

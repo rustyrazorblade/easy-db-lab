@@ -71,6 +71,11 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
 
     private fun settingsOf(yaml: String): String = yaml.lines().filterNot { it.trimStart().startsWith("#") }.joinToString("\n")
 
+    private companion object {
+        /** Every provisioning provider's `options.path`. */
+        val PROVIDER_PATH = Regex("""^\s*path:\s*(\S+)\s*$""", RegexOption.MULTILINE)
+    }
+
     @Test
     fun `the root provider still files its dashboards at the root of the list`() {
         val yaml = provisioningYaml()
@@ -92,6 +97,72 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
         }
     }
 
+    /**
+     * The check that would have caught two dashboards deployed with no enum entry, and a folder
+     * mounted where nothing was watching.
+     *
+     * A dashboard mounted outside every provider's path is a silent failure: the ConfigMap is
+     * created, the volume mounts, Grafana starts, and the dashboard simply never appears. Nothing
+     * in the deploy reports it. So the enum's derived folder path and the provisioning file's
+     * `options.path` are compared directly here.
+     */
+    @Test
+    fun `every folder an entry claims is backed by a provider watching that exact path`() {
+        val providerPaths =
+            PROVIDER_PATH.findAll(provisioningYaml()).map { it.groupValues[1] }.toSet()
+
+        assertThat(providerPaths).describedAs("provider paths in dashboards.yaml").isNotEmpty()
+
+        GrafanaDashboard.entries.forEach { dashboard ->
+            assertThat(providerPaths)
+                .describedAs("no provider watches ${dashboard.folderPath}, where ${dashboard.name} mounts")
+                .contains(dashboard.folderPath)
+        }
+    }
+
+    @Test
+    fun `the Infrastructure folder has a provider matching the derived path`() {
+        val yaml = provisioningYaml()
+
+        assertThat(yaml).contains("folder: 'Infrastructure'")
+        assertThat(yaml).contains("folderUid: 'infrastructure'")
+        // Derived, not spelled out: if folderPath ever stops matching, this fails here rather than
+        // on a cluster where the dashboard is merely absent.
+        assertThat(yaml).contains("path: ${GrafanaDashboard.SYSTEM.folderPath}")
+        assertThat(GrafanaDashboard.SYSTEM.folderPath).isEqualTo(GRAFANA_INFRASTRUCTURE_PATH)
+    }
+
+    @Test
+    fun `the engine-agnostic system dashboards are the ones in Infrastructure`() {
+        val infrastructure = GrafanaDashboard.entries.filter { it.folder == GRAFANA_INFRASTRUCTURE_FOLDER }
+
+        assertThat(infrastructure).containsExactlyInAnyOrder(
+            GrafanaDashboard.SYSTEM,
+            GrafanaDashboard.SYSTEM_AB_COMPARISON,
+        )
+        assertThat(infrastructure).allSatisfy { dashboard ->
+            assertThat(dashboard.mountPath).startsWith("$GRAFANA_INFRASTRUCTURE_PATH/")
+        }
+    }
+
+    @Test
+    fun `the home dashboard still resolves inside its folder`() {
+        // GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH is built from SYSTEM's mount path, so moving
+        // that entry into a folder moves the home dashboard's path with it. Left stale, Grafana
+        // opens on an empty page.
+        val grafanaContainer =
+            builder
+                .buildDeployment()
+                .spec.template.spec.containers
+                .first { it.name == "grafana" }
+        val homePath = grafanaContainer.env.first { it.name == "GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH" }.value
+
+        assertThat(homePath).isEqualTo("$GRAFANA_INFRASTRUCTURE_PATH/system/system-overview.json")
+        assertThat(GrafanaDashboard.SYSTEM.optional)
+            .describedAs("the home dashboard must not be skippable")
+            .isFalse()
+    }
+
     @Test
     fun `the Cassandra dashboards are the ones in the Cassandra folder`() {
         val cassandra = GrafanaDashboard.entries.filter { it.folder == GRAFANA_CASSANDRA_FOLDER }
@@ -103,6 +174,7 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
             GrafanaDashboard.READ_PATH_ANATOMY,
             GrafanaDashboard.WRITE_PATH_BACKPRESSURE,
             GrafanaDashboard.NODE_DIVERGENCE,
+            GrafanaDashboard.AB_COMPARISON,
         )
         assertThat(cassandra).allSatisfy { dashboard ->
             assertThat(dashboard.mountPath).startsWith("$GRAFANA_CASSANDRA_PATH/")
@@ -116,7 +188,7 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
     fun `every other dashboard stays at the root path`() {
         val root = GrafanaDashboard.entries.filter { it.folder.isEmpty() }
 
-        assertThat(root).contains(GrafanaDashboard.SYSTEM, GrafanaDashboard.TEMPO, GrafanaDashboard.CLICKHOUSE)
+        assertThat(root).contains(GrafanaDashboard.TEMPO, GrafanaDashboard.CLICKHOUSE, GrafanaDashboard.S3)
         assertThat(root).allSatisfy { dashboard ->
             assertThat(dashboard.mountPath).startsWith("$GRAFANA_DASHBOARD_ROOT/")
             assertThat(dashboard.mountPath).doesNotContain("$GRAFANA_DASHBOARD_ROOT-")

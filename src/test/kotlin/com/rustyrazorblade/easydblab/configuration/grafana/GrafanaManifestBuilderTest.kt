@@ -11,6 +11,7 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
+import java.io.File
 
 /**
  * Tests for GrafanaManifestBuilder.
@@ -120,6 +121,58 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
         }
     }
 
+    /**
+     * The complement to the provider check below, and the one that catches the more common
+     * mistake: a JSON file added to `dashboards/` with no enum entry.
+     *
+     * An unregistered dashboard is not merely absent. It gets installed ad hoc with `grafana
+     * install --folder=X`, and because the provisioner does not know it, Grafana creates a SECOND
+     * folder with a random uid instead of reusing the provisioned one — leaving two folders with
+     * the same title and the dashboards split between them. Seven files had drifted this way before
+     * this test existed.
+     *
+     * There are deliberately no exceptions. Every file in that directory is a dashboard someone
+     * expects to see, so if one ever genuinely should not ship, the honest fix is to delete it or
+     * move it out of the directory, not to grant it a pass here.
+     */
+    @Test
+    fun `every dashboard JSON file is registered in the enum`() {
+        val onDisk =
+            File("dashboards")
+                .listFiles { file -> file.extension == "json" }
+                .orEmpty()
+                .map { it.name }
+                .toSet()
+        val registered = GrafanaDashboard.entries.map { it.jsonFileName }.toSet()
+
+        assertThat(onDisk)
+            .describedAs("dashboards/ should not be empty — the check below proves nothing if it is")
+            .isNotEmpty()
+        assertThat(onDisk).allSatisfy { fileName ->
+            assertThat(registered)
+                .describedAs("$fileName has no GrafanaDashboard entry, so a fresh cluster never gets it")
+                .contains(fileName)
+        }
+    }
+
+    @Test
+    fun `every enum entry names a dashboard that exists`() {
+        // The other direction. An entry with no file is not fatal — it is skipped when optional —
+        // but it is dead weight that reads like a shipped dashboard.
+        val onDisk =
+            File("dashboards")
+                .listFiles { file -> file.extension == "json" }
+                .orEmpty()
+                .map { it.name }
+                .toSet()
+
+        assertThat(GrafanaDashboard.entries).allSatisfy { dashboard ->
+            assertThat(onDisk)
+                .describedAs("${dashboard.name} points at ${dashboard.jsonFileName}, which is not in dashboards/")
+                .contains(dashboard.jsonFileName)
+        }
+    }
+
     @Test
     fun `the Infrastructure folder has a provider matching the derived path`() {
         val yaml = provisioningYaml()
@@ -139,6 +192,8 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
         assertThat(infrastructure).containsExactlyInAnyOrder(
             GrafanaDashboard.SYSTEM,
             GrafanaDashboard.SYSTEM_AB_COMPARISON,
+            GrafanaDashboard.INSTANCE_CLOUD,
+            GrafanaDashboard.PROFILER_HEALTH,
         )
         assertThat(infrastructure).allSatisfy { dashboard ->
             assertThat(dashboard.mountPath).startsWith("$GRAFANA_INFRASTRUCTURE_PATH/")
@@ -175,6 +230,11 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
             GrafanaDashboard.WRITE_PATH_BACKPRESSURE,
             GrafanaDashboard.NODE_DIVERGENCE,
             GrafanaDashboard.AB_COMPARISON,
+            GrafanaDashboard.PROFILE_COMPARISON,
+            GrafanaDashboard.CLIENT_VS_SERVER_LATENCY,
+            GrafanaDashboard.COMPACTION_STORAGE,
+            GrafanaDashboard.TRACE_RED,
+            GrafanaDashboard.CASSANDRA_LOGS_ANALYSIS,
         )
         assertThat(cassandra).allSatisfy { dashboard ->
             assertThat(dashboard.mountPath).startsWith("$GRAFANA_CASSANDRA_PATH/")

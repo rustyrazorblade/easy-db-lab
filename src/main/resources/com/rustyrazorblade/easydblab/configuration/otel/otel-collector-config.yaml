@@ -593,9 +593,12 @@ service:
       receivers: [count, signaltometrics]
       processors: [resource/cluster, batch]
       exporters: [prometheusremotewrite]
+    # resource/cluster here rather than in each span producer's own resource attributes. Any
+    # producer gets the cluster label for free — the stress job today, Beyla or a future client
+    # tomorrow — and it is the same mechanism every metrics pipeline already uses.
     traces:
       receivers: [otlp, jaeger]
-      processors: [batch]
+      processors: [resource/cluster, batch]
       exporters: [otlp/tempo, spanmetrics, servicegraph]
     metrics/spanmetrics:
       receivers: [spanmetrics]

@@ -152,6 +152,14 @@ class DefaultStressJobService(
         private const val PYROSCOPE_VOLUME_NAME = "pyroscope-agent"
         private const val PYROSCOPE_HOST_PATH = "/usr/local/pyroscope"
         private const val PYROSCOPE_MOUNT_PATH = "/usr/local/pyroscope"
+
+        // The OTel Java agent, reaching the pod the same way the Pyroscope agent does: a hostPath
+        // mount of where the base AMI installs it. The job's nodeSelector pins it to a `type=app`
+        // node, and the base image puts the jar there, so the path resolves on every node this job
+        // can land on.
+        private const val OTEL_AGENT_VOLUME_NAME = "otel-agent"
+        private const val OTEL_AGENT_HOST_PATH = "/usr/local/otel"
+        private const val OTEL_AGENT_MOUNT_PATH = "/usr/local/otel"
     }
 
     override fun startJob(
@@ -395,6 +403,27 @@ class DefaultStressJobService(
         val pyroscopeServerAddress = "http://$controlNodeIp:${Constants.K8s.PYROSCOPE_PORT}"
         val pyroscopeLabels = "cluster=$clusterName,job_name=${config.jobName}"
 
+        // Client spans come from here or from nowhere. Cassandra has no OTel server-side
+        // instrumentation, so the only thing on this cluster that can produce a trace is the driver
+        // in this JVM; without the agent, Tempo receives nothing and every spanmetrics panel is
+        // empty. Two agents in one JVM, exactly as Cassandra runs OTel beside AxonOps.
+        //
+        // Port 4318, not 4317: the agent's default OTLP protocol is http/protobuf, which the
+        // collector serves on 4318. Sent at 4317 - its gRPC port - every export fails with
+        // "HttpExporter - Failed to export" and nothing says why.
+        //
+        // Resource attributes come from the same helper the sidecar uses, so a span and the stress
+        // metrics from the same run carry the same job_name and tags and can be lined up. The
+        // cluster label is NOT added here: the collector's traces pipeline stamps it with
+        // resource/cluster, so every span producer gets it, not just this one.
+        //
+        // Logs are the one signal turned off. The pod's stdout already reaches VictoriaLogs through
+        // the collector's filelog receiver, so exporting them again from inside the JVM would file
+        // every line twice. Metrics stay ON: the sidecar scrapes only cassandra-easy-stress's own
+        // Prometheus counters, so the agent's JVM metrics are the only view of whether the load
+        // generator itself is the bottleneck.
+        val otelResourceAttributes = buildResourceAttributes(config.jobName, config.tags)
+
         val javaToolOptions =
             listOf(
                 "-javaagent:$PYROSCOPE_MOUNT_PATH/pyroscope.jar",
@@ -405,6 +434,12 @@ class DefaultStressJobService(
                 "-Dpyroscope.profiler.alloc=512k",
                 "-Dpyroscope.profiler.lock=10ms",
                 "-Dpyroscope.labels=$pyroscopeLabels",
+                "-javaagent:$OTEL_AGENT_MOUNT_PATH/opentelemetry-javaagent.jar",
+                "-Dotel.service.name=cassandra-easy-stress",
+                "-Dotel.resource.attributes=$otelResourceAttributes",
+                "-Dotel.exporter.otlp.endpoint=http://$controlNodeIp:${Constants.K8s.OTEL_HTTP_PORT}",
+                "-Dotel.metric.export.interval=5s",
+                "-Dotel.logs.exporter=none",
             ).joinToString(" ")
 
         return ContainerBuilder()
@@ -436,6 +471,11 @@ class DefaultStressJobService(
                 VolumeMountBuilder()
                     .withName(PYROSCOPE_VOLUME_NAME)
                     .withMountPath(PYROSCOPE_MOUNT_PATH)
+                    .withReadOnly(true)
+                    .build(),
+                VolumeMountBuilder()
+                    .withName(OTEL_AGENT_VOLUME_NAME)
+                    .withMountPath(OTEL_AGENT_MOUNT_PATH)
                     .withReadOnly(true)
                     .build(),
             ).build()
@@ -545,6 +585,13 @@ class DefaultStressJobService(
                     .withName(PYROSCOPE_VOLUME_NAME)
                     .withNewHostPath()
                     .withPath(PYROSCOPE_HOST_PATH)
+                    .withType("Directory")
+                    .endHostPath()
+                    .build(),
+                VolumeBuilder()
+                    .withName(OTEL_AGENT_VOLUME_NAME)
+                    .withNewHostPath()
+                    .withPath(OTEL_AGENT_HOST_PATH)
                     .withType("Directory")
                     .endHostPath()
                     .build(),

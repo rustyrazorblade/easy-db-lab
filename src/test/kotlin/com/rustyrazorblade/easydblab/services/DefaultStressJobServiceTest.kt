@@ -430,4 +430,95 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
         assertThat(javaToolOptions).contains("-Dpyroscope.profiler.lock=10ms")
         assertThat(javaToolOptions).contains("-Dpyroscope.labels=cluster=test-cluster,job_name=stress-test-123")
     }
+
+    /**
+     * The stress JVM is the only source of client spans on the whole cluster.
+     *
+     * Cassandra has no OTel server-side instrumentation, so nothing on the server side can emit a
+     * trace. If these flags are wrong, Tempo receives nothing, spanmetrics generates nothing, and
+     * every RED panel is empty — with no error anywhere to say why.
+     */
+    @Test
+    fun `buildJob should load the OTel agent alongside Pyroscope`() {
+        val javaToolOptions = javaToolOptionsOf(stressJobConfig())
+
+        assertThat(javaToolOptions).contains("-javaagent:/usr/local/otel/opentelemetry-javaagent.jar")
+        assertThat(javaToolOptions).contains("-Dotel.service.name=cassandra-easy-stress")
+        // Two agents in one JVM: adding OTel must not cost the profiling already there.
+        assertThat(javaToolOptions).contains("-javaagent:/usr/local/pyroscope/pyroscope.jar")
+    }
+
+    @Test
+    fun `buildJob should export OTLP to the collector's HTTP port, not its gRPC port`() {
+        // The agent's default protocol is http/protobuf, served on 4318. Sent at 4317 — the gRPC
+        // port — every export fails with "HttpExporter - Failed to export" and no span arrives.
+        val javaToolOptions = javaToolOptionsOf(stressJobConfig())
+
+        assertThat(javaToolOptions).contains("-Dotel.exporter.otlp.endpoint=http://10.0.1.5:${Constants.K8s.OTEL_HTTP_PORT}")
+        assertThat(javaToolOptions).doesNotContain("4317")
+    }
+
+    @Test
+    fun `buildJob should give spans the same identity as the sidecar's metrics`() {
+        // Same helper as the sidecar's OTEL_RESOURCE_ATTRIBUTES, so a trace and the stress metrics
+        // from one run line up on job_name and tags.
+        val javaToolOptions = javaToolOptionsOf(stressJobConfig(tags = mapOf("variant" to "baseline")))
+
+        assertThat(javaToolOptions).contains("job_name=stress-test-123")
+        assertThat(javaToolOptions).contains("variant=baseline")
+        // The cluster label is NOT set here. The collector's traces pipeline stamps it with
+        // resource/cluster, so every span producer gets it rather than each carrying its own copy.
+        assertThat(javaToolOptions).doesNotContain("cluster=")
+    }
+
+    @Test
+    fun `buildJob should not export logs twice, and should keep metrics on`() {
+        val javaToolOptions = javaToolOptionsOf(stressJobConfig())
+
+        // The pod's stdout already reaches VictoriaLogs via the collector's filelog receiver.
+        assertThat(javaToolOptions).contains("-Dotel.logs.exporter=none")
+        // The sidecar scrapes only cassandra-easy-stress's own counters, so the agent's JVM metrics
+        // are the only view of whether the load generator itself is the bottleneck.
+        assertThat(javaToolOptions).doesNotContain("-Dotel.metrics.exporter=none")
+    }
+
+    @Test
+    fun `buildJob should mount the OTel agent from the host, read-only`() {
+        // The jar is installed by the base AMI at /usr/local/otel and reaches the pod exactly as
+        // the Pyroscope jar does. The job's nodeSelector pins it to a type=app node, where that
+        // path exists.
+        val spec =
+            service
+                .buildJob(stressJobConfig())
+                .spec.template.spec
+        val mount =
+            spec.containers
+                .first { it.name == "stress" }
+                .volumeMounts
+                .first { it.name == "otel-agent" }
+        val volume = spec.volumes.first { it.name == "otel-agent" }
+
+        assertThat(mount.mountPath).isEqualTo("/usr/local/otel")
+        assertThat(mount.readOnly).isTrue()
+        assertThat(volume.hostPath.path).isEqualTo("/usr/local/otel")
+        assertThat(volume.hostPath.type).isEqualTo("Directory")
+    }
+
+    private fun stressJobConfig(tags: Map<String, String> = emptyMap()) =
+        StressJobConfig(
+            jobName = "stress-test-123",
+            image = "ghcr.io/apache/cassandra-easy-stress:latest",
+            contactPoints = "10.0.1.6",
+            args = listOf("run", "KeyValue"),
+            tags = tags,
+        )
+
+    private fun javaToolOptionsOf(config: StressJobConfig): String =
+        service
+            .buildJob(config)
+            .spec.template.spec.containers
+            .first { it.name == "stress" }
+            .env
+            .first { it.name == "JAVA_TOOL_OPTIONS" }
+            .value
 }

@@ -40,12 +40,32 @@
   "liveNow": false,
   "panels": [
     {
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 47,
+      "options": {
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "Pick a build in **Baseline** and another in **Candidate**. The dropdowns list every `cassandra_build` value present right now, so any split works: one against three, two against two, or one variant at a time. The stat row below is the answer; everything under it is the evidence.\n\n**What the colours mean.** Green means the candidate is better than the baseline; red means worse. The direction is set per metric, so you never have to work it out. Lower is better for latency, GC pause overhead, dropped messages, hints and block I/O, and those turn green on a **negative** delta. Higher is better for throughput, which turns green on a **positive** one. Negative is not always green.\n\n**Before you believe a delta.** A blank delta means the baseline was zero, and a percentage of zero is undefined; panels where that is normal show an absolute difference instead. Check **Per-node request rate spread** first: at 1.00 the nodes of a build are doing equal work, and well above 1.00 the group average is really describing one node. Two nodes on the same build can still disagree by tens of percent, and the per-node panels show it.\n\n**Slicing.** *Ad-hoc filters* applies a label filter to every panel at once. *Group by* re-cuts the Slice and dice section. *Percentile* and *Latency unit* drive every latency panel.\n",
+        "mode": "markdown"
+      },
+      "title": "How to read this dashboard",
+      "type": "text"
+    },
+    {
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 0
+        "y": 7
       },
       "id": 1,
       "panels": [],
@@ -90,7 +110,7 @@
         "h": 5,
         "w": 4,
         "x": 0,
-        "y": 1
+        "y": 8
       },
       "id": 2,
       "options": {
@@ -163,7 +183,7 @@
         "h": 5,
         "w": 4,
         "x": 4,
-        "y": 1
+        "y": 8
       },
       "id": 3,
       "options": {
@@ -236,7 +256,7 @@
         "h": 5,
         "w": 4,
         "x": 8,
-        "y": 1
+        "y": 8
       },
       "id": 4,
       "options": {
@@ -309,7 +329,7 @@
         "h": 5,
         "w": 4,
         "x": 12,
-        "y": 1
+        "y": 8
       },
       "id": 5,
       "options": {
@@ -382,7 +402,7 @@
         "h": 5,
         "w": 4,
         "x": 16,
-        "y": 1
+        "y": 8
       },
       "id": 6,
       "options": {
@@ -455,7 +475,7 @@
         "h": 5,
         "w": 4,
         "x": 20,
-        "y": 1
+        "y": 8
       },
       "id": 7,
       "options": {
@@ -496,7 +516,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 6
+        "y": 13
       },
       "id": 8,
       "panels": [],
@@ -552,7 +572,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 7
+        "y": 14
       },
       "id": 9,
       "options": {
@@ -644,7 +664,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 7
+        "y": 14
       },
       "id": 10,
       "options": {
@@ -705,7 +725,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 15
+        "y": 22
       },
       "id": 11,
       "panels": [],
@@ -717,7 +737,7 @@
         "h": 6,
         "w": 8,
         "x": 0,
-        "y": 16
+        "y": 23
       },
       "id": 12,
       "options": {
@@ -770,7 +790,7 @@
         "h": 6,
         "w": 8,
         "x": 8,
-        "y": 16
+        "y": 23
       },
       "id": 13,
       "options": {
@@ -851,7 +871,7 @@
         "h": 6,
         "w": 8,
         "x": 16,
-        "y": 16
+        "y": 23
       },
       "id": 14,
       "options": {
@@ -959,7 +979,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 22
+        "y": 29
       },
       "id": 15,
       "options": {
@@ -1055,7 +1075,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 22
+        "y": 29
       },
       "id": 16,
       "options": {
@@ -1096,7 +1116,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 31
+        "y": 38
       },
       "id": 17,
       "panels": [],
@@ -1236,7 +1256,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 32
+        "y": 39
       },
       "id": 18,
       "options": {
@@ -1425,7 +1445,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 32
+        "y": 39
       },
       "id": 19,
       "options": {
@@ -1487,7 +1507,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 41
+        "y": 48
       },
       "id": 20,
       "panels": [],
@@ -1627,7 +1647,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 42
+        "y": 49
       },
       "id": 21,
       "options": {
@@ -1812,7 +1832,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 42
+        "y": 49
       },
       "id": 22,
       "options": {
@@ -1997,7 +2017,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 51
+        "y": 58
       },
       "id": 23,
       "options": {
@@ -2199,7 +2219,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 51
+        "y": 58
       },
       "id": 24,
       "options": {
@@ -2272,7 +2292,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 60
+        "y": 67
       },
       "id": 25,
       "panels": [],
@@ -2408,7 +2428,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 61
+        "y": 68
       },
       "id": 26,
       "options": {
@@ -2630,7 +2650,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 61
+        "y": 68
       },
       "id": 27,
       "options": {
@@ -2703,7 +2723,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 70
+        "y": 77
       },
       "id": 28,
       "panels": [],
@@ -2843,7 +2863,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 71
+        "y": 78
       },
       "id": 29,
       "options": {
@@ -3028,7 +3048,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 71
+        "y": 78
       },
       "id": 30,
       "options": {
@@ -3217,7 +3237,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 80
+        "y": 87
       },
       "id": 31,
       "options": {
@@ -3406,7 +3426,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 80
+        "y": 87
       },
       "id": 32,
       "options": {
@@ -3468,7 +3488,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 89
+        "y": 96
       },
       "id": 33,
       "panels": [],
@@ -3608,7 +3628,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 90
+        "y": 97
       },
       "id": 34,
       "options": {
@@ -3794,7 +3814,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 90
+        "y": 97
       },
       "id": 35,
       "options": {
@@ -3867,7 +3887,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 99
+        "y": 106
       },
       "id": 36,
       "panels": [],
@@ -3935,7 +3955,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 100
+        "y": 107
       },
       "id": 37,
       "options": {
@@ -4031,7 +4051,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 100
+        "y": 107
       },
       "id": 38,
       "options": {
@@ -4127,7 +4147,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 109
+        "y": 116
       },
       "id": 39,
       "options": {
@@ -4223,7 +4243,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 109
+        "y": 116
       },
       "id": 40,
       "options": {
@@ -4319,7 +4339,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 118
+        "y": 125
       },
       "id": 41,
       "options": {
@@ -4415,7 +4435,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 118
+        "y": 125
       },
       "id": 42,
       "options": {
@@ -4511,7 +4531,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 127
+        "y": 134
       },
       "id": 43,
       "options": {
@@ -4607,7 +4627,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 127
+        "y": 134
       },
       "id": 44,
       "options": {
@@ -4703,7 +4723,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 136
+        "y": 143
       },
       "id": 45,
       "options": {
@@ -4799,7 +4819,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 136
+        "y": 143
       },
       "id": 46,
       "options": {

@@ -310,8 +310,8 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "max by (cluster) (cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"read\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}",
-          "legendFormat": "${percentile} slowest node \u2014 {{cluster}}",
+          "expr": "topk(1, cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"read\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}",
+          "legendFormat": "${percentile} slowest \u2014 {{host_name}}",
           "refId": "A"
         },
         {
@@ -319,12 +319,13 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "min by (cluster) (cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"read\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}",
-          "legendFormat": "${percentile} fastest node \u2014 {{cluster}}",
+          "expr": "bottomk(1, cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"read\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}",
+          "legendFormat": "${percentile} fastest \u2014 {{host_name}}",
           "refId": "B"
         }
       ],
-      "title": "Read Latency ${percentile} \u2014 node spread (${latency_unit:text})",
+      "description": "Which node currently holds the highest and the lowest read latency at ${percentile}, named. topk and bottomk are used rather than max and min because they keep the host_name label; max by (cluster) aggregates the node away and leaves the legend naming a cluster instead. Two caveats, both properties of the data rather than faults. These percentiles arrive pre-aggregated from Cassandra's EstimatedHistogram and snap to bucket boundaries, so nodes often hold identical values; where they tie, the choice between them is arbitrary, and if every node ties the same node can legitimately appear as both fastest and slowest. The selected node also changes between scrapes, so a line may switch host across a time range \u2014 that is a real change in which node is slowest, not a rendering artefact. The per-node breakdown directly below shows every node at once.",
+      "title": "Read Latency ${percentile} \u2014 slowest and fastest node (${latency_unit:text})",
       "type": "timeseries"
     },
     {
@@ -409,8 +410,8 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "max by (cluster) (cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}",
-          "legendFormat": "${percentile} slowest node \u2014 {{cluster}}",
+          "expr": "topk(1, cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}",
+          "legendFormat": "${percentile} slowest \u2014 {{host_name}}",
           "refId": "A"
         },
         {
@@ -418,12 +419,13 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "min by (cluster) (cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}",
-          "legendFormat": "${percentile} fastest node \u2014 {{cluster}}",
+          "expr": "bottomk(1, cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}",
+          "legendFormat": "${percentile} fastest \u2014 {{host_name}}",
           "refId": "B"
         }
       ],
-      "title": "Write Latency ${percentile} \u2014 node spread (${latency_unit:text})",
+      "description": "Which node currently holds the highest and the lowest write latency at ${percentile}, named. topk and bottomk are used rather than max and min because they keep the host_name label; max by (cluster) aggregates the node away and leaves the legend naming a cluster instead. Two caveats, both properties of the data rather than faults. These percentiles arrive pre-aggregated from Cassandra's EstimatedHistogram and snap to bucket boundaries, so nodes often hold identical values; where they tie, the choice between them is arbitrary, and if every node ties the same node can legitimately appear as both fastest and slowest. The selected node also changes between scrapes, so a line may switch host across a time range \u2014 that is a real change in which node is slowest, not a rendering artefact. The per-node breakdown directly below shows every node at once.",
+      "title": "Write Latency ${percentile} \u2014 slowest and fastest node (${latency_unit:text})",
       "type": "timeseries"
     },
     {
@@ -483,7 +485,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 17
+        "y": 26
       },
       "id": 12,
       "options": {
@@ -573,7 +575,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 25
+        "y": 34
       },
       "id": 16,
       "options": {
@@ -610,7 +612,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 33
+        "y": 42
       },
       "id": 104,
       "title": "Hardware / Operating System",
@@ -674,7 +676,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 34
+        "y": 43
       },
       "id": 18,
       "options": {
@@ -764,7 +766,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 34
+        "y": 43
       },
       "id": 19,
       "options": {
@@ -854,7 +856,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 34
+        "y": 43
       },
       "id": 20,
       "options": {
@@ -944,7 +946,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 42
+        "y": 51
       },
       "id": 21,
       "options": {
@@ -1034,7 +1036,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 42
+        "y": 51
       },
       "id": 22,
       "options": {
@@ -1124,7 +1126,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 42
+        "y": 51
       },
       "id": 23,
       "options": {
@@ -1171,7 +1173,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 50
+        "y": 17
       },
       "id": 106,
       "title": "Per-Node Latency",
@@ -1236,7 +1238,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 51
+        "y": 18
       },
       "id": 28,
       "options": {
@@ -1327,7 +1329,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 51
+        "y": 18
       },
       "id": 29,
       "options": {

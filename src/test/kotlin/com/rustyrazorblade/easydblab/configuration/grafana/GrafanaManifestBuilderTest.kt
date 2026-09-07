@@ -51,8 +51,8 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
 
     @Test
     fun `buildDashboardConfigMap preserves Grafana built-in variables`() {
-        val configMap = builder.buildDashboardConfigMap(GrafanaDashboard.CLICKHOUSE)
-        val json = configMap.data[GrafanaDashboard.CLICKHOUSE.jsonFileName]!!
+        val configMap = builder.buildDashboardConfigMap(GrafanaDashboard.CASSANDRA_OVERVIEW)
+        val json = configMap.data.getValue(GrafanaDashboard.CASSANDRA_OVERVIEW.jsonFileName)
 
         assertThat(json).contains("\$__rate_interval")
     }

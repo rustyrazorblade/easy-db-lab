@@ -7,6 +7,10 @@ package com.rustyrazorblade.easydblab.configuration.grafana
  * into the Grafana deployment as a volume mount. Adding a new dashboard requires
  * only a new enum entry and a JSON file in the top-level `dashboards/` directory.
  *
+ * This registry is for core and system dashboards only. A dashboard that belongs to a kit lives in
+ * that kit's own `dashboards/` directory and is installed by the kit runner; registering a second
+ * copy here ships two dashboards that drift apart, which is what happened to ClickHouse's.
+ *
  * @property configMapName K8s ConfigMap name
  * @property volumeName Volume name in the Grafana Deployment spec
  * @property mountPath Where Grafana reads the dashboard JSON inside the container
@@ -52,20 +56,6 @@ enum class GrafanaDashboard(
         volumeName = "dashboard-stress",
         mountPath = "/var/lib/grafana/dashboards/stress",
         jsonFileName = "stress.json",
-        optional = true,
-    ),
-    CLICKHOUSE(
-        configMapName = "grafana-dashboard-clickhouse",
-        volumeName = "dashboard-clickhouse",
-        mountPath = "/var/lib/grafana/dashboards/clickhouse",
-        jsonFileName = "clickhouse.json",
-        optional = true,
-    ),
-    CLICKHOUSE_LOGS(
-        configMapName = "grafana-dashboard-clickhouse-logs",
-        volumeName = "dashboard-clickhouse-logs",
-        mountPath = "/var/lib/grafana/dashboards/clickhouse-logs",
-        jsonFileName = "clickhouse-logs.json",
         optional = true,
     ),
     PROFILING(

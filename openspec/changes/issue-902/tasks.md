@@ -36,12 +36,12 @@
 
 ## 3. Remove the stale top-level ClickHouse dashboards
 
-- [ ] 3.1 Delete `dashboards/clickhouse.json` and `dashboards/clickhouse-logs.json`.
-- [ ] 3.2 Remove the `CLICKHOUSE` and `CLICKHOUSE_LOGS` entries from the `GrafanaDashboard` enum
+- [x] 3.1 Delete `dashboards/clickhouse.json` and `dashboards/clickhouse-logs.json`.
+- [x] 3.2 Remove the `CLICKHOUSE` and `CLICKHOUSE_LOGS` entries from the `GrafanaDashboard` enum
       (`:57`, `:64`).
-- [ ] 3.3 Verify `grafana update-config` still succeeds — no manifest references a deleted resource —
+- [x] 3.3 Verify `grafana update-config` still succeeds — no manifest references a deleted resource —
       and installs no ClickHouse dashboard.
-- [ ] 3.4 Verify the ClickHouse kit's own two dashboards still install via `KitRunnerCommand` and are
+- [x] 3.4 Verify the ClickHouse kit's own two dashboards still install via `KitRunnerCommand` and are
       the only ClickHouse dashboards present.
 
 ## 4. Cluster name on every dashboard

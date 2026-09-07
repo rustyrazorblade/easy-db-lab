@@ -263,6 +263,49 @@ processors:
           - set(attributes["logger"], instrumentation_scope.name) where instrumentation_scope.name != ""
           - set(attributes["severity"], severity_text) where severity_text != ""
 
+          # GC pauses. GCInspector logs one line per collection carrying the duration the JVM
+          # metrics only expose in aggregate. Both collectors on this fleet use the same shape:
+          #   "G1 Young Generation GC in 635ms.  G1 Eden Space: 8220835840 -> 0; ..."
+          #   "ZGC Major Cycles GC in 1465ms.  ZGC Old Generation: 58720256 -> 167772160; ..."
+          # so one pattern serves G1 and ZGC alike. Matched against real lines pulled off the
+          # cluster, not a remembered format.
+          #
+          # The collector name is the only label: a bounded set of a handful of strings. The heap
+          # before/after figures in the rest of the line are deliberately left alone - they are
+          # per-pool and already covered by jvm.memory.used.
+          - >-
+            merge_maps(attributes,
+              ExtractPatterns(body, "^(?P<gc_collector>[A-Za-z0-9 ]+?) GC in (?P<gc_pause_ms>[0-9]+)ms"),
+              "upsert")
+            where IsMatch(body, "GC in [0-9]+ms")
+          - set(attributes["gc_pause_ms"], Double(attributes["gc_pause_ms"])) where attributes["gc_pause_ms"] != nil
+
+          # Compactions. CompactionTask logs one line per compaction:
+          #   "Compacted (<uuid>) 4 sstables to [<path>,] to level=0.  9.049KiB to 4.033KiB
+          #    (~44% of original) in 104ms. ... 7 total partitions merged to 3. ..."
+          # Only the counts and the elapsed time are taken. The uuid and the sstable path in that
+          # line are unbounded and never become labels; the byte figures are human-formatted
+          # ("9.049KiB"), so parsing them would mean unit handling for no gain over the compaction
+          # byte counters that already exist.
+          - >-
+            merge_maps(attributes,
+              ExtractPatterns(body, "^Compacted \\([^)]+\\) (?P<compaction_sstables>[0-9]+) sstables"),
+              "upsert")
+            where IsMatch(body, "^Compacted \\(")
+          - >-
+            merge_maps(attributes,
+              ExtractPatterns(body, "of original\\) in (?P<compaction_ms>[0-9]+)ms"),
+              "upsert")
+            where IsMatch(body, "^Compacted \\(")
+          - >-
+            merge_maps(attributes,
+              ExtractPatterns(body, "(?P<compaction_partitions>[0-9]+) total partitions merged"),
+              "upsert")
+            where IsMatch(body, "^Compacted \\(")
+          - set(attributes["compaction_sstables"], Double(attributes["compaction_sstables"])) where attributes["compaction_sstables"] != nil
+          - set(attributes["compaction_ms"], Double(attributes["compaction_ms"])) where attributes["compaction_ms"] != nil
+          - set(attributes["compaction_partitions"], Double(attributes["compaction_partitions"])) where attributes["compaction_partitions"] != nil
+
   # Copy service.name → service_name on the resource so Grafana's auto-generated log queries
   # (which use underscore-style label names) match VictoriaLogs fields.
   transform/add_service_name:
@@ -345,6 +388,35 @@ connectors:
         conditions:
           - IsMatch(instrumentation_scope.name, ".*(MessagingService|NoSpamLogger)$")
 
+  # Sums a numeric attribute off log records. This is what turns the figures parsed out of a log
+  # body into a series; the count connector can only count records.
+  #
+  # Every metric here sums a quantity that is additive over time. A compaction ratio is not - it is
+  # a percentage - so it is parsed nowhere and summed nowhere. Getting a distribution of ratios
+  # would need the signaltometrics connector, which is a deliberate addition rather than one to
+  # make in passing.
+  sum:
+    logs:
+      cassandra.log.gc.pause_time:
+        source_attribute: gc_pause_ms
+        conditions:
+          - attributes["gc_pause_ms"] != nil
+        attributes:
+          - key: gc_collector
+            default_value: unknown
+      cassandra.log.compaction.duration:
+        source_attribute: compaction_ms
+        conditions:
+          - attributes["compaction_ms"] != nil
+      cassandra.log.compaction.sstables_merged:
+        source_attribute: compaction_sstables
+        conditions:
+          - attributes["compaction_sstables"] != nil
+      cassandra.log.compaction.partitions_merged:
+        source_attribute: compaction_partitions
+        conditions:
+          - attributes["compaction_partitions"] != nil
+
   # Converts spans to Prometheus metrics (calls_total, latency histograms).
   # Exemplars link metric data points back to individual traces in Tempo.
   spanmetrics:
@@ -407,11 +479,11 @@ service:
     logs/otlp:
       receivers: [otlp]
       processors: [resource/drop_sdk_metadata, transform/add_service_name, transform/log_metric_labels, batch]
-      exporters: [otlphttp/victorialogs, count]
+      exporters: [otlphttp/victorialogs, count, sum]
     # Metrics derived from those logs. resource/cluster stamps the cluster label, as on every other
     # metrics pipeline.
     metrics/logs:
-      receivers: [count]
+      receivers: [count, sum]
       processors: [resource/cluster, batch]
       exporters: [prometheusremotewrite]
     traces:

@@ -356,6 +356,28 @@ tasks.register<Exec>("testPackerCassandra") {
         listOf("docker", "compose", "up", "--force-recreate", "--remove-orphans", "--exit-code-from", "test-cassandra", "test-cassandra")
 }
 
+// Unit-test the Fluent Bit journald filter's drop rule: Cassandra's logback lines are duplicates of
+// what the OTel agent already delivers, while its non-logback output (JVM crash, OOM, pre-logback)
+// reaches VictoriaLogs only through the journal. Runs Lua in Docker; no cluster, no Fluent Bit.
+tasks.register<Exec>("testFluentBitFilter") {
+    group = "Verification"
+    description = "Unit-test the Fluent Bit journald Lua filter"
+    workingDir = file(".")
+    commandLine =
+        listOf(
+            "docker",
+            "run",
+            "--rm",
+            "-v",
+            "$projectDir:/w:ro",
+            "-w",
+            "/w",
+            "nickblah/lua:5.4-alpine",
+            "lua",
+            "src/main/resources/com/rustyrazorblade/easydblab/configuration/otel/fluent-bit-severity-mapper.test.lua",
+        )
+}
+
 tasks.register("testPacker") {
     group = "Verification"
     description = "Run all packer provisioning tests"

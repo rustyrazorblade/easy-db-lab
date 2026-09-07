@@ -17,6 +17,18 @@ class OtelManifestBuilderTest : BaseKoinTest() {
     private lateinit var builder: OtelManifestBuilder
     private lateinit var mockClusterStateManager: ClusterStateManager
 
+    /** The body of one named pipeline: every line indented under it, comments excluded. */
+    private fun pipeline(name: String): String {
+        val lines = yamlFrom(builder.buildConfigMap(emptyList())).lines()
+        val start = lines.indexOfFirst { it.trim() == name }
+        check(start >= 0) { "pipeline $name is not in the rendered config" }
+
+        return lines
+            .drop(start + 1)
+            .takeWhile { it.startsWith("      ") }
+            .joinToString("\n")
+    }
+
     private fun yamlFrom(configMap: ConfigMap): String =
         checkNotNull(configMap.data["otel-collector-config.yaml"]) {
             "ConfigMap missing expected data key 'otel-collector-config.yaml'"
@@ -142,6 +154,71 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         assertThat(yaml).contains("exclude_fs_types:")
         assertThat(yaml).contains("- squashfs")
         assertThat(yaml).contains("match_type: strict")
+    }
+
+    /**
+     * The logs pipeline carried the same SDK resource the metrics pipeline used to, and worse:
+     * `process.command_line` is kilobytes of argv on every single record, and VictoriaLogs makes it
+     * part of the stream identity, so it both bloats storage and re-keys the stream whenever
+     * `cassandra use` changes the command line.
+     */
+    @Test
+    fun `buildConfigMap drops the SDK resource from the OTLP logs pipeline too`() {
+        val logsPipeline = pipeline("logs/otlp:")
+
+        assertThat(logsPipeline).contains("resource/drop_sdk_metadata")
+    }
+
+    @Test
+    fun `log-derived metrics are grouped only by logger and severity`() {
+        // Both are bounded sets. Nothing here reads a log body: a message can carry a keyspace, a
+        // table, a host or an id, and grouping on one would be unbounded. That restraint is the
+        // whole cardinality argument for this feature, so it is asserted rather than trusted.
+        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+        val countBlock = yaml.substringAfter("  count:").substringBefore("  spanmetrics:")
+
+        assertThat(countBlock).contains("cassandra.log.records")
+        assertThat(countBlock).contains("- key: logger")
+        assertThat(countBlock).contains("- key: severity")
+        // The only attribute keys the connector groups by.
+        assertThat(Regex("- key: (\\S+)").findAll(countBlock).map { it.groupValues[1] }.toList())
+            .containsOnly("logger", "severity")
+    }
+
+    @Test
+    fun `severity is counted by number, not by the text each library happens to use`() {
+        // Cassandra logs WARN; the AxonOps agent on the same node logs WARNING. Conditioning on the
+        // text would split one level across two series and undercount both.
+        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+
+        assertThat(yaml).contains("severity_number >= SEVERITY_NUMBER_WARN")
+    }
+
+    @Test
+    fun `the loggers worth their own counter each have one`() {
+        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+
+        assertThat(yaml).contains("cassandra.log.gc_events")
+        assertThat(yaml).contains("cassandra.log.status_dumps")
+        assertThat(yaml).contains("cassandra.log.dropped_messages")
+    }
+
+    @Test
+    fun `the log-derived metrics reach the metrics exporter`() {
+        // Three things have to line up or the metrics are built and thrown away: the logs pipeline
+        // must export to the connector, a metrics pipeline must receive from it, and the transform
+        // that supplies the grouping attributes must run before the export.
+        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+        val logsPipeline = pipeline("logs/otlp:")
+        val metricsFromLogs = pipeline("metrics/logs:")
+
+        assertThat(logsPipeline).contains("count")
+        assertThat(metricsFromLogs).contains("receivers: [count]")
+        assertThat(metricsFromLogs).contains("prometheusremotewrite")
+
+        val processors = logsPipeline.substringAfter("processors:").substringBefore("exporters:")
+        assertThat(processors).contains("transform/log_metric_labels")
+        assertThat(yaml).contains("set(attributes[\"logger\"], instrumentation_scope.name)")
     }
 
     @Test

@@ -251,6 +251,18 @@ processors:
         statements:
           - set(attributes["service"], resource.attributes["k8s.app.instance"]) where resource.attributes["k8s.app.instance"] != ""
 
+  # Lift the logger name and severity onto the log record so the count connector can group by them.
+  #
+  # The Java agent puts the logger name in the InstrumentationScope, not in the record's attributes,
+  # and the count connector's `attributes` reads record attributes only. Without this copy, counting
+  # "by logger" silently groups everything into one series.
+  transform/log_metric_labels:
+    log_statements:
+      - context: log
+        statements:
+          - set(attributes["logger"], instrumentation_scope.name) where instrumentation_scope.name != ""
+          - set(attributes["severity"], severity_text) where severity_text != ""
+
   # Copy service.name → service_name on the resource so Grafana's auto-generated log queries
   # (which use underscore-style label names) match VictoriaLogs fields.
   transform/add_service_name:
@@ -298,6 +310,41 @@ exporters:
       insecure: true
 
 connectors:
+  # Turns log records into metrics, so what a logger reports can be charted beside the JMX
+  # families and compared across builds instead of being read as text.
+  #
+  # Nothing here parses a log body. Every label comes from the logger name or the severity, both of
+  # which are bounded sets; a body can carry a keyspace, a table, a host or an id, and grouping on
+  # any of those would be unbounded. Values that live only inside a message stay in VictoriaLogs.
+  #
+  # Resource attributes ride through the connector untouched, so these arrive already carrying
+  # cassandra_build, host.name and node_role - which is what makes them comparable per variant.
+  count:
+    logs:
+      cassandra.log.records:
+        description: Log records at WARN and above, by logger and severity.
+        # severity_number, not severity_text: the text is inconsistent across libraries (Cassandra
+        # logs WARN, the AxonOps agent logs WARNING) and would split one level into two series.
+        conditions:
+          - severity_number >= SEVERITY_NUMBER_WARN
+        attributes:
+          - key: logger
+            default_value: unknown
+          - key: severity
+            default_value: unknown
+      cassandra.log.gc_events:
+        description: GCInspector log events, which carry pause detail the JVM metrics do not.
+        conditions:
+          - IsMatch(instrumentation_scope.name, ".*GCInspector$")
+      cassandra.log.status_dumps:
+        description: StatusLogger dumps, which Cassandra emits under pressure.
+        conditions:
+          - IsMatch(instrumentation_scope.name, ".*StatusLogger$")
+      cassandra.log.dropped_messages:
+        description: Log events about dropped messages, which name a reason the counter does not.
+        conditions:
+          - IsMatch(instrumentation_scope.name, ".*(MessagingService|NoSpamLogger)$")
+
   # Converts spans to Prometheus metrics (calls_total, latency histograms).
   # Exemplars link metric data points back to individual traces in Tempo.
   spanmetrics:
@@ -352,10 +399,21 @@ service:
       receivers: [filelog/containers, filelog/clickhouse-containers]
       processors: [k8sattributes, transform/add_service, transform/add_service_name, resource/cluster, batch]
       exporters: [otlphttp/victorialogs]
+    # OTLP logs — the Cassandra JVM agent, chiefly. resource/drop_sdk_metadata matters even more
+    # here than on metrics: process.command_line is kilobytes of argv on EVERY record and forms part
+    # of the VictoriaLogs stream identity, so it both bloats storage and re-keys the stream on a
+    # `cassandra use`. transform/log_metric_labels must run before the count connector, which reads
+    # the attributes it writes.
     logs/otlp:
       receivers: [otlp]
-      processors: [transform/add_service_name, batch]
-      exporters: [otlphttp/victorialogs]
+      processors: [resource/drop_sdk_metadata, transform/add_service_name, transform/log_metric_labels, batch]
+      exporters: [otlphttp/victorialogs, count]
+    # Metrics derived from those logs. resource/cluster stamps the cluster label, as on every other
+    # metrics pipeline.
+    metrics/logs:
+      receivers: [count]
+      processors: [resource/cluster, batch]
+      exporters: [prometheusremotewrite]
     traces:
       receivers: [otlp, jaeger]
       processors: [batch]

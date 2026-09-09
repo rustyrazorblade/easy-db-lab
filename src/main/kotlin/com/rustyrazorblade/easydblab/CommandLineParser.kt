@@ -45,6 +45,7 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.DefaultCommandExecutor
+import com.rustyrazorblade.easydblab.services.HelpTopicService
 import com.rustyrazorblade.easydblab.services.InstallTemplateResolver
 import com.rustyrazorblade.easydblab.services.KitCommandScanner
 import com.rustyrazorblade.easydblab.services.ScannedKitCommand
@@ -206,11 +207,38 @@ class CommandLineParser : KoinComponent {
         registerDynamicInstallSubcommands()
         registerDynamicKitSubcommands()
         applyHelpOptionsToAll(commandLine)
+        wireHelpFooters()
     }
 
     private fun applyHelpOptionsToAll(cl: CommandLine) {
         cl.commandSpec.mixinStandardHelpOptions(true)
         cl.subcommands.values.forEach { applyHelpOptionsToAll(it) }
+    }
+
+    /**
+     * Wires help topic footers to command usage output.
+     *
+     * The root usage carries a generic footer directing users to run `help` for task guides.
+     * Each subcommand that maps to a topic (by name) carries a footer naming the related
+     * `help <topic>`. The footer text is generated from the discovered topic set, not a
+     * hardcoded list, so adding a topic file keeps the pointers automatically in sync.
+     */
+    private fun wireHelpFooters() {
+        val helpTopicService = get<HelpTopicService>()
+        val topics = helpTopicService.findAll()
+        val topicNames = topics.map { it.name }.toSet()
+
+        // Add generic footer to root command
+        val rootFooter = "Run 'easy-db-lab help' to list task-oriented guides."
+        commandLine.commandSpec.usageMessage().footer(rootFooter)
+
+        // Add per-command footers for commands that map to topics
+        commandLine.subcommands.forEach { (name, subCmd) ->
+            if (name in topicNames) {
+                val footer = "See 'easy-db-lab help $name' for a task-oriented guide."
+                subCmd.commandSpec.usageMessage().footer(footer)
+            }
+        }
     }
 
     /**

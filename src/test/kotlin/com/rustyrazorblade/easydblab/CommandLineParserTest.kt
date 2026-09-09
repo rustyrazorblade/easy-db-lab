@@ -2,7 +2,9 @@ package com.rustyrazorblade.easydblab
 
 import com.rustyrazorblade.easydblab.commands.profile.Profile
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.services.DefaultHelpTopicService
 import com.rustyrazorblade.easydblab.services.DefaultKitCommandScanner
+import com.rustyrazorblade.easydblab.services.HelpTopicService
 import com.rustyrazorblade.easydblab.services.InstallTemplateResolver
 import com.rustyrazorblade.easydblab.services.KitCommandScanner
 import com.rustyrazorblade.easydblab.services.KitSourcesProvider
@@ -40,6 +42,7 @@ class CommandLineParserTest : BaseKoinTest() {
                 single { InstallTemplateResolver(get(), get()) }
                 single<KitCommandScanner> { DefaultKitCommandScanner() }
                 single { ClusterStateManager(File(get<Context>().workingDirectory, "state.json")) }
+                single<HelpTopicService> { DefaultHelpTopicService() }
             },
         )
 
@@ -87,5 +90,52 @@ class CommandLineParserTest : BaseKoinTest() {
 
         assertThat(profileGroup.commandSpec.userObject()).isInstanceOf(Profile::class.java)
         assertThat(profileGroup.subcommands.keys).contains("show", "setup")
+    }
+
+    @Test
+    fun `root usage includes a footer pointing to the help topic system`() {
+        CommandLineParser().eval(arrayOf("--help"))
+
+        val output = stdout.toString()
+        assertThat(output).contains("Run 'easy-db-lab help' to list task-oriented guides.")
+    }
+
+    @Test
+    fun `a command mapping to a topic includes a footer naming its related help topic`() {
+        // cassandra is both a command group and a help topic.
+        val commandLine = CommandLineParser().commandLine
+        val cassandraGroup = commandLine.subcommands.getValue("cassandra")
+
+        // Request usage for the cassandra command.
+        stdout.reset()
+        cassandraGroup.usage(System.out)
+
+        val output = stdout.toString()
+        assertThat(output).contains("See 'easy-db-lab help cassandra' for a task-oriented guide.")
+    }
+
+    @Test
+    fun `footer text is derived from the discovered topic set not a hardcoded list`() {
+        // If wireHelpFooters() hardcoded topic names, this test would fail when a new topic is
+        // added. By verifying that the topic scan drives the footer, we prove the pointers
+        // track the packaged topic set automatically.
+        val commandLine = CommandLineParser().commandLine
+        val helpTopicService = getKoin().get<HelpTopicService>()
+        val topics = helpTopicService.findAll()
+
+        // For each topic, if a matching top-level command exists, that command's footer should
+        // name the topic.
+        val topicNames = topics.map { it.name }.toSet()
+        val commandsWithTopics =
+            commandLine.subcommands.filter { (name, _) -> name in topicNames }
+
+        // Verify at least one command-to-topic match exists (e.g., cassandra, spark).
+        assertThat(commandsWithTopics).isNotEmpty
+
+        commandsWithTopics.forEach { (name, subCmd) ->
+            val footer = subCmd.commandSpec.usageMessage().footer()
+            assertThat(footer).isNotEmpty
+            assertThat(footer.joinToString(" ")).contains("help $name")
+        }
     }
 }

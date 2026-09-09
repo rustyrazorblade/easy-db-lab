@@ -42,4 +42,18 @@ class HelpTopicServiceTest {
     fun `find returns null for an unknown key`() {
         assertThat(service().find("nonsense")).isNull()
     }
+
+    @Test
+    fun `the four packaged seed topics load with valid frontmatter and a body`() {
+        // Guards the real seed resources against a malformed frontmatter header slipping in.
+        val service = DefaultHelpTopicService()
+
+        val names = service.findAll().map { it.name }
+        assertThat(names).contains("provisioning", "configs", "kits", "stress-testing")
+
+        service.findAll().forEach { topic ->
+            assertThat(topic.description).isNotBlank()
+            assertThat(topic.body).isNotBlank()
+        }
+    }
 }

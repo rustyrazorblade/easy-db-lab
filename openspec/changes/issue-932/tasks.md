@@ -27,13 +27,13 @@
 
 ## 5. Seed topic content
 
-- [ ] 5.1 Create `src/main/resources/com/rustyrazorblade/easydblab/help/` with four `.md` files — `provisioning`, `configs`, `kits`, `stress-testing` — each with a valid YAML frontmatter header (`name`, `description`).
-- [ ] 5.2 Write each topic as task-oriented guidance (how to perform the operation), not a flag reference; use "database"/"db" rather than "Cassandra" except where Cassandra-specific.
+- [x] 5.1 Create `src/main/resources/com/rustyrazorblade/easydblab/help/` with four `.md` files — `provisioning`, `configs`, `kits`, `stress-testing` — each with a valid YAML frontmatter header (`name`, `description`).
+- [x] 5.2 Write each topic as task-oriented guidance (how to perform the operation), not a flag reference; use "database"/"db" rather than "Cassandra" except where Cassandra-specific.
 
 ## 6. Documentation
 
-- [ ] 6.1 Document the `help` command in `docs/reference/commands.md`.
+- [x] 6.1 Document the `help` command in `docs/reference/commands.md`.
 
 ## 7. Verification
 
-- [ ] 7.1 Run `./gradlew ktlintFormat` then `./gradlew check` (JDK 21) — all green, including the preserved MCP prompt tests.
+- [x] 7.1 Run `./gradlew ktlintFormat` then `./gradlew check` (JDK 21) — all green, including the preserved MCP prompt tests.

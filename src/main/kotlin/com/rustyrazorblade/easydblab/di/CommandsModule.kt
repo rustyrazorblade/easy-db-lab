@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.commands.Clean
 import com.rustyrazorblade.easydblab.commands.ConfigureAWS
 import com.rustyrazorblade.easydblab.commands.ConfigureAxonOps
 import com.rustyrazorblade.easydblab.commands.Down
+import com.rustyrazorblade.easydblab.commands.Help
 import com.rustyrazorblade.easydblab.commands.Hosts
 import com.rustyrazorblade.easydblab.commands.Init
 import com.rustyrazorblade.easydblab.commands.Ip
@@ -72,6 +73,7 @@ val commandsModule =
         factory { ExecRun() }
         factory { ExecList() }
         factory { ExecStop() }
+        factory { Help() }
         factory { Hosts() }
         factory { Init() }
         factory { Ip() }

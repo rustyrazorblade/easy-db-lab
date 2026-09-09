@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.commands.Commands
 import com.rustyrazorblade.easydblab.commands.ConfigureAWS
 import com.rustyrazorblade.easydblab.commands.ConfigureAxonOps
 import com.rustyrazorblade.easydblab.commands.Down
+import com.rustyrazorblade.easydblab.commands.Help
 import com.rustyrazorblade.easydblab.commands.Hosts
 import com.rustyrazorblade.easydblab.commands.Init
 import com.rustyrazorblade.easydblab.commands.Ip
@@ -71,6 +72,7 @@ import kotlin.system.exitProcess
         // Top-level commands
         Commands::class,
         Version::class,
+        Help::class,
         Clean::class,
         Down::class,
         Ip::class,

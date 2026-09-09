@@ -101,6 +101,12 @@ object Constants {
         const val ERROR = 1
     }
 
+    // Help topics
+    object Help {
+        // Classpath package scanned for packaged help-topic markdown resources.
+        const val RESOURCE_PACKAGE = "com.rustyrazorblade.easydblab.help"
+    }
+
     // Network configuration
     object Network {
         const val MIN_PORT = 0

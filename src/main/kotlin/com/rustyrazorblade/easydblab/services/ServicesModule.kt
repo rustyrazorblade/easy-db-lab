@@ -128,6 +128,9 @@ val servicesModule =
         // Kit command scanner — discovers @KitCommand-annotated classes across all JARs
         singleOf(::DefaultKitCommandScanner) bind KitCommandScanner::class
 
+        // Help topic discovery — scans packaged markdown resources for the `help` command
+        single<HelpTopicService> { DefaultHelpTopicService() }
+
         // Kit source registry — persists additional kit parent directories in kit-sources.yaml
         singleOf(::KitSourcesProvider)
 

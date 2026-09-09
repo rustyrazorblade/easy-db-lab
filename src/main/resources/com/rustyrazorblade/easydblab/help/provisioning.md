@@ -18,4 +18,4 @@ Steps:
 Notes:
 - Db nodes need a data disk: use an NVMe instance type (`d` suffix, e.g. `i4i.xlarge`) or attach EBS with `--ebs.type`; otherwise `up` fails.
 
-Related: `configs`, `kits`, `stress-testing`.
+Related: `cassandra`, `kits`, `stress-testing`.

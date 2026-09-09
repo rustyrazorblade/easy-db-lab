@@ -11,8 +11,8 @@ Interactive:
 - Kits with SQL: `easy-db-lab <kit> sql` — SQL shell over JDBC. SOCKS-tunneled when endpoint is cluster-private.
 
 One-shot:
-- `easy-db-lab <kit> sql -e "SELECT ..."` — run query and print results.
-- `easy-db-lab cassandra cql -e "SELECT ..."` — CQL equivalent.
+- `easy-db-lab <kit> sql "SELECT ..."` — run query and print results.
+- `easy-db-lab cassandra cql "SELECT ..."` — CQL equivalent.
 
 Notes:
 - Kit endpoints from `easy-db-lab kit info <name>` or `easy-db-lab status`.

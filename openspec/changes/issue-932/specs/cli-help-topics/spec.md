@@ -6,14 +6,14 @@ The CLI SHALL provide a top-level `help` command that accepts an optional single
 
 #### Scenario: Known topic prints its body
 
-- **WHEN** a user runs `help provisioning` (or `configs`, `kits`, or `stress-testing`)
+- **WHEN** a user runs `help provisioning` (or `kits`, `stress-testing`, or `cassandra`)
 - **THEN** the topic's markdown body is printed to stdout
 - **AND** the command exits with status 0
 
 #### Scenario: Topic matching is case-insensitive
 
-- **WHEN** a user runs `help Configs`
-- **THEN** the output is identical to `help configs`
+- **WHEN** a user runs `help Provisioning`
+- **THEN** the output is identical to `help provisioning`
 - **AND** the command exits with status 0
 
 ### Requirement: List topics when no topic is given
@@ -75,11 +75,11 @@ WHEN a packaged topic file has a missing or malformed frontmatter header, the co
 
 ### Requirement: Seed topics are task-oriented
 
-The distribution SHALL ship ten seed topics — `provisioning`, `configs`, `kits`, `stress-testing`, `profiles`, `connecting`, `querying`, `observability`, `spark`, and `cassandra` — and each SHALL be written as task-oriented guidance describing how to perform the operation, not as a reference listing of command-line flags. The `cassandra` topic SHALL be an umbrella guide to managing the database on a running cluster — lifecycle (start, stop, restart) and version selection/installation — and SHALL point to the `configs` and `stress-testing` topics for tuning and load rather than duplicating them.
+The distribution SHALL ship nine seed topics — `provisioning`, `kits`, `stress-testing`, `profiles`, `connecting`, `querying`, `observability`, `spark`, and `cassandra` — and each SHALL be written as task-oriented guidance describing how to perform the operation, not as a reference listing of command-line flags. The `cassandra` topic SHALL be an umbrella guide to managing the database on a running cluster — lifecycle (start, stop, restart), version selection/installation, and configuration (the Cassandra config patch-file workflow) — and SHALL point to the `stress-testing` topic for load rather than duplicating it.
 
 #### Scenario: Each seed topic describes how to perform its operation
 
-- **WHEN** a user reads any of the ten seed topics
+- **WHEN** a user reads any of the nine seed topics
 - **THEN** the content explains how to carry out that operation step by step
 - **AND** the content is not merely a list of command-line flags
 

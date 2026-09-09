@@ -44,12 +44,22 @@ class HelpTopicServiceTest {
     }
 
     @Test
-    fun `the four packaged seed topics load with valid frontmatter and a body`() {
+    fun `the packaged seed topics load with valid frontmatter and a body`() {
         // Guards the real seed resources against a malformed frontmatter header slipping in.
         val service = DefaultHelpTopicService()
 
         val names = service.findAll().map { it.name }
-        assertThat(names).contains("provisioning", "configs", "kits", "stress-testing")
+        assertThat(names).containsExactlyInAnyOrder(
+            "provisioning",
+            "kits",
+            "stress-testing",
+            "profiles",
+            "connecting",
+            "querying",
+            "observability",
+            "spark",
+            "cassandra",
+        )
 
         service.findAll().forEach { topic ->
             assertThat(topic.description).isNotBlank()

@@ -14,4 +14,4 @@ Steps:
 
 For non-Cassandra databases, use a bench kit (e.g. sysbench) instead — see `kits`.
 
-Related: `provisioning`, `configs`, `kits`.
+Related: `provisioning`, `cassandra`, `kits`.

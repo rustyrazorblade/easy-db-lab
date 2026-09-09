@@ -660,9 +660,14 @@ Run with a topic name to print that topic's guide. Matching is case-insensitive:
 easy-db-lab help provisioning
 ```
 
-The seed topics are `provisioning`, `configs`, `kits`, and `stress-testing`. Topics are packaged
-markdown files, so `help` works from a Homebrew install with no source checkout. An unknown topic
-prints an error that names the bad topic, lists the valid ones, and exits non-zero.
+The seed topics are `provisioning`, `kits`, `stress-testing`, `profiles`, `connecting`, `querying`,
+`observability`, `spark`, and `cassandra` (the `cassandra` topic covers database lifecycle, version
+selection, and configuration on a running cluster). Topics are packaged markdown files, so `help`
+works from a Homebrew install with no source checkout. An unknown topic prints an error that names
+the bad topic, lists the valid ones, and exits non-zero.
+
+The standard `-h`/`--help` output points here too: the root usage carries a footer directing you to
+`help`, and each subcommand that maps to a topic names the related `help <topic>`.
 
 ### ip
 

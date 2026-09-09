@@ -63,15 +63,14 @@ class Help(
             topics
                 .sortedBy { it.name }
                 .joinToString("\n") { "  ${it.name}\t${it.description}" }
-        println(
+        val header =
             """
             Usage: easy-db-lab help <topic>
 
             Show a task-oriented guide for a topic. Available topics:
 
-            $listing
-            """.trimIndent(),
-        )
+            """.trimIndent()
+        println(header + listing)
     }
 
     private fun printUnknownTopic(

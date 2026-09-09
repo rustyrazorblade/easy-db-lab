@@ -56,9 +56,12 @@ class HelpTest : BaseKoinTest() {
         cmd.execute()
 
         val out = output()
-        assertThat(out).contains("help <topic>")
-        assertThat(out).contains("alpha", "The alpha test topic")
-        assertThat(out).contains("beta", "The beta test topic")
+        val lines = out.lines()
+        // The usage header is flush-left, not ragged from a bad trimIndent common-indent calc.
+        assertThat(lines).contains("Usage: easy-db-lab help <topic>")
+        // Each topic renders as exactly "  <name>\t<description>", consistently indented.
+        assertThat(lines).contains("  alpha\tThe alpha test topic")
+        assertThat(lines).contains("  beta\tThe beta test topic")
         assertThat(exitCode).isNull()
     }
 

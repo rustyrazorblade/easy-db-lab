@@ -27,13 +27,23 @@
 
 ## 5. Seed topic content
 
-- [x] 5.1 Create `src/main/resources/com/rustyrazorblade/easydblab/help/` with four `.md` files — `provisioning`, `configs`, `kits`, `stress-testing` — each with a valid YAML frontmatter header (`name`, `description`).
+- [x] 5.1 Create `src/main/resources/com/rustyrazorblade/easydblab/help/` with the first four `.md` files — `provisioning`, `configs`, `kits`, `stress-testing` — each with a valid YAML frontmatter header (`name`, `description`).
 - [x] 5.2 Write each topic as task-oriented guidance (how to perform the operation), not a flag reference; use "database"/"db" rather than "Cassandra" except where Cassandra-specific.
+- [ ] 5.3 Add six more `.md` files — `profiles`, `connecting`, `querying`, `observability`, `spark`, `cassandra` — each with a valid frontmatter header, task-oriented, and concise/token-efficient for an LLM reader.
+- [ ] 5.4 Write the `cassandra` topic as an umbrella database-management tutorial (lifecycle start/stop/restart, version `use`/`install`) that points to `configs` and `stress-testing` rather than duplicating them.
 
-## 6. Documentation
+## 6. Point `-h`/`--help` at the topics (Decision D)
 
-- [x] 6.1 Document the `help` command in `docs/reference/commands.md`.
+- [ ] 6.1 Add a topic-pointer footer to the root `@Command` in `CommandLineParser.kt`, generated from the `HelpTopicService` scan (generic "run `help` for task guides"), not a hardcoded topic list.
+- [ ] 6.2 Add a per-command footer naming the related `help <topic>` to each subcommand that maps to a topic, derived from the discovered topic set. Leave each command's existing option/description text untouched.
+- [ ] 6.3 Test that the root usage footer references the topic system and that a topic-mapped command's usage names its related topic, without a hardcoded topic list.
 
-## 7. Verification
+## 7. Documentation
 
-- [x] 7.1 Run `./gradlew ktlintFormat` then `./gradlew check` (JDK 21) — all green, including the preserved MCP prompt tests.
+- [x] 7.1 Document the `help` command in `docs/reference/commands.md`.
+- [ ] 7.2 Note the seed-topic set and the `-h` topic-pointer footers in `docs/reference/commands.md`.
+
+## 8. Verification
+
+- [x] 8.1 Run `./gradlew ktlintFormat` then `./gradlew check` (JDK 21) — all green, including the preserved MCP prompt tests.
+- [ ] 8.2 Re-run `./gradlew ktlintFormat` then `./gradlew check` (JDK 21) after the new topics and footer wiring land — all green.

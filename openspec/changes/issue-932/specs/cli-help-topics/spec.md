@@ -75,10 +75,29 @@ WHEN a packaged topic file has a missing or malformed frontmatter header, the co
 
 ### Requirement: Seed topics are task-oriented
 
-The distribution SHALL ship four seed topics — `provisioning`, `configs`, `kits`, and `stress-testing` — and each SHALL be written as task-oriented guidance describing how to perform the operation, not as a reference listing of command-line flags.
+The distribution SHALL ship ten seed topics — `provisioning`, `configs`, `kits`, `stress-testing`, `profiles`, `connecting`, `querying`, `observability`, `spark`, and `cassandra` — and each SHALL be written as task-oriented guidance describing how to perform the operation, not as a reference listing of command-line flags. The `cassandra` topic SHALL be an umbrella guide to managing the database on a running cluster — lifecycle (start, stop, restart) and version selection/installation — and SHALL point to the `configs` and `stress-testing` topics for tuning and load rather than duplicating them.
 
 #### Scenario: Each seed topic describes how to perform its operation
 
-- **WHEN** a user reads any of the four seed topics
+- **WHEN** a user reads any of the ten seed topics
 - **THEN** the content explains how to carry out that operation step by step
 - **AND** the content is not merely a list of command-line flags
+
+### Requirement: Standard help output points to the topic system
+
+The CLI's standard PicoCLI `-h`/`--help` output SHALL direct users to the `help` topic system. The root usage SHALL carry a footer telling the user to run `help` for task guides. Each subcommand that maps to a topic SHALL carry a footer naming the related `help <topic>`. The pointer text SHALL be derived from the discovered topic set, not from a second hardcoded list that could drift from the packaged topics.
+
+#### Scenario: Root usage footer points to the help topics
+
+- **WHEN** a user runs `easy-db-lab -h`
+- **THEN** the usage output includes a footer directing the user to run `help` for task-oriented topic guides
+
+#### Scenario: A command's usage points to its related topic
+
+- **WHEN** a user runs `-h` on a subcommand that maps to a topic
+- **THEN** the usage output includes a footer naming the related `help <topic>`
+
+#### Scenario: Pointer text tracks the discovered topics
+
+- **WHEN** the pointer footers are produced
+- **THEN** the topic names they reference come from the discovered topic set, not a separately hardcoded list

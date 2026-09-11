@@ -73,12 +73,16 @@ interface VictoriaBackupService {
  * @property k8sService Service for Kubernetes operations
  * @param jobPollInterval How long to wait between backup-job status polls. Defaults to
  *   [JOB_POLL_INTERVAL_MS] so production timing is unchanged; tests inject [Duration.ZERO].
+ * @param jobTimeout How long to wait for a backup Job before giving up. Defaults to
+ *   [JOB_TIMEOUT_SECONDS] for the standalone path; the teardown path injects a short timeout so a
+ *   stuck backup does not delay the abort/`--force` decision.
  */
 class DefaultVictoriaBackupService(
     private val k8sService: K8sService,
     private val eventBus: EventBus,
     private val jobBuilder: VictoriaBackupJobBuilder = VictoriaBackupJobBuilder(),
     private val jobPollInterval: Duration = Duration.ofMillis(JOB_POLL_INTERVAL_MS),
+    private val jobTimeout: Duration = Duration.ofSeconds(JOB_TIMEOUT_SECONDS.toLong()),
 ) : VictoriaBackupService {
     private val log = KotlinLogging.logger {}
 
@@ -226,7 +230,7 @@ class DefaultVictoriaBackupService(
         log.info { "Waiting for backup job $jobName to complete..." }
 
         val startTime = System.currentTimeMillis()
-        val timeoutMs = JOB_TIMEOUT_SECONDS * 1000L
+        val timeoutMs = jobTimeout.toMillis()
 
         while (System.currentTimeMillis() - startTime < timeoutMs) {
             val labelValue =
@@ -263,6 +267,6 @@ class DefaultVictoriaBackupService(
             eventBus.emit(Event.Backup.Waiting)
         }
 
-        error("Backup job $jobName timed out after $JOB_TIMEOUT_SECONDS seconds")
+        error("Backup job $jobName timed out after ${jobTimeout.toSeconds()} seconds")
     }
 }

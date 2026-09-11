@@ -495,6 +495,13 @@ object Constants {
         const val DEFAULT_METRICS_MATCH = """{__name__!=""}"""
         const val DEFAULT_LOGS_QUERY = "*"
         const val METRICS_COLLECTION_INTERVAL_SECONDS = 5L
+
+        /**
+         * Short timeout (seconds) for the metrics-backup Job on the teardown path. A stuck backup
+         * must not delay the abort/`--force` decision at `down`, so teardown uses this instead of
+         * the longer standalone default. See design decision D4 in `openspec/changes/issue-939`.
+         */
+        const val TEARDOWN_METRICS_BACKUP_TIMEOUT_SECONDS = 120L
     }
 
     // Proxy configuration

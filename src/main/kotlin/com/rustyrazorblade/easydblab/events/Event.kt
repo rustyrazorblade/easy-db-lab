@@ -2614,8 +2614,7 @@ sealed interface Event {
             val s3Path: String,
             val annotationCount: Int,
         ) : Backup {
-            override fun toDisplayString(): String =
-                "Grafana annotations backup completed ($annotationCount annotations): $s3Path"
+            override fun toDisplayString(): String = "Grafana annotations backup completed ($annotationCount annotations): $s3Path"
         }
     }
 
@@ -3912,6 +3911,24 @@ sealed interface Event {
         @SerialName("Teardown.ClusterStateMarkedDown")
         data object ClusterStateMarkedDown : Teardown {
             override fun toDisplayString(): String = "Cluster state updated: infrastructure marked as DOWN"
+        }
+
+        @Serializable
+        @SerialName("Teardown.BackupStarting")
+        data object BackupStarting : Teardown {
+            override fun toDisplayString(): String = "Backing up metrics and annotations before teardown (pass --force to skip)..."
+        }
+
+        @Serializable
+        @SerialName("Teardown.BackupFailedAbort")
+        data class BackupFailedAbort(
+            val reason: String,
+        ) : Teardown {
+            override fun toDisplayString(): String =
+                "Pre-teardown backup failed, so no infrastructure was removed: $reason\n" +
+                    "Fix the backup and retry, or pass --force to tear down without backing up."
+
+            override fun isError(): Boolean = true
         }
     }
 

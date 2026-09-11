@@ -194,7 +194,12 @@ class DefaultGrafanaDashboardService(
     ): GrafanaAnnotationResponse {
         val endpoint = annotationsEndpoint(controlHost)
         val body = annotationJson.encodeToString(annotation).toRequestBody(JSON_MEDIA_TYPE)
-        val request = Request.Builder().url(endpoint).post(body).build()
+        val request =
+            Request
+                .Builder()
+                .url(endpoint)
+                .post(body)
+                .build()
         val bodyStr =
             try {
                 okHttpClient.newCall(request).execute().use { response ->
@@ -212,7 +217,12 @@ class DefaultGrafanaDashboardService(
 
     override fun fetchAnnotations(controlHost: ClusterHost): String {
         val endpoint = annotationsEndpoint(controlHost)
-        val request = Request.Builder().url(endpoint).get().build()
+        val request =
+            Request
+                .Builder()
+                .url(endpoint)
+                .get()
+                .build()
         return try {
             okHttpClient.newCall(request).execute().use { response ->
                 val responseBody = response.body.string()

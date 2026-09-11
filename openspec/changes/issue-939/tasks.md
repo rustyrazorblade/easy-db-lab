@@ -27,11 +27,11 @@
 
 ## 5. Automatic backup at `down`
 
-- [ ] 5.1 Add `services/TeardownBackupService.kt` that runs the metrics backup and the annotations backup as one coupled operation, retried via resilience4j (`RetryUtil`). Both always attempted together.
-- [ ] 5.2 Give the teardown-path metrics backup Job a short timeout so a stuck backup does not delay the abort/`--force` decision.
-- [ ] 5.3 Wire `commands/Down.kt`: run the coupled backup FIRST, before any infrastructure teardown and before the proxy is torn down (establish the tunnel with `SocksProxyService.ensureRunning`). On backup failure, abort with no infrastructure removed and report the failure.
-- [ ] 5.4 Add the `--force` flag to `Down` to skip the backup and proceed.
-- [ ] 5.5 Integration tests (K3s TestContainer where K8s is involved): backup runs before teardown; a failed backup aborts `down` with no infra removed; `--force` skips the backup and tears down.
+- [x] 5.1 Add `services/TeardownBackupService.kt` that runs the metrics backup and the annotations backup as one coupled operation, retried via resilience4j (`RetryUtil`). Both always attempted together.
+- [x] 5.2 Give the teardown-path metrics backup Job a short timeout so a stuck backup does not delay the abort/`--force` decision.
+- [x] 5.3 Wire `commands/Down.kt`: run the coupled backup FIRST, before any infrastructure teardown and before the proxy is torn down (establish the tunnel with `SocksProxyService.ensureRunning`). On backup failure, abort with no infrastructure removed and report the failure.
+- [x] 5.4 Add the `--force` flag to `Down` to skip the backup and proceed.
+- [x] 5.5 Integration tests (K3s TestContainer where K8s is involved): backup runs before teardown; a failed backup aborts `down` with no infra removed; `--force` skips the backup and tears down.
 
 ## 6. Documentation
 

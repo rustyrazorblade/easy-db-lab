@@ -37,6 +37,7 @@ import org.koin.core.module.dsl.factoryOf
 import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.bind
 import org.koin.dsl.module
+import java.time.Duration
 
 /**
  * Koin module for registering business services.
@@ -102,6 +103,21 @@ val servicesModule =
         factory<VictoriaBackupService> { DefaultVictoriaBackupService(get(), get()) }
         factory<GrafanaAnnotationBackupService> {
             DefaultGrafanaAnnotationBackupService(get(), get(), get())
+        }
+        // Couples the metrics + annotations backup for the teardown path. The metrics backup Job
+        // gets a short timeout here (not the standalone default) so a stuck backup does not delay
+        // the abort/`--force` decision at `down`.
+        factory<TeardownBackupService> {
+            DefaultTeardownBackupService(
+                victoriaBackupService =
+                    DefaultVictoriaBackupService(
+                        get(),
+                        get(),
+                        jobTimeout =
+                            Duration.ofSeconds(Constants.Victoria.TEARDOWN_METRICS_BACKUP_TIMEOUT_SECONDS),
+                    ),
+                annotationBackupService = get(),
+            )
         }
         factoryOf(::DefaultVictoriaStreamService) bind VictoriaStreamService::class
         singleOf(::DefaultVictoriaMetricsQueryService) bind VictoriaMetricsQueryService::class

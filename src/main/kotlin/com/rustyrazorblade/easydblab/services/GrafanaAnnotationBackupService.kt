@@ -85,6 +85,5 @@ class DefaultGrafanaAnnotationBackupService(
      * body (unexpected) counts as zero rather than failing the backup, since the artifact is still
      * uploaded verbatim.
      */
-    private fun countAnnotations(json: String): Int =
-        runCatching { Json.parseToJsonElement(json).jsonArray.size }.getOrDefault(0)
+    private fun countAnnotations(json: String): Int = runCatching { Json.parseToJsonElement(json).jsonArray.size }.getOrDefault(0)
 }

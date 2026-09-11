@@ -2393,6 +2393,20 @@ sealed interface Event {
         ) : Grafana {
             override fun toDisplayString(): String = "Restarted $kind/$name"
         }
+
+        @Serializable
+        @SerialName("Grafana.AnnotationCreated")
+        data class AnnotationCreated(
+            val id: Long,
+            val text: String,
+            val tags: List<String>,
+            val time: Long,
+        ) : Grafana {
+            override fun toDisplayString(): String {
+                val tagPart = if (tags.isEmpty()) "" else " [${tags.joinToString(", ")}]"
+                return "Created Grafana annotation #$id at $time: \"$text\"$tagPart"
+            }
+        }
     }
 
     // =========================================================================
@@ -2584,6 +2598,23 @@ sealed interface Event {
             override fun toDisplayString(): String = "Warning: Incremental backup failed: $error"
 
             override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        @SerialName("Backup.GrafanaAnnotationsBackupStarting")
+        data class GrafanaAnnotationsBackupStarting(
+            val s3Path: String,
+        ) : Backup {
+            override fun toDisplayString(): String = "Backing up Grafana annotations to $s3Path..."
+        }
+
+        @Serializable
+        @SerialName("Backup.GrafanaAnnotationsBackupComplete")
+        data class GrafanaAnnotationsBackupComplete(
+            val s3Path: String,
+            val annotationCount: Int,
+        ) : Backup {
+            override fun toDisplayString(): String = "Grafana annotations backup completed ($annotationCount annotations): $s3Path"
         }
     }
 
@@ -3880,6 +3911,32 @@ sealed interface Event {
         @SerialName("Teardown.ClusterStateMarkedDown")
         data object ClusterStateMarkedDown : Teardown {
             override fun toDisplayString(): String = "Cluster state updated: infrastructure marked as DOWN"
+        }
+
+        @Serializable
+        @SerialName("Teardown.BackupStarting")
+        data object BackupStarting : Teardown {
+            override fun toDisplayString(): String = "Backing up metrics and annotations before teardown (pass --force to skip)..."
+        }
+
+        @Serializable
+        @SerialName("Teardown.BackupFailedAbort")
+        data class BackupFailedAbort(
+            val reason: String,
+        ) : Teardown {
+            override fun toDisplayString(): String =
+                "Pre-teardown backup failed, so no infrastructure was removed: $reason\n" +
+                    "Fix the backup and retry, or pass --force to tear down without backing up."
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        @SerialName("Teardown.BackupSkipped")
+        data class BackupSkipped(
+            val reason: String,
+        ) : Teardown {
+            override fun toDisplayString(): String = "Skipping the pre-teardown metrics + annotations backup: $reason"
         }
     }
 

@@ -495,6 +495,34 @@ object Constants {
         const val DEFAULT_METRICS_MATCH = """{__name__!=""}"""
         const val DEFAULT_LOGS_QUERY = "*"
         const val METRICS_COLLECTION_INTERVAL_SECONDS = 5L
+
+        /**
+         * Short timeout (seconds) for the metrics-backup Job on the teardown path. A stuck backup
+         * must not delay the abort/`--force` decision at `down`, so teardown uses this instead of
+         * the longer standalone default. See design decision D4 in `openspec/changes/issue-939`.
+         */
+        const val TEARDOWN_METRICS_BACKUP_TIMEOUT_SECONDS = 120L
+    }
+
+    // Grafana configuration
+    object Grafana {
+        /**
+         * Tag auto-applied to every GLOBAL (unscoped) annotation created via `grafana annotate`, in
+         * addition to any operator-supplied tags. The core dashboards' annotation query filters on
+         * this tag so global markers render on their timelines. Scoped annotations
+         * (`--dashboard`/`--panel`) are NOT auto-tagged; they render on their target dashboard. See
+         * design in `openspec/changes/issue-939`.
+         */
+        const val GLOBAL_ANNOTATION_TAG = "easydblab"
+
+        /**
+         * The `limit` sent on `GET /api/annotations` when backing up annotations. Grafana defaults
+         * this to 100 and gives no pagination cursor, so a backup that relied on the default would
+         * silently capture at most 100 annotations. The fetch asks for this high explicit limit
+         * instead, and fails loudly if the response fills it exactly, rather than reporting a
+         * truncated capture as a complete backup. See design in `openspec/changes/issue-939`.
+         */
+        const val ANNOTATION_FETCH_LIMIT = 5000
     }
 
     // Proxy configuration

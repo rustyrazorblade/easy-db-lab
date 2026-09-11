@@ -63,6 +63,8 @@ open class McpToolRegistry : KoinComponent {
                 com.rustyrazorblade.easydblab.commands.cassandra.stress.StressList::class,
                 com.rustyrazorblade.easydblab.commands.cassandra.stress.StressLogs::class,
                 com.rustyrazorblade.easydblab.commands.cassandra.stress.StressInfo::class,
+                com.rustyrazorblade.easydblab.commands.grafana.GrafanaAnnotate::class,
+                com.rustyrazorblade.easydblab.commands.grafana.GrafanaBackup::class,
             )
     }
 

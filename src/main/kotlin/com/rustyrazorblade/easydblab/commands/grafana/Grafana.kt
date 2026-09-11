@@ -15,6 +15,8 @@ import picocli.CommandLine.Spec
     description = ["Grafana operations"],
     mixinStandardHelpOptions = true,
     subcommands = [
+        GrafanaAnnotate::class,
+        GrafanaBackup::class,
         GrafanaInstall::class,
         GrafanaUpdateConfig::class,
     ],

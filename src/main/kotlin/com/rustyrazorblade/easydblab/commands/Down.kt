@@ -10,7 +10,9 @@ import com.rustyrazorblade.easydblab.providers.aws.DiscoveredResources
 import com.rustyrazorblade.easydblab.providers.aws.TeardownMode
 import com.rustyrazorblade.easydblab.providers.aws.TeardownResult
 import com.rustyrazorblade.easydblab.proxy.Socks5ProxyStateFile
+import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.services.TailscaleService
+import com.rustyrazorblade.easydblab.services.TeardownBackupService
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -79,16 +81,31 @@ class Down : PicoBaseCommand() {
     )
     var retentionDays: Int = 1
 
+    @CommandLine.Option(
+        names = ["--force"],
+        description = ["Skip the pre-teardown metrics + annotations backup and tear down anyway"],
+    )
+    var force = false
+
     private val teardownService: AwsInfrastructureService by inject()
     private val s3BucketService: AwsS3BucketService by inject()
     private val tailscaleService: TailscaleService by inject()
     private val user: User by inject()
+    private val teardownBackupService: TeardownBackupService by inject()
+    private val socksProxyService: SocksProxyService by inject()
     private val log = KotlinLogging.logger {}
 
     override fun execute() {
         val mode = determineTeardownMode()
 
         eventBus.emit(Event.Teardown.Starting)
+
+        // Back up metrics and annotations FIRST, before any infrastructure is touched. If the
+        // backup fails, abort with no infrastructure removed so the data is not lost to teardown.
+        // Runs before the proxy is torn down; --force skips it. See design decision D3.
+        if (!backupBeforeTeardown(mode)) {
+            return
+        }
 
         // Clear JVM SOCKS proxy settings before teardown so all AWS SDK calls go directly
         // to public AWS endpoints. The control node (and its SSH tunnel) will be terminated
@@ -108,6 +125,52 @@ class Down : PicoBaseCommand() {
 
         // Report results
         reportResult(result)
+    }
+
+    /**
+     * Runs the coupled metrics + annotations backup before any teardown, and decides whether the
+     * teardown may proceed.
+     *
+     * The backup only applies to the current-cluster teardown of a running cluster: the other modes
+     * (`--all`, `--packer`, a specific VPC id, `--dry-run`) do not map to a single reachable control
+     * node, and `--force` skips it outright. When the backup runs and fails, the teardown aborts with
+     * no infrastructure removed. See design decisions D3 and D4.
+     *
+     * @return true to proceed with teardown, false to abort with nothing removed.
+     */
+    private fun backupBeforeTeardown(mode: TeardownMode): Boolean {
+        if (force || dryRun || mode != TeardownMode.CurrentCluster || !clusterStateManager.exists()) {
+            return true
+        }
+
+        val state = clusterStateManager.load()
+        if (!state.isInfrastructureUp()) {
+            eventBus.emit(Event.Teardown.BackupSkipped("cluster infrastructure is not up"))
+            return true
+        }
+
+        val controlHost = state.getControlHost()
+        if (controlHost == null) {
+            eventBus.emit(Event.Teardown.BackupSkipped("no control node found in cluster state"))
+            return true
+        }
+
+        eventBus.emit(Event.Teardown.BackupStarting)
+        // The tunnel setup and the backup are one failure boundary: a tunnel failure is a backup
+        // failure. Both are inside the runCatching so either aborts teardown with the standard
+        // "no infrastructure removed / pass --force" guidance rather than a raw stack trace. The
+        // tunnel is established here, before clearProxySystemProperties()/cleanupSocks5Proxy() tear
+        // it down.
+        return runCatching {
+            socksProxyService.ensureRunning(controlHost)
+            teardownBackupService.backupBeforeTeardown(controlHost, state).getOrThrow()
+        }.fold(
+            onSuccess = { true },
+            onFailure = { failure ->
+                eventBus.emit(Event.Teardown.BackupFailedAbort(failure.message ?: "unknown error"))
+                false
+            },
+        )
     }
 
     /**

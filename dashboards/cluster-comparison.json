@@ -1,6 +1,26 @@
 {
   "annotations": {
-    "list": []
+    "list": [
+      {
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "green",
+        "name": "easy-db-lab markers",
+        "target": {
+          "limit": 100,
+          "matchAny": false,
+          "tags": [
+            "easydblab"
+          ],
+          "type": "tags"
+        },
+        "type": "tags"
+      }
+    ]
   },
   "description": "Compare Cassandra cluster throughput, latency, and health side by side. Latency comes from the OpenTelemetry JMX agent as pre-aggregated per-node percentiles, so cluster-level latency panels report the slowest node rather than a re-aggregated quantile.",
   "editable": true,

@@ -552,34 +552,16 @@ class CommandExecutorTest : BaseKoinTest() {
     }
 
     @Test
-    fun `executeTopLevel does not start proxy for Down even when infra is UP and Tailscale is disabled`() {
-        // Given - Down is never annotated with @RequiresProxy: it tears down the tunnel itself
-        // as its first action (clearProxySystemProperties + cleanupSocks5Proxy), so a pre-flight
-        // proxy start would only start a tunnel Down immediately destroys.
-        val controlHost =
-            ClusterHost(
-                publicIp = "1.2.3.4",
-                privateIp = "10.0.0.1",
-                alias = "control0",
-                availabilityZone = "us-west-2a",
-            )
-        val state =
-            ClusterState(
-                name = "test",
-                versions = mutableMapOf(),
-                infrastructureStatus = InfrastructureStatus.UP,
-                tailscaleActive = false,
-                hosts = mapOf(ServerType.Control to listOf(controlHost)),
-            )
-        whenever(mockClusterStateManager.exists()).thenReturn(true)
-        whenever(mockClusterStateManager.load()).thenReturn(state)
-
-        // When - Down's own execute() may fail against this test's minimal AWS mocks; that is
-        // irrelevant here, only whether the proxy pre-flight ran is under test.
-        commandExecutor.execute { Down() }
-
-        // Then
-        verify(mockSocksProxyService, never()).ensureRunning(any())
+    fun `Down carries no RequiresProxy so the executor never pre-flights a tunnel it would tear down`() {
+        // Down must NOT carry @RequiresProxy. Its teardown path kills the tunnel, so an executor
+        // pre-flight would only start a tunnel Down immediately destroys. Down does establish a
+        // short-lived tunnel inside its own execute() to back up metrics and annotations first
+        // (design D3), so this invariant is asserted on the annotation directly rather than on
+        // ensureRunning calls, which Down's own backup path now makes.
+        //
+        // The executor's "no pre-flight without @RequiresProxy" mechanism is covered separately by
+        // `executeTopLevel does not start proxy for a command without RequiresProxy even when infra is UP`.
+        assertThat(Down::class.java.getAnnotation(RequiresProxy::class.java)).isNull()
     }
 
     // ========== TEST COMMAND HELPERS ==========

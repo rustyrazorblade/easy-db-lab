@@ -173,6 +173,13 @@ easy-db-lab down [vpc-id] [options]
 | `--all` | Tear down all VPCs tagged with easy_cass_lab |
 | `--packer` | Tear down the packer infrastructure VPC |
 | `--retention-days N` | Days to retain S3 data after teardown (default: 1) |
+| `--force` | Skip the pre-teardown backup and tear down anyway |
+
+**Automatic backup before teardown.** When you tear down the current cluster, `down` first backs up the VictoriaMetrics metrics and the Grafana annotations. The metrics land in the cluster's S3 prefix; the annotations land in an account-level location that teardown does not expire. Both backups always run together, and each is retried on a transient failure. This runs before any infrastructure is removed.
+
+**Abort on backup failure.** If the backup fails, `down` aborts and removes no infrastructure. It reports the failure and leaves the cluster intact so you can fix the backup and retry. This is deliberate: the annotations and metrics are worth more than a fast teardown.
+
+**`--force` skips the backup.** Pass `--force` to skip the pre-teardown backup and tear down anyway. Use it only when the backup source is already gone, or when you do not need the data. `--force` is the sole escape from the abort-on-failure behavior.
 
 ### clean
 
@@ -734,6 +741,43 @@ Apply all Grafana dashboard manifests and the datasource ConfigMap to the K8s cl
 ```bash
 easy-db-lab dashboards upload
 ```
+
+---
+
+## Grafana Commands
+
+### grafana annotate
+
+Create a Grafana annotation on the running cluster. Use it to drop an A/B config-change marker on the dashboards' timeline; for example, before and after a Cassandra setting change.
+
+A plain global marker (no `--dashboard` and no `--panel` scope) is automatically tagged `easydblab`, in addition to any `--tags` you pass, so it renders on the core dashboards through their tag-filtered annotation query. A scoped marker (`--dashboard` or `--panel`) is not auto-tagged; it renders on its target dashboard. The command reaches Grafana over the SOCKS proxy. If the Grafana API is unreachable, the command exits non-zero and names the endpoint.
+
+```bash
+easy-db-lab grafana annotate --text "raised concurrent_writes to 128" --tags config
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--text` | The annotation body text (required) | - |
+| `--tags` | Tags to attach; repeat the flag or comma-separate | none |
+| `--time` | Start time: `now`, a relative offset like `-30m`/`-2h`/`-1d`, an ISO-8601 instant, or epoch millis | `now` |
+| `--time-end` | Optional end time; produces a region annotation (same formats as `--time`) | none |
+| `--dashboard` | Optional dashboard UID to scope the annotation to one dashboard | all dashboards |
+| `--panel` | Optional panel id to scope the annotation to one panel | all panels |
+
+### grafana backup
+
+Back up the cluster's Grafana annotations to an account-level S3 location.
+
+The annotations are the A/B config-change markers worth keeping after the ephemeral cluster is torn down, so the artifact lands outside the per-cluster prefix that teardown expires. The command reports the resulting S3 URI on success. If no S3 bucket is configured, it fails fast with the standard "run `up` first" message.
+
+The backup captures up to 5000 annotations in one call. If the cluster has 5000 or more, the command fails and backs up nothing, rather than persisting the first 5000 as a complete backup. This makes a truncated backup impossible to mistake for a full one.
+
+```bash
+easy-db-lab grafana backup
+```
+
+This backup also runs automatically before teardown; see [`down`](#down).
 
 ---
 

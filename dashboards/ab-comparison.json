@@ -28,6 +28,25 @@
         "textFormat": "{{host_name}} restarted on build {{cassandra_build}}",
         "titleFormat": "Database restart",
         "useValueForTime": false
+      },
+      {
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "green",
+        "name": "easy-db-lab markers",
+        "target": {
+          "limit": 100,
+          "matchAny": false,
+          "tags": [
+            "easydblab"
+          ],
+          "type": "tags"
+        },
+        "type": "tags"
       }
     ]
   },

@@ -3,7 +3,9 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -195,6 +197,44 @@ internal class EMRProvisioningServiceTest {
         val exportConfig = sparkEnv.configurations.first()
         assertThat(exportConfig.classification).isEqualTo("export")
         assertThat(exportConfig.properties).containsKey("PYROSCOPE_LABELS")
+    }
+
+    @Test
+    fun `spark agent ships profiles to the external Pyroscope on a redirect cluster`() {
+        // On a redirect cluster the local Pyroscope is never deployed, so the Spark Pyroscope agent
+        // must target the external stack. Asserting both the presence of the external endpoint and
+        // the absence of the control-node URL pins the redirect resolution — a producer that ignored
+        // the redirect would keep pointing at http://10.0.1.5:4040 and silently drop every profile.
+        val redirect = TelemetryRedirect.fromBaseHost("10.9.9.9")
+        val clusterState =
+            createTestClusterState(clusterId = "test-id")
+                .copy(initConfig = InitConfig(telemetryRedirect = redirect))
+
+        val configCaptor = argumentCaptor<EMRClusterConfig>()
+        setupEmrMocks("j-REDIRECT", "myenv-spark", configCaptor)
+
+        service.provisionEmrCluster(
+            EmrClusterProvisioningConfig(
+                clusterName = "myenv",
+                masterInstanceType = "m5.2xlarge",
+                workerInstanceType = "m5.4xlarge",
+                workerCount = 5,
+                subnetId = "subnet-123",
+                securityGroupId = "sg-456",
+                keyName = "my-key",
+                clusterState = clusterState,
+                tags = emptyMap(),
+            ),
+        )
+
+        val sparkDefaults =
+            configCaptor.firstValue.configurations.first { it.classification == "spark-defaults" }
+        assertThat(sparkDefaults.properties["spark.driver.extraJavaOptions"])
+            .contains("-Dpyroscope.server.address=${redirect.profiles}")
+            .doesNotContain("http://10.0.1.5:4040")
+        assertThat(sparkDefaults.properties["spark.executor.extraJavaOptions"])
+            .contains("-Dpyroscope.server.address=${redirect.profiles}")
+            .doesNotContain("http://10.0.1.5:4040")
     }
 
     @Test

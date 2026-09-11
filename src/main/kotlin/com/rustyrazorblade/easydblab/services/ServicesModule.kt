@@ -105,6 +105,7 @@ val servicesModule =
         factory<KitHookExecutor> { DefaultKitHookExecutor(get(), get(), get()) }
         singleOf(::DefaultKitEndpointResolver) bind KitEndpointResolver::class
         factoryOf(::DefaultOtelSyncService) bind OtelSyncService::class
+        factoryOf(::DefaultObservabilityStackService) bind ObservabilityStackService::class
         factoryOf(::DefaultMetricsRegistryService) bind MetricsRegistryService::class
         factory<VictoriaBackupService> { DefaultVictoriaBackupService(get(), get()) }
         factory<GrafanaAnnotationBackupService> {

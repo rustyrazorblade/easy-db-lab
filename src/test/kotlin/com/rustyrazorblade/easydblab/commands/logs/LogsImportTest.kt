@@ -6,11 +6,13 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.services.StreamResult
 import com.rustyrazorblade.easydblab.services.VictoriaStreamService
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
@@ -18,6 +20,7 @@ import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.io.File
@@ -135,5 +138,23 @@ class LogsImportTest : BaseKoinTest() {
 
         val errors = outputHandler.errors.joinToString("\n") { it.first }
         assertThat(errors).contains("No control node found")
+    }
+
+    @Test
+    fun `execute refuses on a telemetry-redirect cluster`() {
+        val redirectState =
+            testClusterState.copy(
+                initConfig = InitConfig(region = "us-west-2", telemetryRedirect = TelemetryRedirect.fromBaseHost("10.0.0.9")),
+            )
+        whenever(mockClusterStateManager.load()).thenReturn(redirectState)
+
+        val command = LogsImport()
+        command.target = "http://victorialogs:9428"
+
+        assertThatThrownBy { command.execute() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("telemetry-redirect")
+
+        verify(mockVictoriaStreamService, never()).streamLogs(any(), any(), any())
     }
 }

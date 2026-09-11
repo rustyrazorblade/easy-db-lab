@@ -99,6 +99,8 @@ class LogsQuery : PicoBaseCommand() {
     var rawQuery: String? = null
 
     override fun execute() {
+        requireLocalTelemetryStack("logs query")
+
         // Build the query
         val query = rawQuery ?: buildQuery()
 

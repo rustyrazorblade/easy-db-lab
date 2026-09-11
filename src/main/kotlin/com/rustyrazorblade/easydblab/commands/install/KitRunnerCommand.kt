@@ -256,6 +256,13 @@ class KitRunnerCommand(
     }
 
     private fun installDashboards(dashboards: List<DashboardRef>) {
+        // A telemetry-redirect cluster has no local Grafana — dashboards live on the external stack.
+        // Skip cleanly so a successful `start` is not turned into a failure by a missing Grafana.
+        if (clusterState.initConfig?.telemetryRedirect != null) {
+            log.info { "Telemetry redirect is active; skipping kit dashboard installation for $kitName." }
+            return
+        }
+
         val controlHost =
             clusterState.getControlHost() ?: run {
                 log.warn { "No control node found; skipping dashboard installation for $kitName" }

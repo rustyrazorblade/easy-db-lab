@@ -122,6 +122,10 @@ data class InitConfig(
     val opensearchEbsSize: Int = 100,
     val cidr: String? = null,
     val cni: CniMode = CniMode.Flannel,
+    // Life-of-cluster telemetry redirect target. Null means local mode (the unchanged default):
+    // the cluster stands up its own observability backends. Non-null means all four signals ship
+    // to the external stack these endpoints describe and no local backends are stood up.
+    val telemetryRedirect: TelemetryRedirect? = null,
 ) {
     companion object {
         /**
@@ -178,6 +182,7 @@ data class InitConfig(
                 opensearchEbsSize = init.opensearch.ebsSize,
                 cidr = init.cidr,
                 cni = init.cni,
+                telemetryRedirect = init.resolvedTelemetryRedirect,
             )
     }
 }

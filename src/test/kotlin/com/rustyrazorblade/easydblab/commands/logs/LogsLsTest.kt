@@ -7,10 +7,12 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
@@ -18,6 +20,8 @@ import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
+import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.io.File
 
@@ -131,5 +135,22 @@ class LogsLsTest : BaseKoinTest() {
         assertThat(output).contains("VictoriaLogs backups:")
         assertThat(output).contains("20240101-120000")
         assertThat(output).contains("20240102-130000")
+    }
+
+    @Test
+    fun `execute refuses on a telemetry-redirect cluster`() {
+        val redirectState =
+            testClusterState.copy(
+                initConfig = InitConfig(region = "us-west-2", telemetryRedirect = TelemetryRedirect.fromBaseHost("10.0.0.9")),
+            )
+        whenever(mockClusterStateManager.load()).thenReturn(redirectState)
+
+        val command = LogsLs()
+
+        assertThatThrownBy { command.execute() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("telemetry-redirect")
+
+        verify(mockObjectStore, never()).listFiles(any(), any())
     }
 }

@@ -1,49 +1,26 @@
 package com.rustyrazorblade.easydblab.commands.grafana
 
-import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.configuration.User
-import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.victoria.VictoriaManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.yace.YaceManifestBuilder
-import com.rustyrazorblade.easydblab.events.Event
-import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
-import com.rustyrazorblade.easydblab.services.K8sClientProvider
-import com.rustyrazorblade.easydblab.services.K8sService
-import io.fabric8.kubernetes.api.model.HasMetadata
-import io.github.oshai.kotlinlogging.KotlinLogging
+import com.rustyrazorblade.easydblab.services.ObservabilityStackService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 
 /**
  * Build and apply the full observability stack to the K8s cluster.
  *
- * Deploys all observability infrastructure including collectors, storage backends,
- * profiling, dashboards, and supporting services. This is the single command to
- * update the entire observability stack.
+ * This command is a thin wrapper over [ObservabilityStackService], which owns the deploy
+ * orchestration shared with cluster bring-up (`up`). The stack it deploys includes the OTel
+ * collector, VictoriaMetrics + VictoriaLogs, Tempo, Beyla, ebpf_exporter, the Pyroscope server and
+ * eBPF agent, Grafana with dashboards, the docker registry, and the S3 manager.
  *
- * The stack includes:
- * - OTel collector DaemonSet (metrics, logs, traces collection)
- * - VictoriaMetrics + VictoriaLogs (metrics and log storage)
- * - Tempo (trace storage with S3 backend)
- * - Beyla (L7 network eBPF metrics)
- * - ebpf_exporter (TCP, block I/O, VFS eBPF metrics)
- * - Pyroscope (continuous profiling server + eBPF agent)
- * - Grafana with pre-configured dashboards
- * - Docker registry and S3 manager
+ * A telemetry-redirect cluster has no local Grafana or backends to reconfigure — its telemetry
+ * lives on an external stack — so the command refuses on such a cluster rather than silently doing
+ * nothing. Bring-up reaches [ObservabilityStackService] directly and still deploys the collectors
+ * in redirect mode; this command is the operator-facing local-stack reconfigure path only.
  */
 @McpCommand
 @RequireProfileSetup
@@ -53,180 +30,19 @@ import picocli.CommandLine.Command
     description = ["Build and apply the full observability stack to K8s cluster"],
 )
 class GrafanaUpdateConfig : PicoBaseCommand() {
-    private val log = KotlinLogging.logger {}
-    private val dashboardService: GrafanaDashboardService by inject()
-    private val user: User by inject()
-    private val k8sService: K8sService by inject()
-    private val k8sClientProvider: K8sClientProvider by inject()
-    private val otelManifestBuilder: OtelManifestBuilder by inject()
-    private val journaldOtelManifestBuilder: JournaldOtelManifestBuilder by inject()
-    private val ebpfExporterManifestBuilder: EbpfExporterManifestBuilder by inject()
-    private val victoriaManifestBuilder: VictoriaManifestBuilder by inject()
-    private val tempoManifestBuilder: TempoManifestBuilder by inject()
-    private val registryManifestBuilder: RegistryManifestBuilder by inject()
-    private val s3ManagerManifestBuilder: S3ManagerManifestBuilder by inject()
-    private val beylaManifestBuilder: BeylaManifestBuilder by inject()
-    private val pyroscopeManifestBuilder: PyroscopeManifestBuilder by inject()
-    private val yaceManifestBuilder: YaceManifestBuilder by inject()
-
-    companion object {
-        private const val CLUSTER_CONFIG_NAME = "cluster-config"
-        private const val DEFAULT_NAMESPACE = "default"
-    }
+    private val observabilityStackService: ObservabilityStackService by inject()
 
     override fun execute() {
+        requireLocalTelemetryStack("grafana update-config")
+
         val controlHosts = clusterState.hosts[ServerType.Control]
         if (controlHosts.isNullOrEmpty()) {
             error("No control nodes found. Please ensure the environment is running.")
         }
         val controlNode = controlHosts.first()
 
-        val region = clusterState.initConfig?.region ?: user.region
-
-        // Create runtime ConfigMap with dynamic values needed by OTel
-        createClusterConfigMap(controlNode, region)
-
-        // Apply all Fabric8-built observability resources
-        val scrapeConfigs =
-            k8sClientProvider.createClient(controlNode).use { client ->
-                otelManifestBuilder.listWorkloadScrapeConfigs(client)
-            }
-        applyFabric8Resources("OTel Collector", controlNode, otelManifestBuilder.buildAllResources(scrapeConfigs))
-        applyFabric8Resources("Fluent Bit Journald", controlNode, journaldOtelManifestBuilder.buildAllResources())
-        applyFabric8Resources("ebpf_exporter", controlNode, ebpfExporterManifestBuilder.buildAllResources())
-        applyFabric8Resources("VictoriaMetrics/Logs", controlNode, victoriaManifestBuilder.buildAllResources())
-        applyFabric8Resources("Tempo", controlNode, tempoManifestBuilder.buildAllResources())
-        applyFabric8Resources("Registry", controlNode, registryManifestBuilder.buildAllResources())
-        applyFabric8Resources("S3 Manager", controlNode, s3ManagerManifestBuilder.buildAllResources())
-        applyFabric8Resources("Beyla", controlNode, beylaManifestBuilder.buildAllResources())
-        applyFabric8Resources("YACE", controlNode, yaceManifestBuilder.buildAllResources())
-
-        // Apply Pyroscope resources (requires directory setup via SSH first)
-        applyPyroscopeResources(controlNode)
-
-        // Prepare Grafana data directory before applying Deployment
-        prepareGrafanaDirectory(controlNode)
-
-        // Apply Grafana dashboards
-        dashboardService.uploadDashboards(controlNode).getOrElse { exception ->
-            error("Failed to upload dashboards: ${exception.message}")
+        observabilityStackService.deploy(controlNode, telemetryRedirect = null).getOrElse { exception ->
+            error("Failed to deploy observability stack: ${exception.message}")
         }
-
-        // Restart all observability workloads so they pick up new ConfigMaps
-        restartObservabilityWorkloads(controlNode)
-
-        // Gate success on the whole stack actually reaching Ready. waitForPodsReady is namespace-wide
-        // (every pod in `default`) and fail-fast: it aborts immediately on CrashLoopBackOff /
-        // ImagePullBackOff and on timeout. This propagates a non-zero exit up through
-        // `Up.runNestedCommand { GrafanaUpdateConfig() }`, so `up` never reports success while the
-        // observability stack is broken or still coming up.
-        waitForObservabilityReady(controlNode)
-    }
-
-    private fun waitForObservabilityReady(controlNode: ClusterHost) {
-        k8sService
-            .waitForPodsReady(controlNode, Constants.K8s.OBSERVABILITY_READY_TIMEOUT_SECONDS)
-            .getOrElse { exception ->
-                error("Observability stack did not become ready: ${exception.message}")
-            }
-    }
-
-    private fun restartObservabilityWorkloads(controlNode: ClusterHost) {
-        eventBus.emit(Event.Grafana.WorkloadsRestarting)
-
-        val deployments = listOf("victoria-metrics", "victoria-logs", "tempo", "pyroscope", "grafana")
-        val daemonSets = listOf("otel-collector", "fluent-bit-journald", "beyla", "ebpf-exporter", "pyroscope-ebpf")
-
-        for (name in deployments) {
-            k8sService
-                .rolloutRestartDeployment(controlNode, name, "default")
-                .onSuccess {
-                    eventBus.emit(Event.Grafana.WorkloadRestarted("Deployment", name))
-                }.onFailure { exception ->
-                    log.warn { "Failed to restart Deployment/$name: ${exception.message}" }
-                }
-        }
-
-        for (name in daemonSets) {
-            k8sService
-                .rolloutRestartDaemonSet(controlNode, name, "default")
-                .onSuccess {
-                    eventBus.emit(Event.Grafana.WorkloadRestarted("DaemonSet", name))
-                }.onFailure { exception ->
-                    log.warn { "Failed to restart DaemonSet/$name: ${exception.message}" }
-                }
-        }
-    }
-
-    private fun applyFabric8Resources(
-        label: String,
-        controlNode: ClusterHost,
-        resources: List<HasMetadata>,
-    ) {
-        eventBus.emit(Event.Grafana.LabelResourcesApplying(label))
-        for (resource in resources) {
-            k8sService.applyResource(controlNode, resource).getOrElse { exception ->
-                error("Failed to apply $label ${resource.kind}/${resource.metadata?.name}: ${exception.message}")
-            }
-        }
-        eventBus.emit(Event.Grafana.LabelResourcesApplied(label))
-    }
-
-    private fun applyPyroscopeResources(controlNode: ClusterHost) {
-        eventBus.emit(Event.Grafana.PyroscopeDirectoryPreparing)
-        remoteOps.executeRemotely(
-            controlNode.toHost(),
-            "sudo mkdir -p /mnt/db1/pyroscope && " +
-                "sudo chown -R ${PyroscopeManifestBuilder.PYROSCOPE_UID}:${PyroscopeManifestBuilder.PYROSCOPE_UID} /mnt/db1/pyroscope",
-        )
-
-        applyFabric8Resources("Pyroscope", controlNode, pyroscopeManifestBuilder.buildAllResources())
-    }
-
-    private fun prepareGrafanaDirectory(controlNode: ClusterHost) {
-        eventBus.emit(Event.Grafana.GrafanaDirectoryPreparing)
-        remoteOps.executeRemotely(
-            controlNode.toHost(),
-            "sudo mkdir -p ${GrafanaManifestBuilder.GRAFANA_DATA_PATH} && " +
-                "sudo chown -R ${GrafanaManifestBuilder.GRAFANA_UID}:${GrafanaManifestBuilder.GRAFANA_UID} ${GrafanaManifestBuilder.GRAFANA_DATA_PATH}",
-        )
-    }
-
-    /**
-     * Creates the cluster-config ConfigMap with runtime values needed by OTel.
-     *
-     * This ConfigMap provides:
-     * - control_node_ip: IP address for OTel DaemonSet to send logs to Victoria Logs
-     * - aws_region: AWS region
-     * - cluster_name: Cluster name for OTel Prometheus relabel_configs (Grafana dashboard labels)
-     */
-    private fun createClusterConfigMap(
-        controlNode: ClusterHost,
-        region: String,
-    ) {
-        val configData =
-            mapOf(
-                "control_node_ip" to controlNode.privateIp,
-                "aws_region" to region,
-                "s3_bucket" to (clusterState.s3Bucket ?: ""),
-                "cluster_s3_prefix" to clusterState.clusterPrefix(),
-                "cluster_name" to clusterState.clusterLabelName(),
-            )
-
-        log.info {
-            "Creating cluster-config ConfigMap with: control_node_ip=${controlNode.privateIp}, " +
-                "region=$region, s3_bucket=${clusterState.s3Bucket}"
-        }
-
-        k8sService
-            .createConfigMap(
-                controlHost = controlNode,
-                namespace = DEFAULT_NAMESPACE,
-                name = CLUSTER_CONFIG_NAME,
-                data = configData,
-                labels = mapOf("app.kubernetes.io/managed-by" to "easy-db-lab"),
-            ).getOrElse { exception ->
-                log.warn { "Failed to create cluster-config ConfigMap: ${exception.message}" }
-            }
     }
 }

@@ -12,6 +12,7 @@ import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.network.CidrBlock
@@ -250,6 +251,58 @@ class Init : PicoBaseCommand() {
     )
     var cni: CniMode = CniMode.Flannel
 
+    @Option(
+        names = ["--redirect-telemetry"],
+        description = [
+            "Ship all telemetry to an external observability stack at this base host instead of " +
+                "standing up local backends. The four signal endpoints are derived from the host " +
+                "and the known stack ports; override any with the --redirect-*-endpoint options.",
+        ],
+    )
+    var redirectTelemetry: String? = null
+
+    @Option(
+        names = ["--redirect-metrics-endpoint"],
+        description = ["Override the derived VictoriaMetrics remote-write URL for --redirect-telemetry."],
+    )
+    var redirectMetricsEndpoint: String? = null
+
+    @Option(
+        names = ["--redirect-logs-endpoint"],
+        description = ["Override the derived VictoriaLogs OTLP ingest URL for --redirect-telemetry."],
+    )
+    var redirectLogsEndpoint: String? = null
+
+    @Option(
+        names = ["--redirect-traces-endpoint"],
+        description = ["Override the derived Tempo OTLP endpoint (host:port) for --redirect-telemetry."],
+    )
+    var redirectTracesEndpoint: String? = null
+
+    @Option(
+        names = ["--redirect-profiles-endpoint"],
+        description = ["Override the derived Pyroscope ingest base URL for --redirect-telemetry."],
+    )
+    var redirectProfilesEndpoint: String? = null
+
+    /**
+     * The telemetry redirect target built from the redirect options, or null in local mode
+     * (`--redirect-telemetry` not supplied). The four endpoints derive from the base host and the
+     * known stack ports; per-signal overrides replace individual derived values.
+     */
+    @get:JsonIgnore
+    val resolvedTelemetryRedirect: TelemetryRedirect?
+        get() =
+            redirectTelemetry?.let { host ->
+                TelemetryRedirect.fromBaseHost(
+                    baseHost = host,
+                    metricsOverride = redirectMetricsEndpoint,
+                    logsOverride = redirectLogsEndpoint,
+                    tracesOverride = redirectTracesEndpoint,
+                    profilesOverride = redirectProfilesEndpoint,
+                )
+            }
+
     /**
      * Resolved number of database instances: the namespaced `--db.count` when supplied, otherwise
      * the legacy `--db`/`--cassandra`/`-c` alias (or its default). Namespaced always wins.
@@ -318,6 +371,13 @@ class Init : PicoBaseCommand() {
         require(ebsIops >= 0) { "EBS IOPS cannot be negative" }
         require(ebsThroughput >= 0) { "EBS throughput cannot be negative" }
         cidr?.let { CidrBlock(it) }
+        resolvedTelemetryRedirect?.validate()?.let { offending ->
+            require(offending.isEmpty()) {
+                "Telemetry redirect endpoints are missing or malformed for: " +
+                    "${offending.joinToString(", ")}. Fix the base host or the matching " +
+                    "--redirect-*-endpoint override."
+            }
+        }
     }
 
     private fun checkExistingFiles() {

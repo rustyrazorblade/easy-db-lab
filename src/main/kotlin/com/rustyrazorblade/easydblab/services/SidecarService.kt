@@ -64,7 +64,8 @@ class DefaultSidecarService(
         image: String,
     ): Result<Unit> =
         runCatching {
-            val clusterName = clusterStateManager.load().name
+            val state = clusterStateManager.load()
+            val clusterName = state.name
 
             val pullSecretName = ecrPullSecrets.ensureFor(controlHost, image, Constants.K8s.NAMESPACE)
 
@@ -75,6 +76,7 @@ class DefaultSidecarService(
                     controlNodeIp = controlHost.privateIp,
                     clusterName = clusterName,
                     imagePullSecretName = pullSecretName,
+                    telemetryRedirect = state.initConfig?.telemetryRedirect,
                 )
             for (resource in resources) {
                 k8sService.applyResource(controlHost, resource).getOrThrow()

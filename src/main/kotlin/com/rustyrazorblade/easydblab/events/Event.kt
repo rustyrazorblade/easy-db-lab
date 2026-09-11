@@ -3314,6 +3314,44 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Provision.TelemetryRedirectInvalid")
+        data class TelemetryRedirectInvalid(
+            val offendingSignals: List<String>,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "Telemetry redirect endpoints are missing or malformed for: " +
+                    "${offendingSignals.joinToString(", ")}. No infrastructure was provisioned."
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        @SerialName("Provision.RedirectCommandUnavailable")
+        data class RedirectCommandUnavailable(
+            val command: String,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "'$command' is unavailable on a telemetry-redirect cluster. This cluster's telemetry " +
+                    "lives on the external observability stack it was pointed at, not on this cluster; " +
+                    "run the command against that stack instead."
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        @SerialName("Provision.ClusterConfigMapFailed")
+        data class ClusterConfigMapFailed(
+            val reason: String,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "Failed to create the cluster-config ConfigMap: $reason. This ConfigMap carries the " +
+                    "cluster identity every telemetry signal is labeled with, so provisioning cannot " +
+                    "continue without it."
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
         @SerialName("Provision.S3BucketRequired")
         data class S3BucketRequired(
             val clusterName: String,

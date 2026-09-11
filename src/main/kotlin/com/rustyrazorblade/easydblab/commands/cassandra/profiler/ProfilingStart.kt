@@ -101,7 +101,7 @@ class ProfilingStart : ProfilingHostCommand() {
                 loopInterval = loopInterval,
                 retentionMinutes = retentionMinutes,
                 maxBytes = maxBytes,
-                pyroscopeUrl = pyroscopeIngestBaseUrl(controlNodePrivateIp()),
+                pyroscopeUrl = pyroscopeIngestBaseUrl(controlNodePrivateIp(), clusterState.initConfig?.telemetryRedirect),
                 clusterName = clusterState.clusterLabelName(),
                 updatedAt = Instant.now().toString(),
             )

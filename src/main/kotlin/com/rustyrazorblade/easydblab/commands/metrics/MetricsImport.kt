@@ -40,6 +40,8 @@ class MetricsImport : PicoBaseCommand() {
     var match: String = Constants.Victoria.DEFAULT_METRICS_MATCH
 
     override fun execute() {
+        requireLocalTelemetryStack("metrics import")
+
         val controlHost = clusterState.getControlHost()
         if (controlHost == null) {
             eventBus.emit(Event.Metrics.NoControlNode)

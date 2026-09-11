@@ -7,7 +7,9 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.Host
+import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
@@ -45,7 +47,14 @@ import java.time.Instant
  */
 class ProfilingCommandsTest : BaseKoinTest() {
     private lateinit var profilingService: CassandraProfilingService
+    private lateinit var clusterStateManager: ClusterStateManager
     private val emitted = mutableListOf<Event>()
+
+    /** A redirect target whose base host differs from the control node, so the two URLs are distinct. */
+    private val redirect = TelemetryRedirect.fromBaseHost("10.9.9.9")
+
+    /** The control node's private IP, which local mode would put in the Pyroscope URL. */
+    private val controlNodePrivateIp = "10.0.1.5"
 
     private val hosts =
         mapOf(
@@ -99,6 +108,7 @@ class ProfilingCommandsTest : BaseKoinTest() {
     @BeforeEach
     fun setup() {
         profilingService = getKoin().get()
+        clusterStateManager = getKoin().get()
         // The service never returns "no answer" for this read — an unconfigured node is a value.
         whenever(profilingService.readDesiredState(any())).thenReturn(DesiredProfilingState.Unconfigured)
         emitted.clear()
@@ -110,6 +120,19 @@ class ProfilingCommandsTest : BaseKoinTest() {
 
                 override fun close() = Unit
             },
+        )
+    }
+
+    /** Reloads state as a telemetry-redirect cluster, so profiler commands see [redirect]. */
+    private fun useRedirectState() {
+        whenever(clusterStateManager.load()).thenReturn(
+            ClusterState(
+                name = "test-cluster",
+                clusterId = "abc123",
+                versions = mutableMapOf(),
+                hosts = hosts,
+                initConfig = InitConfig(telemetryRedirect = redirect),
+            ),
         )
     }
 
@@ -319,6 +342,22 @@ class ProfilingCommandsTest : BaseKoinTest() {
     }
 
     @Test
+    fun `start ships profiles to the external Pyroscope on a redirect cluster`() {
+        // On a redirect cluster the control node runs no Pyroscope server. Writing the local
+        // control-node URL here would silently stop profiles reaching the external stack the
+        // cluster was pointed at — the redirect must win.
+        useRedirectState()
+
+        ProfilingStart().execute()
+
+        val config = capturedConfigs().first()
+        assertThat(config.pyroscopeUrl).isEqualTo(redirect.profiles)
+        assertThat(config.pyroscopeUrl)
+            .describedAs("a redirect cluster must not profile-ship to the control node")
+            .doesNotContain(controlNodePrivateIp)
+    }
+
+    @Test
     fun `start applies to every Cassandra node by default`() {
         ProfilingStart().execute()
 
@@ -429,6 +468,20 @@ class ProfilingCommandsTest : BaseKoinTest() {
 
         // ...and it still stops, because leaving a profiler attached would be worse.
         assertThat(capturedConfigs()).allMatch { !it.enabled }
+    }
+
+    @Test
+    fun `stop writes the external Pyroscope URL on a redirect cluster`() {
+        // The disabled document still carries a pyroscopeUrl. Defaulting it to the control node on a
+        // redirect cluster would point the reconciler's final in-flight chunk at a server that does
+        // not exist there.
+        useRedirectState()
+
+        ProfilingStop().execute()
+
+        val config = capturedConfigs().first()
+        assertThat(config.pyroscopeUrl).isEqualTo(redirect.profiles)
+        assertThat(config.pyroscopeUrl).doesNotContain(controlNodePrivateIp)
     }
 
     // --- status --------------------------------------------------------------

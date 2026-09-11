@@ -4,7 +4,9 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuilder
@@ -15,9 +17,11 @@ import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBu
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.victoria.VictoriaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.yace.YaceManifestBuilder
+import com.rustyrazorblade.easydblab.services.DefaultObservabilityStackService
 import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
 import com.rustyrazorblade.easydblab.services.K8sClientProvider
 import com.rustyrazorblade.easydblab.services.K8sService
+import com.rustyrazorblade.easydblab.services.ObservabilityStackService
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.ConfigMapList
@@ -35,6 +39,7 @@ import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 
@@ -101,6 +106,30 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
                 single { RegistryManifestBuilder() }
                 single { S3ManagerManifestBuilder(get()) }
                 single { YaceManifestBuilder(get()) }
+
+                // Real service under test — the command is a thin wrapper over it. RemoteOperationsService,
+                // User, and EventBus come from BaseKoinTest's core mocks via get().
+                single<ObservabilityStackService> {
+                    DefaultObservabilityStackService(
+                        get(),
+                        get(),
+                        get(),
+                        get(),
+                        get(),
+                        get(),
+                        get(),
+                        get(),
+                        get(),
+                        get(),
+                        get(),
+                        get(),
+                        get(),
+                        get(),
+                        get(),
+                        get(),
+                        get(),
+                    )
+                }
             },
         )
 
@@ -125,6 +154,11 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
         whenever(mockAnyNsOps.withLabel(any<String>(), any<String>())).thenReturn(mockFiltered)
         whenever(mockFiltered.list()).thenReturn(emptyConfigMapList)
         whenever(mockK8sClientProvider.createClient(any())).thenReturn(mockK8sClient)
+
+        // The service writes the runtime cluster-config ConfigMap before applying the stack; stub it
+        // so an unstubbed Result does not NPE inside the deploy path.
+        whenever(mockK8sService.createConfigMap(any(), any(), any(), any(), any()))
+            .thenReturn(Result.success(Unit))
     }
 
     @Test
@@ -257,5 +291,36 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
         assertThatThrownBy { command.execute() }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("Failed to upload dashboards")
+    }
+
+    @Test
+    fun `execute refuses on a telemetry-redirect cluster`() {
+        // A redirect cluster has no local Grafana or backends to reconfigure, so the operator-facing
+        // reconfigure command must refuse rather than apply anything or upload dashboards.
+        val redirectState =
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+                hosts =
+                    mutableMapOf(
+                        ServerType.Control to listOf(testControlHost),
+                    ),
+                initConfig =
+                    InitConfig(
+                        region = "us-west-2",
+                        telemetryRedirect = TelemetryRedirect.fromBaseHost("10.0.0.9"),
+                    ),
+            )
+
+        whenever(mockClusterStateManager.load()).thenReturn(redirectState)
+
+        val command = GrafanaUpdateConfig()
+
+        assertThatThrownBy { command.execute() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("telemetry-redirect")
+
+        verify(mockK8sService, never()).applyResource(any(), any<HasMetadata>())
+        verify(mockDashboardService, never()).uploadDashboards(any())
     }
 }

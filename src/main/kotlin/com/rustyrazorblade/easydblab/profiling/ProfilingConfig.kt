@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.profiling
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import kotlinx.serialization.Serializable
 
 /**
@@ -49,9 +50,16 @@ fun parseProfilingConfig(
 ): ProfilingConfig? = decodeProfilingDocumentOrNull(document, ProfilingConfig.serializer(), source)
 
 /**
- * Builds the Pyroscope ingest base URL from the control node's private IP.
+ * Builds the Pyroscope ingest base URL for a node's reconciler.
  *
- * Private IP deliberately: cluster services are always addressed on the private (Tailscale) address,
- * never the public one.
+ * Local mode addresses the control node on its private IP deliberately: cluster services are
+ * always reached on the private (Tailscale) address, never the public one. A redirect cluster
+ * ships profiles to the external stack instead, so [TelemetryRedirect.profiles] wins.
+ *
+ * @param controlNodeIp private IP of the control node (used only in local mode).
+ * @param telemetryRedirect when non-null, the external Pyroscope ingest URL is returned instead.
  */
-fun pyroscopeIngestBaseUrl(controlNodeIp: String): String = "http://$controlNodeIp:${Constants.K8s.PYROSCOPE_PORT}"
+fun pyroscopeIngestBaseUrl(
+    controlNodeIp: String,
+    telemetryRedirect: TelemetryRedirect? = null,
+): String = telemetryRedirect?.profiles ?: "http://$controlNodeIp:${Constants.K8s.PYROSCOPE_PORT}"

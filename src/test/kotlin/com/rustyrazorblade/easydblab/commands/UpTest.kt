@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.network.TcpReachabilityProbe
@@ -30,6 +31,7 @@ import com.rustyrazorblade.easydblab.services.K3sSetupResult
 import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.LocalTailscaleClient
 import com.rustyrazorblade.easydblab.services.LocalTailscaleState
+import com.rustyrazorblade.easydblab.services.ObservabilityStackService
 import com.rustyrazorblade.easydblab.services.ProvisioningResult
 import com.rustyrazorblade.easydblab.services.RegistryService
 import com.rustyrazorblade.easydblab.services.aws.AMIResolver
@@ -49,6 +51,7 @@ import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
+import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
@@ -82,6 +85,7 @@ class UpTest : BaseKoinTest() {
     private lateinit var mockCiliumService: CiliumService
     private lateinit var mockK8sService: K8sService
     private lateinit var mockCommandExecutor: CommandExecutor
+    private lateinit var mockObservabilityStackService: ObservabilityStackService
     private lateinit var outputHandler: BufferedOutputHandler
 
     /** exit code returned by the fake CommandExecutor for a nested command, keyed by simple class name */
@@ -136,6 +140,9 @@ class UpTest : BaseKoinTest() {
                 single<RegistryService> { mock<RegistryService>() }
                 single<SocksProxyService> { mock<SocksProxyService>() }
                 single<CommandExecutor> { mock<CommandExecutor>().also { mockCommandExecutor = it } }
+                single<ObservabilityStackService> {
+                    mock<ObservabilityStackService>().also { mockObservabilityStackService = it }
+                }
 
                 single<LocalTailscaleClient> {
                     LocalTailscaleClient {
@@ -221,6 +228,7 @@ class UpTest : BaseKoinTest() {
         mockCiliumService = getKoin().get()
         mockK8sService = getKoin().get()
         mockCommandExecutor = getKoin().get()
+        mockObservabilityStackService = getKoin().get()
         outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
 
         nestedCommandExitCodes.clear()
@@ -267,6 +275,8 @@ class UpTest : BaseKoinTest() {
         whenever(mockK8sService.labelNode(any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.ensureLocalStorageClass(any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.ensureLocalStorageWfcClass(any())).thenReturn(Result.success(Unit))
+
+        whenever(mockObservabilityStackService.deploy(any(), anyOrNull())).thenReturn(Result.success(Unit))
 
         whenever(mockCommandExecutor.execute<PicoCommand>(any())).thenAnswer { invocation ->
             @Suppress("UNCHECKED_CAST")
@@ -393,6 +403,34 @@ class UpTest : BaseKoinTest() {
     }
 
     @Test
+    fun `up fails before any EC2 instance is launched when a redirect endpoint is malformed`() {
+        val state = happyState()
+        val redirect =
+            TelemetryRedirect.fromBaseHost("10.9.9.9").copy(traces = "http://10.9.9.9:4320")
+        whenever(mockClusterStateManager.load()).thenReturn(
+            state.copy(initConfig = state.initConfig?.copy(telemetryRedirect = redirect)),
+        )
+
+        assertThatThrownBy { newUp().execute() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("traces")
+
+        verify(mockClusterProvisioningService, never()).provisionAll(any(), any(), any(), any())
+        verify(mockEc2InstanceService, never()).findInstancesByClusterId(any())
+    }
+
+    @Test
+    fun `up provisions successfully when a redirect target is well-formed`() {
+        val state = happyState()
+        val redirect = TelemetryRedirect.fromBaseHost("10.9.9.9")
+        whenever(mockClusterStateManager.load()).thenReturn(
+            state.copy(initConfig = state.initConfig?.copy(telemetryRedirect = redirect)),
+        )
+
+        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
+    }
+
+    @Test
     fun `up fails before any EC2 instance is launched when no S3 bucket is configured`() {
         whenever(mockS3BucketService.ensureAccountBucket(any())).thenReturn("")
 
@@ -494,12 +532,16 @@ class UpTest : BaseKoinTest() {
     }
 
     @Test
-    fun `up aborts when the nested GrafanaUpdateConfig command fails`() {
-        nestedCommandExitCodes["GrafanaUpdateConfig"] = 1
+    fun `up aborts when the observability stack deployment fails`() {
+        // Bring-up drives ObservabilityStackService.deploy directly rather than nesting the
+        // GrafanaUpdateConfig command, so a deploy failure must surface as an aborted `up`.
+        whenever(mockObservabilityStackService.deploy(any(), anyOrNull()))
+            .thenReturn(Result.failure(RuntimeException("dashboard upload rejected")))
 
         assertThatThrownBy { newUp().execute() }
             .isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("GrafanaUpdateConfig")
+            .hasMessageContaining("Observability stack deployment failed")
+            .hasMessageContaining("dashboard upload rejected")
     }
 
     @Test
@@ -536,7 +578,9 @@ class UpTest : BaseKoinTest() {
             .hasMessageContaining("apply failed")
 
         verify(mockK8sService, never()).ensureLocalStorageWfcClass(any())
-        assertThat(invokedCommandNames).doesNotContain("GrafanaUpdateConfig")
+        // Storage classes are set up before the observability stack, so aborting here means the
+        // stack deploy is never reached.
+        verify(mockObservabilityStackService, never()).deploy(any(), anyOrNull())
     }
 
     @Test

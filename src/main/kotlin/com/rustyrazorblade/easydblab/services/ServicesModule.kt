@@ -100,6 +100,9 @@ val servicesModule =
         factoryOf(::DefaultOtelSyncService) bind OtelSyncService::class
         factoryOf(::DefaultMetricsRegistryService) bind MetricsRegistryService::class
         factory<VictoriaBackupService> { DefaultVictoriaBackupService(get(), get()) }
+        factory<GrafanaAnnotationBackupService> {
+            DefaultGrafanaAnnotationBackupService(get(), get(), get())
+        }
         factoryOf(::DefaultVictoriaStreamService) bind VictoriaStreamService::class
         singleOf(::DefaultVictoriaMetricsQueryService) bind VictoriaMetricsQueryService::class
         singleOf(::DefaultVictoriaLogsService) bind VictoriaLogsService::class

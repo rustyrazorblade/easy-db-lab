@@ -20,10 +20,10 @@
 
 ## 4. `grafana backup` (annotations) to account-level S3
 
-- [ ] 4.1 Add an account-level S3 path helper (sibling of the per-cluster helpers in `configuration/ClusterS3Path.kt`, but outside the prefix `Down.setClusterLifecycleRule()` expires), keyed by cluster name + timestamp.
-- [ ] 4.2 Add `services/GrafanaAnnotationBackupService.kt` (interface + default impl): `GET /api/annotations` over the proxied client, serialize to JSON, upload to the account-level location, emit `Event.Backup.GrafanaAnnotationsBackup*`.
-- [ ] 4.3 Add `commands/grafana/GrafanaBackup.kt` (`@RequiresProxy`) delegating to the service; report the S3 URI; fail fast with the standard "run up first" message when no bucket is configured. Register it.
-- [ ] 4.4 Tests: backup uploads to the account-level location and reports the URI; no-bucket fails fast with the "run up first" message.
+- [x] 4.1 Add an account-level S3 path helper (sibling of the per-cluster helpers in `configuration/ClusterS3Path.kt`, but outside the prefix `Down.setClusterLifecycleRule()` expires), keyed by cluster name + timestamp.
+- [x] 4.2 Add `services/GrafanaAnnotationBackupService.kt` (interface + default impl): `GET /api/annotations` over the proxied client, serialize to JSON, upload to the account-level location, emit `Event.Backup.GrafanaAnnotationsBackup*`.
+- [x] 4.3 Add `commands/grafana/GrafanaBackup.kt` (`@RequiresProxy`) delegating to the service; report the S3 URI; fail fast with the standard "run up first" message when no bucket is configured. Register it.
+- [x] 4.4 Tests: backup uploads to the account-level location and reports the URI; no-bucket fails fast with the "run up first" message.
 
 ## 5. Automatic backup at `down`
 

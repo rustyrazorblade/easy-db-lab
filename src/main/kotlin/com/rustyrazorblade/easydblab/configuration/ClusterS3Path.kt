@@ -51,6 +51,7 @@ data class ClusterS3Path(
         internal const val VICTORIA_LOGS_DIR = "victorialogs"
         internal const val CLICKHOUSE_BACKUPS_DIR = "clickhouse-backups"
         internal const val CASSANDRA_BUILDS_DIR = "cassandra-builds"
+        internal const val GRAFANA_ANNOTATIONS_DIR = "grafana-annotations"
 
         /**
          * Create a ClusterS3Path from ClusterState.
@@ -118,6 +119,33 @@ data class ClusterS3Path(
          * installed onto whichever clusters the profile later brings up.
          */
         fun cassandraBuildsRoot(accountBucket: String): ClusterS3Path = root(accountBucket).resolve(CASSANDRA_BUILDS_DIR)
+
+        /**
+         * Root path for Grafana annotation backups in the account bucket.
+         *
+         * Account-level rather than per-cluster: the annotations are the work product that must
+         * outlive the ephemeral cluster, so they live outside the `clusters/<name>-<id>/` prefix
+         * that `Down.setClusterLifecycleRule()` sets to expire. Callers key an artifact under this
+         * root by cluster name and timestamp; see [grafanaAnnotationsArtifact].
+         */
+        fun grafanaAnnotationsRoot(accountBucket: String): ClusterS3Path = root(accountBucket).resolve(GRAFANA_ANNOTATIONS_DIR)
+
+        /**
+         * Full path to one Grafana annotations backup artifact in the account bucket.
+         *
+         * The artifact is keyed by cluster name and an epoch-millisecond timestamp, so backups from
+         * repeated teardowns of the same cluster name never collide and remain findable after the
+         * cluster is gone.
+         *
+         * @param accountBucket The account-level S3 bucket.
+         * @param clusterName The cluster the annotations came from.
+         * @param timestampMillis The backup time in epoch milliseconds.
+         */
+        fun grafanaAnnotationsArtifact(
+            accountBucket: String,
+            clusterName: String,
+            timestampMillis: Long,
+        ): ClusterS3Path = grafanaAnnotationsRoot(accountBucket).resolve(clusterName).resolve("annotations-$timestampMillis.json")
     }
 
     // Core Path-like methods

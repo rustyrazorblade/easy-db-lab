@@ -45,6 +45,7 @@ import com.rustyrazorblade.easydblab.commands.exec.ExecList
 import com.rustyrazorblade.easydblab.commands.exec.ExecRun
 import com.rustyrazorblade.easydblab.commands.exec.ExecStop
 import com.rustyrazorblade.easydblab.commands.grafana.GrafanaAnnotate
+import com.rustyrazorblade.easydblab.commands.grafana.GrafanaBackup
 import com.rustyrazorblade.easydblab.commands.grafana.GrafanaUpdateConfig
 import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearchStart
 import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearchStatus
@@ -122,6 +123,7 @@ val commandsModule =
 
         // Grafana subcommands
         factory { GrafanaAnnotate() }
+        factory { GrafanaBackup() }
         factory { GrafanaUpdateConfig() }
 
         // OpenSearch subcommands

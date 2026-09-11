@@ -145,17 +145,26 @@ class Down : PicoBaseCommand() {
 
         val state = clusterStateManager.load()
         if (!state.isInfrastructureUp()) {
+            eventBus.emit(Event.Teardown.BackupSkipped("cluster infrastructure is not up"))
             return true
         }
 
-        val controlHost = state.getControlHost() ?: return true
-
-        // Establish the SOCKS tunnel so the backup can reach the private cluster network. This runs
-        // before clearProxySystemProperties()/cleanupSocks5Proxy() tear the tunnel down.
-        socksProxyService.ensureRunning(controlHost)
+        val controlHost = state.getControlHost()
+        if (controlHost == null) {
+            eventBus.emit(Event.Teardown.BackupSkipped("no control node found in cluster state"))
+            return true
+        }
 
         eventBus.emit(Event.Teardown.BackupStarting)
-        return teardownBackupService.backupBeforeTeardown(controlHost, state).fold(
+        // The tunnel setup and the backup are one failure boundary: a tunnel failure is a backup
+        // failure. Both are inside the runCatching so either aborts teardown with the standard
+        // "no infrastructure removed / pass --force" guidance rather than a raw stack trace. The
+        // tunnel is established here, before clearProxySystemProperties()/cleanupSocks5Proxy() tear
+        // it down.
+        return runCatching {
+            socksProxyService.ensureRunning(controlHost)
+            teardownBackupService.backupBeforeTeardown(controlHost, state).getOrThrow()
+        }.fold(
             onSuccess = { true },
             onFailure = { failure ->
                 eventBus.emit(Event.Teardown.BackupFailedAbort(failure.message ?: "unknown error"))

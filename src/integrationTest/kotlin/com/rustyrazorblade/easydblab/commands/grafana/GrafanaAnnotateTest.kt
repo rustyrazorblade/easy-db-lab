@@ -161,6 +161,22 @@ class GrafanaAnnotateTest : BaseKoinTest() {
     }
 
     @Test
+    fun `annotate with time and time-end posts a region carrying both timestamps`() {
+        mockWebServer.enqueue(MockResponse(code = 200, body = """{"id":13,"message":"Annotation added"}"""))
+
+        val command = GrafanaAnnotate()
+        command.text = "rolling restart window"
+        command.time = 1767225600000L
+        command.timeEnd = 1767229200000L
+        command.execute()
+
+        val body = Json.parseToJsonElement(requireNotNull(mockWebServer.takeRequest().body).utf8()).jsonObject
+        // A region annotation must carry both timestamps so Grafana renders it as a span, not a point.
+        assertThat(body["time"]?.jsonPrimitive?.content).isEqualTo("1767225600000")
+        assertThat(body["timeEnd"]?.jsonPrimitive?.content).isEqualTo("1767229200000")
+    }
+
+    @Test
     fun `a global annotate auto-applies the global tag and de-dupes when the user passed it`() {
         mockWebServer.enqueue(MockResponse(code = 200, body = """{"id":11,"message":"Annotation added"}"""))
 

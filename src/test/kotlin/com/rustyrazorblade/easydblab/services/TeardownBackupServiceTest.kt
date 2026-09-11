@@ -121,6 +121,26 @@ class TeardownBackupServiceTest {
     }
 
     @Test
+    fun `both backups failing aggregates both messages and carries both causes as suppressed`() {
+        val metrics = FakeVictoriaBackupService(listOf(Result.failure(IllegalStateException("vmbackup exploded"))))
+        val annotations = FakeAnnotationBackupService(Result.failure(IllegalStateException("grafana unreachable")))
+        val service = DefaultTeardownBackupService(metrics, annotations)
+
+        val result = service.backupBeforeTeardown(controlHost, clusterState)
+
+        assertThat(result.isFailure).isTrue()
+        val exception = requireNotNull(result.exceptionOrNull())
+        // The combined message names both failures, so an operator sees the whole picture at once.
+        assertThat(exception)
+            .hasMessageContaining("vmbackup exploded")
+            .hasMessageContaining("grafana unreachable")
+        // Both original causes are attached as suppressed, so neither stack trace is lost.
+        assertThat(exception.suppressed).hasSize(2)
+        assertThat(exception.suppressed.map { it.message })
+            .containsExactlyInAnyOrder("vmbackup exploded", "grafana unreachable")
+    }
+
+    @Test
     fun `a transient metrics failure is retried and then succeeds`() {
         val metrics =
             FakeVictoriaBackupService(

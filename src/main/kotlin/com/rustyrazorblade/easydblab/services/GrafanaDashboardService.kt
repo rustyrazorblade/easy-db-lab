@@ -13,6 +13,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -77,13 +78,17 @@ interface GrafanaDashboardService {
     /**
      * Fetches all Grafana annotations via `GET /api/annotations` on the control node.
      *
-     * Returns the raw JSON response body verbatim so the backup artifact preserves exactly what
-     * Grafana returns. It throws on a non-2xx response or an unreachable endpoint, with a message
-     * naming the Grafana annotation endpoint.
+     * Requests an explicit high `limit` ([Constants.Grafana.ANNOTATION_FETCH_LIMIT]) so the response
+     * is not silently capped at Grafana's default of 100. Returns the raw JSON response body verbatim
+     * so the backup artifact preserves exactly what Grafana returns. It throws on a non-2xx response
+     * or an unreachable endpoint, with a message naming the Grafana annotation endpoint. It also
+     * throws when the response fills the requested limit exactly, because more annotations may exist
+     * and a truncated capture must never be reported as a complete backup.
      *
      * @param controlHost The control node running the Grafana instance.
      * @return The raw JSON array of annotations as returned by Grafana.
-     * @throws IllegalStateException on a non-2xx response or an unreachable endpoint.
+     * @throws IllegalStateException on a non-2xx response, an unreachable endpoint, or a response that
+     *   fills the requested limit (a possible truncation).
      */
     fun fetchAnnotations(controlHost: ClusterHost): String
 }
@@ -217,23 +222,45 @@ class DefaultGrafanaDashboardService(
 
     override fun fetchAnnotations(controlHost: ClusterHost): String {
         val endpoint = annotationsEndpoint(controlHost)
+        // Grafana defaults the annotations limit to 100 and offers no pagination cursor, so a request
+        // without an explicit limit would capture at most 100 annotations. Ask for a high explicit
+        // limit so the backup captures every annotation on a normal cluster.
+        val url =
+            endpoint
+                .toHttpUrl()
+                .newBuilder()
+                .addQueryParameter("limit", Constants.Grafana.ANNOTATION_FETCH_LIMIT.toString())
+                .build()
         val request =
             Request
                 .Builder()
-                .url(endpoint)
+                .url(url)
                 .get()
                 .build()
-        return try {
-            okHttpClient.newCall(request).execute().use { response ->
-                val responseBody = response.body.string()
-                if (!response.isSuccessful) {
-                    error("Grafana annotation API at $endpoint returned ${response.code}: $responseBody")
+        val responseBody =
+            try {
+                okHttpClient.newCall(request).execute().use { response ->
+                    val body = response.body.string()
+                    if (!response.isSuccessful) {
+                        error("Grafana annotation API at $endpoint returned ${response.code}: $body")
+                    }
+                    body
                 }
-                responseBody
+            } catch (e: IOException) {
+                throw IllegalStateException("Failed to reach Grafana annotation API at $endpoint: ${e.message}", e)
             }
-        } catch (e: IOException) {
-            throw IllegalStateException("Failed to reach Grafana annotation API at $endpoint: ${e.message}", e)
+
+        // If the returned array fills the requested limit exactly, more annotations may exist that this
+        // single call did not return. Treating that as a complete backup would silently drop data, so
+        // fail loudly instead of reporting a truncated capture as success.
+        val count = runCatching { Json.parseToJsonElement(responseBody).jsonArray.size }.getOrDefault(0)
+        if (count >= Constants.Grafana.ANNOTATION_FETCH_LIMIT) {
+            error(
+                "Grafana annotation API at $endpoint returned $count annotations, the maximum this request " +
+                    "asked for; the backup would be truncated. Raise Constants.Grafana.ANNOTATION_FETCH_LIMIT.",
+            )
         }
+        return responseBody
     }
 
     private fun annotationsEndpoint(controlHost: ClusterHost): String =

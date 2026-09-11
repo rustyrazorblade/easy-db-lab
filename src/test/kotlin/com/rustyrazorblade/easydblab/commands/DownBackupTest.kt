@@ -61,6 +61,26 @@ class DownBackupTest : BaseKoinTest() {
             hosts = mapOf(ServerType.Control to listOf(controlHost)),
         ).apply { markInfrastructureUp() }
 
+    /** A cluster whose infrastructure is DOWN — the backup must be skipped, not attempted. */
+    private fun downClusterState() =
+        ClusterState(
+            name = "perf-test",
+            versions = mutableMapOf(),
+            s3Bucket = "acct-bucket",
+            vpcId = "vpc-123",
+            hosts = mapOf(ServerType.Control to listOf(controlHost)),
+        )
+
+    /** An UP cluster with no control node — the backup has no host to reach, so it must be skipped. */
+    private fun upClusterStateNoControlHost() =
+        ClusterState(
+            name = "perf-test",
+            versions = mutableMapOf(),
+            s3Bucket = "acct-bucket",
+            vpcId = "vpc-123",
+            hosts = emptyMap(),
+        ).apply { markInfrastructureUp() }
+
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
@@ -85,6 +105,8 @@ class DownBackupTest : BaseKoinTest() {
     }
 
     private fun errorOutput(): String = outputHandler.errors.joinToString("\n") { it.first }
+
+    private fun messageOutput(): String = outputHandler.messages.joinToString("\n")
 
     @Test
     fun `a failed backup aborts teardown with no infrastructure removed`() {
@@ -131,5 +153,67 @@ class DownBackupTest : BaseKoinTest() {
         verify(teardownBackupService, never()).backupBeforeTeardown(any(), any())
         verify(socksProxyService, never()).ensureRunning(any())
         verify(teardownService, times(1)).teardownVpc(eq("vpc-123"), eq(true))
+    }
+
+    @Test
+    fun `infrastructure DOWN skips the backup, says why, and still tears down`() {
+        whenever(clusterStateManager.exists()).thenReturn(true)
+        whenever(clusterStateManager.load()).thenReturn(downClusterState())
+        // Empty preview so the teardown returns immediately after the preview call.
+        whenever(teardownService.teardownVpc(any(), eq(true))).thenReturn(TeardownResult.success(emptyList()))
+
+        Down().apply { autoApprove = true }.execute()
+
+        // No backup is attempted, but the teardown still proceeds — and the skip is observable.
+        verify(teardownBackupService, never()).backupBeforeTeardown(any(), any())
+        verify(socksProxyService, never()).ensureRunning(any())
+        verify(teardownService).teardownVpc(eq("vpc-123"), eq(true))
+        assertThat(messageOutput()).contains("infrastructure is not up")
+    }
+
+    @Test
+    fun `current-cluster teardown with no control host skips the backup rather than throwing`() {
+        whenever(clusterStateManager.exists()).thenReturn(true)
+        whenever(clusterStateManager.load()).thenReturn(upClusterStateNoControlHost())
+        whenever(teardownService.teardownVpc(any(), eq(true))).thenReturn(TeardownResult.success(emptyList()))
+
+        Down().apply { autoApprove = true }.execute()
+
+        verify(teardownBackupService, never()).backupBeforeTeardown(any(), any())
+        verify(socksProxyService, never()).ensureRunning(any())
+        verify(teardownService).teardownVpc(eq("vpc-123"), eq(true))
+        assertThat(messageOutput()).contains("no control node")
+    }
+
+    @Test
+    fun `down --all never runs the pre-teardown backup`() {
+        whenever(teardownService.teardownAllTagged(eq(true), any()))
+            .thenReturn(TeardownResult.success(emptyList()))
+
+        Down()
+            .apply {
+                autoApprove = true
+                teardownAll = true
+            }.execute()
+
+        // --all does not map to a single reachable control node, so the backup never runs.
+        verify(teardownBackupService, never()).backupBeforeTeardown(any(), any())
+        verify(socksProxyService, never()).ensureRunning(any())
+        verify(teardownService).teardownAllTagged(eq(true), any())
+    }
+
+    @Test
+    fun `a tunnel-setup failure aborts teardown with no infrastructure removed`() {
+        whenever(clusterStateManager.exists()).thenReturn(true)
+        whenever(clusterStateManager.load()).thenReturn(upClusterState())
+        // The SOCKS tunnel cannot be established — this must abort the same way a backup failure does,
+        // not escape as a raw stack trace.
+        whenever(socksProxyService.ensureRunning(any()))
+            .thenThrow(RuntimeException("ssh tunnel refused"))
+
+        Down().apply { autoApprove = true }.execute()
+
+        verify(teardownService, never()).teardownVpc(any(), any())
+        assertThat(errorOutput()).contains("no infrastructure was removed")
     }
 }

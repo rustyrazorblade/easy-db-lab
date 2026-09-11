@@ -3930,6 +3930,14 @@ sealed interface Event {
 
             override fun isError(): Boolean = true
         }
+
+        @Serializable
+        @SerialName("Teardown.BackupSkipped")
+        data class BackupSkipped(
+            val reason: String,
+        ) : Teardown {
+            override fun toDisplayString(): String = "Skipping the pre-teardown metrics + annotations backup: $reason"
+        }
     }
 
     // =========================================================================

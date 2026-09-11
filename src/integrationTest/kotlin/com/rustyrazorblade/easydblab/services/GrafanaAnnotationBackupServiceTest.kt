@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
@@ -107,6 +108,44 @@ class GrafanaAnnotationBackupServiceTest : BaseKoinTest() {
         val request = mockWebServer.takeRequest()
         assertThat(request.url.encodedPath).isEqualTo("/api/annotations")
         assertThat(request.method).isEqualTo("GET")
+    }
+
+    @Test
+    fun `backup captures more than Grafana's default page size and requests the high limit`() {
+        // 150 annotations — more than Grafana's default limit of 100. A backup that relied on the
+        // default would capture only the first 100 and report that count as complete.
+        val annotationsJson = (1..150).joinToString(",", "[", "]") { """{"id":$it,"text":"a$it"}""" }
+        mockWebServer.enqueue(MockResponse(code = 200, body = annotationsJson))
+
+        val result = service.backup(controlHost, clusterState("acct-bucket")).getOrThrow()
+
+        // All 150 are captured, not truncated to the default 100.
+        assertThat(result.annotationCount).isEqualTo(150)
+
+        // The request must ask for the high explicit limit rather than relying on Grafana's default.
+        val request = mockWebServer.takeRequest()
+        assertThat(request.url.encodedPath).isEqualTo("/api/annotations")
+        assertThat(request.url.queryParameter("limit"))
+            .isEqualTo(Constants.Grafana.ANNOTATION_FETCH_LIMIT.toString())
+    }
+
+    @Test
+    fun `a response that fills the requested limit fails rather than reporting a truncated backup`() {
+        // Exactly the requested limit came back, so more annotations may exist that this call did not
+        // return. Reporting this as a complete backup would silently drop data.
+        val fullPage =
+            (1..Constants.Grafana.ANNOTATION_FETCH_LIMIT)
+                .joinToString(",", "[", "]") { """{"id":$it}""" }
+        mockWebServer.enqueue(MockResponse(code = 200, body = fullPage))
+
+        val result = service.backup(controlHost, clusterState("acct-bucket"))
+
+        assertThat(result.isFailure).isTrue()
+        assertThat(result.exceptionOrNull())
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("truncated")
+        // Nothing is uploaded, so a truncated capture is never persisted as if it were complete.
+        verify(objectStore, never()).uploadContent(org.mockito.kotlin.any(), org.mockito.kotlin.any())
     }
 
     @Test

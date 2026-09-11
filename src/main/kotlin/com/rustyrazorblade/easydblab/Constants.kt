@@ -514,6 +514,15 @@ object Constants {
          * design in `openspec/changes/issue-939`.
          */
         const val GLOBAL_ANNOTATION_TAG = "easydblab"
+
+        /**
+         * The `limit` sent on `GET /api/annotations` when backing up annotations. Grafana defaults
+         * this to 100 and gives no pagination cursor, so a backup that relied on the default would
+         * silently capture at most 100 annotations. The fetch asks for this high explicit limit
+         * instead, and fails loudly if the response fills it exactly, rather than reporting a
+         * truncated capture as a complete backup. See design in `openspec/changes/issue-939`.
+         */
+        const val ANNOTATION_FETCH_LIMIT = 5000
     }
 
     // Proxy configuration

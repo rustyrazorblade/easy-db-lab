@@ -771,6 +771,8 @@ Back up the cluster's Grafana annotations to an account-level S3 location.
 
 The annotations are the A/B config-change markers worth keeping after the ephemeral cluster is torn down, so the artifact lands outside the per-cluster prefix that teardown expires. The command reports the resulting S3 URI on success. If no S3 bucket is configured, it fails fast with the standard "run `up` first" message.
 
+The backup captures up to 5000 annotations in one call. If the cluster has 5000 or more, the command fails and backs up nothing, rather than persisting the first 5000 as a complete backup. This makes a truncated backup impossible to mistake for a full one.
+
 ```bash
 easy-db-lab grafana backup
 ```

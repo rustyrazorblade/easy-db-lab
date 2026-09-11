@@ -40,6 +40,8 @@ class LogsImport : PicoBaseCommand() {
     var query: String = Constants.Victoria.DEFAULT_LOGS_QUERY
 
     override fun execute() {
+        requireLocalTelemetryStack("logs import")
+
         val controlHost = clusterState.getControlHost()
         if (controlHost == null) {
             eventBus.emit(Event.Logs.NoControlNode)

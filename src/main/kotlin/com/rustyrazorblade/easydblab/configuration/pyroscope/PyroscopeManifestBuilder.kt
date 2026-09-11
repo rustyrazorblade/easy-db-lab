@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.configuration.pyroscope
 
+import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
@@ -55,22 +56,45 @@ class PyroscopeManifestBuilder(
     }
 
     /**
-     * Builds all Pyroscope K8s resources in apply order.
+     * Builds all Pyroscope K8s resources in apply order (server + eBPF agent).
      *
+     * @param telemetryRedirect When non-null, the eBPF agent writes profiles to this external
+     *   stack instead of the in-cluster server. Passing it here keeps [buildAllResources] valid in
+     *   redirect mode even though a redirect cluster normally deploys only [buildAgentResources].
      * @return List of: server ConfigMap, server Service, server Deployment,
      *   eBPF ServiceAccount, eBPF ClusterRole, eBPF ClusterRoleBinding,
      *   eBPF ConfigMap, eBPF DaemonSet
      */
-    fun buildAllResources(): List<HasMetadata> =
+    fun buildAllResources(telemetryRedirect: TelemetryRedirect? = null): List<HasMetadata> =
+        buildServerResources() + buildAgentResources(telemetryRedirect)
+
+    /**
+     * Builds the Pyroscope server resources (ConfigMap, Service, Deployment).
+     *
+     * A redirect cluster ships profiles to an external Pyroscope and never stands up this server,
+     * so the observability stack deploys these only in local mode.
+     */
+    fun buildServerResources(): List<HasMetadata> =
         listOf(
             buildServerConfigMap(),
             buildServerService(),
             buildServerDeployment(),
+        )
+
+    /**
+     * Builds the Grafana Alloy eBPF agent resources (RBAC, ConfigMap, DaemonSet).
+     *
+     * The agent runs on every node in both modes; its write URL is the only thing that changes
+     * under redirect, injected as the DaemonSet's `PYROSCOPE_WRITE_URL` env var by
+     * [buildEbpfDaemonSet].
+     */
+    fun buildAgentResources(telemetryRedirect: TelemetryRedirect? = null): List<HasMetadata> =
+        listOf(
             buildEbpfServiceAccount(),
             buildEbpfClusterRole(),
             buildEbpfClusterRoleBinding(),
             buildEbpfConfigMap(),
-            buildEbpfDaemonSet(),
+            buildEbpfDaemonSet(telemetryRedirect),
         )
 
     /**
@@ -251,6 +275,13 @@ class PyroscopeManifestBuilder(
 
     /**
      * Builds the eBPF agent ConfigMap containing config.alloy.
+     *
+     * config.alloy carries no `__KEY__` placeholders: the cluster name and the Pyroscope write URL
+     * are read at runtime from the `CLUSTER_NAME` and `PYROSCOPE_WRITE_URL` env vars set on the
+     * DaemonSet ([buildEbpfDaemonSet]). This is deliberate — Alloy's own `__meta_kubernetes_*`
+     * labels collide with the `__`/`__` template delimiters, so a build-time substitution of those
+     * two values silently left them unresolved. `substitute()` runs with no resolvable variables
+     * and leaves the Alloy meta labels untouched.
      */
     fun buildEbpfConfigMap() =
         ConfigMapBuilder()
@@ -269,15 +300,30 @@ class PyroscopeManifestBuilder(
             ).build()
 
     /**
+     * The full Pyroscope write URL for the eBPF agent: the external ingest URL under redirect,
+     * otherwise the in-cluster server on the control node.
+     */
+    private fun resolvePyroscopeWriteUrl(telemetryRedirect: TelemetryRedirect?): String {
+        if (telemetryRedirect != null) return telemetryRedirect.profiles
+        val controlNodeIp = templateService.buildContextVariables()["CONTROL_NODE_IP"].orEmpty()
+        return "http://$controlNodeIp:$SERVER_PORT"
+    }
+
+    /**
      * Builds the eBPF agent DaemonSet.
      *
      * Runs Grafana Alloy with pyroscope.ebpf on all nodes (tolerates everything).
      * Requires hostPID and privileged mode for eBPF access. Uses the
      * [EBPF_SERVICE_ACCOUNT_NAME] ServiceAccount so the `discovery.kubernetes`
      * component can list pods and attribute samples to pod/container/service_name.
+     *
+     * The `CLUSTER_NAME` and `PYROSCOPE_WRITE_URL` env vars feed the matching `sys.env(...)` reads
+     * in config.alloy. Under redirect the write URL points at the external Pyroscope.
+     *
+     * @param telemetryRedirect when non-null, profiles are written to [TelemetryRedirect.profiles].
      */
     @Suppress("LongMethod")
-    fun buildEbpfDaemonSet() =
+    fun buildEbpfDaemonSet(telemetryRedirect: TelemetryRedirect? = null) =
         DaemonSetBuilder()
             .withNewMetadata()
             .withName(EBPF_APP_LABEL)
@@ -314,6 +360,14 @@ class PyroscopeManifestBuilder(
             .withFieldPath("spec.nodeName")
             .endFieldRef()
             .endValueFrom()
+            .endEnv()
+            .addNewEnv()
+            .withName("CLUSTER_NAME")
+            .withValue(templateService.buildContextVariables()["CLUSTER_NAME"].orEmpty())
+            .endEnv()
+            .addNewEnv()
+            .withName("PYROSCOPE_WRITE_URL")
+            .withValue(resolvePyroscopeWriteUrl(telemetryRedirect))
             .endEnv()
             .withSecurityContext(
                 SecurityContextBuilder()

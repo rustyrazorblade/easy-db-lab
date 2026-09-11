@@ -4,10 +4,12 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
+import com.rustyrazorblade.easydblab.profiling.pyroscopeIngestBaseUrl
 import io.fabric8.kubernetes.api.model.Container
 import io.fabric8.kubernetes.api.model.ContainerBuilder
 import io.fabric8.kubernetes.api.model.EnvVarBuilder
@@ -387,7 +389,7 @@ class DefaultStressJobService(
                 }.orEmpty()
 
         val stressContainer =
-            buildStressContainer(config, region, controlNodeIp, clusterState.name)
+            buildStressContainer(config, region, controlNodeIp, clusterState.name, clusterState.initConfig?.telemetryRedirect)
         val otelSidecar =
             buildOtelSidecarContainer(config.jobName, config.tags, config.promPort, clusterState.clusterLabelName())
 
@@ -399,8 +401,9 @@ class DefaultStressJobService(
         region: String,
         controlNodeIp: String,
         clusterName: String,
+        telemetryRedirect: TelemetryRedirect?,
     ): Container {
-        val pyroscopeServerAddress = "http://$controlNodeIp:${Constants.K8s.PYROSCOPE_PORT}"
+        val pyroscopeServerAddress = pyroscopeIngestBaseUrl(controlNodeIp, telemetryRedirect)
         val pyroscopeLabels = "cluster=$clusterName,job_name=${config.jobName}"
 
         // Client spans come from here or from nowhere. Cassandra has no OTel server-side

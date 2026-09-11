@@ -76,7 +76,7 @@ class OtelSyncServiceTest : BaseKoinTest() {
         whenever(mockK8sService.applyResource(any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.rolloutRestartDaemonSet(any(), any(), any())).thenReturn(Result.success(Unit))
 
-        service = DefaultOtelSyncService(mockK8sClientProvider, mockK8sService, otelManifestBuilder)
+        service = DefaultOtelSyncService(mockK8sClientProvider, mockK8sService, otelManifestBuilder, getKoin().get())
     }
 
     @Test

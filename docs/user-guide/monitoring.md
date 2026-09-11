@@ -140,3 +140,61 @@ Cloudflare's ebpf_exporter provides kernel-level metrics via eBPF:
 These metrics are scraped by the OTel collector and stored in VictoriaMetrics.
 
 See [Profiling](profiling.md) for continuous profiling with Pyroscope.
+
+## Redirecting Telemetry to an External Stack
+
+By default each cluster stands up its own local observability backends on the control node: VictoriaMetrics, VictoriaLogs, Tempo, the Pyroscope server, and Grafana.  Redirect mode ships all telemetry to an external observability stack instead.  A redirect cluster stands up no local backends and no local Grafana.
+
+Redirect mode is useful when you run several clusters and want one place to view them all.  A common case is a second data center that reports into the first data center's stack.
+
+### Enabling Redirect Mode
+
+Set the redirect target once, at `init`, with `--redirect-telemetry <host>`:
+
+```bash
+easy-db-lab init --redirect-telemetry 10.0.0.9 --up
+```
+
+`<host>` is the hostname or IP of the external stack.  The tool derives the four signal endpoints from that host and the known stack ports:
+
+- Metrics: `http://<host>:8428/api/v1/write` (VictoriaMetrics remote-write)
+- Logs: `http://<host>:9428/insert/opentelemetry` (VictoriaLogs OTLP ingest)
+- Traces: `<host>:4320` (Tempo OTLP gRPC receiver)
+- Profiles: `http://<host>:4040` (Pyroscope ingest)
+
+The traces endpoint uses the OTLP receiver port 4320, not Tempo's query port 3200.
+
+```admonish info
+Redirect mode is a life-of-cluster choice made at `init`.  All four signals move together; you cannot redirect one signal and keep the rest local.  You cannot switch a running cluster between local and redirect mode.
+```
+
+### Overriding Individual Endpoints
+
+If the external stack does not use the easy-db-lab port layout, override any signal.  An override wins over the derived value; the other signals still derive from the base host.
+
+```bash
+easy-db-lab init --redirect-telemetry 10.0.0.9 \
+  --redirect-metrics-endpoint http://metrics.example.com:8428/api/v1/write \
+  --redirect-traces-endpoint tempo.example.com:4320 \
+  --up
+```
+
+The four override options are `--redirect-metrics-endpoint`, `--redirect-logs-endpoint`, `--redirect-traces-endpoint`, and `--redirect-profiles-endpoint`.
+
+### Origin Identity
+
+Every signal carries the source cluster's name as its origin identifier.  Metrics and traces carry a `cluster` label; logs carry a `cluster` field; profiles carry a `cluster` label.  Use that identifier to tell one cluster's telemetry from another on the shared stack.
+
+### Commands That Need the Local Stack
+
+A redirect cluster has no local backends or Grafana to act on.  These commands refuse to run on a redirect cluster and tell you why:
+
+- `grafana update-config`
+- `metrics backup`, `metrics import`, `metrics ls`
+- `logs query`, `logs backup`, `logs import`, `logs ls`
+
+Run these commands against the external stack instead.  Kit dashboards are not installed on a redirect cluster; the dashboards live on the external stack's Grafana.
+
+### Validation
+
+The tool validates the four endpoints for well-formedness at `init` and again at the start of `up`, before it creates any AWS resource.  If a signal endpoint is missing or malformed, the tool names the offending signal and stops without standing anything up.  Validation checks structure only; it does not probe the external stack for reachability.  An unreachable but well-formed endpoint surfaces later as a collector send failure.

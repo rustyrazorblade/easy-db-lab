@@ -398,18 +398,20 @@ processors:
           from: pod
 
 exporters:
+  # Export destinations are substituted at build time by OtelManifestBuilder: the in-cluster
+  # service addresses in local mode, the external stack's endpoints under telemetry redirect.
   prometheusremotewrite:
-    endpoint: http://victoriametrics.default.svc.cluster.local:8428/api/v1/write
+    endpoint: __VICTORIAMETRICS_ENDPOINT__
     tls:
       insecure: true
     resource_to_telemetry_conversion:
       enabled: true
   otlphttp/victorialogs:
-    endpoint: http://victorialogs.default.svc.cluster.local:9428/insert/opentelemetry
+    endpoint: __VICTORIALOGS_ENDPOINT__
     tls:
       insecure: true
   otlp/tempo:
-    endpoint: tempo.default.svc.cluster.local:4320
+    endpoint: __TEMPO_ENDPOINT__
     tls:
       insecure: true
 
@@ -588,7 +590,7 @@ service:
       exporters: [prometheusremotewrite]
     logs/local:
       receivers: [filelog/system, filelog/tools, filelog/cassandra]
-      processors: [resourcedetection, k8sattributes, transform/add_service_name, batch]
+      processors: [resource/cluster, resourcedetection, k8sattributes, transform/add_service_name, batch]
       exporters: [otlphttp/victorialogs]
     logs/containers:
       receivers: [filelog/containers, filelog/clickhouse-containers]
@@ -601,7 +603,7 @@ service:
     # the attributes it writes.
     logs/otlp:
       receivers: [otlp]
-      processors: [resource/drop_sdk_metadata, transform/add_service_name, transform/log_metric_labels, batch]
+      processors: [resource/cluster, resource/drop_sdk_metadata, transform/add_service_name, transform/log_metric_labels, batch]
       exporters: [otlphttp/victorialogs, count, signaltometrics]
     # Metrics derived from those logs. resource/cluster stamps the cluster label, as on every other
     # metrics pipeline.
@@ -616,11 +618,16 @@ service:
       receivers: [otlp, jaeger]
       processors: [resource/cluster, batch]
       exporters: [otlp/tempo, spanmetrics, servicegraph]
+    # resource/cluster is re-applied here rather than inherited from the traces pipeline: the
+    # spanmetrics connector's resource_metrics_key_attributes ([service.name]) copies only
+    # service.name onto the derived metrics' resource, dropping the cluster attribute the spans
+    # carried. Re-stamping from ${env:CLUSTER_NAME} keeps origin identity on span-derived metrics
+    # consistent with every other metrics pipeline, so two clusters stay distinguishable.
     metrics/spanmetrics:
       receivers: [spanmetrics]
-      processors: [batch]
+      processors: [resource/cluster, batch]
       exporters: [prometheusremotewrite]
     metrics/servicegraph:
       receivers: [servicegraph]
-      processors: [batch]
+      processors: [resource/cluster, batch]
       exporters: [prometheusremotewrite]

@@ -6,7 +6,6 @@ import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.annotations.TriggerBackup
 import com.rustyrazorblade.easydblab.commands.cassandra.WriteConfig
-import com.rustyrazorblade.easydblab.commands.grafana.GrafanaUpdateConfig
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.commands.tailscale.TailscaleStart
 import com.rustyrazorblade.easydblab.configuration.Arch
@@ -38,6 +37,7 @@ import com.rustyrazorblade.easydblab.services.K3sClusterService
 import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.LocalTailscaleClient
 import com.rustyrazorblade.easydblab.services.LocalTailscaleState
+import com.rustyrazorblade.easydblab.services.ObservabilityStackService
 import com.rustyrazorblade.easydblab.services.OptionalServicesConfig
 import com.rustyrazorblade.easydblab.services.ProvisioningCallbacks
 import com.rustyrazorblade.easydblab.services.ProvisioningResult
@@ -98,6 +98,7 @@ class Up(
     private val k3sClusterService: K3sClusterService by inject()
     private val ciliumService: CiliumService by inject()
     private val k8sService: K8sService by inject()
+    private val observabilityStackService: ObservabilityStackService by inject()
     private val registryService: RegistryService by inject()
     private val socksProxyService: SocksProxyService by inject()
     private val commandExecutor: CommandExecutor by inject()
@@ -129,6 +130,7 @@ class Up(
                 ?: error("No init config found. Please run 'easy-db-lab init' first.")
 
         validateControlNodeConfigured(initConfig)
+        validateTelemetryRedirect(initConfig)
         validateLocalTailscaleConnected()
 
         configureAccountS3Bucket()
@@ -154,6 +156,25 @@ class Up(
             error(
                 "A control node is required to provision a cluster " +
                     "(configured control instances: ${initConfig.controlInstances}).",
+            )
+        }
+    }
+
+    /**
+     * Re-validates the telemetry redirect endpoints before any AWS resource is provisioned.
+     *
+     * [Init] already validates at init time, but state.json can be hand-edited between init and up.
+     * Re-checking here defends that path: a redirect cluster must fail fast, naming the offending
+     * signal, and stand up nothing — never a partial or mixed local/external stack. Well-formedness
+     * only; unreachable-but-well-formed endpoints surface later as collector send failures.
+     */
+    private fun validateTelemetryRedirect(initConfig: InitConfig) {
+        val offending = initConfig.telemetryRedirect?.validate().orEmpty()
+        if (offending.isNotEmpty()) {
+            eventBus.emit(Event.Provision.TelemetryRedirectInvalid(offending))
+            error(
+                "Telemetry redirect endpoints are missing or malformed for: " +
+                    "${offending.joinToString(", ")}.",
             )
         }
     }
@@ -830,7 +851,15 @@ class Up(
         k8sService.ensureLocalStorageClass(controlHosts.first()).getOrThrow()
         k8sService.ensureLocalStorageWfcClass(controlHosts.first()).getOrThrow()
 
-        runNestedCommand { GrafanaUpdateConfig() }
+        // Bring-up drives the observability stack service directly rather than the
+        // `grafana update-config` command: on a redirect cluster that command refuses, but bring-up
+        // must still deploy the collectors pointed at the external stack. The service is the shared
+        // deploy path; the command is the operator-facing local-stack reconfigure wrapper.
+        observabilityStackService
+            .deploy(controlHosts.first(), workingState.initConfig?.telemetryRedirect)
+            .getOrElse { exception ->
+                error("Observability stack deployment failed during provisioning: ${exception.message}")
+            }
     }
 
     /**

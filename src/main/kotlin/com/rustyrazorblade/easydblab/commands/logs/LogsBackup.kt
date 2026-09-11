@@ -37,6 +37,8 @@ class LogsBackup : PicoBaseCommand() {
     var dest: String? = null
 
     override fun execute() {
+        requireLocalTelemetryStack("logs backup")
+
         val controlHost = clusterState.getControlHost()
         if (controlHost == null) {
             eventBus.emit(Event.Logs.NoControlNode)

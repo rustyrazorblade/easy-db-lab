@@ -92,7 +92,7 @@ class SetupInstance : PicoBaseCommand() {
                     loopInterval = Constants.Profiling.DEFAULT_LOOP_INTERVAL,
                     retentionMinutes = Constants.Profiling.DEFAULT_RETENTION_MINUTES,
                     maxBytes = Constants.Profiling.DEFAULT_MAX_BYTES,
-                    pyroscopeUrl = pyroscopeIngestBaseUrl(controlNodeIp),
+                    pyroscopeUrl = pyroscopeIngestBaseUrl(controlNodeIp, clusterState.initConfig?.telemetryRedirect),
                     clusterName = clusterName,
                     updatedAt = Instant.now().toString(),
                 ),

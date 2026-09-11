@@ -29,6 +29,8 @@ class LogsLs : PicoBaseCommand() {
     private val objectStore: ObjectStore by inject()
 
     override fun execute() {
+        requireLocalTelemetryStack("logs ls")
+
         val files = objectStore.listFiles(clusterState.s3Path().victoriaLogs(), recursive = true)
 
         if (files.isEmpty()) {

@@ -69,7 +69,7 @@ discovery.relabel "ebpf_targets" {
   }
   rule {
     target_label = "cluster"
-    replacement   = "__CLUSTER_NAME__"
+    replacement   = sys.env("CLUSTER_NAME")
   }
 }
 
@@ -84,10 +84,14 @@ pyroscope.ebpf "instance" {
   python_enabled   = false
 }
 
-// Send profiles to Pyroscope server on the control node
+// Send profiles to the Pyroscope server. The write URL comes from the PYROSCOPE_WRITE_URL env var
+// set on the DaemonSet: local mode resolves it to the control node; a redirect cluster resolves it
+// to the external stack's Pyroscope ingest URL. It is read from the environment rather than
+// substituted into this file because Alloy's own `__meta_kubernetes_*` labels collide with the
+// `__KEY__` template delimiters.
 pyroscope.write "endpoint" {
   endpoint {
-    url = "http://__CONTROL_NODE_IP__:4040"
+    url = sys.env("PYROSCOPE_WRITE_URL")
   }
 }
 

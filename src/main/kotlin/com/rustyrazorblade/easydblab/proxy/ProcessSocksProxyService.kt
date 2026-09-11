@@ -300,8 +300,7 @@ class ProcessSocksProxyService(
      * The loopback addresses `ssh -D` binds: the IPv4 and IPv6 loopback. Both are resolved from their
      * literal forms, so neither depends on name resolution.
      */
-    private fun loopbackProbeAddresses(): List<InetAddress> =
-        listOf(InetAddress.getByName("127.0.0.1"), InetAddress.getByName("::1"))
+    private fun loopbackProbeAddresses(): List<InetAddress> = listOf(InetAddress.getByName("127.0.0.1"), InetAddress.getByName("::1"))
 
     private fun applySystemProperties(port: Int) {
         // Publish ONLY the port under our private property. Never set socksProxyHost/socksProxyPort:

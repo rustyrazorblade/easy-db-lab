@@ -3339,6 +3339,19 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Provision.ClusterConfigMapFailed")
+        data class ClusterConfigMapFailed(
+            val reason: String,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "Failed to create the cluster-config ConfigMap: $reason. This ConfigMap carries the " +
+                    "cluster identity every telemetry signal is labeled with, so provisioning cannot " +
+                    "continue without it."
+
+            override fun isError(): Boolean = true
+        }
+
+        @Serializable
         @SerialName("Provision.S3BucketRequired")
         data class S3BucketRequired(
             val clusterName: String,

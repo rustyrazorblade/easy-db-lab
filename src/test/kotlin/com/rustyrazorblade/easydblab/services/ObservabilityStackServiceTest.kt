@@ -16,6 +16,10 @@ import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBu
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.victoria.VictoriaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.yace.YaceManifestBuilder
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.ConfigMapList
@@ -204,5 +208,33 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
 
         // Readiness is still gated on the applied collectors coming up.
         verify(mockK8sService).waitForPodsReady(any(), any())
+    }
+
+    @Test
+    fun `a cluster-config ConfigMap failure aborts the deploy and reports the failure`() {
+        // The cluster-config ConfigMap is the source of the `cluster` label every signal ships with.
+        // If it cannot be created, provisioning must fail loudly rather than report success over a
+        // broken origin-identity mechanism that would leave two DCs indistinguishable on one Grafana.
+        val emitted = mutableListOf<Event>()
+        getKoin().get<EventBus>().addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    emitted += envelope.event
+                }
+
+                override fun close() = Unit
+            },
+        )
+        whenever(mockK8sService.createConfigMap(any(), any(), any(), any(), any()))
+            .thenReturn(Result.failure(RuntimeException("apiserver rejected the ConfigMap")))
+
+        val result = service.deploy(controlNode, telemetryRedirect = null)
+
+        assertThat(result.isFailure).isTrue()
+        val failure = emitted.filterIsInstance<Event.Provision.ClusterConfigMapFailed>().single()
+        assertThat(failure.reason).contains("apiserver rejected the ConfigMap")
+        assertThat(failure.isError()).isTrue()
+        // Nothing was applied: the abort happens before any manifest reaches the cluster.
+        verify(mockK8sService, never()).applyResource(any(), any<HasMetadata>())
     }
 }

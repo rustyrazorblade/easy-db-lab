@@ -244,7 +244,12 @@ class DefaultObservabilityStackService(
                 data = configData,
                 labels = mapOf("app.kubernetes.io/managed-by" to "easy-db-lab"),
             ).getOrElse { exception ->
-                log.warn { "Failed to create cluster-config ConfigMap: ${exception.message}" }
+                // The cluster-config ConfigMap is the source of the `cluster` label every signal
+                // ships with (origin identity). If it is missing, metrics/logs/traces/profiles
+                // ship unlabeled and two DCs become indistinguishable on one Grafana — so fail
+                // fast rather than report a successful `up` over a broken identity mechanism.
+                eventBus.emit(Event.Provision.ClusterConfigMapFailed(exception.message ?: exception.toString()))
+                error("Failed to create cluster-config ConfigMap: ${exception.message}")
             }
     }
 }

@@ -78,7 +78,7 @@ class ProfilingStop : ProfilingHostCommand() {
             loopInterval = Constants.Profiling.DEFAULT_LOOP_INTERVAL,
             retentionMinutes = Constants.Profiling.DEFAULT_RETENTION_MINUTES,
             maxBytes = Constants.Profiling.DEFAULT_MAX_BYTES,
-            pyroscopeUrl = pyroscopeIngestBaseUrl(controlNodePrivateIp()),
+            pyroscopeUrl = pyroscopeIngestBaseUrl(controlNodePrivateIp(), clusterState.initConfig?.telemetryRedirect),
             clusterName = clusterState.clusterLabelName(),
             updatedAt = Instant.now().toString(),
         )

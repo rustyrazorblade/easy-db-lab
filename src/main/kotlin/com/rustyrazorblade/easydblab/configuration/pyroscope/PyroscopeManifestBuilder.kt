@@ -310,6 +310,21 @@ class PyroscopeManifestBuilder(
     }
 
     /**
+     * The `cluster` label every eBPF profile carries — the origin-identity mechanism that keeps two
+     * redirected clusters apart on one shared stack. Fail fast rather than let it degrade to an empty
+     * label: an unlabeled profile stream defeats the whole point of redirect. Never blank for a real
+     * cluster, since it is `"$name-$clusterId"`.
+     */
+    private fun resolveClusterName(): String {
+        val clusterName = templateService.buildContextVariables()["CLUSTER_NAME"].orEmpty()
+        check(clusterName.isNotBlank()) {
+            "CLUSTER_NAME is blank; eBPF profiles would ship with no cluster label, making a " +
+                "redirected cluster indistinguishable from another on the shared observability stack."
+        }
+        return clusterName
+    }
+
+    /**
      * Builds the eBPF agent DaemonSet.
      *
      * Runs Grafana Alloy with pyroscope.ebpf on all nodes (tolerates everything).
@@ -363,7 +378,7 @@ class PyroscopeManifestBuilder(
             .endEnv()
             .addNewEnv()
             .withName("CLUSTER_NAME")
-            .withValue(templateService.buildContextVariables()["CLUSTER_NAME"].orEmpty())
+            .withValue(resolveClusterName())
             .endEnv()
             .addNewEnv()
             .withName("PYROSCOPE_WRITE_URL")

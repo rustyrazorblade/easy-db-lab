@@ -44,6 +44,7 @@ import com.rustyrazorblade.easydblab.commands.cassandra.stress.StressStop
 import com.rustyrazorblade.easydblab.commands.exec.ExecList
 import com.rustyrazorblade.easydblab.commands.exec.ExecRun
 import com.rustyrazorblade.easydblab.commands.exec.ExecStop
+import com.rustyrazorblade.easydblab.commands.grafana.GrafanaAnnotate
 import com.rustyrazorblade.easydblab.commands.grafana.GrafanaUpdateConfig
 import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearchStart
 import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearchStatus
@@ -120,6 +121,7 @@ val commandsModule =
         factory { StressStop() }
 
         // Grafana subcommands
+        factory { GrafanaAnnotate() }
         factory { GrafanaUpdateConfig() }
 
         // OpenSearch subcommands

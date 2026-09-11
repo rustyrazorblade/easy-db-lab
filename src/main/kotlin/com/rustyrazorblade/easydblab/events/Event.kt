@@ -2393,6 +2393,20 @@ sealed interface Event {
         ) : Grafana {
             override fun toDisplayString(): String = "Restarted $kind/$name"
         }
+
+        @Serializable
+        @SerialName("Grafana.AnnotationCreated")
+        data class AnnotationCreated(
+            val id: Long,
+            val text: String,
+            val tags: List<String>,
+            val time: Long,
+        ) : Grafana {
+            override fun toDisplayString(): String {
+                val tagPart = if (tags.isEmpty()) "" else " [${tags.joinToString(", ")}]"
+                return "Created Grafana annotation #$id at $time: \"$text\"$tagPart"
+            }
+        }
     }
 
     // =========================================================================
@@ -2584,6 +2598,24 @@ sealed interface Event {
             override fun toDisplayString(): String = "Warning: Incremental backup failed: $error"
 
             override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        @SerialName("Backup.GrafanaAnnotationsBackupStarting")
+        data class GrafanaAnnotationsBackupStarting(
+            val s3Path: String,
+        ) : Backup {
+            override fun toDisplayString(): String = "Backing up Grafana annotations to $s3Path..."
+        }
+
+        @Serializable
+        @SerialName("Backup.GrafanaAnnotationsBackupComplete")
+        data class GrafanaAnnotationsBackupComplete(
+            val s3Path: String,
+            val annotationCount: Int,
+        ) : Backup {
+            override fun toDisplayString(): String =
+                "Grafana annotations backup completed ($annotationCount annotations): $s3Path"
         }
     }
 

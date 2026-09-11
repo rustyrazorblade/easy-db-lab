@@ -102,6 +102,7 @@ class McpToolNamespacingTest : BaseKoinTest() {
         assertThat(toolNames).contains("status")
         assertThat(toolNames).contains("cassandra_start")
         assertThat(toolNames).contains("cassandra_stress_start")
+        assertThat(toolNames).contains("grafana_annotate")
     }
 
     @Test

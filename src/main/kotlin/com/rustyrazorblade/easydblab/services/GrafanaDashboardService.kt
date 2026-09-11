@@ -18,6 +18,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
+import java.io.IOException
 
 /**
  * Service for managing Grafana dashboard manifests.
@@ -54,6 +55,37 @@ interface GrafanaDashboardService {
         controlHost: ClusterHost,
         folderName: String,
     ): Result<Unit>
+
+    /**
+     * Creates a Grafana annotation via `POST /api/annotations` on the control node.
+     *
+     * The call goes over the injected proxied [OkHttpClient]. It throws (it does NOT return a
+     * failure Result) on a non-2xx response or an unreachable endpoint, with a message naming the
+     * Grafana annotation endpoint. This satisfies the acceptance criterion that `grafana annotate`
+     * fails non-zero when Grafana cannot be reached.
+     *
+     * @param controlHost The control node running the Grafana instance.
+     * @param annotation The annotation to create.
+     * @return The Grafana response carrying the created annotation id.
+     * @throws IllegalStateException on a non-2xx response or an unreachable endpoint.
+     */
+    fun createAnnotation(
+        controlHost: ClusterHost,
+        annotation: GrafanaAnnotationRequest,
+    ): GrafanaAnnotationResponse
+
+    /**
+     * Fetches all Grafana annotations via `GET /api/annotations` on the control node.
+     *
+     * Returns the raw JSON response body verbatim so the backup artifact preserves exactly what
+     * Grafana returns. It throws on a non-2xx response or an unreachable endpoint, with a message
+     * naming the Grafana annotation endpoint.
+     *
+     * @param controlHost The control node running the Grafana instance.
+     * @return The raw JSON array of annotations as returned by Grafana.
+     * @throws IllegalStateException on a non-2xx response or an unreachable endpoint.
+     */
+    fun fetchAnnotations(controlHost: ClusterHost): String
 }
 
 /**
@@ -75,6 +107,16 @@ class DefaultGrafanaDashboardService(
         private const val DATASOURCES_CONFIGMAP_NAME = "grafana-datasources"
         private const val DEFAULT_NAMESPACE = "default"
         private val JSON_MEDIA_TYPE = "application/json".toMediaType()
+
+        /**
+         * JSON codec for annotation payloads. Null fields are dropped so a global annotation sends
+         * only the fields it sets, and unknown fields on decode are ignored for forward tolerance.
+         */
+        private val annotationJson =
+            Json {
+                explicitNulls = false
+                ignoreUnknownKeys = true
+            }
     }
 
     override fun createDatasourcesConfigMap(controlHost: ClusterHost): Result<Unit> {
@@ -145,6 +187,47 @@ class DefaultGrafanaDashboardService(
             }
             eventBus.emit(Event.Grafana.DashboardInstalled(title = title))
         }
+
+    override fun createAnnotation(
+        controlHost: ClusterHost,
+        annotation: GrafanaAnnotationRequest,
+    ): GrafanaAnnotationResponse {
+        val endpoint = annotationsEndpoint(controlHost)
+        val body = annotationJson.encodeToString(annotation).toRequestBody(JSON_MEDIA_TYPE)
+        val request = Request.Builder().url(endpoint).post(body).build()
+        val bodyStr =
+            try {
+                okHttpClient.newCall(request).execute().use { response ->
+                    val responseBody = response.body.string()
+                    if (!response.isSuccessful) {
+                        error("Grafana annotation API at $endpoint returned ${response.code}: $responseBody")
+                    }
+                    responseBody
+                }
+            } catch (e: IOException) {
+                throw IllegalStateException("Failed to reach Grafana annotation API at $endpoint: ${e.message}", e)
+            }
+        return annotationJson.decodeFromString<GrafanaAnnotationResponse>(bodyStr)
+    }
+
+    override fun fetchAnnotations(controlHost: ClusterHost): String {
+        val endpoint = annotationsEndpoint(controlHost)
+        val request = Request.Builder().url(endpoint).get().build()
+        return try {
+            okHttpClient.newCall(request).execute().use { response ->
+                val responseBody = response.body.string()
+                if (!response.isSuccessful) {
+                    error("Grafana annotation API at $endpoint returned ${response.code}: $responseBody")
+                }
+                responseBody
+            }
+        } catch (e: IOException) {
+            throw IllegalStateException("Failed to reach Grafana annotation API at $endpoint: ${e.message}", e)
+        }
+    }
+
+    private fun annotationsEndpoint(controlHost: ClusterHost): String =
+        "http://${controlHost.privateIp}:${Constants.K8s.GRAFANA_PORT}/api/annotations"
 
     private fun findOrCreateFolder(
         controlHost: ClusterHost,

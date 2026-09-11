@@ -2,16 +2,16 @@
 
 ## 1. Grafana HTTP annotation types and service methods
 
-- [ ] 1.1 Add kotlinx.serialization types: `GrafanaAnnotationRequest` (text, tags, time?, timeEnd?, dashboardUID?, panelId?) and the annotation response shape returned by `GET`/`POST /api/annotations`.
-- [ ] 1.2 Add `createAnnotation(...)` and `fetchAnnotations(...)` to `GrafanaDashboardService`, reusing its injected `OkHttpClient`. `createAnnotation` throws on a non-2xx or unreachable endpoint with a message naming the endpoint.
-- [ ] 1.3 Add a PicoCLI converter under `commands/converters/` that parses a human `--time` string to epoch milliseconds, defaulting to now.
+- [x] 1.1 Add kotlinx.serialization types: `GrafanaAnnotationRequest` (text, tags, time?, timeEnd?, dashboardUID?, panelId?) and the annotation response shape returned by `GET`/`POST /api/annotations`.
+- [x] 1.2 Add `createAnnotation(...)` and `fetchAnnotations(...)` to `GrafanaDashboardService`, reusing its injected `OkHttpClient`. `createAnnotation` throws on a non-2xx or unreachable endpoint with a message naming the endpoint.
+- [x] 1.3 Add a PicoCLI converter under `commands/converters/` that parses a human `--time` string to epoch milliseconds, defaulting to now.
 
 ## 2. `grafana annotate` command
 
-- [ ] 2.1 Add `commands/grafana/GrafanaAnnotate.kt` (`@RequiresProxy`, `@McpCommand`, `@RequireProfileSetup`) with `--text`, `--tags`, `--time`, `--time-end`, `--dashboard`, `--panel`. Named options only.
-- [ ] 2.2 Register the command in the `Grafana` parent `subcommands` list and the Koin commands module.
-- [ ] 2.3 Emit `Event.Grafana.AnnotationCreated` (structured fields, identifying the annotation) on success; ensure a non-zero exit on an unreachable API (no failure-event-and-return-0).
-- [ ] 2.4 Tests: annotate with defaults, with explicit time + tags, with a dashboard/panel scope, and the unreachable-endpoint non-zero-exit path.
+- [x] 2.1 Add `commands/grafana/GrafanaAnnotate.kt` (`@RequiresProxy`, `@McpCommand`, `@RequireProfileSetup`) with `--text`, `--tags`, `--time`, `--time-end`, `--dashboard`, `--panel`. Named options only.
+- [x] 2.2 Register the command in the `Grafana` parent `subcommands` list and the Koin commands module.
+- [x] 2.3 Emit `Event.Grafana.AnnotationCreated` (structured fields, identifying the annotation) on success; ensure a non-zero exit on an unreachable API (no failure-event-and-return-0).
+- [x] 2.4 Tests: annotate with defaults, with explicit time + tags, with a dashboard/panel scope, and the unreachable-endpoint non-zero-exit path.
 
 ## 3. Tag-based annotation query on core dashboards
 

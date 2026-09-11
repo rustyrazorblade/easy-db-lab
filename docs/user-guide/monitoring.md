@@ -130,7 +130,7 @@ easy-db-lab grafana annotate --text "raised concurrent_writes to 128" --tags con
 easy-db-lab grafana annotate --text "load test" --tags test --time -30m --time-end now
 ```
 
-A global marker (no `--dashboard`/`--panel` scope) that carries the agreed tag renders on the core dashboards through their provisioned annotation query. See [Command Reference](../reference/commands.md#grafana-annotate) for all options.
+A plain global marker (no `--dashboard` and no `--panel` scope) is automatically tagged `easydblab`, in addition to any `--tags` you pass, so it renders on the core dashboards through their tag-filtered annotation query. A scoped marker (`--dashboard` or `--panel`) is not auto-tagged; it renders on its target dashboard. See [Command Reference](../reference/commands.md#grafana-annotate) for all options.
 
 ### Backing up annotations
 

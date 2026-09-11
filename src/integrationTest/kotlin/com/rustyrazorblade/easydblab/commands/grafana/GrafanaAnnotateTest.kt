@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.commands.grafana
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -142,7 +143,7 @@ class GrafanaAnnotateTest : BaseKoinTest() {
     }
 
     @Test
-    fun `annotate with explicit time and tags posts both`() {
+    fun `annotate with explicit time and tags posts both plus the global tag`() {
         mockWebServer.enqueue(MockResponse(code = 200, body = """{"id":7,"message":"Annotation added"}"""))
 
         val command = GrafanaAnnotate()
@@ -153,17 +154,37 @@ class GrafanaAnnotateTest : BaseKoinTest() {
 
         val body = Json.parseToJsonElement(requireNotNull(mockWebServer.takeRequest().body).utf8()).jsonObject
         assertThat(body["time"]?.jsonPrimitive?.content).isEqualTo("1767225600000")
+        // This annotation is global (no dashboard/panel scope), so the fixed global tag is appended
+        // to the operator's tags, preserving their order.
         val postedTags = body["tags"]?.jsonArray?.map { it.jsonPrimitive.content }
-        assertThat(postedTags).containsExactly("ab-marker", "cassandra")
+        assertThat(postedTags).containsExactly("ab-marker", "cassandra", Constants.Grafana.GLOBAL_ANNOTATION_TAG)
     }
 
     @Test
-    fun `annotate with dashboard and panel scope posts the scope fields`() {
+    fun `a global annotate auto-applies the global tag and de-dupes when the user passed it`() {
+        mockWebServer.enqueue(MockResponse(code = 200, body = """{"id":11,"message":"Annotation added"}"""))
+
+        val command = GrafanaAnnotate()
+        command.text = "global"
+        command.time = 1767225600000L
+        // The operator already passed the global tag; it must appear exactly once, not twice.
+        command.tags = listOf(Constants.Grafana.GLOBAL_ANNOTATION_TAG, "cassandra")
+        command.execute()
+
+        val body = Json.parseToJsonElement(requireNotNull(mockWebServer.takeRequest().body).utf8()).jsonObject
+        val postedTags = body["tags"]?.jsonArray?.map { it.jsonPrimitive.content }
+        assertThat(postedTags).containsExactly(Constants.Grafana.GLOBAL_ANNOTATION_TAG, "cassandra")
+        assertThat(postedTags?.count { it == Constants.Grafana.GLOBAL_ANNOTATION_TAG }).isEqualTo(1)
+    }
+
+    @Test
+    fun `annotate with dashboard and panel scope posts the scope fields and does not auto-add the global tag`() {
         mockWebServer.enqueue(MockResponse(code = 200, body = """{"id":9,"message":"Annotation added"}"""))
 
         val command = GrafanaAnnotate()
         command.text = "scoped"
         command.time = 1767225600000L
+        command.tags = listOf("cassandra")
         command.dashboardUid = "abc123"
         command.panelId = 5
         command.execute()
@@ -171,6 +192,11 @@ class GrafanaAnnotateTest : BaseKoinTest() {
         val body = Json.parseToJsonElement(requireNotNull(mockWebServer.takeRequest().body).utf8()).jsonObject
         assertThat(body["dashboardUID"]?.jsonPrimitive?.content).isEqualTo("abc123")
         assertThat(body["panelId"]?.jsonPrimitive?.content).isEqualTo("5")
+        // A scoped annotation renders on its target dashboard, so the global tag is NOT auto-added;
+        // only the operator's own tags are sent.
+        val postedTags = body["tags"]?.jsonArray?.map { it.jsonPrimitive.content }
+        assertThat(postedTags).containsExactly("cassandra")
+        assertThat(postedTags).doesNotContain(Constants.Grafana.GLOBAL_ANNOTATION_TAG)
     }
 
     @Test

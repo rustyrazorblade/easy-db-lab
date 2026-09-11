@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.commands.grafana
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
@@ -18,7 +19,8 @@ import picocli.CommandLine.Option
  *
  * Operators use this to drop an A/B config-change marker on the dashboards' timeline, for example
  * before and after changing a Cassandra setting. A global marker (no `--dashboard`/`--panel` scope)
- * carrying the agreed tag renders on the core dashboards via their provisioned annotation query.
+ * is automatically tagged with [Constants.Grafana.GLOBAL_ANNOTATION_TAG] so it renders on the core
+ * dashboards via their tag-filtered annotation query; a scoped marker renders on its target dashboard.
  *
  * The command reaches Grafana over the proxied HTTP client, so it carries `@RequiresProxy`. If the
  * Grafana API cannot be reached, [GrafanaDashboardService.createAnnotation] throws and the command
@@ -71,10 +73,12 @@ class GrafanaAnnotate : PicoBaseCommand() {
             clusterState.hosts[ServerType.Control]?.firstOrNull()
                 ?: error("No control node found in cluster state.")
 
+        val effectiveTags = effectiveTags()
+
         val annotation =
             GrafanaAnnotationRequest(
                 text = text,
-                tags = tags,
+                tags = effectiveTags,
                 time = time,
                 timeEnd = timeEnd,
                 dashboardUID = dashboardUid,
@@ -87,9 +91,24 @@ class GrafanaAnnotate : PicoBaseCommand() {
             Event.Grafana.AnnotationCreated(
                 id = response.id,
                 text = text,
-                tags = tags,
+                tags = effectiveTags,
                 time = time,
             ),
         )
+    }
+
+    /**
+     * The tags sent to Grafana. A GLOBAL annotation (no `--dashboard` and no `--panel` scope) gets
+     * the fixed global tag appended so it renders on the core dashboards' tag-filtered annotation
+     * query; the tag is de-duplicated if the operator already passed it. A scoped annotation renders
+     * on its own dashboard, so it carries only the operator's tags.
+     */
+    private fun effectiveTags(): List<String> {
+        val isGlobal = dashboardUid == null && panelId == null
+        return if (isGlobal) {
+            (tags + Constants.Grafana.GLOBAL_ANNOTATION_TAG).distinct()
+        } else {
+            tags
+        }
     }
 }

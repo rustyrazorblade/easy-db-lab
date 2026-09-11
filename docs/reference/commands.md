@@ -750,7 +750,7 @@ easy-db-lab dashboards upload
 
 Create a Grafana annotation on the running cluster. Use it to drop an A/B config-change marker on the dashboards' timeline; for example, before and after a Cassandra setting change.
 
-A global marker (no `--dashboard`/`--panel` scope) that carries the agreed tag renders on the core dashboards through their provisioned annotation query. The command reaches Grafana over the SOCKS proxy. If the Grafana API is unreachable, the command exits non-zero and names the endpoint.
+A plain global marker (no `--dashboard` and no `--panel` scope) is automatically tagged `easydblab`, in addition to any `--tags` you pass, so it renders on the core dashboards through their tag-filtered annotation query. A scoped marker (`--dashboard` or `--panel`) is not auto-tagged; it renders on its target dashboard. The command reaches Grafana over the SOCKS proxy. If the Grafana API is unreachable, the command exits non-zero and names the endpoint.
 
 ```bash
 easy-db-lab grafana annotate --text "raised concurrent_writes to 128" --tags config

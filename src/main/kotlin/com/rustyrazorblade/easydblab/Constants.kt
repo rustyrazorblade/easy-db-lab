@@ -504,6 +504,18 @@ object Constants {
         const val TEARDOWN_METRICS_BACKUP_TIMEOUT_SECONDS = 120L
     }
 
+    // Grafana configuration
+    object Grafana {
+        /**
+         * Tag auto-applied to every GLOBAL (unscoped) annotation created via `grafana annotate`, in
+         * addition to any operator-supplied tags. The core dashboards' annotation query filters on
+         * this tag so global markers render on their timelines. Scoped annotations
+         * (`--dashboard`/`--panel`) are NOT auto-tagged; they render on their target dashboard. See
+         * design in `openspec/changes/issue-939`.
+         */
+        const val GLOBAL_ANNOTATION_TAG = "easydblab"
+    }
+
     // Proxy configuration
     object Proxy {
         const val DEFAULT_SOCKS5_PORT = 1080

@@ -116,6 +116,32 @@ Latency arrives as pre-aggregated percentile gauges read from Cassandra's own `E
 the same reservoir `nodetool proxyhistograms` prints. `histogram_quantile()` does not apply to them,
 and they cannot be re-aggregated into a cluster-wide percentile.
 
+## Annotations
+
+Annotations mark a moment on the dashboards' timeline. Use them as A/B config-change markers; for example, drop one before and one after you change a Cassandra setting, so a latency shift lines up with the change that caused it.
+
+Create an annotation with `grafana annotate`:
+
+```bash
+# A point marker at the current time
+easy-db-lab grafana annotate --text "raised concurrent_writes to 128" --tags config
+
+# A region marker spanning a window
+easy-db-lab grafana annotate --text "load test" --tags test --time -30m --time-end now
+```
+
+A global marker (no `--dashboard`/`--panel` scope) that carries the agreed tag renders on the core dashboards through their provisioned annotation query. See [Command Reference](../reference/commands.md#grafana-annotate) for all options.
+
+### Backing up annotations
+
+The cluster is ephemeral, but the annotations are worth keeping. Back them up to an account-level S3 location that teardown does not expire:
+
+```bash
+easy-db-lab grafana backup
+```
+
+This backup also runs automatically before teardown. When you run `easy-db-lab down`, the tool backs up the metrics and the annotations first, before it removes any infrastructure. If that backup fails, `down` aborts and removes nothing, so you can fix the problem and retry. Pass `--force` to skip the backup and tear down anyway. See [`down`](../reference/commands.md#down) for details.
+
 ## eBPF Observability
 
 The cluster deploys eBPF-based agents on all nodes for deep system observability:

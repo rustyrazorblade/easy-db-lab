@@ -35,11 +35,11 @@
 
 ## 6. Documentation
 
-- [ ] 6.1 Document `grafana annotate` and `grafana backup` in the Grafana commands reference.
-- [ ] 6.2 Document the automatic backup at `down`, the abort-on-failure behavior, and `down --force`.
+- [x] 6.1 Document `grafana annotate` and `grafana backup` in the Grafana commands reference.
+- [x] 6.2 Document the automatic backup at `down`, the abort-on-failure behavior, and `down --force`.
 
 ## 7. Validation
 
-- [ ] 7.1 `./gradlew ktlintFormat detekt` clean (detekt on JDK 21).
-- [ ] 7.2 `./gradlew test` green; `./gradlew integrationTest` green for the new K3s-backed tests.
-- [ ] 7.3 Confirm no SOCKS JVM globals are touched; the proxied client uses the per-client SOCKS path.
+- [x] 7.1 `./gradlew ktlintFormat detekt` clean (detekt on JDK 21).
+- [x] 7.2 `./gradlew test` green; `./gradlew integrationTest` green for the new K3s-backed tests.
+- [x] 7.3 Confirm no SOCKS JVM globals are touched; the proxied client uses the per-client SOCKS path.

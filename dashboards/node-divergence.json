@@ -12,6 +12,25 @@
         "iconColor": "rgba(0, 211, 255, 1)",
         "name": "Annotations & Alerts",
         "type": "dashboard"
+      },
+      {
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "green",
+        "name": "easy-db-lab markers",
+        "target": {
+          "limit": 100,
+          "matchAny": false,
+          "tags": [
+            "easydblab"
+          ],
+          "type": "tags"
+        },
+        "type": "tags"
       }
     ]
   },

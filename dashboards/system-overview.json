@@ -1,6 +1,26 @@
 {
   "annotations": {
-    "list": []
+    "list": [
+      {
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "green",
+        "name": "easy-db-lab markers",
+        "target": {
+          "limit": 100,
+          "matchAny": false,
+          "tags": [
+            "easydblab"
+          ],
+          "type": "tags"
+        },
+        "type": "tags"
+      }
+    ]
   },
   "editable": true,
   "fiscalYearStartMonth": 0,

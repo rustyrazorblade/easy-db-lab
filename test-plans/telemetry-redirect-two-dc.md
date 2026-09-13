@@ -36,7 +36,7 @@ under test.
 ### 1. Provision DC1 with the full local stack
 
 ```bash
-$EDB_DC1 init telemetry-redirect-dc1 --db 1 --instance i4i.xlarge --up
+$EDB_DC1 init telemetry-redirect-dc1 --db 1 --instance i4i.xlarge --cidr 10.0.0.0/16 --up
 ```
 
 ### 2. Capture DC1's control node private IP
@@ -54,7 +54,7 @@ echo "DC1 control private IP: $DC1_CONTROL_IP"
 Point DC2 at DC1's control node.  The tool derives the four signal endpoints from this host.
 
 ```bash
-$EDB_DC2 init telemetry-redirect-dc2 --db 1 --instance i4i.xlarge --redirect-telemetry "$DC1_CONTROL_IP" --up
+$EDB_DC2 init telemetry-redirect-dc2 --db 1 --instance i4i.xlarge --redirect-telemetry "$DC1_CONTROL_IP" --cidr 10.1.0.0/16 --up
 ```
 
 ### 4. Confirm DC2 stands up no local backends

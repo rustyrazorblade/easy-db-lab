@@ -72,7 +72,7 @@
           "showLineNumbers": false,
           "showMiniMap": false
         },
-        "content": "Pick a build in **Baseline** and another in **Candidate**. The dropdowns list every `cassandra_build` value present right now, so any split works: one against three, two against two, or one variant at a time. The stat row below is the answer; everything under it is the evidence.\n\n**What the colours mean.** Green means the candidate is better than the baseline; red means worse. The direction is set per metric, so you never have to work it out. Lower is better for latency, GC pause overhead, dropped messages, hints and block I/O, and those turn green on a **negative** delta. Higher is better for throughput, which turns green on a **positive** one. Negative is not always green.\n\n**Before you believe a delta.** A blank delta means the baseline was zero, and a percentage of zero is undefined; panels where that is normal show an absolute difference instead. Check **Per-node request rate spread** first: at 1.00 the nodes of a build are doing equal work, and well above 1.00 the group average is really describing one node. Two nodes on the same build can still disagree by tens of percent, and the per-node panels show it.\n\n**Slicing.** *Ad-hoc filters* applies a label filter to every panel at once. *Group by* re-cuts the Slice and dice section. *Percentile* and *Latency unit* drive every latency panel.\n",
+        "content": "Pick a build in **Baseline** and another in **Candidate**. The dropdowns list every `cassandra_build` value present right now, so any split works: one against three, two against two, or one variant at a time. The stat row below is the answer; everything under it is the evidence, ordered from the machine down to Cassandra: **System resources** first (CPU, disk, page cache), then the request path, the JVM, and storage.\n\n**What the colours mean.** Green means the candidate is better than the baseline; red means worse. The direction is set per metric, so you never have to work it out. Lower is better for latency, GC pause overhead, dropped messages, hints and block I/O, and those turn green on a **negative** delta. Higher is better for throughput, which turns green on a **positive** one. Negative is not always green.\n\n**Before you believe a delta.** A blank delta means the baseline was zero, and a percentage of zero is undefined; panels where that is normal show an absolute difference instead. Check **Per-node request rate spread** first: at 1.00 the nodes of a build are doing equal work, and well above 1.00 the group average is really describing one node. Two nodes on the same build can still disagree by tens of percent, and the per-node panels show it.\n\n**Slicing.** *Ad-hoc filters* applies a label filter to every panel at once. *Group by* re-cuts the Slice and dice section. *Percentile* and *Latency unit* drive every latency panel.\n",
         "mode": "markdown"
       },
       "title": "How to read this dashboard",
@@ -537,6 +537,1183 @@
         "x": 0,
         "y": 13
       },
+      "id": 48,
+      "panels": [],
+      "title": "System resources",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Change in CPU busy (all non-idle states) averaged over the nodes of each build. Negative is better. OTel hostmetrics carries no cassandra_build, so nodes are narrowed to a build with an 'and on (host_name)' join against a Cassandra metric.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 1,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 14
+      },
+      "id": 49,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "instant": true,
+          "legendFormat": "CPU busy",
+          "range": false,
+          "refId": "A",
+          "expr": "100 * (avg(sum by (host_name) (rate(system_cpu_time_seconds_total{state!=\"idle\", host_name=~\"$host\"}[$__rate_interval])) / sum by (host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$host\"}[$__rate_interval])) * 100 and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))) - avg(sum by (host_name) (rate(system_cpu_time_seconds_total{state!=\"idle\", host_name=~\"$host\"}[$__rate_interval])) / sum by (host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$host\"}[$__rate_interval])) * 100 and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"})))) / avg(sum by (host_name) (rate(system_cpu_time_seconds_total{state!=\"idle\", host_name=~\"$host\"}[$__rate_interval])) / sum by (host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$host\"}[$__rate_interval])) * 100 and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"})))"
+        }
+      ],
+      "title": "CPU busy",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Change in bytes read from the data disk per second, averaged over the nodes of each build. Negative is better at equal offered load: fewer bytes read for the same requests means more of them were served from memory.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 1,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 14
+      },
+      "id": 50,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "instant": true,
+          "legendFormat": "Disk read throughput",
+          "range": false,
+          "refId": "A",
+          "expr": "100 * (avg(sum by (host_name) (rate(system_disk_io_bytes_total{direction=\"read\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))) - avg(sum by (host_name) (rate(system_disk_io_bytes_total{direction=\"read\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"})))) / avg(sum by (host_name) (rate(system_disk_io_bytes_total{direction=\"read\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"})))"
+        }
+      ],
+      "title": "Disk read throughput",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Change in page cache size (memory in state=cached). Positive is better: a build that keeps more of the data set resident serves more reads without touching the disk.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 1,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": -5
+              },
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 14
+      },
+      "id": 51,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "instant": true,
+          "legendFormat": "Page cache resident",
+          "range": false,
+          "refId": "A",
+          "expr": "100 * (avg(sum by (host_name) (system_memory_usage_bytes{state=\"cached\", host_name=~\"$host\"}) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))) - avg(sum by (host_name) (system_memory_usage_bytes{state=\"cached\", host_name=~\"$host\"}) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"})))) / avg(sum by (host_name) (system_memory_usage_bytes{state=\"cached\", host_name=~\"$host\"}) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"})))"
+        }
+      ],
+      "title": "Page cache resident",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Change in data-disk bytes read per coordinator read request. A page-cache hit-rate proxy: at equal load, a build that misses the cache more reads more bytes per request. Negative is better. Undefined while no reads flow.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 1,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 14
+      },
+      "id": 52,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "instant": true,
+          "legendFormat": "Disk read bytes per read request",
+          "range": false,
+          "refId": "A",
+          "expr": "100 * (avg((sum by (host_name) (rate(system_disk_io_bytes_total{direction=\"read\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval]))) / (sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cassandra_operation=\"read\", host_name=~\"$host\"}[$__rate_interval]))) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))) - avg((sum by (host_name) (rate(system_disk_io_bytes_total{direction=\"read\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval]))) / (sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cassandra_operation=\"read\", host_name=~\"$host\"}[$__rate_interval]))) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"})))) / avg((sum by (host_name) (rate(system_disk_io_bytes_total{direction=\"read\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval]))) / (sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cassandra_operation=\"read\", host_name=~\"$host\"}[$__rate_interval]))) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"})))"
+        }
+      ],
+      "title": "Disk read bytes per read request",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Percent of CPU time in any non-idle state, per node, labelled by build. The offered load is the same for every node, so a build that does the same work with less CPU sits lower.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "%",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^baseline.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^candidate.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 19
+      },
+      "id": 53,
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "sum by (host_name) (rate(system_cpu_time_seconds_total{state!=\"idle\", host_name=~\"$host\"}[$__rate_interval])) / sum by (host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$host\"}[$__rate_interval])) * 100 and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
+          "legendFormat": "baseline {{host_name}}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "sum by (host_name) (rate(system_cpu_time_seconds_total{state!=\"idle\", host_name=~\"$host\"}[$__rate_interval])) / sum by (host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$host\"}[$__rate_interval])) * 100 and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
+          "legendFormat": "candidate {{host_name}}",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "CPU busy per node",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Bytes per second read from and written to the data disk, per node. Reads are the page-cache signal: at equal load, more disk reads means more cache misses.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "Bps"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^baseline.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^candidate.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 19
+      },
+      "id": 54,
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "sum by (host_name) (rate(system_disk_io_bytes_total{direction=\"read\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
+          "legendFormat": "baseline {{host_name}} read",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "sum by (host_name) (rate(system_disk_io_bytes_total{direction=\"read\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
+          "legendFormat": "candidate {{host_name}} read",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "sum by (host_name) (rate(system_disk_io_bytes_total{direction=\"write\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
+          "legendFormat": "baseline {{host_name}} write",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "sum by (host_name) (rate(system_disk_io_bytes_total{direction=\"write\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
+          "legendFormat": "candidate {{host_name}} write",
+          "range": true,
+          "refId": "D"
+        }
+      ],
+      "title": "Disk throughput per node",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Read latency at the block layer at p99, per node, from ebpf_exporter's biolatency histogram. Shows whether the disk itself is the difference between the builds.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^baseline.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^candidate.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 28
+      },
+      "id": 55,
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.99, sum by (host_name, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{operation=\"read\", host_name=~\"$host\"}[$__rate_interval]))) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
+          "legendFormat": "baseline {{host_name}}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.99, sum by (host_name, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{operation=\"read\", host_name=~\"$host\"}[$__rate_interval]))) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
+          "legendFormat": "candidate {{host_name}}",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Block I/O read latency p99 per node",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Memory in state=cached, per node. A build whose compaction bypasses the page cache should hold more of the working set here and evict less of it.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "bytes"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^baseline.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^candidate.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 28
+      },
+      "id": 56,
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "sum by (host_name) (system_memory_usage_bytes{state=\"cached\", host_name=~\"$host\"}) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
+          "legendFormat": "baseline {{host_name}}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "sum by (host_name) (system_memory_usage_bytes{state=\"cached\", host_name=~\"$host\"}) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
+          "legendFormat": "candidate {{host_name}}",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Page cache resident per node",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Data-disk bytes read divided by coordinator read requests, per node. The page-cache hit-rate proxy: the same request stream at a higher bytes-per-request means more cache misses. Blank while no reads flow.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "bytes"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^baseline.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^candidate.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 37
+      },
+      "id": 57,
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "(sum by (host_name) (rate(system_disk_io_bytes_total{direction=\"read\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval]))) / (sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cassandra_operation=\"read\", host_name=~\"$host\"}[$__rate_interval]))) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
+          "legendFormat": "baseline {{host_name}}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "(sum by (host_name) (rate(system_disk_io_bytes_total{direction=\"read\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval]))) / (sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cassandra_operation=\"read\", host_name=~\"$host\"}[$__rate_interval]))) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
+          "legendFormat": "candidate {{host_name}}",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Disk read bytes per Cassandra read request",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Read and write operations per second on the data disk, per node.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "iops"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^baseline.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^candidate.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 37
+      },
+      "id": 58,
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "sum by (host_name) (rate(system_disk_operations_total{direction=\"read\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
+          "legendFormat": "baseline {{host_name}} read",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "sum by (host_name) (rate(system_disk_operations_total{direction=\"read\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
+          "legendFormat": "candidate {{host_name}} read",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "sum by (host_name) (rate(system_disk_operations_total{direction=\"write\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
+          "legendFormat": "baseline {{host_name}} write",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "expr": "sum by (host_name) (rate(system_disk_operations_total{direction=\"write\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
+          "legendFormat": "candidate {{host_name}} write",
+          "range": true,
+          "refId": "D"
+        }
+      ],
+      "title": "Disk IOPS per node",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 46
+      },
       "id": 8,
       "panels": [],
       "title": "What is under test",
@@ -591,7 +1768,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 14
+        "y": 47
       },
       "id": 9,
       "options": {
@@ -683,7 +1860,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 14
+        "y": 47
       },
       "id": 10,
       "options": {
@@ -744,7 +1921,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 22
+        "y": 55
       },
       "id": 11,
       "panels": [],
@@ -756,7 +1933,7 @@
         "h": 6,
         "w": 8,
         "x": 0,
-        "y": 23
+        "y": 56
       },
       "id": 12,
       "options": {
@@ -809,7 +1986,7 @@
         "h": 6,
         "w": 8,
         "x": 8,
-        "y": 23
+        "y": 56
       },
       "id": 13,
       "options": {
@@ -890,7 +2067,7 @@
         "h": 6,
         "w": 8,
         "x": 16,
-        "y": 23
+        "y": 56
       },
       "id": 14,
       "options": {
@@ -998,7 +2175,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 29
+        "y": 62
       },
       "id": 15,
       "options": {
@@ -1094,7 +2271,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 29
+        "y": 62
       },
       "id": 16,
       "options": {
@@ -1135,7 +2312,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 38
+        "y": 71
       },
       "id": 17,
       "panels": [],
@@ -1275,7 +2452,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 39
+        "y": 72
       },
       "id": 18,
       "options": {
@@ -1464,7 +2641,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 39
+        "y": 72
       },
       "id": 19,
       "options": {
@@ -1526,7 +2703,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 48
+        "y": 81
       },
       "id": 20,
       "panels": [],
@@ -1666,7 +2843,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 49
+        "y": 82
       },
       "id": 21,
       "options": {
@@ -1851,7 +3028,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 49
+        "y": 82
       },
       "id": 22,
       "options": {
@@ -2036,7 +3213,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 58
+        "y": 91
       },
       "id": 23,
       "options": {
@@ -2238,7 +3415,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 58
+        "y": 91
       },
       "id": 24,
       "options": {
@@ -2311,7 +3488,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 67
+        "y": 100
       },
       "id": 25,
       "panels": [],
@@ -2447,7 +3624,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 68
+        "y": 101
       },
       "id": 26,
       "options": {
@@ -2669,7 +3846,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 68
+        "y": 101
       },
       "id": 27,
       "options": {
@@ -2742,7 +3919,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 77
+        "y": 110
       },
       "id": 28,
       "panels": [],
@@ -2882,7 +4059,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 78
+        "y": 111
       },
       "id": 29,
       "options": {
@@ -3067,7 +4244,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 78
+        "y": 111
       },
       "id": 30,
       "options": {
@@ -3256,7 +4433,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 87
+        "y": 120
       },
       "id": 31,
       "options": {
@@ -3445,7 +4622,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 87
+        "y": 120
       },
       "id": 32,
       "options": {
@@ -3507,7 +4684,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 96
+        "y": 129
       },
       "id": 33,
       "panels": [],
@@ -3647,7 +4824,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 97
+        "y": 130
       },
       "id": 34,
       "options": {
@@ -3833,7 +5010,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 97
+        "y": 130
       },
       "id": 35,
       "options": {
@@ -3906,7 +5083,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 106
+        "y": 139
       },
       "id": 36,
       "panels": [],
@@ -3974,7 +5151,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 107
+        "y": 140
       },
       "id": 37,
       "options": {
@@ -4070,7 +5247,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 107
+        "y": 140
       },
       "id": 38,
       "options": {
@@ -4166,7 +5343,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 116
+        "y": 149
       },
       "id": 39,
       "options": {
@@ -4262,7 +5439,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 116
+        "y": 149
       },
       "id": 40,
       "options": {
@@ -4358,7 +5535,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 125
+        "y": 158
       },
       "id": 41,
       "options": {
@@ -4454,7 +5631,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 125
+        "y": 158
       },
       "id": 42,
       "options": {
@@ -4550,7 +5727,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 134
+        "y": 167
       },
       "id": 43,
       "options": {
@@ -4646,7 +5823,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 134
+        "y": 167
       },
       "id": 44,
       "options": {
@@ -4742,7 +5919,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 143
+        "y": 176
       },
       "id": 45,
       "options": {
@@ -4838,7 +6015,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 143
+        "y": 176
       },
       "id": 46,
       "options": {
@@ -5143,6 +6320,6 @@
   "timezone": "browser",
   "title": "A/B Comparison",
   "uid": "ab-comparison",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }

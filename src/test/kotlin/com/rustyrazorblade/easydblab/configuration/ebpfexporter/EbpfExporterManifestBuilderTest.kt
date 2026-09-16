@@ -58,4 +58,39 @@ class EbpfExporterManifestBuilderTest {
             assertThat(name).isNotEmpty()
         }
     }
+
+    @Test
+    fun `overridden programs are still named in config names`() {
+        // The override replaces the image's object in place; the exporter still finds the program
+        // by the same stem.  Dropping the stem would silently disable the override.
+        assertThat(configNames).containsAll(EbpfExporterManifestBuilder.OVERRIDDEN_PROGRAMS)
+    }
+
+    @Test
+    fun `every overridden program has a source file for the AMI build`() {
+        // install_ebpf_programs.sh compiles packer/base/install/ebpf/*.bpf.c; a program listed here
+        // without a source there mounts a path the AMI never creates.
+        EbpfExporterManifestBuilder.OVERRIDDEN_PROGRAMS.forEach { program ->
+            assertThat(java.io.File("packer/base/install/ebpf/$program.bpf.c")).exists()
+        }
+    }
+
+    @Test
+    fun `each overridden object is mounted from the AMI over the image copy`() {
+        val daemonSet = EbpfExporterManifestBuilder().buildDaemonSet()
+        val spec = daemonSet.spec.template.spec
+        val mounts =
+            spec.containers
+                .first()
+                .volumeMounts
+                .filter { it.name.startsWith("override-") }
+
+        assertThat(mounts.map { it.mountPath }).containsExactly("/examples/cachestat.bpf.o")
+        mounts.forEach { mount ->
+            val volume = spec.volumes.first { it.name == mount.name }
+            assertThat(volume.hostPath.path).isEqualTo("${EbpfExporterManifestBuilder.HOST_OBJECT_DIR}/cachestat.bpf.o")
+            // A missing object must fail the pod visibly, not fall back to the image's copy.
+            assertThat(volume.hostPath.type).isEqualTo("File")
+        }
+    }
 }

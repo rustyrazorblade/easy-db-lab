@@ -25,3 +25,18 @@ Page cache hit ratio: `(cache_access - page_add_lru) / cache_access`.
 The build script checks the probed symbols exist in the build kernel's `/proc/kallsyms` and that
 the object carries the expected sections, and fails the AMI build otherwise.  If a kernel moves
 them again, this is where it shows up.
+
+## syscalls
+
+Upstream v2.5.1 counts every negative syscall return as an errno.  On kernel 7.0 that records
+pointer-sized values (`unknown:9223372036854775808` and thousands of others), one series each,
+with no upper bound.  `syscalls.bpf.c` keeps the same maps and metric names but only counts a
+return in `[-MAX_ERRNO, -1]` (the kernel's own `IS_ERR_VALUE` rule) as an error:
+
+```
+ebpf_exporter_syscalls_total{syscall}
+ebpf_exporter_syscall_errors_total{errno}
+```
+
+The syscall names come from the exporter's own amd64 table, which has a few wrong entries
+(`202` is shown as `futex_time64`; it is `futex` on x86_64).  Counts are per number and correct.

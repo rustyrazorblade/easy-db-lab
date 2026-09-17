@@ -34,7 +34,7 @@ class EbpfExporterManifestBuilder {
          * `--config.names` stems whose compiled object comes from the AMI instead of the image.
          * Each needs `packer/base/install/ebpf/<stem>.bpf.c`.
          */
-        internal val OVERRIDDEN_PROGRAMS = listOf("cachestat")
+        internal val OVERRIDDEN_PROGRAMS = listOf("cachestat", "syscalls")
     }
 
     /**
@@ -92,7 +92,14 @@ class EbpfExporterManifestBuilder {
                 // `bio-trace` and `sched-trace` are NOT substitutes for the two missing ones: they
                 // are span exporters, labelled with trace_id and span_id, so their cardinality is
                 // unbounded by construction.
-                "--config.names=biolatency,xfsdist,cachestat,shrinklat,tcp-retransmit,oomkill",
+                //
+                // `accept-latency` is deliberately absent: on kernel 7.0 it reports 2-64 s accept
+                // waits while `ss -ltn` shows an empty accept queue and ListenOverflows stays 0.
+                // Its timestamp is keyed by request_sock pointer and only deleted on accept, so a
+                // stale entry pairs with a reused address. The tcp-syn-backlog histogram answers
+                // the same question and agrees with the kernel.
+                "--config.names=biolatency,xfsdist,cachestat,shrinklat,tcp-retransmit,oomkill," +
+                    "syscalls,softirq-latency,tcp-syn-backlog,tcp-window-clamps,udp-drops,kfree_skb",
                 "--web.listen-address=0.0.0.0:${Constants.K8s.EBPF_EXPORTER_METRICS_PORT}",
             ).withSecurityContext(
                 SecurityContextBuilder()

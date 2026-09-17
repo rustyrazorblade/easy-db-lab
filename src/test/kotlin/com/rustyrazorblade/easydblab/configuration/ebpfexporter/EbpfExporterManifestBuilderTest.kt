@@ -42,6 +42,26 @@ class EbpfExporterManifestBuilderTest {
     }
 
     @Test
+    fun `the syscall, softirq and network programs are loaded`() {
+        // All six ship in v2.5.1's /examples and attach on the 7.0 kernel the base image runs.
+        assertThat(configNames).contains(
+            "syscalls",
+            "softirq-latency",
+            "tcp-syn-backlog",
+            "tcp-window-clamps",
+            "udp-drops",
+            "kfree_skb",
+        )
+    }
+
+    @Test
+    fun `accept-latency is not loaded`() {
+        // Its request_sock-keyed timestamps go stale on kernel 7.0 and it reports multi-second
+        // accept waits against an empty accept queue. tcp-syn-backlog covers the same question.
+        assertThat(configNames).doesNotContain("accept-latency")
+    }
+
+    @Test
     fun `no span-exporting program is loaded`() {
         // bio-trace and sched-trace label every series with trace_id and span_id, so their
         // cardinality is unbounded by construction. They are not substitutes for the biosnoop and
@@ -85,10 +105,11 @@ class EbpfExporterManifestBuilderTest {
                 .volumeMounts
                 .filter { it.name.startsWith("override-") }
 
-        assertThat(mounts.map { it.mountPath }).containsExactly("/examples/cachestat.bpf.o")
+        assertThat(mounts.map { it.mountPath }).containsExactly("/examples/cachestat.bpf.o", "/examples/syscalls.bpf.o")
         mounts.forEach { mount ->
             val volume = spec.volumes.first { it.name == mount.name }
-            assertThat(volume.hostPath.path).isEqualTo("${EbpfExporterManifestBuilder.HOST_OBJECT_DIR}/cachestat.bpf.o")
+            val program = mount.mountPath.removePrefix("/examples/")
+            assertThat(volume.hostPath.path).isEqualTo("${EbpfExporterManifestBuilder.HOST_OBJECT_DIR}/$program")
             // A missing object must fail the pod visibly, not fall back to the image's copy.
             assertThat(volume.hostPath.type).isEqualTo("File")
         }

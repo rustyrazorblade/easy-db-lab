@@ -45,7 +45,9 @@ for src in "${SRC}"/*.bpf.c; do
 
     # Every probed symbol must exist in this kernel; a probe on a missing symbol fails at attach
     # time inside the exporter, where it is far harder to see than here.
-    grep -o -E 'SEC\("(fentry|kprobe|kretprobe)/[a-zA-Z0-9_]+"\)' "${src}" | sed -E 's/.*\/([a-zA-Z0-9_]+)"\)/\1/' | while read -r sym; do
+    # `|| true`: a program with only tracepoint sections has nothing to check, and under
+    # pipefail an empty grep would otherwise abort the whole script without a message.
+    { grep -o -E 'SEC\("(fentry|kprobe|kretprobe)/[a-zA-Z0-9_]+"\)' "${src}" || true; } | sed -E 's/.*\/([a-zA-Z0-9_]+)"\)/\1/' | while read -r sym; do
         if ! sudo grep -q -E " T ${sym}$" /proc/kallsyms; then
             echo "✗ ${name}: symbol ${sym} is not in this kernel (${KERNEL})" >&2
             exit 1

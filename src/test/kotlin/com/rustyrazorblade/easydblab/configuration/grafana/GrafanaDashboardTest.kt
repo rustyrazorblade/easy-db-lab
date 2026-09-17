@@ -4,25 +4,23 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 
 /**
- * Tests for the names and paths [GrafanaDashboard] derives from its folder and file name.
+ * Tests for the paths [GrafanaDashboard] derives from its folder and file name.
  *
- * Every K8s object name and every mount path comes from these two strings, so a wrong derivation
- * puts a dashboard in the wrong provisioning folder or gives it a ConfigMap name K8s rejects.
+ * The relative path decides which Grafana folder the dashboard lands in once the tree is copied
+ * to the control node, and the resource path is where its JSON is read from. A wrong derivation
+ * files a dashboard in the wrong folder or fails to find it at all.
  */
 class GrafanaDashboardTest {
     private val dashboard = GrafanaDashboard(folder = "infrastructure", jsonFileName = "system-overview.json")
 
     @Test
-    fun `k8s object names are derived from the file stem`() {
+    fun `stem is the file name without its extension`() {
         assertThat(dashboard.stem).isEqualTo("system-overview")
-        assertThat(dashboard.configMapName).isEqualTo("grafana-dashboard-system-overview")
-        assertThat(dashboard.volumeName).isEqualTo("dashboard-system-overview")
     }
 
     @Test
-    fun `mount path sits under the folder's provider path`() {
-        assertThat(dashboard.folderPath).isEqualTo("/var/lib/grafana/dashboards-infrastructure")
-        assertThat(dashboard.mountPath).isEqualTo("/var/lib/grafana/dashboards-infrastructure/system-overview")
+    fun `relative path is the folder directory and file name`() {
+        assertThat(dashboard.relativePath).isEqualTo("infrastructure/system-overview.json")
     }
 
     @Test

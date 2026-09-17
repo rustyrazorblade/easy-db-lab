@@ -37,13 +37,6 @@ class GrafanaDashboardCatalogTest {
     }
 
     @Test
-    fun `folders are exactly the directories under the dashboards tree`() {
-        val directories = dashboardsDir.listFiles { file -> file.isDirectory }.orEmpty().map { it.name }
-
-        assertThat(catalog.folders).containsExactlyInAnyOrderElementsOf(directories)
-    }
-
-    @Test
     fun `dashboards are sorted by folder then file name`() {
         assertThat(catalog.dashboards)
             .isSortedAccordingTo(compareBy({ it.folder }, { it.jsonFileName }))
@@ -97,15 +90,19 @@ class GrafanaDashboardCatalogTest {
     }
 
     @Test
-    fun `a name K8s would reject as a ConfigMap name is rejected up front`() {
-        assertThatThrownBy {
+    fun `two folders may hold a dashboard with the same file name`() {
+        // The copied tree keeps each file under its own directory, so nothing about a dashboard
+        // has to be unique across folders. This is the case the tree layout exists for.
+        val catalog =
             GrafanaDashboardCatalog(
                 listOf(
+                    GrafanaDashboard("cassandra", "overview.json"),
                     GrafanaDashboard("infrastructure", "system-overview.json"),
-                    GrafanaDashboard("cassandra", "Read_Path.json"),
+                    GrafanaDashboard("opensearch", "overview.json"),
                 ),
             )
-        }.isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("Read_Path")
+
+        assertThat(catalog.dashboards.map { it.relativePath })
+            .containsExactly("cassandra/overview.json", "infrastructure/system-overview.json", "opensearch/overview.json")
     }
 }

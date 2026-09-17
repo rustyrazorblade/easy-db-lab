@@ -5,50 +5,42 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 
 /**
- * Tests for the dashboard provisioning YAML generated from the discovered folders.
+ * Tests for the dashboard provisioning YAML.
  *
- * A folder with no provider is a silent failure: its ConfigMaps mount, Grafana starts, and the
- * dashboards simply never appear. The generated file must therefore have exactly one provider per
- * folder, watching exactly the path that folder's dashboards mount under.
+ * One file provider sweeps the whole copied tree and derives Grafana folders from its
+ * directories. A second provider, or a `folder` on this one, would either file every dashboard
+ * into one folder or double-read the tree, so the shape of the generated file is pinned here.
  */
 class GrafanaDashboardProvisioningConfigTest {
-    private val folders = listOf("cassandra", "infrastructure")
+    private val yaml = GrafanaDashboardProvisioningConfig.forDashboardTree().toYaml()
 
     private fun decoded(): GrafanaDashboardProvisioningConfig =
-        Yaml.default.decodeFromString(
-            GrafanaDashboardProvisioningConfig.serializer(),
-            GrafanaDashboardProvisioningConfig.forFolders(folders).toYaml(),
-        )
+        Yaml.default.decodeFromString(GrafanaDashboardProvisioningConfig.serializer(), yaml)
 
     @Test
-    fun `one provider per folder watching that folder's provider path`() {
-        val providers = decoded().providers
+    fun `exactly one provider sweeps the dashboard tree root with folders from its directories`() {
+        val provider = decoded().providers.single()
 
-        assertThat(providers.map { it.name }).containsExactly("cassandra", "infrastructure")
-        assertThat(providers).allSatisfy { provider ->
-            assertThat(provider.folder).isEqualTo(provider.name)
-            assertThat(provider.folderUid).isEqualTo(provider.name)
-            assertThat(provider.options.path).isEqualTo(GrafanaDashboard.folderProviderPath(provider.name))
-        }
+        assertThat(provider.name).isEqualTo("dashboards")
+        assertThat(provider.options.path).isEqualTo(GRAFANA_DASHBOARD_ROOT)
+        assertThat(provider.options.foldersFromFilesStructure).isTrue()
     }
 
     @Test
-    fun `no provider sweeps the root path`() {
-        // Every dashboard sits in a folder, so a root provider would file nothing. With
-        // foldersFromFilesStructure unset it would also be a second reader of nothing.
-        assertThat(decoded().providers.map { it.options.path })
-            .doesNotContain(GRAFANA_DASHBOARD_ROOT)
+    fun `the provider names no folder so Grafana derives one per directory`() {
+        // With foldersFromFilesStructure set, Grafana rejects a provider that also names a
+        // folder; and a folder here would file every dashboard into that one folder anyway.
+        assertThat(yaml).doesNotContain("folder:")
+        assertThat(yaml).doesNotContain("folderUid")
     }
 
     @Test
     fun `provider settings Grafana reads are written out explicitly`() {
-        val yaml = GrafanaDashboardProvisioningConfig.forFolders(folders).toYaml()
-
         assertThat(yaml).contains("apiVersion: 1")
         assertThat(yaml).contains("type: \"file\"")
         assertThat(yaml).contains("disableDeletion: false")
         assertThat(yaml).contains("updateIntervalSeconds: 10")
         assertThat(yaml).contains("allowUiUpdates: true")
-        assertThat(yaml).doesNotContain("foldersFromFilesStructure")
+        assertThat(yaml).contains("foldersFromFilesStructure: true")
     }
 }

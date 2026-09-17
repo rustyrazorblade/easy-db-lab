@@ -2372,6 +2372,24 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Grafana.DashboardTreeUploading")
+        data class DashboardTreeUploading(
+            val count: Int,
+            val path: String,
+        ) : Grafana {
+            override fun toDisplayString(): String = "Uploading $count Grafana dashboards to $path..."
+        }
+
+        @Serializable
+        @SerialName("Grafana.DashboardTreeUploaded")
+        data class DashboardTreeUploaded(
+            val count: Int,
+            val path: String,
+        ) : Grafana {
+            override fun toDisplayString(): String = "Installed $count Grafana dashboards under $path"
+        }
+
+        @Serializable
         @SerialName("Grafana.DashboardInstalled")
         data class DashboardInstalled(
             val title: String,

@@ -9,14 +9,13 @@ triggers:
 
 ## Architecture Overview
 
-Core dashboards are standalone JSON files in the top-level `dashboards/<folder>/` tree, copied onto the classpath under a `dashboards/` prefix at build time. `GrafanaDashboardCatalog` discovers every `<folder>/<name>.json` on the classpath at runtime; `GrafanaManifestBuilder` (Fabric8) wraps each one in a typed ConfigMap and generates the provisioning file with one provider per folder directory. There is no registry to edit. Grafana loads dashboards via file-based provisioning from mounted ConfigMap volumes.
+Core dashboards are standalone JSON files in the top-level `dashboards/<folder>/` tree, copied onto the classpath under a `dashboards/` prefix at build time. `GrafanaDashboardCatalog` discovers every `<folder>/<name>.json` on the classpath at runtime. `grafana update-config` writes that tree to a temp directory, uploads it over SSH to the control node and swaps it into the Grafana data hostPath (`/mnt/db1/grafana/dashboards`, seen as `/var/lib/grafana/dashboards` inside the pod). One Grafana file provider with `foldersFromFilesStructure: true` sweeps that path and makes one folder per directory. There is no registry to edit and no K8s object per dashboard.
 
 ```
-JSON resource files → GrafanaManifestBuilder (Fabric8 ConfigMaps + Deployment)
-                          ↓
-           GrafanaUpdateConfig command applies to K8s
-                          ↓
-           Grafana pod mounts ConfigMap volumes → file-based provisioning
+dashboards/<folder>/<name>.json (classpath)
+        → GrafanaDashboardTreeWriter (temp dir, __PYROSCOPE_URL__ in profiling.json)
+        → GrafanaDashboardTreeUploader (SFTP to control node, mv into /mnt/db1/grafana/dashboards)
+        → Grafana file provider (foldersFromFilesStructure) → one folder per directory
 ```
 
 ## Key Files and Locations
@@ -24,10 +23,12 @@ JSON resource files → GrafanaManifestBuilder (Fabric8 ConfigMaps + Deployment)
 | What | Path |
 |------|------|
 | Dashboard JSON files | `dashboards/<folder>/*.json` (top-level; folders `cassandra`, `infrastructure`, `observability`, `opensearch`) |
-| Dashboard model | `src/main/kotlin/.../configuration/grafana/GrafanaDashboard.kt` (data class, derives K8s names from folder + file) |
+| Dashboard model | `src/main/kotlin/.../configuration/grafana/GrafanaDashboard.kt` (data class, derives the tree and classpath paths from folder + file) |
 | Discovery | `src/main/kotlin/.../configuration/grafana/GrafanaDashboardCatalog.kt` (ClassGraph scan of `dashboards/`) |
-| Provisioning YAML | `src/main/kotlin/.../configuration/grafana/GrafanaDashboardProvisioningConfig.kt` (one provider per folder) |
-| Manifest builder | `src/main/kotlin/.../configuration/grafana/GrafanaManifestBuilder.kt` |
+| Tree writer | `src/main/kotlin/.../configuration/grafana/GrafanaDashboardTreeWriter.kt` (catalog → local `<folder>/<file>` tree) |
+| Tree uploader | `src/main/kotlin/.../services/GrafanaDashboardTreeUploader.kt` (SSH copy onto the control node hostPath) |
+| Provisioning YAML | `src/main/kotlin/.../configuration/grafana/GrafanaDashboardProvisioningConfig.kt` (single `foldersFromFilesStructure` provider) |
+| Manifest builder | `src/main/kotlin/.../configuration/grafana/GrafanaManifestBuilder.kt` (provisioning ConfigMap + Deployment) |
 | Datasource config | `src/main/kotlin/.../configuration/grafana/GrafanaDatasourceConfig.kt` |
 | Dashboard service | `src/main/kotlin/.../services/GrafanaDashboardService.kt` |
 | Deploy command | `src/main/kotlin/.../commands/grafana/GrafanaUpdateConfig.kt` |
@@ -35,7 +36,7 @@ JSON resource files → GrafanaManifestBuilder (Fabric8 ConfigMaps + Deployment)
 
 ## Existing Dashboards
 
-Run `find dashboards -name '*.json' | sort` for the current list. The Grafana folder is the directory name verbatim; the ConfigMap name is `grafana-dashboard-<stem>`. `infrastructure/system-overview.json` is the home dashboard and must exist.
+Run `find dashboards -name '*.json' | sort` for the current list. The Grafana folder is the directory name verbatim. `infrastructure/system-overview.json` is the home dashboard and must exist.
 
 ## Available Datasources
 
@@ -57,14 +58,11 @@ Datasources are created at runtime by `GrafanaDatasourceConfig.create()` and app
 
 **Location:** `dashboards/<folder>/{name}.json`, where `<folder>` is the Grafana folder it belongs in (`cassandra`, `infrastructure`, `observability`, `opensearch`; make a new directory for a new folder). Never at the root of `dashboards/` — discovery rejects that.
 
-`{name}` must be lowercase alphanumerics and dashes (it becomes the ConfigMap name). The JSON must carry a top-level `uid`.
+The JSON must carry a top-level `uid`. The same file name may exist in two folders.
 
 ### Step 2: There is no step 2
 
-The file is discovered at runtime. `GrafanaManifestBuilder` automatically:
-- Creates a ConfigMap with the JSON content
-- Adds a volume and mount in the Grafana Deployment
-- Provisions the folder (one provider per directory)
+The file is discovered at runtime and copied to the control node with the rest of the tree. Grafana's single file provider files it into a folder named after its directory.
 
 ### Step 3: Verify and Deploy
 
@@ -90,9 +88,15 @@ The file is discovered at runtime. `GrafanaManifestBuilder` automatically:
 `GrafanaUpdateConfig.execute()` does:
 1. Creates the cluster-config ConfigMap (control node IP, region, S3 bucket, etc.)
 2. Applies all Fabric8-built observability resources (OTel, Victoria, Tempo, Vector, Beyla, ebpf_exporter, Registry, S3 Manager, Pyroscope)
-3. Calls `GrafanaDashboardService.uploadDashboards()` which:
-   - Builds all Grafana resources via `GrafanaManifestBuilder` (dashboard ConfigMaps, datasource ConfigMap, provisioner ConfigMap, Deployment)
-   - Applies each resource to K8s via `k8sService.applyResource()`
+3. Prepares `/mnt/db1/grafana` on the control node (mkdir, chown 472)
+4. Calls `GrafanaDashboardService.uploadDashboards()` which:
+   - Creates the datasource ConfigMap
+   - Copies the dashboard tree to `/mnt/db1/grafana/dashboards` on the control node via `GrafanaDashboardTreeUploader` (local temp tree → SFTP to a `mktemp -d` staging dir under `$HOME` → `sudo rm -rf` old tree, `sudo mv` into place, `sudo chown -R 472:472`)
+   - Deletes any ConfigMap labelled `grafana_dashboard=1` left by the old ConfigMap-per-dashboard delivery
+   - Builds the provisioning ConfigMap and Deployment via `GrafanaManifestBuilder` and applies each via `k8sService.applyResource()`
+5. Restarts the observability workloads and waits for them to become Ready
+
+`grafana install <path> --folder=<name>` is the one-off path: it POSTs a single dashboard file to the Grafana HTTP API and does not touch the copied tree.
 
 ---
 
@@ -337,7 +341,7 @@ d['panels'].sort(key=lambda p: (p['gridPos']['y'], p['gridPos']['x']))
 
 1. **Check the file location** — Is it at `dashboards/<folder>/<name>.json`, exactly one directory deep? A file at the root or nested deeper fails discovery, and `GrafanaDashboardCatalogTest` fails on it too.
 2. **Check the build picked it up** — `ls build/resources/main/dashboards/<folder>/` after `./gradlew installDist`.
-3. **Check deployment was applied** — Run `grafana update-config` to reapply all resources.
+3. **Check the tree reached the node** — `ssh control0 ls /mnt/db1/grafana/dashboards/<folder>/` after `grafana update-config`; the provider re-reads it every 10 seconds.
 
 ### Dashboard appears but shows no data
 

@@ -5,8 +5,6 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.services.TemplateService
-import io.fabric8.kubernetes.api.model.ConfigMap
-import io.fabric8.kubernetes.api.model.HasMetadata
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -67,82 +65,31 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
             .spec.template.spec.containers
             .first { it.name == "grafana" }
 
-    /**
-     * The check that would have caught a folder mounted where nothing was watching.
-     *
-     * A dashboard mounted outside every provider's path is a silent failure: the ConfigMap is
-     * created, the volume mounts, Grafana starts, and the dashboard simply never appears. Nothing
-     * in the deploy reports it. So the provisioning providers and the mount paths are compared
-     * directly here.
-     */
     @Test
-    fun `every discovered folder is backed by a provider watching that exact path`() {
-        val providerPaths = provisioningConfig().providers.map { it.options.path }
+    fun `the provisioning ConfigMap carries the single tree provider`() {
+        val provider = provisioningConfig().providers.single()
 
-        assertThat(providerPaths).containsExactlyElementsOf(catalog.folders.map { GrafanaDashboard.folderProviderPath(it) })
-        assertThat(catalog.dashboards).allSatisfy { dashboard ->
-            assertThat(dashboard.mountPath)
-                .describedAs("mount path for ${dashboard.resourcePath}")
-                .startsWith("${dashboard.folderPath}/")
-            assertThat(providerPaths)
-                .describedAs("no provider watches ${dashboard.folderPath}, where ${dashboard.resourcePath} mounts")
-                .contains(dashboard.folderPath)
-        }
+        assertThat(provider.options.path).isEqualTo(GRAFANA_DASHBOARD_ROOT)
+        assertThat(provider.options.foldersFromFilesStructure).isTrue()
     }
 
     @Test
-    fun `the home dashboard resolves inside its folder`() {
-        // GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH is built from the home dashboard's mount path.
-        // Left pointing anywhere else, Grafana opens on an empty page.
+    fun `the home dashboard resolves inside the copied tree`() {
+        // GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH is built from the home dashboard's place in
+        // the tree. Left pointing anywhere else, Grafana opens on an empty page.
         val homePath = grafanaContainer().env.first { it.name == "GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH" }.value
 
-        assertThat(homePath).isEqualTo("/var/lib/grafana/dashboards-infrastructure/system-overview/system-overview.json")
+        assertThat(homePath).isEqualTo("/var/lib/grafana/dashboards/infrastructure/system-overview.json")
     }
 
     @Test
-    fun `buildAllResources deploys every discovered dashboard plus provisioning and deployment`() {
+    fun `buildAllResources is only the provisioning ConfigMap and the Deployment`() {
+        // Dashboards reach Grafana as files on the hostPath, not as K8s objects, so nothing here
+        // may vary with the catalog's contents.
         val names = builder.buildAllResources().map { it.metadata.name }
 
-        assertThat(names).containsAll(catalog.dashboards.map { it.configMapName })
-        assertThat(names).contains("grafana-dashboards-config", "grafana")
-        assertThat(names).hasSize(catalog.dashboards.size + 2)
+        assertThat(names).containsExactly("grafana-dashboards-config", "grafana")
     }
-
-    @Test
-    fun `buildDashboardConfigMap preserves Grafana built-in variables`() {
-        val dashboard = GrafanaDashboard("cassandra", "cassandra-overview.json")
-
-        val json = builder.buildDashboardConfigMap(dashboard).data[dashboard.jsonFileName]!!
-
-        assertThat(json).contains("\$__rate_interval")
-    }
-
-    @Test
-    fun `the profiling dashboard gets the Pyroscope URL substituted`() {
-        val profiling =
-            builder.buildAllResources(pyroscopeUrl = "http://10.0.0.1:4040").first {
-                it.metadata.name ==
-                    "grafana-dashboard-profiling"
-            }
-
-        val json = profiling.asConfigMapData("profiling.json")
-        assertThat(json).contains("http://10.0.0.1:4040")
-        assertThat(json).doesNotContain("__PYROSCOPE_URL__")
-    }
-
-    @Test
-    fun `other dashboards are deployed verbatim even when a Pyroscope URL is given`() {
-        val overview =
-            builder.buildAllResources(pyroscopeUrl = "http://10.0.0.1:4040").first {
-                it.metadata.name ==
-                    "grafana-dashboard-cassandra-overview"
-            }
-
-        assertThat(overview.asConfigMapData("cassandra-overview.json"))
-            .isEqualTo(javaClass.getResource("/dashboards/cassandra/cassandra-overview.json")!!.readText())
-    }
-
-    private fun HasMetadata.asConfigMapData(key: String): String = (this as ConfigMap).data.getValue(key)
 
     @Test
     fun `buildDeployment includes grafana and image renderer containers`() {
@@ -190,37 +137,17 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
     }
 
     @Test
-    fun `buildDeployment mounts every dashboard read-only at its mount path`() {
-        val container = grafanaContainer()
+    fun `buildDeployment mounts the data hostPath that holds the dashboard tree and nothing per dashboard`() {
+        val deployment = builder.buildDeployment()
+        val volumes = deployment.spec.template.spec.volumes
+        val mounts = grafanaContainer().volumeMounts
 
-        catalog.dashboards.forEach { dashboard ->
-            val mount = container.volumeMounts.find { it.name == dashboard.volumeName }
-            assertThat(mount)
-                .describedAs("Volume mount for ${dashboard.resourcePath}")
-                .isNotNull
-            assertThat(mount!!.mountPath).isEqualTo(dashboard.mountPath)
-            assertThat(mount.readOnly).isTrue()
-        }
-    }
+        val data = volumes.first { it.name == "data" }
+        assertThat(data.hostPath.path).isEqualTo(GrafanaManifestBuilder.GRAFANA_DATA_PATH)
+        assertThat(mounts.first { it.name == "data" }.mountPath).isEqualTo("/var/lib/grafana")
+        assertThat(GRAFANA_DASHBOARD_ROOT).startsWith("/var/lib/grafana/")
 
-    @Test
-    fun `buildDeployment backs every dashboard volume with a required ConfigMap`() {
-        // No dashboard is optional any more: every one the catalog found exists by construction,
-        // so a missing ConfigMap is a deploy bug that should stop the pod, not be papered over.
-        val volumes =
-            builder
-                .buildDeployment()
-                .spec.template.spec.volumes
-
-        catalog.dashboards.forEach { dashboard ->
-            val volume = volumes.find { it.name == dashboard.volumeName }
-            assertThat(volume)
-                .describedAs("Volume for ${dashboard.resourcePath}")
-                .isNotNull
-            assertThat(volume!!.configMap.name).isEqualTo(dashboard.configMapName)
-            assertThat(volume.configMap.optional == true)
-                .describedAs("${dashboard.resourcePath} must not be an optional volume")
-                .isFalse()
-        }
+        assertThat(volumes.map { it.name }).containsExactlyInAnyOrder("datasources", "dashboards-config", "data")
+        assertThat(mounts.map { it.name }).containsExactlyInAnyOrder("datasources", "dashboards-config", "data")
     }
 }

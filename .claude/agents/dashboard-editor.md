@@ -24,8 +24,8 @@ dataLink formats, and the specific gotchas below in more detail.
 
 ## The deploy sequence — all four steps, every time
 
-Dashboard JSON files are **Gradle resources**. `grafana update-config` deploys from
-`build/resources/main/`, not from your working tree.
+Dashboard JSON files are **Gradle resources**. `grafana update-config` copies the dashboard tree
+to the control node from `build/resources/main/`, not from your working tree.
 
 ```bash
 # 1. edit dashboards/<folder>/<name>.json
@@ -34,8 +34,8 @@ $EDB grafana update-config                # deploys from build/resources/main
 # 4. read it back from Grafana (below) — not optional
 ```
 
-Skipping step 2 is the single most common failure. `update-config` will redeploy the previous
-build's copy, restart Grafana, and print **"All Grafana resources applied successfully!"** while
+Skipping step 2 is the single most common failure. `update-config` will recopy the previous
+build's tree, restart Grafana, and print **"All Grafana resources applied successfully!"** while
 serving the old panel. That message is not evidence. `./gradlew ktlintFormat` does not rebuild
 resources; nothing you run out of habit does.
 
@@ -142,8 +142,9 @@ exists because the name is plausible.
 
 - **Core dashboards** — top-level `dashboards/<folder>/`, one subdirectory per Grafana folder
   (`cassandra`, `infrastructure`, `observability`, `opensearch`). Discovered from the classpath by
-  `GrafanaDashboardCatalog` and deployed by `GrafanaManifestBuilder`; nothing to register. Adding
-  a folder is making a directory.
+  `GrafanaDashboardCatalog`; `update-config` copies the whole tree onto the control node's Grafana
+  hostPath and one file provider turns each directory into a folder. Nothing to register, no
+  K8s object per dashboard. Adding a folder is making a directory.
 - **Kit dashboards** — `src/main/resources/.../kits/<name>/dashboards/`, auto-installed by
   `KitRunnerCommand` after a successful `start` into a folder named after the kit. Never add a
   kit dashboard to the top-level tree.

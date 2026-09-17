@@ -8,14 +8,14 @@ import kotlinx.serialization.encodeToString
 /**
  * Grafana dashboard provisioning configuration (`provisioning/dashboards/dashboards.yaml`).
  *
- * Generated from the folders [GrafanaDashboardCatalog] discovered: one file provider per folder,
- * naming the folder outright and watching the path that folder's dashboards mount under. There is
- * no root provider because no dashboard lives outside a folder, and `foldersFromFilesStructure`
- * is deliberately unset: every dashboard already sits in its own subdirectory (one ConfigMap
- * each), which that option would turn into one folder per dashboard.
+ * One file provider sweeps the dashboard tree the CLI copies onto the control node
+ * ([GRAFANA_DASHBOARD_ROOT] inside the container) and, with `foldersFromFilesStructure`, files
+ * each dashboard into a Grafana folder named after the directory it sits in. No provider names a
+ * folder itself: Grafana rejects that combination, and it would put every dashboard in one
+ * folder anyway. Nothing here knows which folders or dashboards exist.
  *
  * @property apiVersion Provisioning schema version; Grafana requires 1
- * @property providers One provider per Grafana folder
+ * @property providers The single tree provider
  */
 @Serializable
 data class GrafanaDashboardProvisioningConfig(
@@ -28,22 +28,16 @@ data class GrafanaDashboardProvisioningConfig(
     companion object {
         private val YAML = Yaml(configuration = YamlConfiguration(encodeDefaults = true))
 
-        /**
-         * Builds one provider per folder.
-         *
-         * @param folders Grafana folder names, which are the directory names under `dashboards/`
-         */
-        fun forFolders(folders: List<String>): GrafanaDashboardProvisioningConfig =
+        /** Builds the config with its single provider over the copied dashboard tree. */
+        fun forDashboardTree(): GrafanaDashboardProvisioningConfig =
             GrafanaDashboardProvisioningConfig(
                 providers =
-                    folders.map { folder ->
+                    listOf(
                         GrafanaDashboardProvider(
-                            name = folder,
-                            folder = folder,
-                            folderUid = folder,
-                            options = GrafanaDashboardProviderOptions(path = GrafanaDashboard.folderProviderPath(folder)),
-                        )
-                    },
+                            name = "dashboards",
+                            options = GrafanaDashboardProviderOptions(path = GRAFANA_DASHBOARD_ROOT),
+                        ),
+                    ),
             )
     }
 }
@@ -51,23 +45,21 @@ data class GrafanaDashboardProvisioningConfig(
 /**
  * One Grafana file-based dashboard provider.
  *
- * @property name Provider name; the folder's directory name
- * @property orgId Grafana organisation the folder belongs to
- * @property folder Folder title shown in Grafana; the directory name, verbatim, so kit dashboards
- *   installed into a folder of the same name land beside the core ones
- * @property folderUid Stable folder identifier; also the directory name
+ * Deliberately has no `folder` or `folderUid`: the folder comes from the file structure under
+ * [GrafanaDashboardProviderOptions.path].
+ *
+ * @property name Provider name
+ * @property orgId Grafana organisation the dashboards belong to
  * @property type Provider type; only `file` is used
  * @property disableDeletion Whether Grafana keeps a dashboard whose file disappears
  * @property updateIntervalSeconds How often Grafana re-reads the path
  * @property allowUiUpdates Whether the dashboard can be edited in the UI between reloads
- * @property options Where the provider looks for files
+ * @property options Where the provider looks for files and how it derives folders
  */
 @Serializable
 data class GrafanaDashboardProvider(
     val name: String,
     val orgId: Int = 1,
-    val folder: String,
-    val folderUid: String,
     val type: String = "file",
     val disableDeletion: Boolean = false,
     val updateIntervalSeconds: Int = UPDATE_INTERVAL_SECONDS,
@@ -83,8 +75,12 @@ data class GrafanaDashboardProvider(
  * File provider options.
  *
  * @property path Directory inside the Grafana container the provider sweeps for dashboard JSON
+ * @property foldersFromFilesStructure Whether each directory under [path] becomes a Grafana
+ *   folder of the same name, looked up by title so kit dashboards installed into a folder of
+ *   that name land beside the core ones
  */
 @Serializable
 data class GrafanaDashboardProviderOptions(
     val path: String,
+    val foldersFromFilesStructure: Boolean = true,
 )

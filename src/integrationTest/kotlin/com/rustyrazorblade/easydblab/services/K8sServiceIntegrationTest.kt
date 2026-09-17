@@ -299,26 +299,14 @@ class K8sServiceIntegrationTest {
     @Test
     @Order(21)
     fun `should apply Grafana resources`() {
-        val catalog = GrafanaDashboardCatalog.discover()
-        val builder = GrafanaManifestBuilder(templateService, catalog)
+        val builder = GrafanaManifestBuilder(templateService, GrafanaDashboardCatalog.discover())
 
         // Apply provisioning ConfigMap
         applyAndVerify(listOf(builder.buildDashboardProvisioningConfigMap()))
         assertConfigMapExists("grafana-dashboards-config", "dashboards.yaml")
 
-        // Apply a dashboard ConfigMap
-        val home = catalog.home
-        applyAndVerify(listOf(builder.buildDashboardConfigMap(home)))
-        val appliedDashboard =
-            client
-                .configMaps()
-                .inNamespace(DEFAULT_NAMESPACE)
-                .withName(home.configMapName)
-                .get()
-        assertThat(appliedDashboard).isNotNull
-        assertThat(appliedDashboard.data).containsKey(home.jsonFileName)
-
-        // Apply all resources including Deployment
+        // Apply all resources including Deployment. Dashboards are files on the hostPath, not
+        // K8s objects, so nothing per dashboard is expected here.
         applyAndVerify(builder.buildAllResources())
         assertDeploymentExists("grafana")
     }

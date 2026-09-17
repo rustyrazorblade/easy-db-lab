@@ -1,6 +1,6 @@
 # Dashboards
 
-JSON dashboard files in this tree are the core dashboards, loaded into Grafana via `GrafanaManifestBuilder`. Gradle copies the tree onto the classpath under a `dashboards/` prefix at build time. **Always run `./gradlew installDist` before `grafana update-config`** — `update-config` reads from the built JAR, not the source files directly.
+JSON dashboard files in this tree are the core dashboards. Gradle copies the tree onto the classpath under a `dashboards/` prefix at build time, and `grafana update-config` copies it from there onto the control node, where Grafana reads it as files. **Always run `./gradlew installDist` before `grafana update-config`** — `update-config` reads from the built JAR, not the source files directly.
 
 ## Layout: one directory per Grafana folder
 
@@ -11,12 +11,12 @@ Each subdirectory is a Grafana folder, and the folder's name is the directory na
 - `observability/` — dashboards about the observability stack itself (profiling, Tempo, log investigation)
 - `opensearch/` — OpenSearch dashboards
 
-There is no registry. `GrafanaDashboardCatalog` scans the classpath at runtime and deploys every `<folder>/<name>.json` it finds, and the provisioning file is generated with one provider per directory. So:
+There is no registry. `GrafanaDashboardCatalog` scans the classpath at runtime for every `<folder>/<name>.json`; `grafana update-config` writes that tree to a temp directory, uploads it over SSH to the control node, and swaps it into `/mnt/db1/grafana/dashboards` (the Grafana data hostPath, `/var/lib/grafana/dashboards` inside the pod). One Grafana file provider with `foldersFromFilesStructure: true` sweeps that path and makes one folder per directory, looked up by title. No dashboard is a K8s object. So:
 
 - **Adding a dashboard**: drop the JSON into the right folder directory. Nothing else.
 - **Adding a folder**: make a directory and put a dashboard in it.
-- **Never put a JSON file at the root of `dashboards/`** — discovery rejects it, because a dashboard with no folder has no provider to file it under.
-- File stems and directory names must be lowercase alphanumerics and dashes: they become ConfigMap and volume names.
+- **Never put a JSON file at the root of `dashboards/`** — discovery rejects it, because a file at the provider's root would land in Grafana's General folder.
+- Two folders may hold a file with the same name; each stays under its own directory.
 - `system-overview.json` must exist somewhere in the tree. It is the Grafana home dashboard and discovery fails loudly without it.
 - Directory names are deliberately lowercase and match kit names (`kit install clickhouse` installs into a folder called `clickhouse`), so a core dashboard for an engine that also has a kit lands beside the kit's own dashboards rather than in a capitalized twin.
 
@@ -260,13 +260,13 @@ When adding new dashboards or modifying existing ones:
 2. Run `./gradlew installDist` to bundle the updated JSON into the JAR
 3. Run `<cluster>/easy-db-lab grafana update-config` to push to the cluster
 4. Push test data if the change affects trace/metric panels
-5. Grafana hot-reloads provisioned dashboards from ConfigMaps — no Grafana restart needed for dashboard changes (datasource config changes do require a restart)
+5. Grafana's file provider re-reads the copied tree every 10 seconds — no Grafana restart needed for dashboard changes (datasource config changes do require a restart)
 
 ### Verify from Grafana, never from the deploy message
 
-`grafana update-config` prints "All Grafana resources applied successfully!" when it applies the
-ConfigMaps. That says nothing about whether the content changed — if `build/resources/main/` is
-stale, it will redeploy the old panel and still report success.
+`grafana update-config` prints "All Grafana resources applied successfully!" once the tree is
+copied and the Grafana resources are applied. That says nothing about whether the content changed
+— if `build/resources/main/` is stale, it will recopy the old panel and still report success.
 
 Step 2 above is not optional and nothing else substitutes for it. `ktlintFormat` does not rebuild
 resources. Confirm the build actually picked up the edit:

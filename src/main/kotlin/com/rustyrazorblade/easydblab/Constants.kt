@@ -514,7 +514,7 @@ object Constants {
 
         /**
          * File stem of the core dashboard whose JSON carries a `__PYROSCOPE_URL__` placeholder,
-         * substituted with the cluster's Pyroscope URL when its ConfigMap is built.
+         * substituted with the cluster's Pyroscope URL when the dashboard tree is written for upload.
          */
         const val PYROSCOPE_DASHBOARD_STEM = "profiling"
 

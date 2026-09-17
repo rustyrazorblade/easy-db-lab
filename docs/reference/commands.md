@@ -724,27 +724,29 @@ easy-db-lab k8 apply
 
 ---
 
-## Dashboard Commands
-
-### dashboards generate
-
-Extract all Grafana dashboard manifests (core and ClickHouse) from JAR resources to the local `k8s/` directory. Useful for rapid dashboard iteration without re-running init.
-
-```bash
-easy-db-lab dashboards generate
-```
-
-### dashboards upload
-
-Apply all Grafana dashboard manifests and the datasource ConfigMap to the K8s cluster. Extracts dashboards, creates the `grafana-datasources` ConfigMap with runtime configuration, and applies everything.
-
-```bash
-easy-db-lab dashboards upload
-```
-
----
-
 ## Grafana Commands
+
+### grafana update-config
+
+Build and apply the full observability stack to the K8s cluster, including Grafana and its core dashboards. `up` runs this automatically.
+
+The core dashboards are copied as a file tree onto the control node's Grafana data directory (`/mnt/db1/grafana/dashboards`), one subdirectory per Grafana folder. Grafana's file provider re-reads that directory every 10 seconds and files each dashboard into a folder named after its subdirectory. The command reads the tree from the installed build, so run `./gradlew installDist` after editing a dashboard before running it from a source checkout.
+
+```bash
+easy-db-lab grafana update-config
+```
+
+### grafana install
+
+Upload a single dashboard JSON file to the running Grafana instance through its HTTP API. This is the one-off path for a dashboard that is not part of the core tree; it does not touch the copied tree, and the dashboard is updated in place only if the JSON carries a top-level `uid`.
+
+```bash
+easy-db-lab grafana install my-dashboard.json --folder=experiments
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--folder` | Grafana folder to install into; created if it does not exist | `General` |
 
 ### grafana annotate
 

@@ -20,13 +20,16 @@ The OTel Collector ConfigMap SHALL be generated dynamically by `OtelManifestBuil
 
 The system MUST provide pre-configured Grafana dashboards for all supported databases and infrastructure. Dashboard titles MUST use simple descriptive names without cluster name prefixes. The Grafana pod SHALL include an image renderer sidecar for server-side panel rendering. Dashboard JSON SHALL be loaded directly from classpath resources without template substitution, preserving Grafana built-in variables like `$__rate_interval`.
 
+Core dashboards SHALL be delivered as a file tree, not as Kubernetes objects: `grafana update-config` SHALL copy every `dashboards/<folder>/<file>.json` on the classpath onto the control node's Grafana data hostPath (`/mnt/db1/grafana/dashboards`, `/var/lib/grafana/dashboards` inside the pod), and Grafana SHALL be provisioned with exactly one file provider whose `foldersFromFilesStructure` is true and which names no folder, so each directory becomes a Grafana folder of the same title. No code SHALL enumerate dashboards by hand; the set is discovered from the classpath.
+
 All dashboards SHALL include a `cluster` multi-select variable and an ad hoc filters variable. All VictoriaMetrics-backed panel queries SHALL be scoped by `{cluster=~"$cluster"}`. No native ClickHouse datasource SHALL be provisioned.
 
 #### Scenario: Dashboard JSON is not processed by TemplateService
 
-- **WHEN** `GrafanaManifestBuilder` builds a dashboard ConfigMap
-- **THEN** the dashboard JSON SHALL be loaded directly from the classpath without passing through `TemplateService.substitute()`
+- **WHEN** the dashboard tree is written for upload
+- **THEN** each dashboard JSON SHALL be loaded directly from the classpath without passing through `TemplateService.substitute()`
 - **AND** all Grafana built-in variables (e.g., `$__rate_interval`, `$__interval`) SHALL be preserved verbatim in the deployed JSON
+- **AND** only the profiling dashboard SHALL have its `__PYROSCOPE_URL__` placeholder replaced with the cluster's Pyroscope URL
 
 #### Scenario: Dashboard titles use descriptive names
 
@@ -64,9 +67,25 @@ All dashboards SHALL include a `cluster` multi-select variable and an ad hoc fil
 #### Scenario: Cluster comparison dashboard appears in Grafana
 
 - **WHEN** `grafana update-config` is run
-- **THEN** a ConfigMap named `grafana-dashboard-cluster-comparison` SHALL be created
-- **AND** the dashboard SHALL be mounted at `/var/lib/grafana/dashboards-cassandra/cluster-comparison`, under the `cassandra` folder's provisioning provider
-- **AND** the volume SHALL be required, since the file exists by construction (discovery only yields dashboards that are on the classpath)
+- **THEN** `dashboards/cassandra/cluster-comparison.json` SHALL be copied to `/mnt/db1/grafana/dashboards/cassandra/cluster-comparison.json` on the control node
+- **AND** the single file provider SHALL file it into the `cassandra` folder from its directory name
+- **AND** no ConfigMap, volume, or volume mount SHALL exist for it
+
+#### Scenario: Copied tree replaces the previous one
+
+- **WHEN** `grafana update-config` is run against a cluster that already has a dashboard tree
+- **THEN** the previous tree under `/mnt/db1/grafana/dashboards` SHALL be removed before the new one is moved into place, so a dashboard deleted from the repo disappears from Grafana
+- **AND** the tree SHALL be owned by the Grafana user (uid 472)
+
+#### Scenario: Per-dashboard ConfigMaps from an earlier release are removed
+
+- **WHEN** `grafana update-config` is run against a cluster set up by a release that delivered dashboards as ConfigMaps
+- **THEN** every ConfigMap in the Grafana namespace labelled `grafana_dashboard=1` SHALL be deleted before the Grafana Deployment is applied
+
+#### Scenario: Same file name in two folders
+
+- **WHEN** `dashboards/<a>/<name>.json` and `dashboards/<b>/<name>.json` both exist
+- **THEN** both SHALL be deployed, each in its own folder
 
 ### Requirement: Cilium replaces Flannel as the K3s CNI
 The K3s cluster SHALL use Cilium as its CNI plugin with `kube-proxy` replacement enabled. K3s SHALL be started with `--flannel-backend=none --disable-network-policy`. Cilium SHALL be installed via helm before any workloads are deployed. Hubble SHALL be enabled with Prometheus metrics export.

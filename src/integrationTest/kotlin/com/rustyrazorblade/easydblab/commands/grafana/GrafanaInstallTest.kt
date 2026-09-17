@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilde
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.services.DefaultGrafanaDashboardService
 import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
+import com.rustyrazorblade.easydblab.services.GrafanaDashboardTreeUploader
 import com.rustyrazorblade.easydblab.services.K8sService
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -72,6 +73,7 @@ class GrafanaInstallTest : BaseKoinTest() {
                     DefaultGrafanaDashboardService(
                         k8sService = mock<K8sService>(),
                         manifestBuilder = mock<GrafanaManifestBuilder>(),
+                        treeUploader = mock<GrafanaDashboardTreeUploader>(),
                         eventBus = get<EventBus>(),
                         okHttpClient = get<OkHttpClient>(),
                     )

@@ -74,6 +74,7 @@ class GrafanaAnnotationBackupServiceTest : BaseKoinTest() {
             DefaultGrafanaDashboardService(
                 k8sService = mock(),
                 manifestBuilder = mock<GrafanaManifestBuilder>(),
+                treeUploader = mock<GrafanaDashboardTreeUploader>(),
                 eventBus = getKoin().get<EventBus>(),
                 okHttpClient = OkHttpClient.Builder().addInterceptor(interceptor).build(),
             )

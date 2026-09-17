@@ -22,8 +22,10 @@ ebpf_exporter_page_cache_ops_total{operation="cache_access"|"cache_writes"|"page
 
 Page cache hit ratio: `(cache_access - page_add_lru) / cache_access`.
 
-The build script checks the probed symbols exist in the build kernel's `/proc/kallsyms` and that
-the object carries the expected sections, and fails the AMI build otherwise.  If a kernel moves
+The build script checks every probed symbol against the build kernel's `/proc/kallsyms`: a
+function for `fentry`/`kprobe`/`kretprobe` sections, the `__tracepoint_<name>` symbol for
+`raw_tp`/`tp_btf` sections. It also checks the compiled object carries every declared section.
+Any miss fails the AMI build.  If a kernel moves
 them again, this is where it shows up.
 
 ## syscalls

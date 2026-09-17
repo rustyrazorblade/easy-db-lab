@@ -54,6 +54,15 @@ for src in "${SRC}"/*.bpf.c; do
         fi
     done
 
+    # Tracepoint probes (raw_tp, tp_btf) are checked the same way, against the kernel's
+    # __tracepoint_<name> symbol, so a renamed tracepoint fails here and not at attach time.
+    { grep -o -E 'SEC\("(raw_tp|tp_btf)/[a-zA-Z0-9_]+"\)' "${src}" || true; } | sed -E 's/.*\/([a-zA-Z0-9_]+)"\)/\1/' | while read -r tp; do
+        if ! sudo grep -q -E " __tracepoint_${tp}$" /proc/kallsyms; then
+            echo "✗ ${name}: tracepoint ${tp} is not in this kernel (${KERNEL})" >&2
+            exit 1
+        fi
+    done
+
     clang -g -O2 -target bpf "-D__TARGET_ARCH_${TARGET_ARCH}" -Wno-missing-declarations \
         -I"${BUILD}" -I/usr/include -c "${src}" -o "${obj}"
     llvm-strip -g "${obj}"

@@ -14,7 +14,7 @@
 #include <bpf/bpf_core_read.h>
 #include "maps.bpf.h"
 
-enum pache_cache_op {
+enum page_cache_op {
     OP_CACHE_ACCESS,
     OP_CACHE_WRITES,
     OP_PAGE_ADD_LRU,
@@ -28,7 +28,7 @@ struct {
     __type(value, u64);
 } page_cache_ops_total SEC(".maps");
 
-static int trace_event(enum pache_cache_op op)
+static int trace_event(enum page_cache_op op)
 {
     increment_map(&page_cache_ops_total, &op, 1);
     return 0;

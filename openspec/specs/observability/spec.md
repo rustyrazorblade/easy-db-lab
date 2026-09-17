@@ -65,8 +65,8 @@ All dashboards SHALL include a `cluster` multi-select variable and an ad hoc fil
 
 - **WHEN** `grafana update-config` is run
 - **THEN** a ConfigMap named `grafana-dashboard-cluster-comparison` SHALL be created
-- **AND** the dashboard SHALL be mounted at `/var/lib/grafana/dashboards/cluster-comparison`
-- **AND** the volume mount SHALL use `optional: true` so absence of the file does not block Grafana startup
+- **AND** the dashboard SHALL be mounted at `/var/lib/grafana/dashboards-cassandra/cluster-comparison`, under the `cassandra` folder's provisioning provider
+- **AND** the volume SHALL be required, since the file exists by construction (discovery only yields dashboards that are on the classpath)
 
 ### Requirement: Cilium replaces Flannel as the K3s CNI
 The K3s cluster SHALL use Cilium as its CNI plugin with `kube-proxy` replacement enabled. K3s SHALL be started with `--flannel-backend=none --disable-network-policy`. Cilium SHALL be installed via helm before any workloads are deployed. Hubble SHALL be enabled with Prometheus metrics export.

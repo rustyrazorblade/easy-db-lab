@@ -1,8 +1,26 @@
 # Dashboards
 
-JSON dashboard files in this directory are loaded into Grafana via `GrafanaManifestBuilder`. Gradle copies them into classpath resources at build time. **Always run `./gradlew installDist` before `grafana update-config`** — `update-config` reads from the built JAR, not the source files directly.
+JSON dashboard files in this tree are the core dashboards, loaded into Grafana via `GrafanaManifestBuilder`. Gradle copies the tree onto the classpath under a `dashboards/` prefix at build time. **Always run `./gradlew installDist` before `grafana update-config`** — `update-config` reads from the built JAR, not the source files directly.
 
-Note: These dashboard are considered LEGACY.  Do not add any additional dashboards here.  All dashboards associated with kits should be in the dashboard directory of the kit, not here.
+## Layout: one directory per Grafana folder
+
+Each subdirectory is a Grafana folder, and the folder's name is the directory name verbatim:
+
+- `cassandra/` — Cassandra dashboards
+- `infrastructure/` — engine-agnostic host, cloud and system dashboards (`system-overview.json`, the home dashboard, lives here)
+- `observability/` — dashboards about the observability stack itself (profiling, Tempo, log investigation)
+- `opensearch/` — OpenSearch dashboards
+
+There is no registry. `GrafanaDashboardCatalog` scans the classpath at runtime and deploys every `<folder>/<name>.json` it finds, and the provisioning file is generated with one provider per directory. So:
+
+- **Adding a dashboard**: drop the JSON into the right folder directory. Nothing else.
+- **Adding a folder**: make a directory and put a dashboard in it.
+- **Never put a JSON file at the root of `dashboards/`** — discovery rejects it, because a dashboard with no folder has no provider to file it under.
+- File stems and directory names must be lowercase alphanumerics and dashes: they become ConfigMap and volume names.
+- `system-overview.json` must exist somewhere in the tree. It is the Grafana home dashboard and discovery fails loudly without it.
+- Directory names are deliberately lowercase and match kit names (`kit install clickhouse` installs into a folder called `clickhouse`), so a core dashboard for an engine that also has a kit lands beside the kit's own dashboards rather than in a capitalized twin.
+
+Dashboards that belong to a kit go in the kit's own `dashboards/` directory under `src/main/resources/.../kits/<name>/`, not here.
 
 ## Datasource UIDs
 
@@ -238,7 +256,7 @@ The local Prometheus exporter may expose counters without a `_total` suffix, but
 
 When adding new dashboards or modifying existing ones:
 
-1. Edit the JSON in `dashboards/` (or kit-specific path under `src/main/resources/.../kits/`)
+1. Edit the JSON in `dashboards/<folder>/` (or kit-specific path under `src/main/resources/.../kits/`)
 2. Run `./gradlew installDist` to bundle the updated JSON into the JAR
 3. Run `<cluster>/easy-db-lab grafana update-config` to push to the cluster
 4. Push test data if the change affects trace/metric panels
@@ -254,7 +272,8 @@ Step 2 above is not optional and nothing else substitutes for it. `ktlintFormat`
 resources. Confirm the build actually picked up the edit:
 
 ```bash
-diff <(jq -S . dashboards/system-overview.json) <(jq -S . build/resources/main/system-overview.json) \
+diff <(jq -S . dashboards/infrastructure/system-overview.json) \
+     <(jq -S . build/resources/main/dashboards/infrastructure/system-overview.json) \
   && echo "in sync"
 ```
 
@@ -282,8 +301,8 @@ Use a literal, byte-preserving replacement (`perl -0pi -e` with `\Q...\E`), then
 the size you expect and the file still parses:
 
 ```bash
-git diff --stat dashboards/     # expect 1 changed line per file
-jq empty dashboards/<name>.json # still valid JSON
+git diff --stat dashboards/              # expect 1 changed line per file
+jq empty dashboards/<folder>/<name>.json # still valid JSON
 ```
 
 ### Match the panel's unit before changing scale
@@ -322,10 +341,10 @@ One reported negative CPU panel turned out to be four. Before concluding, grep e
 the same shape:
 
 ```bash
-grep -l '<metric>' dashboards/*.json
-jq -r '.. | objects | select(has("expr")) | .expr | select(test("<metric>"))' dashboards/*.json
+grep -rl '<metric>' dashboards/
+jq -r '.. | objects | select(has("expr")) | .expr | select(test("<metric>"))' dashboards/*/*.json
 ```
 
 Grafana's Home dashboard is set by `GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH` on the grafana
-Deployment (currently `system-overview.json`). A bug there is the first thing a user sees, so
+Deployment (`infrastructure/system-overview.json`). A bug there is the first thing a user sees, so
 always check Home as well as the dashboard that was reported.

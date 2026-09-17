@@ -250,13 +250,24 @@ kotlin {
 sourceSets {
     val main by getting {
         java.srcDirs("src/main/kotlin")
-        resources.srcDirs("build/aws", "dashboards")
+        resources.srcDirs("build/aws")
     }
     val test by getting {
         java.srcDirs("src/test/kotlin")
     }
     val integrationTest by getting {
         java.srcDirs("src/integrationTest/kotlin")
+    }
+}
+
+// The core Grafana dashboards live in the top-level `dashboards/` tree, one subdirectory per
+// Grafana folder. They are copied onto the classpath under a `dashboards/` prefix (not merged
+// into the root like a resource srcDir would) so GrafanaDashboardCatalog can discover every
+// folder and file with a single ClassGraph scan of that one path.
+tasks.named<ProcessResources>("processResources") {
+    from("dashboards") {
+        into("dashboards")
+        exclude("CLAUDE.md")
     }
 }
 

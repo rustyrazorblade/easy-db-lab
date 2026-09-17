@@ -28,7 +28,7 @@ Dashboard JSON files are **Gradle resources**. `grafana update-config` deploys f
 `build/resources/main/`, not from your working tree.
 
 ```bash
-# 1. edit dashboards/<name>.json
+# 1. edit dashboards/<folder>/<name>.json
 ./gradlew installDist                     # REQUIRED — repopulates build/resources/main
 $EDB grafana update-config                # deploys from build/resources/main
 # 4. read it back from Grafana (below) — not optional
@@ -42,7 +42,7 @@ resources; nothing you run out of habit does.
 Confirm the build picked up your edit before deploying:
 
 ```bash
-diff <(jq -S . dashboards/<name>.json) <(jq -S . build/resources/main/<name>.json) && echo "in sync"
+diff <(jq -S . dashboards/<folder>/<name>.json) <(jq -S . build/resources/main/dashboards/<folder>/<name>.json) && echo "in sync"
 ```
 
 ## Prove it is live
@@ -77,14 +77,14 @@ across `cassandra-overview.json` — thousands of lines of unrelated churn hidin
 Use a literal, byte-preserving replacement:
 
 ```bash
-OLD='...' NEW='...' perl -0pi -e 'BEGIN{$o=$ENV{OLD};$n=$ENV{NEW}} s/\Q$o\E/$n/g' dashboards/<name>.json
+OLD='...' NEW='...' perl -0pi -e 'BEGIN{$o=$ENV{OLD};$n=$ENV{NEW}} s/\Q$o\E/$n/g' dashboards/<folder>/<name>.json
 ```
 
 Then check the blast radius and that the file still parses:
 
 ```bash
 git diff --stat dashboards/      # expect ~1 changed line per file
-jq empty dashboards/<name>.json  # still valid JSON
+jq empty dashboards/<folder>/<name>.json  # still valid JSON
 ```
 
 `jq` is fine for *reading* and inspecting. Never for writing.
@@ -95,8 +95,8 @@ The reported panel is rarely the only instance. Before you conclude, grep every 
 same metric and the same query shape:
 
 ```bash
-grep -l '<metric>' dashboards/*.json
-jq -r '.. | objects | select(has("expr")) | .expr | select(test("<metric>"))' dashboards/*.json
+grep -rl '<metric>' dashboards/
+jq -r '.. | objects | select(has("expr")) | .expr | select(test("<metric>"))' dashboards/*/*.json
 ```
 
 One reported negative-CPU panel turned out to be four. Also check **Home** — it is set by
@@ -140,11 +140,13 @@ exists because the name is plausible.
 
 ## Which directory
 
-- **Core/system dashboards** — top-level `dashboards/`, registered in the `GrafanaDashboard` enum,
-  loaded by `GrafanaManifestBuilder`.
+- **Core dashboards** — top-level `dashboards/<folder>/`, one subdirectory per Grafana folder
+  (`cassandra`, `infrastructure`, `observability`, `opensearch`). Discovered from the classpath by
+  `GrafanaDashboardCatalog` and deployed by `GrafanaManifestBuilder`; nothing to register. Adding
+  a folder is making a directory.
 - **Kit dashboards** — `src/main/resources/.../kits/<name>/dashboards/`, auto-installed by
-  `KitRunnerCommand` after a successful `start`. No enum entry needed. Never add a new kit
-  dashboard to the top-level directory.
+  `KitRunnerCommand` after a successful `start` into a folder named after the kit. Never add a
+  kit dashboard to the top-level tree.
 
 ## Reporting back
 

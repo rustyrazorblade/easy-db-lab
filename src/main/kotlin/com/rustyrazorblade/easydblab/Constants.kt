@@ -507,6 +507,18 @@ object Constants {
     // Grafana configuration
     object Grafana {
         /**
+         * File stem of the core dashboard Grafana opens on
+         * (`GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH`). Discovery fails if no folder holds it.
+         */
+        const val HOME_DASHBOARD_STEM = "system-overview"
+
+        /**
+         * File stem of the core dashboard whose JSON carries a `__PYROSCOPE_URL__` placeholder,
+         * substituted with the cluster's Pyroscope URL when its ConfigMap is built.
+         */
+        const val PYROSCOPE_DASHBOARD_STEM = "profiling"
+
+        /**
          * Tag auto-applied to every GLOBAL (unscoped) annotation created via `grafana annotate`, in
          * addition to any operator-supplied tags. The core dashboards' annotation query filters on
          * this tag so global markers render on their timelines. Scoped annotations

@@ -1,9 +1,12 @@
 package com.rustyrazorblade.easydblab.configuration.grafana
 
+import com.charleskorn.kaml.Yaml
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.services.TemplateService
+import io.fabric8.kubernetes.api.model.ConfigMap
+import io.fabric8.kubernetes.api.model.HasMetadata
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -11,18 +14,18 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
-import java.io.File
 
 /**
  * Tests for GrafanaManifestBuilder.
  *
- * Uses real TemplateService (never mocked per project convention) to verify
- * dashboard JSON loading and template variable substitution.
+ * Uses real TemplateService (never mocked per project convention) and the real discovered
+ * dashboard catalog, so every assertion runs against the dashboards that actually ship.
  */
 class GrafanaManifestBuilderTest : BaseKoinTest() {
     private lateinit var builder: GrafanaManifestBuilder
     private lateinit var templateService: TemplateService
     private lateinit var mockClusterStateManager: ClusterStateManager
+    private val catalog = GrafanaDashboardCatalog.discover()
 
     override fun additionalTestModules(): List<Module> =
         listOf(
@@ -47,257 +50,99 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
             ),
         )
         templateService = getKoin().get()
-        builder = GrafanaManifestBuilder(templateService)
+        builder = GrafanaManifestBuilder(templateService, catalog)
     }
 
-    @Test
-    fun `the Cassandra folder has its own provisioning provider naming the folder`() {
-        // Folders come from a provider that names one, not from the directory structure. The
-        // alternative, foldersFromFilesStructure, derives a folder per subdirectory - and since
-        // every dashboard already sits in a subdirectory named after itself, it would file the
-        // other ten into folders called "system", "s3" and so on.
-        val yaml = provisioningYaml()
-
-        // Settings only: the file's own comment explains why foldersFromFilesStructure is absent,
-        // and names it while doing so.
-        assertThat(settingsOf(yaml)).doesNotContain("foldersFromFilesStructure")
-        assertThat(yaml).contains("folder: 'Cassandra'")
-        assertThat(yaml).contains("path: $GRAFANA_CASSANDRA_PATH")
+    private fun provisioningConfig(): GrafanaDashboardProvisioningConfig {
+        val yaml =
+            checkNotNull(builder.buildDashboardProvisioningConfigMap().data["dashboards.yaml"]) {
+                "provisioning ConfigMap has no dashboards.yaml key"
+            }
+        return Yaml.default.decodeFromString(GrafanaDashboardProvisioningConfig.serializer(), yaml)
     }
 
-    private fun provisioningYaml(): String =
-        checkNotNull(builder.buildDashboardProvisioningConfigMap().data["dashboards.yaml"]) {
-            "provisioning ConfigMap has no dashboards.yaml key"
-        }
-
-    private fun settingsOf(yaml: String): String = yaml.lines().filterNot { it.trimStart().startsWith("#") }.joinToString("\n")
-
-    private companion object {
-        /** Every provisioning provider's `options.path`. */
-        val PROVIDER_PATH = Regex("""^\s*path:\s*(\S+)\s*$""", RegexOption.MULTILINE)
-    }
-
-    @Test
-    fun `the root provider still files its dashboards at the root of the list`() {
-        val yaml = provisioningYaml()
-
-        assertThat(yaml).contains("folder: ''")
-        assertThat(yaml).contains("folderUid: ''")
-        assertThat(yaml).contains("path: $GRAFANA_DASHBOARD_ROOT\n")
-    }
-
-    @Test
-    fun `every dashboard mounts under the provider that owns its folder`() {
-        // A dashboard mounted outside its provider's path lands in the wrong folder, or in no
-        // folder at all if nothing sweeps where it was mounted. Neither fails anything at deploy
-        // time; the dashboard is just missing from where someone looks for it.
-        GrafanaDashboard.entries.forEach { dashboard ->
-            assertThat(dashboard.mountPath)
-                .describedAs("mount path for ${dashboard.name}")
-                .startsWith("${dashboard.folderPath}/")
-        }
-    }
+    private fun grafanaContainer() =
+        builder
+            .buildDeployment()
+            .spec.template.spec.containers
+            .first { it.name == "grafana" }
 
     /**
-     * The check that would have caught two dashboards deployed with no enum entry, and a folder
-     * mounted where nothing was watching.
+     * The check that would have caught a folder mounted where nothing was watching.
      *
      * A dashboard mounted outside every provider's path is a silent failure: the ConfigMap is
      * created, the volume mounts, Grafana starts, and the dashboard simply never appears. Nothing
-     * in the deploy reports it. So the enum's derived folder path and the provisioning file's
-     * `options.path` are compared directly here.
+     * in the deploy reports it. So the provisioning providers and the mount paths are compared
+     * directly here.
      */
     @Test
-    fun `every folder an entry claims is backed by a provider watching that exact path`() {
-        val providerPaths =
-            PROVIDER_PATH.findAll(provisioningYaml()).map { it.groupValues[1] }.toSet()
+    fun `every discovered folder is backed by a provider watching that exact path`() {
+        val providerPaths = provisioningConfig().providers.map { it.options.path }
 
-        assertThat(providerPaths).describedAs("provider paths in dashboards.yaml").isNotEmpty()
-
-        GrafanaDashboard.entries.forEach { dashboard ->
+        assertThat(providerPaths).containsExactlyElementsOf(catalog.folders.map { GrafanaDashboard.folderProviderPath(it) })
+        assertThat(catalog.dashboards).allSatisfy { dashboard ->
+            assertThat(dashboard.mountPath)
+                .describedAs("mount path for ${dashboard.resourcePath}")
+                .startsWith("${dashboard.folderPath}/")
             assertThat(providerPaths)
-                .describedAs("no provider watches ${dashboard.folderPath}, where ${dashboard.name} mounts")
+                .describedAs("no provider watches ${dashboard.folderPath}, where ${dashboard.resourcePath} mounts")
                 .contains(dashboard.folderPath)
         }
     }
 
-    /**
-     * The complement to the provider check below, and the one that catches the more common
-     * mistake: a JSON file added to `dashboards/` with no enum entry.
-     *
-     * An unregistered dashboard is not merely absent. It gets installed ad hoc with `grafana
-     * install --folder=X`, and because the provisioner does not know it, Grafana creates a SECOND
-     * folder with a random uid instead of reusing the provisioned one — leaving two folders with
-     * the same title and the dashboards split between them. Seven files had drifted this way before
-     * this test existed.
-     *
-     * There are deliberately no exceptions. Every file in that directory is a dashboard someone
-     * expects to see, so if one ever genuinely should not ship, the honest fix is to delete it or
-     * move it out of the directory, not to grant it a pass here.
-     */
     @Test
-    fun `every dashboard JSON file is registered in the enum`() {
-        val onDisk =
-            File("dashboards")
-                .listFiles { file -> file.extension == "json" }
-                .orEmpty()
-                .map { it.name }
-                .toSet()
-        val registered = GrafanaDashboard.entries.map { it.jsonFileName }.toSet()
+    fun `the home dashboard resolves inside its folder`() {
+        // GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH is built from the home dashboard's mount path.
+        // Left pointing anywhere else, Grafana opens on an empty page.
+        val homePath = grafanaContainer().env.first { it.name == "GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH" }.value
 
-        assertThat(onDisk)
-            .describedAs("dashboards/ should not be empty — the check below proves nothing if it is")
-            .isNotEmpty()
-        assertThat(onDisk).allSatisfy { fileName ->
-            assertThat(registered)
-                .describedAs("$fileName has no GrafanaDashboard entry, so a fresh cluster never gets it")
-                .contains(fileName)
-        }
+        assertThat(homePath).isEqualTo("/var/lib/grafana/dashboards-infrastructure/system-overview/system-overview.json")
     }
 
     @Test
-    fun `every enum entry names a dashboard that exists`() {
-        // The other direction. An entry with no file is not fatal — it is skipped when optional —
-        // but it is dead weight that reads like a shipped dashboard.
-        val onDisk =
-            File("dashboards")
-                .listFiles { file -> file.extension == "json" }
-                .orEmpty()
-                .map { it.name }
-                .toSet()
+    fun `buildAllResources deploys every discovered dashboard plus provisioning and deployment`() {
+        val names = builder.buildAllResources().map { it.metadata.name }
 
-        assertThat(GrafanaDashboard.entries).allSatisfy { dashboard ->
-            assertThat(onDisk)
-                .describedAs("${dashboard.name} points at ${dashboard.jsonFileName}, which is not in dashboards/")
-                .contains(dashboard.jsonFileName)
-        }
-    }
-
-    @Test
-    fun `the Infrastructure folder has a provider matching the derived path`() {
-        val yaml = provisioningYaml()
-
-        assertThat(yaml).contains("folder: 'Infrastructure'")
-        assertThat(yaml).contains("folderUid: 'infrastructure'")
-        // Derived, not spelled out: if folderPath ever stops matching, this fails here rather than
-        // on a cluster where the dashboard is merely absent.
-        assertThat(yaml).contains("path: ${GrafanaDashboard.SYSTEM.folderPath}")
-        assertThat(GrafanaDashboard.SYSTEM.folderPath).isEqualTo(GRAFANA_INFRASTRUCTURE_PATH)
-    }
-
-    @Test
-    fun `the engine-agnostic system dashboards are the ones in Infrastructure`() {
-        val infrastructure = GrafanaDashboard.entries.filter { it.folder == GRAFANA_INFRASTRUCTURE_FOLDER }
-
-        assertThat(infrastructure).containsExactlyInAnyOrder(
-            GrafanaDashboard.SYSTEM,
-            GrafanaDashboard.SYSTEM_AB_COMPARISON,
-            GrafanaDashboard.INSTANCE_CLOUD,
-            GrafanaDashboard.PROFILER_HEALTH,
-        )
-        assertThat(infrastructure).allSatisfy { dashboard ->
-            assertThat(dashboard.mountPath).startsWith("$GRAFANA_INFRASTRUCTURE_PATH/")
-        }
-    }
-
-    @Test
-    fun `the home dashboard still resolves inside its folder`() {
-        // GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH is built from SYSTEM's mount path, so moving
-        // that entry into a folder moves the home dashboard's path with it. Left stale, Grafana
-        // opens on an empty page.
-        val grafanaContainer =
-            builder
-                .buildDeployment()
-                .spec.template.spec.containers
-                .first { it.name == "grafana" }
-        val homePath = grafanaContainer.env.first { it.name == "GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH" }.value
-
-        assertThat(homePath).isEqualTo("$GRAFANA_INFRASTRUCTURE_PATH/system/system-overview.json")
-        assertThat(GrafanaDashboard.SYSTEM.optional)
-            .describedAs("the home dashboard must not be skippable")
-            .isFalse()
-    }
-
-    @Test
-    fun `the Cassandra dashboards are the ones in the Cassandra folder`() {
-        val cassandra = GrafanaDashboard.entries.filter { it.folder == GRAFANA_CASSANDRA_FOLDER }
-
-        assertThat(cassandra).containsExactlyInAnyOrder(
-            GrafanaDashboard.CASSANDRA_OVERVIEW,
-            GrafanaDashboard.CLUSTER_COMPARISON,
-            GrafanaDashboard.CASSANDRA_JVM,
-            GrafanaDashboard.READ_PATH_ANATOMY,
-            GrafanaDashboard.TABLE_DEEP_DIVE,
-            GrafanaDashboard.WRITE_PATH_BACKPRESSURE,
-            GrafanaDashboard.NODE_DIVERGENCE,
-            GrafanaDashboard.AB_COMPARISON,
-            GrafanaDashboard.PROFILE_COMPARISON,
-            GrafanaDashboard.CLIENT_VS_SERVER_LATENCY,
-            GrafanaDashboard.COMPACTION_STORAGE,
-            GrafanaDashboard.TRACE_RED,
-            GrafanaDashboard.CASSANDRA_LOGS_ANALYSIS,
-            GrafanaDashboard.COMMITLOG_MEMTABLE,
-        )
-        assertThat(cassandra).allSatisfy { dashboard ->
-            assertThat(dashboard.mountPath).startsWith("$GRAFANA_CASSANDRA_PATH/")
-            // Every dashboard in this folder is optional, and a missing JSON must never stop
-            // Grafana from starting. The set grows steadily, so this is a standing rule rather
-            // than a statement about how many are in flight at any moment.
-            assertThat(dashboard.optional).isTrue()
-        }
-    }
-
-    @Test
-    fun `every other dashboard stays at the root path`() {
-        val root = GrafanaDashboard.entries.filter { it.folder.isEmpty() }
-
-        assertThat(root).contains(GrafanaDashboard.TEMPO, GrafanaDashboard.CLICKHOUSE, GrafanaDashboard.S3)
-        assertThat(root).allSatisfy { dashboard ->
-            assertThat(dashboard.mountPath).startsWith("$GRAFANA_DASHBOARD_ROOT/")
-            assertThat(dashboard.mountPath).doesNotContain("$GRAFANA_DASHBOARD_ROOT-")
-        }
-    }
-
-    @Test
-    fun `buildAllResources skips an optional dashboard whose JSON does not exist yet`() {
-        // The volume's optional flag only covers a missing ConfigMap. Building the ConfigMap reads
-        // the JSON off the classpath and fails hard when it is absent, so an enum entry added
-        // ahead of its JSON would break the whole deployment without this.
-        //
-        // Stated as a rule rather than a head count, so it holds both while a dashboard's JSON is
-        // still being written and after it lands: a dashboard is in the output exactly when its
-        // JSON exists, and anything left out has to have been optional.
-        val configMapNames = builder.buildAllResources().map { it.metadata.name }
-
-        GrafanaDashboard.entries.forEach { dashboard ->
-            if (javaClass.getResource("/${dashboard.jsonFileName}") != null) {
-                assertThat(configMapNames)
-                    .describedAs("${dashboard.name} has JSON, so it must be deployed")
-                    .contains(dashboard.configMapName)
-            } else {
-                assertThat(dashboard.optional)
-                    .describedAs("${dashboard.name} has no JSON, so it must be optional")
-                    .isTrue()
-                assertThat(configMapNames)
-                    .describedAs("${dashboard.name} has no JSON, so it must be skipped")
-                    .doesNotContain(dashboard.configMapName)
-            }
-        }
-
-        // Vacuity guard: the loop above proves nothing if the enum is ever empty.
-        assertThat(configMapNames).contains(
-            GrafanaDashboard.SYSTEM.configMapName,
-            GrafanaDashboard.CASSANDRA_OVERVIEW.configMapName,
-        )
+        assertThat(names).containsAll(catalog.dashboards.map { it.configMapName })
+        assertThat(names).contains("grafana-dashboards-config", "grafana")
+        assertThat(names).hasSize(catalog.dashboards.size + 2)
     }
 
     @Test
     fun `buildDashboardConfigMap preserves Grafana built-in variables`() {
-        val configMap = builder.buildDashboardConfigMap(GrafanaDashboard.CLICKHOUSE)
-        val json = configMap.data[GrafanaDashboard.CLICKHOUSE.jsonFileName]!!
+        val dashboard = GrafanaDashboard("cassandra", "cassandra-overview.json")
+
+        val json = builder.buildDashboardConfigMap(dashboard).data[dashboard.jsonFileName]!!
 
         assertThat(json).contains("\$__rate_interval")
     }
+
+    @Test
+    fun `the profiling dashboard gets the Pyroscope URL substituted`() {
+        val profiling =
+            builder.buildAllResources(pyroscopeUrl = "http://10.0.0.1:4040").first {
+                it.metadata.name ==
+                    "grafana-dashboard-profiling"
+            }
+
+        val json = profiling.asConfigMapData("profiling.json")
+        assertThat(json).contains("http://10.0.0.1:4040")
+        assertThat(json).doesNotContain("__PYROSCOPE_URL__")
+    }
+
+    @Test
+    fun `other dashboards are deployed verbatim even when a Pyroscope URL is given`() {
+        val overview =
+            builder.buildAllResources(pyroscopeUrl = "http://10.0.0.1:4040").first {
+                it.metadata.name ==
+                    "grafana-dashboard-cassandra-overview"
+            }
+
+        assertThat(overview.asConfigMapData("cassandra-overview.json"))
+            .isEqualTo(javaClass.getResource("/dashboards/cassandra/cassandra-overview.json")!!.readText())
+    }
+
+    private fun HasMetadata.asConfigMapData(key: String): String = (this as ConfigMap).data.getValue(key)
 
     @Test
     fun `buildDeployment includes grafana and image renderer containers`() {
@@ -329,12 +174,9 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
         // Listing it in GF_INSTALL_PLUGINS makes the boot-time install fail
         // ("cannot install a Core plugin") and Grafana CrashLoopBackOffs. Only externally
         // distributed plugins may appear here.
-        val deployment = builder.buildDeployment()
-        val grafanaContainer =
-            deployment.spec.template.spec.containers
-                .first { it.name == "grafana" }
         val plugins =
-            grafanaContainer.env
+            grafanaContainer()
+                .env
                 .first { it.name == "GF_INSTALL_PLUGINS" }
                 .value
                 .split(",")
@@ -348,16 +190,13 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
     }
 
     @Test
-    fun `buildDeployment includes volume mounts for all dashboards`() {
-        val deployment = builder.buildDeployment()
-        val container =
-            deployment.spec.template.spec.containers
-                .first()
+    fun `buildDeployment mounts every dashboard read-only at its mount path`() {
+        val container = grafanaContainer()
 
-        GrafanaDashboard.entries.forEach { dashboard ->
+        catalog.dashboards.forEach { dashboard ->
             val mount = container.volumeMounts.find { it.name == dashboard.volumeName }
             assertThat(mount)
-                .describedAs("Volume mount for ${dashboard.name}")
+                .describedAs("Volume mount for ${dashboard.resourcePath}")
                 .isNotNull
             assertThat(mount!!.mountPath).isEqualTo(dashboard.mountPath)
             assertThat(mount.readOnly).isTrue()
@@ -365,19 +204,23 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
     }
 
     @Test
-    fun `buildDeployment includes volumes for all dashboards with correct optional flag`() {
-        val deployment = builder.buildDeployment()
-        val volumes = deployment.spec.template.spec.volumes
+    fun `buildDeployment backs every dashboard volume with a required ConfigMap`() {
+        // No dashboard is optional any more: every one the catalog found exists by construction,
+        // so a missing ConfigMap is a deploy bug that should stop the pod, not be papered over.
+        val volumes =
+            builder
+                .buildDeployment()
+                .spec.template.spec.volumes
 
-        GrafanaDashboard.entries.forEach { dashboard ->
+        catalog.dashboards.forEach { dashboard ->
             val volume = volumes.find { it.name == dashboard.volumeName }
             assertThat(volume)
-                .describedAs("Volume for ${dashboard.name}")
+                .describedAs("Volume for ${dashboard.resourcePath}")
                 .isNotNull
             assertThat(volume!!.configMap.name).isEqualTo(dashboard.configMapName)
-            assertThat(volume.configMap.optional)
-                .describedAs("Optional flag for ${dashboard.name}")
-                .isEqualTo(dashboard.optional)
+            assertThat(volume.configMap.optional == true)
+                .describedAs("${dashboard.resourcePath} must not be an optional volume")
+                .isFalse()
         }
     }
 }

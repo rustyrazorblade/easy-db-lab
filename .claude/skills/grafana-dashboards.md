@@ -2,14 +2,14 @@
 name: grafana-dashboards
 description: Use when doing any work with Grafana dashboards - creating, modifying, debugging, or deploying, including editing any .json file in the dashboards/ directory. Covers the full architecture, file locations, naming conventions, deployment pipeline, and design principles.
 triggers:
-  - pattern: "dashboards/*.json"
+  - pattern: "dashboards/**/*.json"
 ---
 
 # Grafana Dashboards
 
 ## Architecture Overview
 
-Dashboards are standalone JSON files stored as classpath resources. They are loaded by `GrafanaManifestBuilder` (Fabric8), which builds typed ConfigMap objects with `__KEY__` template variable substitution. The `GrafanaDashboard` enum is the single source of truth for dashboard metadata. Grafana loads dashboards via file-based provisioning from mounted ConfigMap volumes.
+Core dashboards are standalone JSON files in the top-level `dashboards/<folder>/` tree, copied onto the classpath under a `dashboards/` prefix at build time. `GrafanaDashboardCatalog` discovers every `<folder>/<name>.json` on the classpath at runtime; `GrafanaManifestBuilder` (Fabric8) wraps each one in a typed ConfigMap and generates the provisioning file with one provider per folder directory. There is no registry to edit. Grafana loads dashboards via file-based provisioning from mounted ConfigMap volumes.
 
 ```
 JSON resource files → GrafanaManifestBuilder (Fabric8 ConfigMaps + Deployment)
@@ -23,8 +23,10 @@ JSON resource files → GrafanaManifestBuilder (Fabric8 ConfigMaps + Deployment)
 
 | What | Path |
 |------|------|
-| Dashboard JSON files | `src/main/resources/.../configuration/grafana/dashboards/*.json` |
-| Dashboard enum (registry) | `src/main/kotlin/.../configuration/grafana/GrafanaDashboard.kt` |
+| Dashboard JSON files | `dashboards/<folder>/*.json` (top-level; folders `cassandra`, `infrastructure`, `observability`, `opensearch`) |
+| Dashboard model | `src/main/kotlin/.../configuration/grafana/GrafanaDashboard.kt` (data class, derives K8s names from folder + file) |
+| Discovery | `src/main/kotlin/.../configuration/grafana/GrafanaDashboardCatalog.kt` (ClassGraph scan of `dashboards/`) |
+| Provisioning YAML | `src/main/kotlin/.../configuration/grafana/GrafanaDashboardProvisioningConfig.kt` (one provider per folder) |
 | Manifest builder | `src/main/kotlin/.../configuration/grafana/GrafanaManifestBuilder.kt` |
 | Datasource config | `src/main/kotlin/.../configuration/grafana/GrafanaDatasourceConfig.kt` |
 | Dashboard service | `src/main/kotlin/.../services/GrafanaDashboardService.kt` |
@@ -33,20 +35,7 @@ JSON resource files → GrafanaManifestBuilder (Fabric8 ConfigMaps + Deployment)
 
 ## Existing Dashboards
 
-Defined in the `GrafanaDashboard` enum:
-
-| Enum Entry | ConfigMap Name | JSON Resource |
-|------------|---------------|---------------|
-| `SYSTEM` | `grafana-dashboard-system` | `dashboards/system-overview.json` |
-| `S3` | `grafana-dashboard-s3` | `dashboards/s3-cloudwatch.json` |
-| `EMR` | `grafana-dashboard-emr` | `dashboards/emr.json` |
-| `OPENSEARCH` | `grafana-dashboard-opensearch` | `dashboards/opensearch.json` |
-| `STRESS` | `grafana-dashboard-stress` | `dashboards/stress.json` |
-| `CLICKHOUSE` | `grafana-dashboard-clickhouse` | `dashboards/clickhouse.json` |
-| `CLICKHOUSE_LOGS` | `grafana-dashboard-clickhouse-logs` | `dashboards/clickhouse-logs.json` |
-| `PROFILING` | `grafana-dashboard-profiling` | `dashboards/profiling.json` |
-| `CASSANDRA_CONDENSED` | `grafana-dashboard-cassandra-condensed` | `dashboards/cassandra-condensed.json` |
-| `CASSANDRA_OVERVIEW` | `grafana-dashboard-cassandra-overview` | `dashboards/cassandra-overview.json` |
+Run `find dashboards -name '*.json' | sort` for the current list. The Grafana folder is the directory name verbatim; the ConfigMap name is `grafana-dashboard-<stem>`. `infrastructure/system-overview.json` is the home dashboard and must exist.
 
 ## Available Datasources
 
@@ -66,29 +55,16 @@ Datasources are created at runtime by `GrafanaDatasourceConfig.create()` and app
 
 ### Step 1: Create the JSON file
 
-**Location:** `src/main/resources/com/rustyrazorblade/easydblab/configuration/grafana/dashboards/{name}.json`
+**Location:** `dashboards/<folder>/{name}.json`, where `<folder>` is the Grafana folder it belongs in (`cassandra`, `infrastructure`, `observability`, `opensearch`; make a new directory for a new folder). Never at the root of `dashboards/` — discovery rejects that.
 
-The JSON file is a standard Grafana dashboard export. Use `__KEY__` template variables for dynamic values (see Template Variables section below).
+`{name}` must be lowercase alphanumerics and dashes (it becomes the ConfigMap name). The JSON must carry a top-level `uid`.
 
-### Step 2: Add enum entry to GrafanaDashboard
+### Step 2: There is no step 2
 
-**File:** `src/main/kotlin/.../configuration/grafana/GrafanaDashboard.kt`
-
-```kotlin
-MY_DASHBOARD(
-    configMapName = "grafana-dashboard-my-dashboard",
-    volumeName = "dashboard-my-dashboard",
-    mountPath = "/var/lib/grafana/dashboards/my-dashboard",
-    jsonFileName = "my-dashboard.json",
-    resourcePath = "dashboards/my-dashboard.json",
-    optional = true,  // true for non-core dashboards
-),
-```
-
-The enum entry is all that's needed — `GrafanaManifestBuilder` automatically:
+The file is discovered at runtime. `GrafanaManifestBuilder` automatically:
 - Creates a ConfigMap with the JSON content
-- Adds a volume mount in the Grafana Deployment
-- Applies `__KEY__` template substitution
+- Adds a volume and mount in the Grafana Deployment
+- Provisions the folder (one provider per directory)
 
 ### Step 3: Verify and Deploy
 
@@ -101,7 +77,7 @@ The enum entry is all that's needed — `GrafanaManifestBuilder` automatically:
 
 ## Modifying an Existing Dashboard
 
-1. Edit the JSON file directly in `dashboards/`
+1. Edit the JSON file directly in `dashboards/<folder>/`
 2. Run `./gradlew :test` to verify compilation
 3. Deploy with `easy-db-lab grafana update-config`
 
@@ -359,8 +335,8 @@ d['panels'].sort(key=lambda p: (p['gridPos']['y'], p['gridPos']['x']))
 
 ### Dashboard not appearing in Grafana
 
-1. **Check enum entry** — Is the dashboard registered in `GrafanaDashboard` enum? This is the single source of truth.
-2. **Check JSON resource path** — Does the `resourcePath` in the enum match the actual file location under `dashboards/`?
+1. **Check the file location** — Is it at `dashboards/<folder>/<name>.json`, exactly one directory deep? A file at the root or nested deeper fails discovery, and `GrafanaDashboardCatalogTest` fails on it too.
+2. **Check the build picked it up** — `ls build/resources/main/dashboards/<folder>/` after `./gradlew installDist`.
 3. **Check deployment was applied** — Run `grafana update-config` to reapply all resources.
 
 ### Dashboard appears but shows no data

@@ -8,7 +8,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboard
+import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardCatalog
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
@@ -299,22 +299,24 @@ class K8sServiceIntegrationTest {
     @Test
     @Order(21)
     fun `should apply Grafana resources`() {
-        val builder = GrafanaManifestBuilder(templateService)
+        val catalog = GrafanaDashboardCatalog.discover()
+        val builder = GrafanaManifestBuilder(templateService, catalog)
 
         // Apply provisioning ConfigMap
         applyAndVerify(listOf(builder.buildDashboardProvisioningConfigMap()))
         assertConfigMapExists("grafana-dashboards-config", "dashboards.yaml")
 
         // Apply a dashboard ConfigMap
-        applyAndVerify(listOf(builder.buildDashboardConfigMap(GrafanaDashboard.SYSTEM)))
+        val home = catalog.home
+        applyAndVerify(listOf(builder.buildDashboardConfigMap(home)))
         val appliedDashboard =
             client
                 .configMaps()
                 .inNamespace(DEFAULT_NAMESPACE)
-                .withName(GrafanaDashboard.SYSTEM.configMapName)
+                .withName(home.configMapName)
                 .get()
         assertThat(appliedDashboard).isNotNull
-        assertThat(appliedDashboard.data).containsKey(GrafanaDashboard.SYSTEM.jsonFileName)
+        assertThat(appliedDashboard.data).containsKey(home.jsonFileName)
 
         // Apply all resources including Deployment
         applyAndVerify(builder.buildAllResources())
@@ -655,7 +657,7 @@ class K8sServiceIntegrationTest {
             BeylaManifestBuilder(templateService).buildAllResources() +
             PyroscopeManifestBuilder(templateService).buildAllResources() +
             YaceManifestBuilder(templateService).buildAllResources() +
-            GrafanaManifestBuilder(templateService).buildAllResources()
+            GrafanaManifestBuilder(templateService, GrafanaDashboardCatalog.discover()).buildAllResources()
 
     private fun waitForPvcBound(
         pvcName: String,

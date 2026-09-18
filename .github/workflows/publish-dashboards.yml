@@ -19,7 +19,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Create dashboards zip
-        run: cd dashboards && zip -r ../dashboards.zip *.json
+        run: cd dashboards && zip -r ../dashboards.zip . -i '*.json'
 
       - name: Create or update latest release
         env:

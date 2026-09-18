@@ -2372,6 +2372,24 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Grafana.DashboardTreeUploading")
+        data class DashboardTreeUploading(
+            val count: Int,
+            val path: String,
+        ) : Grafana {
+            override fun toDisplayString(): String = "Uploading $count Grafana dashboards to $path..."
+        }
+
+        @Serializable
+        @SerialName("Grafana.DashboardTreeUploaded")
+        data class DashboardTreeUploaded(
+            val count: Int,
+            val path: String,
+        ) : Grafana {
+            override fun toDisplayString(): String = "Installed $count Grafana dashboards under $path"
+        }
+
+        @Serializable
         @SerialName("Grafana.DashboardInstalled")
         data class DashboardInstalled(
             val title: String,
@@ -2701,6 +2719,19 @@ sealed interface Event {
                 "This cluster uses Tailscale, but the local Tailscale client is not connected (state: $backendState)."
 
             override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        @SerialName("Tailscale.RouteWaiting")
+        data class RouteWaiting(
+            val alias: String,
+            val address: String,
+            val port: Int,
+            val attempt: Int,
+            val maxAttempts: Int,
+        ) : Tailscale {
+            override fun toDisplayString(): String =
+                "Waiting for the tailnet route to $alias at $address:$port... (attempt $attempt of $maxAttempts)"
         }
 
         @Serializable

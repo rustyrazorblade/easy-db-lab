@@ -1,7 +1,12 @@
 package com.rustyrazorblade.easydblab.configuration.ebpfexporter
 
+import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder.Companion.HOST_OBJECT_DIR
+import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder.Companion.OVERRIDDEN_PROGRAMS
+import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder.Companion.objectFile
+import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder.Companion.overrideVolumeName
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import java.io.File
 
 /**
  * Guards the eBPF programs the exporter is told to load.
@@ -42,6 +47,22 @@ class EbpfExporterManifestBuilderTest {
     }
 
     @Test
+    fun `the syscall, softirq and network programs are loaded`() {
+        // All three ship in v2.5.1's /examples and attach on the 7.0 kernel the base image runs.
+        assertThat(configNames).contains("syscalls", "softirq-latency", "tcp-syn-backlog")
+    }
+
+    @Test
+    fun `the programs ruled out on kernel 7 are not loaded`() {
+        // accept-latency: its request_sock-keyed timestamps go stale on kernel 7.0 and it reports
+        // multi-second accept waits against an empty accept queue; tcp-syn-backlog covers the same
+        // question. kfree_skb: the v2.5.1 program keys on destination port and its reason table
+        // predates kernel 7.0, so it emits thousands of `unknown:108` series per node.
+        // tcp-window-clamps and udp-drops are read by nothing.
+        assertThat(configNames).doesNotContain("accept-latency", "kfree_skb", "tcp-window-clamps", "udp-drops")
+    }
+
+    @Test
     fun `no span-exporting program is loaded`() {
         // bio-trace and sched-trace label every series with trace_id and span_id, so their
         // cardinality is unbounded by construction. They are not substitutes for the biosnoop and
@@ -56,6 +77,47 @@ class EbpfExporterManifestBuilderTest {
         assertThat(configNames).allSatisfy { name ->
             assertThat(name).isEqualTo(name.trim())
             assertThat(name).isNotEmpty()
+        }
+    }
+
+    @Test
+    fun `overridden programs are still named in config names`() {
+        // The override replaces the image's object in place; the exporter still finds the program
+        // by the same stem.  Dropping the stem would silently disable the override.
+        assertThat(configNames).containsAll(OVERRIDDEN_PROGRAMS)
+    }
+
+    @Test
+    fun `the overridden programs are exactly the sources the AMI build compiles`() {
+        // install_ebpf_programs.sh compiles every packer/base/install/ebpf/*.bpf.c. A program listed
+        // here without a source there mounts a path the AMI never creates; a source there without
+        // an entry here is built into the AMI and then never mounted, so the image's copy runs.
+        val sources =
+            File("packer/base/install/ebpf")
+                .listFiles()
+                .orEmpty()
+                .map { it.name }
+                .filter { it.endsWith(".bpf.c") }
+                .map { it.removeSuffix(".bpf.c") }
+                .toSet()
+
+        assertThat(OVERRIDDEN_PROGRAMS.toSet()).isEqualTo(sources)
+    }
+
+    @Test
+    fun `each overridden object is mounted from the AMI over the image copy`() {
+        val daemonSet = EbpfExporterManifestBuilder().buildDaemonSet()
+        val spec = daemonSet.spec.template.spec
+        val mounts = spec.containers.first().volumeMounts
+
+        assertThat(OVERRIDDEN_PROGRAMS).isNotEmpty()
+        OVERRIDDEN_PROGRAMS.forEach { program ->
+            val mount = mounts.first { it.name == overrideVolumeName(program) }
+            val volume = spec.volumes.first { it.name == overrideVolumeName(program) }
+            assertThat(mount.mountPath).isEqualTo("/examples/${objectFile(program)}")
+            assertThat(volume.hostPath.path).isEqualTo("$HOST_OBJECT_DIR/${objectFile(program)}")
+            // A missing object must fail the pod visibly, not fall back to the image's copy.
+            assertThat(volume.hostPath.type).isEqualTo("File")
         }
     }
 }

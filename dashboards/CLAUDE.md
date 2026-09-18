@@ -1,8 +1,33 @@
 # Dashboards
 
-JSON dashboard files in this directory are loaded into Grafana via `GrafanaManifestBuilder`. Gradle copies them into classpath resources at build time. **Always run `./gradlew installDist` before `grafana update-config`** — `update-config` reads from the built JAR, not the source files directly.
+JSON dashboard files in this tree are the core dashboards. Gradle copies the tree onto the classpath under a `dashboards/` prefix at build time, and `grafana update-config` copies it from there onto the control node, where Grafana reads it as files. **Always run `./gradlew installDist` before `grafana update-config`** — `update-config` reads from the built JAR, not the source files directly.
 
-Note: These dashboard are considered LEGACY.  Do not add any additional dashboards here.  All dashboards associated with kits should be in the dashboard directory of the kit, not here.
+## Layout: one directory per Grafana folder
+
+Each subdirectory is a Grafana folder, and the folder's name is the directory name verbatim:
+
+- `cassandra/` — Cassandra dashboards
+- `infrastructure/` — engine-agnostic host, cloud and system dashboards (`system-overview.json`, the home dashboard, lives here)
+- `observability/` — dashboards about the observability stack itself (profiling, Tempo, log investigation)
+- `opensearch/` — OpenSearch dashboards
+
+There is no registry. This section is the canonical description of how the tree reaches Grafana; other docs link here rather than restate it.
+
+1. **Discovery** — `GrafanaDashboardCatalog.discover()` (`src/main/kotlin/.../configuration/grafana/`) scans the classpath under `dashboards/` with ClassGraph and yields one `GrafanaDashboard(folder, jsonFileName)` per `<folder>/<name>.json`, sorted. A JSON file at the root of the tree or nested deeper is an error, not skipped. The home dashboard is pinned to exactly `infrastructure/system-overview.json` (`Constants.Grafana.HOME_DASHBOARD_PATH`); the catalog refuses to exist without it, and a `system-overview.json` in another folder is an ordinary dashboard. The catalog also knows the classpath base the JSON is read from (`resourcePathOf`); a `GrafanaDashboard` is only `(folder, jsonFileName)`.
+2. **Local tree** — `GrafanaDashboardTreeWriter` writes the catalog to a temp directory as `<folder>/<file>.json`, copying each JSON from the classpath with exactly one substitution, applied to every file: `__PYROSCOPE_URL__` becomes the control node's Pyroscope URL (`pyroscopeIngestBaseUrl`). Today only `observability/profiling.json` carries it; a file without it is written byte-for-byte. No `TemplateService`: dashboards carry Grafana built-ins like `$__rate_interval` that general substitution corrupts.
+3. **Upload and swap** — `GrafanaDashboardTreeUploader` (`src/main/kotlin/.../services/`) hands the local tree to `RemoteOperationsService.replaceDirectory(host, localDir, "/mnt/db1/grafana/dashboards", "472:472")`. That method creates a staging directory beside the target with `sudo mktemp -d -p /mnt/db1/grafana` (same filesystem, chowned to the SSH user so SFTP can write, in one remote command), uploads the tree into it, then in one remote command renames the old tree to `dashboards.old`, renames the staged tree in, `chown -R`s it to the owner, and removes `.old`. Grafana's provider therefore never polls an empty or partial directory, and a dashboard deleted from the repo disappears because the whole tree is replaced. If anything fails before the swap the staging directory is removed. No dashboard is a K8s object and nothing is deleted from K8s.
+4. **Provisioning** — `GrafanaDashboardProvisioningConfig` emits one file provider with `options.path: /var/lib/grafana/dashboards` (the hostPath as the Deployment mounts it) and `foldersFromFilesStructure: true`, so each directory becomes a Grafana folder of the same title. `GrafanaManifestBuilder` ships that YAML in the `grafana-dashboards-config` ConfigMap and points `GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH` at `/var/lib/grafana/dashboards/` + `Constants.Grafana.HOME_DASHBOARD_PATH`; it does not take the catalog and nothing it builds varies with the tree's contents.
+
+So:
+
+- **Adding a dashboard**: drop the JSON into the right folder directory. Nothing else.
+- **Adding a folder**: make a directory and put a dashboard in it.
+- **Never put a JSON file at the root of `dashboards/`** — discovery rejects it, because a file at the provider's root would land in Grafana's General folder.
+- Two folders may hold a file with the same name; each stays under its own directory.
+- `infrastructure/system-overview.json` must exist at exactly that path. It is the Grafana home dashboard and discovery fails loudly without it.
+- Directory names are deliberately lowercase and match kit names (`kit install clickhouse` installs into a folder called `clickhouse`), so a core dashboard for an engine that also has a kit lands beside the kit's own dashboards rather than in a capitalized twin.
+
+Dashboards that belong to a kit go in the kit's own `dashboards/` directory under `src/main/resources/.../kits/<name>/`, not here.
 
 ## Datasource UIDs
 
@@ -238,23 +263,24 @@ The local Prometheus exporter may expose counters without a `_total` suffix, but
 
 When adding new dashboards or modifying existing ones:
 
-1. Edit the JSON in `dashboards/` (or kit-specific path under `src/main/resources/.../kits/`)
+1. Edit the JSON in `dashboards/<folder>/` (or kit-specific path under `src/main/resources/.../kits/`)
 2. Run `./gradlew installDist` to bundle the updated JSON into the JAR
 3. Run `<cluster>/easy-db-lab grafana update-config` to push to the cluster
 4. Push test data if the change affects trace/metric panels
-5. Grafana hot-reloads provisioned dashboards from ConfigMaps — no Grafana restart needed for dashboard changes (datasource config changes do require a restart)
+5. Grafana's file provider re-reads the copied tree every 10 seconds — no Grafana restart needed for dashboard changes (datasource config changes do require a restart)
 
 ### Verify from Grafana, never from the deploy message
 
-`grafana update-config` prints "All Grafana resources applied successfully!" when it applies the
-ConfigMaps. That says nothing about whether the content changed — if `build/resources/main/` is
-stale, it will redeploy the old panel and still report success.
+`grafana update-config` prints "All Grafana resources applied successfully!" once the tree is
+copied and the Grafana resources are applied. That says nothing about whether the content changed
+— if `build/resources/main/` is stale, it will recopy the old panel and still report success.
 
 Step 2 above is not optional and nothing else substitutes for it. `ktlintFormat` does not rebuild
 resources. Confirm the build actually picked up the edit:
 
 ```bash
-diff <(jq -S . dashboards/system-overview.json) <(jq -S . build/resources/main/system-overview.json) \
+diff <(jq -S . dashboards/infrastructure/system-overview.json) \
+     <(jq -S . build/resources/main/dashboards/infrastructure/system-overview.json) \
   && echo "in sync"
 ```
 
@@ -282,8 +308,8 @@ Use a literal, byte-preserving replacement (`perl -0pi -e` with `\Q...\E`), then
 the size you expect and the file still parses:
 
 ```bash
-git diff --stat dashboards/     # expect 1 changed line per file
-jq empty dashboards/<name>.json # still valid JSON
+git diff --stat dashboards/              # expect 1 changed line per file
+jq empty dashboards/<folder>/<name>.json # still valid JSON
 ```
 
 ### Match the panel's unit before changing scale
@@ -322,10 +348,10 @@ One reported negative CPU panel turned out to be four. Before concluding, grep e
 the same shape:
 
 ```bash
-grep -l '<metric>' dashboards/*.json
-jq -r '.. | objects | select(has("expr")) | .expr | select(test("<metric>"))' dashboards/*.json
+grep -rl '<metric>' dashboards/
+jq -r '.. | objects | select(has("expr")) | .expr | select(test("<metric>"))' dashboards/*/*.json
 ```
 
 Grafana's Home dashboard is set by `GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH` on the grafana
-Deployment (currently `system-overview.json`). A bug there is the first thing a user sees, so
+Deployment (`infrastructure/system-overview.json`). A bug there is the first thing a user sees, so
 always check Home as well as the dashboard that was reported.

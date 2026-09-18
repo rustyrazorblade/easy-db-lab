@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Version
 import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
@@ -94,8 +95,12 @@ class UpTest : BaseKoinTest() {
     private var localTailscaleState: LocalTailscaleState = LocalTailscaleState.Connected
     private var localTailscaleQueries = 0
 
-    /** answer the fake TcpReachabilityProbe gives, and every "host:port" it was asked about */
+    /**
+     * answer the fake TcpReachabilityProbe gives once [tailnetProbesBeforeReachable] earlier probes
+     * have answered false, and every "host:port" it was asked about
+     */
     private var tailnetReachable = true
+    private var tailnetProbesBeforeReachable = 0
     private val probedTargets = mutableListOf<String>()
 
     /** when non-null, remoteOps.executeRemotely throws this for the given host alias */
@@ -146,7 +151,7 @@ class UpTest : BaseKoinTest() {
                 single<TcpReachabilityProbe> {
                     TcpReachabilityProbe { host, port ->
                         probedTargets.add("$host:$port")
-                        tailnetReachable
+                        tailnetReachable && probedTargets.size > tailnetProbesBeforeReachable
                     }
                 }
 
@@ -182,6 +187,13 @@ class UpTest : BaseKoinTest() {
                         override fun uploadDirectory(
                             host: Host,
                             version: Version,
+                        ) = Unit
+
+                        override fun replaceDirectory(
+                            host: Host,
+                            localDir: File,
+                            remoteDir: String,
+                            owner: String,
                         ) = Unit
 
                         override fun download(
@@ -722,23 +734,38 @@ class UpTest : BaseKoinTest() {
     }
 
     @Test
-    fun `up aborts before K3s when this machine cannot reach the control node over the tailnet`() {
+    fun `up waits for the tailnet route and continues once the control node answers`() {
+        // The subnet route reaches this machine some seconds after `tailscale up`; the first
+        // probes fail and a later one succeeds. `up` must keep probing and then carry on to K3s.
+        tailnetProbesBeforeReachable = 2
+
+        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
+
+        assertThat(probedTargets).hasSize(3)
+        verify(mockK3sClusterService).setupCluster(any())
+    }
+
+    @Test
+    fun `up aborts before K3s when this machine never reaches the control node over the tailnet`() {
         tailnetReachable = false
 
         assertThatThrownBy { newUp().execute() }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("cannot reach it at 10.0.0.1:22 over the tailnet")
+            .hasMessageContaining("after ${Constants.Tailscale.REACHABILITY_MAX_ATTEMPTS} attempts")
             .hasMessageContaining("approve the subnet route 10.0.0.0/16")
 
+        // Every attempt was spent before giving up; one failed connect is not a missing route.
+        assertThat(probedTargets).hasSize(Constants.Tailscale.REACHABILITY_MAX_ATTEMPTS)
         verify(mockK3sClusterService, never()).setupCluster(any())
     }
 
     /**
-     * Constructs an [Up] with a zero SSH startup delay so tests do not sit through the production
-     * [Up.SSH_STARTUP_DELAY] pause. The delay's only effect is wall-clock timing, so removing it
-     * does not change any behavior under test.
+     * Constructs an [Up] with a zero SSH startup delay and a zero tailnet retry interval so tests
+     * do not sit through the production pauses. Both only affect wall-clock timing, so removing
+     * them does not change any behavior under test.
      */
-    private fun newUp(): Up = Up(sshStartupDelay = Duration.ZERO)
+    private fun newUp(): Up = Up(sshStartupDelay = Duration.ZERO, tailnetRetryInterval = Duration.ZERO)
 
     private fun overrideUser(user: User) {
         whenever(mockClusterStateManager.load()).thenReturn(happyState())

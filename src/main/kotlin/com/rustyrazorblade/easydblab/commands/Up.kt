@@ -72,6 +72,9 @@ import java.time.Duration
  * @param sshStartupDelay How long to pause before the first SSH readiness probe, giving freshly
  *   booted instances a moment before we start dialing them. Defaults to [SSH_STARTUP_DELAY] so
  *   production timing is unchanged; tests inject [java.time.Duration.ZERO] to run instantly.
+ * @param tailnetRetryInterval How long to wait between probes of the control node over the
+ *   tailnet while the subnet route comes up. Defaults to [TAILNET_RETRY_INTERVAL]; tests inject
+ *   [java.time.Duration.ZERO] to run every attempt instantly.
  */
 @McpCommand
 @RequireProfileSetup
@@ -83,6 +86,7 @@ import java.time.Duration
 )
 class Up(
     private val sshStartupDelay: Duration = SSH_STARTUP_DELAY,
+    private val tailnetRetryInterval: Duration = TAILNET_RETRY_INTERVAL,
 ) : PicoBaseCommand() {
     private val userConfig: User by inject()
     private val s3BucketService: AwsS3BucketService by inject()
@@ -111,6 +115,7 @@ class Up(
     companion object {
         private val log = KotlinLogging.logger {}
         private val SSH_STARTUP_DELAY = Duration.ofSeconds(5)
+        private val TAILNET_RETRY_INTERVAL = Duration.ofMillis(Constants.Tailscale.REACHABILITY_RETRY_INTERVAL_MS)
     }
 
     // Lock for synchronizing access to workingState from parallel threads
@@ -747,37 +752,41 @@ class Up(
     }
 
     /**
-     * Proves this machine can reach the control node's private IP over the tailnet, before any
-     * step depends on that route.
+     * Waits until this machine can reach the control node's private IP over the tailnet, before
+     * any step depends on that route.
      *
      * [startTailscaleIfConfigured] checks only that the *control node* joined the tailnet, which
      * says nothing about whether this machine has a route to it: the subnet route the control
-     * node advertises has to be approved, and the operator's own client has to be up. Without
-     * this probe, that gap surfaces as a 30-second Fabric8 timeout to a private IP once K3s is
-     * running.
+     * node advertises has to be approved, and it takes a while to propagate to the operator's own
+     * client even once it is. Without this wait, that gap surfaces as a 30-second Fabric8 timeout
+     * to a private IP once K3s is running.
      *
      * The probe dials the control node's `sshd`, not the Kubernetes API, because K3s has not
      * started yet at this point in `up`; `sshd` is definitionally listening, having just run
-     * setup. One connect with a short timeout is enough — this is fail-fast, not wait-for-ready.
+     * setup. Each connect uses a short timeout, and the probe repeats at [tailnetRetryInterval]
+     * up to [Constants.Tailscale.REACHABILITY_MAX_ATTEMPTS] times; only after the last one fails
+     * is the route treated as missing.
      */
     private fun verifyControlNodeReachableOverTailscale() {
         if (!workingState.isTailscaleEnabled()) return
         val controlHost = workingState.hosts[ServerType.Control]?.firstOrNull() ?: return
+        val port = Constants.Network.SSH_PORT
+        val maxAttempts = Constants.Tailscale.REACHABILITY_MAX_ATTEMPTS
 
-        if (tcpReachabilityProbe.isReachable(controlHost.privateIp, Constants.Network.SSH_PORT)) return
+        val retry = Retry.of("tailnet-reachability", RetryUtil.createTailscaleReachabilityRetryConfig(tailnetRetryInterval))
+        retry.eventPublisher.onRetry { event ->
+            val attempt = event.numberOfRetryAttempts
+            eventBus.emit(Event.Tailscale.RouteWaiting(controlHost.alias, controlHost.privateIp, port, attempt, maxAttempts))
+        }
+        if (retry.executeSupplier { tcpReachabilityProbe.isReachable(controlHost.privateIp, port) }) return
 
-        eventBus.emit(
-            Event.Tailscale.ControlNodeUnreachable(
-                alias = controlHost.alias,
-                address = controlHost.privateIp,
-                port = Constants.Network.SSH_PORT,
-            ),
-        )
+        eventBus.emit(Event.Tailscale.ControlNodeUnreachable(controlHost.alias, controlHost.privateIp, port))
         val cidr = workingState.initConfig?.cidr ?: Constants.Vpc.DEFAULT_CIDR
+        val waited = tailnetRetryInterval.multipliedBy((maxAttempts - 1).toLong()).toSeconds()
         error(
             "Tailscale started on ${controlHost.alias}, but this machine cannot reach it at " +
-                "${controlHost.privateIp}:${Constants.Network.SSH_PORT} over the tailnet " +
-                "(${Constants.Tailscale.REACHABILITY_TIMEOUT_MS} ms timeout). " +
+                "${controlHost.privateIp}:$port over the tailnet " +
+                "after $maxAttempts attempts over $waited seconds. " +
                 "The control node joined the tailnet, so the missing piece is the route from this machine. " +
                 "Confirm 'tailscale status' on this machine lists ${controlHost.alias}, and approve the subnet " +
                 "route $cidr for ${controlHost.alias} at https://login.tailscale.com/admin/machines. " +

@@ -164,10 +164,10 @@ val result = template.substitute(mapOf("EXTRA" to "value"))  // extra vars overr
 
 All Grafana K8s resources are built programmatically using Fabric8:
 
-- **`GrafanaDashboard`** — enum registry of all dashboards. Single source of truth for dashboard metadata (configMapName, volumeName, mountPath, jsonFileName, optional flag). Adding a new dashboard = add an enum entry + drop a JSON file in the top-level `dashboards/` directory.
-- **`GrafanaManifestBuilder`** — builds all Grafana K8s resources (provisioning ConfigMap, dashboard ConfigMaps, Deployment) as typed Fabric8 objects. Dashboard JSON is loaded directly from the classpath (no `TemplateService` — dashboards don't use `__KEY__` variables). Uses `TemplateService` only for the dashboards provisioning YAML and cluster name. The Deployment includes a `grafana-image-renderer` sidecar container (port 8081) for server-side panel rendering.
+- **`GrafanaDashboard`**, **`GrafanaDashboardCatalog`**, **`GrafanaDashboardTreeWriter`**, **`GrafanaDashboardProvisioningConfig`** — the core dashboard tree, discovered from the classpath and copied to the control node as files; the mechanism is described once, in [`dashboards/CLAUDE.md`](../../../../../../dashboards/CLAUDE.md).
+- **`GrafanaManifestBuilder`** — builds the Grafana K8s resources (provisioning ConfigMap and Deployment) as typed Fabric8 objects; nothing it builds varies with the dashboard tree. Uses `TemplateService` only for the cluster name. The Deployment mounts the `/mnt/db1/grafana` hostPath at `/var/lib/grafana`, which is how the copied tree reaches the pod, and includes a `grafana-image-renderer` sidecar container (port 8081) for server-side panel rendering.
 - **`GrafanaDatasourceConfig`** — datasource provisioning YAML generation.
-- **Dashboard JSON files** — stored in the top-level `dashboards/` directory at the project root. Gradle copies them into classpath resources at build time. Also published as a standalone zip via GitHub Actions for consumption by other projects.
+- **Dashboard JSON files** — stored in the top-level `dashboards/<folder>/` tree at the project root. `processResources` in `build.gradle.kts` copies the tree onto the classpath under a `dashboards/` prefix at build time. Also published as a standalone zip via GitHub Actions for consumption by other projects.
 
 ## Pyroscope Subpackage (`pyroscope/`)
 

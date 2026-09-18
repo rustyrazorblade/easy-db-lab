@@ -107,6 +107,50 @@ class DefaultRemoteOperationsService(
         uploadDirectory(host, version.file, version.conf)
     }
 
+    override fun replaceDirectory(
+        host: Host,
+        localDir: File,
+        remoteDir: String,
+        owner: String,
+    ) {
+        val parent = remoteDir.substringBeforeLast('/')
+        val template = "${remoteDir.substringAfterLast('/')}.staging.XXXXXX"
+        // mktemp runs as root so it can create beside a root-owned target; the directory is then
+        // handed to the SSH user so SFTP can write into it.
+        val staging =
+            executeRemotely(
+                host,
+                "d=\$(sudo mktemp -d -p $parent $template) && sudo chown \"\$(id -un)\" \"\$d\" && echo \"\$d\"",
+                output = false,
+            ).text.trim()
+        check(staging.startsWith("$parent/")) { "Staging directory '$staging' is not under $parent" }
+        try {
+            uploadDirectory(host, localDir, staging)
+            executeRemotely(host, swapCommand(staging, remoteDir, owner), output = false)
+        } catch (e: Exception) {
+            executeRemotely(host, "sudo rm -rf $staging", output = false)
+            throw e
+        }
+    }
+
+    /**
+     * Moves the old tree aside, renames the staged one in, chowns it, then drops the old one.
+     * A leftover `.old` from an interrupted run is cleared first so the move-aside cannot fail
+     * on a non-empty target.
+     */
+    private fun swapCommand(
+        staging: String,
+        remoteDir: String,
+        owner: String,
+    ): String {
+        val old = "$remoteDir.old"
+        return "sudo rm -rf $old && " +
+            "if sudo test -e $remoteDir; then sudo mv -T $remoteDir $old; fi && " +
+            "sudo mv -T $staging $remoteDir && " +
+            "sudo chown -R $owner $remoteDir && " +
+            "sudo rm -rf $old"
+    }
+
     override fun download(
         host: Host,
         remote: String,

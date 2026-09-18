@@ -8,7 +8,6 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboard
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
@@ -305,18 +304,8 @@ class K8sServiceIntegrationTest {
         applyAndVerify(listOf(builder.buildDashboardProvisioningConfigMap()))
         assertConfigMapExists("grafana-dashboards-config", "dashboards.yaml")
 
-        // Apply a dashboard ConfigMap
-        applyAndVerify(listOf(builder.buildDashboardConfigMap(GrafanaDashboard.SYSTEM)))
-        val appliedDashboard =
-            client
-                .configMaps()
-                .inNamespace(DEFAULT_NAMESPACE)
-                .withName(GrafanaDashboard.SYSTEM.configMapName)
-                .get()
-        assertThat(appliedDashboard).isNotNull
-        assertThat(appliedDashboard.data).containsKey(GrafanaDashboard.SYSTEM.jsonFileName)
-
-        // Apply all resources including Deployment
+        // Apply all resources including Deployment. Dashboards are files on the hostPath, not
+        // K8s objects, so nothing per dashboard is expected here.
         applyAndVerify(builder.buildAllResources())
         assertDeploymentExists("grafana")
     }

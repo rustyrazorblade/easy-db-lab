@@ -7,6 +7,8 @@ import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardCatalog
+import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardTreeWriter
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
@@ -79,6 +81,10 @@ val servicesModule =
         factoryOf(::DefaultK8sService) bind K8sService::class bind K8sPodOperations::class
         factoryOf(::BeylaManifestBuilder)
         factoryOf(::EbpfExporterManifestBuilder)
+        // One classpath scan per process: the set of dashboard files cannot change at runtime.
+        single { GrafanaDashboardCatalog.discover() }
+        factoryOf(::GrafanaDashboardTreeWriter)
+        factoryOf(::DefaultGrafanaDashboardTreeUploader) bind GrafanaDashboardTreeUploader::class
         factoryOf(::GrafanaManifestBuilder)
         factoryOf(::JournaldOtelManifestBuilder)
         factoryOf(::OtelManifestBuilder)

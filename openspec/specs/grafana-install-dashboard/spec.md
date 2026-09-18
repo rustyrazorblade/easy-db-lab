@@ -21,7 +21,7 @@ Grafana's data volume SHALL use a `hostPath` mount at `/mnt/db1/grafana` on the 
 The `grafana install <path>` command SHALL read a dashboard JSON file and upload it to the running Grafana instance via `POST /api/dashboards/db` with `overwrite: true`.
 
 #### Scenario: Successful dashboard install
-- **WHEN** `grafana install ./dashboards/clickhouse.json` is run against a cluster with Grafana running
+- **WHEN** `grafana install ./dashboards/opensearch/opensearch.json` is run against a cluster with Grafana running
 - **THEN** the dashboard is visible in Grafana and an `Event.Grafana.DashboardInstalled` event is emitted with the dashboard title
 
 #### Scenario: Re-running install is idempotent

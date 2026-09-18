@@ -22,10 +22,12 @@ import java.io.File
 import java.io.IOException
 
 /**
- * Service for managing Grafana dashboard manifests.
+ * Service for getting Grafana and its dashboards onto the cluster.
  *
- * Builds Grafana K8s resources (ConfigMaps and Deployment) programmatically using
- * Fabric8 typed objects and applies them directly via the K8s API.
+ * Core dashboards travel as a file tree copied to the control node (see
+ * [GrafanaDashboardTreeUploader]); the datasource and provisioning ConfigMaps and the Deployment
+ * are built as Fabric8 typed objects and applied via the K8s API. One-off dashboards go through
+ * the Grafana HTTP API.
  */
 interface GrafanaDashboardService {
     /**
@@ -37,7 +39,8 @@ interface GrafanaDashboardService {
     fun createDatasourcesConfigMap(controlHost: ClusterHost): Result<Unit>
 
     /**
-     * Builds and applies all Grafana resources (dashboards, provisioning, deployment) to K8s.
+     * Puts the dashboard tree on the control node, then builds and applies the Grafana K8s
+     * resources (datasources, provisioning, deployment).
      *
      * @param controlHost The control node running K3s
      * @return Result indicating success or failure
@@ -96,15 +99,18 @@ interface GrafanaDashboardService {
 /**
  * Default implementation of GrafanaDashboardService.
  *
- * Uses [GrafanaManifestBuilder] to build typed Fabric8 K8s resources from dashboard JSON
- * resource files and applies them directly via [K8sService.applyResource].
+ * Uses [GrafanaDashboardTreeUploader] to copy the dashboard tree to the control node and
+ * [GrafanaManifestBuilder] to build typed Fabric8 K8s resources, applied via
+ * [K8sService.applyResource].
  *
  * @property k8sService Service for K8s operations
  * @property manifestBuilder Builder for Grafana K8s resources
+ * @property treeUploader Copies the dashboard tree onto the Grafana hostPath
  */
 class DefaultGrafanaDashboardService(
     private val k8sService: K8sService,
     private val manifestBuilder: GrafanaManifestBuilder,
+    private val treeUploader: GrafanaDashboardTreeUploader,
     private val eventBus: EventBus,
     private val okHttpClient: OkHttpClient,
 ) : GrafanaDashboardService {
@@ -145,8 +151,13 @@ class DefaultGrafanaDashboardService(
             )
         }
 
-        val pyroscopeUrl = "http://${controlHost.privateIp}:${Constants.K8s.PYROSCOPE_PORT}"
-        val resources = manifestBuilder.buildAllResources(pyroscopeUrl = pyroscopeUrl)
+        runCatching { treeUploader.upload(controlHost) }.getOrElse { exception ->
+            return Result.failure(
+                IllegalStateException("Failed to upload Grafana dashboards: ${exception.message}", exception),
+            )
+        }
+
+        val resources = manifestBuilder.buildAllResources()
         eventBus.emit(Event.Grafana.ResourcesApplying(resources.size))
         for (resource in resources) {
             val kind = resource.kind

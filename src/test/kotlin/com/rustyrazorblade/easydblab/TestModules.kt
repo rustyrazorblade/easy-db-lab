@@ -303,6 +303,15 @@ object TestModules {
                         // No-op for mock implementation
                     }
 
+                    override fun replaceDirectory(
+                        host: Host,
+                        localDir: File,
+                        remoteDir: String,
+                        owner: String,
+                    ) {
+                        // No-op for mock implementation
+                    }
+
                     override fun download(
                         host: Host,
                         remote: String,

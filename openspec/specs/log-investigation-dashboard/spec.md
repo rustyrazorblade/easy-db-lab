@@ -8,7 +8,7 @@ Grafana dashboard for interactive log investigation with filtering by node role,
 
 ### Requirement: Dashboard registration
 
-The system SHALL register a "Log Investigation" dashboard in the `GrafanaDashboard` enum so it is automatically deployed with all other dashboards via `GrafanaManifestBuilder`.
+The system SHALL ship a "Log Investigation" dashboard at `dashboards/observability/log-investigation.json` so it is discovered by `GrafanaDashboardCatalog` and deployed with all other dashboards via `GrafanaManifestBuilder`.
 
 #### Scenario: Dashboard deploys with cluster
 

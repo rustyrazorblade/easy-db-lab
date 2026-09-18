@@ -163,6 +163,16 @@ build {
     script = "install/install_bcc.sh"
   }
 
+  # Compile the ebpf_exporter program overrides against this kernel's BTF and install the
+  # objects under /usr/local/lib/ebpf_exporter/ (see install/ebpf/README.md).
+  provisioner "file" {
+    source      = "install/ebpf"
+    destination = "/tmp/ebpf"
+  }
+  provisioner "shell" {
+    script = "install/install_ebpf_programs.sh"
+  }
+
   # install k3s (disabled, not auto-started)
   provisioner "shell" {
     script = "install/install_k3s.sh"

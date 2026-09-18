@@ -507,6 +507,13 @@ object Constants {
     // Grafana configuration
     object Grafana {
         /**
+         * Path, relative to the dashboard tree root, of the core dashboard Grafana opens on
+         * (`GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH`). The catalog fails unless exactly this
+         * path is present; the same file name in another folder does not count.
+         */
+        const val HOME_DASHBOARD_PATH = "infrastructure/system-overview.json"
+
+        /**
          * Tag auto-applied to every GLOBAL (unscoped) annotation created via `grafana annotate`, in
          * addition to any operator-supplied tags. The core dashboards' annotation query filters on
          * this tag so global markers render on their timelines. Scoped annotations
@@ -562,11 +569,20 @@ object Constants {
         const val LOCAL_STATUS_TIMEOUT_SECONDS = 5L
 
         /**
-         * Connect timeout for the pre-K3s probe of the control node over the tailnet. Short by
-         * design: the target is already listening, so anything slower than a local network
-         * round-trip means there is no route.
+         * Connect timeout for one attempt of the pre-K3s probe of the control node over the
+         * tailnet. Short by design: the target is already listening, so anything slower than a
+         * local network round-trip means the route is not there yet.
          */
         const val REACHABILITY_TIMEOUT_MS = 2000
+
+        /**
+         * How many times `up` probes the control node over the tailnet before it gives up, and
+         * how long it waits between probes. The subnet route the control node advertises takes a
+         * while to reach this machine after `tailscale up`, so `up` waits for it: 24 attempts at
+         * 5 seconds is about two minutes.
+         */
+        const val REACHABILITY_MAX_ATTEMPTS = 24
+        const val REACHABILITY_RETRY_INTERVAL_MS = 5000L
 
         /** `BackendState` the Tailscale client reports when it is logged in and routing. */
         const val BACKEND_STATE_RUNNING = "Running"

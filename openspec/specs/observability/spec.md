@@ -20,13 +20,16 @@ The OTel Collector ConfigMap SHALL be generated dynamically by `OtelManifestBuil
 
 The system MUST provide pre-configured Grafana dashboards for all supported databases and infrastructure. Dashboard titles MUST use simple descriptive names without cluster name prefixes. The Grafana pod SHALL include an image renderer sidecar for server-side panel rendering. Dashboard JSON SHALL be loaded directly from classpath resources without template substitution, preserving Grafana built-in variables like `$__rate_interval`.
 
+Core dashboards SHALL be delivered as a file tree, not as Kubernetes objects: `grafana update-config` SHALL copy every `dashboards/<folder>/<file>.json` on the classpath onto the control node's Grafana data hostPath (`/mnt/db1/grafana/dashboards`, `/var/lib/grafana/dashboards` inside the pod), and Grafana SHALL be provisioned with exactly one file provider whose `foldersFromFilesStructure` is true and which names no folder, so each directory becomes a Grafana folder of the same title. No code SHALL enumerate dashboards by hand; the set is discovered from the classpath.
+
 All dashboards SHALL include a `cluster` multi-select variable and an ad hoc filters variable. All VictoriaMetrics-backed panel queries SHALL be scoped by `{cluster=~"$cluster"}`. No native ClickHouse datasource SHALL be provisioned.
 
 #### Scenario: Dashboard JSON is not processed by TemplateService
 
-- **WHEN** `GrafanaManifestBuilder` builds a dashboard ConfigMap
-- **THEN** the dashboard JSON SHALL be loaded directly from the classpath without passing through `TemplateService.substitute()`
+- **WHEN** the dashboard tree is written for upload
+- **THEN** each dashboard JSON SHALL be loaded directly from the classpath without passing through `TemplateService.substitute()`
 - **AND** all Grafana built-in variables (e.g., `$__rate_interval`, `$__interval`) SHALL be preserved verbatim in the deployed JSON
+- **AND** every occurrence of `__PYROSCOPE_URL__` in any dashboard SHALL be replaced with the cluster's Pyroscope URL; no other substitution SHALL be made
 
 #### Scenario: Dashboard titles use descriptive names
 
@@ -64,9 +67,60 @@ All dashboards SHALL include a `cluster` multi-select variable and an ad hoc fil
 #### Scenario: Cluster comparison dashboard appears in Grafana
 
 - **WHEN** `grafana update-config` is run
-- **THEN** a ConfigMap named `grafana-dashboard-cluster-comparison` SHALL be created
-- **AND** the dashboard SHALL be mounted at `/var/lib/grafana/dashboards/cluster-comparison`
-- **AND** the volume mount SHALL use `optional: true` so absence of the file does not block Grafana startup
+- **THEN** `dashboards/cassandra/cluster-comparison.json` SHALL be copied to `/mnt/db1/grafana/dashboards/cassandra/cluster-comparison.json` on the control node
+- **AND** the single file provider SHALL file it into the `cassandra` folder from its directory name
+- **AND** no ConfigMap, volume, or volume mount SHALL exist for it
+
+#### Scenario: Copied tree replaces the previous one
+
+- **WHEN** `grafana update-config` is run against a cluster that already has a dashboard tree
+- **THEN** the new tree SHALL be staged on the same filesystem as `/mnt/db1/grafana/dashboards` and renamed into place, so the provider never reads an empty or partial directory
+- **AND** the previous tree SHALL be removed once the new one is in place, so a dashboard deleted from the repo disappears from Grafana
+- **AND** the tree SHALL be owned by the Grafana user (uid 472)
+
+#### Scenario: Same file name in two folders
+
+- **WHEN** `dashboards/<a>/<name>.json` and `dashboards/<b>/<name>.json` both exist
+- **THEN** both SHALL be deployed, each in its own folder
+
+#### Scenario: System Overview is grouped by purpose
+
+- **WHEN** a user opens System Overview
+- **THEN** panels are grouped into collapsible rows named CPU, Memory, Disk, Network, and Processes, by what the metric explains, not by which collector produced it
+- **AND** each row lays panels out two per line at half width, one metric per panel
+
+#### Scenario: Disk and network panels exclude virtual devices
+
+- **WHEN** a Disk panel queries per-device metrics
+- **THEN** loop devices and partitions (`device!~"loop.*|.*p[0-9]+"`) are excluded
+- **AND** Network panels match only `ens.*` and `eth.*` interfaces
+
+### Requirement: ebpf_exporter runs a fixed, verified program set
+
+The ebpf_exporter DaemonSet SHALL load an explicit list of programs by name (`--config.names`); every name SHALL exist in the pinned image's `/examples`. A program whose series are unbounded or whose readings are wrong on the base image's kernel SHALL be excluded, with the reason recorded next to the list.
+
+When the image's copy of a program is wrong for the base image's kernel, the AMI SHALL carry a replacement compiled at bake time from `packer/base/install/ebpf/<name>.bpf.c` against that kernel's BTF, installed at `/usr/local/lib/ebpf_exporter/<name>.bpf.o`, and the DaemonSet SHALL mount it over `/examples/<name>.bpf.o` with a hostPath of type `File`. The set of overridden programs SHALL equal the set of sources in `packer/base/install/ebpf/`.
+
+#### Scenario: Override object is built against the bake kernel
+
+- **WHEN** the base image is baked
+- **THEN** each `*.bpf.c` is compiled against the running kernel's BTF
+- **AND** every attach point named in the compiled object (fentry, kprobe, raw_tp, tp_btf) is checked against that kernel; a missing symbol fails the bake
+
+#### Scenario: Missing override fails the pod, not the metric
+
+- **WHEN** an overridden object is absent from the node
+- **THEN** the ebpf_exporter pod fails to start rather than falling back to the image's copy
+
+#### Scenario: Syscall errno labels are bounded
+
+- **WHEN** the `syscalls` program records a syscall return
+- **THEN** only returns in `[-4095, -1]` are counted, so the `errno` label has at most 4095 values
+
+#### Scenario: Page cache counters on folio kernels
+
+- **WHEN** the `cachestat` program runs on a kernel where the page cache is folio-based
+- **THEN** `page_cache_ops_total{operation="cache_access"}` and `page_add_lru` increase under file I/O
 
 ### Requirement: Cilium replaces Flannel as the K3s CNI
 The K3s cluster SHALL use Cilium as its CNI plugin with `kube-proxy` replacement enabled. K3s SHALL be started with `--flannel-backend=none --disable-network-policy`. Cilium SHALL be installed via helm before any workloads are deployed. Hubble SHALL be enabled with Prometheus metrics export.

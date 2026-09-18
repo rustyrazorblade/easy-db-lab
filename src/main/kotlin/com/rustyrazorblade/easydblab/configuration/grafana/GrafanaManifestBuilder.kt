@@ -1,9 +1,9 @@
 package com.rustyrazorblade.easydblab.configuration.grafana
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
-import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.Container
 import io.fabric8.kubernetes.api.model.ContainerBuilder
 import io.fabric8.kubernetes.api.model.EnvVar
@@ -21,13 +21,13 @@ import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
 /**
  * Builds all Grafana K8s resources as typed Fabric8 objects.
  *
- * Replaces the YAML-based approach where dashboard JSON was embedded inside ConfigMap YAML files.
- * Dashboard JSON is loaded from classpath resource files and wrapped in programmatically-built
- * ConfigMaps. The Deployment is also built in code, dynamically adding volume mounts for each
- * dashboard entry in [GrafanaDashboard].
+ * Dashboards are not K8s objects. The CLI copies the whole dashboard tree onto the control
+ * node's Grafana data directory ([GRAFANA_DASHBOARD_HOST_PATH]), which the Deployment already
+ * mounts at `/var/lib/grafana`, and the provisioning ConfigMap declares one provider that sweeps
+ * it. Nothing built here varies with how many dashboards or folders exist; the home dashboard is
+ * a fixed path in that tree ([Constants.Grafana.HOME_DASHBOARD_PATH]).
  *
- * @property templateService Used for loading the dashboards provisioning YAML and
- *   reading cluster name for Grafana branding
+ * @property templateService Used for reading the cluster name for Grafana branding
  */
 class GrafanaManifestBuilder(
     private val templateService: TemplateService,
@@ -45,6 +45,12 @@ class GrafanaManifestBuilder(
         private const val DASHBOARDS_CONFIG_VOLUME = "dashboards-config"
         private const val DATA_VOLUME = "data"
         const val GRAFANA_DATA_PATH = "/mnt/db1/grafana"
+
+        /**
+         * Where the dashboard tree lives on the control node. It is [GRAFANA_DASHBOARD_ROOT] seen
+         * from the host: the Deployment mounts [GRAFANA_DATA_PATH] at `/var/lib/grafana`.
+         */
+        const val GRAFANA_DASHBOARD_HOST_PATH = "$GRAFANA_DATA_PATH/dashboards"
 
         @Suppress("MagicNumber")
         const val GRAFANA_UID = 472
@@ -69,23 +75,15 @@ class GrafanaManifestBuilder(
             "grafana-clickhouse-datasource,victoriametrics-logs-datasource,grafana-polystat-panel"
 
         private const val RENDERER_TOKEN = "easydblab-renderer"
-
-        private const val DASHBOARDS_YAML_RESOURCE = "dashboards.yaml"
     }
 
     /**
      * Builds the dashboard provisioning ConfigMap that tells Grafana where to find dashboards.
      *
-     * Loads dashboards.yaml from a classpath resource file.
-     * Replaces `core/14-grafana-dashboards-configmap.yaml`.
+     * One file provider over the copied tree; see [GrafanaDashboardProvisioningConfig].
      */
     fun buildDashboardProvisioningConfigMap(): ConfigMap {
-        val dashboardsYaml =
-            templateService
-                .fromResource(
-                    GrafanaManifestBuilder::class.java,
-                    DASHBOARDS_YAML_RESOURCE,
-                ).substitute()
+        val dashboardsYaml = GrafanaDashboardProvisioningConfig.forDashboardTree().toYaml()
 
         return ConfigMapBuilder()
             .withNewMetadata()
@@ -98,57 +96,9 @@ class GrafanaManifestBuilder(
     }
 
     /**
-     * Whether this dashboard should get a ConfigMap.
-     *
-     * An optional dashboard whose JSON is not on the classpath is skipped: its volume mount already
-     * declares `optional: true`, so Grafana starts without it. That is what lets an enum entry be
-     * added before its JSON exists. A required dashboard is never skipped — a missing
-     * system-overview.json is a build error, not an empty Grafana.
-     */
-    private fun GrafanaDashboard.hasJson(): Boolean = !optional || GrafanaManifestBuilder::class.java.getResource("/$jsonFileName") != null
-
-    /**
-     * Builds a ConfigMap for a single dashboard.
-     *
-     * Loads the dashboard JSON directly from the classpath without template substitution.
-     * Dashboards don't use `__KEY__` variables, and running them through TemplateService
-     * corrupts Grafana built-in variables like `$__rate_interval`.
-     *
-     * @param dashboard The dashboard to build a ConfigMap for
-     * @return ConfigMap containing the raw dashboard JSON
-     */
-    fun buildDashboardConfigMap(
-        dashboard: GrafanaDashboard,
-        substitutions: Map<String, String> = emptyMap(),
-    ): ConfigMap {
-        val rawJson =
-            GrafanaManifestBuilder::class.java
-                .getResourceAsStream("/${dashboard.jsonFileName}")
-                ?.bufferedReader()
-                ?.readText()
-                ?: error("Dashboard resource not found: ${dashboard.jsonFileName}")
-
-        val json = substitutions.entries.fold(rawJson) { acc, (placeholder, value) -> acc.replace(placeholder, value) }
-
-        return ConfigMapBuilder()
-            .withNewMetadata()
-            .withName(dashboard.configMapName)
-            .withNamespace(NAMESPACE)
-            .addToLabels("app.kubernetes.io/name", APP_LABEL)
-            .addToLabels("grafana_dashboard", "1")
-            .endMetadata()
-            .addToData(dashboard.jsonFileName, json)
-            .build()
-    }
-
-    /**
      * Builds the Grafana Deployment.
      *
-     * Dynamically generates volume and volumeMount entries for every [GrafanaDashboard] entry,
-     * so adding a new dashboard only requires a new enum entry and JSON file.
      * The cluster name for Grafana branding is read from TemplateService context variables.
-     *
-     * Replaces `core/41-grafana-deployment.yaml`.
      *
      * @return Fabric8 Deployment object
      */
@@ -197,22 +147,11 @@ class GrafanaManifestBuilder(
     }
 
     /**
-     * Builds all Grafana K8s resources: provisioning ConfigMap, dashboard ConfigMaps, and Deployment.
+     * Builds all Grafana K8s resources: the provisioning ConfigMap and the Deployment.
      *
      * @return List of all Grafana K8s resources in apply order
      */
-    fun buildAllResources(pyroscopeUrl: String = ""): List<HasMetadata> =
-        listOf(buildDashboardProvisioningConfigMap()) +
-            GrafanaDashboard.entries.filter { it.hasJson() }.map { dashboard ->
-                val substitutions =
-                    if (dashboard == GrafanaDashboard.PROFILING && pyroscopeUrl.isNotEmpty()) {
-                        mapOf("__PYROSCOPE_URL__" to pyroscopeUrl)
-                    } else {
-                        emptyMap()
-                    }
-                buildDashboardConfigMap(dashboard, substitutions)
-            } +
-            listOf(buildDeployment())
+    fun buildAllResources(): List<HasMetadata> = listOf(buildDashboardProvisioningConfigMap(), buildDeployment())
 
     private fun buildGrafanaContainer(clusterName: String): Container =
         ContainerBuilder()
@@ -254,17 +193,8 @@ class GrafanaManifestBuilder(
             .withEnv(listOf(envVar("AUTH_TOKEN", RENDERER_TOKEN)))
             .build()
 
-    private fun buildVolumeMounts(): List<VolumeMount> {
-        val dashboardMounts =
-            GrafanaDashboard.entries.map { dashboard ->
-                VolumeMountBuilder()
-                    .withName(dashboard.volumeName)
-                    .withMountPath(dashboard.mountPath)
-                    .withReadOnly(true)
-                    .build()
-            }
-
-        return listOf(
+    private fun buildVolumeMounts(): List<VolumeMount> =
+        listOf(
             VolumeMountBuilder()
                 .withName(DATASOURCES_VOLUME)
                 .withMountPath("/etc/grafana/provisioning/datasources")
@@ -275,29 +205,14 @@ class GrafanaManifestBuilder(
                 .withMountPath("/etc/grafana/provisioning/dashboards")
                 .withReadOnly(true)
                 .build(),
-        ) + dashboardMounts +
-            listOf(
-                VolumeMountBuilder()
-                    .withName(DATA_VOLUME)
-                    .withMountPath("/var/lib/grafana")
-                    .build(),
-            )
-    }
+            VolumeMountBuilder()
+                .withName(DATA_VOLUME)
+                .withMountPath("/var/lib/grafana")
+                .build(),
+        )
 
-    private fun buildVolumes(): List<Volume> {
-        val dashboardVolumes =
-            GrafanaDashboard.entries.map { dashboard ->
-                VolumeBuilder()
-                    .withName(dashboard.volumeName)
-                    .withConfigMap(
-                        ConfigMapVolumeSourceBuilder()
-                            .withName(dashboard.configMapName)
-                            .withOptional(dashboard.optional)
-                            .build(),
-                    ).build()
-            }
-
-        return listOf(
+    private fun buildVolumes(): List<Volume> =
+        listOf(
             VolumeBuilder()
                 .withName(DATASOURCES_VOLUME)
                 .withNewConfigMap()
@@ -310,18 +225,15 @@ class GrafanaManifestBuilder(
                 .withName(PROVISIONING_CONFIGMAP_NAME)
                 .endConfigMap()
                 .build(),
-        ) + dashboardVolumes +
-            listOf(
-                VolumeBuilder()
-                    .withName(DATA_VOLUME)
-                    .withHostPath(
-                        HostPathVolumeSourceBuilder()
-                            .withPath(GRAFANA_DATA_PATH)
-                            .withType("DirectoryOrCreate")
-                            .build(),
-                    ).build(),
-            )
-    }
+            VolumeBuilder()
+                .withName(DATA_VOLUME)
+                .withHostPath(
+                    HostPathVolumeSourceBuilder()
+                        .withPath(GRAFANA_DATA_PATH)
+                        .withType("DirectoryOrCreate")
+                        .build(),
+                ).build(),
+        )
 
     private fun buildEnvVars(clusterName: String): List<EnvVar> =
         listOf(
@@ -338,7 +250,7 @@ class GrafanaManifestBuilder(
             envVar("GF_BRANDING_APP_TITLE", clusterName),
             envVar(
                 "GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH",
-                "${GrafanaDashboard.SYSTEM.mountPath}/${GrafanaDashboard.SYSTEM.jsonFileName}",
+                "$GRAFANA_DASHBOARD_ROOT/${Constants.Grafana.HOME_DASHBOARD_PATH}",
             ),
             envVar("GF_RENDERING_SERVER_URL", "http://localhost:$IMAGE_RENDERER_PORT/render"),
             envVar("GF_RENDERING_CALLBACK_URL", "http://localhost:$GRAFANA_PORT/"),

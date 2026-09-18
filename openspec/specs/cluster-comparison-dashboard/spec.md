@@ -8,7 +8,7 @@ Provides a Grafana "Cluster Comparison" dashboard that renders side-by-side flee
 
 ### Requirement: Cluster comparison dashboard exists and is registered
 
-A Grafana dashboard named "Cluster Comparison" SHALL exist at `dashboards/cluster-comparison.json` and SHALL be registered in the `GrafanaDashboard` enum as an optional entry named `CLUSTER_COMPARISON`.
+A Grafana dashboard named "Cluster Comparison" SHALL exist at `dashboards/cassandra/cluster-comparison.json`, where `GrafanaDashboardCatalog` discovers it and files it in the `cassandra` folder.
 
 #### Scenario: Dashboard is deployed with Grafana
 

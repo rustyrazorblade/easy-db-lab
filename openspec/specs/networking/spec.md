@@ -68,6 +68,14 @@ The system MUST support Tailscale mesh VPN for secure access to cluster nodes.
 - **WHEN** the user stops it
 - **THEN** the VPN daemon is stopped on all nodes.
 
+#### Scenario: `up` waits for the tailnet route before K3s
+
+- **GIVEN** a cluster with Tailscale enabled
+- **WHEN** `up` has started Tailscale on the control node
+- **THEN** it probes the control node's private IP on port 22 from this machine, up to 24 times 5 seconds apart, and emits a progress event on each retry
+- **AND** it proceeds to K3s as soon as one probe succeeds
+- **AND** if every probe fails, it aborts with a message that names the subnet route to approve
+
 ### Requirement: SOCKS Proxy
 
 The system MUST support a SOCKS5 proxy via SSH dynamic port forwarding as the access path to internal cluster services when Tailscale is not active. The proxy runs as a detached OS process that persists across JVM restarts, shared across invocations until `down` is called; its PID and port are recorded in `.socks5-proxy-state`.

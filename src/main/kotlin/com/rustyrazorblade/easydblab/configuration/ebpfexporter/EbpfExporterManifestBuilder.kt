@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.HostPathVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.SecurityContextBuilder
+import io.fabric8.kubernetes.api.model.VolumeBuilder
 import io.fabric8.kubernetes.api.model.VolumeMountBuilder
 import io.fabric8.kubernetes.api.model.apps.DaemonSetBuilder
 
@@ -12,7 +13,10 @@ import io.fabric8.kubernetes.api.model.apps.DaemonSetBuilder
  *
  * Creates a DaemonSet that runs on all nodes with hostNetwork, hostPID,
  * and privileged mode for eBPF access. Uses built-in example programs
- * from the ebpf_exporter container image.
+ * from the ebpf_exporter container image, except for the programs in
+ * [OVERRIDDEN_PROGRAMS]: their compiled objects are built into the AMI by
+ * `packer/base/install/install_ebpf_programs.sh` and mounted over the image's
+ * copies, so the yaml and `--config.names` stay as shipped.
  *
  * Available built-in programs: https://github.com/cloudflare/ebpf_exporter/tree/master/examples
  */
@@ -21,6 +25,22 @@ class EbpfExporterManifestBuilder {
         private const val NAMESPACE = "default"
         private const val APP_LABEL = "ebpf-exporter"
         private const val IMAGE = "ghcr.io/cloudflare/ebpf_exporter:v2.5.1"
+        private const val EXAMPLES_DIR = "/examples"
+
+        /** Where the base image's install_ebpf_programs.sh puts the compiled objects. */
+        internal const val HOST_OBJECT_DIR = "/usr/local/lib/ebpf_exporter"
+
+        /**
+         * `--config.names` stems whose compiled object comes from the AMI instead of the image.
+         * Each needs `packer/base/install/ebpf/<stem>.bpf.c`.
+         */
+        internal val OVERRIDDEN_PROGRAMS = listOf("cachestat", "syscalls")
+
+        /** Name of the volume (and its mount) carrying [program]'s object from the AMI. */
+        internal fun overrideVolumeName(program: String) = "override-$program"
+
+        /** File name of [program]'s compiled object, in the image and on the AMI alike. */
+        internal fun objectFile(program: String) = "$program.bpf.o"
     }
 
     /**
@@ -78,7 +98,18 @@ class EbpfExporterManifestBuilder {
                 // `bio-trace` and `sched-trace` are NOT substitutes for the two missing ones: they
                 // are span exporters, labelled with trace_id and span_id, so their cardinality is
                 // unbounded by construction.
-                "--config.names=biolatency,xfsdist,cachestat,shrinklat,tcp-retransmit,oomkill",
+                //
+                // `accept-latency` is deliberately absent: on kernel 7.0 it reports 2-64 s accept
+                // waits while `ss -ltn` shows an empty accept queue and ListenOverflows stays 0.
+                // Its timestamp is keyed by request_sock pointer and only deleted on accept, so a
+                // stale entry pairs with a reused address. The tcp-syn-backlog histogram answers
+                // the same question and agrees with the kernel.
+                //
+                // `kfree_skb` is out: the v2.5.1 program keys on destination port and its reason
+                // table predates kernel 7.0, so it emits thousands of `unknown:108` series per node.
+                // `tcp-window-clamps` and `udp-drops` are out because nothing reads them.
+                "--config.names=biolatency,xfsdist,cachestat,shrinklat,tcp-retransmit,oomkill," +
+                    "syscalls,softirq-latency,tcp-syn-backlog",
                 "--web.listen-address=0.0.0.0:${Constants.K8s.EBPF_EXPORTER_METRICS_PORT}",
             ).withSecurityContext(
                 SecurityContextBuilder()
@@ -117,6 +148,14 @@ class EbpfExporterManifestBuilder {
                     .withMountPath("/usr/src")
                     .withReadOnly(true)
                     .build(),
+            ).addAllToVolumeMounts(
+                OVERRIDDEN_PROGRAMS.map { program ->
+                    VolumeMountBuilder()
+                        .withName(overrideVolumeName(program))
+                        .withMountPath("$EXAMPLES_DIR/${objectFile(program)}")
+                        .withReadOnly(true)
+                        .build()
+                },
             ).endContainer()
             .addNewVolume()
             .withName("sys-kernel")
@@ -153,7 +192,20 @@ class EbpfExporterManifestBuilder {
                     .withPath("/usr/src")
                     .build(),
             ).endVolume()
-            .endSpec()
+            .addAllToVolumes(
+                // Type File: an AMI without the object fails the pod with a mount error that names
+                // the path, instead of an exporter that starts and silently loads the image's copy.
+                OVERRIDDEN_PROGRAMS.map { program ->
+                    VolumeBuilder()
+                        .withName(overrideVolumeName(program))
+                        .withHostPath(
+                            HostPathVolumeSourceBuilder()
+                                .withPath("$HOST_OBJECT_DIR/${objectFile(program)}")
+                                .withType("File")
+                                .build(),
+                        ).build()
+                },
+            ).endSpec()
             .endTemplate()
             .endSpec()
             .build()

@@ -42,7 +42,7 @@ ktor = "3.5.1"
 koin = "4.2.2"
 
 # AWS SDK
-awssdk = "2.48.3"
+awssdk = "2.51.3"
 awssdk-kotlin = "1.8.9"
 
 # Docker

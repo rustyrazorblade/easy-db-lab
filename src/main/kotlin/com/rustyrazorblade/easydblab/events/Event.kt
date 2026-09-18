@@ -2722,6 +2722,19 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Tailscale.RouteWaiting")
+        data class RouteWaiting(
+            val alias: String,
+            val address: String,
+            val port: Int,
+            val attempt: Int,
+            val maxAttempts: Int,
+        ) : Tailscale {
+            override fun toDisplayString(): String =
+                "Waiting for the tailnet route to $alias at $address:$port... (attempt $attempt of $maxAttempts)"
+        }
+
+        @Serializable
         @SerialName("Tailscale.ControlNodeUnreachable")
         data class ControlNodeUnreachable(
             val alias: String,

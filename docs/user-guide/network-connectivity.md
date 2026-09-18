@@ -110,7 +110,7 @@ easy-db-lab tailscale stop
 
 **"the 'tailscale' command was not found"** - Install Tailscale from [tailscale.com/download](https://tailscale.com/download). If you use the macOS App Store build, its CLI is not on the PATH; see the [Tailscale CLI docs](https://tailscale.com/kb/1080/cli).
 
-**"cannot reach it ... over the tailnet"** - The control node joined the tailnet, but this machine has no route to the cluster's private network. Approve the subnet route for the control node in [Tailscale admin](https://login.tailscale.com/admin/machines).
+**"cannot reach it ... over the tailnet"** - The control node joined the tailnet, but this machine has no route to the cluster's private network. `up` waits about two minutes for the route to arrive before it reports this. Approve the subnet route for the control node in [Tailscale admin](https://login.tailscale.com/admin/machines).
 
 **Using a custom tag:**
 ```bash

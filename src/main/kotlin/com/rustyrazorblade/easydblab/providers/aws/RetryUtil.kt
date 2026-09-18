@@ -12,6 +12,7 @@ import software.amazon.awssdk.services.iam.model.EntityAlreadyExistsException
 import software.amazon.awssdk.services.iam.model.IamException
 import software.amazon.awssdk.services.s3.model.S3Exception
 import java.io.IOException
+import java.time.Duration
 
 /**
  * Utility for creating standardized retry configurations for remote service operations.
@@ -238,6 +239,27 @@ object RetryUtil {
                     else -> false
                 }
             }.build()
+
+    /**
+     * Creates retry configuration for the pre-K3s probe of the control node over the tailnet.
+     *
+     * The probe returns a boolean, not an exception: `false` means the subnet route has not
+     * reached this machine yet, so the retry is on the result. The interval is a parameter so
+     * tests can run the full attempt count without sleeping.
+     *
+     * Fixed interval: [retryInterval] between attempts, up to
+     * [Constants.Tailscale.REACHABILITY_MAX_ATTEMPTS] attempts
+     *
+     * @param retryInterval how long to wait between probes
+     * @return RetryConfig configured for the tailnet reachability probe
+     */
+    fun createTailscaleReachabilityRetryConfig(retryInterval: Duration): RetryConfig =
+        RetryConfig
+            .custom<Boolean>()
+            .maxAttempts(Constants.Tailscale.REACHABILITY_MAX_ATTEMPTS)
+            .intervalFunction { _ -> retryInterval.toMillis() }
+            .retryOnResult { reachable -> !reachable }
+            .build()
 
     /**
      * Creates retry configuration for S3 log retrieval with eventual consistency.

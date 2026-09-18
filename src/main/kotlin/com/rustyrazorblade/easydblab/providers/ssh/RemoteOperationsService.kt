@@ -76,6 +76,9 @@ interface RemoteOperationsService {
      * If anything fails before the swap the staging directory is removed and the failure
      * propagates.
      *
+     * [remoteDir] and [owner] are placed in a remote shell command as-is, so they must come from
+     * code constants, never from user input.
+     *
      * @param host The target host
      * @param localDir The local directory whose contents become [remoteDir]
      * @param remoteDir The remote directory to replace; created if absent

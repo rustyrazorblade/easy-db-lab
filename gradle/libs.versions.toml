@@ -64,7 +64,7 @@ jedis = "7.5.3"
 
 # Other
 classgraph = "4.8.184"
-presto-jdbc = "0.289"
+presto-jdbc = "0.298.1"
 trino-jdbc = "474"
 clickhouse-jdbc = "0.7.2"
 mysql-connector-j = "9.7.0"

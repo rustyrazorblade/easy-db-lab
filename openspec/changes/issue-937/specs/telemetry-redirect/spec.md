@@ -74,7 +74,7 @@ WHEN redirect mode is requested but one or more of the four signal endpoints is 
 
 ### Requirement: Stack-dependent commands refuse cleanly on a redirect cluster
 
-WHEN a command that reads from or writes to the local observability stack is run against a redirect cluster, it SHALL report that it does not apply on a redirect cluster and SHALL touch no Grafana or backend — neither the (absent) local one nor the external stack.  This covers `grafana update-config`, `metrics query`, `metrics backup`, `metrics import`, `metrics ls`, `logs query`, `logs backup`, `logs import`, and `logs ls`.
+WHEN a command that reads from or writes to the local observability stack is run against a redirect cluster, it SHALL report that it does not apply on a redirect cluster and SHALL touch no Grafana or backend — neither the (absent) local one nor the external stack.  This covers `grafana update-config`, `metrics query`, `metrics backup`, `metrics import`, `metrics ls`, `logs query`, `logs backup`, `logs import`, `logs ls`, and the automatic pre-teardown backup that `down` runs.
 
 #### Scenario: grafana update-config refuses on a redirect cluster
 
@@ -85,6 +85,13 @@ WHEN a command that reads from or writes to the local observability stack is run
 
 - **WHEN** a `metrics` or `logs` query/backup/import/ls command is run against a redirect cluster
 - **THEN** it reports that the data lives on the external stack and does not apply here, rather than failing with a bare connection error against the absent local backend
+
+#### Scenario: Teardown skips the automatic backup on a redirect cluster
+
+- **GIVEN** a running redirect cluster
+- **WHEN** the user tears it down without `--force`
+- **THEN** the pre-teardown metrics and annotations backup is skipped, with the reason reported
+- **AND** teardown proceeds
 
 ### Requirement: A redirect cluster never modifies the external stack
 

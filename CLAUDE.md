@@ -200,6 +200,14 @@ For multi-DC plans `run` creates one wrapper per DC and sets `$EDB_DC1`, `$EDB_D
 Plans are executed exclusively through the plugin skills (see **Lab Test Plans** above), so there is
 no supported path where a plan scaffolds its own workspace.
 
+### Kit Development
+
+When developing a new kit, the following is essential:
+
+- Full integration with the observability stack.
+- Use the open telemetry agant for JVM workloads
+- Dashboards
+
 ## Development Setup
 
 ### Java Version Management (SDKMAN)

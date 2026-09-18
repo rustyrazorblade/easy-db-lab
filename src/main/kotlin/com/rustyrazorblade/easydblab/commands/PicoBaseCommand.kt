@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventContext
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
@@ -40,6 +41,22 @@ abstract class PicoBaseCommand :
 
     /** Convenience property to get the current ClusterState. */
     protected val clusterState by lazy { clusterStateManager.load() }
+
+    /**
+     * Refuses to run a command that depends on the local observability stack when the cluster is in
+     * telemetry-redirect mode. A redirect cluster has no local VictoriaMetrics, VictoriaLogs, Tempo,
+     * Pyroscope, or Grafana — that data lives on the external stack — so a command that reads or
+     * reconfigures those backends has nothing here to act on. It refuses cleanly rather than failing
+     * later with an opaque connection error.
+     *
+     * @param commandName the user-facing command name, used in the message (e.g. "metrics ls").
+     */
+    protected fun requireLocalTelemetryStack(commandName: String) {
+        if (clusterState.initConfig?.telemetryRedirect != null) {
+            eventBus.emit(Event.Provision.RedirectCommandUnavailable(commandName))
+            error("$commandName is unavailable on a telemetry-redirect cluster.")
+        }
+    }
 
     /**
      * Wraps the PicoCommand lifecycle with EventContext push/pop.

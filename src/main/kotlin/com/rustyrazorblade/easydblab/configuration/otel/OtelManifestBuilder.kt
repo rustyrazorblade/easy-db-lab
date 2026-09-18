@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.configuration.otel
 
 import com.charleskorn.kaml.Yaml
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
@@ -60,6 +61,18 @@ class OtelManifestBuilder(
          * of the node.
          */
         const val HOST_ROOT_MOUNT_PATH = "/hostfs"
+
+        /**
+         * In-cluster export endpoints used in local mode. These must stay byte-for-byte identical
+         * to the literals the config template shipped before the redirect placeholders were
+         * introduced (AC4): the local-mode ConfigMap is asserted equal to the pre-redirect output.
+         */
+        private val LOCAL_VICTORIAMETRICS_ENDPOINT =
+            "http://victoriametrics.default.svc.cluster.local:${Constants.K8s.VICTORIAMETRICS_PORT}/api/v1/write"
+        private val LOCAL_VICTORIALOGS_ENDPOINT =
+            "http://victorialogs.default.svc.cluster.local:${Constants.K8s.VICTORIALOGS_PORT}/insert/opentelemetry"
+        private val LOCAL_TEMPO_ENDPOINT =
+            "tempo.default.svc.cluster.local:${Constants.K8s.TEMPO_OTLP_GRPC_PORT}"
     }
 
     /**
@@ -100,14 +113,19 @@ class OtelManifestBuilder(
      *
      * @param scrapeConfigs Dynamic per-workload scrape targets from the metrics registry.
      *   Pass the result of [listWorkloadScrapeConfigs] to include currently-running workloads.
+     * @param telemetryRedirect When non-null, the collector exports to this external stack's
+     *   endpoints instead of the in-cluster backends.
      * @return List of: ServiceAccount, ClusterRole, ClusterRoleBinding, ConfigMap, DaemonSet, Service
      */
-    fun buildAllResources(scrapeConfigs: List<WorkloadScrapeConfig> = emptyList()): List<HasMetadata> =
+    fun buildAllResources(
+        scrapeConfigs: List<WorkloadScrapeConfig> = emptyList(),
+        telemetryRedirect: TelemetryRedirect? = null,
+    ): List<HasMetadata> =
         listOf(
             buildServiceAccount(),
             buildClusterRole(),
             buildClusterRoleBinding(),
-            buildConfigMap(scrapeConfigs),
+            buildConfigMap(scrapeConfigs, telemetryRedirect),
             buildDaemonSet(),
             buildService(),
         )
@@ -168,22 +186,33 @@ class OtelManifestBuilder(
      * with dynamic per-workload scrape jobs from the metrics registry.
      *
      * @param scrapeConfigs Workload scrape targets to inject (from [listWorkloadScrapeConfigs])
+     * @param telemetryRedirect When non-null, the three export endpoints resolve to this external
+     *   stack; when null they resolve to the in-cluster service addresses (local mode, unchanged).
      */
-    fun buildConfigMap(scrapeConfigs: List<WorkloadScrapeConfig> = emptyList()) =
-        ConfigMapBuilder()
-            .withNewMetadata()
-            .withName(CONFIGMAP_NAME)
-            .withNamespace(NAMESPACE)
-            .addToLabels("app.kubernetes.io/name", APP_LABEL)
-            .endMetadata()
-            .addToData(
-                CONFIG_DATA_KEY,
-                templateService
-                    .fromResource(
-                        OtelManifestBuilder::class.java,
-                        "otel-collector-config.yaml",
-                    ).substitute(mapOf("KIT_SCRAPE_JOBS" to buildDynamicScrapeJobsYaml(scrapeConfigs))),
-            ).build()
+    fun buildConfigMap(
+        scrapeConfigs: List<WorkloadScrapeConfig> = emptyList(),
+        telemetryRedirect: TelemetryRedirect? = null,
+    ) = ConfigMapBuilder()
+        .withNewMetadata()
+        .withName(CONFIGMAP_NAME)
+        .withNamespace(NAMESPACE)
+        .addToLabels("app.kubernetes.io/name", APP_LABEL)
+        .endMetadata()
+        .addToData(
+            CONFIG_DATA_KEY,
+            templateService
+                .fromResource(
+                    OtelManifestBuilder::class.java,
+                    "otel-collector-config.yaml",
+                ).substitute(
+                    mapOf(
+                        "KIT_SCRAPE_JOBS" to buildDynamicScrapeJobsYaml(scrapeConfigs),
+                        "VICTORIAMETRICS_ENDPOINT" to (telemetryRedirect?.metrics ?: LOCAL_VICTORIAMETRICS_ENDPOINT),
+                        "VICTORIALOGS_ENDPOINT" to (telemetryRedirect?.logs ?: LOCAL_VICTORIALOGS_ENDPOINT),
+                        "TEMPO_ENDPOINT" to (telemetryRedirect?.traces ?: LOCAL_TEMPO_ENDPOINT),
+                    ),
+                ),
+        ).build()
 
     private fun buildDynamicScrapeJobsYaml(configs: List<WorkloadScrapeConfig>): String {
         if (configs.isEmpty()) return ""

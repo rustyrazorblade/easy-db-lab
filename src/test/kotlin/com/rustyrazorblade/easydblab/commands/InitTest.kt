@@ -333,6 +333,49 @@ class InitTest : BaseKoinTest() {
     }
 
     @Nested
+    inner class TelemetryRedirectOptions {
+        @Test
+        fun `a per-signal override lands on its own signal and leaves the other three derived`() {
+            // A transposed override — logs written to the traces field, say — would compile and
+            // pass a laxer test. Asserting all four endpoints at once pins each override to its own
+            // signal and the rest to the base-host derivation.
+            val command = Init()
+            picocli.CommandLine(command).parseArgs(
+                "--redirect-telemetry",
+                "10.0.0.9",
+                "--redirect-logs-endpoint",
+                "http://logs.example.com:1234/insert/opentelemetry",
+            )
+
+            val redirect = command.resolvedTelemetryRedirect!!
+            assertThat(redirect.logs).isEqualTo("http://logs.example.com:1234/insert/opentelemetry")
+            assertThat(redirect.metrics).isEqualTo("http://10.0.0.9:8428/api/v1/write")
+            assertThat(redirect.traces).isEqualTo("10.0.0.9:4320")
+            assertThat(redirect.profiles).isEqualTo("http://10.0.0.9:4040")
+        }
+
+        @Test
+        fun `execute fails fast naming a malformed override signal and provisions nothing`() {
+            // The traces endpoint is a bare host:port; a URL with a scheme is malformed. Init must
+            // abort before any cluster state is written, naming the offending signal.
+            val command = Init()
+            picocli.CommandLine(command).parseArgs(
+                "--redirect-telemetry",
+                "10.0.0.9",
+                "--redirect-traces-endpoint",
+                "http://10.0.0.9:4320",
+            )
+            command.clean = true
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("traces")
+
+            verify(mockClusterStateManager, org.mockito.kotlin.never()).save(any())
+        }
+    }
+
+    @Nested
     inner class EbsOptions {
         @Test
         fun `execute fails with zero EBS size`() {

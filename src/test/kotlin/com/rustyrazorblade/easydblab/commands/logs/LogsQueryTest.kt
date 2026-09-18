@@ -1,10 +1,15 @@
 package com.rustyrazorblade.easydblab.commands.logs
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.services.VictoriaLogsService
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
@@ -13,24 +18,52 @@ import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 
 class LogsQueryTest : BaseKoinTest() {
     private lateinit var mockVictoriaLogsService: VictoriaLogsService
+    private lateinit var mockClusterStateManager: ClusterStateManager
     private lateinit var outputHandler: BufferedOutputHandler
 
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
                 single<VictoriaLogsService> { mockVictoriaLogsService }
+                single<ClusterStateManager> { mockClusterStateManager }
             },
         )
 
     @BeforeEach
     fun setupMocks() {
         mockVictoriaLogsService = mock()
+        mockClusterStateManager = mock()
         outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
+
+        // Local-mode cluster by default: the redirect guard passes, so query building runs.
+        whenever(mockClusterStateManager.load()).thenReturn(
+            ClusterState(name = "test-cluster", versions = mutableMapOf(), initConfig = InitConfig(region = "us-west-2")),
+        )
+    }
+
+    @Test
+    fun `execute refuses on a telemetry-redirect cluster`() {
+        whenever(mockClusterStateManager.load()).thenReturn(
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+                initConfig = InitConfig(region = "us-west-2", telemetryRedirect = TelemetryRedirect.fromBaseHost("10.0.0.9")),
+            ),
+        )
+
+        val command = LogsQuery()
+
+        assertThatThrownBy { command.execute() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("telemetry-redirect")
+
+        verify(mockVictoriaLogsService, never()).query(any(), any(), any())
     }
 
     @Nested

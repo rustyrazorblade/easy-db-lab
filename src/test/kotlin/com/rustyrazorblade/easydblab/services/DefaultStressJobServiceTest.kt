@@ -6,7 +6,9 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InfrastructureState
+import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -508,6 +510,42 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
         assertThat(mount.readOnly).isTrue()
         assertThat(volume.hostPath.path).isEqualTo("/usr/local/otel")
         assertThat(volume.hostPath.type).isEqualTo("Directory")
+    }
+
+    @Test
+    fun `buildJob points the Pyroscope agent at the external stack on a redirect cluster`() {
+        // On a redirect cluster the control node runs no Pyroscope server. The stress job's agent
+        // must ship to the external stack, not to a control-node address with nothing listening.
+        val redirect = TelemetryRedirect.fromBaseHost("10.9.9.9")
+        val clusterStateManager: ClusterStateManager = getKoin().get()
+        whenever(clusterStateManager.load()).thenReturn(
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+                infrastructure = InfrastructureState(vpcId = "vpc-test", region = "us-west-2"),
+                hosts =
+                    mapOf(
+                        ServerType.Control to
+                            listOf(
+                                ClusterHost(
+                                    publicIp = "54.123.45.67",
+                                    privateIp = "10.0.1.5",
+                                    alias = "control0",
+                                    availabilityZone = "us-west-2a",
+                                    instanceId = "i-control123",
+                                ),
+                            ),
+                    ),
+                initConfig = InitConfig(telemetryRedirect = redirect),
+            ),
+        )
+
+        val javaToolOptions = javaToolOptionsOf(stressJobConfig())
+
+        assertThat(javaToolOptions).contains("-Dpyroscope.server.address=${redirect.profiles}")
+        assertThat(javaToolOptions)
+            .describedAs("a redirect cluster must not point the stress agent at the control node")
+            .doesNotContain("http://10.0.1.5:${Constants.K8s.PYROSCOPE_PORT}")
     }
 
     private fun stressJobConfig(tags: Map<String, String> = emptyMap()) =

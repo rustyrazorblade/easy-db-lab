@@ -4,7 +4,9 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.TeardownResult
@@ -80,6 +82,12 @@ class DownBackupTest : BaseKoinTest() {
             vpcId = "vpc-123",
             hosts = emptyMap(),
         ).apply { markInfrastructureUp() }
+
+    /** An UP redirect cluster: it runs no local backends, so there is nothing to back up. */
+    private fun upRedirectClusterState() =
+        upClusterState().apply {
+            initConfig = InitConfig(telemetryRedirect = TelemetryRedirect.fromBaseHost("10.9.9.9"))
+        }
 
     override fun additionalTestModules(): List<Module> =
         listOf(
@@ -169,6 +177,21 @@ class DownBackupTest : BaseKoinTest() {
         verify(socksProxyService, never()).ensureRunning(any())
         verify(teardownService).teardownVpc(eq("vpc-123"), eq(true))
         assertThat(messageOutput()).contains("infrastructure is not up")
+    }
+
+    @Test
+    fun `redirect cluster skips the backup, says why, and still tears down`() {
+        whenever(clusterStateManager.exists()).thenReturn(true)
+        whenever(clusterStateManager.load()).thenReturn(upRedirectClusterState())
+        whenever(teardownService.teardownVpc(any(), eq(true))).thenReturn(TeardownResult.success(emptyList()))
+
+        Down().apply { autoApprove = true }.execute()
+
+        // The control host exists and the cluster is UP, so only the redirect gate can skip here.
+        verify(teardownBackupService, never()).backupBeforeTeardown(any(), any())
+        verify(socksProxyService, never()).ensureRunning(any())
+        verify(teardownService).teardownVpc(eq("vpc-123"), eq(true))
+        assertThat(messageOutput()).contains("redirected to http://10.9.9.9:8428")
     }
 
     @Test

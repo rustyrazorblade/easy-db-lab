@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.configuration.otel
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMap
 import org.assertj.core.api.Assertions.assertThat
@@ -477,5 +478,46 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         val yaml = yamlFrom(configMap)
 
         assertThat(yaml).doesNotContain("basic_auth:")
+    }
+
+    /**
+     * AC4 guard: with no redirect the three export endpoints must resolve to the in-cluster
+     * backend services, exactly as the config shipped before the redirect placeholders were
+     * introduced. If a substitution key ever drifts from its literal, a placeholder would leak
+     * into the rendered config and the collector would fail to start.
+     */
+    @Test
+    fun `local mode ConfigMap exports to the in-cluster backend services`() {
+        val yaml = yamlFrom(builder.buildConfigMap(emptyList(), telemetryRedirect = null))
+
+        assertThat(yaml).contains("http://victoriametrics.default.svc.cluster.local:8428/api/v1/write")
+        assertThat(yaml).contains("http://victorialogs.default.svc.cluster.local:9428/insert/opentelemetry")
+        assertThat(yaml).contains("tempo.default.svc.cluster.local:4320")
+        // No unresolved endpoint placeholders may survive substitution.
+        assertThat(yaml).doesNotContain("__VICTORIAMETRICS_ENDPOINT__")
+        assertThat(yaml).doesNotContain("__VICTORIALOGS_ENDPOINT__")
+        assertThat(yaml).doesNotContain("__TEMPO_ENDPOINT__")
+    }
+
+    /**
+     * Redirect mode replaces the three in-cluster export endpoints with the external stack's
+     * endpoints derived from the base host. Traces must target Tempo's OTLP receiver port 4320,
+     * never its query port 3200 — sending OTLP to 3200 silently drops every span.
+     */
+    @Test
+    fun `redirect mode ConfigMap exports to the external stack endpoints`() {
+        val redirect = TelemetryRedirect.fromBaseHost("10.0.0.9")
+
+        val yaml = yamlFrom(builder.buildConfigMap(emptyList(), telemetryRedirect = redirect))
+
+        assertThat(yaml).contains("http://10.0.0.9:8428/api/v1/write")
+        assertThat(yaml).contains("http://10.0.0.9:9428/insert/opentelemetry")
+        assertThat(yaml).contains("10.0.0.9:4320")
+        // Redirect must displace the in-cluster services entirely, not merely add alongside them.
+        assertThat(yaml).doesNotContain("victoriametrics.default.svc.cluster.local")
+        assertThat(yaml).doesNotContain("victorialogs.default.svc.cluster.local")
+        assertThat(yaml).doesNotContain("tempo.default.svc.cluster.local")
+        // Traces never target the query port.
+        assertThat(yaml).doesNotContain("10.0.0.9:3200")
     }
 }

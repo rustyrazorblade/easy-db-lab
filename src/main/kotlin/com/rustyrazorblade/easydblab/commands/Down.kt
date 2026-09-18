@@ -149,6 +149,18 @@ class Down : PicoBaseCommand() {
             return true
         }
 
+        // A redirect cluster runs no local VictoriaMetrics or Grafana, so there is nothing to back
+        // up here; the data already lives on the external stack.
+        val redirect = state.initConfig?.telemetryRedirect
+        if (redirect != null) {
+            eventBus.emit(
+                Event.Teardown.BackupSkipped(
+                    "telemetry is redirected to ${redirect.metrics}; there is no local stack to back up",
+                ),
+            )
+            return true
+        }
+
         val controlHost = state.getControlHost()
         if (controlHost == null) {
             eventBus.emit(Event.Teardown.BackupSkipped("no control node found in cluster state"))

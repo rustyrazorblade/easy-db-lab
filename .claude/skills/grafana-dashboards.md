@@ -9,14 +9,7 @@ triggers:
 
 ## Architecture Overview
 
-Core dashboards are standalone JSON files in the top-level `dashboards/<folder>/` tree, copied onto the classpath under a `dashboards/` prefix at build time. `GrafanaDashboardCatalog` discovers every `<folder>/<name>.json` on the classpath at runtime. `grafana update-config` writes that tree to a temp directory, uploads it over SSH to the control node and swaps it into the Grafana data hostPath (`/mnt/db1/grafana/dashboards`, seen as `/var/lib/grafana/dashboards` inside the pod). One Grafana file provider with `foldersFromFilesStructure: true` sweeps that path and makes one folder per directory. There is no registry to edit and no K8s object per dashboard.
-
-```
-dashboards/<folder>/<name>.json (classpath)
-        → GrafanaDashboardTreeWriter (temp dir, __PYROSCOPE_URL__ in profiling.json)
-        → GrafanaDashboardTreeUploader (SFTP to control node, mv into /mnt/db1/grafana/dashboards)
-        → Grafana file provider (foldersFromFilesStructure) → one folder per directory
-```
+Core dashboards are standalone JSON files in the top-level `dashboards/<folder>/` tree, discovered from the classpath at runtime and copied by `grafana update-config` onto the control node's Grafana hostPath, where one file provider makes one Grafana folder per directory. There is no registry to edit and no K8s object per dashboard. The mechanism is described once, in [`dashboards/CLAUDE.md`](../../dashboards/CLAUDE.md).
 
 ## Key Files and Locations
 
@@ -36,7 +29,7 @@ dashboards/<folder>/<name>.json (classpath)
 
 ## Existing Dashboards
 
-Run `find dashboards -name '*.json' | sort` for the current list. The Grafana folder is the directory name verbatim. `infrastructure/system-overview.json` is the home dashboard and must exist.
+Run `find dashboards -name '*.json' | sort` for the current list. The Grafana folder is the directory name verbatim. `infrastructure/system-overview.json` is the home dashboard and must exist at exactly that path.
 
 ## Available Datasources
 
@@ -91,8 +84,7 @@ The file is discovered at runtime and copied to the control node with the rest o
 3. Prepares `/mnt/db1/grafana` on the control node (mkdir, chown 472)
 4. Calls `GrafanaDashboardService.uploadDashboards()` which:
    - Creates the datasource ConfigMap
-   - Copies the dashboard tree to `/mnt/db1/grafana/dashboards` on the control node via `GrafanaDashboardTreeUploader` (local temp tree → SFTP to a `mktemp -d` staging dir under `$HOME` → `sudo rm -rf` old tree, `sudo mv` into place, `sudo chown -R 472:472`)
-   - Deletes any ConfigMap labelled `grafana_dashboard=1` left by the old ConfigMap-per-dashboard delivery
+   - Copies the dashboard tree to `/mnt/db1/grafana/dashboards` on the control node via `GrafanaDashboardTreeUploader` (see [`dashboards/CLAUDE.md`](../../dashboards/CLAUDE.md) for the staging and rename swap)
    - Builds the provisioning ConfigMap and Deployment via `GrafanaManifestBuilder` and applies each via `k8sService.applyResource()`
 5. Restarts the observability workloads and waits for them to become Ready
 

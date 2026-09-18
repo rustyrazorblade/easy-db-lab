@@ -507,16 +507,11 @@ object Constants {
     // Grafana configuration
     object Grafana {
         /**
-         * File stem of the core dashboard Grafana opens on
-         * (`GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH`). Discovery fails if no folder holds it.
+         * Path, relative to the dashboard tree root, of the core dashboard Grafana opens on
+         * (`GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH`). The catalog fails unless exactly this
+         * path is present; the same file name in another folder does not count.
          */
-        const val HOME_DASHBOARD_STEM = "system-overview"
-
-        /**
-         * File stem of the core dashboard whose JSON carries a `__PYROSCOPE_URL__` placeholder,
-         * substituted with the cluster's Pyroscope URL when the dashboard tree is written for upload.
-         */
-        const val PYROSCOPE_DASHBOARD_STEM = "profiling"
+        const val HOME_DASHBOARD_PATH = "infrastructure/system-overview.json"
 
         /**
          * Tag auto-applied to every GLOBAL (unscoped) annotation created via `grafana annotate`, in

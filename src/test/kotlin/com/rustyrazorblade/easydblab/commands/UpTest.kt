@@ -184,6 +184,13 @@ class UpTest : BaseKoinTest() {
                             version: Version,
                         ) = Unit
 
+                        override fun replaceDirectory(
+                            host: Host,
+                            localDir: File,
+                            remoteDir: String,
+                            owner: String,
+                        ) = Unit
+
                         override fun download(
                             host: Host,
                             remote: String,

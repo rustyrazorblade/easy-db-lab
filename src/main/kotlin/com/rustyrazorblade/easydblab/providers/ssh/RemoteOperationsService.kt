@@ -66,6 +66,29 @@ interface RemoteOperationsService {
     )
 
     /**
+     * Replaces the directory at [remoteDir] with the contents of [localDir], atomically as seen
+     * by anything polling [remoteDir].
+     *
+     * The tree is uploaded to a staging directory beside [remoteDir] (same filesystem, so the
+     * final move is a rename), then the old directory is moved aside, the staged one moved in and
+     * chowned to [owner], and the old one removed. A reader of [remoteDir] therefore sees either
+     * the complete old tree or the complete new one, never an empty or half-copied directory.
+     * If anything fails before the swap the staging directory is removed and the failure
+     * propagates.
+     *
+     * @param host The target host
+     * @param localDir The local directory whose contents become [remoteDir]
+     * @param remoteDir The remote directory to replace; created if absent
+     * @param owner `chown` spec (`user:group`, ids or names) the new directory is handed to
+     */
+    fun replaceDirectory(
+        host: Host,
+        localDir: File,
+        remoteDir: String,
+        owner: String,
+    )
+
+    /**
      * Download a file from a remote host.
      *
      * @param host The source host

@@ -21,6 +21,7 @@ else
     cached_fetch() { echo "no S3 cache; downloading $1"; curl -fsSL --retry 3 "$1" -o "$3"; }
 fi
 
+# The sources include maps.bpf.h, which in turn includes bits.bpf.h.
 for h in maps.bpf.h bits.bpf.h; do
     cached_fetch \
         "https://raw.githubusercontent.com/cloudflare/ebpf_exporter/${EBPF_EXPORTER_VERSION}/examples/${h}" \
@@ -28,7 +29,18 @@ for h in maps.bpf.h bits.bpf.h; do
         "${BUILD}/${h}"
 done
 
-sudo bpftool btf dump file /sys/kernel/btf/vmlinux format c | tee "${BUILD}/vmlinux.h" > /dev/null
+# shellcheck disable=SC2024  # sudo is for reading the BTF; BUILD is owned by this user
+sudo bpftool btf dump file /sys/kernel/btf/vmlinux format c > "${BUILD}/vmlinux.h"
+
+# Every attach point is checked against this kernel before the object is installed; a probe on a
+# missing symbol otherwise fails at attach time inside the exporter, where it is far harder to see.
+# Functions (fentry, kprobe, kretprobe) are checked against BTF, not kallsyms: fentry attaches to
+# any function with BTF, static or not, so a `T`-only kallsyms check rejects symbols that attach
+# fine.  Tracepoints (raw_tp, tp_btf) are checked against the kernel's __tracepoint_<name> symbols.
+# Both lists are reduced to bare names once, here, so the per-program checks are a grep each.
+sudo bpftool btf dump file /sys/kernel/btf/vmlinux | awk '/ FUNC /{print $3}' | tr -d "'" > "${BUILD}/btf-funcs"
+# shellcheck disable=SC2024  # sudo is for reading kallsyms; BUILD is owned by this user
+sudo awk '$3 ~ /^__tracepoint_/ {sub(/^__tracepoint_/, "", $3); print $3}' /proc/kallsyms > "${BUILD}/tracepoints"
 
 ARCH=$(dpkg --print-architecture)
 KERNEL=$(uname -r)
@@ -43,37 +55,29 @@ for src in "${SRC}"/*.bpf.c; do
     name=$(basename "${src}" .bpf.c)
     obj="${BUILD}/${name}.bpf.o"
 
-    # Every probed symbol must exist in this kernel; a probe on a missing symbol fails at attach
-    # time inside the exporter, where it is far harder to see than here.
-    # `|| true`: a program with only tracepoint sections has nothing to check, and under
-    # pipefail an empty grep would otherwise abort the whole script without a message.
-    { grep -o -E 'SEC\("(fentry|kprobe|kretprobe)/[a-zA-Z0-9_]+"\)' "${src}" || true; } | sed -E 's/.*\/([a-zA-Z0-9_]+)"\)/\1/' | while read -r sym; do
-        if ! sudo grep -q -E " T ${sym}$" /proc/kallsyms; then
-            echo "✗ ${name}: symbol ${sym} is not in this kernel (${KERNEL})" >&2
-            exit 1
-        fi
-    done
-
-    # Tracepoint probes (raw_tp, tp_btf) are checked the same way, against the kernel's
-    # __tracepoint_<name> symbol, so a renamed tracepoint fails here and not at attach time.
-    { grep -o -E 'SEC\("(raw_tp|tp_btf)/[a-zA-Z0-9_]+"\)' "${src}" || true; } | sed -E 's/.*\/([a-zA-Z0-9_]+)"\)/\1/' | while read -r tp; do
-        if ! sudo grep -q -E " __tracepoint_${tp}$" /proc/kallsyms; then
-            echo "✗ ${name}: tracepoint ${tp} is not in this kernel (${KERNEL})" >&2
-            exit 1
-        fi
-    done
-
     clang -g -O2 -target bpf "-D__TARGET_ARCH_${TARGET_ARCH}" -Wno-missing-declarations \
         -I"${BUILD}" -I/usr/include -c "${src}" -o "${obj}"
     llvm-strip -g "${obj}"
 
-    # The section names are the attach points; confirm the object carries every one the source
-    # declares.
-    grep -o -E 'SEC\("[a-z_]+/[a-zA-Z0-9_]+"\)' "${src}" | sed -E 's/SEC\("(.*)"\)/\1/' | while read -r sec; do
-        if ! llvm-objdump -h "${obj}" | grep -q -F " ${sec} "; then
-            echo "✗ ${name}: section ${sec} missing from the compiled object" >&2
-            exit 1
-        fi
+    # The attach points are the object's section names.  The object is what the exporter loads,
+    # so it, not the source, is what gets checked.
+    llvm-objdump -h "${obj}" | awk '$2 ~ /^(fentry|kprobe|kretprobe|raw_tp|tp_btf)\//{print $2}' | while read -r sec; do
+        kind=${sec%%/*}
+        sym=${sec#*/}
+        case "${kind}" in
+            raw_tp|tp_btf)
+                if ! grep -q -x -F "${sym}" "${BUILD}/tracepoints"; then
+                    echo "✗ ${name}: tracepoint ${sym} is not in this kernel (${KERNEL})" >&2
+                    exit 1
+                fi
+                ;;
+            *)
+                if ! grep -q -x -F "${sym}" "${BUILD}/btf-funcs"; then
+                    echo "✗ ${name}: symbol ${sym} is not in this kernel (${KERNEL})" >&2
+                    exit 1
+                fi
+                ;;
+        esac
     done
 
     sudo install -m 0644 "${obj}" "${OUT}/${name}.bpf.o"

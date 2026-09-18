@@ -20,7 +20,9 @@ const val GRAFANA_DASHBOARD_RESOURCE_BASE = "dashboards"
  *
  * Nothing here is declared by hand. [GrafanaDashboardCatalog] discovers every instance from the
  * classpath, and the tree copied to the control node keeps exactly this `<folder>/<file>` layout,
- * so adding a dashboard is dropping a JSON file into a folder directory and nothing else.
+ * so adding a dashboard is dropping a JSON file into a folder directory and nothing else. Where
+ * the JSON is read from is the catalog's knowledge ([GrafanaDashboardCatalog.resourcePathOf]),
+ * not the dashboard's.
  *
  * @property folder Grafana folder the dashboard is filed under: the directory name, verbatim. Kits
  *   install their own dashboards into a folder named exactly after the kit, so a core dashboard
@@ -31,12 +33,6 @@ data class GrafanaDashboard(
     val folder: String,
     val jsonFileName: String,
 ) {
-    /** File name without its `.json` extension. */
-    val stem: String get() = jsonFileName.removeSuffix(".json")
-
     /** Path of the JSON relative to the tree root, on the classpath and on the control node alike. */
     val relativePath: String get() = "$folder/$jsonFileName"
-
-    /** Absolute classpath path of the JSON, as accepted by `Class.getResource`. */
-    val resourcePath: String get() = "/$GRAFANA_DASHBOARD_RESOURCE_BASE/$relativePath"
 }

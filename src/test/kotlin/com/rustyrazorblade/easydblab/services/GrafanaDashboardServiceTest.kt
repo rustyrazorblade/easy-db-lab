@@ -73,7 +73,6 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
         mockTreeUploader = getKoin().get()
         whenever(mockManifestBuilder.buildAllResources()).thenReturn(buildTestResources())
         whenever(mockK8sService.createConfigMap(any(), any(), any(), any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.deleteConfigMapsByLabels(any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.applyResource(any(), any())).thenReturn(Result.success(Unit))
     }
 
@@ -120,7 +119,6 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
 
         assertThat(result.isSuccess).isTrue()
         verify(mockK8sService).createConfigMap(any(), any(), eq("grafana-datasources"), any(), any())
-        verify(mockK8sService, times(2)).applyResource(any(), any())
     }
 
     @Test
@@ -129,22 +127,6 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
 
         val order = inOrder(mockTreeUploader, mockK8sService)
         order.verify(mockTreeUploader).upload(testControlHost)
-        order.verify(mockK8sService, times(2)).applyResource(any(), any())
-    }
-
-    @Test
-    fun `uploadDashboards removes the per-dashboard ConfigMaps of the previous delivery before applying`() {
-        // A cluster brought up by the ConfigMap-per-dashboard code still carries those objects;
-        // server-side apply of the new set never deletes them. They all carried this label and
-        // nothing creates it any more, so deleting every match is the cleanup.
-        service().uploadDashboards(testControlHost)
-
-        val order = inOrder(mockK8sService)
-        order.verify(mockK8sService).deleteConfigMapsByLabels(
-            controlHost = eq(testControlHost),
-            namespace = eq("default"),
-            labels = eq(mapOf("grafana_dashboard" to "1")),
-        )
         order.verify(mockK8sService, times(2)).applyResource(any(), any())
     }
 
@@ -167,18 +149,6 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
 
         assertThat(result.isFailure).isTrue()
         assertThat(result.exceptionOrNull()?.message).contains("Failed to upload Grafana dashboards").contains("sftp failed")
-        verify(mockK8sService, never()).applyResource(any(), any())
-    }
-
-    @Test
-    fun `uploadDashboards fails when the legacy ConfigMap cleanup fails`() {
-        whenever(mockK8sService.deleteConfigMapsByLabels(any(), any(), any()))
-            .thenReturn(Result.failure(RuntimeException("forbidden")))
-
-        val result = service().uploadDashboards(testControlHost)
-
-        assertThat(result.isFailure).isTrue()
-        assertThat(result.exceptionOrNull()?.message).contains("Failed to delete").contains("forbidden")
         verify(mockK8sService, never()).applyResource(any(), any())
     }
 

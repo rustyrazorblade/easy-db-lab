@@ -11,21 +11,23 @@ import io.github.classgraph.ClassGraph
  * is adding a file and adding a Grafana folder is adding a directory. The constructor validates
  * the result: the home dashboard must be present.
  *
+ * @property resourceBase Classpath directory every dashboard's JSON is read from; the shipped
+ *   tree unless the catalog was discovered under another base
  * @property dashboards Every discovered dashboard, sorted by folder then file name
  */
 class GrafanaDashboardCatalog(
+    val resourceBase: String,
     val dashboards: List<GrafanaDashboard>,
 ) {
-    /** The dashboard Grafana opens on; see [Constants.Grafana.HOME_DASHBOARD_STEM]. */
-    val home: GrafanaDashboard
-
     init {
-        home =
-            checkNotNull(dashboards.singleOrNull { it.stem == Constants.Grafana.HOME_DASHBOARD_STEM }) {
-                "No dashboard named ${Constants.Grafana.HOME_DASHBOARD_STEM}.json found under " +
-                    "$GRAFANA_DASHBOARD_RESOURCE_BASE/<folder>/. It is the Grafana home dashboard and must exist."
-            }
+        check(dashboards.any { it.relativePath == Constants.Grafana.HOME_DASHBOARD_PATH }) {
+            "Home dashboard ${Constants.Grafana.HOME_DASHBOARD_PATH} is missing from the catalog. " +
+                "Grafana opens on it, so it must exist at exactly that path."
+        }
     }
+
+    /** Absolute classpath path of [dashboard]'s JSON, as accepted by `Class.getResource`. */
+    fun resourcePathOf(dashboard: GrafanaDashboard): String = "/$resourceBase/${dashboard.relativePath}"
 
     companion object {
         /**
@@ -57,7 +59,7 @@ class GrafanaDashboardCatalog(
                                 GrafanaDashboard(folder = segments[0], jsonFileName = segments[1])
                             }
                     }.sortedWith(compareBy({ it.folder }, { it.jsonFileName }))
-            return GrafanaDashboardCatalog(dashboards)
+            return GrafanaDashboardCatalog(resourceBase, dashboards)
         }
     }
 }

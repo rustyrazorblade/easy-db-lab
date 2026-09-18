@@ -140,11 +140,10 @@ exists because the name is plausible.
 
 ## Which directory
 
-- **Core dashboards** — top-level `dashboards/<folder>/`, one subdirectory per Grafana folder
-  (`cassandra`, `infrastructure`, `observability`, `opensearch`). Discovered from the classpath by
-  `GrafanaDashboardCatalog`; `update-config` copies the whole tree onto the control node's Grafana
-  hostPath and one file provider turns each directory into a folder. Nothing to register, no
-  K8s object per dashboard. Adding a folder is making a directory.
+- **Core dashboards** — top-level `dashboards/<folder>/`, one subdirectory per Grafana folder.
+  Discovered from the classpath and copied by `update-config` onto the control node, where one
+  file provider turns each directory into a folder; nothing to register, no K8s object per
+  dashboard. The mechanism is described once, in `dashboards/CLAUDE.md`.
 - **Kit dashboards** — `src/main/resources/.../kits/<name>/dashboards/`, auto-installed by
   `KitRunnerCommand` after a successful `start` into a folder named after the kit. Never add a
   kit dashboard to the top-level tree.

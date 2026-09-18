@@ -74,13 +74,9 @@ All dashboards SHALL include a `cluster` multi-select variable and an ad hoc fil
 #### Scenario: Copied tree replaces the previous one
 
 - **WHEN** `grafana update-config` is run against a cluster that already has a dashboard tree
-- **THEN** the previous tree under `/mnt/db1/grafana/dashboards` SHALL be removed before the new one is moved into place, so a dashboard deleted from the repo disappears from Grafana
+- **THEN** the new tree SHALL be staged on the same filesystem as `/mnt/db1/grafana/dashboards` and renamed into place, so the provider never reads an empty or partial directory
+- **AND** the previous tree SHALL be removed once the new one is in place, so a dashboard deleted from the repo disappears from Grafana
 - **AND** the tree SHALL be owned by the Grafana user (uid 472)
-
-#### Scenario: Per-dashboard ConfigMaps from an earlier release are removed
-
-- **WHEN** `grafana update-config` is run against a cluster set up by a release that delivered dashboards as ConfigMaps
-- **THEN** every ConfigMap in the Grafana namespace labelled `grafana_dashboard=1` SHALL be deleted before the Grafana Deployment is applied
 
 #### Scenario: Same file name in two folders
 

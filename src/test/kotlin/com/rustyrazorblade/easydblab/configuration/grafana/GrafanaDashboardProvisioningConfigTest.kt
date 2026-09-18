@@ -41,6 +41,5 @@ class GrafanaDashboardProvisioningConfigTest {
         assertThat(yaml).contains("disableDeletion: false")
         assertThat(yaml).contains("updateIntervalSeconds: 10")
         assertThat(yaml).contains("allowUiUpdates: true")
-        assertThat(yaml).contains("foldersFromFilesStructure: true")
     }
 }

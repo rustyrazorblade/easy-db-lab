@@ -1,11 +1,11 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardTreeWriter
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.profiling.pyroscopeIngestBaseUrl
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import kotlin.io.path.createTempDirectory
 
@@ -26,12 +26,11 @@ interface GrafanaDashboardTreeUploader {
 }
 
 /**
- * Default [GrafanaDashboardTreeUploader]: local temp tree, SFTP to a staging directory under the
- * SSH user's home, then one remote command to swap it into
- * [GrafanaManifestBuilder.GRAFANA_DASHBOARD_HOST_PATH] owned by the Grafana user.
- *
- * The swap removes the old tree first so a dashboard deleted from the repo disappears from
- * Grafana too; `mv` consumes the staging directory, so nothing is left behind on success.
+ * Default [GrafanaDashboardTreeUploader]: writes the tree to a local temp directory and hands it
+ * to [RemoteOperationsService.replaceDirectory], which swaps it into
+ * [GrafanaManifestBuilder.GRAFANA_DASHBOARD_HOST_PATH] as the Grafana user without the provider
+ * ever polling an empty or half-copied directory. A dashboard deleted from the repo still
+ * disappears from Grafana because the whole tree is replaced.
  *
  * @property writer Lays the catalog out on the local filesystem
  * @property remoteOps SSH transport to the control node
@@ -43,28 +42,12 @@ class DefaultGrafanaDashboardTreeUploader(
     private val eventBus: EventBus,
 ) : GrafanaDashboardTreeUploader {
     override fun upload(controlHost: ClusterHost) {
-        val host = controlHost.toHost()
         val hostPath = GrafanaManifestBuilder.GRAFANA_DASHBOARD_HOST_PATH
-        val pyroscopeUrl = "http://${controlHost.privateIp}:${Constants.K8s.PYROSCOPE_PORT}"
-
         val localTree = createTempDirectory(LOCAL_TEMP_PREFIX)
         try {
-            writer.writeTo(localTree, pyroscopeUrl)
-            val count = localTree.toFile().walkTopDown().count { it.isFile }
+            val count = writer.writeTo(localTree, pyroscopeIngestBaseUrl(controlHost.privateIp))
             eventBus.emit(Event.Grafana.DashboardTreeUploading(count, hostPath))
-
-            val staging =
-                remoteOps
-                    .executeRemotely(host, "mktemp -d \"\$HOME/$STAGING_TEMPLATE\"", output = false)
-                    .text
-                    .trim()
-            remoteOps.uploadDirectory(host, localTree.toFile(), staging)
-            remoteOps.executeRemotely(
-                host,
-                "sudo rm -rf $hostPath && sudo mv $staging $hostPath && " +
-                    "sudo chown -R ${GrafanaManifestBuilder.GRAFANA_UID}:${GrafanaManifestBuilder.GRAFANA_UID} $hostPath",
-                output = false,
-            )
+            remoteOps.replaceDirectory(controlHost.toHost(), localTree.toFile(), hostPath, GRAFANA_OWNER)
             eventBus.emit(Event.Grafana.DashboardTreeUploaded(count, hostPath))
         } finally {
             localTree.toFile().deleteRecursively()
@@ -74,7 +57,7 @@ class DefaultGrafanaDashboardTreeUploader(
     private companion object {
         const val LOCAL_TEMP_PREFIX = "easy-db-lab-grafana-dashboards"
 
-        /** `mktemp` template, resolved under `$HOME` on the control node. */
-        const val STAGING_TEMPLATE = "easy-db-lab-grafana-dashboards.XXXXXX"
+        /** `chown` spec for the uploaded tree: the Grafana container's uid and gid. */
+        const val GRAFANA_OWNER = "${GrafanaManifestBuilder.GRAFANA_UID}:${GrafanaManifestBuilder.GRAFANA_UID}"
     }
 }

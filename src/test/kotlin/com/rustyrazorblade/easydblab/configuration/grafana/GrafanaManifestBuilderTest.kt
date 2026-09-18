@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.configuration.grafana
 
-import com.charleskorn.kaml.Yaml
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -16,14 +15,12 @@ import org.mockito.kotlin.whenever
 /**
  * Tests for GrafanaManifestBuilder.
  *
- * Uses real TemplateService (never mocked per project convention) and the real discovered
- * dashboard catalog, so every assertion runs against the dashboards that actually ship.
+ * Uses real TemplateService (never mocked per project convention).
  */
 class GrafanaManifestBuilderTest : BaseKoinTest() {
     private lateinit var builder: GrafanaManifestBuilder
     private lateinit var templateService: TemplateService
     private lateinit var mockClusterStateManager: ClusterStateManager
-    private val catalog = GrafanaDashboardCatalog.discover()
 
     override fun additionalTestModules(): List<Module> =
         listOf(
@@ -48,15 +45,7 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
             ),
         )
         templateService = getKoin().get()
-        builder = GrafanaManifestBuilder(templateService, catalog)
-    }
-
-    private fun provisioningConfig(): GrafanaDashboardProvisioningConfig {
-        val yaml =
-            checkNotNull(builder.buildDashboardProvisioningConfigMap().data["dashboards.yaml"]) {
-                "provisioning ConfigMap has no dashboards.yaml key"
-            }
-        return Yaml.default.decodeFromString(GrafanaDashboardProvisioningConfig.serializer(), yaml)
+        builder = GrafanaManifestBuilder(templateService)
     }
 
     private fun grafanaContainer() =
@@ -66,17 +55,19 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
             .first { it.name == "grafana" }
 
     @Test
-    fun `the provisioning ConfigMap carries the single tree provider`() {
-        val provider = provisioningConfig().providers.single()
+    fun `the provisioning ConfigMap carries the dashboard tree provider config`() {
+        // The shape of that config is pinned in GrafanaDashboardProvisioningConfigTest; here only
+        // that the ConfigMap ships it unchanged under the key Grafana mounts.
+        val yaml = builder.buildDashboardProvisioningConfigMap().data["dashboards.yaml"]
 
-        assertThat(provider.options.path).isEqualTo(GRAFANA_DASHBOARD_ROOT)
-        assertThat(provider.options.foldersFromFilesStructure).isTrue()
+        assertThat(yaml).isEqualTo(GrafanaDashboardProvisioningConfig.forDashboardTree().toYaml())
     }
 
     @Test
     fun `the home dashboard resolves inside the copied tree`() {
-        // GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH is built from the home dashboard's place in
-        // the tree. Left pointing anywhere else, Grafana opens on an empty page.
+        // GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH is the home dashboard's place in the tree,
+        // the same path the catalog insists on. Left pointing anywhere else, Grafana opens on an
+        // empty page.
         val homePath = grafanaContainer().env.first { it.name == "GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH" }.value
 
         assertThat(homePath).isEqualTo("/var/lib/grafana/dashboards/infrastructure/system-overview.json")
@@ -145,7 +136,6 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
         val data = volumes.first { it.name == "data" }
         assertThat(data.hostPath.path).isEqualTo(GrafanaManifestBuilder.GRAFANA_DATA_PATH)
         assertThat(mounts.first { it.name == "data" }.mountPath).isEqualTo("/var/lib/grafana")
-        assertThat(GRAFANA_DASHBOARD_ROOT).startsWith("/var/lib/grafana/")
 
         assertThat(volumes.map { it.name }).containsExactlyInAnyOrder("datasources", "dashboards-config", "data")
         assertThat(mounts.map { it.name }).containsExactlyInAnyOrder("datasources", "dashboards-config", "data")

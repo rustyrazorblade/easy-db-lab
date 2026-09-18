@@ -42,9 +42,6 @@ interface GrafanaDashboardService {
      * Puts the dashboard tree on the control node, then builds and applies the Grafana K8s
      * resources (datasources, provisioning, deployment).
      *
-     * Also deletes the per-dashboard ConfigMaps an earlier release left behind: server-side apply
-     * of the current resource set never removes them.
-     *
      * @param controlHost The control node running K3s
      * @return Result indicating success or failure
      */
@@ -120,12 +117,6 @@ class DefaultGrafanaDashboardService(
     companion object {
         private const val DATASOURCES_CONFIGMAP_NAME = "grafana-datasources"
         private const val DEFAULT_NAMESPACE = "default"
-
-        /**
-         * Label the ConfigMap-per-dashboard delivery put on every dashboard ConfigMap. Nothing
-         * creates it any more, so every ConfigMap carrying it is stale and is deleted on update.
-         */
-        private val LEGACY_DASHBOARD_CONFIGMAP_LABELS = mapOf("grafana_dashboard" to "1")
         private val JSON_MEDIA_TYPE = "application/json".toMediaType()
 
         /**
@@ -165,17 +156,6 @@ class DefaultGrafanaDashboardService(
                 IllegalStateException("Failed to upload Grafana dashboards: ${exception.message}", exception),
             )
         }
-
-        k8sService
-            .deleteConfigMapsByLabels(controlHost, DEFAULT_NAMESPACE, LEGACY_DASHBOARD_CONFIGMAP_LABELS)
-            .getOrElse { exception ->
-                return Result.failure(
-                    IllegalStateException(
-                        "Failed to delete legacy dashboard ConfigMaps ($LEGACY_DASHBOARD_CONFIGMAP_LABELS): ${exception.message}",
-                        exception,
-                    ),
-                )
-            }
 
         val resources = manifestBuilder.buildAllResources()
         eventBus.emit(Event.Grafana.ResourcesApplying(resources.size))

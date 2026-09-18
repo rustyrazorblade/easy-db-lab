@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.configuration.grafana
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
@@ -23,15 +24,13 @@ import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
  * Dashboards are not K8s objects. The CLI copies the whole dashboard tree onto the control
  * node's Grafana data directory ([GRAFANA_DASHBOARD_HOST_PATH]), which the Deployment already
  * mounts at `/var/lib/grafana`, and the provisioning ConfigMap declares one provider that sweeps
- * it. Nothing built here varies with how many dashboards or folders exist; the [catalog] is used
- * only to locate the home dashboard inside the tree.
+ * it. Nothing built here varies with how many dashboards or folders exist; the home dashboard is
+ * a fixed path in that tree ([Constants.Grafana.HOME_DASHBOARD_PATH]).
  *
  * @property templateService Used for reading the cluster name for Grafana branding
- * @property catalog Every core dashboard on the classpath; supplies the home dashboard
  */
 class GrafanaManifestBuilder(
     private val templateService: TemplateService,
-    private val catalog: GrafanaDashboardCatalog,
 ) {
     companion object {
         private const val NAMESPACE = "default"
@@ -249,7 +248,10 @@ class GrafanaManifestBuilder(
             envVar("GF_AUTH_DISABLE_LOGIN_FORM", "false"),
             envVar("GF_AUTH_BASIC_ENABLED", "true"),
             envVar("GF_BRANDING_APP_TITLE", clusterName),
-            envVar("GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH", "$GRAFANA_DASHBOARD_ROOT/${catalog.home.relativePath}"),
+            envVar(
+                "GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH",
+                "$GRAFANA_DASHBOARD_ROOT/${Constants.Grafana.HOME_DASHBOARD_PATH}",
+            ),
             envVar("GF_RENDERING_SERVER_URL", "http://localhost:$IMAGE_RENDERER_PORT/render"),
             envVar("GF_RENDERING_CALLBACK_URL", "http://localhost:$GRAFANA_PORT/"),
             envVar("GF_RENDERING_RENDERER_TOKEN", RENDERER_TOKEN),

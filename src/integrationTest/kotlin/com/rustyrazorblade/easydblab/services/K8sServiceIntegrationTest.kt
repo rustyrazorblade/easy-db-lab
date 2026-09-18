@@ -8,7 +8,6 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardCatalog
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
@@ -299,7 +298,7 @@ class K8sServiceIntegrationTest {
     @Test
     @Order(21)
     fun `should apply Grafana resources`() {
-        val builder = GrafanaManifestBuilder(templateService, GrafanaDashboardCatalog.discover())
+        val builder = GrafanaManifestBuilder(templateService)
 
         // Apply provisioning ConfigMap
         applyAndVerify(listOf(builder.buildDashboardProvisioningConfigMap()))
@@ -645,7 +644,7 @@ class K8sServiceIntegrationTest {
             BeylaManifestBuilder(templateService).buildAllResources() +
             PyroscopeManifestBuilder(templateService).buildAllResources() +
             YaceManifestBuilder(templateService).buildAllResources() +
-            GrafanaManifestBuilder(templateService, GrafanaDashboardCatalog.discover()).buildAllResources()
+            GrafanaManifestBuilder(templateService).buildAllResources()
 
     private fun waitForPvcBound(
         pvcName: String,

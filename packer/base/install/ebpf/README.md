@@ -1,44 +1,31 @@
 # ebpf_exporter program overrides, built into the base image
 
-`install_ebpf_programs.sh` compiles every `*.bpf.c` here into
-`/usr/local/lib/ebpf_exporter/<name>.bpf.o` at AMI build time.  `EbpfExporterManifestBuilder`
-mounts each object over the image's `/examples/<name>.bpf.o`, so `--config.names` and the yaml
-stay as the pinned `ghcr.io/cloudflare/ebpf_exporter` release ships them.  The object is never
-checked in; the build instance's own kernel BTF supplies `vmlinux.h`, and the two helper headers
-come from the pinned exporter release.
+Every `*.bpf.c` here replaces the same-named program shipped in the pinned
+`ghcr.io/cloudflare/ebpf_exporter` image. Why each one exists, and what it changes against
+upstream, is in the header comment of the `.bpf.c` file itself; this file covers only the
+mechanism.
 
-## cachestat
+## Build
 
-Upstream v2.5.1 probes `mark_page_accessed` and `add_to_page_cache_lru`.  On a folio page cache
-(kernel 6.x and later; Ubuntu 26.04 ships 7.0) those symbols still exist and attach, but the hot
-paths call `folio_mark_accessed` and `filemap_add_folio` directly, so the access and miss counters
-never move and only `cache_writes` and `page_mark_dirties` appear.  `cachestat.bpf.c` probes the
-folio entry points with the same map and operation ids as upstream, so the upstream yaml still
-applies and the metric keeps its name:
+`install_ebpf_programs.sh` runs at AMI build time. For each `<name>.bpf.c` it:
 
-```
-ebpf_exporter_page_cache_ops_total{operation="cache_access"|"cache_writes"|"page_add_lru"|"page_mark_dirties"}
-```
+1. Compiles it with `clang -target bpf` against the build kernel's own BTF (`vmlinux.h` is dumped
+   from `/sys/kernel/btf/vmlinux`) plus `maps.bpf.h` and `bits.bpf.h` fetched from the pinned
+   exporter release. The object is never checked in: it is specific to the kernel it was built
+   against.
+2. Reads the attach points from the compiled object's section names (`llvm-objdump -h`) and
+   checks each against the build kernel. `fentry`/`kprobe`/`kretprobe` names must be a `FUNC` in
+   the kernel's BTF (BTF, not kallsyms: fentry attaches to any function with BTF, static or not).
+   `raw_tp`/`tp_btf` names must have a `__tracepoint_<name>` symbol in `/proc/kallsyms`. A miss
+   prints `✗ <name>: ... is not in this kernel` and fails the AMI build, where it is easy to see,
+   instead of failing at attach time inside the exporter.
+3. Installs the object as `/usr/local/lib/ebpf_exporter/<name>.bpf.o`.
 
-Page cache hit ratio: `(cache_access - page_add_lru) / cache_access`.
+## Mount
 
-The build script checks every probed symbol against the build kernel's `/proc/kallsyms`: a
-function for `fentry`/`kprobe`/`kretprobe` sections, the `__tracepoint_<name>` symbol for
-`raw_tp`/`tp_btf` sections. It also checks the compiled object carries every declared section.
-Any miss fails the AMI build.  If a kernel moves
-them again, this is where it shows up.
-
-## syscalls
-
-Upstream v2.5.1 counts every negative syscall return as an errno.  On kernel 7.0 that records
-pointer-sized values (`unknown:9223372036854775808` and thousands of others), one series each,
-with no upper bound.  `syscalls.bpf.c` keeps the same maps and metric names but only counts a
-return in `[-MAX_ERRNO, -1]` (the kernel's own `IS_ERR_VALUE` rule) as an error:
-
-```
-ebpf_exporter_syscalls_total{syscall}
-ebpf_exporter_syscall_errors_total{errno}
-```
-
-The syscall names come from the exporter's own amd64 table, which has a few wrong entries
-(`202` is shown as `futex_time64`; it is `futex` on x86_64).  Counts are per number and correct.
+`EbpfExporterManifestBuilder` lists the overridden programs in `OVERRIDDEN_PROGRAMS` and mounts
+each object from the AMI over the image's `/examples/<name>.bpf.o` with a `File`-typed hostPath, so
+an AMI missing the object fails the pod visibly rather than silently running the image's copy.
+`--config.names` and the yaml stay exactly as the image ships them. A test holds
+`OVERRIDDEN_PROGRAMS` equal to the set of `.bpf.c` files in this directory, so adding a program
+means adding the source here and the name there.

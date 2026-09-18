@@ -35,6 +35,12 @@ class EbpfExporterManifestBuilder {
          * Each needs `packer/base/install/ebpf/<stem>.bpf.c`.
          */
         internal val OVERRIDDEN_PROGRAMS = listOf("cachestat", "syscalls")
+
+        /** Name of the volume (and its mount) carrying [program]'s object from the AMI. */
+        internal fun overrideVolumeName(program: String) = "override-$program"
+
+        /** File name of [program]'s compiled object, in the image and on the AMI alike. */
+        internal fun objectFile(program: String) = "$program.bpf.o"
     }
 
     /**
@@ -98,8 +104,12 @@ class EbpfExporterManifestBuilder {
                 // Its timestamp is keyed by request_sock pointer and only deleted on accept, so a
                 // stale entry pairs with a reused address. The tcp-syn-backlog histogram answers
                 // the same question and agrees with the kernel.
+                //
+                // `kfree_skb` is out: the v2.5.1 program keys on destination port and its reason
+                // table predates kernel 7.0, so it emits thousands of `unknown:108` series per node.
+                // `tcp-window-clamps` and `udp-drops` are out because nothing reads them.
                 "--config.names=biolatency,xfsdist,cachestat,shrinklat,tcp-retransmit,oomkill," +
-                    "syscalls,softirq-latency,tcp-syn-backlog,tcp-window-clamps,udp-drops,kfree_skb",
+                    "syscalls,softirq-latency,tcp-syn-backlog",
                 "--web.listen-address=0.0.0.0:${Constants.K8s.EBPF_EXPORTER_METRICS_PORT}",
             ).withSecurityContext(
                 SecurityContextBuilder()
@@ -141,8 +151,8 @@ class EbpfExporterManifestBuilder {
             ).addAllToVolumeMounts(
                 OVERRIDDEN_PROGRAMS.map { program ->
                     VolumeMountBuilder()
-                        .withName("override-$program")
-                        .withMountPath("$EXAMPLES_DIR/$program.bpf.o")
+                        .withName(overrideVolumeName(program))
+                        .withMountPath("$EXAMPLES_DIR/${objectFile(program)}")
                         .withReadOnly(true)
                         .build()
                 },
@@ -187,10 +197,10 @@ class EbpfExporterManifestBuilder {
                 // the path, instead of an exporter that starts and silently loads the image's copy.
                 OVERRIDDEN_PROGRAMS.map { program ->
                     VolumeBuilder()
-                        .withName("override-$program")
+                        .withName(overrideVolumeName(program))
                         .withHostPath(
                             HostPathVolumeSourceBuilder()
-                                .withPath("$HOST_OBJECT_DIR/$program.bpf.o")
+                                .withPath("$HOST_OBJECT_DIR/${objectFile(program)}")
                                 .withType("File")
                                 .build(),
                         ).build()

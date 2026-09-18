@@ -1,9 +1,10 @@
 package com.rustyrazorblade.easydblab.configuration.grafana
 
-import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.TestDashboardCatalog
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatCode
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import java.io.File
@@ -16,9 +17,15 @@ import java.io.File
  * must agree exactly, or a dashboard someone dropped into the tree never reaches a cluster.
  */
 class GrafanaDashboardCatalogTest {
-    private val catalog = GrafanaDashboardCatalog.discover()
+    private companion object {
+        val catalog get() = TestDashboardCatalog.catalog
+        val home = GrafanaDashboard("infrastructure", "system-overview.json")
+    }
 
     private val dashboardsDir = File("dashboards")
+
+    private fun catalogOf(vararg dashboards: GrafanaDashboard) =
+        GrafanaDashboardCatalog(GRAFANA_DASHBOARD_RESOURCE_BASE, dashboards.toList())
 
     private fun jsonFilesOnDisk(): Set<Pair<String, String>> =
         dashboardsDir
@@ -45,8 +52,9 @@ class GrafanaDashboardCatalogTest {
     @Test
     fun `every discovered resource path resolves on the classpath`() {
         assertThat(catalog.dashboards).allSatisfy { dashboard ->
-            assertThat(javaClass.getResource(dashboard.resourcePath))
-                .describedAs("${dashboard.resourcePath} is not on the classpath")
+            val resourcePath = catalog.resourcePathOf(dashboard)
+            assertThat(javaClass.getResource(resourcePath))
+                .describedAs("$resourcePath is not on the classpath")
                 .isNotNull()
         }
     }
@@ -56,27 +64,38 @@ class GrafanaDashboardCatalogTest {
         // Without a uid Grafana cannot update a dashboard in place, and cross-dashboard links
         // (`/d/<uid>/...`) have nothing stable to point at.
         assertThat(catalog.dashboards).allSatisfy { dashboard ->
-            val json = Json.parseToJsonElement(File(dashboardsDir, "${dashboard.folder}/${dashboard.jsonFileName}").readText())
+            val json = Json.parseToJsonElement(File(dashboardsDir, dashboard.relativePath).readText())
             assertThat(json.jsonObject["uid"])
-                .describedAs("${dashboard.resourcePath} has no top-level uid")
+                .describedAs("${dashboard.relativePath} has no top-level uid")
                 .isNotNull()
         }
     }
 
     @Test
-    fun `the home dashboard is system-overview`() {
-        assertThat(catalog.home.stem).isEqualTo(Constants.Grafana.HOME_DASHBOARD_STEM)
-        assertThat(catalog.home.folder).isEqualTo("infrastructure")
+    fun `the shipped tree contains the home dashboard at infrastructure slash system-overview`() {
+        assertThat(catalog.dashboards).contains(home)
     }
 
     @Test
-    fun `a catalog without the home dashboard is rejected`() {
+    fun `a catalog without the home dashboard is rejected and the message names its path`() {
         // GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH names this file. Missing, Grafana opens on
         // nothing, so the catalog refuses to exist rather than let that reach a cluster.
-        assertThatThrownBy {
-            GrafanaDashboardCatalog(listOf(GrafanaDashboard("cassandra", "cassandra-overview.json")))
-        }.isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining(Constants.Grafana.HOME_DASHBOARD_STEM)
+        assertThatThrownBy { catalogOf(GrafanaDashboard("cassandra", "cassandra-overview.json")) }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("infrastructure/system-overview.json")
+    }
+
+    @Test
+    fun `a system-overview in another folder does not stand in for the home dashboard`() {
+        assertThatThrownBy { catalogOf(GrafanaDashboard("cassandra", "system-overview.json")) }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("infrastructure/system-overview.json")
+    }
+
+    @Test
+    fun `a second system-overview in another folder is allowed beside the home dashboard`() {
+        assertThatCode { catalogOf(GrafanaDashboard("cassandra", "system-overview.json"), home) }
+            .doesNotThrowAnyException()
     }
 
     @Test
@@ -90,16 +109,25 @@ class GrafanaDashboardCatalogTest {
     }
 
     @Test
+    fun `discovery under another base reads each dashboard from that base`() {
+        // A catalog discovered under another base must resolve its JSON there, or the writer
+        // reads every entry from the shipped tree instead.
+        val fixtures = GrafanaDashboardCatalog.discover("grafana-catalog-fixtures/alternate-base")
+
+        val resourcePath = fixtures.resourcePathOf(fixtures.dashboards.single())
+        assertThat(resourcePath).isEqualTo("/grafana-catalog-fixtures/alternate-base/infrastructure/system-overview.json")
+        assertThat(javaClass.getResource(resourcePath)).isNotNull()
+    }
+
+    @Test
     fun `two folders may hold a dashboard with the same file name`() {
         // The copied tree keeps each file under its own directory, so nothing about a dashboard
         // has to be unique across folders. This is the case the tree layout exists for.
         val catalog =
-            GrafanaDashboardCatalog(
-                listOf(
-                    GrafanaDashboard("cassandra", "overview.json"),
-                    GrafanaDashboard("infrastructure", "system-overview.json"),
-                    GrafanaDashboard("opensearch", "overview.json"),
-                ),
+            catalogOf(
+                GrafanaDashboard("cassandra", "overview.json"),
+                home,
+                GrafanaDashboard("opensearch", "overview.json"),
             )
 
         assertThat(catalog.dashboards.map { it.relativePath })

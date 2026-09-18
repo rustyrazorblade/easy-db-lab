@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.configuration.grafana
 
-import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.TestDashboardCatalog
+import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardTreeWriter.Companion.PYROSCOPE_URL_PLACEHOLDER
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -17,7 +18,7 @@ import kotlin.io.path.walk
  * anyone, so the written layout is compared against the catalog outright.
  */
 class GrafanaDashboardTreeWriterTest {
-    private val catalog = GrafanaDashboardCatalog.discover()
+    private val catalog = TestDashboardCatalog.catalog
     private val writer = GrafanaDashboardTreeWriter(catalog)
     private val pyroscopeUrl = "http://10.0.0.1:4040"
 
@@ -27,41 +28,49 @@ class GrafanaDashboardTreeWriterTest {
             .map { it.relativeTo(root).toString() }
             .toSet()
 
+    private fun resourceText(dashboard: GrafanaDashboard): String =
+        checkNotNull(javaClass.getResource(catalog.resourcePathOf(dashboard))).readText()
+
     @Test
-    fun `writes exactly the catalog's files at folder slash file`(
+    fun `writes exactly the catalog's files at folder slash file and reports their number`(
         @TempDir root: Path,
     ) {
-        writer.writeTo(root, pyroscopeUrl)
+        val count = writer.writeTo(root, pyroscopeUrl)
 
         assertThat(writtenFiles(root)).containsExactlyInAnyOrderElementsOf(catalog.dashboards.map { it.relativePath })
+        assertThat(count).isEqualTo(catalog.dashboards.size)
     }
 
     @Test
-    fun `the profiling dashboard gets the Pyroscope URL substituted`(
+    fun `no written dashboard still carries the Pyroscope placeholder`(
         @TempDir root: Path,
     ) {
+        // At least one shipped dashboard must carry it, or this proves nothing about substitution.
+        assertThat(catalog.dashboards.filter { resourceText(it).contains(PYROSCOPE_URL_PLACEHOLDER) }).isNotEmpty()
+
         writer.writeTo(root, pyroscopeUrl)
 
-        val profiling = catalog.dashboards.single { it.stem == Constants.Grafana.PYROSCOPE_DASHBOARD_STEM }
-        val json = root.resolve(profiling.relativePath).readText()
-        assertThat(json).contains(pyroscopeUrl)
-        assertThat(json).doesNotContain("__PYROSCOPE_URL__")
+        assertThat(catalog.dashboards).allSatisfy { dashboard ->
+            val json = root.resolve(dashboard.relativePath).readText()
+            assertThat(json).describedAs(dashboard.relativePath).doesNotContain(PYROSCOPE_URL_PLACEHOLDER)
+        }
+        assertThat(catalog.dashboards.map { root.resolve(it.relativePath).readText() }).anyMatch { it.contains(pyroscopeUrl) }
     }
 
     @Test
-    fun `every other dashboard is written verbatim`(
+    fun `a dashboard without the placeholder is written verbatim`(
         @TempDir root: Path,
     ) {
         // Dashboards don't use __KEY__ variables and must not go through any substitution:
         // TemplateService-style processing corrupts Grafana built-ins like $__rate_interval.
         writer.writeTo(root, pyroscopeUrl)
 
-        val others = catalog.dashboards.filter { it.stem != Constants.Grafana.PYROSCOPE_DASHBOARD_STEM }
-        assertThat(others).isNotEmpty()
-        assertThat(others).allSatisfy { dashboard ->
+        val untouched = catalog.dashboards.filter { !resourceText(it).contains(PYROSCOPE_URL_PLACEHOLDER) }
+        assertThat(untouched).isNotEmpty()
+        assertThat(untouched).allSatisfy { dashboard ->
             assertThat(root.resolve(dashboard.relativePath).readText())
                 .describedAs(dashboard.relativePath)
-                .isEqualTo(javaClass.getResource(dashboard.resourcePath)!!.readText())
+                .isEqualTo(resourceText(dashboard))
         }
     }
 }

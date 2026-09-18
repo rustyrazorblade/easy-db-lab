@@ -4817,111 +4817,6 @@
         "type": "prometheus",
         "uid": "${datasource}"
       },
-      "description": "Reason names come from the exporter's table, which is behind this kernel; unknown:NNN is the kernel's numeric drop reason.",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 10,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unit": "pps",
-          "links": [
-            {
-              "title": "View Logs",
-              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}",
-              "targetBlank": false
-            },
-            {
-              "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
-              "targetBlank": true
-            }
-          ]
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 188
-      },
-      "id": 40,
-      "options": {
-        "legend": {
-          "calcs": [
-            "mean",
-            "max"
-          ],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        },
-        "dataLinks": []
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "sum by (host_name, reason) (rate(ebpf_exporter_kfree_skb_total{host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval]))",
-          "legendFormat": "{{host_name}} {{reason}}",
-          "refId": "A"
-        }
-      ],
-      "title": "Dropped packets by reason",
-      "type": "timeseries",
-      "links": []
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -4986,7 +4881,7 @@
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 12,
+        "x": 0,
         "y": 188
       },
       "id": 42,
@@ -5090,8 +4985,8 @@
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 0,
-        "y": 196
+        "x": 12,
+        "y": 188
       },
       "id": 43,
       "options": {
@@ -5141,7 +5036,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 204
+        "y": 196
       },
       "id": 20,
       "panels": [],
@@ -5213,7 +5108,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 205
+        "y": 197
       },
       "id": 11,
       "options": {

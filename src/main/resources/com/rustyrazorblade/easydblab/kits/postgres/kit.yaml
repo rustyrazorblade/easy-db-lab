@@ -10,7 +10,10 @@ metrics:
     job: postgres
 runtime:
   type: pods
-  selector: "cnpg.io/podRole=instance"
+  # Scoped to this instance: postgres and postgres-<extension> run side by side, and the start
+  # collision check must not mistake one for the other. CNPG labels each instance pod with its
+  # Cluster, which is named after the kit instance.
+  selector: "cnpg.io/cluster=${KIT_NAME},cnpg.io/podRole=instance"
   namespace: default
 endpoints:
   - name: "PostgreSQL"

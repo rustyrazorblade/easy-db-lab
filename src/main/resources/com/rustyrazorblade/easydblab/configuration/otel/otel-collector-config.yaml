@@ -626,13 +626,14 @@ service:
       receivers: [otlp, jaeger]
       processors: [resource/cluster, batch]
       exporters: [otlp/tempo, spanmetrics, servicegraph]
-    # resource/cluster is re-applied here rather than inherited from the traces pipeline: the
-    # spanmetrics connector's resource_metrics_key_attributes ([service.name]) copies only
-    # service.name onto the derived metrics' resource, dropping the cluster attribute the spans
-    # carried. Re-stamping from ${env:CLUSTER_NAME} keeps origin identity on span-derived metrics
-    # consistent with every other metrics pipeline, so two clusters stay distinguishable.
-    # resource/drop_sdk_metadata because the derived metrics still carry the rest of the span's
-    # resource, argv included; the traces themselves keep it in Tempo.
+    # The spanmetrics connector keeps the span's resource on the metrics it derives.
+    # resource_metrics_key_attributes ([service.name]) only chooses which attributes group spans
+    # into one set of derived metrics; that set carries the whole resource of a span in the group
+    # (host.name and argv included, as seen live), not service.name alone. resource/cluster is
+    # re-applied so span-derived metrics are stamped from ${env:CLUSTER_NAME} by the same processor
+    # as every other metrics pipeline, whatever the producer's resource carried.
+    # resource/drop_sdk_metadata because that resource includes the SDK metadata, argv among it;
+    # the traces themselves keep it in Tempo.
     metrics/spanmetrics:
       receivers: [spanmetrics]
       processors: [resource/cluster, resource/drop_sdk_metadata, batch]

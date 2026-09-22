@@ -48,11 +48,19 @@ stop:
     script: |
       #!/usr/bin/env bash
       set -euo pipefail
-      kubectl delete deployment,service,pod -l easydblab/kit=memcached --namespace default --ignore-not-found=true
+      KIT_OBJECTS=$(kubectl get deployment,service,pod -l easydblab/kit=memcached --namespace default -o name --ignore-not-found)
+      if [[ -n "${KIT_OBJECTS}" ]]; then
+        # shellcheck disable=SC2086 # one TYPE/NAME per word
+        kubectl delete ${KIT_OBJECTS} --namespace default --ignore-not-found=true
+      fi
 
 uninstall:
   - type: shell
     script: |
       #!/usr/bin/env bash
       set -euo pipefail
-      kubectl delete all,configmap -l easydblab/kit=memcached --namespace default --ignore-not-found=true
+      KIT_OBJECTS=$(kubectl get all,configmap -l easydblab/kit=memcached --namespace default -o name --ignore-not-found)
+      if [[ -n "${KIT_OBJECTS}" ]]; then
+        # shellcheck disable=SC2086 # one TYPE/NAME per word
+        kubectl delete ${KIT_OBJECTS} --namespace default --ignore-not-found=true
+      fi

@@ -10,6 +10,7 @@ import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.Service
 import io.fabric8.kubernetes.api.model.apps.Deployment
 import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import java.io.File
 
@@ -122,6 +123,62 @@ class MemcachedKitTest : BaseKoinTest() {
         for (phase in listOf(kit.config.stop, kit.config.uninstall)) {
             assertThat(phase.filterIsInstance<InstallStep.Shell>().joinToString("\n") { it.script })
                 .contains("-l $KIT_LABEL=memcached")
+        }
+    }
+
+    /**
+     * Runs the stop and uninstall shell steps against a stub `kubectl`. Deleting by a label that
+     * matches nothing makes kubectl print a bare "No resources found", so the steps look the
+     * objects up first and delete only what the label selects.
+     */
+    @Nested
+    inner class LabelScopedCleanup {
+        private val stub by lazy { StubKubectl(File(tempDir, "stub")) }
+
+        private val phases by lazy { mapOf("stop" to kit.config.stop, "uninstall" to kit.config.uninstall) }
+
+        private fun run(steps: List<InstallStep>): Int =
+            stub.run(
+                script = steps.filterIsInstance<InstallStep.Shell>().joinToString("\n") { it.script },
+                env = emptyMap(),
+            )
+
+        private fun deletes() = stub.invocations().filter { it.startsWith("delete") }
+
+        @Test
+        fun `stop and uninstall print nothing and delete nothing once the kit is gone`() {
+            stub.respondToGet("")
+
+            for ((phase, steps) in phases) {
+                assertThat(run(steps)).describedAs(phase).isEqualTo(0)
+                assertThat(stub.output()).describedAs(phase).isEmpty()
+            }
+            assertThat(deletes()).isEmpty()
+        }
+
+        @Test
+        fun `stop and uninstall delete exactly the objects the kit label selects`() {
+            stub.respondToGet("deployment.apps/memcached\nservice/memcached\n")
+
+            for ((phase, steps) in phases) {
+                assertThat(run(steps)).describedAs(phase).isEqualTo(0)
+            }
+            assertThat(stub.invocations().filter { it.startsWith("get") })
+                .hasSize(2)
+                .allSatisfy { assertThat(it).contains("-l $KIT_LABEL=memcached") }
+            assertThat(deletes())
+                .hasSize(2)
+                .allSatisfy { assertThat(it).contains("deployment.apps/memcached service/memcached") }
+        }
+
+        @Test
+        fun `a failed lookup fails the step instead of reporting a clean stop`() {
+            stub.respondToGet("", exitCode = 1)
+
+            for ((phase, steps) in phases) {
+                assertThat(run(steps)).describedAs(phase).isNotEqualTo(0)
+            }
+            assertThat(deletes()).isEmpty()
         }
     }
 

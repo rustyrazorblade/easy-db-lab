@@ -247,6 +247,58 @@ class Neo4jKitTest : BaseKoinTest() {
         }
     }
 
+    /**
+     * Runs the stop and uninstall shell steps against a stub `kubectl`. Deleting by a label that
+     * matches nothing makes kubectl print a bare "No resources found", so the steps look the
+     * objects up first and delete only what the label selects.
+     */
+    @Nested
+    inner class LabelScopedCleanup {
+        private val stub by lazy { StubKubectl(File(tempDir, "stub")) }
+
+        private val phases by lazy { mapOf("stop" to kit.config.stop, "uninstall" to kit.config.uninstall) }
+
+        private fun run(steps: List<InstallStep>): Int = stub.run(script = shellScript(steps), env = emptyMap())
+
+        private fun deletes() = stub.invocations().filter { it.startsWith("delete") }
+
+        @Test
+        fun `stop and uninstall print nothing and delete nothing once the kit is gone`() {
+            stub.respondToGet("")
+
+            for ((phase, steps) in phases) {
+                assertThat(run(steps)).describedAs(phase).isEqualTo(0)
+                assertThat(stub.output()).describedAs(phase).isEmpty()
+            }
+            assertThat(deletes()).isEmpty()
+        }
+
+        @Test
+        fun `stop and uninstall delete exactly the objects the kit label selects`() {
+            stub.respondToGet("statefulset.apps/neo4j\nservice/neo4j\n")
+
+            for ((phase, steps) in phases) {
+                assertThat(run(steps)).describedAs(phase).isEqualTo(0)
+            }
+            assertThat(stub.invocations().filter { it.startsWith("get") })
+                .hasSize(2)
+                .allSatisfy { assertThat(it).contains("-l $KIT_LABEL=neo4j") }
+            assertThat(deletes())
+                .hasSize(2)
+                .allSatisfy { assertThat(it).contains("statefulset.apps/neo4j service/neo4j") }
+        }
+
+        @Test
+        fun `a failed lookup fails the step instead of reporting a clean stop`() {
+            stub.respondToGet("", exitCode = 1)
+
+            for ((phase, steps) in phases) {
+                assertThat(run(steps)).describedAs(phase).isNotEqualTo(0)
+            }
+            assertThat(deletes()).isEmpty()
+        }
+    }
+
     @Test
     fun `every object carries the kit label that stop and uninstall select on`() {
         val objects: List<HasMetadata> = kit.render("statefulset.yaml.template") + kit.render("nodeport-service.yaml.template")
@@ -279,20 +331,42 @@ class Neo4jKitTest : BaseKoinTest() {
 /**
  * Runs a kit shell step the way `WorkloadStepExecutor` does, with a stub `kubectl` first on
  * `PATH` that records each invocation's arguments and passes stdin through, so a test can check
- * what the step would have applied without a cluster.
+ * what the step would have applied without a cluster. [respondToGet] scripts what `kubectl get`
+ * prints and how it exits.
  */
 class StubKubectl(
     private val dir: File,
 ) {
     private val log = File(dir, "kubectl.log")
     private val out = File(dir, "script.out")
+    private val getOut = File(dir, "get.out")
+    private val getExit = File(dir, "get.exit")
 
     init {
         dir.mkdirs()
         File(dir, "kubectl").apply {
-            writeText("#!/bin/bash\necho \"$*\" >> \"${log.absolutePath}\"\ncat\n")
+            writeText(
+                """
+                #!/bin/bash
+                echo "$*" >> "${log.absolutePath}"
+                if [ "$1" = "get" ] && [ -f "${getOut.absolutePath}" ]; then
+                  cat "${getOut.absolutePath}"
+                  exit "$(cat "${getExit.absolutePath}")"
+                fi
+                cat
+                """.trimIndent() + "\n",
+            )
             setExecutable(true)
         }
+    }
+
+    /** Makes every later `kubectl get` print [output] and exit with [exitCode]. */
+    fun respondToGet(
+        output: String,
+        exitCode: Int = 0,
+    ) {
+        getOut.writeText(output)
+        getExit.writeText(exitCode.toString())
     }
 
     /** Runs [script] under bash with [env] added, returning the exit code; see [output]. */

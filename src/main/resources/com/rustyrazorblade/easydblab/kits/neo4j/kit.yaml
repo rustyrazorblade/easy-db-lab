@@ -89,13 +89,21 @@ stop:
     script: |
       #!/usr/bin/env bash
       set -euo pipefail
-      kubectl delete statefulset,service,pod,configmap -l easydblab/kit=neo4j --namespace default --ignore-not-found=true
+      KIT_OBJECTS=$(kubectl get statefulset,service,pod,configmap -l easydblab/kit=neo4j --namespace default -o name --ignore-not-found)
+      if [[ -n "${KIT_OBJECTS}" ]]; then
+        # shellcheck disable=SC2086 # one TYPE/NAME per word
+        kubectl delete ${KIT_OBJECTS} --namespace default --ignore-not-found=true
+      fi
 
 uninstall:
   - type: shell
     script: |
       #!/usr/bin/env bash
       set -euo pipefail
-      kubectl delete statefulset,service,pod,configmap,pvc -l easydblab/kit=neo4j --namespace default --ignore-not-found=true
+      KIT_OBJECTS=$(kubectl get statefulset,service,pod,configmap,pvc -l easydblab/kit=neo4j --namespace default -o name --ignore-not-found)
+      if [[ -n "${KIT_OBJECTS}" ]]; then
+        # shellcheck disable=SC2086 # one TYPE/NAME per word
+        kubectl delete ${KIT_OBJECTS} --namespace default --ignore-not-found=true
+      fi
   - type: platform-pvs-delete
     node-type: db

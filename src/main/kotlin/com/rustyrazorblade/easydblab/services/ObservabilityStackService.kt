@@ -3,11 +3,13 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.kubestatemetrics.KubeStateMetricsManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
@@ -76,6 +78,7 @@ class DefaultObservabilityStackService(
     private val beylaManifestBuilder: BeylaManifestBuilder,
     private val pyroscopeManifestBuilder: PyroscopeManifestBuilder,
     private val yaceManifestBuilder: YaceManifestBuilder,
+    private val kubeStateMetricsManifestBuilder: KubeStateMetricsManifestBuilder,
 ) : ObservabilityStackService {
     private val log = KotlinLogging.logger {}
 
@@ -97,6 +100,8 @@ class DefaultObservabilityStackService(
         runCatching {
             val clusterState = clusterStateManager.load()
             val region = clusterState.initConfig?.region ?: user.region
+            // The collector scrapes the Cilium agent, operator, and Hubble only on a Cilium cluster.
+            val cni = clusterState.initConfig?.cni ?: CniMode.Flannel
 
             createClusterConfigMap(controlNode, region)
 
@@ -110,7 +115,8 @@ class DefaultObservabilityStackService(
             // off those, so they are guarded the same way.
             val stages =
                 buildList {
-                    add(Stage("OTel Collector", otelManifestBuilder.buildAllResources(scrapeConfigs, telemetryRedirect)))
+                    add(Stage("OTel Collector", otelManifestBuilder.buildAllResources(scrapeConfigs, telemetryRedirect, cni)))
+                    add(Stage("kube-state-metrics", kubeStateMetricsManifestBuilder.buildAllResources()))
                     add(Stage("Fluent Bit Journald", journaldOtelManifestBuilder.buildAllResources()))
                     add(Stage("ebpf_exporter", ebpfExporterManifestBuilder.buildAllResources()))
                     add(Stage("Registry", registryManifestBuilder.buildAllResources()))

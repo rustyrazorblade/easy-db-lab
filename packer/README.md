@@ -104,12 +104,16 @@ docker build -t easy-db-lab-packer-test .
 ## Base AMI networking (Cilium ENI mode)
 
 Cilium ENI native-routing requires the OS to leave Cilium's runtime-attached secondary ENIs
-alone. `base/install/configure_cilium_eni_networkd.sh` bakes two systemd-networkd drop-ins into
-the image: `05-cilium-eni-primary.network` keeps the primary interface (`ens5`) OS-managed via
-DHCP, and `06-cilium-eni-unmanaged.network` marks secondary ENIs (`ens6+`) `Unmanaged=yes` so
-Cilium owns them. Without this the OS DHCPs `ens6` and adds a competing default route, multi-homing
-the host and breaking IMDS/egress/kubelet. The drop-ins are inert on Flannel (no secondary ENIs are
-ever attached) and are covered by `./gradlew testPackerBase`.
+alone. `base/install/configure_cilium_eni_networkd.sh` bakes three files into the image:
+`05-cilium-eni-primary.network` keeps the primary interface (`ens5`) OS-managed via DHCP;
+`06-cilium-eni-unmanaged.network` matches `Driver=ena`, so every other ENA interface, under its
+pre-rename `eth0` name or its final `ens6`, is `Unmanaged=yes` and Cilium owns it; and
+`/etc/cloud/cloud.cfg.d/90-easydblab-no-network-hotplug.cfg` removes `hotplug` from cloud-init's
+`updates.network.when`, so an ENI attach no longer re-renders `/etc/netplan/50-cloud-init.yaml`
+(which would list every pod IP as a static address on `ens5` and DHCP the new ENI). Without these
+the OS DHCPs the new ENI and adds a competing default route, multi-homing the host and breaking
+IMDS/egress/kubelet. The files are inert on Flannel (no secondary ENIs are ever attached) and are
+covered by `./gradlew testPackerBase`.
 
 ## Documentation
 

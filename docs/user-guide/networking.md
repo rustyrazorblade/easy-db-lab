@@ -1,0 +1,73 @@
+# Pod Networking (CNI)
+
+The K3s cluster runs one pod-network datapath. You select it at init time with `--cni`. Flannel is the default. Cilium is opt-in.
+
+```bash
+# Default: K3s's built-in Flannel VXLAN overlay
+easy-db-lab init my-cluster --db 3
+
+# Cilium in ENI IPAM native-routing mode (no encapsulation)
+easy-db-lab init my-cluster --db 3 --cni cilium
+```
+
+## Flannel
+
+Flannel is the K3s built-in CNI. Pod traffic between nodes is encapsulated in VXLAN. Nothing in this page beyond the `platform cni` one-liner applies to a Flannel cluster.
+
+## Cilium
+
+With `--cni cilium`, Cilium runs in ENI IPAM native-routing mode. Each pod gets a real VPC-routable secondary IP on its node's ENIs, so the VPC routes cross-AZ pod traffic with no tunnel. K3s keeps its own kube-proxy; Cilium's kube-proxy replacement is off.
+
+`up` is safe to re-run on a Cilium cluster. If Cilium is already installed, the hook upgrades the release in place with the same flags instead of failing on the release name.
+
+Two K3s add-ons are not installed on a Cilium cluster: Traefik and ServiceLB. ServiceLB publishes every node IP as a LoadBalancer ingress, and Cilium's port-0 wildcard for a LoadBalancer IP rejects pod traffic to node IPs, which blocks kubelet probes. A Flannel cluster keeps both.
+
+With Tailscale enabled, `up` installs a small nftables chain on the control node (`table ip edl_tailscale`, loaded at boot by `edl-tailscale-masquerade.service`). The control node is the tailnet subnet router, and Cilium's own NAT chain would otherwise pass tailnet packets to the db nodes without masquerading them, so the db nodes' private IPs would time out from your machine while the control node worked. The chain masquerades Tailscale-forwarded traffic before Cilium sees it. It is installed only when Tailscale is enabled; re-running `up` replaces it in place.
+
+Cilium's devices are pinned to the ENA interfaces (`ens+`). The tailnet interface `tailscale0` is not a Cilium device, so its 1280 MTU does not lower the NIC MTU below the 9001 AWS offers.
+
+### Reading the datapath back
+
+`platform cni` reads the live configuration and the per-node ENI state off the cluster. It is read-only.
+
+```bash
+easy-db-lab platform cni
+```
+
+On a Cilium cluster it prints the routing mode, IPAM mode, kube-proxy replacement, masquerade interfaces, native routing CIDR, and the Hubble UI URL. Then it prints one block per node: ENI count, subnet CIDRs, and IPs allocated, used, and available. The values come from the `cilium-config` ConfigMap and the `CiliumNode` objects, so they show what the cluster runs, not what init requested.
+
+On a Flannel cluster it prints one line that names Flannel and exits 0.
+
+### Hubble UI
+
+Hubble UI is exposed as a NodePort on port 31234. Open it on any node's private IP over the tailnet or the SOCKS tunnel; no port-forward is needed:
+
+```
+http://<control node private IP>:31234
+```
+
+`platform cni` prints the exact URL.
+
+### Metrics
+
+On a Cilium cluster the OTel collector scrapes three Cilium jobs:
+
+| Job | Target | Source |
+|-----|--------|--------|
+| `cilium-agent` | `localhost:9962` on every node | The Cilium agent (hostNetwork DaemonSet) |
+| `hubble` | `localhost:9965` on every node | Hubble metrics (`dns`, `drop`, `tcp`, `flow`, `port-distribution`, `icmp`, `http`) |
+| `cilium-operator` | Port 9963 on the one node that runs the operator | Found by pod discovery in `kube-system` on the `io.cilium/app=operator` label |
+
+The metrics land in VictoriaMetrics with the `cluster` label like every other scrape. A Flannel cluster renders none of these jobs.
+
+### Logs
+
+The Cilium agent, operator, and Hubble pods run in `kube-system`. Their stdout and stderr are collected by the same container log pipeline as every other pod, so they are in VictoriaLogs with `k8s.namespace.name=kube-system`. Nothing needs to be enabled.
+
+### Install markers on the timeline
+
+`up` marks the Cilium install on the Grafana timeline with two annotations tagged `cilium`: `Cilium install started` and `Cilium install finished` (or `Cilium install failed: <error>`). Cilium installs before Grafana exists, so the timestamps are taken when the install runs and the annotations are posted once the observability stack is up. A telemetry-redirect cluster has no local Grafana and posts nothing. See [Annotations](monitoring.md#annotations).
+
+## kube-state-metrics
+
+Every cluster, on either CNI, runs kube-state-metrics on the control node. It turns the state of Kubernetes objects (pods, deployments, nodes, PVCs, jobs) into Prometheus metrics such as `kube_pod_status_phase` and `kube_node_status_condition`. The OTel collector scrapes it once, through pod discovery on the control node, and the metrics carry the `cluster` label. See [Monitoring](monitoring.md#kube-state-metrics).

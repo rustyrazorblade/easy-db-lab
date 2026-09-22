@@ -294,6 +294,42 @@ object Constants {
         const val DEPLOYMENT_NAME = "yace"
     }
 
+    // Cilium CNI (selected with `init --cni=cilium`; see CiliumService and PlatformCni)
+    object Cilium {
+        const val VERSION = "1.19.4"
+        const val NAMESPACE = "kube-system"
+
+        // The agent and the operator both run hostNetwork, so their metrics ports are node ports.
+        // The agent is a DaemonSet: every collector scrapes its own node's agent at localhost.
+        // The operator runs on exactly one node, so it is discovered through pod SD instead.
+        const val AGENT_METRICS_PORT = 9962
+        const val OPERATOR_METRICS_PORT = 9963
+        const val HUBBLE_METRICS_PORT = 9965
+
+        // Pod label the Cilium chart stamps on the operator Deployment's pods.
+        const val OPERATOR_POD_LABEL = "io.cilium/app"
+        const val OPERATOR_POD_LABEL_VALUE = "operator"
+
+        // Hubble UI is exposed as a NodePort so it is reachable at <node private IP>:<port> over
+        // the tailnet or the SOCKS tunnel with no port-forward. Chosen outside every NodePort a kit
+        // declares (grep `nodePort` under kits/ before changing it).
+        const val HUBBLE_UI_NODE_PORT = 31234
+
+        // Name of the ConfigMap the Cilium chart renders its effective agent configuration into.
+        const val CONFIG_MAP_NAME = "cilium-config"
+
+        // Tag on the Grafana annotations that mark the Cilium install window.
+        const val ANNOTATION_TAG = "cilium"
+    }
+
+    // kube-state-metrics (K8s object state as Prometheus metrics, scraped by the OTel collector)
+    object KubeStateMetrics {
+        const val IMAGE = "registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.20.0"
+        const val NAME = "kube-state-metrics"
+        const val METRICS_PORT = 8080
+        const val TELEMETRY_PORT = 8081
+    }
+
     // OTel Java Agent configuration (for EMR Spark JVMs)
     object OtelJavaAgent {
         const val VERSION = "2.31.1"

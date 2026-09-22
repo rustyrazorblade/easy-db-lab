@@ -25,6 +25,7 @@ import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import com.rustyrazorblade.easydblab.providers.aws.VpcNetworkingConfig
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
+import com.rustyrazorblade.easydblab.services.CiliumInstallAnnotator
 import com.rustyrazorblade.easydblab.services.CiliumService
 import com.rustyrazorblade.easydblab.services.ClusterConfigurationService
 import com.rustyrazorblade.easydblab.services.ClusterProvisioningService
@@ -101,6 +102,7 @@ class Up(
     private val clusterConfigurationService: ClusterConfigurationService by inject()
     private val k3sClusterService: K3sClusterService by inject()
     private val ciliumService: CiliumService by inject()
+    private val ciliumInstallAnnotator: CiliumInstallAnnotator by inject()
     private val k8sService: K8sService by inject()
     private val observabilityStackService: ObservabilityStackService by inject()
     private val registryService: RegistryService by inject()
@@ -815,10 +817,22 @@ class Up(
         )
     }
 
-    /** Installs Cilium as the K3s CNI on the control node. */
+    /** Installs Cilium as the K3s CNI on the control node in ENI native-routing mode. */
     private fun installCilium() {
         val controlHosts = workingState.hosts[ServerType.Control] ?: emptyList()
-        ciliumService.install(controlHosts.first().toHost()).getOrThrow()
+        val vpcCidr =
+            requireNotNull(workingState.initConfig?.cidr) {
+                "VPC CIDR must be resolved before installing Cilium"
+            }
+        val controlHost = controlHosts.first().toHost()
+        ciliumService.install(controlHost, vpcCidr).getOrThrow()
+        // The control node is the tailnet subnet router. Cilium's NAT chain ACCEPTs tailnet
+        // packets to the db nodes before Tailscale can masquerade them, so the db nodes are
+        // unreachable over the tailnet until this chain is in place. Owned by the Cilium install
+        // path because the need is Cilium's; Tailscale itself is already up by this point.
+        if (workingState.isTailscaleEnabled()) {
+            ciliumService.installTailscaleMasquerade(controlHost).getOrThrow()
+        }
     }
 
     /** Starts K3s server on control node and joins Cassandra/Stress nodes as agents. */
@@ -864,10 +878,40 @@ class Up(
         // `grafana update-config` command: on a redirect cluster that command refuses, but bring-up
         // must still deploy the collectors pointed at the external stack. The service is the shared
         // deploy path; the command is the operator-facing local-stack reconfigure wrapper.
+        val telemetryRedirect = workingState.initConfig?.telemetryRedirect
         observabilityStackService
-            .deploy(controlHosts.first(), workingState.initConfig?.telemetryRedirect)
+            .deploy(controlHosts.first(), telemetryRedirect)
             .getOrElse { exception ->
                 error("Observability stack deployment failed during provisioning: ${exception.message}")
+            }
+
+        // Grafana exists only now, and only in local mode: post the Cilium install markers that
+        // were recorded on the server-ready hook. A redirect cluster has no local Grafana to mark.
+        if (telemetryRedirect == null) {
+            postCiliumInstallAnnotations(controlHosts.first())
+        }
+    }
+
+    /**
+     * Posts the Cilium install window annotations recorded during K3s bring-up. A failure here is
+     * reported, not fatal: the cluster is up and only the dashboard marker is missing.
+     */
+    private fun postCiliumInstallAnnotations(controlHost: ClusterHost) {
+        ciliumInstallAnnotator
+            .post(controlHost)
+            .onSuccess { posted ->
+                posted.forEach { (request, response) ->
+                    eventBus.emit(
+                        Event.Grafana.AnnotationCreated(
+                            id = response.id,
+                            text = request.text,
+                            tags = request.tags,
+                            time = request.time,
+                        ),
+                    )
+                }
+            }.onFailure { exception ->
+                eventBus.emit(Event.Grafana.AnnotationFailed(exception.message ?: exception.toString()))
             }
     }
 

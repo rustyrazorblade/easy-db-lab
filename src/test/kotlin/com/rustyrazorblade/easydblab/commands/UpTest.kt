@@ -1,68 +1,25 @@
 package com.rustyrazorblade.easydblab.commands
 
-import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.Version
 import com.rustyrazorblade.easydblab.configuration.Arch
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
-import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
-import com.rustyrazorblade.easydblab.configuration.CniMode
-import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
-import com.rustyrazorblade.easydblab.configuration.User
-import com.rustyrazorblade.easydblab.kernel.PicoCommand
-import com.rustyrazorblade.easydblab.network.TcpReachabilityProbe
-import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
-import com.rustyrazorblade.easydblab.output.OutputHandler
-import com.rustyrazorblade.easydblab.providers.aws.VpcInfrastructure
-import com.rustyrazorblade.easydblab.providers.aws.VpcService
-import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
-import com.rustyrazorblade.easydblab.proxy.SocksProxyService
-import com.rustyrazorblade.easydblab.services.CiliumService
-import com.rustyrazorblade.easydblab.services.ClusterConfigurationService
-import com.rustyrazorblade.easydblab.services.ClusterProvisioningService
-import com.rustyrazorblade.easydblab.services.CommandExecutor
-import com.rustyrazorblade.easydblab.services.HostOperationsService
-import com.rustyrazorblade.easydblab.services.K3sClusterConfig
-import com.rustyrazorblade.easydblab.services.K3sClusterService
 import com.rustyrazorblade.easydblab.services.K3sSetupResult
-import com.rustyrazorblade.easydblab.services.K8sService
-import com.rustyrazorblade.easydblab.services.LocalTailscaleClient
 import com.rustyrazorblade.easydblab.services.LocalTailscaleState
-import com.rustyrazorblade.easydblab.services.ObservabilityStackService
 import com.rustyrazorblade.easydblab.services.ProvisioningResult
-import com.rustyrazorblade.easydblab.services.RegistryService
-import com.rustyrazorblade.easydblab.services.aws.AMIResolver
-import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
-import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
-import com.rustyrazorblade.easydblab.services.aws.DefaultInstanceSpecFactory
-import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
-import com.rustyrazorblade.easydblab.services.aws.InstanceSpecFactory
-import com.rustyrazorblade.easydblab.services.aws.InstanceTypeCapabilities
-import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
-import com.rustyrazorblade.easydblab.ssh.Response
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatCode
 import org.assertj.core.api.Assertions.assertThatThrownBy
-import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import org.koin.core.module.Module
-import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
-import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.eq
-import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
-import java.io.File
-import java.nio.file.Path
-import java.time.Duration
 
 /**
  * Tests for [Up], the command that provisions and configures the complete cluster.
@@ -73,278 +30,7 @@ import java.time.Duration
  * single collaborator overridden per test to induce the failure under test — proving the
  * behavior actually aborts `up`, not merely that a mock was called.
  */
-class UpTest : BaseKoinTest() {
-    private lateinit var mockClusterStateManager: ClusterStateManager
-    private lateinit var mockS3BucketService: AwsS3BucketService
-    private lateinit var mockVpcService: VpcService
-    private lateinit var mockAwsInfrastructureService: AwsInfrastructureService
-    private lateinit var mockEc2InstanceService: EC2InstanceService
-    private lateinit var mockAmiResolver: AMIResolver
-    private lateinit var mockClusterProvisioningService: ClusterProvisioningService
-    private lateinit var mockClusterConfigurationService: ClusterConfigurationService
-    private lateinit var mockK3sClusterService: K3sClusterService
-    private lateinit var mockCiliumService: CiliumService
-    private lateinit var mockK8sService: K8sService
-    private lateinit var mockCommandExecutor: CommandExecutor
-    private lateinit var mockObservabilityStackService: ObservabilityStackService
-    private lateinit var outputHandler: BufferedOutputHandler
-
-    /** exit code returned by the fake CommandExecutor for a nested command, keyed by simple class name */
-    private val nestedCommandExitCodes = mutableMapOf<String, Int>()
-
-    /** simple class names of every nested command routed through the fake CommandExecutor, in order */
-    private val invokedCommandNames = mutableListOf<String>()
-
-    /** state the fake LocalTailscaleClient reports, and how many times `up` asked for it */
-    private var localTailscaleState: LocalTailscaleState = LocalTailscaleState.Connected
-    private var localTailscaleQueries = 0
-
-    /**
-     * answer the fake TcpReachabilityProbe gives once [tailnetProbesBeforeReachable] earlier probes
-     * have answered false, and every "host:port" it was asked about
-     */
-    private var tailnetReachable = true
-    private var tailnetProbesBeforeReachable = 0
-    private val probedTargets = mutableListOf<String>()
-
-    /** when non-null, remoteOps.executeRemotely throws this for the given host alias */
-    private var sshFailureAlias: String? = null
-    private var sshFailureException: Exception? = null
-    private val sshCheckedAliases = mutableListOf<String>()
-
-    private val testControlHost =
-        ClusterHost(
-            publicIp = "54.1.1.1",
-            privateIp = "10.0.0.1",
-            alias = "control0",
-            availabilityZone = "us-west-2a",
-            instanceId = "i-control0",
-        )
-    private val testDbHost =
-        ClusterHost(publicIp = "54.1.1.2", privateIp = "10.0.0.2", alias = "db0", availabilityZone = "us-west-2a", instanceId = "i-db0")
-    private val testAppHost =
-        ClusterHost(publicIp = "54.1.1.3", privateIp = "10.0.0.3", alias = "app0", availabilityZone = "us-west-2a", instanceId = "i-app0")
-
-    override fun additionalTestModules(): List<Module> =
-        listOf(
-            module {
-                single<ClusterStateManager> { mock<ClusterStateManager>().also { mockClusterStateManager = it } }
-                single<AwsS3BucketService> { mock<AwsS3BucketService>().also { mockS3BucketService = it } }
-                single<OpenSearchService> { mock<OpenSearchService>() }
-                single<VpcService> { mock<VpcService>().also { mockVpcService = it } }
-                single<AwsInfrastructureService> { mock<AwsInfrastructureService>().also { mockAwsInfrastructureService = it } }
-                single<EC2InstanceService> { mock<EC2InstanceService>().also { mockEc2InstanceService = it } }
-                single<HostOperationsService> { HostOperationsService(get()) }
-                single<AMIResolver> { mock<AMIResolver>().also { mockAmiResolver = it } }
-                single<InstanceSpecFactory> { DefaultInstanceSpecFactory() }
-                single<ClusterProvisioningService> { mock<ClusterProvisioningService>().also { mockClusterProvisioningService = it } }
-                single<ClusterConfigurationService> { mock<ClusterConfigurationService>().also { mockClusterConfigurationService = it } }
-                single<K3sClusterService> { mock<K3sClusterService>().also { mockK3sClusterService = it } }
-                single<CiliumService> { mock<CiliumService>().also { mockCiliumService = it } }
-                single<K8sService> { mock<K8sService>().also { mockK8sService = it } }
-                single<RegistryService> { mock<RegistryService>() }
-                single<SocksProxyService> { mock<SocksProxyService>() }
-                single<CommandExecutor> { mock<CommandExecutor>().also { mockCommandExecutor = it } }
-                single<ObservabilityStackService> {
-                    mock<ObservabilityStackService>().also { mockObservabilityStackService = it }
-                }
-
-                single<LocalTailscaleClient> {
-                    LocalTailscaleClient {
-                        localTailscaleQueries++
-                        localTailscaleState
-                    }
-                }
-                single<TcpReachabilityProbe> {
-                    TcpReachabilityProbe { host, port ->
-                        probedTargets.add("$host:$port")
-                        tailnetReachable && probedTargets.size > tailnetProbesBeforeReachable
-                    }
-                }
-
-                factory<RemoteOperationsService> {
-                    object : RemoteOperationsService {
-                        override fun executeRemotely(
-                            host: Host,
-                            command: String,
-                            output: Boolean,
-                            secret: Boolean,
-                        ): Response {
-                            if (command == "echo 1") sshCheckedAliases.add(host.alias)
-                            val failingAlias = sshFailureAlias
-                            val failure = sshFailureException
-                            if (failingAlias != null && failure != null && host.alias == failingAlias) {
-                                throw failure
-                            }
-                            return Response("")
-                        }
-
-                        override fun upload(
-                            host: Host,
-                            local: Path,
-                            remote: String,
-                        ) = Unit
-
-                        override fun uploadDirectory(
-                            host: Host,
-                            localDir: File,
-                            remoteDir: String,
-                        ) = Unit
-
-                        override fun uploadDirectory(
-                            host: Host,
-                            version: Version,
-                        ) = Unit
-
-                        override fun replaceDirectory(
-                            host: Host,
-                            localDir: File,
-                            remoteDir: String,
-                            owner: String,
-                        ) = Unit
-
-                        override fun download(
-                            host: Host,
-                            remote: String,
-                            local: Path,
-                        ) = Unit
-
-                        override fun downloadDirectory(
-                            host: Host,
-                            remoteDir: String,
-                            localDir: File,
-                            includeFilters: List<String>,
-                            excludeFilters: List<String>,
-                        ) = Unit
-
-                        override fun getRemoteVersion(
-                            host: Host,
-                            inputVersion: String,
-                        ): Version = Version.fromString("5.0")
-                    }
-                }
-            },
-        )
-
-    @BeforeEach
-    fun setupMocks() {
-        mockClusterStateManager = getKoin().get()
-        mockS3BucketService = getKoin().get()
-        mockVpcService = getKoin().get()
-        mockAwsInfrastructureService = getKoin().get()
-        mockEc2InstanceService = getKoin().get()
-        mockAmiResolver = getKoin().get()
-        mockClusterProvisioningService = getKoin().get()
-        mockClusterConfigurationService = getKoin().get()
-        mockK3sClusterService = getKoin().get()
-        mockCiliumService = getKoin().get()
-        mockK8sService = getKoin().get()
-        mockCommandExecutor = getKoin().get()
-        mockObservabilityStackService = getKoin().get()
-        outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
-
-        nestedCommandExitCodes.clear()
-        invokedCommandNames.clear()
-        localTailscaleState = LocalTailscaleState.Connected
-        localTailscaleQueries = 0
-        tailnetReachable = true
-        probedTargets.clear()
-        sshFailureAlias = null
-        sshFailureException = null
-        sshCheckedAliases.clear()
-
-        whenever(mockClusterStateManager.load()).thenReturn(happyState())
-
-        whenever(mockS3BucketService.ensureAccountBucket(any())).thenReturn("easy-db-lab-test-bucket")
-
-        whenever(mockVpcService.createVpc(any(), any(), any())).thenReturn("vpc-123")
-
-        whenever(mockAwsInfrastructureService.setupVpcNetworking(any(), any())).thenReturn(
-            VpcInfrastructure(
-                vpcId = "vpc-123",
-                subnetIds = listOf("subnet-1"),
-                securityGroupId = "sg-1",
-                internetGatewayId = "igw-1",
-            ),
-        )
-
-        whenever(mockEc2InstanceService.findInstancesByClusterId(any())).thenReturn(emptyMap())
-        whenever(mockEc2InstanceService.describeInstanceType(any()))
-            .thenReturn(InstanceTypeCapabilities(hasInstanceStore = true, supportedArchitectures = listOf("x86_64")))
-
-        whenever(mockAmiResolver.resolveAmiId(any(), any())).thenReturn(Result.success("ami-123"))
-
-        whenever(mockClusterProvisioningService.provisionAll(any(), any(), any(), any())).thenReturn(
-            ProvisioningResult(hosts = happyHosts(), errors = emptyMap()),
-        )
-
-        whenever(mockClusterConfigurationService.writeAllConfigurationFiles(any(), any(), any()))
-            .thenReturn(Result.success(Unit))
-
-        whenever(mockK3sClusterService.setupCluster(any())).thenReturn(K3sSetupResult(serverStarted = true))
-        whenever(mockCiliumService.install(any())).thenReturn(Result.success(Unit))
-
-        whenever(mockK8sService.labelNode(any(), any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.ensureLocalStorageClass(any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.ensureLocalStorageWfcClass(any())).thenReturn(Result.success(Unit))
-
-        whenever(mockObservabilityStackService.deploy(any(), anyOrNull())).thenReturn(Result.success(Unit))
-
-        whenever(mockCommandExecutor.execute<PicoCommand>(any())).thenAnswer { invocation ->
-            @Suppress("UNCHECKED_CAST")
-            val factory = invocation.arguments[0] as () -> PicoCommand
-            val command = factory()
-            invokedCommandNames.add(command::class.simpleName ?: "unknown")
-            nestedCommandExitCodes[command::class.simpleName] ?: 0
-        }
-    }
-
-    private fun happyHosts(): Map<ServerType, List<ClusterHost>> =
-        mapOf(
-            ServerType.Control to listOf(testControlHost),
-            ServerType.Cassandra to listOf(testDbHost),
-            ServerType.Stress to listOf(testAppHost),
-        )
-
-    /**
-     * A ClusterState with everything `up` needs already present, and Tailscale marked active
-     * so [Up.startProxyIfNeeded] and [Up.startTailscaleIfConfigured]'s inner body are both
-     * skipped (the test User has blank Tailscale credentials) — keeping the happy-path fixture
-     * from needing to model the SOCKS tunnel at all.
-     */
-    private fun happyState(
-        controlInstances: Int = 1,
-        cassandraInstances: Int = 1,
-        stressInstances: Int = 1,
-    ): ClusterState =
-        ClusterState(
-            name = "test-cluster",
-            versions = mutableMapOf(),
-            tailscaleActive = true,
-            initConfig =
-                InitConfig(
-                    cassandraInstances = cassandraInstances,
-                    stressInstances = stressInstances,
-                    controlInstances = controlInstances,
-                    cidr = "10.0.0.0/16",
-                    name = "test-cluster",
-                ),
-        )
-
-    private fun tailscaleUser(): User =
-        User(
-            email = "test@example.com",
-            region = "us-west-2",
-            keyName = "test-key",
-            awsProfile = "",
-            awsAccessKey = "test-access-key",
-            awsSecret = "test-secret",
-            axonOpsOrg = "",
-            axonOpsKey = "",
-            tailscaleClientId = "tailscale-client-id",
-            tailscaleClientSecret = "tailscale-client-secret",
-        )
-
+class UpTest : UpTestFixture() {
     // =========================================================================
     // Baseline: the happy-path fixture itself must succeed end to end
     // =========================================================================
@@ -359,43 +45,6 @@ class UpTest : BaseKoinTest() {
         verify(mockK8sService).labelNode(eq(testControlHost), eq("app0"), any())
         verify(mockK8sService).ensureLocalStorageClass(eq(testControlHost))
         verify(mockK8sService).ensureLocalStorageWfcClass(eq(testControlHost))
-    }
-
-    // =========================================================================
-    // Group: CNI selection (`--cni`, replacing the old `--cilium` boolean)
-    // =========================================================================
-
-    @Test
-    fun `up starts K3s with Flannel by default and never installs Cilium`() {
-        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
-
-        val configCaptor = argumentCaptor<K3sClusterConfig>()
-        verify(mockK3sClusterService).setupCluster(configCaptor.capture())
-        assertThat(configCaptor.firstValue.useCustomCni).isFalse()
-        assertThat(configCaptor.firstValue.onServerReady == null).isTrue()
-
-        verify(mockCiliumService, never()).install(any())
-    }
-
-    @Test
-    fun `up starts K3s with a custom CNI and installs Cilium via onServerReady when cni is Cilium`() {
-        val ciliumState = happyState()
-        whenever(mockClusterStateManager.load()).thenReturn(
-            ciliumState.copy(initConfig = ciliumState.initConfig?.copy(cni = CniMode.Cilium)),
-        )
-
-        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
-
-        val configCaptor = argumentCaptor<K3sClusterConfig>()
-        verify(mockK3sClusterService).setupCluster(configCaptor.capture())
-        val config = configCaptor.firstValue
-        assertThat(config.useCustomCni).isTrue()
-
-        val onServerReady = config.onServerReady
-        assertThat(onServerReady == null).isFalse()
-        onServerReady?.invoke()
-
-        verify(mockCiliumService).install(testControlHost.toHost())
     }
 
     // =========================================================================
@@ -802,17 +451,5 @@ class UpTest : BaseKoinTest() {
         // Every attempt was spent before giving up; one failed connect is not a missing route.
         assertThat(probedTargets).hasSize(Constants.Tailscale.REACHABILITY_MAX_ATTEMPTS)
         verify(mockK3sClusterService, never()).setupCluster(any())
-    }
-
-    /**
-     * Constructs an [Up] with a zero SSH startup delay and a zero tailnet retry interval so tests
-     * do not sit through the production pauses. Both only affect wall-clock timing, so removing
-     * them does not change any behavior under test.
-     */
-    private fun newUp(): Up = Up(sshStartupDelay = Duration.ZERO, tailnetRetryInterval = Duration.ZERO)
-
-    private fun overrideUser(user: User) {
-        whenever(mockClusterStateManager.load()).thenReturn(happyState())
-        getKoin().loadModules(listOf(module { single<User> { user } }), allowOverride = true)
     }
 }

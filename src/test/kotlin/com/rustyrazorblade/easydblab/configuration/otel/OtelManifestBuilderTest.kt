@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.configuration.otel
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMap
@@ -327,7 +328,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         assertThat(yaml).contains("job_name: 'beyla'")
         assertThat(yaml).contains("job_name: 'ebpf-exporter'")
         assertThat(yaml).contains("job_name: 'yace'")
-        assertThat(yaml).contains("job_name: 'hubble'")
+        assertThat(yaml).contains("job_name: \"kube-state-metrics\"")
     }
 
     @Test
@@ -336,6 +337,128 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         val yaml = yamlFrom(configMap)
 
         assertThat(yaml).doesNotContain("__WORKLOAD_SCRAPE_JOBS__")
+        assertThat(yaml).doesNotContain("__KIT_SCRAPE_JOBS__")
+        assertThat(yaml).doesNotContain("__INFRA_SCRAPE_JOBS__")
+    }
+
+    /**
+     * kube-state-metrics is one pod on the control node, in the pod network. A static Service
+     * target would have every collector in the DaemonSet scrape the same series under its own
+     * `instance`; pod discovery filtered to the collector's own node gives exactly one scraper.
+     */
+    @Test
+    fun `kube-state-metrics is scraped through node-local pod discovery, not a static target`() {
+        val job = builder.buildInfraScrapeJobs(CniMode.Flannel).single { it.jobName == "kube-state-metrics" }
+
+        assertThat(job.staticConfigs).isNull()
+        assertThat(job.kubernetesSdConfigs?.single()?.role).isEqualTo("pod")
+        assertThat(
+            job.kubernetesSdConfigs
+                ?.single()
+                ?.namespaces
+                ?.names,
+        ).containsExactly("default")
+        val keeps = job.relabelConfigs.filter { it.action == "keep" }
+        assertThat(keeps.map { it.sourceLabels?.single() to it.regex }).containsExactly(
+            "__meta_kubernetes_pod_label_app_kubernetes_io_name" to "kube-state-metrics",
+            "__meta_kubernetes_pod_node_name" to "\${env:HOSTNAME}",
+            "__meta_kubernetes_pod_container_port_number" to "8080",
+        )
+        val address = job.relabelConfigs.single { it.targetLabel == "__address__" }
+        assertThat(address.replacement).isEqualTo("\$\$1:8080")
+
+        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+        assertThat(yaml).contains("job_name: \"kube-state-metrics\"")
+        assertThat(yaml).doesNotContain("kube-state-metrics.default.svc")
+        // Rendered at the depth of the static jobs under scrape_configs.
+        assertThat(yaml).contains("\n        - job_name: \"kube-state-metrics\"")
+    }
+
+    /**
+     * Flannel has no Cilium agent, operator, or Hubble. Rendering their jobs anyway would have
+     * every collector poll three dead ports for the life of every default cluster.
+     */
+    @Test
+    fun `buildConfigMap renders no Cilium scrape jobs on a Flannel cluster`() {
+        val yaml = yamlFrom(builder.buildConfigMap(emptyList(), cni = CniMode.Flannel))
+
+        assertThat(yaml).doesNotContain("cilium-agent")
+        assertThat(yaml).doesNotContain("cilium-operator")
+        assertThat(yaml).doesNotContain("job_name: \"hubble\"")
+        assertThat(yaml).doesNotContain("localhost:9962")
+        assertThat(yaml).doesNotContain("localhost:9965")
+        assertThat(builder.buildCniScrapeJobs(CniMode.Flannel)).isEmpty()
+    }
+
+    @Test
+    fun `buildConfigMap defaults to the Flannel rendering when no CNI is given`() {
+        assertThat(yamlFrom(builder.buildConfigMap(emptyList())))
+            .isEqualTo(yamlFrom(builder.buildConfigMap(emptyList(), cni = CniMode.Flannel)))
+    }
+
+    @Test
+    fun `buildConfigMap on a Cilium cluster scrapes the agent and Hubble at localhost on every node`() {
+        val yaml = yamlFrom(builder.buildConfigMap(emptyList(), cni = CniMode.Cilium))
+
+        assertThat(yaml).contains("job_name: \"cilium-agent\"")
+        assertThat(yaml).contains("localhost:9962")
+        assertThat(yaml).contains("replacement: \"\${env:HOSTNAME}:9962\"")
+        assertThat(yaml).contains("job_name: \"hubble\"")
+        assertThat(yaml).contains("localhost:9965")
+        assertThat(yaml).contains("replacement: \"\${env:HOSTNAME}:9965\"")
+        // Every job carries the cluster label, as the static infrastructure jobs do.
+        assertThat(yaml).contains("replacement: \"\${env:CLUSTER_NAME}\"")
+        // The jobs land under the prometheus receiver's scrape_configs, at the same depth as the
+        // static jobs, so the collector parses them as part of that list.
+        assertThat(yaml).contains("\n        - job_name: \"cilium-agent\"")
+    }
+
+    /**
+     * The operator runs on exactly one node, so a `localhost` target would fail everywhere but
+     * there. Pod discovery in kube-system on the chart's `io.cilium/app=operator` label, filtered
+     * to the collector's own node and to the metrics port, scrapes it once.
+     */
+    @Test
+    fun `buildConfigMap on a Cilium cluster discovers the operator by pod label on its own node`() {
+        val jobs = builder.buildCniScrapeJobs(CniMode.Cilium)
+        val operator = jobs.single { it.jobName == "cilium-operator" }
+
+        assertThat(operator.staticConfigs).isNull()
+        assertThat(operator.kubernetesSdConfigs).hasSize(1)
+        assertThat(operator.kubernetesSdConfigs?.single()?.role).isEqualTo("pod")
+        assertThat(
+            operator.kubernetesSdConfigs
+                ?.single()
+                ?.namespaces
+                ?.names,
+        ).containsExactly("kube-system")
+
+        val keeps = operator.relabelConfigs.filter { it.action == "keep" }
+        assertThat(keeps.map { it.sourceLabels?.single() to it.regex }).containsExactly(
+            "__meta_kubernetes_pod_label_io_cilium_app" to "operator",
+            "__meta_kubernetes_pod_node_name" to "\${env:HOSTNAME}",
+            "__meta_kubernetes_pod_container_port_number" to "9963",
+        )
+        val address = operator.relabelConfigs.single { it.targetLabel == "__address__" }
+        assertThat(address.sourceLabels).containsExactly("__meta_kubernetes_pod_ip")
+        assertThat(address.replacement).isEqualTo("\$\$1:9963")
+        val instance = operator.relabelConfigs.single { it.targetLabel == "instance" }
+        assertThat(instance.sourceLabels).containsExactly("__meta_kubernetes_pod_name")
+
+        assertThat(yamlFrom(builder.buildConfigMap(emptyList(), cni = CniMode.Cilium)))
+            .contains("job_name: \"cilium-operator\"")
+            .doesNotContain("localhost:9963")
+    }
+
+    @Test
+    fun `Cilium scrape jobs and kit scrape jobs coexist in one rendering`() {
+        val kits = listOf(WorkloadScrapeConfig(kitName = "clickhouse", jobName = "clickhouse", port = 9363, path = "/metrics"))
+
+        val yaml = yamlFrom(builder.buildConfigMap(kits, cni = CniMode.Cilium))
+
+        assertThat(yaml).contains("job_name: \"cilium-agent\"")
+        assertThat(yaml).contains("job_name: \"clickhouse-clickhouse\"")
+        assertThat(yaml).contains("job_name: \"kube-state-metrics\"")
     }
 
     @Test
@@ -356,8 +479,22 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         assertThat(yaml).contains("localhost:9600")
         assertThat(yaml).contains("metrics_path: \"/_prometheus/metrics\"")
         // Without a pod-selector, targets are static NodePorts — no pod discovery.
-        assertThat(yaml).contains("static_configs")
-        assertThat(yaml).doesNotContain("kubernetes_sd_configs")
+        assertThat(jobBlock(yaml, "presto-presto")).contains("static_configs").doesNotContain("kubernetes_sd_configs")
+        assertThat(jobBlock(yaml, "opensearch-opensearch")).contains("static_configs").doesNotContain("kubernetes_sd_configs")
+    }
+
+    /** The lines of one rendered scrape job, from its `job_name` up to the next job or the end of the list. */
+    private fun jobBlock(
+        yaml: String,
+        jobName: String,
+    ): String {
+        val lines = yaml.lines()
+        val start = lines.indexOfFirst { it.trim() == "- job_name: \"$jobName\"" }
+        check(start >= 0) { "scrape job $jobName is not in the rendered config" }
+        return lines
+            .drop(start + 1)
+            .takeWhile { !it.trim().startsWith("- job_name:") && it.startsWith("          ") }
+            .joinToString("\n")
     }
 
     @Test
@@ -429,7 +566,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         assertThat(yaml).contains("job_name: 'beyla'")
         assertThat(yaml).contains("job_name: 'ebpf-exporter'")
         assertThat(yaml).contains("job_name: 'yace'")
-        assertThat(yaml).contains("job_name: 'hubble'")
+        assertThat(yaml).contains("job_name: \"kube-state-metrics\"")
         assertThat(yaml).contains("job_name: \"clickhouse-clickhouse\"")
     }
 

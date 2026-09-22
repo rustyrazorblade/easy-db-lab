@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.kubestatemetrics.KubeStateMetricsManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
@@ -106,11 +107,13 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
                 single { RegistryManifestBuilder() }
                 single { S3ManagerManifestBuilder(get()) }
                 single { YaceManifestBuilder(get()) }
+                single { KubeStateMetricsManifestBuilder() }
 
                 // Real service under test — the command is a thin wrapper over it. RemoteOperationsService,
                 // User, and EventBus come from BaseKoinTest's core mocks via get().
                 single<ObservabilityStackService> {
                     DefaultObservabilityStackService(
+                        get(),
                         get(),
                         get(),
                         get(),

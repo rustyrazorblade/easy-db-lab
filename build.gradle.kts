@@ -413,6 +413,38 @@ tasks.register<Exec>("testPackerCassandra") {
         listOf("docker", "compose", "up", "--force-recreate", "--remove-orphans", "--exit-code-from", "test-cassandra", "test-cassandra")
 }
 
+// (Re)build the packer test image from packer/Dockerfile. Layer caching makes this cheap when
+// nothing changed, and it keeps a stale image (an older Ubuntu, classic sudo) from standing in for
+// the AMI's sudo-rs.
+tasks.register<Exec>("buildPackerTestImage") {
+    group = "Verification"
+    description = "Build the Docker image the packer script tests run in"
+    workingDir = file("packer")
+    commandLine = listOf("docker", "build", "-q", "-t", "easy-db-lab-packer-test", ".")
+}
+
+// Check the baked /etc/sudoers.d/axonops against the AMI's own visudo (sudo-rs on Ubuntu 26.04,
+// which rejects wildcard arguments). Runs in the packer test image; no network.
+tasks.register<Exec>("testAxonSudoers") {
+    group = "Verification"
+    description = "Validate the axonops sudoers rules with the image's visudo"
+    dependsOn("buildPackerTestImage")
+    workingDir = file("packer")
+    commandLine =
+        listOf(
+            "docker",
+            "run",
+            "--rm",
+            "-v",
+            "${file("packer").absolutePath}:/packer:ro",
+            "--user",
+            "ubuntu",
+            "easy-db-lab-packer-test",
+            "bash",
+            "/packer/cassandra/install/install_axon.test.sh",
+        )
+}
+
 // Unit-test the Fluent Bit journald filter's drop rule: Cassandra's logback lines are duplicates of
 // what the OTel agent already delivers, while its non-logback output (JVM crash, OOM, pre-logback)
 // reaches VictoriaLogs only through the journal. Runs Lua in Docker; no cluster, no Fluent Bit.
@@ -438,7 +470,7 @@ tasks.register<Exec>("testFluentBitFilter") {
 tasks.register("testPacker") {
     group = "Verification"
     description = "Run all packer provisioning tests"
-    dependsOn("testPackerBase", "testPackerCassandra")
+    dependsOn("testPackerBase", "testPackerCassandra", "testAxonSudoers")
 }
 
 // Unit-test the pure build-plan logic behind the build-cassandra-ref workflow

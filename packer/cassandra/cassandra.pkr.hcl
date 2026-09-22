@@ -215,21 +215,9 @@ build {
     script = "install/install_pyroscope_agent.sh"
   }
 
-  # instal axonops
+  # install axonops, including /etc/sudoers.d/axonops (validated with visudo)
   provisioner "shell" {
     script = "install/install_axon.sh"
-  }
-
-  provisioner "file" {
-    source = "axonops-sudoers"
-    destination = "axonops-sudoers"
-  }
-
-  provisioner "shell" {
-    inline = [
-      "sudo chown root:root axonops-sudoers",
-      "sudo mv axonops-sudoers /etc/sudoers.d/axonops",
-    ]
   }
 
   provisioner "file" {
@@ -292,7 +280,7 @@ build {
       "sudo rm -rf /tmp/* /var/tmp/*",
       "sudo find /var/log -type f -exec truncate -s 0 {} +",
       # Home-dir build leftovers (surgical; tolerate absence)
-      "rm -rf /home/ubuntu/cassandra /home/ubuntu/bin-cassandra /home/ubuntu/cassandra_versions.yaml /home/ubuntu/axonops-sudoers /home/ubuntu/services /home/ubuntu/aliases.sh",
+      "rm -rf /home/ubuntu/cassandra /home/ubuntu/bin-cassandra /home/ubuntu/cassandra_versions.yaml /home/ubuntu/services /home/ubuntu/aliases.sh",
       "rm -rf /home/ubuntu/.cache /home/ubuntu/.wget-hsts /home/ubuntu/.bash_history /home/ubuntu/.m2 /home/ubuntu/.sudo_as_admin_successful /home/ubuntu/.lesshst",
       # Discard the now-freed blocks so EBS excludes them from the snapshot (this is what
       # actually shrinks the snapshot and cuts AMI-creation time). -av prints bytes trimmed

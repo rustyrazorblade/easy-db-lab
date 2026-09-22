@@ -153,6 +153,21 @@ class Neo4jKitTest : BaseKoinTest() {
             assertThat(env(container, "OTEL_EXPORTER_OTLP_ENDPOINT").value).isEqualTo("http://$(HOST_IP):4318")
             assertThat(env(container, "OTEL_METRIC_EXPORT_INTERVAL").value).isEqualTo("5000")
         }
+
+        /**
+         * Left alone, the agent reports the pod hostname (`neo4j-0`) as host.name. The collector's
+         * metrics/otlp pipeline overwrites it with the node, but the logs and traces pipelines do
+         * not, so log-derived and span-derived series carried `neo4j-0` and fell out of every
+         * node-keyed dashboard filter. Naming the node at the source makes every signal agree.
+         */
+        @Test
+        fun `every signal names the node, not the pod, as host name`() {
+            val container = neo4jContainer()
+
+            assertThat(env(container, "NODE_NAME").valueFrom.fieldRef.fieldPath).isEqualTo("spec.nodeName")
+            assertThat(container.env.map { it.name }).containsSubsequence("NODE_NAME", "OTEL_RESOURCE_ATTRIBUTES")
+            assertThat(env(container, "OTEL_RESOURCE_ATTRIBUTES").value).isEqualTo("host.name=$(NODE_NAME)")
+        }
     }
 
     @Test

@@ -66,6 +66,16 @@ spec:
               value: "http://$(HOST_IP):4318"
             - name: OTEL_METRIC_EXPORT_INTERVAL
               value: "5000"
+            # The agent would report the pod hostname (neo4j-0) as host.name. The collector's
+            # metrics pipeline overwrites it with the node, but its logs and traces pipelines do
+            # not, so log- and span-derived series would miss node-keyed dashboard filters.
+            # NODE_NAME must precede the variable that references it.
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "host.name=$(NODE_NAME)"
           ports:
             - name: bolt
               containerPort: 7687

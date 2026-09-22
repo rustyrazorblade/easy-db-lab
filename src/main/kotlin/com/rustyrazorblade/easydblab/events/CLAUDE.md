@@ -15,7 +15,7 @@ Command/Service → eventBus.emit(Event.Domain.Type(...)) → EventBus → Event
 
 | File | Purpose |
 |------|---------|
-| `Event.kt` | Sealed interface hierarchy with ~230+ concrete event types across 29 domain interfaces |
+| `Event.kt` | Sealed interface hierarchy with ~230+ concrete event types across 34 domain interfaces |
 | `EventBus.kt` | Central dispatcher: `emit(event)` → wraps in `EventEnvelope` → dispatches to listeners |
 | `EventContext.kt` | Stack-based `ThreadLocal` for tracking current command name |
 | `EventEnvelope.kt` | Wraps `Event` + timestamp + commandName; serializable to JSON |
@@ -31,6 +31,7 @@ Events are organized by domain as sealed sub-interfaces of `Event`:
 - `Event.Cassandra.*` — Database lifecycle (start, stop, restart)
 - `Event.Profiling.*` — Runtime async-profiler control on Cassandra nodes (start/stop, attach and shipping health, fetch/flamegraph)
 - `Event.K3s.*` — K3s cluster management
+- `Event.Cilium.*` — Cilium CNI operations
 - `Event.K8s.*` — Kubernetes operations
 - `Event.Infra.*` — AWS infrastructure (VPC, subnet, security group)
 - `Event.Ec2.*` — EC2 instance operations
@@ -49,13 +50,14 @@ Events are organized by domain as sealed sub-interfaces of `Event`:
 - `Event.Status.*` — Cluster status display sections
 - `Event.Teardown.*` — Cluster teardown lifecycle
 - `Event.Ami.*` — AMI pruning, listing, validation
-- `Event.ClickHouse.*` — ClickHouse deployment and status
 - `Event.Docker.*` — Container lifecycle operations
 - `Event.Mcp.*` — MCP tool execution
 - `Event.Logs.*` — Log query and backup operations
 - `Event.Metrics.*` — Metrics backup and import
 - `Event.Setup.*` — Profile setup and initialization
 - `Event.Ssh.*` — SSH remote command execution
+- `Event.Platform.*` — Platform substrate operations (StorageClass, PVs, info)
+- `Event.Install.*` — Kit scaffold generation
 - `Event.Kit.*` — Kit phase execution (script and step start/finish/failure, metrics registration, hooks, requirements) and `Kit.EndpointsAvailable`, the declared endpoints resolved to node private IPs after a successful start
 - `Event.Cleanup.*` — Per-node kit cleanup progress and completion
 - `Event.Server.*` — Server lifecycle (shutdown when the cluster's VPC no longer exists)

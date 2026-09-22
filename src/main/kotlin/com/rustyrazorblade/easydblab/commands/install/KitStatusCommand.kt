@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.services.HelmService
 import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitEndpointAddresses
 import com.rustyrazorblade.easydblab.services.KitRuntime
+import com.rustyrazorblade.easydblab.services.podSelector
 import org.koin.core.component.inject
 import org.koin.core.parameter.parametersOf
 import picocli.CommandLine.Command
@@ -98,11 +99,7 @@ class KitStatusCommand(
             KitRuntime.RuntimeType.STATEFULSET,
             KitRuntime.RuntimeType.PODS,
             -> {
-                val selector =
-                    runtime.selector
-                        .replace("\${KIT_NAME}", kitName)
-                        .ifBlank { "app.kubernetes.io/name=$kitName" }
-                val pods = kubeService.listPodsByLabel(selector, namespace).getOrElse { emptyList() }
+                val pods = kubeService.listPodsByLabel(podSelector(kitName, runtime), namespace).getOrElse { emptyList() }
                 if (pods.isEmpty()) {
                     KitRunningState.Stopped
                 } else {
@@ -115,7 +112,7 @@ class KitStatusCommand(
     private fun checkFallbackState(kubeService: KubernetesService): KitRunningState {
         val pods =
             kubeService
-                .listPodsByLabel("app.kubernetes.io/name=$kitName", "default")
+                .listPodsByLabel(podSelector(kitName, runtime = null), "default")
                 .getOrElse { return KitRunningState.Unknown("K8s query failed") }
         return if (pods.isEmpty()) {
             KitRunningState.Stopped

@@ -333,7 +333,7 @@ class KitRunnerCommandTest : BaseKoinTest() {
         get<EventBus>().addListener(
             object : EventListener {
                 override fun onEvent(envelope: EventEnvelope) {
-                    if (envelope.event is Event.Kit.EndpointsAvailable) throw IllegalStateException("listener down")
+                    check(envelope.event !is Event.Kit.EndpointsAvailable) { "listener down" }
                 }
 
                 override fun close() = Unit

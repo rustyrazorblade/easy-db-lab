@@ -91,6 +91,29 @@ class OtelManifestBuilderTest : BaseKoinTest() {
     }
 
     /**
+     * Where the agent can read the JVM's argv as a list (a JVM in a container, such as Neo4j's),
+     * it reports `process.command_args` instead of `process.command_line`. Same argv, same
+     * harm: a label kilobytes long on every series. Dropping only the one key let it through.
+     */
+    @Test
+    fun `the SDK resource drop covers the argv in both of its forms`() {
+        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+        val dropBlock = yaml.substringAfter("resource/drop_sdk_metadata:\n").substringBefore("\n  resourcedetection:")
+
+        assertThat(dropBlock).contains("key: process.command_line", "key: process.command_args")
+    }
+
+    /**
+     * spanmetrics keeps the span's whole resource on the metrics it derives, so without the drop
+     * `traces_spanmetrics_*` carried the argv as a label even though the metrics and logs
+     * pipelines strip it.
+     */
+    @Test
+    fun `span-derived metrics drop the SDK resource too`() {
+        assertThat(pipeline("metrics/spanmetrics:")).contains("resource/drop_sdk_metadata")
+    }
+
+    /**
      * The collector is a container. Without the node's root filesystem mounted and `root_path`
      * pointing at it, the hostmetrics scrapers describe the container, and the filesystem scraper
      * finds nothing worth reporting at all — which is why every filesystem panel was empty while

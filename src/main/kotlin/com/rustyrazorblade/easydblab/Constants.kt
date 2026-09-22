@@ -112,6 +112,12 @@ object Constants {
         const val MIN_PORT = 0
         const val MAX_PORT = 65535
         const val SSH_PORT = 22
+
+        /** EC2 IP protocol name for ICMP security group rules. */
+        const val ICMP_PROTOCOL = "icmp"
+
+        /** EC2 port value meaning "all ICMP types/codes" when used as both fromPort and toPort. */
+        const val ALL_ICMP_TYPES = -1
     }
 
     // HTTP Status Codes

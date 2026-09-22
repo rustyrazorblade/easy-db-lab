@@ -45,7 +45,7 @@ All under `src/main/resources/com/rustyrazorblade/easydblab/kits/memcached/`.
       with `-m ${MEMORY_MB}`, `memcached-exporter` sidecar on 9150, all objects labelled
       `easydblab/kit=memcached`.
 - [x] 3.3 `nodeport-service.yaml.template`: NodePort 31211 → container 11211, kit label.
-- [ ] 3.4 Live: install, start, and confirm `memcached_*` series in VictoriaMetrics; run
+- [x] 3.4 Live: install, start, and confirm `memcached_*` series in VictoriaMetrics; run
       `bin/export-workload-metrics memcached` to produce `metrics-catalog.json`.
 - [ ] 3.5 `dashboards/memcached.json` via the `dashboard-editor` agent, from the catalog.
 - [x] 3.6 `METRICS.md`.

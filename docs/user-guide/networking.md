@@ -28,6 +28,8 @@ Two K3s add-ons are not installed on a Cilium cluster: Traefik and ServiceLB. Se
 
 With Tailscale enabled, `up` installs a small nftables chain on the control node (`table ip edl_tailscale`, loaded at boot by `edl-tailscale-masquerade.service`). The control node is the tailnet subnet router, and Cilium's own NAT chain would otherwise pass tailnet packets to the db nodes without masquerading them, so the db nodes' private IPs would time out from your machine while the control node worked. The chain masquerades Tailscale-forwarded traffic before Cilium sees it. It is installed only when Tailscale is enabled; re-running `up` replaces it in place.
 
+`hostPort` works on a Cilium cluster through portmap chaining. With kube-proxy replacement off, Cilium does not implement `hostPort` itself, so it is installed with `cni.chainingMode=portmap`: the `portmap` CNI plugin runs after `cilium-cni` for every pod and publishes its host ports on the node. The plugin binary is the one K3s bundles; each node links it into `/opt/cni/bin` when K3s starts. Kits that publish a port through `hostPort` (Trino, Presto, Flink) are reachable at their node's private IP and scraped, as on Flannel. A pod started before the chaining was applied keeps its old networking until it is restarted.
+
 Cilium's devices are pinned to the ENA interfaces (`ens+`). The tailnet interface `tailscale0` is not a Cilium device, so its 1280 MTU does not lower the NIC MTU below the 9001 AWS offers.
 
 ### Reading the datapath back

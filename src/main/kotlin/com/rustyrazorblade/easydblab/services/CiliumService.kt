@@ -40,8 +40,9 @@ interface CiliumService {
 
 /**
  * Default [CiliumService]: one `cilium install` (or `cilium upgrade`, when the release already
- * exists) invocation with the ENI native-routing flag set, metrics enabled on the agent and the
- * operator, and Hubble UI exposed as a NodePort. Both verbs take the same flag list, so a re-run
+ * exists) invocation with the ENI native-routing flag set, the portmap CNI plugin chained so
+ * `hostPort` works, metrics enabled on the agent and the operator, and Hubble UI exposed as a
+ * NodePort. Both verbs take the same flag list, so a re-run
  * of `up` converges a changed flag instead of failing on the release name. Records the
  * install window on [CiliumInstallAnnotator] so `up` can mark it on Grafana once Grafana exists.
  */
@@ -136,6 +137,10 @@ class DefaultCiliumService(
                     set("kubeProxyReplacement=false")
                     // Host networking stays on the kernel stack so node SSH/API stay reachable.
                     set("bpf.hostLegacyRouting=true")
+                    // hostPort: with kube-proxy replacement off, Cilium does not implement
+                    // hostPort itself; the portmap CNI plugin, chained after cilium-cni, does.
+                    // The binary comes from K3s — start-k3s-*.sh links it into /opt/cni/bin.
+                    set("cni.chainingMode=portmap")
                     set("ipv4NativeRoutingCIDR=$vpcCidr")
                     set("k8sServiceHost=${controlHost.private}")
                     set("k8sServicePort=6443")

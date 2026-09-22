@@ -170,6 +170,51 @@ class CiliumServiceTest : BaseKoinTest() {
         assertThat(command).doesNotContain("routingMode=tunnel")
     }
 
+    /**
+     * With kubeProxyReplacement=false Cilium does not implement hostPort itself; the portmap CNI
+     * plugin chained behind cilium-cni does. Without it hostPort kits (Trino, Presto, Flink) have
+     * no host listener. The upgrade path must carry it too, or a re-run of `up` drops it.
+     */
+    @Test
+    fun `install and upgrade both chain the portmap CNI plugin so hostPort works`() {
+        makeService().install(controlHost, vpcCidr)
+        val install = ciliumCommands().chartCommand
+        reset(mockRemoteOps)
+        releaseInstalled()
+
+        makeService().install(controlHost, vpcCidr)
+        val upgrade = ciliumCommands().chartCommand
+
+        assertThat(install).contains("cilium install")
+        assertThat(upgrade).contains("cilium upgrade")
+        assertThat(setFlags(install)).contains("cni.chainingMode=portmap")
+        assertThat(setFlags(upgrade)).contains("cni.chainingMode=portmap")
+    }
+
+    /**
+     * With `--flannel-backend=none` K3s leaves containerd on its default CNI bin dir, /opt/cni/bin,
+     * where Cilium installs only cilium-cni and loopback. Once portmap is chained, every pod
+     * sandbox execs `/opt/cni/bin/portmap`, so each node links K3s's bundled plugin (its stable
+     * `data/cni` dir) there before the K3s service starts.
+     */
+    @Test
+    fun `start-k3s scripts link the K3s-bundled portmap plugin into the default CNI bin dir`() {
+        listOf("start-k3s-server.sh", "start-k3s-agent.sh").forEach { name ->
+            val scriptPath = "/com/rustyrazorblade/easydblab/services/$name"
+            val script =
+                javaClass.getResourceAsStream(scriptPath)?.bufferedReader()?.readText()
+                    ?: error("$name not found on classpath at $scriptPath")
+
+            val link = script.lines().map { it.trim() }.single { it.startsWith("ln ") && it.contains("portmap") }
+            assertThat(link)
+                .describedAs(name)
+                .isEqualTo("ln -sfn /var/lib/rancher/k3s/data/cni/portmap /opt/cni/bin/portmap")
+            assertThat(script.indexOf(link))
+                .describedAs("$name links portmap before starting K3s")
+                .isLessThan(script.indexOf("systemctl start"))
+        }
+    }
+
     @Test
     fun `install single-quotes the Hubble metrics list so the remote shell does not brace-expand it`() {
         makeService().install(controlHost, vpcCidr)

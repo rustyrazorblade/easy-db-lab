@@ -102,7 +102,7 @@ All under `src/main/resources/com/rustyrazorblade/easydblab/kits/neo4j/`.
 
 ## 7. Build
 
-- [ ] 7.1 `./gradlew ktlintFormat`.
-- [ ] 7.2 `./gradlew check` (JDK 21), run in a subagent.
-- [ ] 7.3 `./gradlew installDist`.
-- [ ] 7.4 `openspec validate issue-819 --type change --strict`.
+- [x] 7.1 `./gradlew ktlintFormat`.
+- [x] 7.2 `./gradlew check` (JDK 21), run in a subagent.
+- [x] 7.3 `./gradlew installDist`.
+- [x] 7.4 `openspec validate issue-819 --type change --strict`.

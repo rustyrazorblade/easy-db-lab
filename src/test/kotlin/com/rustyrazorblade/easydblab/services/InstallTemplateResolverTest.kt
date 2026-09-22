@@ -36,6 +36,19 @@ class InstallTemplateResolverTest : BaseKoinTest() {
     }
 
     @Test
+    fun `kit list includes the memcached and neo4j built-in kits`() {
+        val templates = resolver.listAvailableTemplates()
+        assertThat(templates).contains("memcached", "neo4j")
+    }
+
+    @Test
+    fun `kit list details parse the memcached and neo4j kit descriptors`() {
+        val details = resolver.listAvailableTemplateDetails().associateBy { it.name }
+        assertThat(details["memcached"]?.description).contains("memcached")
+        assertThat(details["neo4j"]?.description).contains("Neo4j")
+    }
+
+    @Test
     fun `lists profile-directory templates alongside built-ins`() {
         createProfileTemplate("mydb")
 

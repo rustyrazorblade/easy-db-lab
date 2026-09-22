@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services.aws
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.exceptions.AwsTimeoutException
@@ -346,7 +347,7 @@ class EC2VpcService(
             }
 
         if (existingRule) {
-            val portDesc = if (fromPort == toPort) "port $fromPort" else "ports $fromPort-$toPort"
+            val portDesc = describeIngressPorts(fromPort, toPort, protocol)
             log.info { "Ingress rule already exists for $portDesc from $cidr ($protocol)" }
             return
         }
@@ -374,7 +375,7 @@ class EC2VpcService(
                     .build()
 
             ec2Client.authorizeSecurityGroupIngress(authorizeRequest)
-            val portDesc = if (fromPort == toPort) "port $fromPort" else "ports $fromPort-$toPort"
+            val portDesc = describeIngressPorts(fromPort, toPort, protocol)
             log.info { "Added ingress rule for $portDesc from $cidr ($protocol)" }
             eventBus.emit(Event.Infra.SecurityGroupRuleConfigured(portDesc))
         } catch (e: Ec2Exception) {
@@ -385,6 +386,22 @@ class EC2VpcService(
             }
         }
     }
+
+    /**
+     * Human-readable description of the ports an ingress rule opens. ICMP has no ports;
+     * EC2 encodes "all types" as -1/-1, which would otherwise render as "port -1".
+     */
+    private fun describeIngressPorts(
+        fromPort: Int,
+        toPort: Int,
+        protocol: String,
+    ): String =
+        when {
+            protocol == Constants.Network.ICMP_PROTOCOL && fromPort == Constants.Network.ALL_ICMP_TYPES ->
+                "all ICMP types"
+            fromPort == toPort -> "port $fromPort"
+            else -> "ports $fromPort-$toPort"
+        }
 
     private fun findSubnetByNameAndVpc(
         name: ResourceName,

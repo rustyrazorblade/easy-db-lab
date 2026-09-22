@@ -427,8 +427,12 @@ Dashboards are installed with `overwrite: true`, so re-running `start` never dup
 - **`<kit> start`** refuses when the workload the kit's `runtime` block declares is already in the
   cluster: pods matching the runtime `selector` in its namespace, or the helm release for a `helm`
   runtime. The event is `Kit.CollisionDetected`, naming the objects it found, and no start step runs.
-  Run `<kit> stop` first. Pods that are already terminating do not count, so `stop` followed by
-  `start` works.
+  Run `<kit> stop` first. Pods that are already terminating do not count.
+- **`<kit> stop`**, once its steps succeed, waits until nothing the runtime selects is left —
+  terminating pods included — so a `start` straight after it is not refused. Deleting a
+  StatefulSet, Deployment or operator resource returns before its pods are even marked for
+  deletion, so this wait is what makes `stop` followed by `start` work. It gives up after 5
+  minutes with a `Kit.StopIncomplete` error event naming what is left.
 
 The runtime must therefore name what `start` creates and `stop` removes. A runtime pointing at
 something the `install` phase creates, such as an operator's helm release, would refuse every

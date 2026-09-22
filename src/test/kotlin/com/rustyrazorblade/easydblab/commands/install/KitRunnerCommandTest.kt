@@ -34,6 +34,7 @@ import org.koin.test.get
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
+import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.verifyNoInteractions
 import org.mockito.kotlin.whenever
@@ -91,7 +92,7 @@ class KitRunnerCommandTest : BaseKoinTest() {
                 single<MetricsRegistryService> { mockMetricsRegistryService }
                 single<KitHookExecutor> { mockKitHookExecutor }
                 single<KitEndpointResolver> { DefaultKitEndpointResolver() }
-                single { KitWorkloadProbe(mockKubeService, mock()) }
+                single { KitWorkloadProbe(mockKubeService, mock(), pollInterval = Duration.ZERO, maxPolls = STOP_WAIT_POLLS) }
             },
         )
 
@@ -889,12 +890,70 @@ class KitRunnerCommandTest : BaseKoinTest() {
         }
 
         @Test
-        fun `stop is not guarded`() {
+        fun `stop is not refused while the kit is running`() {
             writeCollisionCheckedKit()
-            podsInCluster(runningPod)
+            whenever(mockKubeService.listPodsByLabel("easydblab/kit=mydb", "db"))
+                .thenReturn(Result.success(listOf(runningPod)), Result.success(emptyList()))
 
             assertThat(command("mydb", "stop").call()).isEqualTo(0)
             verify(mockWorkloadStepExecutor).execute(any(), any(), any())
+        }
+
+        /**
+         * Deleting a StatefulSet, Deployment or operator CR returns before its pods are even marked
+         * for deletion, so a `start` right after `stop` would find them and be refused. Stop waits.
+         */
+        @Test
+        fun `stop waits until every pod of the kit is gone, terminating ones included`() {
+            writeCollisionCheckedKit()
+            val terminatingPod = runningPod.copy(terminating = true)
+            whenever(mockKubeService.listPodsByLabel("easydblab/kit=mydb", "db")).thenReturn(
+                Result.success(listOf(runningPod)),
+                Result.success(listOf(terminatingPod)),
+                Result.success(emptyList()),
+            )
+
+            var exitCode = -1
+            val events = captureEvents { exitCode = command("mydb", "stop").call() }
+
+            assertThat(exitCode).isEqualTo(0)
+            verify(mockKubeService, times(3)).listPodsByLabel("easydblab/kit=mydb", "db")
+            assertThat(events.filterIsInstance<Event.Kit.ScriptFinished>().single().exitCode).isEqualTo(0)
+            verify(mockClusterStateManager).removeRunningWorkload("mydb")
+        }
+
+        @Test
+        fun `stop fails with an error naming what is left when the kit's pods outlive the wait`() {
+            writeCollisionCheckedKit()
+            podsInCluster(runningPod)
+
+            var exitCode = 0
+            val events = captureEvents { exitCode = command("mydb", "stop").call() }
+
+            assertThat(exitCode).isNotEqualTo(0)
+            verify(mockKubeService, times(STOP_WAIT_POLLS)).listPodsByLabel("easydblab/kit=mydb", "db")
+            val incomplete = events.filterIsInstance<Event.Kit.StopIncomplete>().single()
+            assertThat(incomplete).isEqualTo(Event.Kit.StopIncomplete(kit = "mydb", namespace = "db", resources = listOf("pod/mydb-0")))
+            assertThat(incomplete.isError()).isTrue()
+            assertThat(incomplete.toDisplayString()).startsWith("Error:").contains("mydb", "pod/mydb-0", "stop")
+            assertThat(events.filterIsInstance<Event.Kit.ScriptFinished>().single().exitCode).isNotEqualTo(0)
+            verify(mockClusterStateManager, never()).removeRunningWorkload(any())
+        }
+
+        @Test
+        fun `stop of a kit without collision-check does not wait on the cluster`() {
+            writeCollisionCheckedKit(collisionCheck = false)
+
+            assertThat(command("mydb", "stop").call()).isEqualTo(0)
+            verifyNoInteractions(mockKubeService)
+        }
+
+        @Test
+        fun `a failed stop does not wait on the cluster`() {
+            writeCollisionCheckedKit()
+            whenever(mockWorkloadStepExecutor.execute(any(), any(), any())).thenReturn(Result.failure(IllegalStateException("boom")))
+
+            assertThatThrownBy { command("mydb", "stop").call() }.hasMessageContaining("boom")
             verifyNoInteractions(mockKubeService)
         }
 
@@ -916,5 +975,10 @@ class KitRunnerCommandTest : BaseKoinTest() {
             assertThat(command("mydb", "start").call()).isNotEqualTo(0)
             assertThat(marker).doesNotExist()
         }
+    }
+
+    private companion object {
+        /** How many times the injected probe polls a stopping kit before giving up. */
+        const val STOP_WAIT_POLLS = 3
     }
 }

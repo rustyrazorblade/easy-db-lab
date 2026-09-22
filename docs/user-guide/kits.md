@@ -155,6 +155,7 @@ easy-db-lab memcached uninstall
 Installing memcached a second time fails with a collision error and exits non-zero, leaving the
 running kit untouched. Pass `--force` to overwrite the scaffold. Running `memcached start` while
 memcached is already running also fails with a collision error; run `memcached stop` first.
+`stop` returns once the memcached pod is gone, so `start` can follow it straight away.
 
 ## Installing a custom kit
 

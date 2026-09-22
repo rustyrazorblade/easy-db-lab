@@ -5466,6 +5466,25 @@ sealed interface Event {
 
             override fun isError(): Boolean = true
         }
+
+        /**
+         * A collision-checked kit's `stop` steps succeeded, but [resources] (`kind/name`) in
+         * [namespace] were still in the cluster when the wait for them to go ran out. A `start` now
+         * would be refused as a collision, so the stop is reported as failed.
+         */
+        @Serializable
+        @SerialName("Kit.StopIncomplete")
+        data class StopIncomplete(
+            val kit: String,
+            val namespace: String,
+            val resources: List<String>,
+        ) : Kit {
+            override fun toDisplayString(): String =
+                "Error: '$kit' stop ran, but ${resources.joinToString(", ")} in namespace $namespace " +
+                    "did not go away in time. Run 'easy-db-lab $kit stop' again once they are gone."
+
+            override fun isError(): Boolean = true
+        }
     }
 
     // =========================================================================

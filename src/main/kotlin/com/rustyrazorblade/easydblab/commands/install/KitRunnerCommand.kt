@@ -210,18 +210,41 @@ class KitRunnerCommand(
                     ),
             )
 
-        result
-            .onSuccess {
-                processExitCode = 0
-                eventBus.emit(Event.Kit.ScriptFinished(kit = kitName, script = phaseName, exitCode = 0))
-                if (phaseName == Constants.Kit.PHASE_UNINSTALL) {
-                    kitDir.deleteRecursively()
-                }
-                handlePostPhase(config, controlHost)
-            }.onFailure { error ->
-                eventBus.emit(Event.Kit.ScriptFinished(kit = kitName, script = phaseName, exitCode = 1))
-                throw error
+        result.onFailure { error ->
+            eventBus.emit(Event.Kit.ScriptFinished(kit = kitName, script = phaseName, exitCode = 1))
+            throw error
+        }
+
+        processExitCode = if (stoppedWorkloadIsGone(config, controlHost)) 0 else Constants.ExitCodes.ERROR
+        eventBus.emit(Event.Kit.ScriptFinished(kit = kitName, script = phaseName, exitCode = processExitCode))
+        if (processExitCode != 0) return
+        if (phaseName == Constants.Kit.PHASE_UNINSTALL) {
+            kitDir.deleteRecursively()
+        }
+        handlePostPhase(config, controlHost)
+    }
+
+    /**
+     * After a successful `stop` of a kit whose `start` is collision-checked, waits for the kit's
+     * workload to leave the cluster. Deleting a StatefulSet, Deployment or operator resource returns
+     * before its pods are even marked for deletion, so without the wait a `start` right after `stop`
+     * would find them and be refused. Returns false, after reporting what is left, when the workload
+     * outlives the wait; a failed cluster query fails the command.
+     */
+    private fun stoppedWorkloadIsGone(
+        config: KitConfig,
+        controlHost: ClusterHost,
+    ): Boolean {
+        if (phaseName != Constants.Kit.PHASE_STOP || !config.collisionCheck) return true
+        return when (val remaining = workloadProbe.awaitGone(kitName, config.runtime, controlHost).getOrThrow()) {
+            is WorkloadPresence.Absent -> true
+            is WorkloadPresence.Present -> {
+                eventBus.emit(
+                    Event.Kit.StopIncomplete(kit = kitName, namespace = remaining.namespace, resources = remaining.resources),
+                )
+                false
             }
+        }
     }
 
     private fun executeScript(
@@ -239,6 +262,10 @@ class KitRunnerCommand(
                 .start()
 
         processExitCode = process.waitFor()
+        val controlHost = clusterState.getControlHost()
+        if (processExitCode == 0 && controlHost != null && !stoppedWorkloadIsGone(config, controlHost)) {
+            processExitCode = Constants.ExitCodes.ERROR
+        }
         eventBus.emit(
             Event.Kit.ScriptFinished(kit = kitName, script = phaseName, exitCode = processExitCode),
         )
@@ -247,11 +274,10 @@ class KitRunnerCommand(
             if (phaseName == Constants.Kit.PHASE_UNINSTALL) {
                 kitDir.deleteRecursively()
             }
-            val controlHost =
-                clusterState.getControlHost() ?: run {
-                    log.warn { "No control node found; skipping post-phase actions for $kitName" }
-                    return
-                }
+            if (controlHost == null) {
+                log.warn { "No control node found; skipping post-phase actions for $kitName" }
+                return
+            }
             handlePostPhase(config, controlHost)
         }
     }

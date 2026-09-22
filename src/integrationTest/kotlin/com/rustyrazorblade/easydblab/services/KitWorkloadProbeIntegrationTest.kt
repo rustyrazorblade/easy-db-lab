@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.kubernetes.ProxiedKubernetesClientFactory
 import io.fabric8.kubernetes.api.model.NamespaceBuilder
 import io.fabric8.kubernetes.api.model.Pod
 import io.fabric8.kubernetes.api.model.PodBuilder
+import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
 import io.fabric8.kubernetes.client.Config
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientBuilder
@@ -22,6 +23,7 @@ import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.k3s.K3sContainer
 import org.testcontainers.utility.DockerImageName
 import java.nio.file.Files
+import java.time.Duration
 import java.util.concurrent.TimeUnit
 
 /**
@@ -38,6 +40,7 @@ class KitWorkloadProbeIntegrationTest {
     companion object {
         private const val OTHER_NAMESPACE = "elsewhere"
         private const val WAIT_SECONDS = 60L
+        private const val IMPATIENT_POLLS = 3
 
         @Container
         @JvmStatic
@@ -54,6 +57,7 @@ class KitWorkloadProbeIntegrationTest {
 
     private lateinit var client: KubernetesClient
     private lateinit var probe: KitWorkloadProbe
+    private lateinit var kubeService: DefaultKubernetesService
 
     private val controlHost = ClusterHost(publicIp = "", privateIp = "10.0.0.1", alias = "control0", availabilityZone = "us-west-2a")
 
@@ -63,7 +67,8 @@ class KitWorkloadProbeIntegrationTest {
         val kubeconfig = Files.createTempFile("kit-workload-probe", ".kubeconfig")
         Files.writeString(kubeconfig, k3s.kubeConfigYaml)
         // The helm branch runs helm on the control node over SSH; no runtime here is helm-backed.
-        probe = KitWorkloadProbe(DefaultKubernetesService(ProxiedKubernetesClientFactory(), kubeconfig), mock())
+        kubeService = DefaultKubernetesService(ProxiedKubernetesClientFactory(), kubeconfig)
+        probe = KitWorkloadProbe(kubeService, mock(), pollInterval = Duration.ofSeconds(1), maxPolls = WAIT_SECONDS.toInt())
 
         client
             .resource(
@@ -159,5 +164,97 @@ class KitWorkloadProbeIntegrationTest {
 
         assertThat(probe.find("bare", runtime = null, controlHost = controlHost).getOrThrow())
             .isEqualTo(WorkloadPresence.Present(namespace = "default", resources = listOf("pod/bare-0")))
+    }
+
+    private fun deletePod(name: String) {
+        client
+            .pods()
+            .inNamespace("default")
+            .withName(name)
+            .delete()
+        client
+            .pods()
+            .inNamespace("default")
+            .withName(name)
+            .waitUntilCondition({ it?.metadata?.deletionTimestamp != null }, WAIT_SECONDS, TimeUnit.SECONDS)
+    }
+
+    @Test
+    fun `waiting for a stopped kit counts a pod still terminating, and ends once it is gone`() {
+        createPod("draining-0", mapOf("easydblab/kit" to "draining"), finalizers = listOf("easydblab.test/hold"))
+        deletePod("draining-0")
+        val impatient = KitWorkloadProbe(kubeService, mock(), pollInterval = Duration.ZERO, maxPolls = IMPATIENT_POLLS)
+
+        assertThat(impatient.awaitGone("draining", podsRuntime("draining"), controlHost).getOrThrow())
+            .isEqualTo(WorkloadPresence.Present(namespace = "default", resources = listOf("pod/draining-0")))
+
+        client
+            .pods()
+            .inNamespace("default")
+            .withName("draining-0")
+            .edit { pod -> pod.apply { metadata.finalizers = emptyList() } }
+
+        assertThat(probe.awaitGone("draining", podsRuntime("draining"), controlHost).getOrThrow())
+            .isEqualTo(WorkloadPresence.Absent)
+    }
+
+    /**
+     * The stop-then-start race: deleting a Deployment returns before the garbage collector has even
+     * marked its pods for deletion. Waiting ends only when no pod of the kit is left at all.
+     */
+    @Test
+    fun `waiting for a kit whose Deployment was just deleted ends only when its pods are gone`() {
+        val labels = mapOf("easydblab/kit" to "deployed")
+        client
+            .resource(
+                DeploymentBuilder()
+                    .withNewMetadata()
+                    .withName("deployed")
+                    .withNamespace("default")
+                    .endMetadata()
+                    .withNewSpec()
+                    .withReplicas(2)
+                    .withNewSelector()
+                    .withMatchLabels<String, String>(labels)
+                    .endSelector()
+                    .withNewTemplate()
+                    .withNewMetadata()
+                    .withLabels<String, String>(labels)
+                    .endMetadata()
+                    .withNewSpec()
+                    .withTerminationGracePeriodSeconds(0L)
+                    .addNewContainer()
+                    .withName("pause")
+                    .withImage("registry.k8s.io/pause:3.9")
+                    .endContainer()
+                    .endSpec()
+                    .endTemplate()
+                    .endSpec()
+                    .build(),
+            ).create()
+        client
+            .pods()
+            .inNamespace("default")
+            .withLabel("easydblab/kit", "deployed")
+            .informOnCondition { it.size == 2 }
+            .get(WAIT_SECONDS, TimeUnit.SECONDS)
+
+        client
+            .apps()
+            .deployments()
+            .inNamespace("default")
+            .withName("deployed")
+            .delete()
+
+        assertThat(probe.awaitGone("deployed", podsRuntime("deployed"), controlHost).getOrThrow())
+            .isEqualTo(WorkloadPresence.Absent)
+        assertThat(
+            client
+                .pods()
+                .inNamespace("default")
+                .withLabel("easydblab/kit", "deployed")
+                .list()
+                .items,
+        ).isEmpty()
     }
 }

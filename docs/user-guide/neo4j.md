@@ -88,4 +88,5 @@ easy-db-lab neo4j uninstall
 
 Installing Neo4j a second time fails with a collision error and exits non-zero, leaving the
 running kit untouched. Pass `--force` to overwrite the scaffold. Running `neo4j start` while Neo4j
-is already running also fails with a collision error; run `neo4j stop` first.
+is already running also fails with a collision error; run `neo4j stop` first. `stop` returns once
+the Neo4j pod is gone, so `start` can follow it straight away.

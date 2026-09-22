@@ -282,6 +282,12 @@ object Constants {
         // phases (start, stop, etc.) so they use the installed values instead of kit defaults.
         const val RESOLVED_ARGS_FILE = "kit-resolved-args.env"
 
+        // After a collision-checked kit's stop, how often and how many times to look for its
+        // pods before reporting the stop incomplete: 2s x 150 = 5 minutes, enough for a
+        // StatefulSet's or operator's cascading delete plus each pod's termination grace period.
+        val STOP_WAIT_POLL_INTERVAL: java.time.Duration = java.time.Duration.ofSeconds(2)
+        const val STOP_WAIT_MAX_POLLS = 150
+
         val SHELL_VAR_PATTERN = Regex("""\$\{(\w+)}""")
     }
 

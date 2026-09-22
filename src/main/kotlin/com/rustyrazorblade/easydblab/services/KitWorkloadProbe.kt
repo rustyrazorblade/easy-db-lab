@@ -1,7 +1,11 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesService
+import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
+import io.github.resilience4j.retry.Retry
+import java.time.Duration
 
 /** Whether a kit's workload is already in the cluster, as [KitWorkloadProbe] found it. */
 sealed interface WorkloadPresence {
@@ -19,23 +23,54 @@ sealed interface WorkloadPresence {
  * Looks in the cluster for a kit's running workload.
  *
  * `start` asks it before running a collision-checked kit's start phase, so that starting a kit that
- * is already running fails instead of re-applying over the live objects.
+ * is already running fails instead of re-applying over the live objects. `stop` asks it to wait for
+ * that workload to leave: deleting a StatefulSet, Deployment or operator resource returns before
+ * its pods are even marked for deletion, and a `start` right after would be refused.
  */
 class KitWorkloadProbe(
     private val kubeService: KubernetesService,
     private val helmService: HelmService,
+    private val pollInterval: Duration = Constants.Kit.STOP_WAIT_POLL_INTERVAL,
+    private val maxPolls: Int = Constants.Kit.STOP_WAIT_MAX_POLLS,
 ) {
     /** Finds [kitName]'s workload as its [runtime] declares it; a failed cluster query fails the result. */
     fun find(
         kitName: String,
         runtime: KitRuntime?,
         controlHost: ClusterHost,
+    ): Result<WorkloadPresence> = runCatching { lookUp(kitName, runtime, controlHost, countTerminating = false) }
+
+    /**
+     * Waits for [kitName]'s workload to leave the cluster: every pod its [runtime] selects,
+     * terminating ones included, or its helm release. Looks up to `maxPolls` times, `pollInterval`
+     * apart, and returns [WorkloadPresence.Absent] once nothing is left, or what was still there at
+     * the last look. A failed cluster query fails the result.
+     */
+    fun awaitGone(
+        kitName: String,
+        runtime: KitRuntime?,
+        controlHost: ClusterHost,
     ): Result<WorkloadPresence> =
         runCatching {
-            when (runtime?.type) {
-                KitRuntime.RuntimeType.HELM -> findHelmRelease(kitName, runtime, controlHost)
-                else -> findPods(podSelector(kitName, runtime), runtime?.namespace ?: DEFAULT_NAMESPACE)
-            }
+            var remaining: WorkloadPresence = WorkloadPresence.Absent
+            val retry = Retry.of("kit-stop-$kitName", RetryUtil.createPollUntilDoneRetryConfig(pollInterval, maxPolls))
+            Retry
+                .decorateSupplier(retry) {
+                    remaining = lookUp(kitName, runtime, controlHost, countTerminating = true)
+                    remaining == WorkloadPresence.Absent
+                }.get()
+            remaining
+        }
+
+    private fun lookUp(
+        kitName: String,
+        runtime: KitRuntime?,
+        controlHost: ClusterHost,
+        countTerminating: Boolean,
+    ): WorkloadPresence =
+        when (runtime?.type) {
+            KitRuntime.RuntimeType.HELM -> findHelmRelease(kitName, runtime, controlHost)
+            else -> findPods(podSelector(kitName, runtime), runtime?.namespace ?: DEFAULT_NAMESPACE, countTerminating)
         }
 
     private fun findHelmRelease(
@@ -48,12 +83,20 @@ class KitWorkloadProbe(
         return if (exists) WorkloadPresence.Present(runtime.namespace, listOf("helm-release/$release")) else WorkloadPresence.Absent
     }
 
+    /**
+     * The pods [selector] matches in [namespace]. A pod already being deleted is on its way out, so
+     * it counts only when [countTerminating] is set — when waiting for the workload to be gone.
+     */
     private fun findPods(
         selector: String,
         namespace: String,
+        countTerminating: Boolean,
     ): WorkloadPresence {
-        // A pod already being deleted is on its way out, e.g. after a `stop` just before `start`.
-        val pods = kubeService.listPodsByLabel(selector, namespace).getOrThrow().filterNot { it.terminating }
+        val pods =
+            kubeService
+                .listPodsByLabel(selector, namespace)
+                .getOrThrow()
+                .filter { countTerminating || !it.terminating }
         return if (pods.isEmpty()) {
             WorkloadPresence.Absent
         } else {

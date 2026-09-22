@@ -36,7 +36,7 @@
 ## 6. Verification
 
 - [x] 6.1 Run `./gradlew ktlintFormat && ./gradlew test && ./gradlew detekt` on JDK 21 — all pass
-- [ ] 6.2 Live cross-AZ validation (1 control + 2 db nodes in different AZs) — see acceptance scenarios: default `up` → native (no VXLAN), all agents Ready, `ciliumnode` shows ENIs+IPs per node, each pod IP in its node's AZ subnet, cross-AZ pod→pod by pod IP (curl/nc), pod→ClusterIP, pod→external URL, Hubble flows; operator-on-db-node allocates ENIs (IMDS fix)
+- [x] 6.2 Live cross-AZ validation (1 control + 2 db nodes in different AZs) — see acceptance scenarios: default `up` → native (no VXLAN), all agents Ready, `ciliumnode` shows ENIs+IPs per node, each pod IP in its node's AZ subnet, cross-AZ pod→pod by pod IP (curl/nc), pod→ClusterIP, pod→external URL, Hubble flows; operator-on-db-node allocates ENIs (IMDS fix)
 
 ## 7. Cilium observability
 

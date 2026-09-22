@@ -21,6 +21,9 @@ Inspect a kit before installing it — see its args, endpoints, and available co
 easy-db-lab kit info clickhouse
 ```
 
+Run from a cluster workspace, `kit info` lists each endpoint at its node's private IP. Before
+the cluster has hosts of that node type, it lists the bare NodePort (`:30123`).
+
 ## Installing a kit
 
 ```bash
@@ -122,12 +125,13 @@ easy-db-lab memcached start
 ```
 
 memcached is published on NodePort **31211**, so it is reachable on any node's private IP.
-`kit info memcached` lists the endpoint (`db  :31211  native`), and `memcached status` prints
-it resolved to each db node's private IP:
+`memcached start`, `memcached status` and `kit info memcached` all print the endpoint resolved
+to each db node's private IP:
 
 ```bash
-easy-db-lab memcached status
-#   memcached             native    <db node private IP>:31211
+easy-db-lab kit info memcached
+# Endpoints:
+#   memcached  db  <db node private IP>:31211  native
 ```
 
 Connect from a pod in the cluster, or from your machine over Tailscale:

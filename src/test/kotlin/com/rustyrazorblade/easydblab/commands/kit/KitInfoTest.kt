@@ -1,6 +1,8 @@
 package com.rustyrazorblade.easydblab.commands.kit
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.services.InstallTemplateResolver
 import com.rustyrazorblade.easydblab.services.KitCapability
 import com.rustyrazorblade.easydblab.services.KitConfig
@@ -33,13 +35,30 @@ class KitInfoTest : BaseKoinTest() {
             },
         )
 
-    private fun buildInfo(kitName: String): String {
+    private fun buildInfo(
+        kitName: String,
+        hosts: Map<ServerType, List<ClusterHost>> = emptyMap(),
+    ): String {
         val resolver = getKoin().get<InstallTemplateResolver>()
         val source = resolver.resolve(kitName)
         val config = resolver.loadInstallConfig(source) ?: error("No kit.yaml for $kitName")
         val templateFiles = resolver.listTemplateFiles(source).map { it.name }
-        return KitInfo.buildInfoText(config, templateFiles)
+        return KitInfo.buildInfoText(config, templateFiles, hosts = hosts)
     }
+
+    private val dbHosts =
+        mapOf(
+            ServerType.Cassandra to
+                listOf(
+                    ClusterHost(
+                        publicIp = "3.4.5.6",
+                        privateIp = "10.0.2.1",
+                        alias = "db0",
+                        availabilityZone = "us-west-2a",
+                        instanceId = "i-db0",
+                    ),
+                ),
+        )
 
     // ── Kit metadata (reads real kit files, no command-list assertions) ──────
 
@@ -69,6 +88,26 @@ class KitInfoTest : BaseKoinTest() {
         assertThat(output).contains(":30123")
         assertThat(output).contains("Native")
         assertThat(output).contains(":30900")
+    }
+
+    @Test
+    fun `memcached info resolves the endpoint to the db node private IP`() {
+        val output = buildInfo("memcached", dbHosts)
+        assertThat(output).contains("10.0.2.1:31211")
+    }
+
+    @Test
+    fun `neo4j info resolves Bolt and HTTP endpoints to the db node private IP`() {
+        val output = buildInfo("neo4j", dbHosts)
+        assertThat(output).contains("10.0.2.1:30687")
+        assertThat(output).contains("http://10.0.2.1:30474")
+    }
+
+    @Test
+    fun `endpoints keep the bare port when the cluster has no host of that node type`() {
+        val output = buildInfo("memcached")
+        assertThat(output).contains(":31211")
+        assertThat(output).doesNotContain("10.0.2.1")
     }
 
     @Test

@@ -65,7 +65,14 @@ class KitWorkloadProbeIntegrationTest {
         // The helm branch runs helm on the control node over SSH; no runtime here is helm-backed.
         probe = KitWorkloadProbe(DefaultKubernetesService(ProxiedKubernetesClientFactory(), kubeconfig), mock())
 
-        client.resource(NamespaceBuilder().withNewMetadata().withName(OTHER_NAMESPACE).endMetadata().build()).create()
+        client
+            .resource(
+                NamespaceBuilder()
+                    .withNewMetadata()
+                    .withName(OTHER_NAMESPACE)
+                    .endMetadata()
+                    .build(),
+            ).create()
         for (namespace in listOf("default", OTHER_NAMESPACE)) {
             // Pod admission needs the namespace's default ServiceAccount, which K3s creates asynchronously.
             client
@@ -85,22 +92,23 @@ class KitWorkloadProbeIntegrationTest {
         namespace: String = "default",
         finalizers: List<String> = emptyList(),
     ): Pod =
-        client.resource(
-            PodBuilder()
-                .withNewMetadata()
-                .withName(name)
-                .withNamespace(namespace)
-                .withLabels<String, String>(labels)
-                .withFinalizers(finalizers)
-                .endMetadata()
-                .withNewSpec()
-                .addNewContainer()
-                .withName("pause")
-                .withImage("registry.k8s.io/pause:3.9")
-                .endContainer()
-                .endSpec()
-                .build(),
-        ).create()
+        client
+            .resource(
+                PodBuilder()
+                    .withNewMetadata()
+                    .withName(name)
+                    .withNamespace(namespace)
+                    .withLabels<String, String>(labels)
+                    .withFinalizers(finalizers)
+                    .endMetadata()
+                    .withNewSpec()
+                    .addNewContainer()
+                    .withName("pause")
+                    .withImage("registry.k8s.io/pause:3.9")
+                    .endContainer()
+                    .endSpec()
+                    .build(),
+            ).create()
 
     @Test
     fun `finds nothing when no pod carries the runtime selector`() {
@@ -130,7 +138,11 @@ class KitWorkloadProbeIntegrationTest {
     fun `ignores pods that are already being deleted`() {
         // A finalizer holds the deleted pod in Terminating, as a slow shutdown after `stop` would.
         createPod("stopping-0", mapOf("easydblab/kit" to "stopping"), finalizers = listOf("easydblab.test/hold"))
-        client.pods().inNamespace("default").withName("stopping-0").delete()
+        client
+            .pods()
+            .inNamespace("default")
+            .withName("stopping-0")
+            .delete()
         client
             .pods()
             .inNamespace("default")

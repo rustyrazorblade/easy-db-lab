@@ -37,8 +37,8 @@ import com.rustyrazorblade.easydblab.services.aws.EMRService
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
 import okhttp3.OkHttpClient
 import org.koin.core.module.dsl.factoryOf
-import org.koin.core.parameter.parametersOf
 import org.koin.core.module.dsl.singleOf
+import org.koin.core.parameter.parametersOf
 import org.koin.dsl.bind
 import org.koin.dsl.module
 import java.time.Duration

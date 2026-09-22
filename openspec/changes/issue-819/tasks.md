@@ -88,10 +88,10 @@ All under `src/main/resources/com/rustyrazorblade/easydblab/kits/neo4j/`.
 
 ## 6. Live validation on AWS
 
-- [ ] 6.1 `./gradlew installDist`. No AMI bake: the existing AMIs already carry the Cilium node fixes (owner decision).
-- [ ] 6.2 `init` with no `--cni` (i4i.xlarge, 1 control + 2 db nodes in different AZs) and `up`;
+- [x] 6.1 `./gradlew installDist`. No AMI bake: the existing AMIs already carry the Cilium node fixes (owner decision).
+- [x] 6.2 `init` with no `--cni` (i4i.xlarge, 1 control + 2 db nodes in different AZs) and `up`;
       confirm `platform cni` reports Cilium native routing.
-- [ ] 6.3 Cross-AZ pod-to-pod connectivity by pod IP. This closes `cilium-native-routing` tasks 6.2
+- [x] 6.3 Cross-AZ pod-to-pod connectivity by pod IP. This closes `cilium-native-routing` tasks 6.2
       and 8.4 — check them off in `openspec/changes/cilium-native-routing/tasks.md`.
 - [ ] 6.4 hostPort check: install and start Flink or Presto; confirm its series appear in
       VictoriaMetrics. If they do not, add `set("cni.chainingMode=portmap")` to the `--set` list in
@@ -103,7 +103,7 @@ All under `src/main/resources/com/rustyrazorblade/easydblab/kits/neo4j/`.
 - [ ] 6.6 Neo4j: install, start, `RETURN 1` over `bolt://<db IP>:30687`, confirm `job="neo4j"`
       series and dashboard data, second install fails with `CollisionDetected`, stop, uninstall;
       confirm PVCs and PVs are gone.
-- [ ] 6.7 Provision a separate `--cni=flannel` cluster and confirm it comes up with Flannel.
+- [x] 6.7 Provision a separate `--cni=flannel` cluster and confirm it comes up with Flannel.
 
 ## 7. Build
 

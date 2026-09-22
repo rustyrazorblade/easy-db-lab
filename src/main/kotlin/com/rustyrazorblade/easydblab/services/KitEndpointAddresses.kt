@@ -52,7 +52,9 @@ object KitEndpointAddresses {
     fun toEndpointAddress(resolved: Resolved): Event.Kit.EndpointAddress =
         Event.Kit.EndpointAddress(
             name = resolved.endpoint.name,
-            type = resolved.endpoint.type.name.lowercase(),
+            type =
+                resolved.endpoint.type.name
+                    .lowercase(),
             address = resolved.address,
         )
 

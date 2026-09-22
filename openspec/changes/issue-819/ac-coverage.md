@@ -22,7 +22,8 @@
 | AC (neo4j) | `kit list` shows neo4j | `neo4j-kit: kit list shows neo4j` | ✅ Covered |
 | AC (neo4j) | Docs | Requirement `Neo4j kit is listed and documented` (text) | ⚠️ Excluded from scenarios — documentation content is not an observable runtime behaviour; stated in the requirement text and task 4.9 |
 | Risk | `hostPort` breaks under Cilium (Trino/Presto/Flink) | `networking: hostPort kit is reachable and scraped on a Cilium cluster`; `networking: portmap chaining survives an upgrade` | ✅ Covered |
-| Risk | AMI predating the Cilium fixes | `networking: OS leaves Cilium's secondary ENIs unmanaged` | ✅ Covered — the scenario pins the AMI-baked drop-ins; tasks 1.8 and 6.1 require the rebuild |
+| Risk | AMI predating the Cilium fixes | `networking: OS leaves Cilium's secondary ENIs unmanaged` | ✅ Covered — the scenario pins the AMI-baked drop-ins; task 1.8 documents the rebuild for AMIs older than `cilium-native-routing`; the owner's AMIs already carry the fixes (task 6.1) |
+| Risk | Cilium health reports peers unreachable (no ICMP in the security group; found live) | `networking: Nodes answer ping inside the VPC`; `networking: Cilium health reaches every node`; `networking: ICMP rule is described correctly` | ✅ Covered |
 | Risk | Neo4j Community lacks database-level metrics | `neo4j-kit: Metrics arrive under job neo4j`; `neo4j-kit: Dashboard shows live data` | ✅ Covered — requirement makes db-level metrics conditional; JVM panels guarantee live data |
 | Risk | `OTEL_SERVICE_NAME` missing → `job` unknown | `neo4j-kit: Metrics arrive under job neo4j` | ✅ Covered |
 | Risk | Neo4j config keys are version-specific | `neo4j-kit: Default version`; `neo4j-kit: Explicit supported version` | ✅ Covered — versions restricted to 5.x and 2025.x, which share the `server.*` keys |

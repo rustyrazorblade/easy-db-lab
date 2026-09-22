@@ -22,7 +22,7 @@ The system SHALL use Cilium in ENI IPAM native-routing mode as the default pod-n
 
 #### Scenario: Cross-AZ pod-to-pod routing without a tunnel
 - **GIVEN** a Cilium cluster with a pod on a node in AZ-a and a pod on a node in AZ-b
-- **WHEN** the AZ-a pod connects to the AZ-b pod by its pod IP (via curl/nc; ICMP is not permitted by the security group)
+- **WHEN** the AZ-a pod connects to the AZ-b pod by its pod IP (via curl/nc and ping)
 - **THEN** the connection succeeds, routed by the VPC with no encapsulation
 
 #### Scenario: Cilium pod reaches a ClusterIP service and an external address
@@ -79,3 +79,19 @@ On a Cilium cluster, a pod that declares a container `hostPort` SHALL be reachab
 #### Scenario: portmap chaining survives an upgrade
 - **WHEN** portmap chaining is required and `up` re-runs `cilium upgrade` on an existing Cilium cluster
 - **THEN** the upgrade carries the same `cni.chainingMode=portmap` flag as the install, so `hostPort` keeps working
+
+### Requirement: Cluster security group permits ICMP within the VPC
+The cluster security group SHALL allow ICMP of every type and code from the VPC CIDR, alongside the existing TCP and UDP rules for the VPC CIDR. Cilium's health checker probes nodes with ICMP, so without this rule a healthy Cilium cluster reports its peer nodes as unreachable. The rule SHALL NOT allow ICMP from outside the VPC. An existing identical rule SHALL be detected and not added twice, and the rule SHALL be described to the user as "all ICMP types", not as a port number.
+
+#### Scenario: Nodes answer ping inside the VPC
+- **WHEN** a cluster is provisioned
+- **THEN** its security group has an ICMP rule (all types, all codes) from the VPC CIDR
+- **AND** a node can ping another node's private IP, and a pod can ping another pod's IP
+
+#### Scenario: Cilium health reaches every node
+- **WHEN** a Cilium cluster is provisioned
+- **THEN** `cilium-dbg status` on every node reports all cluster nodes reachable
+
+#### Scenario: ICMP rule is described correctly
+- **WHEN** the ICMP rule is added or found to exist
+- **THEN** the log line and the `SecurityGroupRuleConfigured` event describe it as "all ICMP types"

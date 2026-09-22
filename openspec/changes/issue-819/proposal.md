@@ -41,8 +41,11 @@ expose client ports through a NodePort Service, never `hostPort` or `hostNetwork
 - **Fold-in.** The `KitMetrics.JavaAgent` KDoc in `services/KitConfig.kt` is corrected: the agent
   pushes over OTLP declaratively and needs no ConfigMap.
 - **Docs.** `docs/user-guide/networking.md`, `docs/user-guide/platform-substrate.md`, the CNI line
-  in `CLAUDE.md` and `configuration/CLAUDE.md` state the new default and that AMIs must be rebuilt
-  (`build-image`) to carry the Cilium node fixes. `docs/user-guide/kits.md` and
+  in `CLAUDE.md` and `configuration/CLAUDE.md` state the new default and that AMIs built before
+  the `cilium-native-routing` change must be rebuilt (`build-image`) to carry the Cilium node fixes.
+- **ICMP inside the VPC.** The cluster security group allows ICMP (all types) from the VPC CIDR,
+  so ping works between nodes and pods and Cilium's health checker sees every node. Found during
+  live validation; the rule is described to the user as "all ICMP types". `docs/user-guide/kits.md` and
   `docs/reference/ports.md` list memcached; a new `docs/user-guide/neo4j.md` (linked from
   `SUMMARY.md`) covers Neo4j.
 
@@ -78,6 +81,10 @@ expose client ports through a NodePort Service, never `hostPort` or `hostNetwork
   `docs/user-guide/networking.md`, `docs/user-guide/platform-substrate.md`,
   `docs/user-guide/kits.md`, `docs/reference/ports.md`, `docs/user-guide/neo4j.md`,
   `docs/SUMMARY.md`.
-- AMIs: existing AMIs predate the Cilium node fixes (cloud-init hotplug, systemd-networkd ENI
-  drop-ins); a rebuild via `build-image` is required before the default provisions reliably.
+- AMIs: AMIs built before the `cilium-native-routing` change lack the Cilium node fixes
+  (cloud-init hotplug, systemd-networkd ENI drop-ins) and must be rebuilt with `build-image`.
+  AMIs built after it need no rebuild for this change (owner decision: no bake in this change).
+- `src/main/kotlin/com/rustyrazorblade/easydblab/services/aws/AwsInfrastructureService.kt`,
+  `EC2VpcService.kt`, `Constants.kt` — ICMP ingress rule from the VPC CIDR (found in live
+  validation; Cilium health reported peers unreachable without it).
 - Ordering: `cilium-native-routing` must be archived before this change.

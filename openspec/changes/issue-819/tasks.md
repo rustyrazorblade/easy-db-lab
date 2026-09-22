@@ -20,6 +20,11 @@
       the default and `--cni=flannel` selects Flannel.
 - [x] 1.8 Docs: note in `docs/user-guide/networking.md` that AMIs built before this change lack the
       Cilium node fixes and must be rebuilt with `build-image`.
+- [x] 1.9 Security group: allow ICMP (all types) from the VPC CIDR in
+      `AwsInfrastructureService.setupVpcNetworking`; constants in `Constants.Network`; tests.
+      (Found in live validation; owner directive: fix bugs in this PR.)
+- [x] 1.10 `EC2VpcService`: describe the ICMP rule as "all ICMP types" in the log line and the
+      `SecurityGroupRuleConfigured` event text; tests.
 
 ## 2. Kit port convention
 

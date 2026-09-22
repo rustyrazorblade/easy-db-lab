@@ -29,9 +29,9 @@ endpoints:
 args:
   - flag: --version
     variable: NEO4J_VERSION
-    description: "Neo4j Community version, 5.x or 2025.x (image neo4j:<version>-community)"
+    description: "Neo4j Community version, 5.x or a calendar release such as 2026.x (image neo4j:<version>-community)"
     type: string
-    default: "2025.12.1"
+    default: "2026.09.0"
   - flag: --storage-size
     variable: STORAGE_SIZE
     description: "Persistent volume size for the Neo4j data directory"
@@ -48,14 +48,14 @@ start:
   # The Bolt advertised address must be an address clients can dial: the first db node's
   # private IP and the Bolt NodePort. No template variable carries a single db node IP, so this
   # step reads it from DB_NODE_IPS and publishes it in a ConfigMap the StatefulSet reads.
-  # It also rejects a version outside 5.x and 2025.x, whose config keys differ, before anything
-  # is applied.
+  # It also rejects 4.x and earlier, whose config keys differ from 5.x and the calendar releases
+  # (2025.x, 2026.x, ...), before anything is applied.
   - type: shell
     script: |
       #!/usr/bin/env bash
       set -euo pipefail
-      if [[ ! "${NEO4J_VERSION}" =~ ^(5|2025)\.[0-9]+\.[0-9]+$ ]]; then
-        echo "ERROR: Neo4j version '${NEO4J_VERSION}' is not supported; use a 5.x or 2025.x release." >&2
+      if [[ ! "${NEO4J_VERSION}" =~ ^(5|20[2-9][0-9])\.[0-9]+\.[0-9]+$ ]]; then
+        echo "ERROR: Neo4j version '${NEO4J_VERSION}' is not supported; use a 5.x or calendar-versioned (2025.x or later) release." >&2
         exit 1
       fi
       FIRST_DB_IP="${DB_NODE_IPS%%,*}"

@@ -223,13 +223,15 @@ class Neo4jKitTest : BaseKoinTest() {
         }
 
         @Test
-        fun `start accepts a 2025 calendar version`() {
-            assertThat(runStartScript("2025.05.0")).isEqualTo(0)
+        fun `start accepts 5 x and calendar-versioned releases, including the default`() {
+            assertThat(listOf("5.26.0", "2025.05.0", "2026.09.0", versionArg().default))
+                .allSatisfy { version -> assertThat(runStartScript(version)).isEqualTo(0) }
         }
 
         @Test
-        fun `start refuses a version outside 5 x and 2025 x before touching the cluster`() {
-            assertThat(runStartScript("4.4.30")).isNotEqualTo(0)
+        fun `start refuses 4 x and earlier before touching the cluster`() {
+            assertThat(listOf("4.4.0", "4.4.30", "3.5.35"))
+                .allSatisfy { version -> assertThat(runStartScript(version)).isNotEqualTo(0) }
             assertThat(stub.invocations()).isEmpty()
         }
     }
@@ -255,7 +257,7 @@ class Neo4jKitTest : BaseKoinTest() {
     private companion object {
         const val KIT_LABEL = "easydblab/kit"
         const val BOLT_NODE_PORT = 30687
-        val SUPPORTED_VERSION = Regex("""^(5|2025)\.\d+\.\d+$""").toPattern()
+        val SUPPORTED_VERSION = Regex("""^(5|20[2-9]\d)\.\d+\.\d+$""").toPattern()
     }
 }
 

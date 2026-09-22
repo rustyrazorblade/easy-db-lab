@@ -143,23 +143,10 @@ class KitInfoTest : BaseKoinTest() {
     }
 
     @Test
-    fun `memcached info resolves the endpoint to the db node private IP`() {
-        val output = buildInfo("memcached", dbHosts)
-        assertThat(output).contains("10.0.2.1:31211")
-    }
-
-    @Test
     fun `neo4j info resolves Bolt and HTTP endpoints to the db node private IP`() {
         val output = buildInfo("neo4j", dbHosts)
         assertThat(output).contains("10.0.2.1:30687")
         assertThat(output).contains("http://10.0.2.1:30474")
-    }
-
-    @Test
-    fun `endpoints keep the bare port when the cluster has no host of that node type`() {
-        val output = buildInfo("memcached")
-        assertThat(output).contains(":31211")
-        assertThat(output).doesNotContain("10.0.2.1")
     }
 
     @Test

@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.events.Event
 import io.github.oshai.kotlinlogging.KotlinLogging
 
 /**
@@ -47,9 +48,14 @@ object KitEndpointAddresses {
             privateIps(endpoint.nodeType, hosts).map { ip -> Resolved(endpoint, endpoint.formatUrl(ip)) }
         }
 
+    /** The structured form of one resolved endpoint, as carried by kit events. */
+    fun toEndpointAddress(resolved: Resolved): Event.Kit.EndpointAddress =
+        Event.Kit.EndpointAddress(
+            name = resolved.endpoint.name,
+            type = resolved.endpoint.type.name.lowercase(),
+            address = resolved.address,
+        )
+
     /** Renders resolved endpoints as indented `name  type  address` lines. */
-    fun formatLines(resolved: List<Resolved>): String =
-        resolved.joinToString("\n") { (endpoint, address) ->
-            "  %-20s  %-8s  %s".format(endpoint.name, endpoint.type.name.lowercase(), address)
-        }
+    fun formatLines(resolved: List<Resolved>): String = resolved.joinToString("\n") { toEndpointAddress(it).displayLine() }
 }

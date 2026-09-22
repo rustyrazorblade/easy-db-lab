@@ -5380,6 +5380,31 @@ sealed interface Event {
             override fun toDisplayString(): String = "[$kit] metrics registered on ports ${ports.joinToString()}"
         }
 
+        /** One declared kit endpoint resolved to a connectable [address] on one host. */
+        @Serializable
+        @SerialName("Kit.EndpointAddress")
+        data class EndpointAddress(
+            val name: String,
+            val type: String,
+            val address: String,
+        ) {
+            /** Renders this endpoint as an indented `name  type  address` line. */
+            fun displayLine(): String = "  %-20s  %-8s  %s".format(name, type, address)
+        }
+
+        /**
+         * A kit started and its declared endpoints are reachable at [endpoints] — one entry per
+         * endpoint per host of the endpoint's node type, at the host's private IP.
+         */
+        @Serializable
+        @SerialName("Kit.EndpointsAvailable")
+        data class EndpointsAvailable(
+            val kit: String,
+            val endpoints: List<EndpointAddress>,
+        ) : Kit {
+            override fun toDisplayString(): String = "Endpoints:\n" + endpoints.joinToString("\n") { it.displayLine() }
+        }
+
         @Serializable
         @SerialName("Kit.MetricsDeregistered")
         data class MetricsDeregistered(

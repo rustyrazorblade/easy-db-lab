@@ -8,6 +8,10 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.services.DefaultKitEndpointResolver
 import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
 import com.rustyrazorblade.easydblab.services.KitEndpointResolver
@@ -258,16 +262,19 @@ class KitRunnerCommandTest : BaseKoinTest() {
         verify(mockMetricsRegistryService).register(any(), any(), any())
     }
 
-    private fun captureStdout(block: () -> Unit): String {
-        val original = System.out
-        val buffer = java.io.ByteArrayOutputStream()
-        System.setOut(java.io.PrintStream(buffer))
-        try {
-            block()
-        } finally {
-            System.setOut(original)
-        }
-        return buffer.toString()
+    private fun captureEvents(block: () -> Unit): List<Event> {
+        val captured = mutableListOf<Event>()
+        get<EventBus>().addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    captured.add(envelope.event)
+                }
+
+                override fun close() = Unit
+            },
+        )
+        block()
+        return captured
     }
 
     private val boltAndHttpEndpoints =
@@ -283,8 +290,7 @@ class KitRunnerCommandTest : BaseKoinTest() {
             type: http
         """.trimIndent()
 
-    @Test
-    fun `successful start reports declared endpoints at the node private IP`() {
+    private fun writeStartKitWithEndpoints() =
         writeKitYaml(
             "mydb",
             "name: mydb\n$boltAndHttpEndpoints\n" +
@@ -294,9 +300,39 @@ class KitRunnerCommandTest : BaseKoinTest() {
                     script: echo hello
                 """.trimIndent(),
         )
-        val output = captureStdout { command("mydb", "start").call() }
-        assertThat(output).contains("10.0.2.1:30687")
-        assertThat(output).contains("http://10.0.2.1:30474")
+
+    @Test
+    fun `successful start emits the declared endpoints at the node private IP`() {
+        writeStartKitWithEndpoints()
+
+        val events = captureEvents { command("mydb", "start").call() }
+
+        val available = events.filterIsInstance<Event.Kit.EndpointsAvailable>().single()
+        assertThat(available.kit).isEqualTo("mydb")
+        assertThat(available.endpoints).containsExactly(
+            Event.Kit.EndpointAddress(name = "bolt", type = "native", address = "10.0.2.1:30687"),
+            Event.Kit.EndpointAddress(name = "http", type = "http", address = "http://10.0.2.1:30474"),
+        )
+        assertThat(available.toDisplayString()).contains("Endpoints:", "10.0.2.1:30687", "http://10.0.2.1:30474")
+    }
+
+    @Test
+    fun `a failure reporting endpoints does not turn a successful start into a failure`() {
+        writeStartKitWithEndpoints()
+        get<EventBus>().addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    if (envelope.event is Event.Kit.EndpointsAvailable) throw IllegalStateException("listener down")
+                }
+
+                override fun close() = Unit
+            },
+        )
+
+        val exitCode = command("mydb", "start").call()
+
+        assertThat(exitCode).isEqualTo(0)
+        verify(mockClusterStateManager).addRunningWorkload("mydb")
     }
 
     @Test
@@ -310,8 +346,8 @@ class KitRunnerCommandTest : BaseKoinTest() {
                     script: echo bye
                 """.trimIndent(),
         )
-        val output = captureStdout { command("mydb", "stop").call() }
-        assertThat(output).doesNotContain("10.0.2.1:30687")
+        val events = captureEvents { command("mydb", "stop").call() }
+        assertThat(events.filterIsInstance<Event.Kit.EndpointsAvailable>()).isEmpty()
     }
 
     @Test

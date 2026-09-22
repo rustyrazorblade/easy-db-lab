@@ -245,7 +245,7 @@ class KitRunnerCommand(
                         ).onFailure { e -> log.warn(e) { "Failed to register metrics for $kitName" } }
                 }
                 installDashboards(config.dashboards)
-                printEndpoints(config)
+                reportEndpoints(config)
             }
             Constants.Kit.PHASE_STOP -> {
                 clusterStateManager.removeRunningWorkload(kitName)
@@ -257,11 +257,22 @@ class KitRunnerCommand(
         }
     }
 
-    /** Tells the user where to connect: every declared endpoint at its node's private IP. */
-    private fun printEndpoints(config: KitConfig) {
-        val resolved = KitEndpointAddresses.resolve(config.endpoints, clusterState.hosts)
-        if (resolved.isEmpty()) return
-        println("Endpoints:\n${KitEndpointAddresses.formatLines(resolved)}")
+    /**
+     * Reports where to connect: every declared endpoint at its node's private IP. The kit has
+     * already started, so a failure here is logged and never turns the start into a failure.
+     */
+    private fun reportEndpoints(config: KitConfig) {
+        runCatching {
+            val resolved = KitEndpointAddresses.resolve(config.endpoints, clusterState.hosts)
+            if (resolved.isNotEmpty()) {
+                eventBus.emit(
+                    Event.Kit.EndpointsAvailable(
+                        kit = kitName,
+                        endpoints = resolved.map { KitEndpointAddresses.toEndpointAddress(it) },
+                    ),
+                )
+            }
+        }.onFailure { e -> log.warn(e) { "Failed to report endpoints for $kitName" } }
     }
 
     private fun installDashboards(dashboards: List<DashboardRef>) {

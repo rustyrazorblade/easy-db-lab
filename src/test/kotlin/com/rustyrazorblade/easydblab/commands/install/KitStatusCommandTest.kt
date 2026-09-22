@@ -19,6 +19,7 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
@@ -79,12 +80,15 @@ class KitStatusCommandTest : BaseKoinTest() {
             age = Duration.ofMinutes(1),
         )
 
-    private fun runStatus(pods: List<KubernetesPod>): String {
+    private fun runStatus(
+        pods: List<KubernetesPod>,
+        runtime: KitRuntime? = KitRuntime(type = KitRuntime.RuntimeType.PODS, selector = "easydblab/kit=mydb"),
+    ): String {
         whenever(mockKubeService.listPodsByLabel(any(), any())).thenReturn(Result.success(pods))
         val config =
             KitConfig(
                 name = "mydb",
-                runtime = KitRuntime(type = KitRuntime.RuntimeType.PODS, selector = "easydblab/kit=mydb"),
+                runtime = runtime,
                 endpoints =
                     listOf(
                         KitEndpoint(name = "bolt", nodeType = "db", port = 30687, type = KitEndpoint.EndpointType.NATIVE),
@@ -115,6 +119,30 @@ class KitStatusCommandTest : BaseKoinTest() {
 
         assertThat(output).contains("Stopped")
         assertThat(output).doesNotContain("30687")
+    }
+
+    @Test
+    fun `status fills KIT_NAME into the runtime selector and queries the runtime namespace`() {
+        runStatus(
+            emptyList(),
+            KitRuntime(type = KitRuntime.RuntimeType.STATEFULSET, selector = "app=\${KIT_NAME}-db", namespace = "data"),
+        )
+
+        verify(mockKubeService).listPodsByLabel("app=mydb-db", "data")
+    }
+
+    @Test
+    fun `status looks a runtime without a selector up by app kubernetes io name`() {
+        runStatus(emptyList(), KitRuntime(type = KitRuntime.RuntimeType.PODS))
+
+        verify(mockKubeService).listPodsByLabel("app.kubernetes.io/name=mydb", "default")
+    }
+
+    @Test
+    fun `status looks a kit without a runtime block up by app kubernetes io name`() {
+        runStatus(emptyList(), runtime = null)
+
+        verify(mockKubeService).listPodsByLabel("app.kubernetes.io/name=mydb", "default")
     }
 
     private fun endpoint(

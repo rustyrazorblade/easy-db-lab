@@ -290,8 +290,9 @@ class InitTest : BaseKoinTest() {
     @Nested
     inner class CniSelection {
         @Test
-        fun `defaults the persisted CNI to Cilium`() {
+        fun `execute persists Cilium as the default cni when --cni is omitted`() {
             val command = Init()
+            picocli.CommandLine(command).parseArgs()
             command.clean = true
             command.execute()
 
@@ -311,18 +312,6 @@ class InitTest : BaseKoinTest() {
                 argThat { initConfig?.cni == CniMode.Flannel },
             )
         }
-
-        @Test
-        fun `persists Cilium when --cni cilium is selected`() {
-            val command = Init()
-            command.clean = true
-            command.cni = CniMode.Cilium
-            command.execute()
-
-            verify(mockClusterStateManager).save(
-                argThat { initConfig?.cni == CniMode.Cilium },
-            )
-        }
     }
 
     @Nested
@@ -340,33 +329,6 @@ class InitTest : BaseKoinTest() {
             // save is called twice: once in prepareEnvironment, once after setting VPC
             verify(mockClusterStateManager, atLeastOnce()).save(
                 argThat { vpcId == "vpc-existing123" },
-            )
-        }
-    }
-
-    @Nested
-    inner class CniOptions {
-        @Test
-        fun `execute persists Cilium as the default cni when --cni is omitted`() {
-            val command = Init()
-            picocli.CommandLine(command).parseArgs()
-            command.clean = true
-            command.execute()
-
-            verify(mockClusterStateManager).save(
-                argThat { initConfig?.cni == CniMode.Cilium },
-            )
-        }
-
-        @Test
-        fun `execute persists Cilium when cni is set to Cilium`() {
-            val command = Init()
-            command.clean = true
-            command.cni = CniMode.Cilium
-            command.execute()
-
-            verify(mockClusterStateManager).save(
-                argThat { initConfig?.cni == CniMode.Cilium },
             )
         }
     }

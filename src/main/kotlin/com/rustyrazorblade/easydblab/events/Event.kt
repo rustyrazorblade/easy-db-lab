@@ -5297,12 +5297,21 @@ sealed interface Event {
             override fun toDisplayString(): String = "Warning: unresolved template variables in '$kit': ${variables.joinToString(", ")}"
         }
 
+        /**
+         * `kit install` refused a collision-checked kit because its scaffold already exists in
+         * [outputDir]. Nothing was written and no install step ran; `--force` overrides.
+         */
         @Serializable
         @SerialName("Install.CollisionDetected")
         data class CollisionDetected(
             val kit: String,
+            val outputDir: String,
         ) : Install {
-            override fun toDisplayString(): String = "Warning: '$kit' appears to already be deployed. Use --force to overwrite scaffold."
+            override fun toDisplayString(): String =
+                "Error: '$kit' is already installed in $outputDir. " +
+                    "Run 'easy-db-lab $kit uninstall' first, or pass --force to overwrite the scaffold."
+
+            override fun isError(): Boolean = true
         }
 
         @Serializable

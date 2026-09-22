@@ -7,8 +7,13 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
 import com.rustyrazorblade.easydblab.services.InstallTemplateResolver
+import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitHookExecutor
 import com.rustyrazorblade.easydblab.services.KitSourcesProvider
 import com.rustyrazorblade.easydblab.services.MetricsRegistryService
@@ -152,21 +157,68 @@ class KitEndToEndTest : BaseKoinTest() {
         assertThat(script).contains("REPLICAS=5")
     }
 
-    @Test
-    fun `collision check blocks install when kit dir already exists`() {
+    private fun collisionCheckedTestdb(): Pair<KitConfig, InstallTemplateResolver.TemplateSource> {
         val resolver = get<InstallTemplateResolver>()
         val source = resolver.resolve("testdb")
-        val config =
-            requireNotNull(resolver.loadInstallConfig(source))
-                .copy(collisionCheck = true)
+        val config = requireNotNull(resolver.loadInstallConfig(source)).copy(collisionCheck = true)
+        return config to source
+    }
 
-        File(workingDir, "testdb").mkdirs()
-        File(workingDir, "testdb/existing.txt").writeText("occupied")
-
+    private fun install(
+        config: KitConfig,
+        source: InstallTemplateResolver.TemplateSource,
+        force: Boolean = false,
+    ): Int {
         val installCmd = KitInstallCommand(config, source)
         installCmd.argValues["STORAGE_SIZE"] = "100Gi"
-        installCmd.call()
+        installCmd.force = force
+        return installCmd.call()
+    }
 
-        assertThat(File(workingDir, "testdb/bin/start.sh")).doesNotExist()
+    private fun captureEvents(): List<Event> {
+        val captured = mutableListOf<Event>()
+        get<EventBus>().addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    captured.add(envelope.event)
+                }
+
+                override fun close() = Unit
+            },
+        )
+        return captured
+    }
+
+    @Test
+    fun `second install of a collision-checked kit fails with CollisionDetected and leaves the scaffold alone`() {
+        val (config, source) = collisionCheckedTestdb()
+        assertThat(install(config, source)).isEqualTo(0)
+        val marker = File(workingDir, "testdb/edited-by-user.txt").apply { writeText("keep me") }
+        val events = captureEvents()
+
+        val exitCode = install(config, source)
+
+        assertThat(exitCode).isNotEqualTo(0)
+        val collision = events.filterIsInstance<Event.Install.CollisionDetected>().single()
+        assertThat(collision.kit).isEqualTo("testdb")
+        assertThat(collision.isError()).isTrue()
+        assertThat(collision.toDisplayString()).startsWith("Error:").contains("testdb", "--force")
+        assertThat(events).noneMatch { it is Event.Install.ScaffoldComplete }
+        assertThat(marker).hasContent("keep me")
+    }
+
+    @Test
+    fun `--force reinstalls a collision-checked kit over its existing scaffold`() {
+        val (config, source) = collisionCheckedTestdb()
+        assertThat(install(config, source)).isEqualTo(0)
+        val marker = File(workingDir, "testdb/edited-by-user.txt").apply { writeText("replaced") }
+        val events = captureEvents()
+
+        val exitCode = install(config, source, force = true)
+
+        assertThat(exitCode).isEqualTo(0)
+        assertThat(events).noneMatch { it is Event.Install.CollisionDetected }
+        assertThat(File(workingDir, "testdb/bin/start.sh")).exists()
+        assertThat(marker).doesNotExist()
     }
 }

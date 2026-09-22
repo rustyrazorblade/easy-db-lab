@@ -41,6 +41,14 @@ class KitInstallCommand(
      */
     internal val resolvedDefaults: MutableMap<String, String> = mutableMapOf()
 
+    /** Non-zero when [execute] refused the install after reporting why through an error event. */
+    private var exitCode: Int = 0
+
+    override fun call(): Int {
+        val lifecycleExit = super.call()
+        return if (lifecycleExit != 0) lifecycleExit else exitCode
+    }
+
     override fun execute() {
         // Fail fast if the cluster lacks the required node pool
         config.type?.let { kitType ->
@@ -66,7 +74,8 @@ class KitInstallCommand(
         if (config.collisionCheck && !force) {
             val outputDir = File(context.workingDirectory, instanceName)
             if (outputDir.isDirectory && outputDir.listFiles().orEmpty().isNotEmpty()) {
-                eventBus.emit(Event.Install.CollisionDetected(kit = instanceName))
+                eventBus.emit(Event.Install.CollisionDetected(kit = instanceName, outputDir = outputDir.path))
+                exitCode = Constants.ExitCodes.ERROR
                 return
             }
         }

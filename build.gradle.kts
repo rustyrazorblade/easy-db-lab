@@ -378,6 +378,12 @@ tasks.named<Test>("test") {
         .withPropertyName("sysbenchUserGuide")
         .withPathSensitivity(PathSensitivity.RELATIVE)
 
+    // DevLauncherTelemetryTest runs the dev wrapper against a stub docker and launcher.
+    inputs
+        .file("bin/easy-db-lab")
+        .withPropertyName("devLauncher")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+
     // StartScriptTelemetryTest runs the generated Unix start script, the launcher a Homebrew
     // user runs, to check which OpenTelemetry exporter settings it hands the JVM.
     val startScript = layout.buildDirectory.file("scripts/easy-db-lab")

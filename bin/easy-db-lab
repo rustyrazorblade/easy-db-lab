@@ -52,8 +52,10 @@ if [ "${EASY_DB_LAB_USE_DOCKER}" = "1" ]; then
         exit 1
     fi
 
-    # Discover the dynamically assigned port
-    OTEL_PORT=$(docker compose -p easy-db-lab -f "${APP_HOME}/docker-compose.yml" port otel-collector 4317 2>/dev/null | cut -d: -f2)
+    # Discover the dynamically assigned host port of the collector's OTLP/HTTP
+    # receiver (4318). The agent's default protocol is http/protobuf, which the
+    # gRPC receiver on 4317 does not speak.
+    OTEL_PORT=$(docker compose -p easy-db-lab -f "${APP_HOME}/docker-compose.yml" port otel-collector 4318 2>/dev/null | cut -d: -f2)
     export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:${OTEL_PORT}"
     export EASY_DB_LAB_REDIS_URL="redis://localhost:6399/easydblab-events"
     # Route OTel agent logs through the application logger (logback) instead of stdout.

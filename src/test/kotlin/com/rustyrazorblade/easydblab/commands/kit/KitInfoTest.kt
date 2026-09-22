@@ -11,6 +11,7 @@ import com.rustyrazorblade.easydblab.services.InstallTemplateResolver
 import com.rustyrazorblade.easydblab.services.KitCapability
 import com.rustyrazorblade.easydblab.services.KitCommandScanner
 import com.rustyrazorblade.easydblab.services.KitConfig
+import com.rustyrazorblade.easydblab.services.KitEndpoint
 import com.rustyrazorblade.easydblab.services.KitSourcesProvider
 import com.rustyrazorblade.easydblab.services.TemplateService
 import org.assertj.core.api.Assertions.assertThat
@@ -159,6 +160,22 @@ class KitInfoTest : BaseKoinTest() {
         val output = buildInfo("memcached")
         assertThat(output).contains(":31211")
         assertThat(output).doesNotContain("10.0.2.1")
+    }
+
+    @Test
+    fun `an endpoint with an unknown node type is listed by its bare port`() {
+        val config =
+            KitConfig(
+                name = "mykit",
+                endpoints =
+                    listOf(
+                        KitEndpoint(name = "api", nodeType = "bogus", port = 31999, type = KitEndpoint.EndpointType.HTTP),
+                    ),
+            )
+
+        val output = KitInfo.buildInfoText(config, emptyList(), hosts = dbHosts)
+
+        assertThat(output).contains("api  bogus  :31999  http")
     }
 
     @Test

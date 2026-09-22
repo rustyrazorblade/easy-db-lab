@@ -56,6 +56,10 @@ Events are organized by domain as sealed sub-interfaces of `Event`:
 - `Event.Metrics.*` — Metrics backup and import
 - `Event.Setup.*` — Profile setup and initialization
 - `Event.Ssh.*` — SSH remote command execution
+- `Event.Kit.*` — Kit phase execution (script and step start/finish/failure, metrics registration, hooks, requirements) and `Kit.EndpointsAvailable`, the declared endpoints resolved to node private IPs after a successful start
+- `Event.Cleanup.*` — Per-node kit cleanup progress and completion
+- `Event.Server.*` — Server lifecycle (shutdown when the cluster's VPC no longer exists)
+- `Event.Sql.*` — Shared SQL query results, used by every SQL kit command
 - `Event.Message` / `Event.Error` — Generic types (kept for tests only, zero production usage)
 
 ## Adding New Events

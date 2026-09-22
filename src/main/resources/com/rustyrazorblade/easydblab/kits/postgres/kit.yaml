@@ -66,10 +66,11 @@ start:
   - type: shell
     script: |
       echo "Waiting for PostgreSQL instance pods to be created..."
-      until kubectl get pods -l cnpg.io/podRole=instance -n default --no-headers 2>/dev/null | grep -q .; do sleep 5; done
+      # Scoped to this instance's Cluster: postgres and postgres-<extension> run side by side.
+      until kubectl get pods -l "cnpg.io/cluster=${KIT_NAME},cnpg.io/podRole=instance" -n default --no-headers 2>/dev/null | grep -q .; do sleep 5; done
       echo "Pods found, waiting for Ready..."
       kubectl wait --for=condition=Ready pods \
-        -l cnpg.io/podRole=instance \
+        -l "cnpg.io/cluster=${KIT_NAME},cnpg.io/podRole=instance" \
         --namespace default \
         --timeout=300s
   - type: manifest

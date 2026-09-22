@@ -93,5 +93,5 @@ The cluster security group SHALL allow ICMP of every type and code from the VPC 
 - **THEN** `cilium-dbg status` on every node reports all cluster nodes reachable
 
 #### Scenario: ICMP rule is described correctly
-- **WHEN** the ICMP rule is added or found to exist
-- **THEN** the log line and the `SecurityGroupRuleConfigured` event describe it as "all ICMP types"
+- **WHEN** the ICMP rule is added, or found to exist
+- **THEN** the log line describes it as "all ICMP types", and when the rule is added the `SecurityGroupRuleConfigured` event describes it the same way

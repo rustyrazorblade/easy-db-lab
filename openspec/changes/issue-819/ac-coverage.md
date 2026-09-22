@@ -26,7 +26,7 @@
 | Risk | Cilium health reports peers unreachable (no ICMP in the security group; found live) | `networking: Nodes answer ping inside the VPC`; `networking: Cilium health reaches every node`; `networking: ICMP rule is described correctly` | ✅ Covered |
 | Risk | Neo4j Community lacks database-level metrics | `neo4j-kit: Metrics arrive under job neo4j`; `neo4j-kit: Dashboard shows live data` | ✅ Covered — requirement makes db-level metrics conditional; JVM panels guarantee live data |
 | Risk | `OTEL_SERVICE_NAME` missing → `job` unknown | `neo4j-kit: Metrics arrive under job neo4j` | ✅ Covered |
-| Risk | Neo4j config keys are version-specific | `neo4j-kit: Default version`; `neo4j-kit: Explicit supported version` | ✅ Covered — versions restricted to 5.x and 2025.x, which share the `server.*` keys |
+| Risk | Neo4j config keys are version-specific | `neo4j-kit: Default version`; `neo4j-kit: Explicit supported version` | ✅ Covered — versions restricted to 5.x and the calendar-versioned releases (2025.x onward), which share the `server.*` keys |
 | Risk | Collision check not firing | `memcached-kit: Second install fails clearly`; `neo4j-kit: Second install fails clearly` | ✅ Covered |
 | Risk | No single db IP template variable | `neo4j-kit: Advertised address is the node address` | ✅ Covered — shell step reads the first db node IP |
 | Risk | Half-applied manifest on a NodePort clash with another kit | — | ⚠️ Excluded from scenarios — prevented by the NodePort convention (task group 2) and distinct fixed ports (31211, 30687, 30474) that collide with no existing kit or Hubble UI (31234); not a runtime behaviour to specify |

@@ -31,7 +31,7 @@ expose client ports through a NodePort Service, never `hostPort` or `hostNetwork
   `KitMetrics.Scrape` pod-selector discovery, a Grafana dashboard, `METRICS.md`, and
   `metrics-catalog.json`. No persistent volumes.
 - **New `neo4j` kit** (`kits/neo4j/`): a one-replica Neo4j Community StatefulSet on a db node,
-  backed by a platform PV; `--version` accepts 5.x and 2025.x; `NEO4J_AUTH=none`; Bolt NodePort
+  backed by a platform PV; `--version` accepts 5.x and the calendar-versioned releases (2025.x onward); `NEO4J_AUTH=none`; Bolt NodePort
   30687 (`native`) and HTTP NodePort 30474 (`http`); metrics pushed over OTLP by the OpenTelemetry
   Java agent mounted from the base AMI, arriving as `job="neo4j"`; a Neo4j Grafana folder;
   `METRICS.md` and `metrics-catalog.json`.
@@ -43,11 +43,11 @@ expose client ports through a NodePort Service, never `hostPort` or `hostNetwork
 - **Docs.** `docs/user-guide/networking.md`, `docs/user-guide/platform-substrate.md`, the CNI line
   in `CLAUDE.md` and `configuration/CLAUDE.md` state the new default and that AMIs built before
   the `cilium-native-routing` change must be rebuilt (`build-image`) to carry the Cilium node fixes.
+  `docs/user-guide/kits.md` and `docs/reference/ports.md` list memcached; a new
+  `docs/user-guide/neo4j.md` (linked from `SUMMARY.md`) covers Neo4j.
 - **ICMP inside the VPC.** The cluster security group allows ICMP (all types) from the VPC CIDR,
   so ping works between nodes and pods and Cilium's health checker sees every node. Found during
-  live validation; the rule is described to the user as "all ICMP types". `docs/user-guide/kits.md` and
-  `docs/reference/ports.md` list memcached; a new `docs/user-guide/neo4j.md` (linked from
-  `SUMMARY.md`) covers Neo4j.
+  live validation; the rule is described to the user as "all ICMP types".
 
 ## Capabilities
 

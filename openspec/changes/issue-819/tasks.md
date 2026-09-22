@@ -56,7 +56,7 @@ All under `src/main/resources/com/rustyrazorblade/easydblab/kits/memcached/`.
 
 All under `src/main/resources/com/rustyrazorblade/easydblab/kits/neo4j/`.
 
-- [x] 4.1 `kit.yaml`: `type: db`, `collision-check: true`, `--version` (5.x / 2025.x, default
+- [x] 4.1 `kit.yaml`: `type: db`, `collision-check: true`, `--version` (5.x and calendar-versioned 2025.x onward, default
       pinned to the current Community release), endpoints Bolt `native` 30687 and HTTP `http`
       30474 (`node-type: db`), `metrics: [{type: java-agent, service-name: neo4j}]`, a shell step
       that reads the first db node's private IP for the Bolt advertised address, `platform-pvs`

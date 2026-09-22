@@ -11,8 +11,8 @@ The system SHALL provide a `neo4j` kit that deploys Neo4j Community Edition as a
 - **WHEN** the user runs `easy-db-lab neo4j start`
 - **THEN** one Neo4j pod labelled `easydblab/kit=neo4j` is Ready on a db node AND its data directory is on a platform PV
 
-### Requirement: Neo4j version is selectable within 5.x and 2025.x
-The kit SHALL accept a `--version` argument. Supported versions SHALL be 5.x and 2025.x only. The container image SHALL be `neo4j:<version>-community`, and the default SHALL be pinned to the current Community release.
+### Requirement: Neo4j version is selectable within 5.x and the calendar-versioned releases
+The kit SHALL accept a `--version` argument. Supported versions SHALL be 5.x and the calendar-versioned releases (2025.x, 2026.x, and later years), which share the `server.*` configuration keys; 4.x and earlier SHALL be rejected. The container image SHALL be `neo4j:<version>-community`, and the default SHALL be pinned to the current Community release.
 
 #### Scenario: Default version
 - **WHEN** the kit is installed with no `--version`

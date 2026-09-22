@@ -62,7 +62,7 @@ by Kubernetes pod discovery. No PVs: memcached is in-memory. `stop` and `uninsta
 ### Neo4j: Community StatefulSet, Java agent by hostPath
 
 A one-replica StatefulSet on a db node, data on a `platform-pvs` volume. `--version` accepts 5.x
-and 2025.x; the image is `neo4j:<ver>-community`, defaulting to the current Community release.
+and the calendar-versioned releases (2025.x onward); the image is `neo4j:<ver>-community`, defaulting to the current Community release.
 `NEO4J_AUTH=none`.
 
 The agent jar is mounted read-only by `hostPath` from `/usr/local/otel` and loaded through
@@ -126,7 +126,7 @@ These are the options the architect presented at the design stop. The owner pick
   conditional on what the live pod exports; JVM and HTTP panels are certain.
 - **Missing `OTEL_SERVICE_NAME`.** Series would arrive as `job="unknown_service:java"`. The
   requirement pins `job="neo4j"`.
-- **Neo4j config keys are version-specific.** Restricting to 5.x and 2025.x keeps one key set
+- **Neo4j config keys are version-specific.** Restricting to 5.x and the calendar-versioned releases (2025.x onward) keeps one key set
   (`server.*`).
 - **Collision check not firing.** Covered by an explicit scenario on each kit.
 - **No single db IP template variable.** Handled by a shell step that reads the first db node's

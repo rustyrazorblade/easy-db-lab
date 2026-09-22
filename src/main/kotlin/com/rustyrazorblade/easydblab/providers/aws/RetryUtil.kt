@@ -262,32 +262,6 @@ object RetryUtil {
             .build()
 
     /**
-     * Creates retry configuration for polling until a condition holds.
-     *
-     * The polled call returns whether it is done; `false` means not yet, so the retry is on the
-     * result, and once [maxPolls] calls have run the last result is returned rather than thrown.
-     * An exception is not retried: a failed call fails the poll at once. The interval is a
-     * parameter so tests can run every poll without sleeping.
-     *
-     * Fixed interval: [pollInterval] between calls, up to [maxPolls] calls
-     *
-     * @param pollInterval how long to wait between calls
-     * @param maxPolls how many calls to make before giving up
-     * @return RetryConfig that retries while the result is `false`
-     */
-    fun createPollUntilDoneRetryConfig(
-        pollInterval: Duration,
-        maxPolls: Int,
-    ): RetryConfig =
-        RetryConfig
-            .custom<Boolean>()
-            .maxAttempts(maxPolls)
-            .intervalFunction { _ -> pollInterval.toMillis() }
-            .retryOnResult { done -> !done }
-            .retryOnException { false }
-            .build()
-
-    /**
      * Creates retry configuration for S3 log retrieval with eventual consistency.
      *
      * EMR logs may not be immediately available after job completion:

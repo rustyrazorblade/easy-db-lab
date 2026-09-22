@@ -50,18 +50,9 @@ class KitInstallCommand(
     }
 
     override fun execute() {
-        // Fail fast if the cluster lacks the required node pool
-        config.type?.let { kitType ->
-            val serverType =
-                when (kitType) {
-                    KitType.DB -> ServerType.Cassandra
-                    KitType.APP -> ServerType.Stress
-                }
-            if (clusterState.getHosts(serverType).isEmpty()) {
-                eventBus.emit(Event.Kit.RequirementNotMet(kit = config.name, nodeType = kitType.name.lowercase()))
-                exitCode = Constants.ExitCodes.ERROR
-                return
-            }
+        if (requiredNodePoolIsMissing()) {
+            exitCode = Constants.ExitCodes.ERROR
+            return
         }
 
         for ((variable, default) in resolvedDefaults) {
@@ -119,6 +110,22 @@ class KitInstallCommand(
                 throw e
             }
         }
+    }
+
+    /**
+     * Fails fast when the cluster has no node in the pool the kit's `type` declares: reports
+     * [Event.Kit.RequirementNotMet] and returns true. A kit with no `type` needs no pool.
+     */
+    private fun requiredNodePoolIsMissing(): Boolean {
+        val kitType = config.type ?: return false
+        val serverType =
+            when (kitType) {
+                KitType.DB -> ServerType.Cassandra
+                KitType.APP -> ServerType.Stress
+            }
+        if (clusterState.getHosts(serverType).isNotEmpty()) return false
+        eventBus.emit(Event.Kit.RequirementNotMet(kit = config.name, nodeType = kitType.name.lowercase()))
+        return true
     }
 
     /**

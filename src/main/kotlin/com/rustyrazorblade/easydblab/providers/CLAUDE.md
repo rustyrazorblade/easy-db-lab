@@ -58,7 +58,6 @@ Always use factory methods instead of creating manual retry configurations.
 | `createNetworkRetryConfig<T>()` | 3 | Exponential 1s→4s | Generic network ops |
 | `createSshConnectionRetryConfig()` | 30 | Fixed 10s | SSH boot-up (~5 min total) |
 | `createS3LogRetrievalRetryConfig<T>()` | 10 | Fixed 3s | S3 log retrieval (eventual consistency) |
-| `createPollUntilDoneRetryConfig(interval, maxPolls)` | caller-set | Fixed, caller-set | Polls a Boolean "done?" call; returns the last result and never retries an exception (kit `stop` waiting for its pods to go) |
 | `createVpcTeardownRetryConfig<T>()` | 5 | Exponential 5s→40s | VPC teardown DependencyViolation |
 
 ### Convenience Wrappers

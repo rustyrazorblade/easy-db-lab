@@ -3,8 +3,8 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesService
-import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import io.github.resilience4j.retry.Retry
+import io.github.resilience4j.retry.RetryConfig
 import java.time.Duration
 
 /** Whether a kit's workload is already in the cluster, as [KitWorkloadProbe] found it. */
@@ -33,6 +33,20 @@ class KitWorkloadProbe(
     private val pollInterval: Duration = Constants.Kit.STOP_WAIT_POLL_INTERVAL,
     private val maxPolls: Int = Constants.Kit.STOP_WAIT_MAX_POLLS,
 ) {
+    /**
+     * Retries while the workload is still there, `pollInterval` apart, up to `maxPolls` looks,
+     * then returns the last result rather than throwing. A failed look is not retried: it fails
+     * the wait at once.
+     */
+    private val untilGoneRetryConfig: RetryConfig =
+        RetryConfig
+            .custom<Boolean>()
+            .maxAttempts(maxPolls)
+            .intervalFunction { _ -> pollInterval.toMillis() }
+            .retryOnResult { gone -> !gone }
+            .retryOnException { false }
+            .build()
+
     /** Finds [kitName]'s workload as its [runtime] declares it; a failed cluster query fails the result. */
     fun find(
         kitName: String,
@@ -53,7 +67,7 @@ class KitWorkloadProbe(
     ): Result<WorkloadPresence> =
         runCatching {
             var remaining: WorkloadPresence = WorkloadPresence.Absent
-            val retry = Retry.of("kit-stop-$kitName", RetryUtil.createPollUntilDoneRetryConfig(pollInterval, maxPolls))
+            val retry = Retry.of("kit-stop-$kitName", untilGoneRetryConfig)
             Retry
                 .decorateSupplier(retry) {
                     remaining = lookUp(kitName, runtime, controlHost, countTerminating = true)

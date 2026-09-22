@@ -72,6 +72,10 @@ application {
             // every `$`, so a `$APP_HOME` reference would reach java as a literal path and the
             // VM would abort on a missing agent jar. The agent flag is appended in the
             // `startScripts` doLast below, where `$APP_HOME` is expanded before that pipeline.
+            // Class-data sharing off. The OTel agent appends to the bootstrap classpath, and with
+            // CDS on the JVM prints "Sharing is only supported for boot loader classes because
+            // bootstrap classpath has been appended" on every run.
+            "-Xshare:off",
             "-Deasydblab.ami.name=rustyrazorblade/images/easy-db-lab-cassandra-amd64-$version",
             "-Deasydblab.version=$version",
             // Pin logback to our config by a unique name. On the installDist/distribution
@@ -724,6 +728,8 @@ jib {
         appRoot = "/app"
         jvmFlags =
             listOf(
+                // CDS off: see applicationDefaultJvmArgs. The agent would trigger the same warning.
+                "-Xshare:off",
                 "-javaagent:/agents/opentelemetry-javaagent.jar",
                 "-Deasydblab.ami.name=rustyrazorblade/images/easy-db-lab-cassandra-amd64-$version",
                 "-Deasydblab.version=$version",

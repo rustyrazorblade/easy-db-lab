@@ -35,8 +35,9 @@ mkdir -p "${EASY_DB_LAB_LOG_DIR}"
 
 # Extra JVM options handed to the generated start script. It word-splits
 # "$DEFAULT_JVM_OPTS $JAVA_OPTS $EASY_DB_LAB_OPTS", so each option must be
-# whitespace-separated and free of spaces within itself.
-EASY_DB_LAB_OPTS="-Xshare:off"
+# whitespace-separated and free of spaces within itself. -Xshare:off is already
+# in the generated script's DEFAULT_JVM_OPTS.
+EASY_DB_LAB_OPTS=""
 
 # OTel collector (opt-in: set EASY_DB_LAB_USE_DOCKER=1 to enable).
 # The generated start script ALWAYS loads the OTel java agent. When the local

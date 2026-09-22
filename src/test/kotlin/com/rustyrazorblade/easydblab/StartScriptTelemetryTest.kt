@@ -61,6 +61,14 @@ class StartScriptTelemetryTest {
         assertThat(args).containsAll(EXPORTERS_OFF).contains(AGENT_LOGGING_OFF)
     }
 
+    @Test
+    fun `class-data sharing is off so the appended agent does not print a CDS warning on every run`() {
+        val args = jvmArgs()
+
+        assertThat(args).contains("-Xshare:off")
+        assertThat(args.indexOf("-Xshare:off")).isLessThan(args.indexOfFirst { it.startsWith("-javaagent:") })
+    }
+
     @ParameterizedTest
     @ValueSource(
         strings = [

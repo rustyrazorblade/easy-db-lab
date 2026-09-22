@@ -218,6 +218,9 @@ processors:
   # process.command_line where it can read the JVM's arguments (a JVM in a container, such as
   # Neo4j's), so both keys are dropped.
   #
+  # container.id comes from the same containerised JVMs and is new on every pod restart, so it too
+  # would mint a fresh series set each time; no dashboard selects on it.
+  #
   # What survives is what a dashboard actually selects on: cluster, host.name, node_role, instance,
   # job, service.name, service.instance.id, and the rule-supplied keyspace, table,
   # cassandra.operation and cassandra.status.
@@ -231,6 +234,8 @@ processors:
         key: process.executable.path
       - action: delete
         key: process.pid
+      - action: delete
+        key: container.id
       - action: delete
         key: process.runtime.description
       - action: delete

@@ -104,6 +104,18 @@ class OtelManifestBuilderTest : BaseKoinTest() {
     }
 
     /**
+     * A JVM in a container (Neo4j's) reports `container.id`, which is new on every pod restart, so
+     * each restart minted a whole new set of series. No dashboard selects on it.
+     */
+    @Test
+    fun `the SDK resource drop removes the per-restart container id`() {
+        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+        val dropBlock = yaml.substringAfter("resource/drop_sdk_metadata:\n").substringBefore("\n  resourcedetection:")
+
+        assertThat(dropBlock).contains("key: container.id")
+    }
+
+    /**
      * spanmetrics keeps the span's whole resource on the metrics it derives, so without the drop
      * `traces_spanmetrics_*` carried the argv as a label even though the metrics and logs
      * pipelines strip it.

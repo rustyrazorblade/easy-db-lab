@@ -258,6 +258,62 @@ class KitRunnerCommandTest : BaseKoinTest() {
         verify(mockMetricsRegistryService).register(any(), any(), any())
     }
 
+    private fun captureStdout(block: () -> Unit): String {
+        val original = System.out
+        val buffer = java.io.ByteArrayOutputStream()
+        System.setOut(java.io.PrintStream(buffer))
+        try {
+            block()
+        } finally {
+            System.setOut(original)
+        }
+        return buffer.toString()
+    }
+
+    private val boltAndHttpEndpoints =
+        """
+        endpoints:
+          - name: bolt
+            node-type: db
+            port: 30687
+            type: native
+          - name: http
+            node-type: db
+            port: 30474
+            type: http
+        """.trimIndent()
+
+    @Test
+    fun `successful start reports declared endpoints at the node private IP`() {
+        writeKitYaml(
+            "mydb",
+            "name: mydb\n$boltAndHttpEndpoints\n" +
+                """
+                start:
+                  - type: shell
+                    script: echo hello
+                """.trimIndent(),
+        )
+        val output = captureStdout { command("mydb", "start").call() }
+        assertThat(output).contains("10.0.2.1:30687")
+        assertThat(output).contains("http://10.0.2.1:30474")
+    }
+
+    @Test
+    fun `stop does not report endpoints`() {
+        writeKitYaml(
+            "mydb",
+            "name: mydb\n$boltAndHttpEndpoints\n" +
+                """
+                stop:
+                  - type: shell
+                    script: echo bye
+                """.trimIndent(),
+        )
+        val output = captureStdout { command("mydb", "stop").call() }
+        assertThat(output).doesNotContain("10.0.2.1:30687")
+    }
+
     @Test
     fun `typed start phase skips metrics registration when no metrics config`() {
         writeKitYaml(

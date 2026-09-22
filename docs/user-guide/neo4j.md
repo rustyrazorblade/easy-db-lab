@@ -36,7 +36,9 @@ Neo4j is published on two NodePorts, reachable on any node's private IP:
 | Bolt | 30687 | Bolt (`bolt://`, `neo4j://`) |
 | HTTP | 30474 | HTTP (Neo4j Browser and HTTP API) |
 
-`neo4j status` prints both endpoints resolved to each db node's private IP.
+`neo4j start`, `neo4j status` and `kit info neo4j` print both endpoints resolved to each db
+node's private IP: `<db node private IP>:30687` for Bolt and `http://<db node private IP>:30474`
+for HTTP.
 
 The server advertises `<first db node private IP>:30687` as its Bolt address, so a `neo4j://`
 client that fetches the routing table gets an address it can dial, not a pod IP.

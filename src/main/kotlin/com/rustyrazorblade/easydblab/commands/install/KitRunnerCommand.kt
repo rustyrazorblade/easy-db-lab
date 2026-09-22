@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.services.DashboardRef
 import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
 import com.rustyrazorblade.easydblab.services.InstallStep
 import com.rustyrazorblade.easydblab.services.KitConfig
+import com.rustyrazorblade.easydblab.services.KitEndpointAddresses
 import com.rustyrazorblade.easydblab.services.KitEndpointResolver
 import com.rustyrazorblade.easydblab.services.KitHookExecutor
 import com.rustyrazorblade.easydblab.services.KitMetrics
@@ -244,6 +245,7 @@ class KitRunnerCommand(
                         ).onFailure { e -> log.warn(e) { "Failed to register metrics for $kitName" } }
                 }
                 installDashboards(config.dashboards)
+                printEndpoints(config)
             }
             Constants.Kit.PHASE_STOP -> {
                 clusterStateManager.removeRunningWorkload(kitName)
@@ -253,6 +255,13 @@ class KitRunnerCommand(
                     .onFailure { e -> log.warn(e) { "Failed to deregister metrics for $kitName" } }
             }
         }
+    }
+
+    /** Tells the user where to connect: every declared endpoint at its node's private IP. */
+    private fun printEndpoints(config: KitConfig) {
+        val resolved = KitEndpointAddresses.resolve(config.endpoints, clusterState.hosts)
+        if (resolved.isEmpty()) return
+        println("Endpoints:\n${KitEndpointAddresses.formatLines(resolved)}")
     }
 
     private fun installDashboards(dashboards: List<DashboardRef>) {

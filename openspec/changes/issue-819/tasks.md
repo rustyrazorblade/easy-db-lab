@@ -83,7 +83,7 @@ All under `src/main/resources/com/rustyrazorblade/easydblab/kits/neo4j/`.
 
 ## 6. Live validation on AWS
 
-- [ ] 6.1 `./gradlew installDist`, then `build-image` to bake fresh base and Cassandra AMIs.
+- [ ] 6.1 `./gradlew installDist`. No AMI bake: the existing AMIs already carry the Cilium node fixes (owner decision).
 - [ ] 6.2 `init` with no `--cni` (i4i.xlarge, 1 control + 2 db nodes in different AZs) and `up`;
       confirm `platform cni` reports Cilium native routing.
 - [ ] 6.3 Cross-AZ pod-to-pod connectivity by pod IP. This closes `cilium-native-routing` tasks 6.2

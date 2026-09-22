@@ -2,23 +2,23 @@
 
 ## 1. Cilium becomes the default CNI
 
-- [ ] 1.1 `configuration/ClusterState.kt:125`: `InitConfig.cni` default → `CniMode.Cilium`.
-- [ ] 1.2 `configuration/ClusterState.kt:45`: rewrite the `CniMode` KDoc so Cilium is the default
+- [x] 1.1 `configuration/ClusterState.kt:125`: `InitConfig.cni` default → `CniMode.Cilium`.
+- [x] 1.2 `configuration/ClusterState.kt:45`: rewrite the `CniMode` KDoc so Cilium is the default
       and Flannel the selectable alternative.
-- [ ] 1.3 `commands/Init.kt:247-252`: `--cni` default → `CniMode.Cilium`; help text names `cilium`
+- [x] 1.3 `commands/Init.kt:247-252`: `--cni` default → `CniMode.Cilium`; help text names `cilium`
       as the default and `flannel` as the alternative.
-- [ ] 1.4 `InitTest`: default-value tests expect `CniMode.Cilium`; add a test that `--cni=flannel`
+- [x] 1.4 `InitTest`: default-value tests expect `CniMode.Cilium`; add a test that `--cni=flannel`
       yields `CniMode.Flannel`.
-- [ ] 1.5 Sweep every `InitConfig(...)` construction in tests; pin `cni = CniMode.Flannel` wherever
+- [x] 1.5 Sweep every `InitConfig(...)` construction in tests; pin `cni = CniMode.Flannel` wherever
       the test's assertion depends on Flannel (e.g. no Cilium scrape jobs, K3s add-ons present).
-- [ ] 1.6 Leave the `?: CniMode.Flannel` fallbacks in `services/OtelSyncService.kt:31` and
+- [x] 1.6 Leave the `?: CniMode.Flannel` fallbacks in `services/OtelSyncService.kt:31` and
       `services/ObservabilityStackService.kt:104` unchanged. If either lacks a comment saying a
       cluster with no recorded CNI predates Cilium and runs Flannel, add one; otherwise leave it.
-- [ ] 1.7 Docs: the CNI line in `CLAUDE.md` (Observability section),
+- [x] 1.7 Docs: the CNI line in `CLAUDE.md` (Observability section),
       `src/main/kotlin/com/rustyrazorblade/easydblab/configuration/CLAUDE.md`,
       `docs/user-guide/networking.md`, and `docs/user-guide/platform-substrate.md` state Cilium is
       the default and `--cni=flannel` selects Flannel.
-- [ ] 1.8 Docs: note in `docs/user-guide/networking.md` that AMIs built before this change lack the
+- [x] 1.8 Docs: note in `docs/user-guide/networking.md` that AMIs built before this change lack the
       Cilium node fixes and must be rebuilt with `build-image`.
 
 ## 2. Kit port convention

@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.configuration
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.SerializationFeature
+import com.fasterxml.jackson.databind.node.ObjectNode
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import java.io.File
@@ -32,9 +33,21 @@ class ClusterStateManager(
 
     /**
      * Load cluster state from the configured file.
+     *
+     * A saved [InitConfig] that records no `cni` predates Cilium, so its cluster runs Flannel. The
+     * missing field is read as [CniMode.Flannel] rather than filled from the constructor default
+     * ([CniMode.Cilium]), which would render Cilium scrape jobs on a Flannel cluster.
+     *
      * @throws Exception if file doesn't exist or can't be parsed
      */
-    fun load(): ClusterState = mapper.readValue(stateFile, ClusterState::class.java)
+    fun load(): ClusterState {
+        val tree = mapper.readTree(stateFile)
+        val initConfig = tree.get("initConfig")
+        if (initConfig is ObjectNode && !initConfig.has(CNI_FIELD)) {
+            initConfig.put(CNI_FIELD, CniMode.Flannel.name)
+        }
+        return mapper.treeToValue(tree, ClusterState::class.java)
+    }
 
     /**
      * Save cluster state to the configured file.
@@ -70,5 +83,10 @@ class ClusterStateManager(
         state.runningKits = state.runningKits - name
         state.lastAccessedAt = Instant.now()
         save(state)
+    }
+
+    private companion object {
+        /** The [InitConfig] field that records the cluster's CNI. */
+        const val CNI_FIELD = "cni"
     }
 }

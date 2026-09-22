@@ -1,14 +1,18 @@
 # Pod Networking (CNI)
 
-The K3s cluster runs one pod-network datapath. You select it at init time with `--cni`. Flannel is the default. Cilium is opt-in.
+The K3s cluster runs one pod-network datapath. You select it at init time with `--cni`. Cilium is the default. `--cni=flannel` selects Flannel.
 
 ```bash
-# Default: K3s's built-in Flannel VXLAN overlay
+# Default: Cilium in ENI IPAM native-routing mode (no encapsulation)
 easy-db-lab init my-cluster --db 3
 
-# Cilium in ENI IPAM native-routing mode (no encapsulation)
-easy-db-lab init my-cluster --db 3 --cni cilium
+# K3s's built-in Flannel VXLAN overlay
+easy-db-lab init my-cluster --db 3 --cni=flannel
 ```
+
+A cluster whose saved state records no CNI was provisioned before Cilium existed and is treated as Flannel.
+
+AMIs built before the Cilium node fixes lack the base image's cloud-init hotplug setting and the systemd-networkd ENI drop-ins that Cilium's secondary ENIs need. If your AMI predates them, rebuild it with `easy-db-lab build-image` before provisioning a Cilium cluster.
 
 ## Flannel
 
@@ -16,7 +20,7 @@ Flannel is the K3s built-in CNI. Pod traffic between nodes is encapsulated in VX
 
 ## Cilium
 
-With `--cni cilium`, Cilium runs in ENI IPAM native-routing mode. Each pod gets a real VPC-routable secondary IP on its node's ENIs, so the VPC routes cross-AZ pod traffic with no tunnel. K3s keeps its own kube-proxy; Cilium's kube-proxy replacement is off.
+With Cilium (the default, or `--cni=cilium`), Cilium runs in ENI IPAM native-routing mode. Each pod gets a real VPC-routable secondary IP on its node's ENIs, so the VPC routes cross-AZ pod traffic with no tunnel. K3s keeps its own kube-proxy; Cilium's kube-proxy replacement is off.
 
 `up` is safe to re-run on a Cilium cluster. If Cilium is already installed, the hook upgrades the release in place with the same flags instead of failing on the release name.
 

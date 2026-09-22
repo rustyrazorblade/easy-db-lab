@@ -244,12 +244,12 @@ class Init : PicoBaseCommand() {
     @Option(
         names = ["--cni"],
         description = [
-            "Pod-network CNI: 'flannel' (default) uses K3s's built-in Flannel overlay; " +
-                "'cilium' uses Cilium ENI native routing (no encapsulation).",
+            "Pod-network CNI: 'cilium' (default) uses Cilium ENI native routing (no encapsulation); " +
+                "'flannel' uses K3s's built-in Flannel overlay.",
         ],
         converter = [PicoCniModeConverter::class],
     )
-    var cni: CniMode = CniMode.Flannel
+    var cni: CniMode = CniMode.Cilium
 
     @Option(
         names = ["--redirect-telemetry"],

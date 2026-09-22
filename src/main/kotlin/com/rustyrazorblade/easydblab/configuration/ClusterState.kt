@@ -42,9 +42,10 @@ enum class InfrastructureStatus {
  * Container Network Interface (CNI) selection for the K3s pod network.
  *
  * The datapath is mutually exclusive by construction — a cluster runs exactly one CNI.
- * [Flannel] is K3s's built-in VXLAN-overlay CNI (the current default). [Cilium] selects
- * Cilium in ENI IPAM native-routing mode, where pods receive VPC-routable secondary IPs
- * so cross-AZ traffic is routed by the VPC without encapsulation. Modeled as an enum rather
+ * [Cilium] is the default: Cilium in ENI IPAM native-routing mode, where pods receive
+ * VPC-routable secondary IPs so cross-AZ traffic is routed by the VPC without encapsulation.
+ * [Flannel] selects K3s's built-in VXLAN-overlay CNI instead (`--cni=flannel`). A saved state
+ * that records no CNI predates Cilium and is read as [Flannel]. Modeled as an enum rather
  * than a boolean so future datapaths can be added without another flag.
  */
 enum class CniMode {
@@ -122,7 +123,7 @@ data class InitConfig(
     val opensearchVersion: String = "2.11",
     val opensearchEbsSize: Int = 100,
     val cidr: String? = null,
-    val cni: CniMode = CniMode.Flannel,
+    val cni: CniMode = CniMode.Cilium,
     // Life-of-cluster telemetry redirect target. Null means local mode (the unchanged default):
     // the cluster stands up its own observability backends. Non-null means all four signals ship
     // to the external stack these endpoints describe and no local backends are stood up.

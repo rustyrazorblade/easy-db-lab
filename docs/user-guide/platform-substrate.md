@@ -82,7 +82,7 @@ Displays StorageClasses, available PV counts per node pool, node selector labels
 easy-db-lab platform cni
 ```
 
-Shows the pod-network datapath. On a Cilium cluster it reads the `cilium-config` ConfigMap and the `CiliumNode` objects from the control node and prints the routing mode, IPAM mode, kube-proxy replacement, masquerade interfaces, native routing CIDR, the Hubble UI URL, and per node the ENI count, subnet CIDRs, and IPs allocated, used, and available. On a Flannel cluster it prints one line that names Flannel. Read-only. See [Pod Networking (CNI)](networking.md).
+Shows the pod-network datapath. On a Cilium cluster it reads the `cilium-config` ConfigMap and the `CiliumNode` objects from the control node and prints the routing mode, IPAM mode, kube-proxy replacement, masquerade interfaces, native routing CIDR, the Hubble UI URL, and per node the ENI count, subnet CIDRs, and IPs allocated, used, and available. On a Flannel cluster it prints one line that names Flannel. Cilium is the default datapath; `init --cni=flannel` selects Flannel. Read-only. See [Pod Networking (CNI)](networking.md).
 
 ## Custom Templates
 

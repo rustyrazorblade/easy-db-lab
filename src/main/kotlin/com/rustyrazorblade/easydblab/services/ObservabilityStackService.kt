@@ -101,6 +101,7 @@ class DefaultObservabilityStackService(
             val clusterState = clusterStateManager.load()
             val region = clusterState.initConfig?.region ?: user.region
             // The collector scrapes the Cilium agent, operator, and Hubble only on a Cilium cluster.
+            // A cluster with no recorded CNI predates Cilium and runs Flannel.
             val cni = clusterState.initConfig?.cni ?: CniMode.Flannel
 
             createClusterConfigMap(controlNode, region)

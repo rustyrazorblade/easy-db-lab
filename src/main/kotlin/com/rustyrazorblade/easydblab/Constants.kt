@@ -294,7 +294,7 @@ object Constants {
         const val DEPLOYMENT_NAME = "yace"
     }
 
-    // Cilium CNI (selected with `init --cni=cilium`; see CiliumService and PlatformCni)
+    // Cilium CNI (the default; `init --cni=flannel` opts out; see CiliumService and PlatformCni)
     object Cilium {
         const val VERSION = "1.19.4"
         const val NAMESPACE = "kube-system"

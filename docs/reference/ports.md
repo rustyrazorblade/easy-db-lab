@@ -32,7 +32,7 @@ This page documents the ports used by easy-db-lab and the services it provisions
 | 9400 | Beyla eBPF metrics (Prometheus) |
 | 9435 | ebpf_exporter metrics (Prometheus) |
 
-## Cilium Ports (`--cni cilium` clusters only)
+## Cilium Ports (Cilium clusters only; the default CNI)
 
 | Port | Service |
 |------|---------|

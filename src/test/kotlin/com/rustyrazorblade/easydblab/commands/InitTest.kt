@@ -290,8 +290,20 @@ class InitTest : BaseKoinTest() {
     @Nested
     inner class CniSelection {
         @Test
-        fun `defaults the persisted CNI to Flannel`() {
+        fun `defaults the persisted CNI to Cilium`() {
             val command = Init()
+            command.clean = true
+            command.execute()
+
+            verify(mockClusterStateManager).save(
+                argThat { initConfig?.cni == CniMode.Cilium },
+            )
+        }
+
+        @Test
+        fun `--cni flannel selects Flannel`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--cni=flannel")
             command.clean = true
             command.execute()
 
@@ -335,13 +347,14 @@ class InitTest : BaseKoinTest() {
     @Nested
     inner class CniOptions {
         @Test
-        fun `execute persists Flannel as the default cni when --cni is omitted`() {
+        fun `execute persists Cilium as the default cni when --cni is omitted`() {
             val command = Init()
+            picocli.CommandLine(command).parseArgs()
             command.clean = true
             command.execute()
 
             verify(mockClusterStateManager).save(
-                argThat { initConfig?.cni == CniMode.Flannel },
+                argThat { initConfig?.cni == CniMode.Cilium },
             )
         }
 

@@ -23,10 +23,10 @@
 
 ## 2. Kit port convention
 
-- [ ] 2.1 `CLAUDE.md`, Kit Development section: add the rule — kits expose client ports through a
+- [x] 2.1 `CLAUDE.md`, Kit Development section: add the rule — kits expose client ports through a
       NodePort Service (range 30000-32767), never `hostPort` or `hostNetwork`; cite postgres 30432
       and clickhouse 30123.
-- [ ] 2.2 `docs/development/kits.md`: add the same rule.
+- [x] 2.2 `docs/development/kits.md`: add the same rule.
 
 ## 3. memcached kit
 

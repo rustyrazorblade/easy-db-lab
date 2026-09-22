@@ -621,6 +621,38 @@ easy-db-lab sysbench-<your-kit-name> start
 The capability check at install time will verify your kit exposes `sql` before writing
 any files, so misconfigured targets fail immediately with a clear error.
 
+## Exposing Client Ports
+
+A kit exposes its client ports through a **NodePort Service**, in the range 30000-32767, on a
+fixed port that no other kit uses. Never use `hostPort` or `hostNetwork` for a client port:
+
+- `hostPort` only works when the CNI chains the `portmap` plugin, which is a property of the
+  datapath rather than of the kit.
+- `hostNetwork` pins the pod to one host, and a port clash with another process shows up only
+  as a CrashLoop.
+
+A NodePort is reachable on every node's private IP, so declare the endpoint in `kit.yaml` with
+the NodePort as its `port` and the node type that `kit info` should resolve. The existing kits
+follow this: postgres serves on 30432 and clickhouse on 30123.
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mykit-nodeport
+  labels:
+    easydblab/kit: mykit
+spec:
+  type: NodePort
+  selector:
+    app: mykit
+  ports:
+    - name: client
+      port: 1234
+      targetPort: 1234
+      nodePort: 30999   # a port no other kit uses; Hubble UI owns 31234
+```
+
 ## Adding a New Kit
 
 1. Create `src/main/resources/com/rustyrazorblade/easydblab/kits/<name>/kit.yaml`

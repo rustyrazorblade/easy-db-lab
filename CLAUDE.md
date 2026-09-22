@@ -208,6 +208,7 @@ When developing a new kit, the following is essential:
 - Full integration with the observability stack.
 - Use the open telemetry agant for JVM workloads
 - Dashboards
+- **Kits expose client ports through a NodePort Service** (range 30000-32767) on a fixed port no other kit uses — never `hostPort` or `hostNetwork`. `hostPort` depends on the CNI chaining the `portmap` plugin, and `hostNetwork` pins the pod to a host and turns a port clash into a CrashLoop. Follow postgres (30432) and clickhouse (30123). See `docs/development/kits.md`.
 
 ## Development Setup
 

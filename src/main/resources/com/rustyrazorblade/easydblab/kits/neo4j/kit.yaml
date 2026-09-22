@@ -29,7 +29,7 @@ endpoints:
 args:
   - flag: --version
     variable: NEO4J_VERSION
-    description: "Neo4j Community version, 5.x or a calendar release such as 2026.x (image neo4j:<version>-community)"
+    description: "Neo4j Community version, 5.6.0 or later 5.x, or a calendar release such as 2026.x (image neo4j:<version>-community)"
     type: string
     default: "2026.09.0"
   - flag: --storage-size
@@ -48,14 +48,20 @@ start:
   # The Bolt advertised address must be an address clients can dial: the first db node's
   # private IP and the Bolt NodePort. No template variable carries a single db node IP, so this
   # step reads it from DB_NODE_IPS and publishes it in a ConfigMap the StatefulSet reads.
-  # It also rejects 4.x and earlier, whose config keys differ from 5.x and the calendar releases
-  # (2025.x, 2026.x, ...), before anything is applied.
+  # It also rejects, before anything is applied, 4.x and earlier, whose config keys differ from
+  # 5.x and the calendar releases (2025.x, 2026.x, ...), and 5.0-5.5, whose image entrypoint
+  # replaces the stock server.jvm.additional lines with NEO4J_server_jvm_additional instead of
+  # appending to them. neo4j:5.6.0 is the first image with the append fix (docker-neo4j e1ebd21a).
   - type: shell
     script: |
       #!/usr/bin/env bash
       set -euo pipefail
       if [[ ! "${NEO4J_VERSION}" =~ ^(5|20[2-9][0-9])\.[0-9]+\.[0-9]+$ ]]; then
-        echo "ERROR: Neo4j version '${NEO4J_VERSION}' is not supported; use a 5.x or calendar-versioned (2025.x or later) release." >&2
+        echo "ERROR: Neo4j version '${NEO4J_VERSION}' is not supported; use 5.6.0 or later, or a calendar-versioned (2025.x or later) release." >&2
+        exit 1
+      fi
+      if [[ "${NEO4J_VERSION}" =~ ^5\.[0-5]\.[0-9]+$ ]]; then
+        echo "ERROR: Neo4j version '${NEO4J_VERSION}' is not supported; the first supported 5.x release is 5.6.0. Earlier images replace the stock server.jvm.additional JVM flags with the kit's Java agent flag instead of appending to them, so the stock flags would be dropped." >&2
         exit 1
       fi
       FIRST_DB_IP="${DB_NODE_IPS%%,*}"

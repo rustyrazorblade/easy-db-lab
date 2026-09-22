@@ -223,9 +223,20 @@ class Neo4jKitTest : BaseKoinTest() {
         }
 
         @Test
-        fun `start accepts 5 x and calendar-versioned releases, including the default`() {
-            assertThat(listOf("5.26.0", "2025.05.0", "2026.09.0", versionArg().default))
+        fun `start accepts 5 6 0 and later and calendar-versioned releases, including the default`() {
+            assertThat(listOf(FIRST_SUPPORTED_5X, "5.10.0", "5.26.0", "2025.05.0", "2026.09.0", versionArg().default))
                 .allSatisfy { version -> assertThat(runStartScript(version)).isEqualTo(0) }
+        }
+
+        @Test
+        fun `start refuses 5 x releases whose entrypoint replaces the stock JVM flags, naming the first supported one`() {
+            assertThat(listOf("5.5.0", "5.1.0", "5.0.0"))
+                .allSatisfy { version ->
+                    assertThat(runStartScript(version)).isNotEqualTo(0)
+                    assertThat(stub.output())
+                        .contains("ERROR:", "'$version'", FIRST_SUPPORTED_5X, "server.jvm.additional")
+                }
+            assertThat(stub.invocations()).isEmpty()
         }
 
         @Test
@@ -257,6 +268,10 @@ class Neo4jKitTest : BaseKoinTest() {
     private companion object {
         const val KIT_LABEL = "easydblab/kit"
         const val BOLT_NODE_PORT = 30687
+
+        // The first neo4j:5.x image whose docker-entrypoint.sh appends server.jvm.additional
+        // instead of replacing it (docker-neo4j commit e1ebd21a).
+        const val FIRST_SUPPORTED_5X = "5.6.0"
         val SUPPORTED_VERSION = Regex("""^(5|20[2-9]\d)\.\d+\.\d+$""").toPattern()
     }
 }

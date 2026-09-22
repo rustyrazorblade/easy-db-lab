@@ -17,15 +17,20 @@ easy-db-lab neo4j start
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--version` | Neo4j Community version: 5.x or a calendar-versioned release (2025.x, 2026.x, and later). The image is `neo4j:<version>-community` | `2026.09.0` |
+| `--version` | Neo4j Community version: 5.6.0 or later 5.x, or a calendar-versioned release (2025.x, 2026.x, and later). The image is `neo4j:<version>-community` | `2026.09.0` |
 | `--storage-size` | Size of the data volume | `10Ti` |
 
 ```bash
 easy-db-lab kit install neo4j --version 5.26.0
 ```
 
-`start` refuses 4.x and earlier before it applies anything. Those releases use different
-configuration keys from 5.x and the calendar-versioned releases.
+`start` refuses unsupported versions before it applies anything:
+
+- 4.x and earlier use different configuration keys from 5.x and the calendar-versioned releases.
+- 5.0 through 5.5 are refused too; 5.6.0 is the first supported 5.x release. The kit loads the
+  Java agent through `NEO4J_server_jvm_additional`. Images before 5.6.0 replace the stock
+  `server.jvm.additional` lines in `neo4j.conf` with that value instead of appending to them,
+  so Neo4j would start without its stock JVM flags.
 
 ## Endpoints
 

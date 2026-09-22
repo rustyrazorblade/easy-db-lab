@@ -12,7 +12,7 @@ The system SHALL provide a `neo4j` kit that deploys Neo4j Community Edition as a
 - **THEN** one Neo4j pod labelled `easydblab/kit=neo4j` is Ready on a db node AND its data directory is on a platform PV
 
 ### Requirement: Neo4j version is selectable within 5.x and the calendar-versioned releases
-The kit SHALL accept a `--version` argument. Supported versions SHALL be 5.x and the calendar-versioned releases (2025.x, 2026.x, and later years), which share the `server.*` configuration keys; 4.x and earlier SHALL be rejected. The container image SHALL be `neo4j:<version>-community`, and the default SHALL be pinned to the current Community release.
+The kit SHALL accept a `--version` argument. Supported versions SHALL be 5.x and the calendar-versioned releases (2025.x, 2026.x, and later years), which share the `server.*` configuration keys. 4.x and earlier SHALL be rejected. Early 5.x releases whose image entrypoint replaces the stock `server.jvm.additional` lines instead of appending to them SHALL also be rejected, with an error that names the first supported 5.x release, because the agent flag would silently drop the stock JVM flags on them. The container image SHALL be `neo4j:<version>-community`, and the default SHALL be pinned to the current Community release.
 
 #### Scenario: Default version
 - **WHEN** the kit is installed with no `--version`
@@ -21,6 +21,14 @@ The kit SHALL accept a `--version` argument. Supported versions SHALL be 5.x and
 #### Scenario: Explicit supported version
 - **WHEN** the kit is installed with `--version 5.26.0`
 - **THEN** the pod runs `neo4j:5.26.0-community`
+
+#### Scenario: Early 5.x release is rejected
+- **WHEN** the kit is started with a 5.x release older than the first whose entrypoint appends `server.jvm.additional`
+- **THEN** start fails before any manifest is applied, with an error naming the first supported 5.x release
+
+#### Scenario: Stock JVM flags are kept
+- **WHEN** Neo4j runs with the default version
+- **THEN** its `neo4j.conf` contains the image's stock `server.jvm.additional` lines and the `-javaagent` line
 
 ### Requirement: Neo4j runs without authentication
 The kit SHALL set `NEO4J_AUTH=none`, so clients connect without credentials.

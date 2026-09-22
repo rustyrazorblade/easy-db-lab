@@ -1,18 +1,18 @@
 package com.rustyrazorblade.easydblab.commands.install
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.services.CollisionCheck
 import com.rustyrazorblade.easydblab.services.InstallTemplateResolver
 import com.rustyrazorblade.easydblab.services.KitArgSpec
 import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.TemplateService
 import com.rustyrazorblade.easydblab.services.TemplateVariables
-import com.rustyrazorblade.easydblab.services.CollisionCheck
-import com.rustyrazorblade.easydblab.Constants
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -117,7 +117,12 @@ class KitInstallCommandFactoryTest : BaseKoinTest() {
     @Test
     fun `force option is absent when only start is collision-checked`() {
         val cfg = KitConfig(name = "mydb", collisionCheck = CollisionCheck(setOf(Constants.Kit.PHASE_START)))
-        val optionNames = factory.build(cfg, directorySource).commandSpec.options().map { it.longestName() }
+        val optionNames =
+            factory
+                .build(cfg, directorySource)
+                .commandSpec
+                .options()
+                .map { it.longestName() }
         assertThat(optionNames).doesNotContain("--force")
     }
 

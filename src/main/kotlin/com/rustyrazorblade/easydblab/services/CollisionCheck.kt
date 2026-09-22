@@ -83,7 +83,10 @@ object CollisionCheckSerializer : KSerializer<CollisionCheck> {
                 }.keys
                 .map { it.content }
                 .toSet()
-        val declared = map.entries.keys.map { it.content }.toSet()
+        val declared =
+            map.entries.keys
+                .map { it.content }
+                .toSet()
         if (!CollisionCheck.GUARDABLE_PHASES.containsAll(declared)) {
             throw SerializationException(CollisionCheck.unguardableMessage(declared))
         }

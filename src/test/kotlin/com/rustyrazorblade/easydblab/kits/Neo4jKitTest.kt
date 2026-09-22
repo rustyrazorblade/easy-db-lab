@@ -2,12 +2,12 @@ package com.rustyrazorblade.easydblab.kits
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.services.CollisionCheck
 import com.rustyrazorblade.easydblab.services.InstallStep
 import com.rustyrazorblade.easydblab.services.KitEndpoint
 import com.rustyrazorblade.easydblab.services.KitMetrics
 import com.rustyrazorblade.easydblab.services.KitType
 import com.rustyrazorblade.easydblab.services.TemplateService
-import com.rustyrazorblade.easydblab.services.CollisionCheck
 import io.fabric8.kubernetes.api.model.Container
 import io.fabric8.kubernetes.api.model.EnvVar
 import io.fabric8.kubernetes.api.model.HasMetadata

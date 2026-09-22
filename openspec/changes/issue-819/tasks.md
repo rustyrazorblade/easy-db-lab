@@ -68,14 +68,14 @@ All under `src/main/resources/com/rustyrazorblade/easydblab/kits/neo4j/`.
       endpoint `http://$(HOST_IP):4318`, 5 s export interval, Bolt advertised address from 4.1,
       `volumeClaimTemplates` metadata carrying `easydblab/kit=neo4j`.
 - [x] 4.3 `nodeport-service.yaml.template`: NodePorts 30687 → 7687 and 30474 → 7474, kit label.
-- [ ] 4.4 Live, first task after the kit starts: list the metrics the pod exports in
+- [x] 4.4 Live, first task after the kit starts: list the metrics the pod exports in
       VictoriaMetrics (`job="neo4j"`) and the MBeans the JVM registers. **Review the list with the
       owner before writing any dashboard panel.**
-- [ ] 4.5 If Community registers database-level MBeans, add a JMX rules ConfigMap so the agent
+- [x] 4.5 If Community registers database-level MBeans, add a JMX rules ConfigMap so the agent
       exports them; otherwise record in `METRICS.md` that only JVM and HTTP metrics are available.
-- [ ] 4.6 `bin/export-workload-metrics neo4j` → `metrics-catalog.json`.
-- [ ] 4.7 `dashboards/neo4j.json` via the `dashboard-editor` agent, with the panels agreed in 4.4.
-- [ ] 4.8 `METRICS.md`.
+- [x] 4.6 `bin/export-workload-metrics neo4j` → `metrics-catalog.json`.
+- [x] 4.7 `dashboards/neo4j.json` via the `dashboard-editor` agent, with the panels agreed in 4.4.
+- [x] 4.8 `METRICS.md`.
 - [x] 4.9 Docs: `docs/user-guide/neo4j.md` (install, start, connect over Bolt and HTTP, stop),
       linked from `docs/SUMMARY.md`; add 30687 and 30474 to `docs/reference/ports.md`.
 
@@ -97,10 +97,10 @@ All under `src/main/resources/com/rustyrazorblade/easydblab/kits/neo4j/`.
       VictoriaMetrics. If they do not, add `set("cni.chainingMode=portmap")` to the `--set` list in
       `CiliumService` (shared by install and upgrade), assert it in `CiliumServiceTest`, rebuild,
       and repeat the check.
-- [ ] 6.5 memcached: install, start, set/get from a probe pod over `<db IP>:31211`, confirm the
+- [x] 6.5 memcached: install, start, set/get from a probe pod over `<db IP>:31211`, confirm the
       dashboard shows data, second install fails with `CollisionDetected`, stop, uninstall; confirm
       nothing labelled `easydblab/kit=memcached` remains.
-- [ ] 6.6 Neo4j: install, start, `RETURN 1` over `bolt://<db IP>:30687`, confirm `job="neo4j"`
+- [x] 6.6 Neo4j: install, start, `RETURN 1` over `bolt://<db IP>:30687`, confirm `job="neo4j"`
       series and dashboard data, second install fails with `CollisionDetected`, stop, uninstall;
       confirm PVCs and PVs are gone.
 - [x] 6.7 Provision a separate `--cni=flannel` cluster and confirm it comes up with Flannel.

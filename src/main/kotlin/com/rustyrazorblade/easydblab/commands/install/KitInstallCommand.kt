@@ -59,6 +59,7 @@ class KitInstallCommand(
                 }
             if (clusterState.getHosts(serverType).isEmpty()) {
                 eventBus.emit(Event.Kit.RequirementNotMet(kit = config.name, nodeType = kitType.name.lowercase()))
+                exitCode = Constants.ExitCodes.ERROR
                 return
             }
         }

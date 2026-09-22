@@ -16,6 +16,7 @@ import com.rustyrazorblade.easydblab.services.InstallTemplateResolver
 import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitHookExecutor
 import com.rustyrazorblade.easydblab.services.KitSourcesProvider
+import com.rustyrazorblade.easydblab.services.KitType
 import com.rustyrazorblade.easydblab.services.MetricsRegistryService
 import com.rustyrazorblade.easydblab.services.TemplateService
 import com.rustyrazorblade.easydblab.services.WorkloadStepExecutor
@@ -205,6 +206,22 @@ class KitEndToEndTest : BaseKoinTest() {
         assertThat(collision.toDisplayString()).startsWith("Error:").contains("testdb", "--force")
         assertThat(events).noneMatch { it is Event.Install.ScaffoldComplete }
         assertThat(marker).hasContent("keep me")
+    }
+
+    @Test
+    fun `install of a kit whose node pool is missing fails with an error-worded RequirementNotMet`() {
+        val resolver = get<InstallTemplateResolver>()
+        val source = resolver.resolve("testdb")
+        val config = requireNotNull(resolver.loadInstallConfig(source)).copy(type = KitType.DB)
+        val events = captureEvents()
+
+        val exitCode = install(config, source)
+
+        assertThat(exitCode).isNotEqualTo(0)
+        val requirement = events.filterIsInstance<Event.Kit.RequirementNotMet>().single()
+        assertThat(requirement.isError()).isTrue()
+        assertThat(requirement.toDisplayString()).startsWith("Error:").contains("testdb", "db")
+        assertThat(File(workingDir, "testdb")).doesNotExist()
     }
 
     @Test

@@ -5441,7 +5441,7 @@ sealed interface Event {
             val nodeType: String,
         ) : Kit {
             override fun toDisplayString(): String =
-                "Cannot install '$kit': requires at least one $nodeType node, but none exist in this cluster. " +
+                "Error: cannot install '$kit': requires at least one $nodeType node, but none exist in this cluster. " +
                     "Re-provision with --$nodeType-instances > 0."
 
             override fun isError(): Boolean = true

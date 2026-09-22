@@ -12,15 +12,19 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
+import com.rustyrazorblade.easydblab.kubernetes.KubernetesService
 import com.rustyrazorblade.easydblab.services.DefaultKitEndpointResolver
 import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
 import com.rustyrazorblade.easydblab.services.KitEndpointResolver
 import com.rustyrazorblade.easydblab.services.KitHookExecutor
+import com.rustyrazorblade.easydblab.services.KitWorkloadProbe
 import com.rustyrazorblade.easydblab.services.MetricsRegistryService
 import com.rustyrazorblade.easydblab.services.WorkloadStepExecutor
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
@@ -31,9 +35,11 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
+import org.mockito.kotlin.verifyNoInteractions
 import org.mockito.kotlin.whenever
 import java.io.File
 import java.nio.file.attribute.PosixFilePermission
+import java.time.Duration
 
 class KitRunnerCommandTest : BaseKoinTest() {
     private val mockClusterStateManager: ClusterStateManager = mock()
@@ -41,6 +47,7 @@ class KitRunnerCommandTest : BaseKoinTest() {
     private val mockWorkloadStepExecutor: WorkloadStepExecutor = mock()
     private val mockMetricsRegistryService: MetricsRegistryService = mock()
     private val mockKitHookExecutor: KitHookExecutor = mock()
+    private val mockKubeService: KubernetesService = mock()
 
     private lateinit var workingDir: File
 
@@ -84,6 +91,7 @@ class KitRunnerCommandTest : BaseKoinTest() {
                 single<MetricsRegistryService> { mockMetricsRegistryService }
                 single<KitHookExecutor> { mockKitHookExecutor }
                 single<KitEndpointResolver> { DefaultKitEndpointResolver() }
+                single { KitWorkloadProbe(mockKubeService, mock()) }
             },
         )
 
@@ -800,5 +808,113 @@ class KitRunnerCommandTest : BaseKoinTest() {
 
         assertThat(exitCode).isEqualTo(0)
         assertThat(outputFile.readText().trim()).isEqualTo("bare")
+    }
+
+    /**
+     * A collision-checked kit refuses `start` while its workload is already in the cluster, found
+     * through the kit's runtime declaration (typed-install-steps: "Top-level boolean applies to
+     * start phase only"). The cluster query itself runs against K3s in
+     * KitWorkloadProbeIntegrationTest; here it is stubbed at the Kubernetes API boundary.
+     */
+    @Nested
+    inner class StartCollisionCheck {
+        private val runningPod =
+            KubernetesPod(namespace = "db", name = "mydb-0", status = "Running", ready = "1/1", restarts = 0, age = Duration.ofMinutes(5))
+
+        private val collisionCheckedHeader =
+            """
+            name: mydb
+            collision-check: true
+            runtime:
+              type: pods
+              selector: "easydblab/kit=mydb"
+              namespace: db
+            """.trimIndent()
+
+        private fun writeCollisionCheckedKit(collisionCheck: Boolean = true) =
+            writeKitYaml(
+                "mydb",
+                collisionCheckedHeader.replace("collision-check: true", "collision-check: $collisionCheck") + "\n" +
+                    """
+                    start:
+                      - type: shell
+                        script: echo start
+                    stop:
+                      - type: shell
+                        script: echo stop
+                    """.trimIndent(),
+            )
+
+        private fun podsInCluster(vararg pods: KubernetesPod) {
+            whenever(mockKubeService.listPodsByLabel("easydblab/kit=mydb", "db")).thenReturn(Result.success(pods.toList()))
+        }
+
+        @Test
+        fun `start refuses a kit that is already running, runs no step, and exits non-zero`() {
+            writeCollisionCheckedKit()
+            podsInCluster(runningPod)
+
+            var exitCode = 0
+            val events = captureEvents { exitCode = command("mydb", "start").call() }
+
+            assertThat(exitCode).isNotEqualTo(0)
+            verify(mockWorkloadStepExecutor, never()).execute(any(), any(), any())
+            val collision = events.filterIsInstance<Event.Kit.CollisionDetected>().single()
+            assertThat(collision).isEqualTo(
+                Event.Kit.CollisionDetected(kit = "mydb", phase = "start", namespace = "db", resources = listOf("pod/mydb-0")),
+            )
+            assertThat(collision.isError()).isTrue()
+            assertThat(collision.toDisplayString()).startsWith("Error:").contains("mydb", "pod/mydb-0", "stop")
+            verify(mockClusterStateManager, never()).addRunningWorkload(any())
+        }
+
+        @Test
+        fun `start runs when nothing of the kit is in the cluster`() {
+            writeCollisionCheckedKit()
+            podsInCluster()
+
+            val exitCode = command("mydb", "start").call()
+
+            assertThat(exitCode).isEqualTo(0)
+            verify(mockWorkloadStepExecutor).execute(any(), any(), any())
+        }
+
+        @Test
+        fun `start fails without running any step when the cluster cannot be queried`() {
+            writeCollisionCheckedKit()
+            whenever(mockKubeService.listPodsByLabel(any(), any())).thenReturn(Result.failure(IllegalStateException("api down")))
+
+            assertThatThrownBy { command("mydb", "start").call() }.hasMessageContaining("api down")
+            verify(mockWorkloadStepExecutor, never()).execute(any(), any(), any())
+        }
+
+        @Test
+        fun `stop is not guarded`() {
+            writeCollisionCheckedKit()
+            podsInCluster(runningPod)
+
+            assertThat(command("mydb", "stop").call()).isEqualTo(0)
+            verify(mockWorkloadStepExecutor).execute(any(), any(), any())
+            verifyNoInteractions(mockKubeService)
+        }
+
+        @Test
+        fun `start of a kit without collision-check does not look in the cluster`() {
+            writeCollisionCheckedKit(collisionCheck = false)
+
+            assertThat(command("mydb", "start").call()).isEqualTo(0)
+            verifyNoInteractions(mockKubeService)
+        }
+
+        @Test
+        fun `a script-driven start is guarded too`() {
+            writeKitYaml("mydb", collisionCheckedHeader)
+            val marker = File(workingDir, "script-ran")
+            writeScript("mydb", "start", "touch ${marker.absolutePath}")
+            podsInCluster(runningPod)
+
+            assertThat(command("mydb", "start").call()).isNotEqualTo(0)
+            assertThat(marker).doesNotExist()
+        }
     }
 }

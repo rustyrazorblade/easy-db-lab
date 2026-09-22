@@ -12,11 +12,13 @@ metrics:
     port: 32404
     path: /metrics
     job: kafka-jmx
+# The Kafka cluster's own pods, which `start` creates and `stop` removes. Strimzi labels every pod
+# of the `kafka` Kafka resource with strimzi.io/cluster=kafka. The strimzi-operator helm release is
+# installed by `install` and outlives `stop`, so it cannot say whether Kafka is running.
 runtime:
-  type: helm
-  release: strimzi-operator
-  namespace: strimzi
-  selector: name=strimzi-cluster-operator
+  type: pods
+  selector: "strimzi.io/cluster=kafka"
+  namespace: default
 endpoints:
   - name: "Kafka Internal"
     node-type: db

@@ -30,7 +30,7 @@ install/<name>/
 name: myworkload
 description: Short description shown in help text
 version: "1.0.0"
-collision-check: false   # true = refuse to install if already present
+collision-check: false   # true = refuse a second install, and refuse start while running (see Collision check)
 
 metrics:
   type: scrape           # see Metrics section
@@ -393,11 +393,29 @@ Dashboard JSON files should:
 - Set datasource to `{ "type": "prometheus", "uid": "VictoriaMetrics" }`
 - Include `"tags": ["<kit>", "kit"]`
 
-Dashboards are installed with `overwrite: true` so re-running `start` is safe.
+Dashboards are installed with `overwrite: true`, so re-running `start` never duplicates them.
+
+## Collision check
+
+`collision-check: true` guards a kit in two places. Both failures are error events and exit non-zero:
+
+- **`kit install`** refuses when the kit's scaffold directory already exists and is not empty. The
+  event is `Install.CollisionDetected`. Pass `--force` to overwrite the scaffold.
+- **`<kit> start`** refuses when the workload the kit's `runtime` block declares is already in the
+  cluster: pods matching the runtime `selector` in its namespace, or the helm release for a `helm`
+  runtime. The event is `Kit.CollisionDetected`, naming the objects it found, and no start step runs.
+  Run `<kit> stop` first. Pods that are already terminating do not count, so `stop` followed by
+  `start` works.
+
+The runtime must therefore name what `start` creates and `stop` removes. A runtime pointing at
+something the `install` phase creates, such as an operator's helm release, would refuse every
+`start` after a successful install. A kit with no `runtime` block is looked up by the pod label
+`app.kubernetes.io/name=<kit>`.
 
 ## Runtime
 
-The `runtime` field tells easy-db-lab how to find running pods for status checks and log tailing.
+The `runtime` field tells easy-db-lab how to find running pods for status checks, log tailing, and
+the `start` collision check.
 
 ```yaml
 runtime:

@@ -5446,6 +5446,26 @@ sealed interface Event {
 
             override fun isError(): Boolean = true
         }
+
+        /**
+         * A collision-checked kit refused [phase] because its workload is already in the cluster:
+         * [resources] (`kind/name`) in [namespace], found through the kit's runtime declaration.
+         * No step of the phase ran.
+         */
+        @Serializable
+        @SerialName("Kit.CollisionDetected")
+        data class CollisionDetected(
+            val kit: String,
+            val phase: String,
+            val namespace: String,
+            val resources: List<String>,
+        ) : Kit {
+            override fun toDisplayString(): String =
+                "Error: '$kit' is already running (${resources.joinToString(", ")} in namespace $namespace). " +
+                    "Run 'easy-db-lab $kit stop' before running '$phase' again."
+
+            override fun isError(): Boolean = true
+        }
     }
 
     // =========================================================================

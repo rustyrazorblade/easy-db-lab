@@ -13,14 +13,17 @@ import com.rustyrazorblade.easydblab.services.KitEndpointAddresses
 import com.rustyrazorblade.easydblab.services.KitEndpointResolver
 import com.rustyrazorblade.easydblab.services.KitHookExecutor
 import com.rustyrazorblade.easydblab.services.KitMetrics
+import com.rustyrazorblade.easydblab.services.KitWorkloadProbe
 import com.rustyrazorblade.easydblab.services.KubeconfigProxyResolver
 import com.rustyrazorblade.easydblab.services.MetricsRegistryService
 import com.rustyrazorblade.easydblab.services.StepExecutionContext
 import com.rustyrazorblade.easydblab.services.TemplateVariables
+import com.rustyrazorblade.easydblab.services.WorkloadPresence
 import com.rustyrazorblade.easydblab.services.WorkloadStepExecutor
 import com.rustyrazorblade.easydblab.services.installConfigYaml
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
+import org.koin.core.parameter.parametersOf
 import picocli.CommandLine
 import java.io.File
 import java.time.LocalDateTime
@@ -45,6 +48,8 @@ class KitRunnerCommand(
     private val metricsRegistryService: MetricsRegistryService by inject()
     private val kitHookExecutor: KitHookExecutor by inject()
     private val kitEndpointResolver: KitEndpointResolver by inject()
+    private val workspaceKubeconfig = File(kitDir.parentFile, Constants.K3s.LOCAL_KUBECONFIG)
+    private val workloadProbe: KitWorkloadProbe by inject { parametersOf(workspaceKubeconfig.path) }
 
     private var processExitCode: Int = 0
 
@@ -52,11 +57,14 @@ class KitRunnerCommand(
         val config = loadInstallConfig()
         val typedSteps = config?.stepsForPhase(phaseName)?.takeIf { it.isNotEmpty() }
 
+        if (phaseName == Constants.Kit.PHASE_START && config?.collisionCheck == true && isAlreadyRunning(config)) {
+            return
+        }
+
         // Resolve the kubeconfig that local kubectl/helm shell steps will use. On a SOCKS-only
         // cluster this yields a temp copy carrying a `proxy-url` so those binaries route through
         // the tunnel; on Tailscale/no-proxy it returns the workspace kubeconfig unchanged. The
         // temp file (if any) is deleted when the block exits, on both success and failure.
-        val workspaceKubeconfig = File(kitDir.parentFile, Constants.K3s.LOCAL_KUBECONFIG)
         kubeconfigProxyResolver.resolve(workspaceKubeconfig).use { resolvedKubeconfig ->
             val augmentedEnv = buildAugmentedEnv(config, resolvedKubeconfig.path)
 
@@ -69,6 +77,32 @@ class KitRunnerCommand(
                     phaseName == Constants.Kit.PHASE_UNINSTALL -> removeKitDirectory()
                     else -> error("No typed phase or script found for '$phaseName' in kit '$kitName'")
                 }
+            }
+        }
+    }
+
+    /**
+     * Collision check for `start` (typed-install-steps: a top-level `collision-check: true` guards the
+     * start phase). Reports the kit's running objects and fails the command when its runtime
+     * declaration finds its workload already in the cluster; a failed cluster query fails the command.
+     */
+    private fun isAlreadyRunning(config: KitConfig): Boolean {
+        val controlHost =
+            clusterState.getControlHost()
+                ?: error("No control node found in cluster state")
+        return when (val presence = workloadProbe.find(kitName, config.runtime, controlHost).getOrThrow()) {
+            is WorkloadPresence.Absent -> false
+            is WorkloadPresence.Present -> {
+                eventBus.emit(
+                    Event.Kit.CollisionDetected(
+                        kit = kitName,
+                        phase = phaseName,
+                        namespace = presence.namespace,
+                        resources = presence.resources,
+                    ),
+                )
+                processExitCode = Constants.ExitCodes.ERROR
+                true
             }
         }
     }

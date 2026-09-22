@@ -28,6 +28,7 @@ data class KubernetesJob(
  * @property ready Ready status string (e.g., "1/1", "0/1")
  * @property restarts Number of container restarts
  * @property age How long ago the pod was created
+ * @property terminating Whether the pod has been deleted and is shutting down
  */
 data class KubernetesPod(
     val namespace: String,
@@ -36,6 +37,7 @@ data class KubernetesPod(
     val ready: String,
     val restarts: Int,
     val age: Duration,
+    val terminating: Boolean = false,
 )
 
 /**

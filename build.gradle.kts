@@ -102,12 +102,43 @@ tasks.named<CreateStartScripts>("startScripts") {
         // xargs|sed|eval arg-splitting pipeline runs. Args placed in `applicationDefaultJvmArgs`
         // are treated literally by that pipeline, so `$APP_HOME` cannot be referenced there —
         // both the apphome system property and the OTel java agent path are injected here.
-        val replacement =
-            "\$1 \nDEFAULT_JVM_OPTS=\"\\\$DEFAULT_JVM_OPTS -Deasydblab.apphome=\\\$APP_HOME " +
-                "-javaagent:\\\$APP_HOME/agents/opentelemetry-javaagent.jar\""
+        val agentOpts =
+            "DEFAULT_JVM_OPTS=\"\$DEFAULT_JVM_OPTS -Deasydblab.apphome=\$APP_HOME " +
+                "-javaagent:\$APP_HOME/agents/opentelemetry-javaagent.jar\""
+
+        // The agent's exporters default to OTLP on localhost:4318. With no collector there, every
+        // export fails and the agent prints a stack trace to stderr on every run — the normal case
+        // for a Homebrew user. So the exporters stay off unless the user configured an OTLP
+        // endpoint or picked exporters. The agent reads system properties ahead of environment
+        // variables, so this check must run here: an unconditional -D would override a user's
+        // OTEL_* configuration. A user who sets any of these variables gets the agent's own
+        // defaults and its own error reporting.
+        val otelExportVars =
+            listOf(
+                "OTEL_EXPORTER_OTLP_ENDPOINT",
+                "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
+                "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT",
+                "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT",
+                "OTEL_TRACES_EXPORTER",
+                "OTEL_METRICS_EXPORTER",
+                "OTEL_LOGS_EXPORTER",
+            ).joinToString("") { "\${$it}" }
+        val otelExportDefaults =
+            listOf(
+                "# No OTLP endpoint or exporter configured: load the agent but export nothing, and",
+                "# silence its logger (the version banner), instead of failing against localhost:4318.",
+                "if [ -z \"$otelExportVars\" ]; then",
+                "    DEFAULT_JVM_OPTS=\"\$DEFAULT_JVM_OPTS -Dotel.traces.exporter=none " +
+                    "-Dotel.metrics.exporter=none -Dotel.logs.exporter=none\"",
+                "    if [ -z \"\$OTEL_JAVAAGENT_LOGGING\" ]; then",
+                "        DEFAULT_JVM_OPTS=\"\$DEFAULT_JVM_OPTS -Dotel.javaagent.logging=none\"",
+                "    fi",
+                "fi",
+            ).joinToString("\n")
+
         val regex = "^(DEFAULT_JVM_OPTS=.*)".toRegex(RegexOption.MULTILINE)
         val body = unixScript.readText()
-        val newBody = regex.replace(body, replacement)
+        val newBody = regex.replace(body) { match -> "${match.value}\n$agentOpts\n$otelExportDefaults" }
         unixScript.writeText(newBody)
 
         // This needs to be updated for windows
@@ -342,6 +373,21 @@ tasks.named<Test>("test") {
         .file("docs/user-guide/sysbench.md")
         .withPropertyName("sysbenchUserGuide")
         .withPathSensitivity(PathSensitivity.RELATIVE)
+
+    // StartScriptTelemetryTest runs the generated Unix start script, the launcher a Homebrew
+    // user runs, to check which OpenTelemetry exporter settings it hands the JVM.
+    val startScript = layout.buildDirectory.file("scripts/easy-db-lab")
+    dependsOn(tasks.named("startScripts"))
+    inputs
+        .file(startScript)
+        .withPropertyName("unixStartScript")
+        .withPathSensitivity(PathSensitivity.NONE)
+    systemProperty(
+        "easydblab.startScript",
+        startScript
+            .get()
+            .asFile.absolutePath,
+    )
 }
 
 // `./gradlew check` must run BOTH tiers; `./gradlew test` stays UNIT-ONLY (fast, no Docker).

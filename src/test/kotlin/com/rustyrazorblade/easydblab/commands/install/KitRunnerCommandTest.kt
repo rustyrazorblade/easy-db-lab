@@ -22,6 +22,8 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.koin.test.get
@@ -347,6 +349,30 @@ class KitRunnerCommandTest : BaseKoinTest() {
                 """.trimIndent(),
         )
         val events = captureEvents { command("mydb", "stop").call() }
+        assertThat(events.filterIsInstance<Event.Kit.EndpointsAvailable>()).isEmpty()
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @ValueSource(
+        strings = [
+            "",
+            // The fixture cluster has control and db hosts only, so an app endpoint resolves to nothing.
+            "endpoints:\n  - name: ui\n    node-type: app\n    port: 30080\n    type: http\n",
+        ],
+    )
+    fun `start with no resolvable endpoint emits no EndpointsAvailable event`(endpoints: String) {
+        writeKitYaml(
+            "mydb",
+            "name: mydb\n$endpoints" +
+                """
+                start:
+                  - type: shell
+                    script: echo hello
+                """.trimIndent(),
+        )
+
+        val events = captureEvents { assertThat(command("mydb", "start").call()).isEqualTo(0) }
+
         assertThat(events.filterIsInstance<Event.Kit.EndpointsAvailable>()).isEmpty()
     }
 

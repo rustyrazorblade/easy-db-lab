@@ -51,18 +51,18 @@ All under `src/main/resources/com/rustyrazorblade/easydblab/kits/memcached/`.
 
 All under `src/main/resources/com/rustyrazorblade/easydblab/kits/neo4j/`.
 
-- [ ] 4.1 `kit.yaml`: `type: db`, `collision-check: true`, `--version` (5.x / 2025.x, default
+- [x] 4.1 `kit.yaml`: `type: db`, `collision-check: true`, `--version` (5.x / 2025.x, default
       pinned to the current Community release), endpoints Bolt `native` 30687 and HTTP `http`
       30474 (`node-type: db`), `metrics: [{type: java-agent, service-name: neo4j}]`, a shell step
       that reads the first db node's private IP for the Bolt advertised address, `platform-pvs`
       step, stop deleting sts/svc/pods by `easydblab/kit=neo4j`, uninstall additionally deleting
       PVCs and running `platform-pvs-delete`.
-- [ ] 4.2 `statefulset.yaml.template`: one replica, db node, image `neo4j:${VERSION}-community`,
+- [x] 4.2 `statefulset.yaml.template`: one replica, db node, image `neo4j:${VERSION}-community`,
       `NEO4J_AUTH=none`, `hostPath` `/usr/local/otel` mounted read-only, `NEO4J_server_jvm_additional`
       carrying `-javaagent:`, `OTEL_SERVICE_NAME=neo4j`, `HOST_IP` from `status.hostIP`, OTLP
       endpoint `http://$(HOST_IP):4318`, 5 s export interval, Bolt advertised address from 4.1,
       `volumeClaimTemplates` metadata carrying `easydblab/kit=neo4j`.
-- [ ] 4.3 `nodeport-service.yaml.template`: NodePorts 30687 → 7687 and 30474 → 7474, kit label.
+- [x] 4.3 `nodeport-service.yaml.template`: NodePorts 30687 → 7687 and 30474 → 7474, kit label.
 - [ ] 4.4 Live, first task after the kit starts: list the metrics the pod exports in
       VictoriaMetrics (`job="neo4j"`) and the MBeans the JVM registers. **Review the list with the
       owner before writing any dashboard panel.**
@@ -71,12 +71,12 @@ All under `src/main/resources/com/rustyrazorblade/easydblab/kits/neo4j/`.
 - [ ] 4.6 `bin/export-workload-metrics neo4j` → `metrics-catalog.json`.
 - [ ] 4.7 `dashboards/neo4j.json` via the `dashboard-editor` agent, with the panels agreed in 4.4.
 - [ ] 4.8 `METRICS.md`.
-- [ ] 4.9 Docs: `docs/user-guide/neo4j.md` (install, start, connect over Bolt and HTTP, stop),
+- [x] 4.9 Docs: `docs/user-guide/neo4j.md` (install, start, connect over Bolt and HTTP, stop),
       linked from `docs/SUMMARY.md`; add 30687 and 30474 to `docs/reference/ports.md`.
 
 ## 5. Fold-in debt
 
-- [ ] 5.1 `services/KitConfig.kt:17`: rewrite the `KitMetrics.JavaAgent` KDoc line to say it is
+- [x] 5.1 `services/KitConfig.kt:17`: rewrite the `KitMetrics.JavaAgent` KDoc line to say it is
       declarative — the agent pushes OTLP to the node collector and no ConfigMap changes — and name
       the agent path correctly (`/usr/local/otel/opentelemetry-javaagent.jar`, mounted from the
       host).

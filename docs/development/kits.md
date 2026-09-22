@@ -324,6 +324,16 @@ metrics:
   service-name: myworkload
 ```
 
+The agent pushes OTLP to the collector on the pod's own node; nothing in the collector config
+changes. Mount `/usr/local/otel` from the host read-only, load the jar through the workload's
+JVM options, and set `OTEL_SERVICE_NAME` (it becomes `job`), `HOST_IP` from `status.hostIP`, and
+`OTEL_EXPORTER_OTLP_ENDPOINT=http://$(HOST_IP):4318`. See `kits/neo4j/statefulset.yaml.template`.
+
+**Never write a double underscore in a `.template` file.** `__NAME__` is the install-time
+placeholder syntax, so a literal `__` (e.g. Neo4j's `NEO4J_server_bolt_advertised__address`)
+swallows the text up to the next `__`. Put such a name in `kit.yaml` instead — the Neo4j kit's
+start step writes it as a ConfigMap key and the pod loads it with `envFrom`.
+
 ### `helm-native` — Built-in telemetry
 The kit ships its own metrics pipeline via Helm values. No OTel config change is needed.
 ```yaml

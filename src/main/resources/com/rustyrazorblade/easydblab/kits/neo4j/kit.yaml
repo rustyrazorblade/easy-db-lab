@@ -1,0 +1,95 @@
+name: neo4j
+type: db
+description: Neo4j Community graph database on a db node, with Bolt and HTTP NodePorts
+version: "1.0.0"
+collision-check: true
+
+# The OpenTelemetry Java agent baked into the base AMI pushes OTLP to the collector on the pod's
+# own node. OTEL_SERVICE_NAME=neo4j makes the series arrive under job="neo4j"; nothing in the
+# collector's scrape config changes.
+metrics:
+  - type: java-agent
+    service-name: neo4j
+
+runtime:
+  type: pods
+  selector: "easydblab/kit=neo4j"
+  namespace: default
+
+endpoints:
+  - name: "Bolt"
+    node-type: db
+    port: 30687
+    type: native
+  - name: "HTTP"
+    node-type: db
+    port: 30474
+    type: http
+
+args:
+  - flag: --version
+    variable: NEO4J_VERSION
+    description: "Neo4j Community version, 5.x or 2025.x (image neo4j:<version>-community)"
+    type: string
+    default: "2025.05.0"
+  - flag: --storage-size
+    variable: STORAGE_SIZE
+    description: "Persistent volume size for the Neo4j data directory"
+    type: string
+    default: "10Ti"
+
+install:
+  - type: platform-pvs
+    node-type: db
+    count: 1
+    volume-claim-template-name: data
+
+start:
+  # The Bolt advertised address must be an address clients can dial: the first db node's
+  # private IP and the Bolt NodePort. No template variable carries a single db node IP, so this
+  # step reads it from DB_NODE_IPS and publishes it in a ConfigMap the StatefulSet reads.
+  # It also rejects a version outside 5.x and 2025.x, whose config keys differ, before anything
+  # is applied.
+  - type: shell
+    script: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      if [[ ! "${NEO4J_VERSION}" =~ ^(5|2025)\.[0-9]+\.[0-9]+$ ]]; then
+        echo "ERROR: Neo4j version '${NEO4J_VERSION}' is not supported; use a 5.x or 2025.x release." >&2
+        exit 1
+      fi
+      FIRST_DB_IP="${DB_NODE_IPS%%,*}"
+      if [[ -z "${FIRST_DB_IP}" ]]; then
+        echo "ERROR: no db node IP found in DB_NODE_IPS." >&2
+        exit 1
+      fi
+      kubectl create configmap neo4j-advertised --namespace default \
+        --from-literal=NEO4J_server_bolt_advertised__address="${FIRST_DB_IP}:30687" \
+        --dry-run=client -o yaml \
+        | kubectl label --local -f - easydblab/kit=neo4j -o yaml \
+        | kubectl apply -f -
+  - type: manifest
+    template: statefulset.yaml
+  - type: manifest
+    template: nodeport-service.yaml
+  - type: shell
+    script: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      kubectl rollout status statefulset/neo4j --namespace default --timeout=600s
+
+stop:
+  - type: shell
+    script: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      kubectl delete statefulset,service,pod,configmap -l easydblab/kit=neo4j --namespace default --ignore-not-found=true
+
+uninstall:
+  - type: shell
+    script: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      kubectl delete statefulset,service,pod,configmap,pvc -l easydblab/kit=neo4j --namespace default --ignore-not-found=true
+  - type: platform-pvs-delete
+    node-type: db

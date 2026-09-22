@@ -19,6 +19,7 @@
     - [Backup & Restore](user-guide/clickhouse-backup-restore.md)
   - [Kafka](user-guide/kafka.md)
   - [Apache Ignite 3](user-guide/ignite3.md)
+  - [Neo4j](user-guide/neo4j.md)
   - [Presto](user-guide/install-presto.md)
   - [Trino](user-guide/install-trino.md)
   - [TiDB](user-guide/tidb.md)

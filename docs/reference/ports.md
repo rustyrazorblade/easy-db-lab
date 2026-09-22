@@ -49,6 +49,8 @@ Kits publish client ports through NodePort Services, reachable on any node's pri
 |------|-----|---------|
 | 31211 | memcached | memcached client port (NodePort → 11211) |
 | 9150 | memcached | memcached-exporter metrics (pod port, scraped by pod discovery) |
+| 30687 | neo4j | Bolt (NodePort → 7687) |
+| 30474 | neo4j | HTTP (NodePort → 7474) |
 
 ## Server
 

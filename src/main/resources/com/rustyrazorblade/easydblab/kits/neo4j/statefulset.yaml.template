@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  # platform-pvs names the PV data-<kit>-0; the StatefulSet's claim takes the same name only
+  # when the StatefulSet is named after the kit and its claim template is `data`.
+  name: neo4j
+  namespace: default
+  labels:
+    app: neo4j
+    easydblab/kit: neo4j
+spec:
+  replicas: 1
+  serviceName: neo4j
+  selector:
+    matchLabels:
+      app: neo4j
+  template:
+    metadata:
+      labels:
+        app: neo4j
+        easydblab/kit: neo4j
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: type
+                    operator: In
+                    values:
+                      - db
+      containers:
+        - name: neo4j
+          image: neo4j:__NEO4J_VERSION__-community
+          imagePullPolicy: IfNotPresent
+          # Clients dial the node, not the pod. The kit's start step publishes the Bolt advertised
+          # address (first db node IP and the Bolt NodePort) in this ConfigMap, keyed by the Neo4j
+          # env var itself. The env var name is not written here: it contains a double
+          # underscore, which this template's placeholder syntax would consume.
+          envFrom:
+            - configMapRef:
+                name: neo4j-advertised
+          env:
+            - name: NEO4J_AUTH
+              value: none
+            # The base AMI installs the OpenTelemetry Java agent; it is mounted from the host below.
+            - name: NEO4J_server_jvm_additional
+              value: "-javaagent:/usr/local/otel/opentelemetry-javaagent.jar"
+            - name: OTEL_SERVICE_NAME
+              value: neo4j
+            # HOST_IP must precede the endpoint that references it.
+            - name: HOST_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            # Port 4318 is the collector's OTLP http/protobuf receiver, the agent's default protocol.
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://$(HOST_IP):4318"
+            - name: OTEL_METRIC_EXPORT_INTERVAL
+              value: "5000"
+          ports:
+            - name: bolt
+              containerPort: 7687
+            - name: http
+              containerPort: 7474
+          readinessProbe:
+            tcpSocket:
+              port: 7687
+            periodSeconds: 10
+            failureThreshold: 30
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: otel-agent
+              mountPath: /usr/local/otel
+              readOnly: true
+      volumes:
+        - name: otel-agent
+          hostPath:
+            path: /usr/local/otel
+            type: Directory
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          app: neo4j
+          easydblab/kit: neo4j
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: __STORAGE_CLASS_WFC__
+        resources:
+          requests:
+            storage: __STORAGE_SIZE__

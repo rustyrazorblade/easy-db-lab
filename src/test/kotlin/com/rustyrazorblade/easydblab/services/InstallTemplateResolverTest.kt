@@ -213,7 +213,7 @@ class InstallTemplateResolverTest : BaseKoinTest() {
         File(profileDir, Constants.Kit.CONFIG_FILE).writeText("name: mydb\ncollision-check: true")
         val source = InstallTemplateResolver.TemplateSource.Directory(profileDir)
         val config = requireNotNull(resolver.loadInstallConfig(source))
-        assertThat(config.collisionCheck).isTrue()
+        assertThat(config.collisionCheck).isEqualTo(CollisionCheck.ENABLED)
     }
 
     @Test

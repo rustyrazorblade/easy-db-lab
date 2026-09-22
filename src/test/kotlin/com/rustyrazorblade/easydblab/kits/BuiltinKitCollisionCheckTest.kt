@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitRuntime
 import com.rustyrazorblade.easydblab.services.KitSourcesProvider
 import com.rustyrazorblade.easydblab.services.TemplateService
+import com.rustyrazorblade.easydblab.Constants
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
@@ -33,7 +34,7 @@ class BuiltinKitCollisionCheckTest : BaseKoinTest() {
         return resolver
             .listAvailableTemplates()
             .mapNotNull { resolver.loadInstallConfig(resolver.resolve(it)) }
-            .filter { it.collisionCheck }
+            .filter { it.collisionCheck.guards(Constants.Kit.PHASE_START) }
             .also { assertThat(it).isNotEmpty() }
     }
 

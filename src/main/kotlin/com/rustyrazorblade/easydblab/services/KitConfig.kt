@@ -232,7 +232,7 @@ data class KitConfig(
     val description: String = "",
     val version: String = "",
     @SerialName("collision-check")
-    val collisionCheck: Boolean = false,
+    val collisionCheck: CollisionCheck = CollisionCheck.NONE,
     val dashboards: List<DashboardRef> = emptyList(),
     val args: List<KitArgSpec> = emptyList(),
     val metrics: List<KitMetrics> = emptyList(),

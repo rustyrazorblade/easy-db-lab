@@ -958,6 +958,44 @@ class KitRunnerCommandTest : BaseKoinTest() {
         }
 
         @Test
+        fun `a kit that collision-checks only install neither guards start nor waits after stop`() {
+            writeKitYaml(
+                "mydb",
+                collisionCheckedHeader.replace("collision-check: true", "collision-check: {install: true, start: false}") + "\n" +
+                    """
+                    start:
+                      - type: shell
+                        script: echo start
+                    stop:
+                      - type: shell
+                        script: echo stop
+                    """.trimIndent(),
+            )
+            podsInCluster(runningPod)
+
+            assertThat(command("mydb", "start").call()).isEqualTo(0)
+            assertThat(command("mydb", "stop").call()).isEqualTo(0)
+            verifyNoInteractions(mockKubeService)
+        }
+
+        @Test
+        fun `a kit that collision-checks start through a phase map is guarded`() {
+            writeKitYaml(
+                "mydb",
+                collisionCheckedHeader.replace("collision-check: true", "collision-check: {start: true, install: false}") + "\n" +
+                    """
+                    start:
+                      - type: shell
+                        script: echo start
+                    """.trimIndent(),
+            )
+            podsInCluster(runningPod)
+
+            assertThat(command("mydb", "start").call()).isNotEqualTo(0)
+            verify(mockWorkloadStepExecutor, never()).execute(any(), any(), any())
+        }
+
+        @Test
         fun `start of a kit without collision-check does not look in the cluster`() {
             writeCollisionCheckedKit(collisionCheck = false)
 

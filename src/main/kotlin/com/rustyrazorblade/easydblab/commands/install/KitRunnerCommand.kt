@@ -57,7 +57,8 @@ class KitRunnerCommand(
         val config = loadInstallConfig()
         val typedSteps = config?.stepsForPhase(phaseName)?.takeIf { it.isNotEmpty() }
 
-        if (phaseName == Constants.Kit.PHASE_START && config?.collisionCheck == true && isAlreadyRunning(config)) {
+        val startIsGuarded = config?.collisionCheck?.guards(Constants.Kit.PHASE_START) == true
+        if (phaseName == Constants.Kit.PHASE_START && startIsGuarded && isAlreadyRunning(requireNotNull(config))) {
             return
         }
 
@@ -82,9 +83,10 @@ class KitRunnerCommand(
     }
 
     /**
-     * Collision check for `start` (typed-install-steps: a top-level `collision-check: true` guards the
-     * start phase). Reports the kit's running objects and fails the command when its runtime
-     * declaration finds its workload already in the cluster; a failed cluster query fails the command.
+     * Collision check for `start` (typed-install-steps: `collision-check: true`, or a phase map with
+     * `start: true`, guards the start phase). Reports the kit's running objects and fails the command
+     * when its runtime declaration finds its workload already in the cluster; a failed cluster query
+     * fails the command.
      */
     private fun isAlreadyRunning(config: KitConfig): Boolean {
         val controlHost =
@@ -235,7 +237,7 @@ class KitRunnerCommand(
         config: KitConfig,
         controlHost: ClusterHost,
     ): Boolean {
-        if (phaseName != Constants.Kit.PHASE_STOP || !config.collisionCheck) return true
+        if (phaseName != Constants.Kit.PHASE_STOP || !config.collisionCheck.guards(Constants.Kit.PHASE_START)) return true
         return when (val remaining = workloadProbe.awaitGone(kitName, config.runtime, controlHost).getOrThrow()) {
             is WorkloadPresence.Absent -> true
             is WorkloadPresence.Present -> {

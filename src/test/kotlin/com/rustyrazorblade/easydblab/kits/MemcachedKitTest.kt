@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.services.InstallStep
 import com.rustyrazorblade.easydblab.services.KitEndpoint
 import com.rustyrazorblade.easydblab.services.KitType
 import com.rustyrazorblade.easydblab.services.TemplateService
+import com.rustyrazorblade.easydblab.services.CollisionCheck
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.Service
 import io.fabric8.kubernetes.api.model.apps.Deployment
@@ -39,7 +40,7 @@ class MemcachedKitTest : BaseKoinTest() {
     @Test
     fun `is a db kit with a collision check`() {
         assertThat(kit.config.type).isEqualTo(KitType.DB)
-        assertThat(kit.config.collisionCheck).isTrue()
+        assertThat(kit.config.collisionCheck).isEqualTo(CollisionCheck.ENABLED)
     }
 
     @Test

@@ -20,6 +20,8 @@ import com.rustyrazorblade.easydblab.services.KitType
 import com.rustyrazorblade.easydblab.services.MetricsRegistryService
 import com.rustyrazorblade.easydblab.services.TemplateService
 import com.rustyrazorblade.easydblab.services.WorkloadStepExecutor
+import com.rustyrazorblade.easydblab.services.CollisionCheck
+import com.rustyrazorblade.easydblab.Constants
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -161,7 +163,7 @@ class KitEndToEndTest : BaseKoinTest() {
     private fun collisionCheckedTestdb(): Pair<KitConfig, InstallTemplateResolver.TemplateSource> {
         val resolver = get<InstallTemplateResolver>()
         val source = resolver.resolve("testdb")
-        val config = requireNotNull(resolver.loadInstallConfig(source)).copy(collisionCheck = true)
+        val config = requireNotNull(resolver.loadInstallConfig(source)).copy(collisionCheck = CollisionCheck.ENABLED)
         return config to source
     }
 
@@ -222,6 +224,17 @@ class KitEndToEndTest : BaseKoinTest() {
         assertThat(requirement.isError()).isTrue()
         assertThat(requirement.toDisplayString()).startsWith("Error:").contains("testdb", "db")
         assertThat(File(workingDir, "testdb")).doesNotExist()
+    }
+
+    @Test
+    fun `a kit that collision-checks only start installs over its existing scaffold`() {
+        val (enabled, source) = collisionCheckedTestdb()
+        val config = enabled.copy(collisionCheck = CollisionCheck(setOf(Constants.Kit.PHASE_START)))
+        assertThat(install(config, source)).isEqualTo(0)
+        val events = captureEvents()
+
+        assertThat(install(config, source)).isEqualTo(0)
+        assertThat(events).noneMatch { it is Event.Install.CollisionDetected }
     }
 
     @Test

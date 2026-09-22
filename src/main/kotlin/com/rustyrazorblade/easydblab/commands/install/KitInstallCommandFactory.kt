@@ -41,7 +41,7 @@ class KitInstallCommandFactory(
             spec.mixinStandardHelpOptions(true)
         }
 
-        if (config.collisionCheck) {
+        if (config.collisionCheck.guards(Constants.Kit.PHASE_INSTALL)) {
             spec.add(forceOptionSpec(command))
         }
 

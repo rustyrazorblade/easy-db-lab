@@ -72,7 +72,7 @@ class KitInstallCommand(
 
         val instanceName = resolveInstanceName()
 
-        if (config.collisionCheck && !force) {
+        if (config.collisionCheck.guards(Constants.Kit.PHASE_INSTALL) && !force) {
             val outputDir = File(context.workingDirectory, instanceName)
             if (outputDir.isDirectory && outputDir.listFiles().orEmpty().isNotEmpty()) {
                 eventBus.emit(Event.Install.CollisionDetected(kit = instanceName, outputDir = outputDir.path))

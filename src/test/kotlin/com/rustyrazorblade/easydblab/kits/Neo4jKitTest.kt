@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.services.KitEndpoint
 import com.rustyrazorblade.easydblab.services.KitMetrics
 import com.rustyrazorblade.easydblab.services.KitType
 import com.rustyrazorblade.easydblab.services.TemplateService
+import com.rustyrazorblade.easydblab.services.CollisionCheck
 import io.fabric8.kubernetes.api.model.Container
 import io.fabric8.kubernetes.api.model.EnvVar
 import io.fabric8.kubernetes.api.model.HasMetadata
@@ -53,7 +54,7 @@ class Neo4jKitTest : BaseKoinTest() {
     @Test
     fun `is a db kit with a collision check`() {
         assertThat(kit.config.type).isEqualTo(KitType.DB)
-        assertThat(kit.config.collisionCheck).isTrue()
+        assertThat(kit.config.collisionCheck).isEqualTo(CollisionCheck.ENABLED)
     }
 
     @Test

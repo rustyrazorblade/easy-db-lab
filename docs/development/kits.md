@@ -30,7 +30,7 @@ install/<name>/
 name: myworkload
 description: Short description shown in help text
 version: "1.0.0"
-collision-check: false   # true = refuse a second install, and refuse start while running (see Collision check)
+collision-check: false   # true = refuse a second install and a start while running; or a map per phase (see Collision check)
 
 metrics:
   type: scrape           # see Metrics section
@@ -420,7 +420,17 @@ Dashboards are installed with `overwrite: true`, so re-running `start` never dup
 
 ## Collision check
 
-`collision-check: true` guards a kit in two places. Both failures are error events and exit non-zero:
+`collision-check` is a boolean or a map of phase to boolean. `true` guards both `install` and
+`start`; `false` (the default) guards neither. The map guards only the phases set to `true`:
+
+```yaml
+collision-check:
+  start: true     # refuse start while running, and make stop wait for the pods to go
+  install: false  # a second install overwrites the scaffold without --force
+```
+
+`install` and `start` are the only phases with a collision check; any other key is rejected when
+the kit is loaded. Each guarded phase fails with an error event and exits non-zero:
 
 - **`kit install`** refuses when the kit's scaffold directory already exists and is not empty. The
   event is `Install.CollisionDetected`. Pass `--force` to overwrite the scaffold.

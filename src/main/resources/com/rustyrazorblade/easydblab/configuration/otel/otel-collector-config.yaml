@@ -80,15 +80,6 @@ receivers:
               replacement: '${env:HOSTNAME}:5001'
             - target_label: cluster
               replacement: '${env:CLUSTER_NAME}'
-        - job_name: 'hubble'
-          scrape_interval: 15s
-          static_configs:
-            - targets: ['localhost:9965']
-          relabel_configs:
-            - target_label: instance
-              replacement: '${env:HOSTNAME}:9965'
-            - target_label: cluster
-              replacement: '${env:CLUSTER_NAME}'
         - job_name: 'tempo'
           scrape_interval: 15s
           static_configs:
@@ -98,6 +89,12 @@ receivers:
               replacement: '${env:HOSTNAME}:3200'
             - target_label: cluster
               replacement: '${env:CLUSTER_NAME}'
+        # Built by OtelManifestBuilder: the kube-state-metrics pod-discovery job (every cluster)
+        # and the Cilium agent/operator/Hubble jobs (Cilium clusters only). They are rendered in
+        # Kotlin rather than written here because their relabel rules name Prometheus meta labels,
+        # whose double-underscore prefix and suffix is the template placeholder syntax of
+        # TemplateService: written in this file they would derail every substitution after them.
+__INFRA_SCRAPE_JOBS__
 __KIT_SCRAPE_JOBS__
   filelog/system:
     include:

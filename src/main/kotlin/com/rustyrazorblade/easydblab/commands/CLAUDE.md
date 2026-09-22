@@ -72,7 +72,7 @@ commands/
 ├── logs/                  # Log import/listing commands
 ├── metrics/               # Metrics import/listing commands
 ├── opensearch/            # OpenSearch commands
-├── platform/              # Platform substrate commands (platform create-pvs, platform info)
+├── platform/              # Platform substrate commands (platform create-pvs, platform info, platform cni)
 ├── profile/               # Profile inspection and setup (profile show, profile setup)
 ├── spark/                 # Spark commands
 ├── tailscale/             # Tailscale VPN commands

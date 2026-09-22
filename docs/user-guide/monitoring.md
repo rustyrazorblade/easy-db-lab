@@ -165,6 +165,20 @@ Cloudflare's ebpf_exporter provides kernel-level metrics via eBPF:
 
 These metrics are scraped by the OTel collector and stored in VictoriaMetrics.
 
+## kube-state-metrics
+
+kube-state-metrics runs on the control node of every cluster and exposes the state of Kubernetes objects as Prometheus metrics:
+
+- **Pods** — `kube_pod_status_phase`, `kube_pod_container_status_restarts_total`, `kube_pod_container_status_waiting_reason`
+- **Workloads** — `kube_deployment_status_replicas_available`, `kube_daemonset_status_number_ready`, `kube_statefulset_status_replicas_ready`, `kube_job_status_succeeded`
+- **Nodes and storage** — `kube_node_status_condition`, `kube_persistentvolumeclaim_status_phase`
+
+The OTel collector scrapes it once, through pod discovery on the control node, so each series appears one time. The metrics carry the `cluster` label like every other scrape.
+
+## Cilium metrics
+
+On a cluster provisioned with `--cni cilium`, the OTel collector also scrapes the Cilium agent (`localhost:9962` on every node), Hubble (`localhost:9965` on every node), and the Cilium operator (port 9963 on the node that runs it). A Flannel cluster has none of these jobs. See [Pod Networking (CNI)](networking.md) for the job definitions, the Hubble UI NodePort, and `platform cni`.
+
 See [Profiling](profiling.md) for continuous profiling with Pyroscope.
 
 ## Redirecting Telemetry to an External Stack

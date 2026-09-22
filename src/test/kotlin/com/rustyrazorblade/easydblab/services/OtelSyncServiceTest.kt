@@ -5,6 +5,8 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.CniMode
+import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.ConfigMapList
@@ -171,5 +173,32 @@ class OtelSyncServiceTest : BaseKoinTest() {
             }
         assertThat(yaml).contains("scylladb")
         assertThat(yaml).contains("9180")
+    }
+
+    /**
+     * A kit start/stop regenerates the whole ConfigMap. On a Cilium cluster that regeneration must
+     * keep the Cilium scrape jobs, or the first kit start would silently drop agent and operator
+     * metrics for the rest of the cluster's life.
+     */
+    @Test
+    fun `syncConfigMap keeps the Cilium scrape jobs when the cluster state says Cilium`() {
+        val ciliumState =
+            ClusterState(
+                name = "test",
+                versions = mutableMapOf(),
+                initConfig = InitConfig(region = "us-west-2", cni = CniMode.Cilium),
+            )
+        whenever(getKoin().get<ClusterStateManager>().load()).thenReturn(ciliumState)
+
+        var appliedConfigMap: ConfigMap? = null
+        whenever(mockK8sService.applyResource(any(), any())).thenAnswer { inv ->
+            appliedConfigMap = inv.getArgument(1) as? ConfigMap
+            Result.success(Unit)
+        }
+
+        service.syncConfigMap(controlHost)
+
+        val yaml = checkNotNull(appliedConfigMap?.data?.get("otel-collector-config.yaml"))
+        assertThat(yaml).contains("cilium-agent").contains("cilium-operator")
     }
 }

@@ -21,6 +21,7 @@ This page documents the ports used by easy-db-lab and the services it provisions
 | 9428 | VictoriaLogs (log storage) |
 | 3200 | Tempo (trace storage) |
 | 5001 | YACE CloudWatch exporter (Prometheus) |
+| 8080 | kube-state-metrics (Prometheus; ClusterIP Service, pod network) |
 
 ## Observability Ports (All Nodes — DaemonSets)
 
@@ -30,6 +31,15 @@ This page documents the ports used by easy-db-lab and the services it provisions
 | 4318 | OTel Collector HTTP — the Cassandra JVM agent exports here |
 | 9400 | Beyla eBPF metrics (Prometheus) |
 | 9435 | ebpf_exporter metrics (Prometheus) |
+
+## Cilium Ports (`--cni cilium` clusters only)
+
+| Port | Service |
+|------|---------|
+| 9962 | Cilium agent metrics (Prometheus, every node) |
+| 9963 | Cilium operator metrics (Prometheus, the node that runs the operator) |
+| 9965 | Hubble metrics (Prometheus, every node) |
+| 31234 | Hubble UI (NodePort, any node's private IP) |
 
 ## Server
 

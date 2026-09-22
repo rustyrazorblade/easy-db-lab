@@ -847,6 +847,13 @@ sealed interface Event {
             override fun toDisplayString(): String = "Installing Cilium CNI..."
         }
 
+        /** The release already exists (a re-run of `up`): the same flags are applied with `cilium upgrade`. */
+        @Serializable
+        @SerialName("Cilium.Upgrading")
+        data object Upgrading : Cilium {
+            override fun toDisplayString(): String = "Cilium already installed; upgrading in place with the current flags..."
+        }
+
         @Serializable
         @SerialName("Cilium.Installing.Chart")
         data object InstallingChart : Cilium {
@@ -867,6 +874,22 @@ sealed interface Event {
             override fun toDisplayString(): String = "Failed to install Cilium: $error"
 
             override fun isError(): Boolean = true
+        }
+
+        @Serializable
+        @SerialName("Cilium.TailscaleMasqueradeInstalling")
+        data class TailscaleMasqueradeInstalling(
+            val host: String,
+        ) : Cilium {
+            override fun toDisplayString(): String = "Installing Tailscale masquerade ahead of Cilium NAT on $host..."
+        }
+
+        @Serializable
+        @SerialName("Cilium.TailscaleMasqueradeInstalled")
+        data class TailscaleMasqueradeInstalled(
+            val host: String,
+        ) : Cilium {
+            override fun toDisplayString(): String = "Tailscale masquerade ahead of Cilium NAT installed on $host"
         }
     }
 
@@ -2424,6 +2447,20 @@ sealed interface Event {
                 val tagPart = if (tags.isEmpty()) "" else " [${tags.joinToString(", ")}]"
                 return "Created Grafana annotation #$id at $time: \"$text\"$tagPart"
             }
+        }
+
+        /**
+         * An annotation `up` posts on the operator's behalf (the Cilium install window) could not
+         * be created. The cluster itself is fine; only the dashboard marker is missing.
+         */
+        @Serializable
+        @SerialName("Grafana.AnnotationFailed")
+        data class AnnotationFailed(
+            val reason: String,
+        ) : Grafana {
+            override fun toDisplayString(): String = "Failed to create Grafana annotation: $reason"
+
+            override fun isError(): Boolean = true
         }
     }
 

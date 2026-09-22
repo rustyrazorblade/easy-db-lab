@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.configuration.otel
 
 import com.charleskorn.kaml.Yaml
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
@@ -23,7 +24,8 @@ import kotlinx.serialization.builtins.ListSerializer
  * Builds all OpenTelemetry Collector K8s resources as typed Fabric8 objects.
  *
  * Creates a DaemonSet that runs on all nodes with hostNetwork, collecting
- * host metrics, Prometheus scrapes (Beyla, ebpf_exporter, YACE, Hubble),
+ * host metrics, Prometheus scrapes (Beyla, ebpf_exporter, YACE, kube-state-metrics),
+ * the Cilium agent/operator/Hubble scrapes when the cluster's CNI is Cilium,
  * plus dynamic per-workload scrape jobs from the metrics registry ConfigMaps,
  * file-based logs (system, Cassandra, ClickHouse), and OTLP.
  * Exports to VictoriaMetrics, VictoriaLogs, and Tempo.
@@ -115,17 +117,20 @@ class OtelManifestBuilder(
      *   Pass the result of [listWorkloadScrapeConfigs] to include currently-running workloads.
      * @param telemetryRedirect When non-null, the collector exports to this external stack's
      *   endpoints instead of the in-cluster backends.
+     * @param cni The cluster's pod-network datapath. Cilium adds the agent, operator, and Hubble
+     *   scrape jobs; Flannel renders none of them.
      * @return List of: ServiceAccount, ClusterRole, ClusterRoleBinding, ConfigMap, DaemonSet, Service
      */
     fun buildAllResources(
         scrapeConfigs: List<WorkloadScrapeConfig> = emptyList(),
         telemetryRedirect: TelemetryRedirect? = null,
+        cni: CniMode = CniMode.Flannel,
     ): List<HasMetadata> =
         listOf(
             buildServiceAccount(),
             buildClusterRole(),
             buildClusterRoleBinding(),
-            buildConfigMap(scrapeConfigs, telemetryRedirect),
+            buildConfigMap(scrapeConfigs, telemetryRedirect, cni),
             buildDaemonSet(),
             buildService(),
         )
@@ -188,10 +193,12 @@ class OtelManifestBuilder(
      * @param scrapeConfigs Workload scrape targets to inject (from [listWorkloadScrapeConfigs])
      * @param telemetryRedirect When non-null, the three export endpoints resolve to this external
      *   stack; when null they resolve to the in-cluster service addresses (local mode, unchanged).
+     * @param cni The cluster's pod-network datapath; only Cilium renders the CNI scrape jobs.
      */
     fun buildConfigMap(
         scrapeConfigs: List<WorkloadScrapeConfig> = emptyList(),
         telemetryRedirect: TelemetryRedirect? = null,
+        cni: CniMode = CniMode.Flannel,
     ) = ConfigMapBuilder()
         .withNewMetadata()
         .withName(CONFIGMAP_NAME)
@@ -206,7 +213,8 @@ class OtelManifestBuilder(
                     "otel-collector-config.yaml",
                 ).substitute(
                     mapOf(
-                        "KIT_SCRAPE_JOBS" to buildDynamicScrapeJobsYaml(scrapeConfigs),
+                        "KIT_SCRAPE_JOBS" to renderScrapeJobs(buildDynamicScrapeJobs(scrapeConfigs)),
+                        "INFRA_SCRAPE_JOBS" to renderScrapeJobs(buildInfraScrapeJobs(cni)),
                         "VICTORIAMETRICS_ENDPOINT" to (telemetryRedirect?.metrics ?: LOCAL_VICTORIAMETRICS_ENDPOINT),
                         "VICTORIALOGS_ENDPOINT" to (telemetryRedirect?.logs ?: LOCAL_VICTORIALOGS_ENDPOINT),
                         "TEMPO_ENDPOINT" to (telemetryRedirect?.traces ?: LOCAL_TEMPO_ENDPOINT),
@@ -214,12 +222,134 @@ class OtelManifestBuilder(
                 ),
         ).build()
 
-    private fun buildDynamicScrapeJobsYaml(configs: List<WorkloadScrapeConfig>): String {
-        if (configs.isEmpty()) return ""
-        val jobs =
-            configs.map { config ->
-                if (config.podSelector.isNotBlank()) buildPodScrapeJob(config) else buildStaticScrapeJob(config)
-            }
+    private fun buildDynamicScrapeJobs(configs: List<WorkloadScrapeConfig>): List<PrometheusScrapeJob> =
+        configs.map { config ->
+            if (config.podSelector.isNotBlank()) buildPodScrapeJob(config) else buildStaticScrapeJob(config)
+        }
+
+    /**
+     * The infrastructure scrape jobs that carry Prometheus meta-labels in their relabel rules and
+     * so cannot live in the YAML template (a bare `__x__` there is a template placeholder):
+     * kube-state-metrics on every cluster, plus the CNI jobs from [buildCniScrapeJobs].
+     */
+    fun buildInfraScrapeJobs(cni: CniMode): List<PrometheusScrapeJob> = listOf(buildKubeStateMetricsScrapeJob()) + buildCniScrapeJobs(cni)
+
+    /**
+     * kube-state-metrics runs as ONE pod on the control node, in the pod network. Every collector
+     * in the DaemonSet could reach it through its ClusterIP Service, but then every node would
+     * scrape the same series under its own `instance`. Pod discovery filtered to the collector's
+     * own node means exactly one collector scrapes it; `instance` is the pod name.
+     */
+    private fun buildKubeStateMetricsScrapeJob() =
+        buildNodeLocalPodScrapeJob(
+            jobName = Constants.KubeStateMetrics.NAME,
+            namespace = NAMESPACE,
+            podLabel = "app.kubernetes.io/name",
+            podLabelValue = Constants.KubeStateMetrics.NAME,
+            port = Constants.KubeStateMetrics.METRICS_PORT,
+        )
+
+    /**
+     * The scrape jobs that exist only when the cluster's CNI is Cilium. Flannel has no agent,
+     * operator, or Hubble endpoint, so rendering these there would have every collector poll
+     * three ports nothing listens on for the life of the cluster.
+     *
+     * The agent and Hubble are per-node hostNetwork endpoints, scraped at `localhost` by the
+     * collector on the same node. The operator runs on exactly one node, so it is found by pod
+     * discovery in `kube-system` (label `io.cilium/app=operator`, its metrics port) and, like every
+     * pod-SD job here, only by the collector on that node.
+     */
+    fun buildCniScrapeJobs(cni: CniMode): List<PrometheusScrapeJob> =
+        when (cni) {
+            CniMode.Flannel -> emptyList()
+            CniMode.Cilium ->
+                listOf(
+                    buildLocalhostScrapeJob("cilium-agent", Constants.Cilium.AGENT_METRICS_PORT),
+                    buildLocalhostScrapeJob("hubble", Constants.Cilium.HUBBLE_METRICS_PORT),
+                    buildCiliumOperatorScrapeJob(),
+                )
+        }
+
+    private fun buildLocalhostScrapeJob(
+        jobName: String,
+        port: Int,
+    ) = PrometheusScrapeJob(
+        jobName = jobName,
+        scrapeInterval = SCRAPE_INTERVAL,
+        staticConfigs = listOf(PrometheusStaticConfig(targets = listOf("localhost:$port"))),
+        metricsPath = "/metrics",
+        relabelConfigs =
+            listOf(
+                PrometheusRelabelConfig(targetLabel = "instance", replacement = "\${env:HOSTNAME}:$port"),
+                PrometheusRelabelConfig(targetLabel = "cluster", replacement = "\${env:CLUSTER_NAME}"),
+            ),
+    )
+
+    private fun buildCiliumOperatorScrapeJob() =
+        buildNodeLocalPodScrapeJob(
+            jobName = "cilium-operator",
+            namespace = Constants.Cilium.NAMESPACE,
+            podLabel = Constants.Cilium.OPERATOR_POD_LABEL,
+            podLabelValue = Constants.Cilium.OPERATOR_POD_LABEL_VALUE,
+            port = Constants.Cilium.OPERATOR_METRICS_PORT,
+        )
+
+    /**
+     * A pod-discovery job for a singleton pod selected by one label, scraped only by the collector
+     * on the pod's own node so one series set exists. Pod SD yields one target per declared
+     * container port, so the job keeps only [port] and then addresses the pod IP on it directly;
+     * `instance` is the pod name.
+     */
+    private fun buildNodeLocalPodScrapeJob(
+        jobName: String,
+        namespace: String,
+        podLabel: String,
+        podLabelValue: String,
+        port: Int,
+    ) = PrometheusScrapeJob(
+        jobName = jobName,
+        scrapeInterval = SCRAPE_INTERVAL,
+        kubernetesSdConfigs =
+            listOf(
+                PrometheusKubernetesSdConfig(
+                    role = "pod",
+                    namespaces = PrometheusSdNamespaces(names = listOf(namespace)),
+                ),
+            ),
+        metricsPath = "/metrics",
+        relabelConfigs =
+            listOf(
+                PrometheusRelabelConfig(
+                    sourceLabels = listOf(podLabelMetaKey(podLabel)),
+                    regex = podLabelValue,
+                    action = "keep",
+                ),
+                PrometheusRelabelConfig(
+                    sourceLabels = listOf("__meta_kubernetes_pod_node_name"),
+                    regex = "\${env:HOSTNAME}",
+                    action = "keep",
+                ),
+                PrometheusRelabelConfig(
+                    sourceLabels = listOf("__meta_kubernetes_pod_container_port_number"),
+                    regex = port.toString(),
+                    action = "keep",
+                ),
+                // OTel expands $$ to a literal $, leaving Prometheus its $1 capture group.
+                PrometheusRelabelConfig(
+                    sourceLabels = listOf("__meta_kubernetes_pod_ip"),
+                    targetLabel = "__address__",
+                    replacement = "\$\$1:$port",
+                ),
+                PrometheusRelabelConfig(
+                    sourceLabels = listOf("__meta_kubernetes_pod_name"),
+                    targetLabel = "instance",
+                ),
+                PrometheusRelabelConfig(targetLabel = "cluster", replacement = "\${env:CLUSTER_NAME}"),
+            ),
+    )
+
+    private fun renderScrapeJobs(jobs: List<PrometheusScrapeJob>): String {
+        if (jobs.isEmpty()) return ""
         // 8-space indent matches the depth of `- job_name:` entries under
         // `receivers.prometheus.config.scrape_configs` in otel-collector-config.yaml.
         // If the scrape_configs indentation changes, this must change too.

@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.kubestatemetrics.KubeStateMetricsManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
@@ -293,6 +294,19 @@ class K8sServiceIntegrationTest {
 
         assertConfigMapExists("yace-config", "yace-config.yaml")
         assertDeploymentExists("yace")
+    }
+
+    @Test
+    @Order(20)
+    fun `should apply kube-state-metrics resources`() {
+        val resources = KubeStateMetricsManifestBuilder().buildAllResources()
+        applyAndVerify(resources)
+
+        assertServiceAccountExists("kube-state-metrics")
+        assertClusterRoleExists("kube-state-metrics")
+        assertClusterRoleBindingExists("kube-state-metrics")
+        assertServiceExists("kube-state-metrics")
+        assertDeploymentExists("kube-state-metrics")
     }
 
     @Test
@@ -644,6 +658,7 @@ class K8sServiceIntegrationTest {
             BeylaManifestBuilder(templateService).buildAllResources() +
             PyroscopeManifestBuilder(templateService).buildAllResources() +
             YaceManifestBuilder(templateService).buildAllResources() +
+            KubeStateMetricsManifestBuilder().buildAllResources() +
             GrafanaManifestBuilder(templateService).buildAllResources()
 
     private fun waitForPvcBound(

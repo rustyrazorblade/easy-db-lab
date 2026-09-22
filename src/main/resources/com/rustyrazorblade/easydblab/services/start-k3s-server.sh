@@ -33,8 +33,12 @@ else
     echo "Installing k3s in server mode..."
 
     if [ "$NO_FLANNEL" = "true" ]; then
-        echo "Custom CNI mode: disabling built-in Flannel"
-        K3S_EXEC_ARGS='server --write-kubeconfig-mode=644 --flannel-backend=none --disable-network-policy'
+        echo "Custom CNI mode: disabling built-in Flannel, Traefik, and ServiceLB"
+        # Traefik and ServiceLB are disabled with Cilium. ServiceLB (klipper) publishes every node
+        # InternalIP as the traefik LoadBalancer ingress IP, and Cilium installs a port-0 wildcard
+        # per LoadBalancer IP that rejects every pod packet to a node IP on a non-service port, so
+        # kubelet probes never get their SYN-ACK and no pod in the pod network becomes Ready.
+        K3S_EXEC_ARGS='server --write-kubeconfig-mode=644 --flannel-backend=none --disable-network-policy --disable=traefik,servicelb'
     else
         K3S_EXEC_ARGS='server --write-kubeconfig-mode=644'
     fi

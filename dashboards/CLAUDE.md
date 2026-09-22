@@ -8,6 +8,7 @@ Each subdirectory is a Grafana folder, and the folder's name is the directory na
 
 - `cassandra/` — Cassandra dashboards
 - `infrastructure/` — engine-agnostic host, cloud and system dashboards (`system-overview.json`, the home dashboard, lives here)
+- `networking/` — CNI dashboards (Cilium datapath, ENI IPAM, Hubble flows); see [Networking folder](#networking-folder)
 - `observability/` — dashboards about the observability stack itself (profiling, Tempo, log investigation)
 - `opensearch/` — OpenSearch dashboards
 
@@ -245,6 +246,23 @@ GrafanaTracesToLogsConfig(
 ```
 
 **tracesToMetrics**: Use `traces_spanmetrics_duration_milliseconds_bucket` (not `latency_bucket`). Use `histogram_quantile(0.99, ...)` (p99, not p90). The `$$__tags` variable injects the span's service label as a Prometheus filter.
+
+## Networking folder
+
+`networking/` holds the Cilium dashboards. They are fed by the three scrape jobs `OtelManifestBuilder.buildCniScrapeJobs` renders only for `CniMode.Cilium`, plus kube-state-metrics:
+
+- `cilium-datapath.json` (uid `cilium-datapath`) — job `cilium-agent` (`<node>:9962`); one `instance` per node, selectable by the `instance` variable.
+- `cilium-eni-ipam.json` (uid `cilium-eni-ipam`) — job `cilium-operator` (`instance` is the operator pod name) and `kube-state-metrics` (`kube_daemonset_*{daemonset="cilium"}`, `kube_pod_status_phase{namespace="kube-system"}`).
+- `hubble-flows.json` (uid `hubble-flows`) — job `hubble` (`<node>:9965`).
+
+**On a Flannel cluster these dashboards are empty.** None of the three jobs exist, so every panel shows "No data"; that is expected, not a bug.
+
+Things to know before editing them:
+
+- The ICMP panel on Hubble Flows is expected to sit near zero. The security group has no ICMP rule, so only Cilium's own node health checks and IPv6 router solicitations reach the datapath. The panel description says so; keep it.
+- `hubble_dns_*` and `hubble_http_*` do not exist on this stack. Those Hubble metrics are not enabled, so there are no DNS or HTTP panels. Do not add them without first enabling the metric and confirming the name in `/api/v1/label/__name__/values`.
+- VictoriaMetrics returns **no series** from `histogram_quantile(..., rate(..._bucket[...]))` when every bucket rate is zero in the window. For histograms that only move on rare events (conntrack GC runs, IP allocations) the panels use the cumulative mean `_sum / _count` instead, which always returns a series. Steady histograms (endpoint regeneration, k8s client latency, EC2 API duration) keep the p95.
+- `cilium_operator_ipam_ips{type="needed"}` above 0 is the one number that matters on the IPAM dashboard; it has its own red-threshold stat and a red series override. Keep that visible when rearranging.
 
 ## Kit Dashboard Metric Queries
 

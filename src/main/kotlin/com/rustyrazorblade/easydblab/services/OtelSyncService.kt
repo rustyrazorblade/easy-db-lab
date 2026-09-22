@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import io.github.oshai.kotlinlogging.KotlinLogging
 
@@ -24,10 +25,13 @@ class DefaultOtelSyncService(
             // Preserve the cluster's export destinations when the ConfigMap is regenerated on a
             // kit start/stop. Without this, a redirect cluster would silently revert to the
             // in-cluster backends every time the dynamic scrape jobs change.
-            val telemetryRedirect = clusterStateManager.load().initConfig?.telemetryRedirect
+            val initConfig = clusterStateManager.load().initConfig
+            val telemetryRedirect = initConfig?.telemetryRedirect
+            // Likewise the CNI: a regenerated ConfigMap must keep the Cilium scrape jobs it had.
+            val cni = initConfig?.cni ?: CniMode.Flannel
             k8sClientProvider.createClient(controlHost).use { client ->
                 val scrapeConfigs = otelManifestBuilder.listWorkloadScrapeConfigs(client)
-                val configMap = otelManifestBuilder.buildConfigMap(scrapeConfigs, telemetryRedirect)
+                val configMap = otelManifestBuilder.buildConfigMap(scrapeConfigs, telemetryRedirect, cni)
                 k8sService.applyResource(controlHost = controlHost, resource = configMap).getOrThrow()
             }
             // The configmap is mounted with subPath, so pods don't see live updates.

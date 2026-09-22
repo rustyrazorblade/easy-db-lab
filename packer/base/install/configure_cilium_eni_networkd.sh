@@ -1,5 +1,5 @@
 #!/bin/bash
-# Leave Cilium's secondary ENIs (ens6+) unmanaged by the OS network stack.
+# Leave Cilium's runtime-attached secondary ENIs unmanaged by the OS network stack.
 #
 # WHY: In Cilium ENI IPAM native-routing mode the cilium-operator attaches a SECOND ENI
 # (ens6) to a node at runtime once it runs more than ~7 pods. On our Ubuntu Nitro image,
@@ -18,23 +18,33 @@
 # MUST sort before 10-netplan-*. The 05-/06- prefixes guarantee that; a 99- file would lose
 # and never take effect.
 #
-# ROBUSTNESS (why drop-ins in /etc, and why NOT disable cloud-init networking): the drop-ins
-# live in /etc/systemd/network so they persist in the baked image and survive reboots. Because
-# they sort ahead of 10-netplan-*, they win the first-match selection even if cloud-init
-# REGENERATES the 10-netplan-* files on a later boot -- a regenerated 10-netplan-ens6.network
-# can never override our 06- file. Crucially our own 05- file fully configures ens5 via DHCP,
-# so PRIMARY networking never depends on cloud-init's output. That is why we deliberately do
-# NOT disable cloud-init's network management (e.g. a 99-disable-network-config.cfg): doing so
-# risks breaking ens5 DHCP/SSH on a fresh instance if the baked netplan does not match the new
-# instance's interface, and buys us nothing the lexical precedence above does not already give.
+# MATCH BY DRIVER, NOT NAME (why 06- says Driver=ena): a hotplugged ENI first appears as eth0
+# and is renamed to ens6 moments later. networkd configures the link under its FIRST name, so a
+# Name=ens[6-9] match arrives too late: by the rename the address, a second default route, and a
+# duplicate subnet route are already installed and Unmanaged=yes does not remove them. Driver=ena
+# matches the ENI under whatever name it has. The 05- file claims ens5 by name and sorts first, so
+# the primary stays managed; every OTHER ENA interface falls through to 06- and is unmanaged.
+#
+# CLOUD-INIT HOTPLUG (why the cloud.cfg.d drop-in): Ubuntu's cloud-init enables install_hotplug,
+# so on every ENI attach it re-renders /etc/netplan/50-cloud-init.yaml from IMDS. That rendering
+# lists every Cilium pod IP as a static address on ens5 and gives the new ENI DHCP plus its own
+# routing-policy tables. Our 05-/06- files win networkd's first-match selection over the
+# 10-netplan-* output, but the safe thing is for the rendering never to happen: the drop-in
+# removes `hotplug` from updates.network.when, leaving first boot and reboot rendering intact so
+# ens5 DHCP/SSH on a fresh instance still comes from cloud-init. install_hotplug stays in
+# cloud.cfg; with hotplug absent from the `when` list the module removes its udev rule.
+#
+# ROBUSTNESS (why drop-ins in /etc): the drop-ins live in /etc/systemd/network so they persist in
+# the baked image and survive reboots. Because they sort ahead of 10-netplan-*, they win the
+# first-match selection even if cloud-init regenerates the 10-netplan-* files on a later boot.
 #
 # TIMING: ens6 is attached at RUNTIME (post-boot), so these drop-ins must PRE-EXIST in the
 # image. This therefore belongs in the BASE AMI provisioning, not a post-attach hook.
 #
-# INERT ON FLANNEL: the 06- match only hits ens6+, which only exist on Cilium ENI-IPAM nodes.
-# A Flannel cluster never attaches a secondary ENI, so 06- matches nothing there and is a
-# no-op. The 05- file just gives ens5 normal DHCP, which is what a Flannel node wants anyway.
-# Hence this is safe to bake unconditionally into the base AMI -- no CNI conditional needed.
+# INERT ON FLANNEL: on a Flannel node the only ENA interface is ens5, which 05- claims, so 06-
+# matches nothing and the hotplug drop-in has no attach event to act on. The 05- file just gives
+# ens5 normal DHCP, which is what a Flannel node wants anyway. Hence this is safe to bake
+# unconditionally into the base AMI -- no CNI conditional needed.
 set -euo pipefail
 
 echo "=== Running: configure_cilium_eni_networkd.sh ==="
@@ -42,8 +52,10 @@ echo "=== Running: configure_cilium_eni_networkd.sh ==="
 NET_DIR="/etc/systemd/network"
 PRIMARY="${NET_DIR}/05-cilium-eni-primary.network"
 SECONDARY="${NET_DIR}/06-cilium-eni-unmanaged.network"
+CLOUD_CFG_DIR="/etc/cloud/cloud.cfg.d"
+NO_HOTPLUG="${CLOUD_CFG_DIR}/90-easydblab-no-network-hotplug.cfg"
 
-sudo mkdir -p "${NET_DIR}"
+sudo mkdir -p "${NET_DIR}" "${CLOUD_CFG_DIR}"
 
 # Primary ENI (ens5): OS-managed via DHCP.
 sudo tee "${PRIMARY}" >/dev/null <<'EOF2'
@@ -54,24 +66,38 @@ Name=ens5
 DHCP=ipv4
 EOF2
 
-# Secondary ENIs (ens6+): left Unmanaged so Cilium owns them.
+# Every other ENA interface (a hotplugged ENI, under its pre- or post-rename name): left
+# Unmanaged so Cilium owns it. ens5 never reaches this file because 05- matches it first.
 sudo tee "${SECONDARY}" >/dev/null <<'EOF2'
 [Match]
-Name=ens[6-9] ens[1-9][0-9]
+Driver=ena
 
 [Link]
 Unmanaged=yes
 EOF2
 
-sudo chmod 0644 "${PRIMARY}" "${SECONDARY}"
+# cloud-init: render the network config on first boot and on reboot, never on a NIC hotplug.
+sudo tee "${NO_HOTPLUG}" >/dev/null <<'EOF2'
+# easy-db-lab: Cilium attaches ENIs at runtime; cloud-init must not re-render netplan for them.
+updates:
+  network:
+    when: ['boot-new-instance', 'boot']
+EOF2
 
-# Self-verify: fail the build if either drop-in is missing or does not carry the load-bearing
+sudo chmod 0644 "${PRIMARY}" "${SECONDARY}" "${NO_HOTPLUG}"
+
+# Self-verify: fail the build if a drop-in is missing or does not carry the load-bearing
 # directive. Keeps the packer script test (./gradlew testPackerBase) meaningful, since the
 # harness only checks the exit code.
 grep -q '^Name=ens5$' "${PRIMARY}"
 grep -q '^DHCP=ipv4$' "${PRIMARY}"
-grep -q '^Name=ens\[6-9\] ens\[1-9\]\[0-9\]$' "${SECONDARY}"
+grep -q '^Driver=ena$' "${SECONDARY}"
 grep -q '^Unmanaged=yes$' "${SECONDARY}"
+grep -q "^    when: \['boot-new-instance', 'boot'\]$" "${NO_HOTPLUG}"
+if grep -q 'hotplug' "${NO_HOTPLUG}"; then
+    echo "ERROR: 'hotplug' must not appear in ${NO_HOTPLUG}"
+    exit 1
+fi
 
-echo "✓ wrote ${PRIMARY} (ens5 OS-managed) and ${SECONDARY} (ens6+ Unmanaged)"
+echo "✓ wrote ${PRIMARY} (ens5 OS-managed), ${SECONDARY} (other ENA links Unmanaged), ${NO_HOTPLUG} (no cloud-init hotplug)"
 echo "✓ configure_cilium_eni_networkd.sh completed successfully"

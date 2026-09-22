@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterMani
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardCatalog
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardTreeWriter
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.kubestatemetrics.KubeStateMetricsManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
@@ -55,7 +56,11 @@ val servicesModule =
 
         factoryOf(::DefaultCassandraService) bind CassandraService::class
         factoryOf(::DefaultCassandraProfilingService) bind CassandraProfilingService::class
-        factory<CiliumService> { DefaultCiliumService(get(), get()) }
+        // Singleton: CiliumService records the install window on it during K3s bring-up and `up`
+        // posts the annotations later, after Grafana is deployed, so the state must be shared.
+        single { CiliumInstallAnnotator(get()) }
+        factory<CiliumService> { DefaultCiliumService(get(), get(), get()) }
+        factory<CiliumInspectionService> { DefaultCiliumInspectionService(get()) }
         factory<HelmService> { DefaultHelmService(get()) }
         factory<KubectlService> { DefaultKubectlService(get()) }
         // Explicit factory (not factoryOf) so the daemonStartupDelay constructor default applies
@@ -94,6 +99,7 @@ val servicesModule =
         factoryOf(::TempoManifestBuilder)
         factoryOf(::VictoriaManifestBuilder)
         factoryOf(::YaceManifestBuilder)
+        factoryOf(::KubeStateMetricsManifestBuilder)
         factoryOf(::DefaultGrafanaDashboardService) bind GrafanaDashboardService::class
         // GrafanaDashboardService calls the Grafana API on the control node's PRIVATE IP, so its
         // client must route through the SOCKS tunnel when active. Source it from the proxied factory

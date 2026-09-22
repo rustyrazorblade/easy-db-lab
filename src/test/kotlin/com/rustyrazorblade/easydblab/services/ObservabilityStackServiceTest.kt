@@ -4,10 +4,13 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.CniMode
+import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.kubestatemetrics.KubeStateMetricsManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
@@ -39,6 +42,7 @@ import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
+import org.mockito.kotlin.reset
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 
@@ -90,6 +94,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
                 single { RegistryManifestBuilder() }
                 single { S3ManagerManifestBuilder(get()) }
                 single { YaceManifestBuilder(get()) }
+                single { KubeStateMetricsManifestBuilder() }
             },
         )
 
@@ -147,7 +152,33 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
                 getKoin().get(),
                 getKoin().get(),
                 getKoin().get(),
+                getKoin().get(),
             )
+    }
+
+    private fun stateWithCni(cni: CniMode) =
+        ClusterState(
+            name = "test-cluster",
+            versions = mutableMapOf(),
+            s3Bucket = "easy-db-lab-test",
+            initConfig = InitConfig(region = "us-west-2", cni = cni),
+        )
+
+    /** Re-arms the K8s mock for a second deploy in the same test, after a reset. */
+    private fun stubK8sSuccess() {
+        whenever(mockK8sService.createConfigMap(any(), any(), any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.applyResource(any(), any<HasMetadata>())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.rolloutRestartDeployment(any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.rolloutRestartDaemonSet(any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.waitForPodsReady(any(), any())).thenReturn(Result.success(Unit))
+    }
+
+    /** The OTel collector config YAML as it was applied to the cluster. */
+    private fun appliedOtelConfig(): String {
+        val captor = argumentCaptor<HasMetadata>()
+        verify(mockK8sService, atLeastOnce()).applyResource(any(), captor.capture())
+        val configMap = captor.allValues.filterIsInstance<ConfigMap>().single { it.metadata.name == "otel-collector-config" }
+        return checkNotNull(configMap.data["otel-collector-config.yaml"])
     }
 
     /** Every applied resource as a "kind/name" string, in apply order. */
@@ -208,6 +239,30 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
 
         // Readiness is still gated on the applied collectors coming up.
         verify(mockK8sService).waitForPodsReady(any(), any())
+    }
+
+    @Test
+    fun `kube-state-metrics is deployed in both local and redirect mode`() {
+        service.deploy(controlNode, telemetryRedirect = null).getOrThrow()
+        assertThat(appliedKindNames()).contains("Deployment/kube-state-metrics", "Service/kube-state-metrics")
+
+        reset(mockK8sService)
+        stubK8sSuccess()
+        service.deploy(controlNode, telemetryRedirect = TelemetryRedirect.fromBaseHost("10.0.0.9")).getOrThrow()
+        assertThat(appliedKindNames()).contains("Deployment/kube-state-metrics", "Service/kube-state-metrics")
+    }
+
+    @Test
+    fun `the collector config carries the Cilium scrape jobs only when the cluster state says Cilium`() {
+        whenever(mockClusterStateManager.load()).thenReturn(stateWithCni(CniMode.Cilium))
+        service.deploy(controlNode, telemetryRedirect = null).getOrThrow()
+        assertThat(appliedOtelConfig()).contains("cilium-agent").contains("cilium-operator")
+
+        reset(mockK8sService)
+        stubK8sSuccess()
+        whenever(mockClusterStateManager.load()).thenReturn(stateWithCni(CniMode.Flannel))
+        service.deploy(controlNode, telemetryRedirect = null).getOrThrow()
+        assertThat(appliedOtelConfig()).doesNotContain("cilium-agent").doesNotContain("cilium-operator")
     }
 
     @Test

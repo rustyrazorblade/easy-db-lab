@@ -133,6 +133,7 @@ determined fails at `init`, before any instance is created.
 | `--open` | Unrestricted SSH access | false |
 | `--tag` | Custom tags (key=value, repeatable) | - |
 | `--vpc` | Use existing VPC ID | - |
+| `--cni` | Pod-network CNI: `flannel` (K3s built-in overlay) or `cilium` (ENI native routing). See [Pod Networking (CNI)](../user-guide/networking.md) | flannel |
 | `--up` | Auto-provision after init | false |
 | `--clean` | Remove existing config first | false |
 
@@ -721,6 +722,16 @@ Apply observability stack to K8s cluster.
 ```bash
 easy-db-lab k8 apply
 ```
+
+### platform cni
+
+Show the pod-network datapath. Read-only.
+
+```bash
+easy-db-lab platform cni
+```
+
+On a Cilium cluster, prints the routing mode, IPAM mode, kube-proxy replacement, masquerade interfaces, native routing CIDR, and the Hubble UI URL, then one block per node with its ENI count, subnet CIDRs, and IPs allocated, used, and available. The values are read from the `cilium-config` ConfigMap and the `CiliumNode` objects on the control node. On a Flannel cluster, prints one line that names Flannel and exits 0. See [Pod Networking (CNI)](../user-guide/networking.md).
 
 ---
 

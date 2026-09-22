@@ -30,6 +30,7 @@
   - [Metrics](user-guide/victoria-metrics.md)
   - [Logging](user-guide/victoria-logs.md)
 - [Kubernetes](user-guide/kubernetes.md)
+- [Pod Networking (CNI)](user-guide/networking.md)
 - [Network Connectivity](user-guide/network-connectivity.md)
 - [Shell Aliases](user-guide/shell-aliases.md)
 

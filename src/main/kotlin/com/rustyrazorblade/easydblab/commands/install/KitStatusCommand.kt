@@ -4,13 +4,12 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
-import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesService
 import com.rustyrazorblade.easydblab.services.HelmService
 import com.rustyrazorblade.easydblab.services.KitConfig
+import com.rustyrazorblade.easydblab.services.KitEndpointAddresses
 import com.rustyrazorblade.easydblab.services.KitRuntime
-import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
 import org.koin.core.parameter.parametersOf
 import picocli.CommandLine.Command
@@ -132,25 +131,7 @@ class KitStatusCommand(
         }
 
     private fun printEndpoints() {
-        for (endpoint in installConfig.endpoints) {
-            val ips = resolveIps(endpoint.nodeType)
-            for (ip in ips) {
-                println("  %-20s  %-8s  %s".format(endpoint.name, endpoint.type.name.lowercase(), endpoint.formatUrl(ip)))
-            }
-        }
-    }
-
-    private fun resolveIps(nodeType: String): List<String> {
-        val serverType =
-            runCatching { ServerType.from(nodeType.lowercase()) }
-                .getOrElse {
-                    log.warn { "Unknown node-type '$nodeType' in endpoint for $kitName" }
-                    return emptyList()
-                }
-        return clusterState.hosts[serverType]?.map { it.privateIp } ?: emptyList()
-    }
-
-    companion object {
-        private val log = KotlinLogging.logger {}
+        val resolved = KitEndpointAddresses.resolve(installConfig.endpoints, clusterState.hosts)
+        if (resolved.isNotEmpty()) println(KitEndpointAddresses.formatLines(resolved))
     }
 }

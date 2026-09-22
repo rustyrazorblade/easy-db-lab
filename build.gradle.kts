@@ -576,12 +576,19 @@ tasks.register<Exec>("testPackerScript") {
     group = "Verification"
     description = "Test a specific packer script (use -Pscript=path/to/script.sh)"
     workingDir = file("packer")
-    doFirst {
-        val scriptPath =
-            project.findProperty("script")?.toString()
-                ?: throw GradleException("Please specify script path with -Pscript=path/to/script.sh")
-        commandLine = listOf("./test-script.sh", scriptPath)
-    }
+    // Read -Pscript as a Gradle property provider. Looking it up with project.findProperty at
+    // execution time does not see the -P value (it resolved to the literal "false"), so the
+    // script was always "packer/false".
+    val scriptPath = providers.gradleProperty("script")
+    executable = "./test-script.sh"
+    argumentProviders.add(
+        CommandLineArgumentProvider {
+            listOf(
+                scriptPath.orNull
+                    ?: throw GradleException("Please specify script path with -Pscript=path/to/script.sh"),
+            )
+        },
+    )
 }
 
 tasks.register("buildAll") {

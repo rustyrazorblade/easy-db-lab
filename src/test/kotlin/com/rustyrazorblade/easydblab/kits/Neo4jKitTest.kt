@@ -72,6 +72,21 @@ class Neo4jKitTest : BaseKoinTest() {
         assertThat(env(neo4jContainer(), "NEO4J_AUTH").value).isEqualTo("none")
     }
 
+    /**
+     * The image entrypoint turns every `NEO4J_*` env var into a config key, and strict validation
+     * refuses unknown keys. Kubernetes injects `<SERVICE>_SERVICE_HOST`/`_PORT` vars for every
+     * Service in the namespace, so the kit's own `neo4j-nodeport` Service became
+     * `nodeport.service.port` and crash-looped the pod.
+     */
+    @Test
+    fun `service links are off because a NEO4J_-prefixed Service name would crash the entrypoint`() {
+        // Unset means true, so the field must be present and false. extracting() reads it without
+        // Kotlin's null check on the platform type, so an unset field fails the assertion instead.
+        assertThat(statefulSet().spec.template.spec)
+            .extracting("enableServiceLinks")
+            .isEqualTo(false)
+    }
+
     @Nested
     inner class Version {
         @Test

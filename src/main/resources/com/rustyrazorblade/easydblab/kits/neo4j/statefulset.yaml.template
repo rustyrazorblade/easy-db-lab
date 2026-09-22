@@ -10,6 +10,9 @@ metadata:
     easydblab/kit: neo4j
 spec:
   replicas: 1
+  # No governing headless Service is created. It would only give the pod a DNS name
+  # (neo4j-0.neo4j), which nothing dials: a single Community server has no cluster discovery,
+  # clients reach it through neo4j-nodeport, and the Bolt advertised address is set explicitly.
   serviceName: neo4j
   selector:
     matchLabels:
@@ -20,6 +23,11 @@ spec:
         app: neo4j
         easydblab/kit: neo4j
     spec:
+      # The image entrypoint turns every NEO4J_* env var into a config key and strict validation
+      # rejects unknown keys. Service links would inject NEO4J_NODEPORT_SERVICE_PORT and friends
+      # for the kit's own neo4j-nodeport Service and crash-loop the pod. The official Helm chart
+      # turns them off for the same reason.
+      enableServiceLinks: false
       affinity:
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:

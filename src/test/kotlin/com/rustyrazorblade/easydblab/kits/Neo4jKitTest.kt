@@ -45,6 +45,11 @@ class Neo4jKitTest : BaseKoinTest() {
 
     private fun versionArg() = kit.config.args.single { it.flag == "--version" }
 
+    private fun shellScript(steps: List<InstallStep>): String =
+        steps
+            .filterIsInstance<InstallStep.Shell>()
+            .joinToString("\n") { it.script }
+
     @Test
     fun `is a db kit with a collision check`() {
         assertThat(kit.config.type).isEqualTo(KitType.DB)
@@ -167,15 +172,17 @@ class Neo4jKitTest : BaseKoinTest() {
     inner class AdvertisedAddress {
         private val stub by lazy { StubKubectl(File(tempDir, "stub")) }
 
-        private fun runStartScript(version: String) =
-            stub.run(
-                script =
-                    kit.config.start
-                        .filterIsInstance<InstallStep.Shell>()
-                        .first()
-                        .script,
-                env = mapOf("DB_NODE_IPS" to "10.0.1.10,10.0.2.10", versionArg().variable to version),
-            )
+        private fun runStartScript(
+            version: String,
+            dbNodeIps: String = "10.0.1.10,10.0.2.10",
+        ) = stub.run(
+            script =
+                kit.config.start
+                    .filterIsInstance<InstallStep.Shell>()
+                    .first()
+                    .script,
+            env = mapOf("DB_NODE_IPS" to dbNodeIps, versionArg().variable to version),
+        )
 
         @Test
         fun `start publishes the first db node's IP and the Bolt NodePort`() {
@@ -193,6 +200,26 @@ class Neo4jKitTest : BaseKoinTest() {
                 assertThat(call).contains("create configmap $configMap")
                 assertThat(call).contains("--from-literal=NEO4J_server_bolt_advertised__address=10.0.1.10:$BOLT_NODE_PORT")
             }
+        }
+
+        @Test
+        fun `the advertised-address ConfigMap carries the kit label that stop and uninstall delete by`() {
+            runStartScript("5.26.0")
+
+            assertThat(stub.invocations()).anySatisfy { call ->
+                assertThat(call).contains("label --local -f - $KIT_LABEL=neo4j")
+            }
+            assertThat(shellScript(kit.config.stop)).contains("configmap", "-l $KIT_LABEL=neo4j")
+            assertThat(shellScript(kit.config.uninstall)).contains("configmap", "-l $KIT_LABEL=neo4j")
+        }
+
+        @Test
+        fun `start fails with an error instead of publishing a bare port when there is no db node IP`() {
+            val exit = runStartScript("5.26.0", dbNodeIps = "")
+
+            assertThat(exit).isNotEqualTo(0)
+            assertThat(stub.output()).contains("ERROR: no db node IP found in DB_NODE_IPS.")
+            assertThat(stub.invocations()).isEmpty()
         }
 
         @Test
@@ -220,16 +247,8 @@ class Neo4jKitTest : BaseKoinTest() {
                 .metadata.labels,
         ).containsEntry(KIT_LABEL, "neo4j")
 
-        val stop =
-            kit.config.stop
-                .filterIsInstance<InstallStep.Shell>()
-                .joinToString("\n") { it.script }
-        assertThat(stop).contains("statefulset", "service", "pod", "-l $KIT_LABEL=neo4j")
-        val uninstall =
-            kit.config.uninstall
-                .filterIsInstance<InstallStep.Shell>()
-                .joinToString("\n") { it.script }
-        assertThat(uninstall).contains("pvc", "-l $KIT_LABEL=neo4j")
+        assertThat(shellScript(kit.config.stop)).contains("statefulset", "service", "pod", "-l $KIT_LABEL=neo4j")
+        assertThat(shellScript(kit.config.uninstall)).contains("pvc", "-l $KIT_LABEL=neo4j")
         assertThat(kit.config.uninstall).anyMatch { it is InstallStep.PlatformPvsDelete }
     }
 
@@ -249,6 +268,7 @@ class StubKubectl(
     private val dir: File,
 ) {
     private val log = File(dir, "kubectl.log")
+    private val out = File(dir, "script.out")
 
     init {
         dir.mkdirs()
@@ -258,7 +278,7 @@ class StubKubectl(
         }
     }
 
-    /** Runs [script] under bash with [env] added, returning the exit code. */
+    /** Runs [script] under bash with [env] added, returning the exit code; see [output]. */
     fun run(
         script: String,
         env: Map<String, String>,
@@ -267,12 +287,15 @@ class StubKubectl(
             .directory(dir)
             .redirectInput(ProcessBuilder.Redirect.from(File("/dev/null")))
             .redirectErrorStream(true)
-            .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+            .redirectOutput(out)
             .also { pb ->
                 pb.environment().putAll(env)
                 pb.environment()["PATH"] = "${dir.absolutePath}:${System.getenv("PATH")}"
             }.start()
             .waitFor()
+
+    /** The last run's combined stdout and stderr. */
+    fun output(): String = if (out.isFile) out.readText() else ""
 
     /** Each recorded `kubectl` invocation's arguments, one per call. */
     fun invocations(): List<String> = if (log.isFile) log.readLines() else emptyList()

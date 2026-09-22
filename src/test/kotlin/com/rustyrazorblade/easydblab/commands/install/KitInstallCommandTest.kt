@@ -242,4 +242,40 @@ class KitInstallCommandTest : BaseKoinTest() {
             .hasMessageContaining("doesnotexist")
             .hasMessageContaining("not installed")
     }
+
+    @Test
+    fun `resolved args omit STORAGE_SIZE for a kit that declares no storage arg`() {
+        val config =
+            KitConfig(
+                name = "cache",
+                type = null,
+                args = listOf(KitArgSpec(flag = "--memory", variable = "MEMORY_MB", type = KitArgSpec.ArgType.INT, default = "1024")),
+            )
+
+        buildAndRun(config, emptyMap())
+
+        assertThat(resolvedArgs("cache"))
+            .containsEntry("MEMORY_MB", "1024")
+            .doesNotContainKey("STORAGE_SIZE")
+    }
+
+    @Test
+    fun `resolved args keep the STORAGE_SIZE a kit declares`() {
+        val config =
+            KitConfig(
+                name = "store",
+                type = null,
+                args = listOf(KitArgSpec(flag = "--size", variable = "STORAGE_SIZE", type = KitArgSpec.ArgType.STRING, default = "10Ti")),
+            )
+
+        buildAndRun(config, mapOf("STORAGE_SIZE" to "100Gi"))
+
+        assertThat(resolvedArgs("store")).containsEntry("STORAGE_SIZE", "100Gi")
+    }
+
+    private fun resolvedArgs(kitDir: String): Map<String, String> =
+        File(workingDir, "$kitDir/${Constants.Kit.RESOLVED_ARGS_FILE}")
+            .readLines()
+            .filter { it.isNotBlank() }
+            .associate { it.substringBefore('=') to it.substringAfter('=') }
 }

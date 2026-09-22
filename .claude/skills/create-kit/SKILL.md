@@ -1,12 +1,14 @@
 ---
 name: create-kit
-description: Interactively generate a new workload install.yaml with typed lifecycle steps. Researches the workload's helm chart, CRDs, and readiness conditions, proposes a draft for review, refines with user feedback, and writes files only on explicit approval.
+description: Interactively generate a new kit (kit.yaml with typed lifecycle steps). Researches the workload's helm chart, CRDs, and readiness conditions, proposes a draft for review, refines with user feedback, and writes files only on explicit approval.
 user-invocable: true
 ---
 
 # create-kit
 
-Generate a new workload definition for easy-db-lab using the typed install.yaml format.
+Generate a new kit for easy-db-lab: a `kit.yaml` with typed lifecycle steps, in
+`src/main/resources/com/rustyrazorblade/easydblab/kits/<name>/`. The full reference is
+`docs/development/kits.md`.
 
 ## Input
 
@@ -34,21 +36,32 @@ Summarize findings in 3–5 bullet points before proposing, including the recomm
 
 ---
 
-## Step 2 — Propose a draft install.yaml
+## Step 2 — Propose a draft kit.yaml
 
-Using the research, generate a draft `install.yaml`. Present it to the user as a code block **before writing any files**. Explain each phase briefly.
+Using the research, generate a draft `kit.yaml`. Present it to the user as a code block **before writing any files**. Explain each phase briefly.
 
-### install.yaml format
+### kit.yaml format
 
 ```yaml
 name: <kebab-case-name>
+type: db                       # db | app: the node pool the kit runs on
 description: <one-line description>
 version: "<chart-version>"
-collision-check: true          # true if start phase should guard against double-start
-metrics:                       # omit if workload has no metrics
-  type: scrape                 # scrape | java-agent | helm-native
-  port: 9363                   # required for scrape
-  path: /metrics               # required for scrape
+collision-check: true          # refuse a second install and a start while running
+metrics:                       # a list; omit if the workload has no metrics
+  - type: scrape               # scrape | java-agent | helm-native
+    port: 9363                 # required for scrape
+    path: /metrics             # default /metrics
+    pod-selector: "app=<name>" # scrape the pods directly (preferred)
+runtime:                       # how status and the start collision check find the running pods
+  type: pods
+  selector: "app=<name>"
+  namespace: default
+endpoints:
+  - name: "<Name>"
+    node-type: db
+    port: 30xxx                # a NodePort in 30000-32767
+    type: native               # http | https | jdbc | native | cql | postgresql | mysql | kafka
 args:
   - flag: --size
     variable: STORAGE_SIZE
@@ -79,7 +92,7 @@ start:
   - type: namespace
     name: <namespace>
   - type: manifest           # include if there's a custom CR to apply
-    template: <name>.yaml.template
+    template: <name>.yaml      # the installed copy of <name>.yaml.template
   - type: wait
     kind: <Kind>
     name: <resource-name>
@@ -101,27 +114,30 @@ uninstall:
 
 ### `metrics` block
 
-The optional `metrics` block declares how the workload's telemetry reaches the OTel collector. Three modes:
+The optional `metrics` list declares how the workload's telemetry reaches the OTel collector
+(`KitMetrics` in `services/KitConfig.kt`). Three entry types:
 
 ```yaml
-# Workload exposes a Prometheus endpoint; OTel DaemonSet scrapes it via hostPort
 metrics:
-  type: scrape
-  port: 9363
-  path: /metrics
+  # Prometheus endpoint, scraped by the collector DaemonSet. With pod-selector the collector
+  # finds the pods by label and scrapes each on its pod IP and container port, from its own node.
+  - type: scrape
+    port: 9363
+    path: /metrics
+    job: my-workload          # optional, default the kit name; unique within the kit
+    pod-selector: "app=my-workload"
 
-# JVM-based workload; OTel Java agent (pre-installed at /usr/local/otel/opentelemetry-javaagent.jar)
-# pushes OTLP to localhost:4317 automatically
-metrics:
-  type: java-agent
-  service-name: my-workload
+  # JVM workload: the OTel Java agent, mounted from the host at /usr/local/otel, pushes OTLP to
+  # the collector on its node at http://$(HOST_IP):4318. See kits/neo4j/statefulset.yaml.template.
+  - type: java-agent
+    service-name: my-workload
 
-# Workload has built-in OTLP support configured via helm values; no OTel config change needed
-metrics:
-  type: helm-native
+  # Built-in telemetry configured through helm values; no collector change needed.
+  - type: helm-native
 ```
 
-When `type: scrape`, the workload's pod spec **must** declare a `hostPort` mapping for the metrics port so the OTel DaemonSet (running with `hostNetwork: true`) can reach it. Add the hostPort to the pod template in your `.yaml.template` file or to the helm values.
+A `scrape` entry without `pod-selector` is scraped at `localhost:<port>` on every node, which only
+works through a NodePort or a `hostPort`. Prefer `pod-selector` (see `kits/memcached/kit.yaml`).
 
 ### Available step types
 
@@ -131,12 +147,13 @@ When `type: scrape`, the workload's pod spec **must** declare a `hostPort` mappi
 | `helm` | Install or upgrade a Helm release (`chart`, `release`, `namespace`, `version?`, `values?`, `values-file?`) |
 | `helm-uninstall` | Remove a Helm release (`release`, `namespace`) |
 | `namespace` | Create a namespace idempotently (`name`) |
-| `manifest` | Render a `.template` file and apply via K8s API (`template`) |
+| `manifest` | Apply an installed manifest from the kit directory (`template`, `interpolate?`) |
 | `manifest-url` | Apply a manifest from a remote URL (`url`) |
 | `kustomize` | Apply a kustomize overlay (`url`) |
 | `wait` | Wait for a K8s resource condition (`kind`, `name`, `namespace?`, `condition`, `timeout`) |
 | `delete` | Delete a K8s resource (`kind`, `name`, `namespace?`, `ignore-not-found?`) |
-| `platform-pvs` | Create local PVs via platform service (`node-type`, `count?`) |
+| `platform-pvs` | Create local PVs via platform service (`node-type`, `count?`, `volume-claim-template-name?`, `storage-class?`) |
+| `platform-pvs-delete` | Delete the kit's local PVs and data directories (`node-type`) |
 | `configmap` | Create or update a ConfigMap (`name`, `namespace`, `data`) |
 | `label` | Add labels to cluster nodes (`node-type`, `labels`) |
 | `exec` | Run a command inside a running pod (`pod`, `namespace`, `command`) |
@@ -144,12 +161,17 @@ When `type: scrape`, the workload's pod spec **must** declare a `hostPort` mappi
 
 ### Variable interpolation
 
-String fields support `${VAR}` substitution from cluster state:
+String fields in `kit.yaml` steps support `${VAR}` substitution when the phase runs, and shell
+steps get the same values as environment variables (`TemplateVariables` in `services/`):
 - `${CLUSTER_NAME}` — cluster name
-- `${CONTROL_NODE_IP}` — control node private IP
-- `${DB_NODE_COUNT}` — number of db nodes
-- `${APP_NODE_COUNT}` — number of app nodes
+- `${CONTROL_HOST_PRIVATE}` — control node private IP
+- `${DB_NODE_COUNT}`, `${APP_NODE_COUNT}` — node counts
+- `${DB_NODE_IPS}`, `${APP_NODE_IPS}` — comma-separated private IPs
+- `${KIT_NAME}` — the installed kit instance name
 - Any arg variable declared in `args` (e.g. `${REPLICAS}`, `${STORAGE_SIZE}`)
+
+`.template` files use `__VAR__` instead (e.g. `__MEMORY_MB__`), substituted once by `kit install`.
+Never write a literal double underscore in a `.template` file.
 
 ---
 
@@ -172,23 +194,23 @@ Once the user approves, write the following files:
 ### Required
 
 ```
-src/main/resources/com/rustyrazorblade/easydblab/install/<name>/install.yaml
+src/main/resources/com/rustyrazorblade/easydblab/kits/<name>/kit.yaml
 ```
 
-### If the install.yaml references `type: manifest` steps
+### If the kit.yaml references `type: manifest` steps
 
 Generate starter template files for each referenced template. For example, if `start` contains:
 
 ```yaml
 - type: manifest
-  template: scylladb.yaml.template
+  template: scylladb.yaml
 ```
 
-Write a starter `scylladb.yaml.template` using known field values from the workload's CRD schema. Include `${VAR}` substitutions for configurable values like replica count, storage size, cluster name.
+Write a starter `scylladb.yaml.template` using known field values from the workload's CRD schema. Include `__VAR__` substitutions for configurable values like replica count, storage size, cluster name. `kit install` renders it into the kit directory as `scylladb.yaml`, which the step applies.
 
-Template files go alongside `install.yaml`:
+Template files go alongside `kit.yaml`:
 ```
-src/main/resources/com/rustyrazorblade/easydblab/install/<name>/scylladb.yaml.template
+src/main/resources/com/rustyrazorblade/easydblab/kits/<name>/scylladb.yaml.template
 ```
 
 ### After writing
@@ -197,11 +219,11 @@ Print this checklist:
 
 ```
 Files written:
-  src/main/resources/.../install/<name>/install.yaml
-  src/main/resources/.../install/<name>/<template>.yaml.template  (if any)
+  src/main/resources/.../kits/<name>/kit.yaml
+  src/main/resources/.../kits/<name>/<template>.yaml.template  (if any)
 
 Next steps:
-  [ ] Run: easy-db-lab install --list   (verify the workload appears)
+  [ ] Run: easy-db-lab kit list   (verify the kit appears)
   [ ] Add --<name> flag to bin/end-to-end-test and validate on a live cluster before merging
 ```
 
@@ -209,7 +231,7 @@ Next steps:
 
 ## Step 5 — Generate metrics artifacts (scrape-type workloads only)
 
-If the workload uses `metrics.type: scrape`, three additional files SHOULD be committed alongside `install.yaml`. These are **not generated at runtime** — they are authored once from real data on a live cluster and committed.
+If the kit declares a `scrape` metrics entry, three additional files SHOULD be committed alongside `kit.yaml`. These are **not generated at runtime** — they are authored once from real data on a live cluster and committed.
 
 ### Workflow
 
@@ -237,9 +259,9 @@ If the workload uses `metrics.type: scrape`, three additional files SHOULD be co
    - Use the VictoriaMetrics datasource UID `"VictoriaMetrics"`
 5. **Copy all three** into the workload's resource directory:
    ```
-   src/main/resources/.../install/<name>/metrics-catalog.json
-   src/main/resources/.../install/<name>/METRICS.md
-   src/main/resources/.../install/<name>/dashboards/<name>.json
+   src/main/resources/.../kits/<name>/metrics-catalog.json
+   src/main/resources/.../kits/<name>/METRICS.md
+   src/main/resources/.../kits/<name>/dashboards/<name>.json
    ```
    The dashboard is auto-installed by easy-db-lab when `start` completes.
 
@@ -264,7 +286,7 @@ For any JVM workload, the `start` phase **must** inject the agent into every JVM
 The pattern is a `kubectl patch` using `JAVA_TOOL_OPTIONS` + a `hostPath` volume mount. Use
 `component=<role>` labels to distinguish multiple JVM processes (e.g. coordinator vs worker).
 
-Full implementation pattern and explanation: `docs/development/workloads.md` (Profiling section).
+Full implementation pattern and explanation: `docs/development/kits.md` (Profiling section).
 User-facing documentation on what profiles are available and how to access them in Grafana:
 `docs/user-guide/profiling.md`.
 
@@ -298,11 +320,11 @@ use them directly as shell variables, not as `__VAR__` template substitutions.
 ## Guardrails
 
 - **Never write files before explicit user approval.** "That looks good" or "go ahead" counts as approval. "What do you think?" does not.
-- **Only generate install.yaml** and referenced `.template` files — no shell scripts, no `bin/` directory.
+- **Only generate kit.yaml** and referenced `.template` files — no shell scripts, no `bin/` directory.
 - **Use typed steps only.** No `type: shell` unless the user specifically asks for an escape hatch.
 - **Keep args minimal.** Only expose flags the user would actually tune at install time.
 - **Prefer `wait` over `shell` for readiness checks.** Only use `shell` for `kubectl wait` with label selectors (e.g. `clickhouse.altinity.com/chi=`) that can't be expressed with `kind`/`name`.
-- **Verify the generated `install.yaml` is parseable** before reporting completion — mentally trace through the schema to catch typos in step types or missing required fields.
-- **Metrics registration is automatic.** When `metrics.type: scrape`, easy-db-lab automatically creates the metrics ConfigMap and syncs the OTel collector after a successful `start`, and removes it after `stop`. Do NOT add `type: configmap` or `type: sync-otel` steps for this — they are handled by the runtime.
+- **Verify the generated `kit.yaml` is parseable** before reporting completion — mentally trace through the schema to catch typos in step types or missing required fields.
+- **Metrics registration is automatic.** For each `scrape` entry, easy-db-lab automatically creates the metrics ConfigMap and syncs the OTel collector after a successful `start`, and removes it after `stop`. Do NOT add `type: configmap` or `type: sync-otel` steps for this — they are handled by the runtime.
 - **Always include a `metrics` block** if the workload exposes metrics in any form. If unsure, research the workload's observability docs before proposing.
-- **Always add `hostPort` for scrape targets.** If `metrics.type: scrape`, the pod spec must expose the metrics port via `hostPort` or the OTel DaemonSet cannot reach it.
+- **Scrape with a `pod-selector`, not a `hostPort`.** A `pod-selector` lets the collector reach the metrics port on the pod IP. Client ports go through a NodePort Service (30000-32767), never `hostPort` or `hostNetwork`.

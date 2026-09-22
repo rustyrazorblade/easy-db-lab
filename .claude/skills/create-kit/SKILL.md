@@ -214,11 +214,12 @@ If the workload uses `metrics.type: scrape`, three additional files SHOULD be co
 ### Workflow
 
 1. **Install and start the workload** on a live cluster so metrics are flowing to VictoriaMetrics.
-2. **Export the catalog** from the cluster working directory:
+2. **Export the catalog.** The script sources `env.sh`, so run it from the cluster workspace (the directory holding `env.sh`), calling it by its path in the checkout:
    ```bash
-   bin/export-workload-metrics <name>
+   cd <cluster-workspace>
+   <checkout>/bin/export-workload-metrics <name>
    ```
-   This writes `<name>/metrics-catalog.json` (workload name, export timestamp, array of series with name and labels).
+   This writes `<cluster-workspace>/<name>/metrics-catalog.json` (workload name, export timestamp, array of series with name and labels) — not the kit's resource directory. That `<name>/` directory is deleted by `<name> uninstall`, so copy the file into `src/main/resources/com/rustyrazorblade/easydblab/kits/<name>/metrics-catalog.json` before uninstalling.
 3. **Author `METRICS.md`** — a machine-readable markdown table of the key metrics. Copy the file to the workload's resource directory. Format:
    ```markdown
    # <WorkloadName> Metrics

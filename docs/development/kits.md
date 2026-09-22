@@ -347,6 +347,29 @@ Every kit that exposes metrics should include a `METRICS.md` file listing the av
 metrics, their labels, and usage notes. This is the reference for anyone building dashboards.
 See `install/presto/METRICS.md` for an example.
 
+### Exporting the Metrics Catalog
+
+`metrics-catalog.json` lists every series a running kit sends to VictoriaMetrics under
+`job="<kit>"`. It is exported from a live cluster by `bin/export-workload-metrics`, and the
+committed copy is what `METRICS.md` and the kit's dashboards are built from.
+
+The script sources `env.sh`, so run it **from the cluster workspace** (the directory holding
+`env.sh`, `state.json` and `kubeconfig`), calling it by its path in your checkout:
+
+```bash
+cd <cluster-workspace>
+<checkout>/bin/export-workload-metrics <kit>
+```
+
+It writes `<cluster-workspace>/<kit>/metrics-catalog.json`, not the kit's resource directory.
+That `<kit>/` directory is the kit's working copy, and `<kit> uninstall` deletes it, so copy the
+file into the source tree before uninstalling:
+
+```bash
+cp <cluster-workspace>/<kit>/metrics-catalog.json \
+   <checkout>/src/main/resources/com/rustyrazorblade/easydblab/kits/<kit>/metrics-catalog.json
+```
+
 ## Hooks
 
 Hooks let one kit react when another kit starts or stops. The hook script runs in the

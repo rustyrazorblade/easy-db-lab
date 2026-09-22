@@ -4,7 +4,7 @@ A kit is a self-contained package of configuration and scripts that installs, st
 and optionally backs up a workload on your cluster. Each kit defines its full lifecycle in a
 `kit.yaml` file using typed steps — no Kubernetes YAML wrangling required.
 
-easy-db-lab ships with built-in kits (ClickHouse, Presto, Trino, TiDB, sysbench). You can
+easy-db-lab ships with built-in kits (ClickHouse, Presto, Trino, TiDB, memcached, Neo4j, sysbench). You can
 also create your own kits for any workload you want to benchmark or test.
 
 ## Discovering kits
@@ -102,6 +102,54 @@ easy-db-lab clickhouse backup --name my-backup   # back up data
 easy-db-lab clickhouse restore --name my-backup  # restore from backup
 easy-db-lab clickhouse uninstall   # stop and remove all kit resources
 ```
+
+## memcached
+
+The `memcached` kit runs one memcached pod on a db node. It is in-memory only and creates no
+persistent volumes.
+
+Install it, optionally setting the cache size in megabytes with `--memory` (default 1024,
+passed to memcached as `-m`):
+
+```bash
+easy-db-lab kit install memcached --memory 4096
+```
+
+Start it:
+
+```bash
+easy-db-lab memcached start
+```
+
+memcached is published on NodePort **31211**, so it is reachable on any node's private IP.
+`kit info memcached` lists the endpoint (`db  :31211  native`), and `memcached status` prints
+it resolved to each db node's private IP:
+
+```bash
+easy-db-lab memcached status
+#   memcached             native    <db node private IP>:31211
+```
+
+Connect from a pod in the cluster, or from your machine over Tailscale:
+
+```bash
+printf 'set greeting 0 0 5\r\nhello\r\nget greeting\r\nquit\r\n' | nc <db node private IP> 31211
+```
+
+A `memcached-exporter` sidecar serves Prometheus metrics on port 9150. The collector finds the
+pod by label and scrapes it, so the series land in VictoriaMetrics under `job="memcached"`. The
+kit's `METRICS.md` lists them.
+
+Stop it, or uninstall it to also remove the kit directory. Both delete every object labelled
+`easydblab/kit=memcached`:
+
+```bash
+easy-db-lab memcached stop
+easy-db-lab memcached uninstall
+```
+
+Installing memcached a second time into the same cluster fails with a collision error and
+leaves the running kit untouched.
 
 ## Installing a custom kit
 

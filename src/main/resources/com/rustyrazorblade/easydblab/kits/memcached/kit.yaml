@@ -1,0 +1,58 @@
+name: memcached
+type: db
+description: memcached in-memory cache on a db node, with a Prometheus exporter sidecar
+version: "1.0.0"
+collision-check: true
+
+# The memcached-exporter sidecar serves Prometheus metrics on 9150. Pod discovery finds the
+# memcached pod by label and the collector on the pod's own node scrapes it on the pod IP, so
+# there is one series per pod and no metrics NodePort.
+metrics:
+  - type: scrape
+    job: memcached
+    pod-selector: "app=memcached"
+    port: 9150
+    path: /metrics
+
+runtime:
+  type: pods
+  selector: "easydblab/kit=memcached"
+  namespace: default
+
+endpoints:
+  - name: "memcached"
+    node-type: db
+    port: 31211
+    type: native
+
+args:
+  - flag: --memory
+    variable: MEMORY_MB
+    description: "Cache size in megabytes, passed to memcached as -m"
+    type: int
+    default: "1024"
+
+start:
+  - type: manifest
+    template: memcached.yaml
+  - type: manifest
+    template: nodeport-service.yaml
+  - type: wait
+    kind: deployment
+    name: memcached
+    condition: Available
+    timeout: 300s
+
+stop:
+  - type: shell
+    script: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      kubectl delete deployment,service,pod -l easydblab/kit=memcached --namespace default --ignore-not-found=true
+
+uninstall:
+  - type: shell
+    script: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      kubectl delete all,configmap -l easydblab/kit=memcached --namespace default --ignore-not-found=true

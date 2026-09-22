@@ -32,19 +32,19 @@
 
 All under `src/main/resources/com/rustyrazorblade/easydblab/kits/memcached/`.
 
-- [ ] 3.1 `kit.yaml`: `type: db`, `collision-check: true`, `--memory` → `MEMORY_MB` (int, default
+- [x] 3.1 `kit.yaml`: `type: db`, `collision-check: true`, `--memory` → `MEMORY_MB` (int, default
       1024), endpoint `memcached` type `native` port 31211 `node-type: db`, `metrics` scrape entry on
       9150 with a `pod-selector` for the memcached pod, runtime selector `easydblab/kit=memcached`,
       stop/uninstall steps deleting by that label.
-- [ ] 3.2 `memcached.yaml.template`: one-replica Deployment, db node affinity, memcached container
+- [x] 3.2 `memcached.yaml.template`: one-replica Deployment, db node affinity, memcached container
       with `-m ${MEMORY_MB}`, `memcached-exporter` sidecar on 9150, all objects labelled
       `easydblab/kit=memcached`.
-- [ ] 3.3 `nodeport-service.yaml.template`: NodePort 31211 → container 11211, kit label.
+- [x] 3.3 `nodeport-service.yaml.template`: NodePort 31211 → container 11211, kit label.
 - [ ] 3.4 Live: install, start, and confirm `memcached_*` series in VictoriaMetrics; run
       `bin/export-workload-metrics memcached` to produce `metrics-catalog.json`.
 - [ ] 3.5 `dashboards/memcached.json` via the `dashboard-editor` agent, from the catalog.
-- [ ] 3.6 `METRICS.md`.
-- [ ] 3.7 Docs: `docs/user-guide/kits.md` (install, `--memory`, start, connect, stop) and
+- [x] 3.6 `METRICS.md`.
+- [x] 3.7 Docs: `docs/user-guide/kits.md` (install, `--memory`, start, connect, stop) and
       `docs/reference/ports.md` (31211, 9150).
 
 ## 4. Neo4j kit

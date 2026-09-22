@@ -41,6 +41,15 @@ This page documents the ports used by easy-db-lab and the services it provisions
 | 9965 | Hubble metrics (Prometheus, every node) |
 | 31234 | Hubble UI (NodePort, any node's private IP) |
 
+## Kit Ports
+
+Kits publish client ports through NodePort Services, reachable on any node's private IP.
+
+| Port | Kit | Service |
+|------|-----|---------|
+| 31211 | memcached | memcached client port (NodePort → 11211) |
+| 9150 | memcached | memcached-exporter metrics (pod port, scraped by pod discovery) |
+
 ## Server
 
 | Port | Purpose |

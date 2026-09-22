@@ -31,7 +31,7 @@ args:
     variable: NEO4J_VERSION
     description: "Neo4j Community version, 5.x or 2025.x (image neo4j:<version>-community)"
     type: string
-    default: "2025.05.0"
+    default: "2025.12.1"
   - flag: --storage-size
     variable: STORAGE_SIZE
     description: "Persistent volume size for the Neo4j data directory"

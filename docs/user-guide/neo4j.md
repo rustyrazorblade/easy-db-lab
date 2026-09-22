@@ -17,7 +17,7 @@ easy-db-lab neo4j start
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--version` | Neo4j Community version. 5.x and 2025.x only; the image is `neo4j:<version>-community` | `2025.05.0` |
+| `--version` | Neo4j Community version. 5.x and 2025.x only; the image is `neo4j:<version>-community` | `2025.12.1` |
 | `--storage-size` | Size of the data volume | `10Ti` |
 
 ```bash

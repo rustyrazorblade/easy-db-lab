@@ -62,11 +62,15 @@ jobs:
             **/build/reports/tests/integrationTest/
             **/build/test-results/test/
             **/build/test-results/integrationTest/
+            **/build/test-results/scripts/
           retention-days: 30
 
       # spec-flow contract: on any test failure, write the failing test ids (one
       # `com.example.FooTest.method` per line, across BOTH tiers) and upload them as the
       # `spec-flow-failures` artifact that `/spec-flow:sync-ci` pulls into the branch's flagged set.
+      # Script tests (`testScripts`) are Exec tasks; build.gradle.kts has each one write a
+      # one-testcase report to build/test-results/scripts/, so a failing script shows up here as
+      # `scripts.<gradle task>`.
       - name: Collect failing test ids
         if: failure()
         run: |

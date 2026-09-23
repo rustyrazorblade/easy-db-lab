@@ -615,6 +615,40 @@ tasks.register<Exec>("testPackerScript") {
     )
 }
 
+// Script tests are Exec tasks, which write no JUnit XML, so a failing one never reached the
+// spec-flow-failures artifact pr-checks.yml builds from **/build/test-results/**/*.xml. Each one
+// now records its outcome as a one-testcase report, id `scripts.<task>` (rerun it with
+// `./gradlew <task>`), and then fails the build exactly as before.
+tasks.withType<Exec>().matching { it.name.startsWith("test") }.configureEach {
+    val taskName = name
+    val report = layout.buildDirectory.file("test-results/scripts/TEST-scripts.$taskName.xml")
+    isIgnoreExitValue = true
+    doLast {
+        val exitCode = executionResult.get().exitValue
+        val outcome =
+            if (exitCode == 0) {
+                ""
+            } else {
+                "<failure message=\"$taskName exited with code $exitCode\"/>"
+            }
+        val failures = if (exitCode == 0) 0 else 1
+        report.get().asFile.apply {
+            parentFile.mkdirs()
+            writeText(
+                """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <testsuite name="scripts.$taskName" tests="1" failures="$failures" errors="0" skipped="0">
+                  <testcase classname="scripts" name="$taskName">$outcome</testcase>
+                </testsuite>
+                """.trimIndent() + "\n",
+            )
+        }
+        if (exitCode != 0) {
+            throw GradleException("$taskName failed with exit code $exitCode")
+        }
+    }
+}
+
 tasks.register("buildAll") {
     group = "Publish"
 //    dependsOn("buildDeb")

@@ -70,6 +70,13 @@ expose client ports through a NodePort Service, never `hostPort` or `hostNetwork
   - Packer: the AxonOps sudoers file is valid for sudo-rs (Ubuntu 26.04); `testPackerScript
     -Pscript` works.
   - `start` reports endpoints through a typed `Kit.EndpointsAvailable` event.
+  - `grafana update-config` and `up` said "All observability pods are ready" before the
+    restarted DaemonSets and Deployments had rolled out; they now wait for every restarted
+    workload's rollout (`K8s.RolloutsWaiting` / `K8s.RolloutsComplete`) and fail if one does
+    not finish.
+  - CI: the Docker-free script tests run in pr-checks (`testScripts`), their failures reach
+    the `spec-flow-failures` artifact, and `testAxonSudoers` and `testFluentBitFilter` have
+    CI jobs; the sudoers wildcard test could never fail and now can.
 
 ## Capabilities
 

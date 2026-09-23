@@ -123,3 +123,5 @@ All under `src/main/resources/com/rustyrazorblade/easydblab/kits/neo4j/`.
 - [x] 9.1 ICMP rule, portmap chaining, stale-AMI guard, collision check rework, RequirementNotMet exit code, launcher OTel and CDS fixes, collector label drops, `export-workload-metrics` time bound, `STORAGE_SIZE`, sudoers for sudo-rs, `testPackerScript`, typed endpoints event, Neo4j service links and Cypher readiness probe.
 - [x] 9.2 CI runs the Docker-free script test tasks.
 - [x] 9.3 Neo4j Cypher readiness probe passes live on 2026.x and 5.x.
+- [x] 9.4 `grafana update-config` / `up` wait for restarted rollouts before reporting ready (RolloutStatus, waitForRollouts; K3s integration tests).
+- [x] 9.5 CI: `testScripts` in pr-checks, script failures in `spec-flow-failures`, CI jobs for `testAxonSudoers` and `testFluentBitFilter`.

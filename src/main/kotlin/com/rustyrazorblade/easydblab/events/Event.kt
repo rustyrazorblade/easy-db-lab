@@ -4040,6 +4040,8 @@ sealed interface Event {
                         appendLine("  - $error")
                     }
                 }.trimEnd()
+
+            override fun isError(): Boolean = true
         }
 
         @Serializable

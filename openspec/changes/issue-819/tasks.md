@@ -121,5 +121,5 @@ All under `src/main/resources/com/rustyrazorblade/easydblab/kits/neo4j/`.
 ## 9. Fixes found during live validation (owner rule: fixed in this PR)
 
 - [x] 9.1 ICMP rule, portmap chaining, stale-AMI guard, collision check rework, RequirementNotMet exit code, launcher OTel and CDS fixes, collector label drops, `export-workload-metrics` time bound, `STORAGE_SIZE`, sudoers for sudo-rs, `testPackerScript`, typed endpoints event, Neo4j service links and Cypher readiness probe.
-- [ ] 9.2 CI runs the Docker-free script test tasks.
+- [x] 9.2 CI runs the Docker-free script test tasks.
 - [ ] 9.3 Neo4j Cypher readiness probe passes live on 2026.x and 5.x.

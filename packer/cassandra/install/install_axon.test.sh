@@ -54,11 +54,14 @@ else
   fail "the installed file fails visudo -cf: $(sudo visudo -cf "$dest" 2>&1)"
 fi
 
-if grep -q '\*' "$dest"; then
-  fail "the installed file contains a wildcard: $(grep '\*' "$dest")"
-else
-  pass "the installed file has no wildcard arguments"
-fi
+# The file is 0440 root:root and this runs as ubuntu, so it must be read with sudo. grep exits 2
+# on an unreadable file, which a plain if/else would count as "no wildcard".
+wildcards="$(sudo grep -n '\*' "$dest")"
+case $? in
+  0) fail "the installed file contains a wildcard: ${wildcards}" ;;
+  1) pass "the installed file has no wildcard arguments" ;;
+  *) fail "could not read ${dest} to check it for wildcards" ;;
+esac
 
 perms="$(stat -c '%a %U:%G' "$dest")"
 if [[ "$perms" == "440 root:root" ]]; then

@@ -160,37 +160,11 @@ class WorkloadStepExecutor(
                 }
 
                 is InstallStep.PlatformPvs -> {
-                    val serverType = ServerType.from(step.nodeType)
-                    val targetHosts =
-                        ctx.clusterState.hosts[serverType]
-                            ?: error("No ${step.nodeType} nodes found in cluster state for platform-pvs step")
-                    check(targetHosts.isNotEmpty()) { "No ${step.nodeType} nodes found in cluster state for platform-pvs step" }
-                    val count = step.count ?: targetHosts.size
-                    val storageSize =
-                        ctx.variables["STORAGE_SIZE"] ?: error("STORAGE_SIZE variable required for platform-pvs step")
-                    val dataPath = "${Constants.K8s.DB_MOUNT_PATH}/${ctx.kitName}"
-                    // Ensure the local data directory exists on each target node before creating
-                    // the PV objects. platform-pvs-delete removes the directory on uninstall;
-                    // without this mkdir, a start after uninstall fails with "path does not exist"
-                    // when the pod tries to mount the local PV.
-                    for (targetHost in targetHosts) {
-                        remoteOps.executeRemotely(host = targetHost.toHost(), command = "sudo mkdir -p $dataPath")
-                        log.debug { "Ensured data directory $dataPath exists on ${targetHost.alias}" }
+                    if (step.ifSet.isNotBlank() && ctx.variables[step.ifSet].isNullOrBlank()) {
+                        log.info { "Skipping platform-pvs for ${ctx.kitName}: ${step.ifSet} is not set" }
+                    } else {
+                        createPlatformPvs(step, ctx, interp(step.storageSize))
                     }
-                    k8sService
-                        .createLocalPersistentVolumes(
-                            controlHost = ctx.controlHost,
-                            config =
-                                PersistentVolumeConfig(
-                                    dbName = ctx.kitName,
-                                    localPath = dataPath,
-                                    count = count,
-                                    storageSize = storageSize,
-                                    storageClass = step.storageClass,
-                                    namespace = Constants.K8s.NAMESPACE,
-                                    volumeClaimTemplateName = step.volumeClaimTemplateName,
-                                ),
-                        ).getOrThrow()
                 }
 
                 is InstallStep.PlatformPvsDelete -> {
@@ -261,4 +235,48 @@ class WorkloadStepExecutor(
                 }
             }
         }
+
+    /**
+     * Creates the kit's local PVs with capacity [stepStorageSize], or the `STORAGE_SIZE` variable
+     * when the step declares none. A blank capacity fails the step rather than reaching the API.
+     */
+    private fun createPlatformPvs(
+        step: InstallStep.PlatformPvs,
+        ctx: StepExecutionContext,
+        stepStorageSize: String,
+    ) {
+        val serverType = ServerType.from(step.nodeType)
+        val targetHosts =
+            ctx.clusterState.hosts[serverType]
+                ?: error("No ${step.nodeType} nodes found in cluster state for platform-pvs step")
+        check(targetHosts.isNotEmpty()) { "No ${step.nodeType} nodes found in cluster state for platform-pvs step" }
+        val count = step.count ?: targetHosts.size
+        val storageSize = stepStorageSize.ifBlank { ctx.variables["STORAGE_SIZE"].orEmpty() }
+        require(storageSize.isNotBlank()) {
+            "platform-pvs step needs a storage-size or the STORAGE_SIZE variable"
+        }
+        val dataPath = "${Constants.K8s.DB_MOUNT_PATH}/${ctx.kitName}"
+        // Ensure the local data directory exists on each target node before creating
+        // the PV objects. platform-pvs-delete removes the directory on uninstall;
+        // without this mkdir, a start after uninstall fails with "path does not exist"
+        // when the pod tries to mount the local PV.
+        for (targetHost in targetHosts) {
+            remoteOps.executeRemotely(host = targetHost.toHost(), command = "sudo mkdir -p $dataPath")
+            log.debug { "Ensured data directory $dataPath exists on ${targetHost.alias}" }
+        }
+        k8sService
+            .createLocalPersistentVolumes(
+                controlHost = ctx.controlHost,
+                config =
+                    PersistentVolumeConfig(
+                        dbName = ctx.kitName,
+                        localPath = dataPath,
+                        count = count,
+                        storageSize = storageSize,
+                        storageClass = step.storageClass,
+                        namespace = Constants.K8s.NAMESPACE,
+                        volumeClaimTemplateName = step.volumeClaimTemplateName,
+                    ),
+            ).getOrThrow()
+    }
 }

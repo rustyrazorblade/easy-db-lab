@@ -131,3 +131,12 @@ Every slab metric carries a `slab` label with the slab class ID.
 | `memcached_slab_items_moves_to_cold_total` | `slab` | Items moved to the COLD LRU |
 | `memcached_slab_items_moves_to_warm_total` | `slab` | Items moved to the WARM LRU |
 | `memcached_slab_items_moves_within_lru_total` | `slab` | Items bumped within their LRU |
+
+## extstore
+
+With extstore on (`--extstore-size`), the exporter also emits `memcached_extstore_*` series for
+the flash tier. They are absent when extstore is off.
+
+The list below is filled in from a live cluster's catalog (`bin/export-workload-metrics memcached`
+with extstore enabled), so that every name matches VictoriaMetrics exactly. Until then, none are
+listed here.

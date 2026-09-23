@@ -77,6 +77,14 @@ sealed interface InstallStep {
         val ignoreNotFound: Boolean = true,
     ) : InstallStep
 
+    /**
+     * Creates the kit's local PersistentVolumes on the [nodeType] nodes' NVMe.
+     *
+     * [storageSize] is the PV capacity; blank means the `STORAGE_SIZE` kit variable. [ifSet]
+     * names a kit variable: when it is non-blank and that variable is blank or absent, the step
+     * does nothing, so a kit whose volume is optional (memcached extstore) creates no PV when the
+     * feature is off.
+     */
     @Serializable
     @SerialName("platform-pvs")
     data class PlatformPvs(
@@ -87,6 +95,10 @@ sealed interface InstallStep {
         val volumeClaimTemplateName: String = "data",
         @SerialName("storage-class")
         val storageClass: String = Constants.K8s.LOCAL_STORAGE_WFC_CLASS,
+        @SerialName("storage-size")
+        val storageSize: String = "",
+        @SerialName("if-set")
+        val ifSet: String = "",
     ) : InstallStep
 
     @Serializable

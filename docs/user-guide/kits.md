@@ -108,8 +108,9 @@ easy-db-lab clickhouse uninstall   # stop and remove all kit resources
 
 ## memcached
 
-The `memcached` kit runs one memcached pod on a db node. It is in-memory only and creates no
-persistent volumes.
+The `memcached` kit runs one memcached pod on a db node. By default it runs from RAM only and
+creates no persistent volumes; `--extstore-size` adds extstore on the db node's NVMe (see
+[extstore](#memcached-extstore) below).
 
 Install it, optionally setting the cache size in megabytes with `--memory` (default 1024,
 passed to memcached as `-m`):
@@ -143,6 +144,38 @@ printf 'set greeting 0 0 5\r\nhello\r\nget greeting\r\nquit\r\n' | nc <db node p
 A `memcached-exporter` sidecar serves Prometheus metrics on port 9150. The collector finds the
 pod by label and scrapes it, so the series land in VictoriaMetrics under `job="memcached"`. The
 kit's `METRICS.md` lists them.
+
+### memcached extstore
+
+extstore lets memcached keep item values on flash once RAM is full. It is off unless you pass
+`--extstore-size`, which sets the size of the extstore file (a whole number with an `M`, `G` or `T`
+suffix):
+
+```bash
+easy-db-lab kit install memcached --memory 4096 --extstore-size 100G
+```
+
+With extstore on, `kit install` creates a local PersistentVolume on the db node's NVMe, and the
+memcached container mounts it at `/data` and runs with `-o ext_path=/data/extstore:<size>`.
+
+These install options tune extstore. Each one is passed to memcached only when you set it, so
+memcached's own default applies otherwise. Without `--extstore-size` they are ignored.
+
+| Option | memcached option | Meaning |
+|--------|------------------|---------|
+| `--extstore-page-size` | `ext_page_size` | Page size in MB |
+| `--extstore-wbuf-size` | `ext_wbuf_size` | Write buffer size in MB |
+| `--extstore-threads` | `ext_threads` | IO threads |
+| `--extstore-item-size` | `ext_item_size` | Smallest item, in bytes, that goes to flash |
+
+```bash
+easy-db-lab kit install memcached --extstore-size 100G --extstore-threads 8 --extstore-item-size 512
+```
+
+`memcached uninstall` also deletes the extstore volume claim, the PersistentVolume, and its
+directory on the node.
+
+### Stopping and uninstalling
 
 Stop it, or uninstall it to also remove the kit directory. Both delete every object labelled
 `easydblab/kit=memcached`:

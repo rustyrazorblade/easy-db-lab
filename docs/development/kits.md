@@ -176,9 +176,14 @@ Deletes a K8s resource.
 Creates persistent volumes on cluster nodes using the platform substrate.
 ```yaml
 - type: platform-pvs
-  node-type: db    # default: db
-  count: 3         # optional: defaults to node count
+  node-type: db          # default: db
+  count: 3               # optional: defaults to node count
+  storage-size: 10Ti     # optional: PV capacity; defaults to the STORAGE_SIZE variable
+  if-set: EXTSTORE_SIZE  # optional: skip the step unless this kit variable is non-empty
 ```
+`if-set` makes the volume optional: the memcached kit creates its extstore PV only when
+`--extstore-size` is set. Pair it with `platform-pvs-delete` in `uninstall`, which is a no-op when
+no PV was created.
 
 ### `configmap`
 Creates or updates a K8s ConfigMap.

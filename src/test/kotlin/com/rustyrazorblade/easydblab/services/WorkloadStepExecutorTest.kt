@@ -15,7 +15,10 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.koin.test.get
 import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
+import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.io.File
 
@@ -154,6 +157,61 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
                     variables = mapOf("STORAGE_SIZE" to "100Gi"),
                 )
             assertThat(result.isSuccess).isTrue()
+        }
+
+        @Test
+        fun `if-set skips the step when the named variable is blank`() {
+            val result =
+                execute(
+                    steps = listOf(InstallStep.PlatformPvs(nodeType = "db", ifSet = "EXTSTORE_SIZE")),
+                    variables = mapOf("EXTSTORE_SIZE" to "", "STORAGE_SIZE" to "100Gi"),
+                )
+
+            assertThat(result.isSuccess).isTrue()
+            verify(k8sService, never()).createLocalPersistentVolumes(any(), any())
+        }
+
+        @Test
+        fun `if-set runs the step when the named variable is set`() {
+            whenever(k8sService.createLocalPersistentVolumes(any(), any())).thenReturn(Result.success(Unit))
+
+            val result =
+                execute(
+                    steps = listOf(InstallStep.PlatformPvs(nodeType = "db", ifSet = "EXTSTORE_SIZE")),
+                    variables = mapOf("EXTSTORE_SIZE" to "100G", "STORAGE_SIZE" to "100Gi"),
+                )
+
+            assertThat(result.isSuccess).isTrue()
+            verify(k8sService).createLocalPersistentVolumes(any(), any())
+        }
+
+        @Test
+        fun `storage-size sets the PV capacity instead of the STORAGE_SIZE variable`() {
+            whenever(k8sService.createLocalPersistentVolumes(any(), any())).thenReturn(Result.success(Unit))
+
+            val result =
+                execute(
+                    steps = listOf(InstallStep.PlatformPvs(nodeType = "db", storageSize = "10Ti")),
+                    variables = mapOf("STORAGE_SIZE" to ""),
+                )
+
+            assertThat(result.isSuccess).isTrue()
+            val config = argumentCaptor<PersistentVolumeConfig>()
+            verify(k8sService).createLocalPersistentVolumes(any(), config.capture())
+            assertThat(config.firstValue.storageSize).isEqualTo("10Ti")
+        }
+
+        @Test
+        fun `a blank STORAGE_SIZE fails the step instead of creating a PV with no capacity`() {
+            val result =
+                execute(
+                    steps = listOf(InstallStep.PlatformPvs(nodeType = "db")),
+                    variables = mapOf("STORAGE_SIZE" to ""),
+                )
+
+            assertThat(result.isFailure).isTrue()
+            assertThat(result.exceptionOrNull()?.message).contains("STORAGE_SIZE")
+            verify(k8sService, never()).createLocalPersistentVolumes(any(), any())
         }
     }
 

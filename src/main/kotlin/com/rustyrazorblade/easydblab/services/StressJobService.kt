@@ -10,7 +10,7 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import com.rustyrazorblade.easydblab.profiling.pyroscopeIngestBaseUrl
-import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
+import com.rustyrazorblade.easydblab.providers.aws.pollUntil
 import io.fabric8.kubernetes.api.model.Container
 import io.fabric8.kubernetes.api.model.ContainerBuilder
 import io.fabric8.kubernetes.api.model.EnvVarBuilder
@@ -198,7 +198,7 @@ class DefaultStressJobService(
         jobName: String,
     ): String {
         val pods =
-            RetryUtil.pollUntil(
+            pollUntil(
                 operationName = "wait-for-stress-pod-$jobName",
                 maxAttempts = POD_READY_MAX_ATTEMPTS,
                 interval = podReadyPollInterval,

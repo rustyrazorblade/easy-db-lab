@@ -11,6 +11,7 @@ providers/
 │   ├── AWS.kt              # Low-level IAM, S3, STS operations
 │   ├── EC2.kt              # Low-level EC2 operations
 │   ├── RetryUtil.kt        # Centralized retry configuration
+│   ├── PollUntil.kt        # pollUntil: fixed-interval poll over createPollUntilRetryConfig
 │   ├── AWSPolicy.kt        # Policy definitions and templates
 │   ├── IamPolicy.kt        # IAM policy data model
 │   ├── IamPolicySerializers.kt # IAM policy serialization
@@ -69,8 +70,9 @@ val result = RetryUtil.withAwsRetry("describe-cluster") { emrClient.describeClus
 val result = RetryUtil.withEc2InstanceRetry("describe") { ec2Client.describeInstances(request) }
 RetryUtil.withVpcTeardownRetry("delete-sg") { ec2Client.deleteSecurityGroup(request) }
 
-// Poll until a condition holds; returns the last result if it never does
-val pods = RetryUtil.pollUntil("wait-for-pod", maxAttempts = 10, interval = Duration.ofSeconds(3), done = { it.isNotEmpty() }) {
+// Poll until a condition holds (top-level pollUntil in PollUntil.kt, over createPollUntilRetryConfig);
+// returns the last result if it never does
+val pods = pollUntil("wait-for-pod", maxAttempts = 10, interval = Duration.ofSeconds(3), done = { it.isNotEmpty() }) {
     k8sService.getPods().getOrThrow()
 }
 ```

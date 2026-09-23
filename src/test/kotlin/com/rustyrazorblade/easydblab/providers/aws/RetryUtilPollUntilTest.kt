@@ -7,9 +7,10 @@ import java.time.Duration
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * [RetryUtil.pollUntil]: polls at a fixed interval until the result satisfies a condition, treats
- * a thrown look as transient within the same budget, returns the last result when the budget runs
- * out, and fails only when the last look throws. Runs with a zero interval so it does not sleep.
+ * [pollUntil] over [RetryUtil.createPollUntilRetryConfig]: polls at a fixed interval until the
+ * result satisfies a condition, treats a thrown look as transient within the same budget, returns
+ * the last result when the budget runs out, and fails only when the last look throws. Runs with a
+ * zero interval so it does not sleep.
  */
 class RetryUtilPollUntilTest {
     private val looks = AtomicInteger(0)
@@ -18,7 +19,7 @@ class RetryUtilPollUntilTest {
         maxAttempts: Int,
         results: List<() -> String>,
     ): String =
-        RetryUtil.pollUntil(
+        pollUntil(
             operationName = "test-poll",
             maxAttempts = maxAttempts,
             interval = Duration.ZERO,

@@ -3,7 +3,7 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesService
-import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
+import com.rustyrazorblade.easydblab.providers.aws.pollUntil
 import java.time.Duration
 
 /** Whether a kit's workload is already in the cluster, as [KitWorkloadProbe] found it. */
@@ -61,7 +61,7 @@ class KitWorkloadProbe(
         controlHost: ClusterHost,
     ): Result<WorkloadPresence> =
         runCatching {
-            RetryUtil.pollUntil(
+            pollUntil(
                 operationName = "kit-stop-$kitName",
                 maxAttempts = maxPolls,
                 interval = pollInterval,

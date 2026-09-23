@@ -409,27 +409,6 @@ object RetryUtil {
     // ==================== Helper Functions ====================
 
     /**
-     * Runs [poll] under [createPollUntilRetryConfig] and returns the first result [done] accepts,
-     * or the last result when none is accepted within [maxAttempts] looks. Each failed look that
-     * is retried is logged; the last look's exception is rethrown.
-     *
-     * @param operationName Name of the poll for logging and metrics
-     */
-    fun <T> pollUntil(
-        operationName: String,
-        maxAttempts: Int,
-        interval: Duration,
-        done: (T) -> Boolean,
-        poll: () -> T,
-    ): T {
-        val retry = Retry.of(operationName, createPollUntilRetryConfig(maxAttempts, interval, done))
-        retry.eventPublisher.onRetry { event ->
-            event.lastThrowable?.let { e -> log.warn(e) { "$operationName: a look failed; retrying" } }
-        }
-        return Retry.decorateSupplier(retry, poll).get()
-    }
-
-    /**
      * Executes an operation with standard AWS retry logic.
      *
      * This is a convenience function that wraps the common pattern of:

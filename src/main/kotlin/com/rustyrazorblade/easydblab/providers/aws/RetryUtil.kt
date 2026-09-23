@@ -379,7 +379,55 @@ object RetryUtil {
                 }
             }.build()
 
+    /**
+     * Creates retry configuration for polling a condition at a fixed interval.
+     *
+     * - A result for which [done] is false is retried, [interval] apart, up to [maxAttempts]
+     *   looks; after the last look that result is returned, not thrown
+     * - Any exception from a look is treated as transient (a dropped API call, a SOCKS hiccup
+     *   during a wait that lasts minutes) and retried within the same budget; the poll fails
+     *   only when the last look throws
+     *
+     * @param maxAttempts the most looks to make
+     * @param interval how long to wait between looks
+     * @param done whether a look's result ends the poll
+     * @return RetryConfig configured for a fixed-interval poll
+     */
+    fun <T> createPollUntilRetryConfig(
+        maxAttempts: Int,
+        interval: Duration,
+        done: (T) -> Boolean,
+    ): RetryConfig =
+        RetryConfig
+            .custom<T>()
+            .maxAttempts(maxAttempts)
+            .intervalFunction { _ -> interval.toMillis() }
+            .retryOnResult { result -> !done(result) }
+            .retryOnException { true }
+            .build()
+
     // ==================== Helper Functions ====================
+
+    /**
+     * Runs [poll] under [createPollUntilRetryConfig] and returns the first result [done] accepts,
+     * or the last result when none is accepted within [maxAttempts] looks. Each failed look that
+     * is retried is logged; the last look's exception is rethrown.
+     *
+     * @param operationName Name of the poll for logging and metrics
+     */
+    fun <T> pollUntil(
+        operationName: String,
+        maxAttempts: Int,
+        interval: Duration,
+        done: (T) -> Boolean,
+        poll: () -> T,
+    ): T {
+        val retry = Retry.of(operationName, createPollUntilRetryConfig(maxAttempts, interval, done))
+        retry.eventPublisher.onRetry { event ->
+            event.lastThrowable?.let { e -> log.warn(e) { "$operationName: a look failed; retrying" } }
+        }
+        return Retry.decorateSupplier(retry, poll).get()
+    }
 
     /**
      * Executes an operation with standard AWS retry logic.

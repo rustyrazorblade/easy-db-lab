@@ -59,6 +59,7 @@ Always use factory methods instead of creating manual retry configurations.
 | `createSshConnectionRetryConfig()` | 30 | Fixed 10s | SSH boot-up (~5 min total) |
 | `createS3LogRetrievalRetryConfig<T>()` | 10 | Fixed 3s | S3 log retrieval (eventual consistency) |
 | `createVpcTeardownRetryConfig<T>()` | 5 | Exponential 5s→40s | VPC teardown DependencyViolation |
+| `createPollUntilRetryConfig<T>(maxAttempts, interval, done)` | caller | Fixed `interval` | Poll until a result condition holds; any exception is retried within the budget, only the last look's exception fails; an unmet condition returns the last result |
 
 ### Convenience Wrappers
 
@@ -67,6 +68,11 @@ Always use factory methods instead of creating manual retry configurations.
 val result = RetryUtil.withAwsRetry("describe-cluster") { emrClient.describeCluster(request) }
 val result = RetryUtil.withEc2InstanceRetry("describe") { ec2Client.describeInstances(request) }
 RetryUtil.withVpcTeardownRetry("delete-sg") { ec2Client.deleteSecurityGroup(request) }
+
+// Poll until a condition holds; returns the last result if it never does
+val pods = RetryUtil.pollUntil("wait-for-pod", maxAttempts = 10, interval = Duration.ofSeconds(3), done = { it.isNotEmpty() }) {
+    k8sService.getPods().getOrThrow()
+}
 ```
 
 ## AWSModule.kt Registration

@@ -11,6 +11,7 @@ import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitEndpointAddresses
 import com.rustyrazorblade.easydblab.services.KitRuntime
 import com.rustyrazorblade.easydblab.services.podSelector
+import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
 import org.koin.core.parameter.parametersOf
 import picocli.CommandLine.Command
@@ -89,37 +90,45 @@ class KitStatusCommand(
                     runtime.selector
                         .replace("\${KIT_NAME}", kitName)
                         .ifBlank { "app.kubernetes.io/instance=$release" }
-                val pods =
-                    kubeService
-                        .listPodsByLabel(podSelector, namespace)
-                        .getOrElse { emptyList() }
-                KitRunningState.Running(readyPods = countReadyPods(pods), totalPods = pods.size)
+                stateOfPods(kubeService, podSelector, namespace) { pods ->
+                    KitRunningState.Running(readyPods = countReadyPods(pods), totalPods = pods.size)
+                }
             }
             KitRuntime.RuntimeType.DEPLOYMENT,
             KitRuntime.RuntimeType.STATEFULSET,
             KitRuntime.RuntimeType.PODS,
-            -> {
-                val pods = kubeService.listPodsByLabel(podSelector(kitName, runtime), namespace).getOrElse { emptyList() }
-                if (pods.isEmpty()) {
-                    KitRunningState.Stopped
-                } else {
-                    KitRunningState.Running(readyPods = countReadyPods(pods), totalPods = pods.size)
-                }
-            }
+            -> stateOfPods(kubeService, podSelector(kitName, runtime), namespace, ::runningOrStopped)
         }
     }
 
-    private fun checkFallbackState(kubeService: KubernetesService): KitRunningState {
-        val pods =
-            kubeService
-                .listPodsByLabel(podSelector(kitName, runtime = null), "default")
-                .getOrElse { return KitRunningState.Unknown("K8s query failed") }
-        return if (pods.isEmpty()) {
+    private fun checkFallbackState(kubeService: KubernetesService): KitRunningState =
+        stateOfPods(kubeService, podSelector(kitName, runtime = null), "default", ::runningOrStopped)
+
+    /**
+     * Lists the kit's pods and derives its state from them. A failed query is
+     * [KitRunningState.Unknown] carrying the cause — never an empty list, which would
+     * report a kit we could not see as stopped.
+     */
+    private fun stateOfPods(
+        kubeService: KubernetesService,
+        selector: String,
+        namespace: String,
+        fromPods: (List<KubernetesPod>) -> KitRunningState,
+    ): KitRunningState =
+        kubeService.listPodsByLabel(selector, namespace).fold(
+            onSuccess = fromPods,
+            onFailure = { e ->
+                log.warn(e) { "Failed to list pods for kit $kitName ($selector in $namespace)" }
+                KitRunningState.Unknown("K8s query failed: ${e.message}")
+            },
+        )
+
+    private fun runningOrStopped(pods: List<KubernetesPod>): KitRunningState =
+        if (pods.isEmpty()) {
             KitRunningState.Stopped
         } else {
             KitRunningState.Running(readyPods = countReadyPods(pods), totalPods = pods.size)
         }
-    }
 
     private fun countReadyPods(pods: List<KubernetesPod>): Int =
         pods.count { pod ->
@@ -130,5 +139,9 @@ class KitStatusCommand(
     private fun printEndpoints() {
         val resolved = KitEndpointAddresses.resolve(installConfig.endpoints, clusterState.hosts)
         if (resolved.isNotEmpty()) println(KitEndpointAddresses.formatLines(resolved))
+    }
+
+    companion object {
+        private val log = KotlinLogging.logger {}
     }
 }

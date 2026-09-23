@@ -33,13 +33,14 @@ import java.time.Duration
 class KitStatusCommandTest : BaseKoinTest() {
     private val mockClusterStateManager: ClusterStateManager = mock()
     private val mockKubeService: KubernetesService = mock()
+    private val mockHelmService: HelmService = mock()
 
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
                 single<ClusterStateManager> { mockClusterStateManager }
                 single<KubernetesService> { mockKubeService }
-                single<HelmService> { mock() }
+                single<HelmService> { mockHelmService }
             },
         )
 
@@ -83,8 +84,13 @@ class KitStatusCommandTest : BaseKoinTest() {
     private fun runStatus(
         pods: List<KubernetesPod>,
         runtime: KitRuntime? = KitRuntime(type = KitRuntime.RuntimeType.PODS, selector = "easydblab/kit=mydb"),
+    ): String = runStatus(Result.success(pods), runtime)
+
+    private fun runStatus(
+        podQuery: Result<List<KubernetesPod>>,
+        runtime: KitRuntime?,
     ): String {
-        whenever(mockKubeService.listPodsByLabel(any(), any())).thenReturn(Result.success(pods))
+        whenever(mockKubeService.listPodsByLabel(any(), any())).thenReturn(podQuery)
         val config =
             KitConfig(
                 name = "mydb",
@@ -143,6 +149,39 @@ class KitStatusCommandTest : BaseKoinTest() {
         runStatus(emptyList(), runtime = null)
 
         verify(mockKubeService).listPodsByLabel("app.kubernetes.io/name=mydb", "default")
+    }
+
+    @Test
+    fun `a failed pod query for a runtime-declared kit is Unknown with the cause, not Stopped`() {
+        val output =
+            runStatus(
+                Result.failure(IllegalStateException("SOCKS tunnel down")),
+                KitRuntime(type = KitRuntime.RuntimeType.PODS, selector = "easydblab/kit=mydb"),
+            )
+
+        assertThat(output).contains("Unknown (K8s query failed: SOCKS tunnel down)")
+        assertThat(output).doesNotContain("Stopped")
+    }
+
+    @Test
+    fun `a failed pod query for a kit without a runtime block is Unknown with the cause`() {
+        val output = runStatus(Result.failure(IllegalStateException("SOCKS tunnel down")), runtime = null)
+
+        assertThat(output).contains("Unknown (K8s query failed: SOCKS tunnel down)")
+    }
+
+    @Test
+    fun `a failed pod query for an installed helm release is Unknown with the cause`() {
+        whenever(mockHelmService.releaseExists(any(), any(), any())).thenReturn(true)
+
+        val output =
+            runStatus(
+                Result.failure(IllegalStateException("SOCKS tunnel down")),
+                KitRuntime(type = KitRuntime.RuntimeType.HELM, release = "mydb"),
+            )
+
+        assertThat(output).contains("Unknown (K8s query failed: SOCKS tunnel down)")
+        assertThat(output).doesNotContain("Running")
     }
 
     private fun endpoint(

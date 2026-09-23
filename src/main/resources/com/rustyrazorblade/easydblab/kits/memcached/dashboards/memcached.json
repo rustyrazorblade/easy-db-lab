@@ -223,7 +223,7 @@
     {
       "type": "stat",
       "title": "Memory Used",
-      "description": "Bytes used to store items as a share of the configured cache size (--memory)",
+      "description": "RAM memcached has allocated for slab pages (memcached_malloced_bytes) as a share of the configured cache size (--memory). Item values moved to extstore on flash are not counted.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -277,7 +277,7 @@
       },
       "targets": [
         {
-          "expr": "100 * sum(memcached_current_bytes{job=\"memcached\", cluster=~\"$cluster.*\", instance=~\"$instance\"}) / sum(memcached_limit_bytes{job=\"memcached\", cluster=~\"$cluster.*\", instance=~\"$instance\"})",
+          "expr": "100 * sum(memcached_malloced_bytes{job=\"memcached\", cluster=~\"$cluster.*\", instance=~\"$instance\"}) / sum(memcached_limit_bytes{job=\"memcached\", cluster=~\"$cluster.*\", instance=~\"$instance\"})",
           "legendFormat": "used",
           "refId": "A"
         }
@@ -661,8 +661,8 @@
     },
     {
       "type": "timeseries",
-      "title": "Memory: Used vs Limit",
-      "description": "Bytes used by items and bytes malloced for slab pages, against the configured limit",
+      "title": "Memory: RAM Used vs Limit",
+      "description": "RAM used is the memory memcached has allocated for slab pages (memcached_malloced_bytes); it cannot exceed the limit (--memory). Item bytes is the full size of every stored item (memcached_current_bytes), including values moved to extstore on flash, so with extstore on it can be far above the limit.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -700,12 +700,12 @@
       "targets": [
         {
           "expr": "sum by(instance) (memcached_current_bytes{job=\"memcached\", cluster=~\"$cluster.*\", instance=~\"$instance\"})",
-          "legendFormat": "used {{instance}}",
+          "legendFormat": "item bytes (RAM + flash) {{instance}}",
           "refId": "A"
         },
         {
           "expr": "sum by(instance) (memcached_malloced_bytes{job=\"memcached\", cluster=~\"$cluster.*\", instance=~\"$instance\"})",
-          "legendFormat": "malloced {{instance}}",
+          "legendFormat": "RAM used {{instance}}",
           "refId": "B"
         },
         {

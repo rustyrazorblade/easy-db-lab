@@ -151,6 +151,21 @@ interface K8sNamespaceOperations {
         name: String,
         namespace: String = Constants.K8s.NAMESPACE,
     ): Result<Unit>
+
+    /**
+     * Waits until every one of [workloads] in [namespace] has finished rolling out, with
+     * `kubectl rollout status` semantics (see [RolloutStatus]). Call it after a rollout-restart:
+     * pod readiness alone passes while the old pods are still serving.
+     *
+     * @return failure naming each unfinished workload and what it is waiting on if they have not
+     *   all completed within [timeoutSeconds].
+     */
+    fun waitForRollouts(
+        controlHost: ClusterHost,
+        workloads: List<WorkloadRef>,
+        namespace: String,
+        timeoutSeconds: Int,
+    ): Result<Unit>
 }
 
 /**

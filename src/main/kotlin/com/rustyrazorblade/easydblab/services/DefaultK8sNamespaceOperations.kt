@@ -8,6 +8,8 @@ import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.Pod
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.github.oshai.kotlinlogging.KotlinLogging
+import io.github.resilience4j.retry.Retry
+import io.github.resilience4j.retry.RetryConfig
 import java.time.Duration
 import java.time.Instant
 
@@ -17,7 +19,7 @@ private val log = KotlinLogging.logger {}
  * Implementation of namespace-related K8s operations: observability status,
  * pod readiness, namespace deletion, resource deletion by label, and rollout restarts.
  *
- * @param podPollInterval How long to wait between pod-readiness polls. Defaults to
+ * @param podPollInterval How long to wait between pod-readiness and rollout-status polls. Defaults to
  *   [POD_POLL_INTERVAL_MS] so production timing is unchanged; integration tests inject a tiny
  *   value so they do not busy-wait a live cluster at 5s granularity.
  */
@@ -193,6 +195,72 @@ class DefaultK8sNamespaceOperations(
                     }
             }
             log.info { "Rolling restart initiated for DaemonSet/$name" }
+        }
+
+    override fun waitForRollouts(
+        controlHost: ClusterHost,
+        workloads: List<WorkloadRef>,
+        namespace: String,
+        timeoutSeconds: Int,
+    ): Result<Unit> =
+        runCatching {
+            if (workloads.isEmpty()) return@runCatching
+            eventBus.emit(Event.K8s.RolloutsWaiting(workloads.map { it.toString() }))
+
+            clientProvider.createClient(controlHost).use { client ->
+                // Poll until nothing is pending or the deadline passes. The deadline, not an
+                // attempt count, bounds the wait, so a slow API server cannot stretch it.
+                val deadline = Instant.now().plusSeconds(timeoutSeconds.toLong())
+                val config =
+                    RetryConfig
+                        .custom<List<String>>()
+                        .maxAttempts(Int.MAX_VALUE)
+                        .intervalFunction { _ -> podPollInterval.toMillis() }
+                        .retryOnResult { pending -> pending.isNotEmpty() && Instant.now().isBefore(deadline) }
+                        .retryOnException { false }
+                        .build()
+                val pending =
+                    Retry
+                        .of("rollout-status", config)
+                        .executeSupplier { pendingRollouts(client, namespace, workloads) }
+                check(pending.isEmpty()) {
+                    "Timed out after ${timeoutSeconds}s waiting for rollouts to complete: ${pending.joinToString("; ")}"
+                }
+            }
+
+            eventBus.emit(Event.K8s.RolloutsComplete(workloads.size))
+        }
+
+    /** What each unfinished workload is waiting on; empty once every rollout is complete. */
+    private fun pendingRollouts(
+        client: KubernetesClient,
+        namespace: String,
+        workloads: List<WorkloadRef>,
+    ): List<String> =
+        workloads.mapNotNull { ref ->
+            val progress =
+                when (ref.kind) {
+                    WorkloadKind.Deployment ->
+                        client
+                            .apps()
+                            .deployments()
+                            .inNamespace(namespace)
+                            .withName(ref.name)
+                            .get()
+                            ?.let(RolloutStatus::of)
+                    WorkloadKind.DaemonSet ->
+                        client
+                            .apps()
+                            .daemonSets()
+                            .inNamespace(namespace)
+                            .withName(ref.name)
+                            .get()
+                            ?.let(RolloutStatus::of)
+                } ?: RolloutProgress.Pending("$ref not found")
+            when (progress) {
+                RolloutProgress.Complete -> null
+                is RolloutProgress.Pending -> progress.reason.also { log.debug { it } }
+            }
         }
 
     private fun formatPodStatus(

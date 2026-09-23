@@ -40,6 +40,8 @@ import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.atLeastOnce
+import org.mockito.kotlin.eq
+import org.mockito.kotlin.inOrder
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.reset
@@ -131,6 +133,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         whenever(mockK8sService.rolloutRestartDeployment(any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.rolloutRestartDaemonSet(any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.waitForPodsReady(any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.waitForRollouts(any(), any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockDashboardService.uploadDashboards(any())).thenReturn(Result.success(Unit))
 
         service =
@@ -171,6 +174,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         whenever(mockK8sService.rolloutRestartDeployment(any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.rolloutRestartDaemonSet(any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.waitForPodsReady(any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.waitForRollouts(any(), any(), any(), any())).thenReturn(Result.success(Unit))
     }
 
     /** The OTel collector config YAML as it was applied to the cluster. */
@@ -263,6 +267,34 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(stateWithCni(CniMode.Flannel))
         service.deploy(controlNode, telemetryRedirect = null).getOrThrow()
         assertThat(appliedOtelConfig()).doesNotContain("cilium-agent").doesNotContain("cilium-operator")
+    }
+
+    @Test
+    fun `the readiness gate runs only after every applied workload has finished rolling out`() {
+        // Pod readiness alone passes while a restarted workload's old pods are still serving, which
+        // is how `update-config` reported ready with replacement pods at 0/1.
+        service.deploy(controlNode, telemetryRedirect = null).getOrThrow()
+
+        val applied = appliedKindNames()
+        val workloads = argumentCaptor<List<WorkloadRef>>()
+        val order = inOrder(mockK8sService)
+        order.verify(mockK8sService).waitForRollouts(any(), workloads.capture(), eq("default"), any())
+        order.verify(mockK8sService).waitForPodsReady(any(), any())
+
+        val expected = applied.filter { it.startsWith("Deployment/") || it.startsWith("DaemonSet/") }.distinct()
+        assertThat(workloads.firstValue.map { it.toString() }).containsExactlyInAnyOrderElementsOf(expected)
+        assertThat(expected).contains("DaemonSet/otel-collector", "Deployment/tempo", "Deployment/pyroscope")
+    }
+
+    @Test
+    fun `a rollout that does not finish fails the deploy without reporting the stack ready`() {
+        whenever(mockK8sService.waitForRollouts(any(), any(), any(), any()))
+            .thenReturn(Result.failure(IllegalStateException("Deployment/tempo: 0 of 1 updated replicas are available")))
+
+        val result = service.deploy(controlNode, telemetryRedirect = null)
+
+        assertThat(result.exceptionOrNull()).hasMessageContaining("Deployment/tempo: 0 of 1 updated replicas are available")
+        verify(mockK8sService, never()).waitForPodsReady(any(), any())
     }
 
     @Test

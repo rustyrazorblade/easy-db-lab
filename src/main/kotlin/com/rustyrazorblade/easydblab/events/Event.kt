@@ -972,6 +972,22 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("K8s.RolloutsWaiting")
+        data class RolloutsWaiting(
+            val workloads: List<String>,
+        ) : K8s {
+            override fun toDisplayString(): String = "Waiting for ${workloads.size} restarted workloads to finish rolling out..."
+        }
+
+        @Serializable
+        @SerialName("K8s.RolloutsComplete")
+        data class RolloutsComplete(
+            val count: Int,
+        ) : K8s {
+            override fun toDisplayString(): String = "All $count restarted workloads have rolled out"
+        }
+
+        @Serializable
         @SerialName("K8s.ObservabilityPodsWaiting")
         data object ObservabilityPodsWaiting : K8s {
             override fun toDisplayString(): String = "Waiting for observability pods to be ready..."

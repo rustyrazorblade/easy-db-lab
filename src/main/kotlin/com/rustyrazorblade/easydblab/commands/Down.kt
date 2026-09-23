@@ -95,6 +95,17 @@ class Down : PicoBaseCommand() {
     private val socksProxyService: SocksProxyService by inject()
     private val log = KotlinLogging.logger {}
 
+    /**
+     * The process exit code. Set to [Constants.ExitCodes.ERROR] when the pre-teardown backup aborts
+     * the teardown, so a caller scripting `down` sees that nothing was removed instead of success.
+     */
+    private var exitCode = 0
+
+    override fun call(): Int {
+        super.call()
+        return exitCode
+    }
+
     override fun execute() {
         val mode = determineTeardownMode()
 
@@ -104,6 +115,7 @@ class Down : PicoBaseCommand() {
         // backup fails, abort with no infrastructure removed so the data is not lost to teardown.
         // Runs before the proxy is torn down; --force skips it. See design decision D3.
         if (!backupBeforeTeardown(mode)) {
+            exitCode = Constants.ExitCodes.ERROR
             return
         }
 

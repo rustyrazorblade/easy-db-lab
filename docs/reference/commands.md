@@ -178,7 +178,7 @@ easy-db-lab down [vpc-id] [options]
 
 **Automatic backup before teardown.** When you tear down the current cluster, `down` first backs up the VictoriaMetrics metrics and the Grafana annotations. The metrics land in the cluster's S3 prefix; the annotations land in an account-level location that teardown does not expire. Both backups always run together, and each is retried on a transient failure. This runs before any infrastructure is removed.
 
-**Abort on backup failure.** If the backup fails, `down` aborts and removes no infrastructure. It reports the failure and leaves the cluster intact so you can fix the backup and retry. This is deliberate: the annotations and metrics are worth more than a fast teardown.
+**Abort on backup failure.** If the backup fails, `down` aborts and removes no infrastructure. It reports the failure, exits with a non-zero status, and leaves the cluster intact so you can fix the backup and retry. This is deliberate: the annotations and metrics are worth more than a fast teardown.
 
 **`--force` skips the backup.** Pass `--force` to skip the pre-teardown backup and tear down anyway. Use it only when the backup source is already gone, or when you do not need the data. `--force` is the sole escape from the abort-on-failure behavior.
 

@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesService
+import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
 import io.github.resilience4j.retry.RetryConfig
 import java.time.Duration
@@ -35,8 +36,9 @@ class KitWorkloadProbe(
 ) {
     /**
      * Retries while the workload is still there, `pollInterval` apart, up to `maxPolls` looks,
-     * then returns the last result rather than throwing. A failed look is not retried: it fails
-     * the wait at once.
+     * then returns the last result rather than throwing. A failed look — a dropped API call or
+     * SOCKS hiccup during a wait that lasts minutes — is retried within the same budget; the wait
+     * fails only when the last look still throws.
      */
     private val untilGoneRetryConfig: RetryConfig =
         RetryConfig
@@ -44,7 +46,7 @@ class KitWorkloadProbe(
             .maxAttempts(maxPolls)
             .intervalFunction { _ -> pollInterval.toMillis() }
             .retryOnResult { gone -> !gone }
-            .retryOnException { false }
+            .retryOnException { true }
             .build()
 
     /** Finds [kitName]'s workload as its [runtime] declares it; a failed cluster query fails the result. */
@@ -58,7 +60,8 @@ class KitWorkloadProbe(
      * Waits for [kitName]'s workload to leave the cluster: every pod its [runtime] selects,
      * terminating ones included, or its helm release. Looks up to `maxPolls` times, `pollInterval`
      * apart, and returns [WorkloadPresence.Absent] once nothing is left, or what was still there at
-     * the last look. A failed cluster query fails the result.
+     * the last look. A failed cluster query is retried like a present workload; it fails the result
+     * only on the last look.
      */
     fun awaitGone(
         kitName: String,
@@ -68,6 +71,9 @@ class KitWorkloadProbe(
         runCatching {
             var remaining: WorkloadPresence = WorkloadPresence.Absent
             val retry = Retry.of("kit-stop-$kitName", untilGoneRetryConfig)
+            retry.eventPublisher.onRetry { event ->
+                event.lastThrowable?.let { e -> log.warn(e) { "Looking for $kitName's workload failed; retrying" } }
+            }
             Retry
                 .decorateSupplier(retry) {
                     remaining = lookUp(kitName, runtime, controlHost, countTerminating = true)
@@ -122,6 +128,8 @@ class KitWorkloadProbe(
     }
 
     private companion object {
+        val log = KotlinLogging.logger {}
+
         const val DEFAULT_NAMESPACE = "default"
 
         /** Pod phases a pod never leaves: its containers have all exited for good. */

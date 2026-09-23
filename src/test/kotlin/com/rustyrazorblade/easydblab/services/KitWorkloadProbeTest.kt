@@ -8,6 +8,8 @@ import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.times
+import org.mockito.kotlin.verify
 import org.mockito.kotlin.verifyNoInteractions
 import org.mockito.kotlin.whenever
 import java.time.Duration
@@ -80,6 +82,34 @@ class KitWorkloadProbeTest {
 
         assertThat(probe.find("sysbench-tidb", runPods, controlHost).getOrThrow())
             .isEqualTo(WorkloadPresence.Present(namespace = "default", resources = listOf("pod/run-1")))
+    }
+
+    /**
+     * The stop wait lasts minutes over a SOCKS tunnel; one dropped API call inside it must not
+     * throw away the whole wait when the next look succeeds.
+     */
+    @Test
+    fun `a transient lookup failure during the stop wait is retried within the poll budget`() {
+        whenever(kubeService.listPodsByLabel(any(), any()))
+            .thenReturn(Result.failure(IllegalStateException("connection reset")))
+            .thenReturn(Result.success(listOf(pod("run-1", "Running"))))
+            .thenReturn(Result.success(emptyList()))
+        val waiting = KitWorkloadProbe(kubeService, helmService, pollInterval = Duration.ZERO, maxPolls = 3)
+
+        assertThat(waiting.awaitGone("sysbench-tidb", runPods, controlHost).getOrThrow()).isEqualTo(WorkloadPresence.Absent)
+    }
+
+    @Test
+    fun `the stop wait fails when its last look still throws`() {
+        whenever(kubeService.listPodsByLabel(any(), any()))
+            .thenReturn(Result.success(listOf(pod("run-1", "Running"))))
+            .thenReturn(Result.failure(IllegalStateException("connection reset")))
+        val waiting = KitWorkloadProbe(kubeService, helmService, pollInterval = Duration.ZERO, maxPolls = 2)
+
+        val result = waiting.awaitGone("sysbench-tidb", runPods, controlHost)
+
+        assertThat(result.exceptionOrNull()).isInstanceOf(IllegalStateException::class.java).hasMessage("connection reset")
+        verify(kubeService, times(2)).listPodsByLabel(any(), any())
     }
 
     @Test

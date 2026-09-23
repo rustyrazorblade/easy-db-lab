@@ -13,8 +13,11 @@ import com.rustyrazorblade.easydblab.services.StepExecutionContext
 import com.rustyrazorblade.easydblab.services.TemplateVariables
 import com.rustyrazorblade.easydblab.services.WorkloadStepExecutor
 import com.rustyrazorblade.easydblab.services.installConfigYaml
+import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
 import java.io.File
+
+private val log = KotlinLogging.logger {}
 
 /**
  * Dynamically-created install subcommand backed by a kit.yaml kit descriptor.
@@ -91,24 +94,26 @@ class KitInstallCommand(
                     .from(state = clusterState, kitName = instanceName, storageSize = storageSize)
                     .toMap() + argValues
 
-            runCatching {
-                workloadStepExecutor
-                    .execute(
-                        steps = config.install,
-                        phase = Constants.Kit.PHASE_INSTALL,
-                        context =
-                            StepExecutionContext(
-                                kitName = instanceName,
-                                controlHost = controlHost,
-                                clusterState = clusterState,
-                                variables = variables,
-                                kitDir = kitDir,
-                            ),
-                    ).getOrThrow()
-            }.onFailure { e ->
-                kitDir.deleteRecursively()
-                throw e
-            }
+            // A failed step is reported by the step executor as a typed event; the install then
+            // exits non-zero rather than rethrowing, which would print the failure a second time
+            // as a raw exception.
+            workloadStepExecutor
+                .execute(
+                    steps = config.install,
+                    phase = Constants.Kit.PHASE_INSTALL,
+                    context =
+                        StepExecutionContext(
+                            kitName = instanceName,
+                            controlHost = controlHost,
+                            clusterState = clusterState,
+                            variables = variables,
+                            kitDir = kitDir,
+                        ),
+                ).onFailure { e ->
+                    log.debug(e) { "$instanceName install failed" }
+                    kitDir.deleteRecursively()
+                    exitCode = Constants.ExitCodes.ERROR
+                }
         }
     }
 

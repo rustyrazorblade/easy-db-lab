@@ -5425,6 +5425,28 @@ sealed interface Event {
             override fun isError(): Boolean = true
         }
 
+        /** A kit `shell` step exited non-zero; [outputTail] is the last of what it printed. */
+        @Serializable
+        @SerialName("Kit.ShellStepFailed")
+        data class ShellStepFailed(
+            val kit: String,
+            val phase: String,
+            val stepIndex: Int,
+            val exitCode: Int,
+            val outputTail: List<String>,
+        ) : Kit {
+            override fun toDisplayString(): String =
+                buildString {
+                    append("[$kit] $phase step ${stepIndex + 1} (shell) failed with exit code $exitCode.")
+                    if (outputTail.isNotEmpty()) {
+                        append(" Last output:")
+                        outputTail.forEach { append("\n  ").append(it) }
+                    }
+                }
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Kit.MetricsRegistered")
         data class MetricsRegistered(

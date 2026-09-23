@@ -1,11 +1,15 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.services.StepExecutionContext
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -106,11 +110,40 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
         }
 
         @Test
-        fun `fails when script exits non-zero`() {
-            val result = execute(listOf(InstallStep.Shell("exit 1")))
-            assertThat(result.isFailure).isTrue()
-            assertThat(result.exceptionOrNull()).isInstanceOf(IllegalStateException::class.java)
-            assertThat(result.exceptionOrNull()?.message).contains("Shell step exited with code 1")
+        fun `fails with the exit code and the tail of the script's output`() {
+            val script = (1..30).joinToString("\n") { "echo line-$it" } + "\necho boom >&2\nexit 3"
+
+            val failure = execute(listOf(InstallStep.Shell(script))).exceptionOrNull()
+
+            assertThat(failure).isInstanceOf(ShellStepFailedException::class.java)
+            failure as ShellStepFailedException
+            assertThat(failure.exitCode).isEqualTo(3)
+            // stderr is part of the output, and only the last lines are kept.
+            assertThat(failure.outputTail).endsWith("line-30", "boom")
+            assertThat(failure.outputTail).hasSize(Constants.Kit.SHELL_STEP_OUTPUT_TAIL_LINES)
+            assertThat(failure.outputTail).doesNotContain("line-1")
+        }
+
+        @Test
+        fun `a failed shell step is reported as a shell step failure with its exit code and output`() {
+            val events = mutableListOf<Event>()
+            get<EventBus>().addListener(
+                object : EventListener {
+                    override fun onEvent(envelope: EventEnvelope) {
+                        events += envelope.event
+                    }
+
+                    override fun close() = Unit
+                },
+            )
+
+            execute(listOf(InstallStep.Shell("echo kubectl said no\nexit 1")))
+
+            val failed = events.filterIsInstance<Event.Kit.ShellStepFailed>().single()
+            assertThat(failed.exitCode).isEqualTo(1)
+            assertThat(failed.stepIndex).isZero()
+            assertThat(failed.outputTail).containsExactly("kubectl said no")
+            assertThat(events.filterIsInstance<Event.Kit.StepFailed>()).isEmpty()
         }
 
         @Test

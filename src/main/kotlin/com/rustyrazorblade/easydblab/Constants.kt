@@ -278,6 +278,9 @@ object Constants {
         const val PHASE_BACKUP = "backup"
         const val PHASE_RESTORE = "restore"
 
+        /** Lines of a failed shell step's output repeated in its failure report. */
+        const val SHELL_STEP_OUTPUT_TAIL_LINES = 20
+
         // File written by kit install to record the resolved arg values; read by subsequent
         // phases (start, stop, etc.) so they use the installed values instead of kit defaults.
         const val RESOLVED_ARGS_FILE = "kit-resolved-args.env"

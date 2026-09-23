@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.commands.install
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import org.assertj.core.api.Assertions.assertThat
@@ -206,7 +207,7 @@ class KitRunnerCommandCollisionCheckTest : KitRunnerCommandTestBase() {
         writeCollisionCheckedKit()
         whenever(mockWorkloadStepExecutor.execute(any(), any(), any())).thenReturn(Result.failure(IllegalStateException("boom")))
 
-        assertThatThrownBy { command("mydb", "stop").call() }.hasMessageContaining("boom")
+        assertThat(command("mydb", "stop").call()).isEqualTo(Constants.ExitCodes.ERROR)
         verifyNoInteractions(mockKubeService)
     }
 

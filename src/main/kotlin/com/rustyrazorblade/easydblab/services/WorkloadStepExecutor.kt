@@ -27,6 +27,15 @@ internal fun interpolateStepVars(
     }
 
 /**
+ * A kit `shell` step exited non-zero. Carries the [exitCode] and the last lines of the script's
+ * output, which [WorkloadStepExecutor] reports as [Event.Kit.ShellStepFailed].
+ */
+class ShellStepFailedException(
+    val exitCode: Int,
+    val outputTail: List<String>,
+) : RuntimeException("shell step exited with code $exitCode")
+
+/**
  * Bundles the per-execution context that every step needs, eliminating the
  * 7-parameter signatures on [WorkloadStepExecutor.execute] and [executeStep].
  */
@@ -63,13 +72,24 @@ class WorkloadStepExecutor(
                 )
                 executeStep(step, context).onFailure { error ->
                     eventBus.emit(
-                        Event.Kit.StepFailed(
-                            kit = context.kitName,
-                            phase = phase,
-                            stepType = stepType,
-                            stepIndex = index,
-                            error = error.message ?: error.toString(),
-                        ),
+                        when (error) {
+                            is ShellStepFailedException ->
+                                Event.Kit.ShellStepFailed(
+                                    kit = context.kitName,
+                                    phase = phase,
+                                    stepIndex = index,
+                                    exitCode = error.exitCode,
+                                    outputTail = error.outputTail,
+                                )
+                            else ->
+                                Event.Kit.StepFailed(
+                                    kit = context.kitName,
+                                    phase = phase,
+                                    stepType = stepType,
+                                    stepIndex = index,
+                                    error = error.message ?: error.toString(),
+                                )
+                        },
                     )
                     throw error
                 }
@@ -226,25 +246,47 @@ class WorkloadStepExecutor(
                         ).getOrThrow()
                 }
 
-                is InstallStep.Shell -> {
-                    val tmpScript = Files.createTempFile("edl-step-", ".sh").toFile()
-                    try {
-                        tmpScript.writeText("#!/bin/bash\n${step.script}\n")
-                        tmpScript.setExecutable(true)
-                        val exitCode =
-                            ProcessBuilder(tmpScript.absolutePath)
-                                .directory(ctx.kitDir)
-                                .inheritIO()
-                                .also { pb -> pb.environment().putAll(ctx.variables) }
-                                .start()
-                                .waitFor()
-                        check(exitCode == 0) { "Shell step exited with code $exitCode" }
-                    } finally {
-                        tmpScript.delete()
-                    }
-                }
+                is InstallStep.Shell -> runShellStep(step, ctx)
             }
         }
+
+    /**
+     * Runs a shell step from the kit directory with the step variables in its environment. Its
+     * output (stdout and stderr, merged) is passed through to the console as it runs, and the
+     * last [Constants.Kit.SHELL_STEP_OUTPUT_TAIL_LINES] lines are kept so a failure can repeat
+     * them next to the exit code.
+     *
+     * @throws ShellStepFailedException when the script exits non-zero
+     */
+    private fun runShellStep(
+        step: InstallStep.Shell,
+        ctx: StepExecutionContext,
+    ) {
+        val tmpScript = Files.createTempFile("edl-step-", ".sh").toFile()
+        try {
+            tmpScript.writeText("#!/bin/bash\n${step.script}\n")
+            tmpScript.setExecutable(true)
+            val process =
+                ProcessBuilder(tmpScript.absolutePath)
+                    .directory(ctx.kitDir)
+                    .redirectInput(ProcessBuilder.Redirect.INHERIT)
+                    .redirectErrorStream(true)
+                    .also { pb -> pb.environment().putAll(ctx.variables) }
+                    .start()
+            val tail = ArrayDeque<String>(Constants.Kit.SHELL_STEP_OUTPUT_TAIL_LINES)
+            process.inputStream.bufferedReader().useLines { lines ->
+                lines.forEach { line ->
+                    println(line)
+                    if (tail.size == Constants.Kit.SHELL_STEP_OUTPUT_TAIL_LINES) tail.removeFirst()
+                    tail.addLast(line)
+                }
+            }
+            val exitCode = process.waitFor()
+            if (exitCode != 0) throw ShellStepFailedException(exitCode, tail.toList())
+        } finally {
+            tmpScript.delete()
+        }
+    }
 
     /**
      * Creates the kit's local PVs with capacity [stepStorageSize], or the `STORAGE_SIZE` variable

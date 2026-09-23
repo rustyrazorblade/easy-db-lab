@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.commands.install
 
+import com.rustyrazorblade.easydblab.Constants
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -32,7 +33,7 @@ class KitRunnerCommandTypedPhaseTest : KitRunnerCommandTestBase() {
     }
 
     @Test
-    fun `typed phase failure returns exit code one and rethrows`() {
+    fun `typed phase failure exits non-zero without rethrowing the step failure it already reported`() {
         writeKitYaml(
             "mydb",
             """
@@ -45,9 +46,12 @@ class KitRunnerCommandTypedPhaseTest : KitRunnerCommandTestBase() {
         whenever(mockWorkloadStepExecutor.execute(any(), any(), any()))
             .thenReturn(Result.failure(RuntimeException("step failed")))
 
-        assertThatThrownBy { command("mydb", "start").call() }
-            .isInstanceOf(RuntimeException::class.java)
-            .hasMessage("step failed")
+        // The step executor reported the failure as a typed event; rethrowing it would make the
+        // command executor print it a second time as a raw exception class name.
+        val exitCode = command("mydb", "start").call()
+
+        assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+        verify(mockClusterStateManager, never()).addRunningWorkload(any())
     }
 
     @Test

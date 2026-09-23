@@ -212,9 +212,13 @@ class KitRunnerCommand(
                     ),
             )
 
-        result.onFailure { error ->
-            eventBus.emit(Event.Kit.ScriptFinished(kit = kitName, script = phaseName, exitCode = 1))
-            throw error
+        // The step executor has already reported the failed step as a typed event; rethrowing it
+        // would have the command executor print it again as a raw exception.
+        if (result.isFailure) {
+            log.debug(result.exceptionOrNull()) { "$kitName $phaseName failed" }
+            processExitCode = Constants.ExitCodes.ERROR
+            eventBus.emit(Event.Kit.ScriptFinished(kit = kitName, script = phaseName, exitCode = processExitCode))
+            return
         }
 
         finishPhase(config, controlHost, phaseExitCode = 0)

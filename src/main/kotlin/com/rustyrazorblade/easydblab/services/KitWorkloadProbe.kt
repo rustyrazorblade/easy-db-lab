@@ -3,9 +3,7 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesService
-import io.github.oshai.kotlinlogging.KotlinLogging
-import io.github.resilience4j.retry.Retry
-import io.github.resilience4j.retry.RetryConfig
+import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import java.time.Duration
 
 /** Whether a kit's workload is already in the cluster, as [KitWorkloadProbe] found it. */
@@ -24,9 +22,10 @@ sealed interface WorkloadPresence {
  * Looks in the cluster for a kit's running workload.
  *
  * `start` asks it before running a collision-checked kit's start phase, so that starting a kit that
- * is already running, or still terminating, fails instead of re-applying over the live objects. `stop` asks it to wait for
- * that workload to leave: deleting a StatefulSet, Deployment or operator resource returns before
- * its pods are even marked for deletion, and a `start` right after would be refused.
+ * is already running, or still terminating, fails instead of re-applying over the live objects.
+ * `stop` asks it to wait for that workload to leave: deleting a StatefulSet, Deployment or operator
+ * resource returns before its pods are even marked for deletion, and a `start` right after would be
+ * refused.
  */
 class KitWorkloadProbe(
     private val kubeService: KubernetesService,
@@ -34,21 +33,6 @@ class KitWorkloadProbe(
     private val pollInterval: Duration = Constants.Kit.STOP_WAIT_POLL_INTERVAL,
     private val maxPolls: Int = Constants.Kit.STOP_WAIT_MAX_POLLS,
 ) {
-    /**
-     * Retries while the workload is still there, `pollInterval` apart, up to `maxPolls` looks,
-     * then returns the last result rather than throwing. A failed look — a dropped API call or
-     * SOCKS hiccup during a wait that lasts minutes — is retried within the same budget; the wait
-     * fails only when the last look still throws.
-     */
-    private val untilGoneRetryConfig: RetryConfig =
-        RetryConfig
-            .custom<Boolean>()
-            .maxAttempts(maxPolls)
-            .intervalFunction { _ -> pollInterval.toMillis() }
-            .retryOnResult { gone -> !gone }
-            .retryOnException { true }
-            .build()
-
     /**
      * Finds [kitName]'s workload as its [runtime] declares it: the pods it selects, terminating
      * ones included — a pod still cleaning up after a manual `kubectl delete` would otherwise have
@@ -66,10 +50,10 @@ class KitWorkloadProbe(
      * Waits for [kitName]'s workload to leave the cluster: every pod its [runtime] selects,
      * terminating ones included; for a helm runtime, the release and then every pod labelled
      * `app.kubernetes.io/instance=<release>` in the runtime's namespace, terminating ones included.
-     * Looks up to `maxPolls` times, `pollInterval`
-     * apart, and returns [WorkloadPresence.Absent] once nothing is left, or what was still there at
-     * the last look. A failed cluster query is retried like a present workload; it fails the result
-     * only on the last look.
+     * Looks up to `maxPolls` times, `pollInterval` apart, and returns [WorkloadPresence.Absent] once
+     * nothing is left, or what was still there at the last look. A failed cluster query — a dropped
+     * API call or SOCKS hiccup during a wait that lasts minutes — is retried like a present
+     * workload; it fails the result only on the last look.
      */
     fun awaitGone(
         kitName: String,
@@ -77,17 +61,12 @@ class KitWorkloadProbe(
         controlHost: ClusterHost,
     ): Result<WorkloadPresence> =
         runCatching {
-            var remaining: WorkloadPresence = WorkloadPresence.Absent
-            val retry = Retry.of("kit-stop-$kitName", untilGoneRetryConfig)
-            retry.eventPublisher.onRetry { event ->
-                event.lastThrowable?.let { e -> log.warn(e) { "Looking for $kitName's workload failed; retrying" } }
-            }
-            Retry
-                .decorateSupplier(retry) {
-                    remaining = lookUp(kitName, runtime, controlHost)
-                    remaining == WorkloadPresence.Absent
-                }.get()
-            remaining
+            RetryUtil.pollUntil(
+                operationName = "kit-stop-$kitName",
+                maxAttempts = maxPolls,
+                interval = pollInterval,
+                done = { it == WorkloadPresence.Absent },
+            ) { lookUp(kitName, runtime, controlHost) }
         }
 
     private fun lookUp(
@@ -142,8 +121,6 @@ class KitWorkloadProbe(
     }
 
     private companion object {
-        val log = KotlinLogging.logger {}
-
         const val DEFAULT_NAMESPACE = "default"
 
         /** The standard label helm charts put on every object of a release, valued with the release name. */

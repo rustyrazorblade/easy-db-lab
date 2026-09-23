@@ -876,6 +876,26 @@ sealed interface Event {
             override fun isError(): Boolean = true
         }
 
+        /**
+         * `up` found nodes launched from an AMI that predates the Cilium node fixes (the
+         * systemd-networkd ENI drop-ins and the cloud-init no-hotplug setting), before installing
+         * Cilium. [nodes] names them; [missingFiles] is every fix any of them lacks.
+         */
+        @Serializable
+        @SerialName("Cilium.NodeImageMissingFixes")
+        data class NodeImageMissingFixes(
+            val nodes: List<String>,
+            val missingFiles: List<String>,
+        ) : Cilium {
+            override fun toDisplayString(): String =
+                "Cannot install Cilium: ${nodes.joinToString(", ")} were launched from an AMI that predates the " +
+                    "Cilium node fixes (missing ${missingFiles.joinToString(", ")}). Rebuild the images with " +
+                    "'easy-db-lab build-image', then run 'easy-db-lab down' and 'easy-db-lab up' so the nodes launch " +
+                    "from the new AMI; or initialize the cluster with '--cni=flannel'."
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Cilium.TailscaleMasqueradeInstalling")
         data class TailscaleMasqueradeInstalling(

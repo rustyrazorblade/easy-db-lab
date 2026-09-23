@@ -26,6 +26,7 @@ import com.rustyrazorblade.easydblab.providers.aws.VpcNetworkingConfig
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.services.CiliumInstallAnnotator
+import com.rustyrazorblade.easydblab.services.CiliumNodeImageCheck
 import com.rustyrazorblade.easydblab.services.CiliumService
 import com.rustyrazorblade.easydblab.services.ClusterConfigurationService
 import com.rustyrazorblade.easydblab.services.ClusterProvisioningService
@@ -103,6 +104,7 @@ class Up(
     private val k3sClusterService: K3sClusterService by inject()
     private val ciliumService: CiliumService by inject()
     private val ciliumInstallAnnotator: CiliumInstallAnnotator by inject()
+    private val ciliumNodeImageCheck: CiliumNodeImageCheck by inject()
     private val k8sService: K8sService by inject()
     private val observabilityStackService: ObservabilityStackService by inject()
     private val registryService: RegistryService by inject()
@@ -835,14 +837,32 @@ class Up(
         }
     }
 
+    /**
+     * Fails `up` before K3s starts when any node was launched from an AMI that predates the Cilium
+     * node fixes. Such a node joins the cluster normally and only drops off the network once Cilium
+     * attaches its second ENI, far into `up`; checking here names the node and the remedy instead.
+     */
+    private fun verifyNodesCarryCiliumFixes() {
+        val lacking = ciliumNodeImageCheck.nodesMissingFixes(workingState.hosts.values.flatten())
+        if (lacking.isEmpty()) return
+        val event =
+            Event.Cilium.NodeImageMissingFixes(
+                nodes = lacking.map { it.node },
+                missingFiles = lacking.flatMap { it.missingFiles }.distinct(),
+            )
+        eventBus.emit(event)
+        error(event.toDisplayString())
+    }
+
     /** Starts K3s server on control node and joins Cassandra/Stress nodes as agents. */
     private fun startK3sOnAllNodes() {
         val controlHosts = workingState.hosts[ServerType.Control] ?: emptyList()
+        val ciliumEnabled = workingState.initConfig?.cni == CniMode.Cilium
+        if (ciliumEnabled) verifyNodesCarryCiliumFixes()
 
         // Configure registry TLS before K3s starts so registries.yaml is in place
         configureRegistryTls()
 
-        val ciliumEnabled = workingState.initConfig?.cni == CniMode.Cilium
         val config =
             K3sClusterConfig(
                 controlHost = controlHosts.first(),

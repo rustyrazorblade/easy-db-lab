@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Version
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
@@ -19,6 +20,7 @@ import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.services.CiliumInstallAnnotator
+import com.rustyrazorblade.easydblab.services.CiliumNodeImageCheck
 import com.rustyrazorblade.easydblab.services.CiliumService
 import com.rustyrazorblade.easydblab.services.ClusterConfigurationService
 import com.rustyrazorblade.easydblab.services.ClusterProvisioningService
@@ -103,6 +105,10 @@ abstract class UpTestFixture : BaseKoinTest() {
     protected var sshFailureException: Exception? = null
     protected val sshCheckedAliases = mutableListOf<String>()
 
+    /** Cilium node-fix paths the fake SSH reports missing, by host alias, and every alias asked */
+    protected val missingCiliumFixes = mutableMapOf<String, List<String>>()
+    protected val ciliumFixCheckedAliases = mutableListOf<String>()
+
     protected val testControlHost =
         ClusterHost(
             publicIp = "54.1.1.1",
@@ -144,6 +150,7 @@ abstract class UpTestFixture : BaseKoinTest() {
                 single<ClusterConfigurationService> { mock<ClusterConfigurationService>().also { mockClusterConfigurationService = it } }
                 single<K3sClusterService> { mock<K3sClusterService>().also { mockK3sClusterService = it } }
                 single<CiliumService> { mock<CiliumService>().also { mockCiliumService = it } }
+                single { CiliumNodeImageCheck(get()) }
                 single<K8sService> { mock<K8sService>().also { mockK8sService = it } }
                 single<RegistryService> { mock<RegistryService>() }
                 single<SocksProxyService> { mock<SocksProxyService>() }
@@ -178,6 +185,10 @@ abstract class UpTestFixture : BaseKoinTest() {
                             val failure = sshFailureException
                             if (failingAlias != null && failure != null && host.alias == failingAlias) {
                                 throw failure
+                            }
+                            if (command.contains(Constants.Cilium.NODE_FIX_FILES.first())) {
+                                ciliumFixCheckedAliases.add(host.alias)
+                                return Response(missingCiliumFixes[host.alias].orEmpty().joinToString(separator = "") { "$it\n" })
                             }
                             return Response("")
                         }
@@ -256,6 +267,8 @@ abstract class UpTestFixture : BaseKoinTest() {
         sshFailureAlias = null
         sshFailureException = null
         sshCheckedAliases.clear()
+        missingCiliumFixes.clear()
+        ciliumFixCheckedAliases.clear()
 
         whenever(mockClusterStateManager.load()).thenReturn(happyState())
 

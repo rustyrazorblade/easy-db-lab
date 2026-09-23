@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.commands
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
@@ -143,6 +144,63 @@ class UpCiliumTest : UpTestFixture() {
         val cidrCaptor = argumentCaptor<String>()
         verify(mockCiliumService).install(any(), cidrCaptor.capture())
         assertThat(cidrCaptor.firstValue).isNotBlank()
+    }
+
+    // =========================================================================
+    // Group 8b: nodes launched from an AMI without the Cilium node fixes
+    // =========================================================================
+
+    private fun captureEvents(): List<Event> {
+        val emitted = mutableListOf<Event>()
+        getKoin().get<EventBus>().addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    emitted += envelope.event
+                }
+
+                override fun close() = Unit
+            },
+        )
+        return emitted
+    }
+
+    @Test
+    fun `up fails before K3s starts when a node's AMI lacks the Cilium node fixes, naming the node and the fix`() {
+        whenever(mockClusterStateManager.load()).thenReturn(happyState(cni = CniMode.Cilium))
+        val lacking = listOf(Constants.Cilium.NODE_FIX_FILES.last())
+        missingCiliumFixes["db0"] = lacking
+        setupClusterInvokingServerReadyHook()
+        val emitted = captureEvents()
+
+        assertThatThrownBy { newUp().execute() }.hasMessageContaining("db0").hasMessageContaining("build-image")
+
+        val failure = emitted.filterIsInstance<Event.Cilium.NodeImageMissingFixes>().single()
+        assertThat(failure.nodes).containsExactly("db0")
+        assertThat(failure.missingFiles).isEqualTo(lacking)
+        assertThat(failure.isError()).isTrue()
+        assertThat(failure.toDisplayString()).contains("build-image", "--cni=flannel")
+        verify(mockK3sClusterService, never()).setupCluster(any())
+        verify(mockCiliumService, never()).install(any(), any())
+    }
+
+    @Test
+    fun `up checks every node's AMI and installs Cilium when all carry the fixes`() {
+        whenever(mockClusterStateManager.load()).thenReturn(happyState(cni = CniMode.Cilium))
+        setupClusterInvokingServerReadyHook()
+
+        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
+
+        assertThat(ciliumFixCheckedAliases).containsExactlyInAnyOrder("control0", "db0", "app0")
+        verify(mockCiliumService).install(any(), any())
+    }
+
+    @Test
+    fun `up does not check for the Cilium node fixes on a Flannel cluster`() {
+        missingCiliumFixes["db0"] = Constants.Cilium.NODE_FIX_FILES
+
+        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
+
+        assertThat(ciliumFixCheckedAliases).isEmpty()
     }
 
     // =========================================================================

@@ -14,6 +14,14 @@ A cluster whose saved state records no CNI was provisioned before Cilium existed
 
 AMIs built before the Cilium node fixes lack the base image's cloud-init hotplug setting and the systemd-networkd ENI drop-ins that Cilium's secondary ENIs need. If your AMI predates them, rebuild it with `easy-db-lab build-image` before provisioning a Cilium cluster.
 
+On a Cilium cluster, `up` checks every node for those fixes before it starts K3s, and stops with an error naming each node that lacks them and the files it is missing:
+
+- `/etc/systemd/network/05-cilium-eni-primary.network`
+- `/etc/systemd/network/06-cilium-eni-unmanaged.network`
+- `/etc/cloud/cloud.cfg.d/90-easydblab-no-network-hotplug.cfg`
+
+To recover, rebuild the images with `easy-db-lab build-image`, then run `easy-db-lab down` and `easy-db-lab up` so the nodes launch from the new AMI. Or initialize the cluster with `--cni=flannel`, which needs none of them. Without the check, such a node joins the cluster normally and drops off the network only once Cilium attaches its second ENI.
+
 ## Flannel
 
 Flannel is the K3s built-in CNI. Pod traffic between nodes is encapsulated in VXLAN. Nothing in this page beyond the `platform cni` one-liner applies to a Flannel cluster.

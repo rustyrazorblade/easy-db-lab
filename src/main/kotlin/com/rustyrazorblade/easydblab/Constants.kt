@@ -332,6 +332,16 @@ object Constants {
 
         // Tag on the Grafana annotations that mark the Cilium install window.
         const val ANNOTATION_TAG = "cilium"
+
+        // The node fixes packer/base/install/configure_cilium_eni_networkd.sh bakes into the base
+        // AMI. A node launched from an older AMI lacks them, and Cilium's runtime-attached ENIs
+        // then take the node off the network. `up` checks for them before installing Cilium.
+        val NODE_FIX_FILES =
+            listOf(
+                "/etc/systemd/network/05-cilium-eni-primary.network",
+                "/etc/systemd/network/06-cilium-eni-unmanaged.network",
+                "/etc/cloud/cloud.cfg.d/90-easydblab-no-network-hotplug.cfg",
+            )
     }
 
     // kube-state-metrics (K8s object state as Prometheus metrics, scraped by the OTel collector)

@@ -46,10 +46,11 @@ class Neo4jKitTest : BaseKoinTest() {
 
     private fun versionArg() = kit.config.args.single { it.flag == "--version" }
 
-    private fun shellScript(steps: List<InstallStep>): String =
+    /** The phase's one label-selected `delete` step. */
+    private fun labelDelete(steps: List<InstallStep>): InstallStep.Delete =
         steps
-            .filterIsInstance<InstallStep.Shell>()
-            .joinToString("\n") { it.script }
+            .filterIsInstance<InstallStep.Delete>()
+            .single { it.bySelector }
 
     @Test
     fun `is a db kit with a collision check`() {
@@ -256,8 +257,10 @@ class Neo4jKitTest : BaseKoinTest() {
             assertThat(stub.invocations()).anySatisfy { call ->
                 assertThat(call).contains("label --local -f - $KIT_LABEL=neo4j")
             }
-            assertThat(shellScript(kit.config.stop)).contains("configmap", "-l $KIT_LABEL=neo4j")
-            assertThat(shellScript(kit.config.uninstall)).contains("configmap", "-l $KIT_LABEL=neo4j")
+            for (phase in listOf(kit.config.stop, kit.config.uninstall)) {
+                assertThat(labelDelete(phase).kinds).contains("configmap")
+                assertThat(labelDelete(phase).selector).isEqualTo("$KIT_LABEL=neo4j")
+            }
         }
 
         @Test
@@ -295,54 +298,24 @@ class Neo4jKitTest : BaseKoinTest() {
     }
 
     /**
-     * Runs the stop and uninstall shell steps against a stub `kubectl`. Deleting by a label that
-     * matches nothing makes kubectl print a bare "No resources found", so the steps look the
-     * objects up first and delete only what the label selects.
+     * Stop and uninstall delete by the kit label with the typed `delete` step, which looks the
+     * objects up and deletes only what the label selects — quietly when nothing is left, and failing
+     * on a failed lookup (see `KubectlServiceTest`). No shell step word-splits the lookup's output.
      */
     @Nested
     inner class LabelScopedCleanup {
-        private val stub by lazy { StubKubectl(File(tempDir, "stub")) }
-
-        private val phases by lazy { mapOf("stop" to kit.config.stop, "uninstall" to kit.config.uninstall) }
-
-        private fun run(steps: List<InstallStep>): Int = stub.run(script = shellScript(steps), env = emptyMap())
-
-        private fun deletes() = stub.invocations().filter { it.startsWith("delete") }
-
         @Test
-        fun `stop and uninstall print nothing and delete nothing once the kit is gone`() {
-            stub.respondToGet("")
-
-            for ((phase, steps) in phases) {
-                assertThat(run(steps)).describedAs(phase).isEqualTo(0)
-                assertThat(stub.output()).describedAs(phase).isEmpty()
-            }
-            assertThat(deletes()).isEmpty()
+        fun `stop deletes the StatefulSet, its pods, the Services and the ConfigMap, and uninstall adds the claim`() {
+            assertThat(labelDelete(kit.config.stop).kinds).containsExactly("statefulset", "service", "pod", "configmap")
+            assertThat(labelDelete(kit.config.uninstall).kinds).containsExactly("statefulset", "service", "pod", "configmap", "pvc")
         }
 
         @Test
-        fun `stop and uninstall delete exactly the objects the kit label selects`() {
-            stub.respondToGet("statefulset.apps/neo4j\nservice/neo4j\n")
-
-            for ((phase, steps) in phases) {
-                assertThat(run(steps)).describedAs(phase).isEqualTo(0)
+        fun `stop and uninstall delete in the default namespace and run no shell step`() {
+            for (phase in listOf(kit.config.stop, kit.config.uninstall)) {
+                assertThat(labelDelete(phase).namespace).isEqualTo("default")
+                assertThat(phase).noneMatch { it is InstallStep.Shell }
             }
-            assertThat(stub.invocations().filter { it.startsWith("get") })
-                .hasSize(2)
-                .allSatisfy { assertThat(it).contains("-l $KIT_LABEL=neo4j") }
-            assertThat(deletes())
-                .hasSize(2)
-                .allSatisfy { assertThat(it).contains("statefulset.apps/neo4j service/neo4j") }
-        }
-
-        @Test
-        fun `a failed lookup fails the step instead of reporting a clean stop`() {
-            stub.respondToGet("", exitCode = 1)
-
-            for ((phase, steps) in phases) {
-                assertThat(run(steps)).describedAs(phase).isNotEqualTo(0)
-            }
-            assertThat(deletes()).isEmpty()
         }
     }
 
@@ -359,8 +332,10 @@ class Neo4jKitTest : BaseKoinTest() {
                 .metadata.labels,
         ).containsEntry(KIT_LABEL, "neo4j")
 
-        assertThat(shellScript(kit.config.stop)).contains("statefulset", "service", "pod", "-l $KIT_LABEL=neo4j")
-        assertThat(shellScript(kit.config.uninstall)).contains("pvc", "-l $KIT_LABEL=neo4j")
+        assertThat(labelDelete(kit.config.stop).selector).isEqualTo("$KIT_LABEL=neo4j")
+        assertThat(labelDelete(kit.config.stop).kinds).contains("statefulset", "service", "pod")
+        assertThat(labelDelete(kit.config.uninstall).selector).isEqualTo("$KIT_LABEL=neo4j")
+        assertThat(labelDelete(kit.config.uninstall).kinds).contains("pvc")
         assertThat(kit.config.uninstall).anyMatch { it is InstallStep.PlatformPvsDelete }
     }
 
@@ -378,16 +353,13 @@ class Neo4jKitTest : BaseKoinTest() {
 /**
  * Runs a kit shell step the way `WorkloadStepExecutor` does, with a stub `kubectl` first on
  * `PATH` that records each invocation's arguments and passes stdin through, so a test can check
- * what the step would have applied without a cluster. [respondToGet] scripts what `kubectl get`
- * prints and how it exits.
+ * what the step would have applied without a cluster.
  */
 class StubKubectl(
     private val dir: File,
 ) {
     private val log = File(dir, "kubectl.log")
     private val out = File(dir, "script.out")
-    private val getOut = File(dir, "get.out")
-    private val getExit = File(dir, "get.exit")
 
     init {
         dir.mkdirs()
@@ -396,24 +368,11 @@ class StubKubectl(
                 """
                 #!/bin/bash
                 echo "$*" >> "${log.absolutePath}"
-                if [ "$1" = "get" ] && [ -f "${getOut.absolutePath}" ]; then
-                  cat "${getOut.absolutePath}"
-                  exit "$(cat "${getExit.absolutePath}")"
-                fi
                 cat
                 """.trimIndent() + "\n",
             )
             setExecutable(true)
         }
-    }
-
-    /** Makes every later `kubectl get` print [output] and exit with [exitCode]. */
-    fun respondToGet(
-        output: String,
-        exitCode: Int = 0,
-    ) {
-        getOut.writeText(output)
-        getExit.writeText(exitCode.toString())
     }
 
     /** Runs [script] under bash with [env] added, returning the exit code; see [output]. */

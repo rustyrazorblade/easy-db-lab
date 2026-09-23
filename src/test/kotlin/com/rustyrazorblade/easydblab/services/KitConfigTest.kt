@@ -419,6 +419,57 @@ class KitConfigTest {
     }
 
     @Test
+    fun `parses a delete step that selects by label`() {
+        val config =
+            parse(
+                """
+                name: mydb
+                stop:
+                  - type: delete
+                    kinds: [deployment, pod]
+                    selector: easydblab/kit=mydb
+                    namespace: mynamespace
+                """.trimIndent(),
+            )
+        val step = config.stop.single() as InstallStep.Delete
+        assertThat(step.kinds).containsExactly("deployment", "pod")
+        assertThat(step.selector).isEqualTo("easydblab/kit=mydb")
+        assertThat(step.namespace).isEqualTo("mynamespace")
+    }
+
+    @Test
+    fun `a delete step must name one object or select by label, not both or neither`() {
+        val both =
+            """
+            name: mydb
+            stop:
+              - type: delete
+                kind: Deployment
+                name: myapp
+                kinds: [pod]
+                selector: easydblab/kit=mydb
+            """.trimIndent()
+        val selectorWithoutKinds =
+            """
+            name: mydb
+            stop:
+              - type: delete
+                selector: easydblab/kit=mydb
+            """.trimIndent()
+        val neither =
+            """
+            name: mydb
+            stop:
+              - type: delete
+                namespace: default
+            """.trimIndent()
+
+        for (yaml in listOf(both, selectorWithoutKinds, neither)) {
+            assertThatThrownBy { parse(yaml) }.hasStackTraceContaining("delete step")
+        }
+    }
+
+    @Test
     fun `parses platform-pvs step`() {
         val config =
             parse(

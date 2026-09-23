@@ -216,6 +216,57 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
     }
 
     @Nested
+    inner class DeleteStep {
+        @Test
+        fun `a delete step with a selector deletes by label, with the selector and namespace interpolated`() {
+            val result =
+                execute(
+                    steps =
+                        listOf(
+                            InstallStep.Delete(
+                                kinds = listOf("deployment", "pod"),
+                                selector = "easydblab/kit=\${KIT_NAME}",
+                                namespace = "\${NS}",
+                            ),
+                        ),
+                    variables = mapOf("KIT_NAME" to "memcached", "NS" to "cache"),
+                )
+
+            assertThat(result.isSuccess).isTrue()
+            verify(kubectlService).deleteBySelector(
+                host = controlHost.toHost(),
+                kinds = listOf("deployment", "pod"),
+                selector = "easydblab/kit=memcached",
+                namespace = "cache",
+            )
+            verify(kubectlService, never()).delete(any(), any(), any(), any(), any())
+        }
+
+        @Test
+        fun `a delete step by name deletes that one object`() {
+            execute(listOf(InstallStep.Delete(kind = "Service", name = "\${KIT_NAME}-nodeport")), mapOf("KIT_NAME" to "pg"))
+
+            verify(kubectlService).delete(
+                host = controlHost.toHost(),
+                kind = "Service",
+                name = "pg-nodeport",
+                namespace = "default",
+                ignoreNotFound = true,
+            )
+            verify(kubectlService, never()).deleteBySelector(any(), any(), any(), any())
+        }
+
+        @Test
+        fun `a failed selector delete fails the step`() {
+            whenever(kubectlService.deleteBySelector(any(), any(), any(), any())).thenThrow(IllegalStateException("api down"))
+
+            val result = execute(listOf(InstallStep.Delete(kinds = listOf("pod"), selector = "a=b")))
+
+            assertThat(result.exceptionOrNull()).hasMessage("api down")
+        }
+    }
+
+    @Nested
     inner class ManifestStep {
         @Test
         fun `fails when manifest file does not exist`() {

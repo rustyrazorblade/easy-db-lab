@@ -163,14 +163,30 @@ Waits for a K8s resource to reach a condition.
 ```
 
 ### `delete`
-Deletes a K8s resource.
+Deletes K8s resources, either one object by name or every object a label selector matches.
+Both forms run `kubectl` on the control node. A step that mixes the two forms, or has neither, is
+rejected when `kit.yaml` loads.
+
+By name — `kind` and `name` are required:
 ```yaml
 - type: delete
   kind: ClickHouseInstallation
   name: clickhouse
-  namespace: default
-  ignore-not-found: true   # default: true
+  namespace: default         # default: default
+  ignore-not-found: true     # default: true
 ```
+
+By label — `selector` and `kinds` are required:
+```yaml
+- type: delete
+  kinds: [deployment, replicaset, pod, service, configmap]
+  selector: easydblab/kit=memcached
+  namespace: default         # default: default
+```
+Every object of the listed kinds in `namespace` that `selector` matches is deleted. When nothing
+matches, the step succeeds and prints nothing. A failed cluster query fails the step. `selector`,
+`kinds` and `namespace` accept `${VAR}` interpolation. Use this form in `stop` and `uninstall` for
+kits that label every object they create, instead of a `shell` step.
 
 ### `platform-pvs`
 Creates persistent volumes on cluster nodes using the platform substrate.

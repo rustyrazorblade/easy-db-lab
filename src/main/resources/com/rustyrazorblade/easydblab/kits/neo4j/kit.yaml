@@ -85,25 +85,15 @@ start:
       kubectl rollout status statefulset/neo4j --namespace default --timeout=600s
 
 stop:
-  - type: shell
-    script: |
-      #!/usr/bin/env bash
-      set -euo pipefail
-      KIT_OBJECTS=$(kubectl get statefulset,service,pod,configmap -l easydblab/kit=neo4j --namespace default -o name --ignore-not-found)
-      if [[ -n "${KIT_OBJECTS}" ]]; then
-        # shellcheck disable=SC2086 # one TYPE/NAME per word
-        kubectl delete ${KIT_OBJECTS} --namespace default --ignore-not-found=true
-      fi
+  - type: delete
+    kinds: [statefulset, service, pod, configmap]
+    selector: easydblab/kit=neo4j
+    namespace: default
 
 uninstall:
-  - type: shell
-    script: |
-      #!/usr/bin/env bash
-      set -euo pipefail
-      KIT_OBJECTS=$(kubectl get statefulset,service,pod,configmap,pvc -l easydblab/kit=neo4j --namespace default -o name --ignore-not-found)
-      if [[ -n "${KIT_OBJECTS}" ]]; then
-        # shellcheck disable=SC2086 # one TYPE/NAME per word
-        kubectl delete ${KIT_OBJECTS} --namespace default --ignore-not-found=true
-      fi
+  - type: delete
+    kinds: [statefulset, service, pod, configmap, pvc]
+    selector: easydblab/kit=neo4j
+    namespace: default
   - type: platform-pvs-delete
     node-type: db

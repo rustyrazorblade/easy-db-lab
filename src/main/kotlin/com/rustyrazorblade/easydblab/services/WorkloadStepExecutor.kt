@@ -150,13 +150,23 @@ class WorkloadStepExecutor(
                 }
 
                 is InstallStep.Delete -> {
-                    kubectlService.delete(
-                        host = host,
-                        kind = interp(step.kind),
-                        name = interp(step.name),
-                        namespace = step.namespace?.let { interp(it) } ?: "default",
-                        ignoreNotFound = step.ignoreNotFound,
-                    )
+                    val namespace = step.namespace?.let { interp(it) } ?: "default"
+                    if (step.bySelector) {
+                        kubectlService.deleteBySelector(
+                            host = host,
+                            kinds = step.kinds.map { interp(it) },
+                            selector = interp(step.selector),
+                            namespace = namespace,
+                        )
+                    } else {
+                        kubectlService.delete(
+                            host = host,
+                            kind = interp(step.kind),
+                            name = interp(step.name),
+                            namespace = namespace,
+                            ignoreNotFound = step.ignoreNotFound,
+                        )
+                    }
                 }
 
                 is InstallStep.PlatformPvs -> {

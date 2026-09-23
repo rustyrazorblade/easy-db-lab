@@ -5521,6 +5521,24 @@ sealed interface Event {
 
             override fun isError(): Boolean = true
         }
+
+        /**
+         * A collision-checked kit's `stop` steps succeeded, but the cluster could not be queried
+         * while waiting for its workload to leave, so whether it is gone is unknown. A `start` now
+         * may be refused as a collision, so the stop is reported as failed.
+         */
+        @Serializable
+        @SerialName("Kit.StopUnverified")
+        data class StopUnverified(
+            val kit: String,
+            val reason: String,
+        ) : Kit {
+            override fun toDisplayString(): String =
+                "Error: '$kit' stop ran, but the cluster could not be queried to confirm its workload is gone: " +
+                    "$reason. Run 'easy-db-lab $kit stop' again once the cluster is reachable."
+
+            override fun isError(): Boolean = true
+        }
     }
 
     // =========================================================================

@@ -231,14 +231,21 @@ class KitRunnerCommand(
      * workload to leave the cluster. Deleting a StatefulSet, Deployment or operator resource returns
      * before its pods are even marked for deletion, so without the wait a `start` right after `stop`
      * would find them and be refused. Returns false, after reporting what is left, when the workload
-     * outlives the wait; a failed cluster query fails the command.
+     * outlives the wait, and false, after reporting the stop as unverified, when the cluster cannot
+     * be queried: the stop steps already ran, so the caller still reports the phase finished.
      */
     private fun stoppedWorkloadIsGone(
         config: KitConfig,
         controlHost: ClusterHost,
     ): Boolean {
         if (phaseName != Constants.Kit.PHASE_STOP || !config.collisionCheck.guards(Constants.Kit.PHASE_START)) return true
-        return when (val remaining = workloadProbe.awaitGone(kitName, config.runtime, controlHost).getOrThrow()) {
+        val remaining =
+            workloadProbe.awaitGone(kitName, config.runtime, controlHost).getOrElse { e ->
+                log.warn(e) { "Could not confirm $kitName's workload left the cluster after stop" }
+                eventBus.emit(Event.Kit.StopUnverified(kit = kitName, reason = e.message ?: e.javaClass.simpleName))
+                return false
+            }
+        return when (remaining) {
             is WorkloadPresence.Absent -> true
             is WorkloadPresence.Present -> {
                 eventBus.emit(

@@ -58,7 +58,7 @@ Events are organized by domain as sealed sub-interfaces of `Event`:
 - `Event.Ssh.*` — SSH remote command execution
 - `Event.Platform.*` — Platform substrate operations (StorageClass, PVs, info)
 - `Event.Install.*` — Kit scaffold generation
-- `Event.Kit.*` — Kit phase execution (script and step start/finish/failure, metrics registration, hooks, requirements, `Kit.CollisionDetected` when a collision-checked kit is started while already running, and `Kit.StopIncomplete` when its pods outlive the wait after `stop`) and `Kit.EndpointsAvailable`, the declared endpoints resolved to node private IPs after a successful start
+- `Event.Kit.*` — Kit phase execution (script and step start/finish/failure, metrics registration, hooks, requirements, `Kit.CollisionDetected` when a collision-checked kit is started while already running, `Kit.StopIncomplete` when its pods outlive the wait after `stop`, and `Kit.StopUnverified` when the cluster cannot be queried during that wait) and `Kit.EndpointsAvailable`, the declared endpoints resolved to node private IPs after a successful start
 - `Event.Cleanup.*` — Per-node kit cleanup progress and completion
 - `Event.Server.*` — Server lifecycle (shutdown when the cluster's VPC no longer exists)
 - `Event.Sql.*` — Shared SQL query results, used by every SQL kit command

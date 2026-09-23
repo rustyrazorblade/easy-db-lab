@@ -461,7 +461,9 @@ the kit is loaded. Each guarded phase fails with an error event and exits non-ze
   terminating pods included — so a `start` straight after it is not refused. Deleting a
   StatefulSet, Deployment or operator resource returns before its pods are even marked for
   deletion, so this wait is what makes `stop` followed by `start` work. It gives up after 5
-  minutes with a `Kit.StopIncomplete` error event naming what is left.
+  minutes with a `Kit.StopIncomplete` error event naming what is left. A failed cluster query
+  during the wait is retried; if the last look still fails, `stop` exits non-zero with a
+  `Kit.StopUnverified` error event carrying the cause.
 
 The runtime must therefore name what `start` creates and `stop` removes. A runtime pointing at
 something the `install` phase creates, such as an operator's helm release, would refuse every

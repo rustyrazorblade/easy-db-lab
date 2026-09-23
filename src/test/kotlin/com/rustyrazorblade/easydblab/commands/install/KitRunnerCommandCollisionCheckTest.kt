@@ -144,6 +144,40 @@ class KitRunnerCommandCollisionCheckTest : KitRunnerCommandTestBase() {
         verify(mockClusterStateManager, never()).removeRunningWorkload(any())
     }
 
+    /**
+     * The stop steps already ran, so a cluster that cannot be queried during the wait must not
+     * escape as an exception with no ScriptFinished: the stop is reported unverified and failed.
+     */
+    @Test
+    fun `stop reports an unverified stop and fails when the cluster cannot be queried during the wait`() {
+        writeCollisionCheckedKit()
+        whenever(mockKubeService.listPodsByLabel(any(), any())).thenReturn(Result.failure(IllegalStateException("api down")))
+
+        assertStopUnverified()
+    }
+
+    @Test
+    fun `a script-driven stop reports an unverified stop and fails when the cluster cannot be queried during the wait`() {
+        writeKitYaml("mydb", collisionCheckedHeader)
+        writeScript("mydb", "stop", "exit 0")
+        whenever(mockKubeService.listPodsByLabel(any(), any())).thenReturn(Result.failure(IllegalStateException("api down")))
+
+        assertStopUnverified()
+    }
+
+    private fun assertStopUnverified() {
+        var exitCode = 0
+        val events = captureEvents { exitCode = command("mydb", "stop").call() }
+
+        assertThat(exitCode).isNotEqualTo(0)
+        val unverified = events.filterIsInstance<Event.Kit.StopUnverified>().single()
+        assertThat(unverified).isEqualTo(Event.Kit.StopUnverified(kit = "mydb", reason = "api down"))
+        assertThat(unverified.isError()).isTrue()
+        assertThat(unverified.toDisplayString()).startsWith("Error:").contains("mydb", "api down", "stop")
+        assertThat(events.filterIsInstance<Event.Kit.ScriptFinished>().single().exitCode).isNotEqualTo(0)
+        verify(mockClusterStateManager, never()).removeRunningWorkload(any())
+    }
+
     @Test
     fun `stop of a kit without collision-check does not wait on the cluster`() {
         writeCollisionCheckedKit(collisionCheck = false)

@@ -23,9 +23,9 @@ sealed interface WorkloadPresence {
  *
  * `start` asks it before running a collision-checked kit's start phase, so that starting a kit that
  * is already running, or still terminating, fails instead of re-applying over the live objects.
- * `stop` asks it to wait for that workload to leave: deleting a StatefulSet, Deployment or operator
- * resource returns before its pods are even marked for deletion, and a `start` right after would be
- * refused.
+ * `stop` asks it, for every kit that declares a runtime, to wait for that workload's pods to leave:
+ * deleting a StatefulSet, Deployment or operator resource, or scaling a Deployment to zero, returns
+ * before its pods have terminated, and a `start` right after would be refused.
  */
 class KitWorkloadProbe(
     private val kubeService: KubernetesService,
@@ -48,8 +48,11 @@ class KitWorkloadProbe(
 
     /**
      * Waits for [kitName]'s workload to leave the cluster: every pod its [runtime] selects,
-     * terminating ones included; for a helm runtime, the release and then every pod labelled
+     * terminating ones included; for a helm runtime, every pod labelled
      * `app.kubernetes.io/instance=<release>` in the runtime's namespace, terminating ones included.
+     * The release itself does not count: a kit may stop by scaling its release to zero (Presto,
+     * Trino) and keep it, and `helm uninstall` has removed the release record by the time it
+     * returns.
      * Looks up to `maxPolls` times, `pollInterval` apart, and returns [WorkloadPresence.Absent] once
      * nothing is left, or what was still there at the last look. A failed cluster query — a dropped
      * API call or SOCKS hiccup during a wait that lasts minutes — is retried like a present
@@ -66,7 +69,7 @@ class KitWorkloadProbe(
                 maxAttempts = maxPolls,
                 interval = pollInterval,
                 done = { it == WorkloadPresence.Absent },
-            ) { lookUp(kitName, runtime, controlHost) }
+            ) { lookUpPods(kitName, runtime) }
         }
 
     private fun lookUp(
@@ -76,6 +79,16 @@ class KitWorkloadProbe(
     ): WorkloadPresence =
         when (runtime?.type) {
             KitRuntime.RuntimeType.HELM -> findHelmRelease(kitName, runtime, controlHost)
+            else -> findPods(podSelector(kitName, runtime), runtime?.namespace ?: DEFAULT_NAMESPACE)
+        }
+
+    /** The pods that show [kitName]'s workload is running, whatever keeps them there. */
+    private fun lookUpPods(
+        kitName: String,
+        runtime: KitRuntime?,
+    ): WorkloadPresence =
+        when (runtime?.type) {
+            KitRuntime.RuntimeType.HELM -> findPods(helmReleasePods(kitName, runtime), runtime.namespace)
             else -> findPods(podSelector(kitName, runtime), runtime?.namespace ?: DEFAULT_NAMESPACE)
         }
 
@@ -95,9 +108,15 @@ class KitWorkloadProbe(
         return if (exists) {
             WorkloadPresence.Present(runtime.namespace, listOf("helm-release/$release"))
         } else {
-            findPods("$HELM_INSTANCE_LABEL=$release", runtime.namespace)
+            findPods(helmReleasePods(kitName, runtime), runtime.namespace)
         }
     }
+
+    /** The selector for a helm release's pods: the label helm charts put on them, valued with the release. */
+    private fun helmReleasePods(
+        kitName: String,
+        runtime: KitRuntime,
+    ): String = "$HELM_INSTANCE_LABEL=${runtime.release.ifBlank { kitName }}"
 
     /**
      * The pods [selector] matches in [namespace], terminating ones included. A pod that has

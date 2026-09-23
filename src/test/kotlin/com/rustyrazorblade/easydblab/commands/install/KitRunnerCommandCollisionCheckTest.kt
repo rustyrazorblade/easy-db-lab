@@ -194,9 +194,44 @@ class KitRunnerCommandCollisionCheckTest : KitRunnerCommandTestBase() {
         verify(mockClusterStateManager, never()).removeRunningWorkload(any())
     }
 
+    /**
+     * Presto and Trino are not collision-checked, and their stop only scales their Deployments to
+     * zero, which returns while the pods are still terminating. Stop waits for any kit that
+     * declares a runtime, so `presto stop` returns only once its pods are gone.
+     */
     @Test
-    fun `stop of a kit without collision-check does not wait on the cluster`() {
+    fun `stop waits for the workload to leave even when the kit's start is not collision-checked`() {
         writeCollisionCheckedKit(collisionCheck = false)
+        whenever(mockKubeService.listPodsByLabel("easydblab/kit=mydb", "db"))
+            .thenReturn(Result.success(listOf(runningPod.copy(terminating = true))), Result.success(emptyList()))
+
+        assertThat(command("mydb", "stop").call()).isEqualTo(0)
+        verify(mockKubeService, times(2)).listPodsByLabel("easydblab/kit=mydb", "db")
+    }
+
+    @Test
+    fun `an unguarded kit's stop fails naming what is left when its pods outlive the wait`() {
+        writeCollisionCheckedKit(collisionCheck = false)
+        podsInCluster(runningPod)
+
+        var exitCode = 0
+        val events = captureEvents { exitCode = command("mydb", "stop").call() }
+
+        assertThat(exitCode).isNotEqualTo(0)
+        assertThat(events.filterIsInstance<Event.Kit.StopIncomplete>().single().resources).containsExactly("pod/mydb-0")
+    }
+
+    @Test
+    fun `stop of a kit that declares no runtime does not wait on the cluster`() {
+        writeKitYaml(
+            "mydb",
+            """
+            name: mydb
+            stop:
+              - type: shell
+                script: echo stop
+            """.trimIndent(),
+        )
 
         assertThat(command("mydb", "stop").call()).isEqualTo(0)
         verifyNoInteractions(mockKubeService)
@@ -212,7 +247,7 @@ class KitRunnerCommandCollisionCheckTest : KitRunnerCommandTestBase() {
     }
 
     @Test
-    fun `a kit that collision-checks only install neither guards start nor waits after stop`() {
+    fun `a kit that collision-checks only install does not guard start`() {
         writeKitYaml(
             "mydb",
             collisionCheckedHeader.replace("collision-check: true", "collision-check: {install: true, start: false}") + "\n" +
@@ -228,7 +263,6 @@ class KitRunnerCommandCollisionCheckTest : KitRunnerCommandTestBase() {
         podsInCluster(runningPod)
 
         assertThat(command("mydb", "start").call()).isEqualTo(0)
-        assertThat(command("mydb", "stop").call()).isEqualTo(0)
         verifyNoInteractions(mockKubeService)
     }
 

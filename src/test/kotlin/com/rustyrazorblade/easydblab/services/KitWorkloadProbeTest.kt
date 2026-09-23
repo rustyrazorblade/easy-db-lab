@@ -68,16 +68,20 @@ class KitWorkloadProbeTest {
             .isEqualTo(WorkloadPresence.Present(namespace = "analytics", resources = listOf("pod/trino-coordinator-0")))
     }
 
+    /**
+     * Trino's and Presto's stop scales their Deployments to zero and keeps the release, so the
+     * stop wait cannot hold on the release: a stopped workload is one whose pods are gone.
+     */
     @Test
-    fun `the stop wait for a helm runtime ends once the release and its pods are both gone`() {
-        whenever(helmService.releaseExists(any(), any(), any())).thenReturn(true, false, false)
+    fun `the stop wait for a helm runtime ends once the release's pods are gone, though the release remains`() {
+        whenever(helmService.releaseExists(any(), any(), any())).thenReturn(true)
         whenever(kubeService.listPodsByLabel(eq("app.kubernetes.io/instance=trino"), eq("analytics")))
             .thenReturn(Result.success(listOf(pod("trino-worker-0", "Running").copy(terminating = true))))
             .thenReturn(Result.success(emptyList()))
         val waiting = KitWorkloadProbe(kubeService, helmService, pollInterval = Duration.ZERO, maxPolls = 5)
 
         assertThat(waiting.awaitGone("trino", helmRuntime, controlHost).getOrThrow()).isEqualTo(WorkloadPresence.Absent)
-        verify(helmService, times(3)).releaseExists(any(), any(), any())
+        verify(kubeService, times(2)).listPodsByLabel(eq("app.kubernetes.io/instance=trino"), eq("analytics"))
     }
 
     private fun pod(

@@ -460,7 +460,7 @@ Dashboards are installed with `overwrite: true`, so re-running `start` never dup
 
 ```yaml
 collision-check:
-  start: true     # refuse start while running, and make stop wait for the pods to go
+  start: true     # refuse start while running
   install: false  # a second install overwrites the scaffold without --force
 ```
 
@@ -475,14 +475,18 @@ the kit is loaded. Each guarded phase fails with an error event and exits non-ze
   namespace. Pods that are still terminating count too, so a pod left cleaning up by a manual
   `kubectl delete` blocks `start` until it is gone. The event is `Kit.CollisionDetected`, naming
   the objects it found, and no start step runs. Run `<kit> stop` first.
-- **`<kit> stop`**, once its steps succeed, waits until nothing the runtime selects is left —
-  terminating pods included, and for a `helm` runtime the release's pods as well as the release,
-  since `helm uninstall` returns while those pods are still terminating — so a `start` straight
-  after it is not refused. Deleting a StatefulSet, Deployment or operator resource returns before
-  its pods are even marked for deletion, so this wait is what makes `stop` followed by `start` work. It gives up after 5
-  minutes with a `Kit.StopIncomplete` error event naming what is left. A failed cluster query
-  during the wait is retried; if the last look still fails, `stop` exits non-zero with a
-  `Kit.StopUnverified` error event carrying the cause.
+
+`<kit> stop` is not a collision check, and it applies to every kit that declares a `runtime`,
+guarded or not. Once its steps succeed, it waits until none of the runtime's pods is left,
+terminating pods included. For a `helm` runtime that means the pods labelled
+`app.kubernetes.io/instance=<release>`; the release itself does not count, because a kit may stop
+by scaling its release to zero (Presto, Trino) and keep it. Deleting a StatefulSet, Deployment or
+operator resource, or scaling a Deployment to zero, returns before its pods have terminated, so
+this wait is what makes `stop` return only once the workload is gone, and `stop` followed by
+`start` work. It gives up after 5 minutes with a `Kit.StopIncomplete` error event naming what is
+left. A failed cluster query during the wait is retried; if the last look still fails, `stop`
+exits non-zero with a `Kit.StopUnverified` error event carrying the cause. A kit with no `runtime`
+block does not wait.
 
 The runtime must therefore name what `start` creates and `stop` removes. A runtime pointing at
 something the `install` phase creates, such as an operator's helm release, would refuse every

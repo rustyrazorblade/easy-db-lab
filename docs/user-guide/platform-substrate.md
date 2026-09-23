@@ -160,12 +160,12 @@ The OTel collector DaemonSet runs with `hostNetwork: true` so it can scrape host
 | ClickHouse | Native TCP | 9000 | 30900 | NodePort |
 | ClickHouse | MySQL wire | 9004 | 30904 | NodePort |
 | ClickHouse | PostgreSQL wire | 9005 | 30905 | NodePort |
-| ClickHouse | Prometheus | 9363 | 30936 | NodePort |
+| ClickHouse | Prometheus | 9363 | 30936 | pod SD (per-replica); NodePort also exposed |
 | TiDB | MySQL (SQL layer) | 4000 | 30400 | NodePort |
-| TiDB | Prometheus (tidb-sql) | — | 31080 | NodePort |
+| TiDB | Prometheus (tidb-sql) | 10080 | 31080 | pod SD (per-pod); NodePort also exposed |
 | TiDB | Prometheus (tikv) | 20180 | — | pod SD (per-store) |
-| TiDB | Prometheus (pd) | — | 32379 | NodePort |
-| TiDB | Prometheus (tiflash) | — | 32234 | NodePort |
+| TiDB | Prometheus (pd) | 2379 | 32379 | pod SD (per-pod); NodePort also exposed |
+| TiDB | Prometheus (tiflash) | 8234 | 32234 | pod SD (per-pod); NodePort also exposed |
 | Presto | HTTP (coordinator) | 8080 | 8080 | hostPort |
 | Presto | Prometheus | 9090 | 9090 | hostPort |
 | Trino | HTTP (coordinator) | 8080 | 8080 | hostPort |
@@ -178,14 +178,15 @@ Each kit declares its metrics targets in `kit.yaml`. `metrics` is a list — kit
 
 ```yaml
 metrics:
-  - type: scrape     # Prometheus endpoint — OTel DaemonSet scrapes it at localhost:<port>
-    port: 31080
-    path: /metrics
-    job: tidb-sql
   - type: scrape     # pod service discovery — each pod scraped directly, per-pod `instance`
+    job: tidb-sql
+    pod-selector: "app.kubernetes.io/component=tidb,app.kubernetes.io/instance=tidb"
+    port: 10080      # container metrics port, not a NodePort
+    path: /metrics
+  - type: scrape
     job: tikv
     pod-selector: "app.kubernetes.io/component=tikv,app.kubernetes.io/instance=tidb"
-    port: 20180      # container metrics port, not a NodePort
+    port: 20180
     path: /metrics
 ```
 
@@ -198,7 +199,9 @@ Prometheus pod service discovery (`kubernetes_sd_configs`, role: pod): each coll
 the matching pods co-located on its own node, and `instance` becomes the pod name. Use this when a
 component has multiple pods behind one service and you need per-pod attribution — a NodePort
 load-balances scrapes across all pods, so a single store/pod cannot be distinguished. TiKV uses this
-so each of the 3 stores reports under its own `instance` (e.g. `tidb-tikv-0`).
+so each of the 3 stores reports under its own `instance` (e.g. `tidb-tikv-0`). Every built-in kit
+uses pod discovery: a static job runs on every collector, so even a single-instance kit behind a
+NodePort reports one duplicate series per node.
 
 Three modes are supported:
 

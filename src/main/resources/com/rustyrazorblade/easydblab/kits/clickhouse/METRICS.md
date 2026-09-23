@@ -1,7 +1,8 @@
 # ClickHouse Metrics
 
 All metrics have `job="clickhouse"` and `cluster=<cluster-name>`. Metrics are scraped from the
-ClickHouse built-in Prometheus exporter at port 30936 (NodePort).
+ClickHouse built-in Prometheus exporter on container port 9363, by pod discovery: each replica
+pod is scraped once, by the collector on its own node, and `instance` is the pod name.
 
 ClickHouse exposes three metric namespaces:
 

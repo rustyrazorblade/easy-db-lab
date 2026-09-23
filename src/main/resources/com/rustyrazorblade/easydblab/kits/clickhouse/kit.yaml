@@ -4,9 +4,13 @@ description: Scaffold ClickHouse workload files using the Altinity operator
 version: "1.0.0"
 collision-check: true
 metrics:
+  # Pod discovery, so each ClickHouse replica is scraped once, by the collector on its own node,
+  # with instance = the pod name. A static job on the metrics NodePort (30936) was run by every
+  # collector, duplicating the series once per node. Port is the container's metrics port.
   - type: scrape
-    port: 30936
+    port: 9363
     path: /metrics
+    pod-selector: "clickhouse.altinity.com/chi=clickhouse"
 runtime:
   type: pods
   selector: "clickhouse.altinity.com/chi=clickhouse"

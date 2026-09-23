@@ -325,6 +325,14 @@ matching pods through Kubernetes pod discovery and each node's collector scrapes
 its own node, on the pod IP and `port` (the container port). Every pod gets its own `instance`
 label, and no metrics NodePort is needed. See `kits/memcached/kit.yaml`.
 
+**Use a `pod-selector`.** A job without one runs on every collector in the DaemonSet, whatever
+node the workload is on: a NodePort answers on every node, so a single-instance kit reports one
+duplicate series per node, each with a different collector's hostname as `instance`, and a hostPort
+answers only on its own node, so every other node reports the job down. Every built-in kit scrapes
+by pod discovery, and `NodePortKitScrapeTest` fails if one declares a static scrape. A kit that
+runs several instances side by side (postgres and `postgres-<extension>`) names its own with
+`${KIT_NAME}` in the selector, which is filled in with the instance name at `start`.
+
 **Before adding any reporter plumbing, check whether the workload's image already ships the
 metrics reporter** — a pre-staged plugin directory, a built-in endpoint, or a bundled jar
 already on the classpath. Many JVM images do (e.g. the official Flink image pre-stages the

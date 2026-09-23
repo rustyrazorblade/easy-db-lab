@@ -313,9 +313,17 @@ class KitRunnerCommand(
                 kitHookExecutor.firePostKitStart(kitName)
                 val resolvedArgs = readResolvedArgs()
                 val metricsPortOverride = resolvedArgs["METRICS_PORT"]?.toIntOrNull()
+                // A METRICS_PORT override is an instance's own metrics NodePort, so it only
+                // applies to a static localhost job; a pod-discovered target keeps its container
+                // port. Its pod-selector names this instance through ${KIT_NAME}.
                 val scrapeTargets =
                     config.metrics.filterIsInstance<KitMetrics.Scrape>().map { target ->
-                        if (metricsPortOverride != null) target.copy(port = metricsPortOverride) else target
+                        when {
+                            target.podSelector.isNotBlank() ->
+                                target.copy(podSelector = target.podSelector.replace("\${KIT_NAME}", kitName))
+                            metricsPortOverride != null -> target.copy(port = metricsPortOverride)
+                            else -> target
+                        }
                     }
                 if (scrapeTargets.isNotEmpty()) {
                     metricsRegistryService

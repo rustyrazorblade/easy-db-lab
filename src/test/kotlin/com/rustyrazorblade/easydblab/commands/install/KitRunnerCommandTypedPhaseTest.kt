@@ -1,11 +1,13 @@
 package com.rustyrazorblade.easydblab.commands.install
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.services.KitMetrics
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.koin.test.get
 import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.never
 import org.mockito.kotlin.times
@@ -72,6 +74,68 @@ class KitRunnerCommandTypedPhaseTest : KitRunnerCommandTestBase() {
         )
         command("mydb", "start").call()
         verify(mockMetricsRegistryService).register(any(), any(), any())
+    }
+
+    /**
+     * A postgres extension instance overrides METRICS_PORT with its own metrics NodePort. That
+     * port only means anything to a static `localhost:<port>` job; a pod-discovered target is
+     * scraped on the pod IP at its container port, which the override must not replace.
+     */
+    @Test
+    fun `a METRICS_PORT override replaces a static target's port but not a pod-discovered target's container port`() {
+        writeKitYaml(
+            "postgres-duckdb",
+            """
+            name: postgres
+            metrics:
+              - type: scrape
+                port: 30987
+                job: static
+              - type: scrape
+                port: 9187
+                job: pods
+                pod-selector: "cnpg.io/cluster=${'$'}{KIT_NAME}"
+            start:
+              - type: shell
+                script: echo hello
+            """.trimIndent(),
+        )
+        writeResolvedArgs("postgres-duckdb", mapOf("METRICS_PORT" to "30988"))
+
+        command("postgres-duckdb", "start").call()
+
+        val targets = argumentCaptor<List<KitMetrics.Scrape>>()
+        verify(mockMetricsRegistryService).register(any(), eq("postgres-duckdb"), targets.capture())
+        assertThat(targets.firstValue.associate { it.job to it.port }).isEqualTo(mapOf("static" to 30988, "pods" to 9187))
+    }
+
+    /**
+     * Several instances of one kit (postgres and postgres-duckdb) run side by side, so a
+     * pod-selector names its own instance with `${KIT_NAME}`, the same way the runtime
+     * selector does. Unexpanded, it would match no pod label and scrape nothing.
+     */
+    @Test
+    fun `a scrape pod-selector has KIT_NAME filled in with the kit instance name`() {
+        writeKitYaml(
+            "postgres-duckdb",
+            """
+            name: postgres
+            metrics:
+              - type: scrape
+                port: 9187
+                pod-selector: "cnpg.io/cluster=${'$'}{KIT_NAME},cnpg.io/instanceRole=primary"
+            start:
+              - type: shell
+                script: echo hello
+            """.trimIndent(),
+        )
+
+        command("postgres-duckdb", "start").call()
+
+        val targets = argumentCaptor<List<KitMetrics.Scrape>>()
+        verify(mockMetricsRegistryService).register(any(), any(), targets.capture())
+        assertThat(targets.firstValue.single().podSelector)
+            .isEqualTo("cnpg.io/cluster=postgres-duckdb,cnpg.io/instanceRole=primary")
     }
 
     @Test

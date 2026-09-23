@@ -4,14 +4,20 @@ description: Apache Kafka in KRaft mode via Strimzi operator (quay.io/strimzi â€
 version: "2.0.0"
 collision-check: true
 metrics:
+  # Pod discovery, so each pod is scraped once, by the collector on its own node, with
+  # instance = the pod name. Static jobs on the metrics NodePorts (32309, 32404) were run by
+  # every collector, duplicating the series once per node. Ports are the containers' metrics
+  # port; the selectors are the ones Strimzi's pods carry (and the NodePort Services use).
   - type: scrape
-    port: 32309
+    port: 9404
     path: /metrics
     job: kafka-exporter
+    pod-selector: "strimzi.io/cluster=kafka,app.kubernetes.io/name=kafka-exporter"
   - type: scrape
-    port: 32404
+    port: 9404
     path: /metrics
     job: kafka-jmx
+    pod-selector: "strimzi.io/cluster=kafka,strimzi.io/broker-role=true"
 # The Kafka cluster's own pods, which `start` creates and `stop` removes. Strimzi labels every pod
 # of the `kafka` Kafka resource with strimzi.io/cluster=kafka. The strimzi-operator helm release is
 # installed by `install` and outlives `stop`, so it cannot say whether Kafka is running.

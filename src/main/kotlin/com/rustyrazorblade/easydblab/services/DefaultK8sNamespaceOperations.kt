@@ -6,6 +6,8 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.Pod
+import io.fabric8.kubernetes.api.model.apps.DaemonSet
+import io.fabric8.kubernetes.api.model.apps.DaemonSetBuilder
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
@@ -178,21 +180,7 @@ class DefaultK8sNamespaceOperations(
                     .daemonSets()
                     .inNamespace(namespace)
                     .withName(name)
-                    .edit { ds ->
-                        val annotations =
-                            ds.spec
-                                ?.template
-                                ?.metadata
-                                ?.annotations
-                                ?.toMutableMap()
-                                ?: mutableMapOf()
-                        annotations["kubectl.kubernetes.io/restartedAt"] = Instant.now().toString()
-                        ds.spec
-                            ?.template
-                            ?.metadata
-                            ?.annotations = annotations
-                        ds
-                    }
+                    .edit { ds -> withRestartedAt(ds, Instant.now()) }
             }
             log.info { "Rolling restart initiated for DaemonSet/$name" }
         }
@@ -561,3 +549,29 @@ class DefaultK8sNamespaceOperations(
 }
 
 private const val POD_POLL_INTERVAL_MS = 5000L
+
+/** The pod-template annotation whose change makes a workload controller roll its pods. */
+internal const val RESTARTED_AT_ANNOTATION = "kubectl.kubernetes.io/restartedAt"
+
+/**
+ * [ds] with its pod template stamped [RESTARTED_AT_ANNOTATION] = [at], as `kubectl rollout restart`
+ * does. A template without metadata gets it; a DaemonSet with no pod template at all cannot be
+ * restarted, and fails rather than being edited into a no-op.
+ */
+internal fun withRestartedAt(
+    ds: DaemonSet,
+    at: Instant,
+): DaemonSet {
+    checkNotNull(ds.spec?.template) {
+        "DaemonSet ${ds.metadata?.namespace}/${ds.metadata?.name} has no pod template to restart"
+    }
+    return DaemonSetBuilder(ds)
+        .editSpec()
+        .editTemplate()
+        .editOrNewMetadata()
+        .addToAnnotations(RESTARTED_AT_ANNOTATION, at.toString())
+        .endMetadata()
+        .endTemplate()
+        .endSpec()
+        .build()
+}

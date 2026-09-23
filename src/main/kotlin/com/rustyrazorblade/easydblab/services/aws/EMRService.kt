@@ -9,9 +9,9 @@ import com.rustyrazorblade.easydblab.providers.aws.EMRClusterResult
 import com.rustyrazorblade.easydblab.providers.aws.EMRClusterStates
 import com.rustyrazorblade.easydblab.providers.aws.EMRClusterStatus
 import com.rustyrazorblade.easydblab.providers.aws.EMRConfiguration
-import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import com.rustyrazorblade.easydblab.providers.aws.SubnetId
 import com.rustyrazorblade.easydblab.providers.aws.VpcId
+import com.rustyrazorblade.easydblab.providers.aws.withAwsRetry
 import io.github.oshai.kotlinlogging.KotlinLogging
 import software.amazon.awssdk.services.emr.EmrClient
 import software.amazon.awssdk.services.emr.model.Application
@@ -115,7 +115,7 @@ class EMRService(
         val instancesConfig = buildInstancesConfig(config)
         val request = buildRunJobFlowRequest(config, tags, instancesConfig)
 
-        val response = RetryUtil.withAwsRetry("run-job-flow") { emrClient.runJobFlow(request) }
+        val response = withAwsRetry("run-job-flow") { emrClient.runJobFlow(request) }
         val clusterId = response.jobFlowId()
 
         log.info { "EMR cluster creation initiated: $clusterId" }
@@ -280,7 +280,7 @@ class EMRService(
                 .clusterId(clusterId)
                 .build()
 
-        val response = RetryUtil.withAwsRetry("describe-cluster") { emrClient.describeCluster(request) }
+        val response = withAwsRetry("describe-cluster") { emrClient.describeCluster(request) }
         val cluster = response.cluster()
 
         return EMRClusterStatus(
@@ -303,7 +303,7 @@ class EMRService(
                 .clusterId(clusterId)
                 .build()
 
-        val response = RetryUtil.withAwsRetry("describe-cluster") { emrClient.describeCluster(request) }
+        val response = withAwsRetry("describe-cluster") { emrClient.describeCluster(request) }
         val cluster = response.cluster()
 
         return EMRClusterResult(
@@ -329,7 +329,7 @@ class EMRService(
                 .jobFlowIds(clusterId)
                 .build()
 
-        RetryUtil.withAwsRetry("terminate-cluster") { emrClient.terminateJobFlows(request) }
+        withAwsRetry("terminate-cluster") { emrClient.terminateJobFlows(request) }
 
         log.info { "EMR cluster termination initiated: $clusterId" }
     }
@@ -456,7 +456,7 @@ class EMRService(
                 .jobFlowIds(clusterIds)
                 .build()
 
-        RetryUtil.withAwsRetry("terminate-emr-clusters") {
+        withAwsRetry("terminate-emr-clusters") {
             emrClient.terminateJobFlows(terminateRequest)
         }
 
@@ -526,7 +526,7 @@ class EMRService(
                 .instanceGroupTypes(instanceGroupType)
                 .build()
 
-        val response = RetryUtil.withAwsRetry("list-instances") { emrClient.listInstances(request) }
+        val response = withAwsRetry("list-instances") { emrClient.listInstances(request) }
 
         return response.instances().mapNotNull { it.ec2InstanceId() }
     }
@@ -540,7 +540,7 @@ class EMRService(
                 .clusterStates(ACTIVE_CLUSTER_STATES)
                 .build()
 
-        return RetryUtil.withAwsRetry("list-emr-clusters") {
+        return withAwsRetry("list-emr-clusters") {
             emrClient.listClusters(listRequest).clusters()
         }
     }
@@ -553,7 +553,7 @@ class EMRService(
                 .build()
 
         val cluster =
-            RetryUtil.withAwsRetry("describe-emr-cluster") {
+            withAwsRetry("describe-emr-cluster") {
                 emrClient.describeCluster(describeRequest).cluster()
             }
 
@@ -568,7 +568,7 @@ class EMRService(
                 .build()
 
         val cluster =
-            RetryUtil.withAwsRetry("describe-emr-cluster") {
+            withAwsRetry("describe-emr-cluster") {
                 emrClient.describeCluster(describeRequest).cluster()
             }
 
@@ -587,7 +587,7 @@ class EMRService(
                 .build()
 
         val clusterDetails =
-            RetryUtil.withAwsRetry("describe-emr-cluster") {
+            withAwsRetry("describe-emr-cluster") {
                 emrClient.describeCluster(describeRequest).cluster()
             }
 

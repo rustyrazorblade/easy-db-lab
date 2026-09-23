@@ -10,7 +10,7 @@ import com.rustyrazorblade.easydblab.providers.aws.IamPolicyDocument.Companion.t
 import com.rustyrazorblade.easydblab.providers.aws.IamPolicyPrincipal
 import com.rustyrazorblade.easydblab.providers.aws.IamPolicyResource
 import com.rustyrazorblade.easydblab.providers.aws.IamPolicyStatement
-import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
+import com.rustyrazorblade.easydblab.providers.aws.withAwsRetry
 import io.github.oshai.kotlinlogging.KotlinLogging
 import software.amazon.awssdk.services.opensearch.OpenSearchClient
 import software.amazon.awssdk.services.opensearch.model.ClusterConfig
@@ -143,7 +143,7 @@ class OpenSearchService(
         val request = buildCreateDomainRequest(config)
 
         val response =
-            RetryUtil.withAwsRetry("create-opensearch-domain") {
+            withAwsRetry("create-opensearch-domain") {
                 openSearchClient.createDomain(request)
             }
 
@@ -229,7 +229,7 @@ class OpenSearchService(
                 .build()
 
         val response =
-            RetryUtil.withAwsRetry("describe-opensearch-domain") {
+            withAwsRetry("describe-opensearch-domain") {
                 openSearchClient.describeDomain(request)
             }
 
@@ -262,7 +262,7 @@ class OpenSearchService(
                 .domainName(domainName)
                 .build()
 
-        RetryUtil.withAwsRetry("delete-opensearch-domain") {
+        withAwsRetry("delete-opensearch-domain") {
             openSearchClient.deleteDomain(request)
         }
 
@@ -504,7 +504,7 @@ class OpenSearchService(
         // List all domain names in the account
         val listRequest = ListDomainNamesRequest.builder().build()
         val domainNames =
-            RetryUtil.withAwsRetry("list-opensearch-domains") {
+            withAwsRetry("list-opensearch-domains") {
                 openSearchClient.listDomainNames(listRequest).domainNames().map { it.domainName() }
             }
 
@@ -523,7 +523,7 @@ class OpenSearchService(
                         .build()
 
                 val domain =
-                    RetryUtil.withAwsRetry("describe-opensearch-domain") {
+                    withAwsRetry("describe-opensearch-domain") {
                         openSearchClient.describeDomain(describeRequest).domainStatus()
                     }
 

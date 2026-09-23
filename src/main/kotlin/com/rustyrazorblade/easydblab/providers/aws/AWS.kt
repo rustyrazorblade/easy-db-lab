@@ -245,7 +245,7 @@ class AWS(
             // The policy references the just-created IAM roles as principals. IAM is eventually
             // consistent, so S3 may briefly reject the policy with "Invalid principal in policy"
             // until the roles propagate. Retry with backoff so this resolves itself.
-            RetryUtil.withS3BucketPolicyRetry("put-bucket-policy") {
+            withS3BucketPolicyRetry("put-bucket-policy") {
                 s3Client.putBucketPolicy(request)
             }
             log.info { "✓ Applied S3 bucket policy granting access to all 3 IAM roles: $bucketName" }

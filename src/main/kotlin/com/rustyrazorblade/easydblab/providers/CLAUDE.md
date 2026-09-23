@@ -64,11 +64,15 @@ Always use factory methods instead of creating manual retry configurations.
 
 ### Convenience Wrappers
 
+The `with*Retry` wrappers are top-level functions in `RetryWrappers.kt`, beside `RetryUtil`, not
+members of it; `RetryUtil` holds only the config factories.
+
 ```kotlin
-// Short-hand for common patterns
-val result = RetryUtil.withAwsRetry("describe-cluster") { emrClient.describeCluster(request) }
-val result = RetryUtil.withEc2InstanceRetry("describe") { ec2Client.describeInstances(request) }
-RetryUtil.withVpcTeardownRetry("delete-sg") { ec2Client.deleteSecurityGroup(request) }
+// Short-hand for common patterns (top-level functions in RetryWrappers.kt)
+val result = withAwsRetry("describe-cluster") { emrClient.describeCluster(request) }
+val result = withEc2InstanceRetry("describe") { ec2Client.describeInstances(request) }
+withVpcTeardownRetry("delete-sg") { ec2Client.deleteSecurityGroup(request) }
+withS3BucketPolicyRetry("put-bucket-policy") { s3Client.putBucketPolicy(request) }
 
 // Poll until a condition holds (top-level pollUntil in PollUntil.kt, over createPollUntilRetryConfig);
 // returns the last result if it never does

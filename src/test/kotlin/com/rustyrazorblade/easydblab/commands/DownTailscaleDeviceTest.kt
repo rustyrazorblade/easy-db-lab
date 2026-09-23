@@ -73,7 +73,12 @@ class DownTailscaleDeviceTest : BaseKoinTest() {
         )
     }
 
-    private fun runDown(): Int = Down().apply { autoApprove = true; force = true }.call()
+    private fun runDown(): Int =
+        Down()
+            .apply {
+                autoApprove = true
+                force = true
+            }.call()
 
     private fun output(): String = (outputHandler.messages + outputHandler.errors.map { it.first }).joinToString("\n")
 

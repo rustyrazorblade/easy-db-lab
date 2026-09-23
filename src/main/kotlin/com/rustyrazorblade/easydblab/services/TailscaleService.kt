@@ -168,7 +168,6 @@ class DefaultTailscaleService(
             .readTimeout(Constants.Tailscale.READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .build(),
 ) : TailscaleService {
-
     private val objectMapper: ObjectMapper = jacksonObjectMapper()
 
     override fun generateAuthKey(

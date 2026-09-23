@@ -382,8 +382,9 @@ class TailscaleServiceTest : BaseKoinTest() {
         whenever(mockRemoteOps.executeRemotely(eq(testHost), eq("sudo tailscale status --json"), eq(false), any()))
             .thenReturn(
                 Response(
-                    text = """{"BackendState":"Running","Self":{"ID":"nSelf123CNTRL","HostName":"control0"},""" +
-                        """"Peer":{"k":{"ID":"nPeer456CNTRL","HostName":"control0"}}}""",
+                    text =
+                        """{"BackendState":"Running","Self":{"ID":"nSelf123CNTRL","HostName":"control0"},""" +
+                            """"Peer":{"k":{"ID":"nPeer456CNTRL","HostName":"control0"}}}""",
                     stderr = "",
                 ),
             )

@@ -150,7 +150,7 @@ Kits use **standard pod networking** (not `hostNetwork`). Client and metrics por
 
 ### Why ports must reach the host
 
-The OTel collector DaemonSet runs with `hostNetwork: true` so it can scrape host processes and kit metrics endpoints, and so host JVMs such as Cassandra can push OTLP to it at `localhost:4318`. It scrapes each kit's declared metrics port at `localhost:<port>`, so that port must be reachable on every node's host network — which both NodePort (listens on all nodes) and hostPort provide. This also avoids conflicts with host processes: a NodePort-range port can never collide with a database listening on its native port on the host.
+The OTel collector DaemonSet runs with `hostNetwork: true` so it can scrape host processes and kit metrics endpoints, and so host JVMs such as Cassandra can push OTLP to it at `localhost:4318`. Built-in kits are scraped by pod discovery: each collector scrapes the kit pods on its own node directly, on the pod IP and container metrics port, so a metrics port does not need to reach the host for the collector (see [Kit Observability](#kit-observability)). The NodePorts and hostPorts that still expose metrics ports are there for manual inspection (`curl <node-ip>:<port>/metrics`). Client ports do need to reach the host, and a NodePort-range port can never collide with a database listening on its native port on the host.
 
 ### Port Assignments
 
@@ -167,7 +167,7 @@ The OTel collector DaemonSet runs with `hostNetwork: true` so it can scrape host
 | TiDB | Prometheus (pd) | 2379 | 32379 | pod SD (per-pod); NodePort also exposed |
 | TiDB | Prometheus (tiflash) | 8234 | 32234 | pod SD (per-pod); NodePort also exposed |
 | Presto | HTTP (coordinator) | 8080 | 8080 | hostPort |
-| Presto | Prometheus | 9090 | 9090 | hostPort |
+| Presto | Prometheus | 9090 | 9090 | pod SD; hostPort also exposed |
 | Trino | HTTP (coordinator) | 8080 | 8080 | hostPort |
 
 When adding a new kit, choose ports that do not conflict with any host process or existing kit in the table above. Each kit's ports are declared in its `kit.yaml` (`metrics` and `endpoints` sections).

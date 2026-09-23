@@ -266,12 +266,17 @@ Things to know before editing them:
 
 ## Kit Dashboard Metric Queries
 
-### NodePort Triple-Scraping
+### One series per pod (no NodePort triple-scraping)
 
-When a kit exposes Prometheus metrics via a K8s NodePort, the OTel collector scrapes from every cluster node (each node's NodePort redirects to the same pod). This produces one series per node in VictoriaMetrics — typically 3× the actual value.
+Every built-in kit is scraped by pod discovery: each pod once, by the collector on its own node,
+with `instance` set to the pod name (see `configuration/CLAUDE.md`). A kit's metrics NodePort, where
+one still exists, is only for manual `curl`; the collector does not scrape it. Kit dashboard queries
+therefore need no per-node filter, and must not pin `host_name` to a node (e.g. `host_name="db0"`):
+that label is the collector's node, which is wherever the pod was scheduled, so a pinned query goes
+empty when the pod lands elsewhere. Select a pod with `instance` when a panel needs one.
 
-- **Ratio queries** (e.g. cache hit ratio, error rate): triple-counting cancels out in numerator and denominator — no filter needed.
-- **Absolute queries** (rates, byte counts, gauge totals): must filter by `host_name="<db-node>"` to get the correct value. Use the node where the pod actually runs (check with `kubectl get pod <pod> -o wide`; for postgres kits this is typically `db0`).
+A static `localhost:<port>` job on a NodePort would be scraped by every collector, one series per
+node, which is why no built-in kit declares one (`NodePortKitScrapeTest`).
 
 ### VictoriaMetrics Counter Naming
 

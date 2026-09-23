@@ -141,7 +141,10 @@ kubectl get pods
 curl http://control0:9428/health
 ```
 
-The proxy starts automatically when you load the environment.
+The `easy-db-lab` CLI starts the proxy: any command that needs to reach the cluster starts it, or
+reuses the one already running, before the command does its work. Sourcing `env.sh` does not start
+the proxy. Its wrappers only read the proxy's port from `.socks5-proxy-state`. If no command has
+started the proxy yet, run `start-socks5` before using the wrappers.
 
 The proxy listens on port 1080 when it is free. When another process already holds 1080 — most
 often the proxy of another cluster workspace you are running at the same time — the proxy picks a

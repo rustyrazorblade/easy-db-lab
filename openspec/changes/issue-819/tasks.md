@@ -115,11 +115,11 @@ All under `src/main/resources/com/rustyrazorblade/easydblab/kits/neo4j/`.
 ## 8. memcached extstore (owner request during implementation)
 
 - [x] 8.1 `--extstore-size` and the four `--extstore-*` tuning args; RAM-only path unchanged; `platform-pvs` `if-set` / `storage-size`; uninstall deletes the PVC and runs `platform-pvs-delete`; tests; docs.
-- [ ] 8.2 Live: extstore on NVMe, items spill past `--memory` and read back, `memcached_extstore_*` series present.
-- [ ] 8.3 Dashboard "Extstore" row from the live catalog; METRICS.md extstore list.
+- [x] 8.2 Live: extstore on NVMe, items spill past `--memory` and read back, `memcached_extstore_*` series present.
+- [x] 8.3 Dashboard "Extstore" row from the live catalog; METRICS.md extstore list.
 
 ## 9. Fixes found during live validation (owner rule: fixed in this PR)
 
 - [x] 9.1 ICMP rule, portmap chaining, stale-AMI guard, collision check rework, RequirementNotMet exit code, launcher OTel and CDS fixes, collector label drops, `export-workload-metrics` time bound, `STORAGE_SIZE`, sudoers for sudo-rs, `testPackerScript`, typed endpoints event, Neo4j service links and Cypher readiness probe.
 - [x] 9.2 CI runs the Docker-free script test tasks.
-- [ ] 9.3 Neo4j Cypher readiness probe passes live on 2026.x and 5.x.
+- [x] 9.3 Neo4j Cypher readiness probe passes live on 2026.x and 5.x.

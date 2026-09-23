@@ -131,6 +131,8 @@ interface StressJobService {
  *
  * @param jobPollInterval How long to wait between job-completion polls. Defaults to
  *   [JOB_POLL_INTERVAL_MS] so production timing is unchanged; tests inject [Duration.ZERO].
+ * @param podReadyPollInterval How long to wait between polls for a started job's pod to run.
+ *   Defaults to [POD_READY_POLL_INTERVAL_MS]; tests inject [Duration.ZERO].
  */
 class DefaultStressJobService(
     private val k8sService: K8sService,
@@ -139,6 +141,7 @@ class DefaultStressJobService(
     private val templateService: TemplateService,
     private val ecrPullSecrets: EcrPullSecretService,
     private val jobPollInterval: Duration = Duration.ofMillis(JOB_POLL_INTERVAL_MS),
+    private val podReadyPollInterval: Duration = Duration.ofMillis(POD_READY_POLL_INTERVAL_MS),
 ) : StressJobService {
     private val log = KotlinLogging.logger {}
 
@@ -195,7 +198,7 @@ class DefaultStressJobService(
             RetryConfig
                 .custom<String>()
                 .maxAttempts(POD_READY_MAX_ATTEMPTS)
-                .intervalFunction { _ -> POD_READY_POLL_INTERVAL_MS }
+                .intervalFunction { _ -> podReadyPollInterval.toMillis() }
                 .retryOnException { true }
                 .build()
         val retry = Retry.of("wait-for-stress-pod-$jobName", retryConfig)

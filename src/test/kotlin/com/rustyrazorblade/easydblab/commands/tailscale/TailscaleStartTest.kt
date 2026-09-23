@@ -23,6 +23,7 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 
@@ -204,6 +205,69 @@ class TailscaleStartTest : BaseKoinTest() {
             command.execute()
 
             assertThat(testClusterState.tailscaleDeviceId).isEqualTo("nControl0CNTRL")
+        }
+    }
+
+    /** A device recorded by an earlier start is replaced; left in place it would outlive the cluster. */
+    @Nested
+    inner class PreviouslyRecordedDevice {
+        private fun stubSuccessfulStart(newDeviceId: String) {
+            whenever(mockTailscaleService.generateAuthKey(any(), any(), any()))
+                .thenReturn(TailscaleAuthKey(key = "auth-key-123", id = "key-id-456"))
+            whenever(mockTailscaleService.startTailscale(any(), any(), any(), any()))
+                .thenReturn(Result.success(Unit))
+            whenever(mockTailscaleService.getDeviceId(any())).thenReturn(Result.success(newDeviceId))
+            whenever(mockTailscaleService.getStatus(any())).thenReturn(Result.success("Connected"))
+        }
+
+        private fun startCommand(): TailscaleStart =
+            TailscaleStart().apply {
+                clientId = "client-id"
+                clientSecret = "client-secret"
+            }
+
+        @Test
+        fun `a different previously recorded device is removed before the new one is recorded`() {
+            testClusterState.tailscaleDeviceId = "nOldCNTRL"
+            stubSuccessfulStart("nNewCNTRL")
+
+            val exitCode = startCommand().call()
+
+            assertThat(exitCode).isEqualTo(0)
+            verify(mockTailscaleService).deleteDevice(eq("client-id"), eq("client-secret"), eq("nOldCNTRL"))
+            assertThat(testClusterState.tailscaleDeviceId).isEqualTo("nNewCNTRL")
+            assertThat(outputHandler.messages.joinToString("\n")).contains("nOldCNTRL")
+        }
+
+        @Test
+        fun `the same device re-registering is not deleted`() {
+            testClusterState.tailscaleDeviceId = "nSameCNTRL"
+            stubSuccessfulStart("nSameCNTRL")
+
+            assertThat(startCommand().call()).isEqualTo(0)
+
+            verify(mockTailscaleService, never()).deleteDevice(any(), any(), any())
+            assertThat(testClusterState.tailscaleDeviceId).isEqualTo("nSameCNTRL")
+        }
+
+        /**
+         * The new device is the live one, so it is recorded for `down`; the old one is named in the
+         * error so it can be removed by hand.
+         */
+        @Test
+        fun `a failed removal of the old device is reported and exits non-zero, recording the live device`() {
+            testClusterState.tailscaleDeviceId = "nOldCNTRL"
+            stubSuccessfulStart("nNewCNTRL")
+            whenever(mockTailscaleService.deleteDevice(any(), any(), any()))
+                .thenThrow(TailscaleApiException("not allowed to delete device nOldCNTRL; grant it the 'devices:core' write scope"))
+
+            val exitCode = startCommand().call()
+
+            assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+            assertThat(testClusterState.tailscaleDeviceId).isEqualTo("nNewCNTRL")
+            verify(mockClusterStateManager, atLeastOnce()).save(testClusterState)
+            val errorOutput = outputHandler.errors.joinToString("\n") { it.first }
+            assertThat(errorOutput).contains("nOldCNTRL").contains("devices:core")
         }
     }
 

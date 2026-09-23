@@ -157,7 +157,9 @@ class TailscaleStart : PicoBaseCommand() {
 
             // Record the device's node ID so `down` removes exactly this cluster's device from
             // the tailnet; the hostname alone is shared by every cluster's control node.
-            clusterState.tailscaleDeviceId = tailscaleService.getDeviceId(host).getOrThrow()
+            val deviceId = tailscaleService.getDeviceId(host).getOrThrow()
+            removeReplacedDevice(credentials, deviceId)
+            clusterState.tailscaleDeviceId = deviceId
             clusterStateManager.save(clusterState)
 
             showSuccessMessage(controlHost.alias, cidr)
@@ -168,6 +170,30 @@ class TailscaleStart : PicoBaseCommand() {
             if (e.message?.contains("tags") == true) {
                 eventBus.emit(Event.Tailscale.TagConfigWarning(credentials.tag))
             }
+        }
+    }
+
+    /**
+     * Removes the device an earlier start recorded when the control node has registered as a new
+     * one, so the old device does not stay in the tailnet once its ID is overwritten. A device
+     * already gone counts as removed. Any other failure is reported, naming the old device so it
+     * can be removed by hand, and makes the command exit non-zero; the new device is still
+     * recorded, because it is the live one `down` must remove.
+     */
+    @Suppress("TooGenericExceptionCaught")
+    private fun removeReplacedDevice(
+        credentials: TailscaleCredentials,
+        newDeviceId: String,
+    ) {
+        val oldDeviceId = clusterState.tailscaleDeviceId
+        if (oldDeviceId.isNullOrBlank() || oldDeviceId == newDeviceId) return
+
+        try {
+            tailscaleService.deleteDevice(credentials.clientId, credentials.clientSecret, oldDeviceId)
+            eventBus.emit(Event.Tailscale.DeviceDeleted(oldDeviceId))
+        } catch (e: Exception) {
+            eventBus.emit(Event.Tailscale.DeviceNotRemoved(oldDeviceId, e.message ?: e::class.simpleName.orEmpty()))
+            exitCode = Constants.ExitCodes.ERROR
         }
     }
 

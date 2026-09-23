@@ -11,6 +11,8 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argThat
+import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
@@ -93,6 +95,31 @@ class TailscaleServiceTest : BaseKoinTest() {
             any(),
             eq(true), // secret=true
         )
+    }
+
+    @Test
+    fun `startTailscale enables and persists IP forwarding before advertising routes`() {
+        val successResponse = Response(text = "", stderr = "")
+        whenever(mockRemoteOps.executeRemotely(any(), any(), any(), any())).thenReturn(successResponse)
+
+        val result = tailscaleService.startTailscale(testHost, "tskey-auth-xxx", "control0", "10.0.0.0/16")
+
+        assertThat(result.isSuccess).isTrue()
+        val commands = argumentCaptor<String>()
+        verify(mockRemoteOps, atLeastOnce()).executeRemotely(eq(testHost), commands.capture(), any(), any())
+        val forwarding = commands.allValues.indexOfFirst { it.contains("net.ipv4.ip_forward") }
+        val tailscaleUp = commands.allValues.indexOfFirst { it.contains("tailscale up") }
+        assertThat(forwarding)
+            .describedAs("IP forwarding must be enabled before tailscale up: %s", commands.allValues)
+            .isNotNegative()
+            .isLessThan(tailscaleUp)
+        val forwardingCommand = commands.allValues[forwarding]
+        // Persisted, so it survives a reboot, and applied now, so `tailscale up` sees it.
+        assertThat(forwardingCommand)
+            .contains("/etc/sysctl.d/")
+            .contains("net.ipv4.ip_forward = 1")
+            .contains("net.ipv6.conf.all.forwarding = 1")
+            .contains("sysctl -p")
     }
 
     @Test

@@ -634,6 +634,14 @@ object Constants {
         const val DEFAULT_DEVICE_TAG = "tag:easy-db-lab"
         const val STATUS_TIMEOUT_SECONDS = 5L
 
+        /**
+         * sysctl drop-in that turns on IP forwarding on the control node. A subnet router needs
+         * it, and `tailscale up --advertise-routes` checks it: without it Tailscale warns that
+         * subnet routing will not work. It is written before `tailscale up`, not left to K3s,
+         * which enables forwarding only once it starts, after Tailscale has authenticated.
+         */
+        const val IP_FORWARDING_SYSCTL_FILE = "/etc/sysctl.d/99-tailscale.conf"
+
         /** How long to wait for the local `tailscale status` process before killing it. */
         const val LOCAL_STATUS_TIMEOUT_SECONDS = 5L
 

@@ -306,6 +306,11 @@ class DefaultTailscaleService(
             // Give the daemon a moment to initialize
             Thread.sleep(daemonStartupDelay.toMillis())
 
+            // A subnet router forwards packets, and `tailscale up --advertise-routes` warns when
+            // forwarding is off. K3s turns it on, but only once it starts, which is after this.
+            // Persist it in a sysctl drop-in so a reboot keeps it, and apply it now.
+            remoteOps.executeRemotely(host, ENABLE_IP_FORWARDING)
+
             eventBus.emit(Event.Tailscale.Authenticating(host.alias))
 
             // Authenticate and advertise routes
@@ -367,6 +372,14 @@ class DefaultTailscaleService(
             val backendState = status["BackendState"] as? String
             backendState == "Running"
         }
+
+    private companion object {
+        /** Writes the forwarding sysctl drop-in (overwriting, so reruns are idempotent) and loads it. */
+        val ENABLE_IP_FORWARDING =
+            "printf 'net.ipv4.ip_forward = 1\\nnet.ipv6.conf.all.forwarding = 1\\n' | " +
+                "sudo tee ${Constants.Tailscale.IP_FORWARDING_SYSCTL_FILE} > /dev/null && " +
+                "sudo sysctl -p ${Constants.Tailscale.IP_FORWARDING_SYSCTL_FILE}"
+    }
 
     override fun close() {
         log.info { "Shutting down TailscaleService OkHttp client" }

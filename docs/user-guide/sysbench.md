@@ -84,6 +84,10 @@ percentiles, and errors) is written to `last-run.txt` in the kit's workspace dir
 overwrites the file, so a completed run's numbers survive after the terminal output
 scrolls away.
 
+Only one run per instance can be in progress. `start` fails with a collision error while a
+run pod for the same instance (e.g. `sysbench-tidb`) is still pending or running; a finished
+run does not block the next one. Instances pointed at different targets run side by side.
+
 ### stop
 
 ```bash

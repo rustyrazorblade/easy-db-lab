@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -9,11 +10,13 @@ import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verifyNoInteractions
 import org.mockito.kotlin.whenever
+import java.time.Duration
 
 /**
- * The helm-backed branch of [KitWorkloadProbe]. helm runs on the control node over SSH, so
- * [HelmService] is stubbed at that boundary; the pod-backed branch runs against K3s in
- * `KitWorkloadProbeIntegrationTest`.
+ * The helm-backed branch of [KitWorkloadProbe], and how it reads pod phases. helm runs on the
+ * control node over SSH, so [HelmService] is stubbed at that boundary; the phase tests stub
+ * [KubernetesService] with pods in each phase. The pod-backed branch's selector and namespace
+ * handling runs against K3s in `KitWorkloadProbeIntegrationTest`.
  */
 class KitWorkloadProbeTest {
     private val helmService: HelmService = mock()
@@ -38,6 +41,45 @@ class KitWorkloadProbeTest {
 
         assertThat(probe.find("presto", runtime, controlHost).getOrThrow())
             .isEqualTo(WorkloadPresence.Present(namespace = "default", resources = listOf("helm-release/presto")))
+    }
+
+    private fun pod(
+        name: String,
+        phase: String,
+    ) = KubernetesPod(namespace = "default", name = name, status = phase, ready = "0/1", restarts = 0, age = Duration.ZERO)
+
+    private val runPods = KitRuntime(type = KitRuntime.RuntimeType.PODS, selector = "easydblab/kit=sysbench-tidb")
+
+    /**
+     * A kit that runs its workload as bare pods (sysbench) leaves each finished run's pod behind in
+     * Succeeded or Failed. Such a pod is not running, so it must neither refuse the next `start`
+     * nor hold `stop` waiting for it to leave.
+     */
+    @Test
+    fun `a pod that has finished is not a running workload`() {
+        whenever(kubeService.listPodsByLabel(eq("easydblab/kit=sysbench-tidb"), eq("default")))
+            .thenReturn(Result.success(listOf(pod("run-1", "Succeeded"), pod("run-2", "Failed"), pod("run-3", "Running"))))
+
+        assertThat(probe.find("sysbench-tidb", runPods, controlHost).getOrThrow())
+            .isEqualTo(WorkloadPresence.Present(namespace = "default", resources = listOf("pod/run-3")))
+    }
+
+    @Test
+    fun `only finished pods means the workload is absent, for start and for the stop wait`() {
+        whenever(kubeService.listPodsByLabel(any(), any()))
+            .thenReturn(Result.success(listOf(pod("run-1", "Succeeded"), pod("run-2", "Failed"))))
+        val impatient = KitWorkloadProbe(kubeService, helmService, pollInterval = Duration.ZERO, maxPolls = 1)
+
+        assertThat(probe.find("sysbench-tidb", runPods, controlHost).getOrThrow()).isEqualTo(WorkloadPresence.Absent)
+        assertThat(impatient.awaitGone("sysbench-tidb", runPods, controlHost).getOrThrow()).isEqualTo(WorkloadPresence.Absent)
+    }
+
+    @Test
+    fun `a pending pod is part of the running workload`() {
+        whenever(kubeService.listPodsByLabel(any(), any())).thenReturn(Result.success(listOf(pod("run-1", "Pending"))))
+
+        assertThat(probe.find("sysbench-tidb", runPods, controlHost).getOrThrow())
+            .isEqualTo(WorkloadPresence.Present(namespace = "default", resources = listOf("pod/run-1")))
     }
 
     @Test

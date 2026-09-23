@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.kits
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.services.InstallStep
 import com.rustyrazorblade.easydblab.services.InstallTemplateResolver
 import com.rustyrazorblade.easydblab.services.KitConfig
@@ -13,6 +14,7 @@ import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.koin.test.get
+import java.io.File
 
 /**
  * `start` refuses a collision-checked kit when the workload its `runtime` block declares is already
@@ -69,6 +71,32 @@ class BuiltinKitCollisionCheckTest : BaseKoinTest() {
                 assertThat(identity).describedAs("${kit.name}: runtime").contains(KIT_NAME_PLACEHOLDER)
             }
         }
+    }
+
+    /**
+     * sysbench starts its workload from `bin/start.sh`, which runs a bare pod per benchmark run.
+     * Its runtime must select those run pods by the labels the script gives them; the default
+     * `app.kubernetes.io/name=<kit>` matches nothing sysbench creates, so neither the start guard
+     * nor the stop wait would ever see a run.
+     */
+    @Test
+    fun `sysbench's runtime selects the run pods its start script labels`() {
+        val kit = BuiltinKitFixture("sysbench", TemplateService(ClusterStateManager(File(tempDir, "state.json")), getKoin().get()))
+        val runtime = requireNotNull(kit.config.runtime) { "sysbench declares no runtime" }
+        val runLabels =
+            parseLabelSelector(
+                Regex("""^LABELS="([^"]+)"""", RegexOption.MULTILINE)
+                    .find(kit.resource("bin/start.sh.template"))
+                    ?.groupValues
+                    ?.get(1)
+                    .orEmpty(),
+            )
+
+        assertThat(runtime.type).isEqualTo(KitRuntime.RuntimeType.PODS)
+        assertThat(runLabels).isNotEmpty()
+        assertThat(runLabels).containsAllEntriesOf(parseLabelSelector(runtime.selector))
+        // Scoped to runs: prepare and cleanup pods carry the kit label too, with another role.
+        assertThat(parseLabelSelector(runtime.selector)).containsKey("easydblab/role")
     }
 
     private companion object {

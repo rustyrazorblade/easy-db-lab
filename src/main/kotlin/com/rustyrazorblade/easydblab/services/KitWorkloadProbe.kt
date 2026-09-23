@@ -99,7 +99,9 @@ class KitWorkloadProbe(
 
     /**
      * The pods [selector] matches in [namespace]. A pod already being deleted is on its way out, so
-     * it counts only when [countTerminating] is set — when waiting for the workload to be gone.
+     * it counts only when [countTerminating] is set — when waiting for the workload to be gone. A
+     * pod that has finished (Succeeded or Failed, as a completed sysbench run leaves behind) is not
+     * running and never counts.
      */
     private fun findPods(
         selector: String,
@@ -110,6 +112,7 @@ class KitWorkloadProbe(
             kubeService
                 .listPodsByLabel(selector, namespace)
                 .getOrThrow()
+                .filter { it.status !in FINISHED_POD_PHASES }
                 .filter { countTerminating || !it.terminating }
         return if (pods.isEmpty()) {
             WorkloadPresence.Absent
@@ -120,6 +123,9 @@ class KitWorkloadProbe(
 
     private companion object {
         const val DEFAULT_NAMESPACE = "default"
+
+        /** Pod phases a pod never leaves: its containers have all exited for good. */
+        val FINISHED_POD_PHASES = setOf("Succeeded", "Failed")
     }
 }
 

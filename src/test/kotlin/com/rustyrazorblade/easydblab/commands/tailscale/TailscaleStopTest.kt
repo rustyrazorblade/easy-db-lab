@@ -171,6 +171,16 @@ class TailscaleStopTest : BaseKoinTest() {
         assertThat(errorOutput).contains("Permission denied")
     }
 
+    /** A daemon that did not stop is a failed command; a caller reading the exit code must see it. */
+    @Test
+    fun `a failure to stop the daemon makes the command exit non-zero`() {
+        whenever(mockTailscaleService.isConnected(any())).thenReturn(Result.success(true))
+        whenever(mockTailscaleService.stopTailscale(any()))
+            .thenReturn(Result.failure(RuntimeException("Permission denied")))
+
+        assertThat(TailscaleStop().call()).isEqualTo(Constants.ExitCodes.ERROR)
+    }
+
     // =========================================================================
     // The control node's tailnet device, recorded by `tailscale start`
     // =========================================================================

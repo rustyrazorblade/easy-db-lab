@@ -28,7 +28,10 @@ class TailscaleStop : PicoBaseCommand() {
     private val user: User by inject()
     private val log = KotlinLogging.logger {}
 
-    /** Non-zero when the control node's device could not be removed, after an error event said why. */
+    /**
+     * Non-zero when the daemon did not stop or the control node's device could not be removed,
+     * after an error event said why.
+     */
     private var exitCode = 0
 
     override fun call(): Int {
@@ -64,6 +67,7 @@ class TailscaleStop : PicoBaseCommand() {
                 eventBus.emit(Event.Tailscale.StoppedSuccessfully)
             }.onFailure { error ->
                 eventBus.emit(Event.Tailscale.StopFailed(error.message ?: "unknown error"))
+                exitCode = Constants.ExitCodes.ERROR
             }
     }
 

@@ -57,6 +57,17 @@ class TailscaleStart : PicoBaseCommand() {
     )
     var tag: String? = null
 
+    /**
+     * Non-zero when Tailscale did not start, after an error event said why. `up` runs this command
+     * and reads the exit code to decide whether the tailnet came up.
+     */
+    private var exitCode = 0
+
+    override fun call(): Int {
+        val lifecycleExit = super.call()
+        return if (lifecycleExit != 0) lifecycleExit else exitCode
+    }
+
     override fun execute() {
         val credentials = resolveCredentials() ?: return
         val controlHost = getControlHostOrReturn() ?: return
@@ -74,6 +85,7 @@ class TailscaleStart : PicoBaseCommand() {
 
         if (resolvedClientId.isBlank() || resolvedClientSecret.isBlank()) {
             showMissingCredentialsError()
+            exitCode = Constants.ExitCodes.ERROR
             return null
         }
 
@@ -103,6 +115,7 @@ class TailscaleStart : PicoBaseCommand() {
         val controlHost = clusterState.getControlHost()
         if (controlHost == null) {
             eventBus.emit(Event.Tailscale.NoControlNode)
+            exitCode = Constants.ExitCodes.ERROR
         }
         return controlHost
     }
@@ -150,6 +163,7 @@ class TailscaleStart : PicoBaseCommand() {
             showSuccessMessage(controlHost.alias, cidr)
             showCurrentStatus(host)
         } catch (e: TailscaleApiException) {
+            exitCode = Constants.ExitCodes.ERROR
             eventBus.emit(Event.Tailscale.StartFailed(e.message ?: "unknown error"))
             if (e.message?.contains("tags") == true) {
                 eventBus.emit(Event.Tailscale.TagConfigWarning(credentials.tag))

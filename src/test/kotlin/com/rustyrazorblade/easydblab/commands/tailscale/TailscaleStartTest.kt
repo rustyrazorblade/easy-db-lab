@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.commands.tailscale
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -221,6 +222,24 @@ class TailscaleStartTest : BaseKoinTest() {
             val errorOutput = outputHandler.errors.joinToString("\n") { it.first }
             assertThat(errorOutput).contains("Failed to start Tailscale")
             assertThat(errorOutput).contains("Invalid tags")
+        }
+
+        /** `up` checks this exit code to decide whether Tailscale came up. */
+        @Test
+        fun `a Tailscale API failure makes the command exit non-zero`() {
+            whenever(mockTailscaleService.generateAuthKey(any(), any(), any()))
+                .thenThrow(TailscaleApiException("401 unauthorized"))
+
+            val command = TailscaleStart()
+            command.clientId = "client-id"
+            command.clientSecret = "client-secret"
+
+            assertThat(command.call()).isEqualTo(Constants.ExitCodes.ERROR)
+        }
+
+        @Test
+        fun `missing credentials make the command exit non-zero`() {
+            assertThat(TailscaleStart().call()).isEqualTo(Constants.ExitCodes.ERROR)
         }
 
         @Test

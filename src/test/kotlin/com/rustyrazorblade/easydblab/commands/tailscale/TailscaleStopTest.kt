@@ -263,6 +263,40 @@ class TailscaleStopTest : BaseKoinTest() {
         assertThat(outputHandler.errors.joinToString("\n") { it.first }).contains("node-abc123")
     }
 
+    /** A daemon that is already down leaves its device in the tailnet all the same. */
+    @Test
+    fun `when tailscale is already down the recorded device is still removed and forgotten`() {
+        val state = stateWithDevice()
+        whenever(mockClusterStateManager.load()).thenReturn(state)
+        declareTailscaleUser()
+        whenever(mockTailscaleService.isConnected(any())).thenReturn(Result.success(false))
+
+        val exitCode = TailscaleStop().call()
+
+        assertThat(exitCode).isEqualTo(0)
+        verify(mockTailscaleService, never()).stopTailscale(any())
+        verify(mockTailscaleService).deleteDevice(eq("ts-client-id"), eq("ts-client-secret"), eq("node-abc123"))
+        assertThat(state.tailscaleDeviceId).isNull()
+        verify(mockClusterStateManager).save(state)
+        assertThat(outputHandler.messages.joinToString("\n")).contains("not running")
+    }
+
+    @Test
+    fun `when tailscale is already down a failed device removal exits non-zero and keeps the device recorded`() {
+        val state = stateWithDevice()
+        whenever(mockClusterStateManager.load()).thenReturn(state)
+        declareTailscaleUser()
+        whenever(mockTailscaleService.isConnected(any())).thenReturn(Result.success(false))
+        whenever(mockTailscaleService.deleteDevice(any(), any(), any()))
+            .thenThrow(TailscaleApiException("not allowed to delete device node-abc123; grant it the 'devices:core' write scope"))
+
+        val exitCode = TailscaleStop().call()
+
+        assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+        assertThat(state.tailscaleDeviceId).isEqualTo("node-abc123")
+        assertThat(outputHandler.errors.joinToString("\n") { it.first }).contains("node-abc123").contains("devices:core")
+    }
+
     @Test
     fun `stop does not touch devices when none is recorded`() {
         declareTailscaleUser()

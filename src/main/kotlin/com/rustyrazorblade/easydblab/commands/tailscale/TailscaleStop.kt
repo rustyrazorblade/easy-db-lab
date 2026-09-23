@@ -55,6 +55,8 @@ class TailscaleStop : PicoBaseCommand() {
             tailscaleService.isConnected(host).getOrElse { false }
         if (!isConnected) {
             eventBus.emit(Event.Tailscale.NotRunning(controlHost.alias))
+            // A daemon already down still leaves its device in the tailnet.
+            removeTailscaleDevice()
             return
         }
 
@@ -96,7 +98,8 @@ class TailscaleStop : PicoBaseCommand() {
     /**
      * Removes the control node's device, by the ID `tailscale start` recorded, the same way `down`
      * does. Stopping the daemon leaves the device in the tailnet, and the next `tailscale start`
-     * registers a new one beside it. A device already gone counts as removed; any other failure
+     * registers a new one beside it; a daemon found already down leaves it there too, so this runs
+     * on that path as well. A device already gone counts as removed; any other failure
      * (a missing `devices:core` scope, no OAuth credentials) is reported, makes the command exit
      * non-zero, and leaves the ID recorded so a later `stop` or `down` retries.
      */

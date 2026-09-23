@@ -92,8 +92,8 @@ Both kits set `collision-check: true`, so a second install into the same cluster
 These are the options the architect presented at the design stop. The owner picked the recommended option on every decision; there are no owner overrides.
 
 **D1: OpenSpec handling of the Cilium default.**
-- Chosen: validate live, check off tasks 6.2 and 8.4 of `cilium-native-routing`, archive that change first, then MODIFY the "Pod-network datapath" requirement in `issue-819`.
-- Rejected: edit the unarchived `cilium-native-routing` delta in place and fold issue 819 into that change. It is quicker, but it rewrites a change record that documented a deliberate owner decision (the default stays Flannel).
+- Chosen: validate live, check off tasks 6.2 and 8.4 of `cilium-native-routing`, archive that change first, then MODIFY the "Pod-network datapath" requirement in `issue-819`. Done: `cilium-native-routing` is archived (PR 959), and this change MODIFIES the requirements now in `openspec/specs/networking/spec.md`.
+- Rejected: edit the then-unarchived `cilium-native-routing` delta in place and fold issue 819 into that change. It is quicker, but it rewrites a change record that documented a deliberate owner decision (the default stays Flannel).
 
 **D2: How the kits expose client ports.**
 - Chosen: NodePorts (memcached 31211, Neo4j Bolt 30687, Neo4j HTTP 30474), the house pattern (postgres 30432, clickhouse 30123, ignite3 30300). Reachable on any node IP, independent of hostPort support in the CNI.

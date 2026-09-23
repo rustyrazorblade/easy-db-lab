@@ -61,7 +61,7 @@ expose client ports through a NodePort Service, never `hostPort` or `hostNetwork
 ### Modified Capabilities
 
 - `networking` — the `Pod-network datapath (Cilium ENI native routing, selectable)` requirement
-  (added by the unarchived `cilium-native-routing` change) changes its default from `flannel` to
+  (added by the `cilium-native-routing` change, archived in PR 959) changes its default from `flannel` to
   `cilium`. A new requirement states that `hostPort` works on a Cilium cluster.
 - Kit convention (documentation only, no spec capability): the NodePort-only rule for client ports
   is recorded in `CLAUDE.md` and `docs/development/kits.md`.
@@ -87,4 +87,5 @@ expose client ports through a NodePort Service, never `hostPort` or `hostNetwork
 - `src/main/kotlin/com/rustyrazorblade/easydblab/services/aws/AwsInfrastructureService.kt`,
   `EC2VpcService.kt`, `Constants.kt` — ICMP ingress rule from the VPC CIDR (found in live
   validation; Cilium health reported peers unreachable without it).
-- Ordering: `cilium-native-routing` must be archived before this change.
+- Ordering: `cilium-native-routing` is archived (PR 959). This change MODIFIES the requirements it
+  added, which are now in `openspec/specs/networking/spec.md`.

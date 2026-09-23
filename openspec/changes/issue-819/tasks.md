@@ -92,7 +92,7 @@ All under `src/main/resources/com/rustyrazorblade/easydblab/kits/neo4j/`.
 - [x] 6.2 `init` with no `--cni` (i4i.xlarge, 1 control + 2 db nodes in different AZs) and `up`;
       confirm `platform cni` reports Cilium native routing.
 - [x] 6.3 Cross-AZ pod-to-pod connectivity by pod IP. This closes `cilium-native-routing` tasks 6.2
-      and 8.4 — check them off in `openspec/changes/cilium-native-routing/tasks.md`.
+      and 8.4 — check them off in `openspec/changes/archive/2026-09-22-cilium-native-routing/tasks.md`.
 - [x] 6.4 hostPort check: install and start Flink or Presto; confirm its series appear in
       VictoriaMetrics. If they do not, add `set("cni.chainingMode=portmap")` to the `--set` list in
       `CiliumService` (shared by install and upgrade), assert it in `CiliumServiceTest`, rebuild,

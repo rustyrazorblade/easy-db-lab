@@ -4,8 +4,8 @@
 
 ### networking: Pod-network datapath (Cilium ENI native routing, selectable)
 
-This requirement is **not yet in `openspec/specs/networking/spec.md`**. It is an unarchived ADDED
-delta in `openspec/changes/cilium-native-routing/specs/networking/spec.md`.
+This requirement is in `openspec/specs/networking/spec.md`. The `cilium-native-routing` change
+added it and has been archived (PR 959); this change MODIFIES it there.
 
 **Currently:** "The CNI SHALL be selectable via `--cni=<cilium|flannel>` at init time; the default
 SHALL be `flannel` (K3s's built-in datapath). … (Flipping the default to `cilium` is tracked
@@ -20,17 +20,17 @@ scenarios are kept, with `--cni=cilium` givens widened to "a Cilium cluster".
 
 ### networking: Cilium metrics are collected only on a Cilium cluster
 
-Also from the `cilium-native-routing` ADDED delta. **Currently:** the scenario "Flannel cluster
+Also in `openspec/specs/networking/spec.md`, added by the archived `cilium-native-routing` change.
+**Currently:** the scenario "Flannel cluster
 renders no Cilium scrape jobs" is given as "a cluster provisioned with `--cni=flannel` (the
 default)". **This change:** removes "(the default)", which would otherwise be false, and marks
 Cilium as the default in "Cilium cluster scrapes agent, operator, and Hubble". Behaviour is unchanged.
 
 ## Conflicts with other in-flight changes
 
-- `cilium-native-routing` touches `networking` — **sequential, not incompatible.** It ADDs the two
-  requirements this change MODIFIES. It must be archived before `issue-819`; alphabetical archive
-  order already puts it first. Its tasks 6.2 and 8.4 are closed by this change's live validation
-  (task 6.3). Its `observability` delta is untouched here.
-- `cassandra-local-builds`, `issue-888`, `issue-892`, `issue-932`, `issue-937`, `issue-939` —
-  **no conflict.** None has a `networking`, `memcached-kit`, or `neo4j-kit` delta, and none mentions
-  the CNI, `hostPort`, memcached, or Neo4j.
+None. `issue-819` is the only change under `openspec/changes/`. `cilium-native-routing`, which
+added the two requirements this change MODIFIES, is archived (PR 959) at
+`openspec/changes/archive/2026-09-22-cilium-native-routing/`; its tasks 6.2 and 8.4 were closed by
+this change's live validation (task 6.3). The other changes previously in flight
+(`cassandra-local-builds`, `issue-888`, `issue-892`, `issue-932`, `issue-937`, `issue-939`) were
+archived in the same batch.

@@ -286,10 +286,12 @@ class DownCommandTest : BaseKoinTest() {
             command.autoApprove = true
             command.execute()
 
-            val output = outputHandler.messages.joinToString("\n")
-            assertThat(output).contains("completed with errors")
-            assertThat(output).contains("Failed to delete SG")
-            assertThat(output).contains("Timeout on instance")
+            // Teardown failures are errors, so they go to stderr, not the progress output.
+            val errorOutput = outputHandler.errors.joinToString("\n") { it.first }
+            assertThat(errorOutput).contains("completed with errors")
+            assertThat(errorOutput).contains("Failed to delete SG")
+            assertThat(errorOutput).contains("Timeout on instance")
+            assertThat(outputHandler.messages.joinToString("\n")).doesNotContain("completed with errors")
         }
     }
 

@@ -88,6 +88,22 @@ class Neo4jKitTest : BaseKoinTest() {
             .isEqualTo(false)
     }
 
+    /**
+     * Neo4j accepts TCP on the Bolt port before it can run a query, so a TCP probe let `start`
+     * report success while Cypher still failed. Readiness runs a query over Bolt instead.
+     */
+    @Test
+    fun `the pod is ready only once Bolt answers a Cypher query`() {
+        val probe = neo4jContainer().readinessProbe
+
+        assertThat(probe.tcpSocket).isNull()
+        assertThat(probe.exec.command).containsExactly("cypher-shell", "-a", "bolt://localhost:7687", "RETURN 1")
+        // cypher-shell is a JVM client; the default one-second timeout would fail a healthy server.
+        assertThat(probe.timeoutSeconds).isGreaterThanOrEqualTo(10)
+        // Startup budget: the rollout waits up to 600s, and first start can take minutes.
+        assertThat(probe.periodSeconds * probe.failureThreshold).isGreaterThanOrEqualTo(300)
+    }
+
     @Nested
     inner class Version {
         @Test

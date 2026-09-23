@@ -81,10 +81,18 @@ spec:
               containerPort: 7687
             - name: http
               containerPort: 7474
+          # Neo4j accepts TCP on 7687 before it can serve Cypher, so readiness runs a query over
+          # Bolt (auth is off). cypher-shell is a JVM client, hence the 10s timeout; 30 x 10s
+          # gives first start five minutes.
           readinessProbe:
-            tcpSocket:
-              port: 7687
+            exec:
+              command:
+                - cypher-shell
+                - -a
+                - bolt://localhost:7687
+                - RETURN 1
             periodSeconds: 10
+            timeoutSeconds: 10
             failureThreshold: 30
           volumeMounts:
             - name: data

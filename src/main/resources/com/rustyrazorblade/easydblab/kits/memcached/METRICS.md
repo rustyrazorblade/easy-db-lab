@@ -137,6 +137,33 @@ Every slab metric carries a `slab` label with the slab class ID.
 With extstore on (`--extstore-size`), the exporter also emits `memcached_extstore_*` series for
 the flash tier. They are absent when extstore is off.
 
-The list below is filled in from a live cluster's catalog (`bin/export-workload-metrics memcached`
-with extstore enabled), so that every name matches VictoriaMetrics exactly. Until then, none are
-listed here.
+The list below comes from a live cluster's catalog (`bin/export-workload-metrics memcached` with
+extstore enabled). `memcached_extstore_bytes_used_total` is a gauge despite the `_total` suffix
+(the exporter types it as a counter, so the suffix is added on ingest); read it directly, not with
+`rate()`.
+
+The exporter does not report memcached's `get_extstore` or `miss_from_extstore` stats. Gets served
+from flash are counted by `memcached_extstore_objects_read_total`; the share of get hits served from
+flash is `sum(rate(memcached_extstore_objects_read_total[1m])) / sum(rate(memcached_commands_total{command="get",status="hit"}[1m]))`.
+
+| Metric | Labels | Description |
+|--------|--------|-------------|
+| `memcached_extstore_bytes_limit` | | Bytes of flash allocated to extstore (the `--extstore-size`) |
+| `memcached_extstore_bytes_used_total` | | Bytes holding items in extstore (gauge, despite the `_total` suffix) |
+| `memcached_extstore_bytes_fragmented` | | Bytes in allocated extstore pages that do not hold an item |
+| `memcached_extstore_bytes_written_total` | | Bytes written to extstore |
+| `memcached_extstore_bytes_read_total` | | Bytes read from extstore |
+| `memcached_extstore_bytes_evicted_total` | | Bytes evicted from extstore to free space |
+| `memcached_extstore_objects_used` | | Items stored in extstore |
+| `memcached_extstore_objects_written_total` | | Items written to extstore |
+| `memcached_extstore_objects_read_total` | | Items read from extstore (gets served from flash) |
+| `memcached_extstore_objects_evicted_total` | | Items evicted from extstore to free space |
+| `memcached_extstore_pages_used` | | Extstore pages holding at least one item |
+| `memcached_extstore_pages_free` | | Extstore pages not yet holding any item |
+| `memcached_extstore_pages_allocated_total` | | Times an extstore page was allocated |
+| `memcached_extstore_pages_evicted_total` | | Times an extstore page was evicted |
+| `memcached_extstore_pages_reclaimed_total` | | Times an empty extstore page was freed |
+| `memcached_extstore_compact_rescued_total` | | Items moved to a new page during compaction |
+| `memcached_extstore_compact_skipped_total` | | Items dropped during compaction for inactivity |
+| `memcached_extstore_compact_lost_total` | | Items lost during compaction because they were locked |
+| `memcached_extstore_io_queue_depth` | | Items waiting in the extstore IO queue |

@@ -1319,6 +1319,548 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "type": "row",
+      "title": "Extstore",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 73
+      },
+      "id": 50,
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "Extstore Throughput",
+      "description": "Bytes written to and read from extstore on flash per second. No data when memcached runs without extstore (--extstore-size not set).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 1
+          },
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 74
+      },
+      "id": 51,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by(instance) (rate(memcached_extstore_bytes_written_total{job=\"memcached\", cluster=~\"$cluster.*\", instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "written {{instance}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by(instance) (rate(memcached_extstore_bytes_read_total{job=\"memcached\", cluster=~\"$cluster.*\", instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "read {{instance}}",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Extstore Objects Written and Read",
+      "description": "Items written to and read from extstore per second. No data when extstore is off.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 1
+          },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 74
+      },
+      "id": 52,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by(instance) (rate(memcached_extstore_objects_written_total{job=\"memcached\", cluster=~\"$cluster.*\", instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "written {{instance}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by(instance) (rate(memcached_extstore_objects_read_total{job=\"memcached\", cluster=~\"$cluster.*\", instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "read {{instance}}",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Get Hits: RAM vs Flash, and Misses",
+      "description": "Get hits served from RAM and from extstore, and get misses, per second. Flash hits are items read from extstore; RAM hits are the remaining get hits. No data when extstore is off.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 1
+          },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 82
+      },
+      "id": 53,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(memcached_extstore_objects_read_total{job=\"memcached\", cluster=~\"$cluster.*\", instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "flash hits",
+          "refId": "A"
+        },
+        {
+          "expr": "clamp_min(sum(rate(memcached_commands_total{job=\"memcached\", cluster=~\"$cluster.*\", instance=~\"$instance\", command=\"get\", status=\"hit\"}[$__rate_interval])) - sum(rate(memcached_extstore_objects_read_total{job=\"memcached\", cluster=~\"$cluster.*\", instance=~\"$instance\"}[$__rate_interval])), 0)",
+          "legendFormat": "RAM hits",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(rate(memcached_commands_total{job=\"memcached\", cluster=~\"$cluster.*\", instance=~\"$instance\", command=\"get\", status=\"miss\"}[$__rate_interval])) and on() sum(memcached_extstore_bytes_limit{job=\"memcached\", cluster=~\"$cluster.*\", instance=~\"$instance\"})",
+          "legendFormat": "misses",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Share of Get Hits Served from Flash",
+      "description": "Items read from extstore as a fraction of all get hits. No data when extstore is off.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 1
+          },
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 82
+      },
+      "id": 54,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by(instance) (rate(memcached_extstore_objects_read_total{job=\"memcached\", cluster=~\"$cluster.*\", instance=~\"$instance\"}[$__rate_interval])) / sum by(instance) (rate(memcached_commands_total{job=\"memcached\", cluster=~\"$cluster.*\", instance=~\"$instance\", command=\"get\", status=\"hit\"}[$__rate_interval]))",
+          "legendFormat": "{{instance}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Extstore Bytes Used vs Limit",
+      "description": "Bytes holding items in extstore, bytes in allocated pages not holding an item, and the extstore size. memcached_extstore_bytes_used_total is a gauge despite its suffix. No data when extstore is off.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 1
+          },
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 90
+      },
+      "id": 55,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by(instance) (memcached_extstore_bytes_used_total{job=\"memcached\", cluster=~\"$cluster.*\", instance=~\"$instance\"})",
+          "legendFormat": "used {{instance}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by(instance) (memcached_extstore_bytes_fragmented{job=\"memcached\", cluster=~\"$cluster.*\", instance=~\"$instance\"})",
+          "legendFormat": "fragmented {{instance}}",
+          "refId": "B"
+        },
+        {
+          "expr": "sum by(instance) (memcached_extstore_bytes_limit{job=\"memcached\", cluster=~\"$cluster.*\", instance=~\"$instance\"})",
+          "legendFormat": "limit {{instance}}",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Extstore Pages and Objects",
+      "description": "Extstore pages holding at least one item and pages still free, with the number of items stored in extstore. No data when extstore is off.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 1
+          },
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "objects .*"
+            },
+            "properties": [
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 90
+      },
+      "id": 56,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by(instance) (memcached_extstore_pages_used{job=\"memcached\", cluster=~\"$cluster.*\", instance=~\"$instance\"})",
+          "legendFormat": "pages used {{instance}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by(instance) (memcached_extstore_pages_free{job=\"memcached\", cluster=~\"$cluster.*\", instance=~\"$instance\"})",
+          "legendFormat": "pages free {{instance}}",
+          "refId": "B"
+        },
+        {
+          "expr": "sum by(instance) (memcached_extstore_objects_used{job=\"memcached\", cluster=~\"$cluster.*\", instance=~\"$instance\"})",
+          "legendFormat": "objects {{instance}}",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Extstore Page Activity",
+      "description": "Extstore pages allocated, evicted to free space, and reclaimed once empty, per second. No data when extstore is off.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 1
+          },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 98
+      },
+      "id": 57,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by(instance) (rate(memcached_extstore_pages_allocated_total{job=\"memcached\", cluster=~\"$cluster.*\", instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "allocated {{instance}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by(instance) (rate(memcached_extstore_pages_evicted_total{job=\"memcached\", cluster=~\"$cluster.*\", instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "evicted {{instance}}",
+          "refId": "B"
+        },
+        {
+          "expr": "sum by(instance) (rate(memcached_extstore_pages_reclaimed_total{job=\"memcached\", cluster=~\"$cluster.*\", instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "reclaimed {{instance}}",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Extstore Evictions and Compaction",
+      "description": "Items evicted from extstore to free space, and items rescued, skipped, or lost during compaction, per second. No data when extstore is off.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 1
+          },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 98
+      },
+      "id": 58,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by(instance) (rate(memcached_extstore_objects_evicted_total{job=\"memcached\", cluster=~\"$cluster.*\", instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "evicted {{instance}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by(instance) (rate(memcached_extstore_compact_rescued_total{job=\"memcached\", cluster=~\"$cluster.*\", instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "compaction rescued {{instance}}",
+          "refId": "B"
+        },
+        {
+          "expr": "sum by(instance) (rate(memcached_extstore_compact_skipped_total{job=\"memcached\", cluster=~\"$cluster.*\", instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "compaction skipped {{instance}}",
+          "refId": "C"
+        },
+        {
+          "expr": "sum by(instance) (rate(memcached_extstore_compact_lost_total{job=\"memcached\", cluster=~\"$cluster.*\", instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "compaction lost {{instance}}",
+          "refId": "D"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Extstore Eviction Throughput",
+      "description": "Bytes evicted from extstore to free space per second. No data when extstore is off.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 1
+          },
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 106
+      },
+      "id": 59,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by(instance) (rate(memcached_extstore_bytes_evicted_total{job=\"memcached\", cluster=~\"$cluster.*\", instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "evicted {{instance}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Extstore IO Queue Depth",
+      "description": "Items waiting in the extstore IO queue. No data when extstore is off.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 1
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 106
+      },
+      "id": 60,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by(instance) (memcached_extstore_io_queue_depth{job=\"memcached\", cluster=~\"$cluster.*\", instance=~\"$instance\"})",
+          "legendFormat": "{{instance}}",
+          "refId": "A"
+        }
+      ]
     }
   ]
 }

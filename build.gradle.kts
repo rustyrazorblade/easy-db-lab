@@ -676,15 +676,10 @@ tasks.distTar {
     archiveExtension.set("tar.gz")
 }
 
+// The OTel agent reaches install/easy-db-lab/agents through the `main` distribution's contents
+// above (`from(copyOtelAgent) { into("agents") }`), which installDist syncs.
 tasks.named("installDist") {
     dependsOn(tasks.named("shadowJar"), copyOtelAgent)
-    doLast {
-        // Copy agent to installDist location
-        copy {
-            from("${project.layout.buildDirectory.get()}/otel-agent")
-            into(layout.buildDirectory.dir("install/easy-db-lab/agents"))
-        }
-    }
 }
 
 tasks.assemble {

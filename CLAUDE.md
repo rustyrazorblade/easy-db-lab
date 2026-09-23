@@ -260,6 +260,11 @@ The project uses Gradle configuration cache for faster builds, enabled via `grad
 - `org.gradle.configuration-cache=true` - Enables configuration caching
 - `org.gradle.caching=true` - Enables build caching
 
+A build that uses it ends with `Configuration cache entry stored.` or `... reused.` A task action
+must not reach `project` (e.g. the script-level `copy {}` in a `doLast`) — Gradle rejects the
+cache entry. The Jib plugin's `jib`/`jibDockerBuild` tasks declare themselves incompatible, so a
+build that runs them discards the entry and runs uncached; every other task caches.
+
 **When to clear the cache**:
 - After modifying `.editorconfig` or ktlint rules
 - After changing Gradle plugins or build scripts

@@ -15,8 +15,6 @@ import org.junit.jupiter.api.parallel.ResourceLock
 import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.mock
 import java.io.File
-import java.net.InetAddress
-import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.time.Duration
 import java.time.Instant
@@ -24,9 +22,9 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Integration-tier tests for [ProcessSocksProxyService] that genuinely require real socket I/O: the
- * reuse path (which connects to a real listening port to prove the tunnel is alive), the
- * port-fallback bind, and the zombie-port connect-refused. Every port here is OS-assigned via
- * `ServerSocket(0)` — no test binds a hardcoded port, so two of these running on a busy CI runner
+ * reuse path (which connects to a real listening port to prove the tunnel is alive) and the
+ * zombie-port connect-refused. The port-fallback bind is covered by `LoopbackPortSelectorTest`.
+ * Every port here is OS-assigned via `ServerSocket(0)` — no test binds a hardcoded port, so two of these running on a busy CI runner
  * can never collide on a fixed port (issue #750).
  *
  * The logic-only cases that used to live here (fail-fast on a dead ssh, which alias ssh dials,
@@ -150,40 +148,6 @@ class ProcessSocksProxyServiceTest {
             assertThat(System.getProperty(Constants.Proxy.PORT_PROPERTY)).isEqualTo("$port")
             // ...but the standard global socksProxyHost is NOT set, so java.net (and the AWS SDK) stay direct.
             assertThat(System.getProperty("socksProxyHost")).isNull()
-        }
-    }
-
-    @Test
-    fun `selectPort falls back to an OS-assigned port when the preferred port is bound`() {
-        ServerSocket(0).use { occupied ->
-            val occupiedPort = occupied.localPort
-
-            // With the preferred port already bound, selectPort's loopback probe must detect the
-            // conflict and return a different, OS-assigned port rather than the occupied one.
-            val selected = service().selectPort(preferred = occupiedPort)
-
-            assertThat(selected).isNotEqualTo(occupiedPort)
-            assertThat(selected).isGreaterThan(0)
-        }
-    }
-
-    @Test
-    fun `selectPort falls back when the preferred port is bound only on the loopback interface (ssh -D style)`() {
-        // Regression: ssh -D binds 127.0.0.1/::1 with SO_REUSEADDR, not the wildcard address. A
-        // wildcard probe with SO_REUSEADDR (the old behavior) coexists with that listener and wrongly
-        // reports the port as free, so the second datacenter kept retrying the busy port and ssh
-        // failed with "bind [::1]:<port>: Address already in use". selectPort must probe loopback and
-        // fall back to a different port.
-        val loopback = ServerSocket()
-        loopback.reuseAddress = true
-        loopback.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0))
-        loopback.use {
-            val occupiedPort = it.localPort
-
-            val selected = service().selectPort(preferred = occupiedPort)
-
-            assertThat(selected).isNotEqualTo(occupiedPort)
-            assertThat(selected).isGreaterThan(0)
         }
     }
 

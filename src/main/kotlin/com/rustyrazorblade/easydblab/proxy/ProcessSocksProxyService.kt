@@ -7,10 +7,7 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
-import java.io.IOException
-import java.net.InetAddress
 import java.net.InetSocketAddress
-import java.net.ServerSocket
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.locks.ReentrantLock
@@ -65,6 +62,7 @@ class ProcessSocksProxyService(
     private val reachabilityProbe: TunnelReachabilityProbe,
     private val verifyDelay: Duration = Duration.ofMillis(VERIFY_DELAY_MS),
     private val processLauncher: SshProcessLauncher = DefaultSshProcessLauncher,
+    private val portSelector: LocalPortSelector = LoopbackPortSelector(),
 ) : SocksProxyService {
     companion object {
         private const val VERIFY_RETRIES = 10
@@ -177,7 +175,7 @@ class ProcessSocksProxyService(
         // republished by applySystemProperties() only after the proxy is verified.
         System.clearProperty(Constants.Proxy.PORT_PROPERTY)
 
-        val port = selectPort()
+        val port = portSelector.select()
         log.info { "Starting SOCKS5 proxy to ${gatewayHost.alias} (${gatewayHost.privateIp}) on port $port" }
 
         // ProcessBuilder's redirect will NOT create parent dirs; without this, ssh's stderr is
@@ -251,56 +249,6 @@ class ProcessSocksProxyService(
             sshConfigPath,
             alias,
         )
-
-    /**
-     * Selects the local port for the SOCKS5 listener: [preferred] if it is free, otherwise an
-     * OS-assigned ephemeral port.
-     *
-     * Internal (not private) with a [preferred] parameter purely so the fallback branch can be
-     * driven deterministically in a test by passing a port that is known to be bound, instead of
-     * having to bind the hardcoded default port (a fixed-port collision risk on CI — issue #750).
-     */
-    internal fun selectPort(preferred: Int = Constants.Proxy.DEFAULT_SOCKS5_PORT): Int =
-        if (isLoopbackPortFree(preferred)) {
-            preferred
-        } else {
-            log.debug { "Port $preferred is in use on the loopback interface, selecting an available port" }
-            ServerSocket(0).use { it.localPort }
-        }
-
-    /**
-     * Probes whether [port] is free the way `ssh -D` binds it: on the loopback interface, not the
-     * wildcard address.
-     *
-     * A plain `ServerSocket(port)` binds the wildcard address with `SO_REUSEADDR` enabled (Java's
-     * default for a server socket). Under `SO_REUSEADDR`, a wildcard bind coexists with an existing
-     * loopback-scoped listener, so the probe reports the port as free even though `ssh -D` — which
-     * binds `127.0.0.1` and `::1` — cannot use it. That made the fallback dead code against this
-     * tool's own proxy: a second datacenter kept retrying the busy port and ssh failed with
-     * "bind [::1]:<port>: Address already in use".
-     *
-     * This probe instead binds each loopback address with `SO_REUSEADDR` disabled, matching ssh. The
-     * port is free only if every loopback address binds cleanly; a live loopback listener triggers
-     * the ephemeral fallback.
-     */
-    private fun isLoopbackPortFree(port: Int): Boolean =
-        loopbackProbeAddresses().all { address ->
-            try {
-                ServerSocket().use { socket ->
-                    socket.reuseAddress = false
-                    socket.bind(InetSocketAddress(address, port))
-                    true
-                }
-            } catch (_: IOException) {
-                false
-            }
-        }
-
-    /**
-     * The loopback addresses `ssh -D` binds: the IPv4 and IPv6 loopback. Both are resolved from their
-     * literal forms, so neither depends on name resolution.
-     */
-    private fun loopbackProbeAddresses(): List<InetAddress> = listOf(InetAddress.getByName("127.0.0.1"), InetAddress.getByName("::1"))
 
     private fun applySystemProperties(port: Int) {
         // Publish ONLY the port under our private property. Never set socksProxyHost/socksProxyPort:

@@ -34,8 +34,8 @@ import java.time.Instant
  * `ssh` against a fixed loopback port, which was non-deterministic across host network stacks
  * (issue #750). Driving the service's decisions through the injected process seam proves the same
  * behavioral contracts with no timing dependence. The tests that genuinely need a real listening
- * socket (proxy reuse, the port-fallback bind, the zombie-port connect) remain in the integration
- * tier in `ProcessSocksProxyServiceTest`.
+ * socket (proxy reuse, the zombie-port connect) remain in the integration tier in
+ * `ProcessSocksProxyServiceTest`; the port-fallback bind is in `LoopbackPortSelectorTest`.
  */
 @ResourceLock(Constants.Proxy.PORT_PROPERTY)
 class ProcessSocksProxyServiceUnitTest {

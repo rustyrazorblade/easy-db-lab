@@ -14,8 +14,8 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if ! command -v yq >/dev/null 2>&1; then
-  echo "SKIP - yq is not installed; the bake loop's version resolution needs it"
-  exit 0
+  echo "FAIL - yq is not installed; the bake loop's version resolution needs it. Install mikefarah yq (brew install yq) and re-run." >&2
+  exit 1
 fi
 
 FIXTURE_DIR="$(mktemp -d)"

@@ -228,6 +228,9 @@ data class ClusterState(
     var backupHashes: Map<String, String> = emptyMap(),
     // Tailscale auth key ID for cleanup on teardown
     var tailscaleAuthKeyId: String? = null,
+    // Tailnet node ID of the control node, recorded by `tailscale start` so `down` deletes exactly
+    // this cluster's device (every cluster's control node registers under the same hostname)
+    var tailscaleDeviceId: String? = null,
     // Counter for stress job naming and port assignment
     var stressJobCounter: Int = 0,
     // Whether Tailscale was active on the local machine at init time.

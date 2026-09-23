@@ -627,6 +627,12 @@ object Constants {
     object Tailscale {
         const val OAUTH_TOKEN_ENDPOINT = "https://api.tailscale.com/api/v2/oauth/token"
         const val AUTH_KEYS_ENDPOINT = "https://api.tailscale.com/api/v2/tailnet/-/keys"
+
+        /** Device endpoint; `DELETE {DEVICE_ENDPOINT}/{nodeId}` removes a device from the tailnet. */
+        const val DEVICE_ENDPOINT = "https://api.tailscale.com/api/v2/device"
+
+        /** OAuth scope a client needs to delete devices, named in the error when it lacks it. */
+        const val DEVICES_SCOPE = "devices:core"
         const val CONNECTION_TIMEOUT_SECONDS = 30L
         const val READ_TIMEOUT_SECONDS = 30L
         const val AUTH_KEY_EXPIRY_SECONDS = 604800

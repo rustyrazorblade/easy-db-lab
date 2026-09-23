@@ -2951,6 +2951,15 @@ sealed interface Event {
             override fun toDisplayString(): String = "Deleted Tailscale auth key: $keyId"
         }
 
+        /** `down` removed the control node's device from the tailnet. */
+        @Serializable
+        @SerialName("Tailscale.DeviceDeleted")
+        data class DeviceDeleted(
+            val deviceId: String,
+        ) : Tailscale {
+            override fun toDisplayString(): String = "Removed control node device $deviceId from the tailnet"
+        }
+
         @Serializable
         @SerialName("Tailscale.StoppedSuccessfully")
         data object StoppedSuccessfully : Tailscale {

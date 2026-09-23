@@ -141,6 +141,12 @@ class TailscaleStart : PicoBaseCommand() {
             clusterStateManager.save(clusterState)
 
             tailscaleService.startTailscale(host, authKeyResult.key, controlHost.alias, cidr).getOrThrow()
+
+            // Record the device's node ID so `down` removes exactly this cluster's device from
+            // the tailnet; the hostname alone is shared by every cluster's control node.
+            clusterState.tailscaleDeviceId = tailscaleService.getDeviceId(host).getOrThrow()
+            clusterStateManager.save(clusterState)
+
             showSuccessMessage(controlHost.alias, cidr)
             showCurrentStatus(host)
         } catch (e: TailscaleApiException) {

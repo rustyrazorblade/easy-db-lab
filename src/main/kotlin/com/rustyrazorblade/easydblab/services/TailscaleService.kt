@@ -80,6 +80,27 @@ interface TailscaleService : AutoCloseable {
     )
 
     /**
+     * Deletes a device from the tailnet, identified by the node ID [getDeviceId] returned for it.
+     *
+     * Deleting a device that is already gone succeeds, so a retried teardown is harmless.
+     *
+     * @throws TailscaleApiException if the OAuth client lacks permission to delete devices, or
+     *   the API request otherwise fails
+     */
+    fun deleteDevice(
+        clientId: String,
+        clientSecret: String,
+        deviceId: String,
+    )
+
+    /**
+     * Reads the tailnet node ID that [host] reports for itself (`Self.ID` of
+     * `tailscale status --json`). The ID is what [deleteDevice] takes; the hostname is not
+     * unique across clusters, since every cluster's control node registers as `control0`.
+     */
+    fun getDeviceId(host: Host): Result<String>
+
+    /**
      * Starts Tailscale on the specified host and authenticates with the provided auth key.
      *
      * This method:
@@ -133,18 +154,20 @@ interface TailscaleService : AutoCloseable {
  * @param daemonStartupDelay Pause after starting `tailscaled` before authenticating, giving the
  *   daemon a moment to initialize. Defaults to [Constants.Tailscale.DAEMON_STARTUP_DELAY_MS] so
  *   production timing is unchanged; tests inject [Duration.ZERO] to run instantly.
+ * @param httpClient Client for the Tailscale API. Tests inject one whose interceptor stands in
+ *   for the API.
  */
 class DefaultTailscaleService(
     private val remoteOps: RemoteOperationsService,
     private val eventBus: EventBus,
     private val daemonStartupDelay: Duration = Duration.ofMillis(Constants.Tailscale.DAEMON_STARTUP_DELAY_MS),
-) : TailscaleService {
     private val httpClient: OkHttpClient =
         OkHttpClient
             .Builder()
             .connectTimeout(Constants.Tailscale.CONNECTION_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .readTimeout(Constants.Tailscale.READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            .build()
+            .build(),
+) : TailscaleService {
 
     private val objectMapper: ObjectMapper = jacksonObjectMapper()
 
@@ -188,6 +211,54 @@ class DefaultTailscaleService(
 
         log.info { "Tailscale auth key $keyId deleted successfully" }
     }
+
+    override fun deleteDevice(
+        clientId: String,
+        clientSecret: String,
+        deviceId: String,
+    ) {
+        log.info { "Deleting Tailscale device: $deviceId" }
+
+        val accessToken = getAccessToken(clientId, clientSecret)
+
+        val request =
+            Request
+                .Builder()
+                .url("${Constants.Tailscale.DEVICE_ENDPOINT}/$deviceId")
+                .header("Authorization", "Bearer $accessToken")
+                .delete()
+                .build()
+
+        httpClient.newCall(request).execute().use { response ->
+            when {
+                response.isSuccessful -> log.info { "Tailscale device $deviceId deleted" }
+                response.code == HTTP_NOT_FOUND -> log.info { "Tailscale device $deviceId is already gone" }
+                response.code == HTTP_FORBIDDEN ->
+                    throw TailscaleApiException(
+                        "The Tailscale OAuth client is not allowed to delete device $deviceId " +
+                            "(HTTP 403: ${response.body.string()}). Grant it the '${Constants.Tailscale.DEVICES_SCOPE}' " +
+                            "write scope at https://login.tailscale.com/admin/settings/oauth, or remove the device " +
+                            "at https://login.tailscale.com/admin/machines.",
+                    )
+                else ->
+                    throw TailscaleApiException(
+                        "Failed to delete Tailscale device $deviceId: ${response.code} - ${response.body.string()}",
+                    )
+            }
+        }
+    }
+
+    override fun getDeviceId(host: Host): Result<String> =
+        runCatching {
+            val response = remoteOps.executeRemotely(host, "sudo tailscale status --json", output = false)
+            val status: Map<String, Any?> = objectMapper.readValue(response.text)
+            val self = status["Self"] as? Map<*, *>
+            self?.get("ID") as? String
+                ?: throw TailscaleApiException(
+                    "Tailscale on ${host.alias} reported no device ID of its own " +
+                        "(BackendState ${status["BackendState"]}); it has not joined the tailnet.",
+                )
+        }
 
     /**
      * Exchanges OAuth client credentials for an access token.
@@ -374,6 +445,9 @@ class DefaultTailscaleService(
         }
 
     private companion object {
+        const val HTTP_FORBIDDEN = 403
+        const val HTTP_NOT_FOUND = 404
+
         /** Writes the forwarding sysctl drop-in (overwriting, so reruns are idempotent) and loads it. */
         val ENABLE_IP_FORWARDING =
             "printf 'net.ipv4.ip_forward = 1\\nnet.ipv6.conf.all.forwarding = 1\\n' | " +

@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
+import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
@@ -65,6 +66,7 @@ class TailscaleStartTest : BaseKoinTest() {
 
         whenever(mockClusterStateManager.load()).thenReturn(testClusterState)
         whenever(mockTailscaleService.isConnected(any())).thenReturn(Result.success(false))
+        whenever(mockTailscaleService.getDeviceId(any())).thenReturn(Result.success("nDefaultCNTRL"))
     }
 
     @Nested
@@ -182,7 +184,25 @@ class TailscaleStartTest : BaseKoinTest() {
             command.execute()
 
             assertThat(testClusterState.tailscaleAuthKeyId).isEqualTo("key-id-456")
-            verify(mockClusterStateManager).save(testClusterState)
+            verify(mockClusterStateManager, atLeastOnce()).save(testClusterState)
+        }
+
+        @Test
+        fun `execute records the control node's tailnet device ID so down can delete it`() {
+            whenever(mockTailscaleService.generateAuthKey(any(), any(), any()))
+                .thenReturn(TailscaleAuthKey(key = "auth-key-123", id = "key-id-456"))
+            whenever(mockTailscaleService.startTailscale(any(), any(), any(), any()))
+                .thenReturn(Result.success(Unit))
+            whenever(mockTailscaleService.getDeviceId(any())).thenReturn(Result.success("nControl0CNTRL"))
+            whenever(mockTailscaleService.getStatus(any()))
+                .thenReturn(Result.success("Connected"))
+
+            val command = TailscaleStart()
+            command.clientId = "client-id"
+            command.clientSecret = "client-secret"
+            command.execute()
+
+            assertThat(testClusterState.tailscaleDeviceId).isEqualTo("nControl0CNTRL")
         }
     }
 

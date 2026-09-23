@@ -55,7 +55,7 @@ The `autoApprovers` section automatically approves subnet routes, so you don't n
 2. Click **Generate OAuth Client**
 3. Configure:
    - **Description**: easy-db-lab
-   - **Scopes**: Select **Devices: Write**
+   - **Scopes**: Select **Devices: Write** (on the newer, granular scope list: **Auth Keys** write, to create the control node's key, and **Devices › Core** write, `devices:core`, so `down` can remove the control node's device)
    - **Tags**: Add `tag:easy-db-lab`
 4. Click **Generate** and save the **Client ID** and **Client Secret**
 
@@ -91,6 +91,8 @@ kubectl get pods
 # Web UIs work directly in your browser
 # http://10.0.1.50:3000 (Grafana)
 ```
+
+`easy-db-lab down` removes the cluster's control node from the tailnet, using the device ID recorded when Tailscale started on it. If the OAuth client is not allowed to delete devices, or no credentials are configured, `down` exits non-zero and says so; the device ID stays in the cluster state, so running `down` again once the scope is granted removes it.
 
 ### Manual Control
 

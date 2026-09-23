@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.commands.tailscale
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
@@ -27,6 +28,14 @@ class TailscaleStop : PicoBaseCommand() {
     private val user: User by inject()
     private val log = KotlinLogging.logger {}
 
+    /** Non-zero when the control node's device could not be removed, after an error event said why. */
+    private var exitCode = 0
+
+    override fun call(): Int {
+        val lifecycleExit = super.call()
+        return if (lifecycleExit != 0) lifecycleExit else exitCode
+    }
+
     override fun execute() {
         // Get control host
         val controlHost = clusterState.getControlHost()
@@ -51,6 +60,7 @@ class TailscaleStop : PicoBaseCommand() {
             .stopTailscale(host)
             .onSuccess {
                 deleteTailscaleAuthKey()
+                removeTailscaleDevice()
                 eventBus.emit(Event.Tailscale.StoppedSuccessfully)
             }.onFailure { error ->
                 eventBus.emit(Event.Tailscale.StopFailed(error.message ?: "unknown error"))
@@ -76,6 +86,44 @@ class TailscaleStop : PicoBaseCommand() {
         }
 
         clusterState.updateTailscaleAuthKeyId(null)
+        clusterStateManager.save(clusterState)
+    }
+
+    /**
+     * Removes the control node's device, by the ID `tailscale start` recorded, the same way `down`
+     * does. Stopping the daemon leaves the device in the tailnet, and the next `tailscale start`
+     * registers a new one beside it. A device already gone counts as removed; any other failure
+     * (a missing `devices:core` scope, no OAuth credentials) is reported, makes the command exit
+     * non-zero, and leaves the ID recorded so a later `stop` or `down` retries.
+     */
+    @Suppress("TooGenericExceptionCaught")
+    private fun removeTailscaleDevice() {
+        val deviceId = clusterState.tailscaleDeviceId
+        if (deviceId.isNullOrBlank()) return
+
+        val clientId = user.tailscaleClientId
+        val clientSecret = user.tailscaleClientSecret
+        val failure =
+            if (clientId.isBlank() || clientSecret.isBlank()) {
+                "no Tailscale OAuth credentials are configured. Configure them with 'easy-db-lab profile setup' " +
+                    "and run 'easy-db-lab tailscale stop' again, or remove the device at " +
+                    "https://login.tailscale.com/admin/machines."
+            } else {
+                try {
+                    tailscaleService.deleteDevice(clientId, clientSecret, deviceId)
+                    null
+                } catch (e: Exception) {
+                    e.message ?: e::class.simpleName.orEmpty()
+                }
+            }
+
+        if (failure != null) {
+            eventBus.emit(Event.Tailscale.DeviceNotRemoved(deviceId, failure))
+            exitCode = Constants.ExitCodes.ERROR
+            return
+        }
+        eventBus.emit(Event.Tailscale.DeviceDeleted(deviceId))
+        clusterState.tailscaleDeviceId = null
         clusterStateManager.save(clusterState)
     }
 }

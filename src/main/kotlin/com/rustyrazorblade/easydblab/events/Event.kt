@@ -2951,13 +2951,29 @@ sealed interface Event {
             override fun toDisplayString(): String = "Deleted Tailscale auth key: $keyId"
         }
 
-        /** `down` removed the control node's device from the tailnet. */
+        /** `down` or `tailscale stop` removed the control node's device from the tailnet. */
         @Serializable
         @SerialName("Tailscale.DeviceDeleted")
         data class DeviceDeleted(
             val deviceId: String,
         ) : Tailscale {
             override fun toDisplayString(): String = "Removed control node device $deviceId from the tailnet"
+        }
+
+        /**
+         * `tailscale stop` could not remove the control node's device from the tailnet. The device
+         * stays recorded so the next `tailscale stop` or `down` retries.
+         */
+        @Serializable
+        @SerialName("Tailscale.DeviceNotRemoved")
+        data class DeviceNotRemoved(
+            val deviceId: String,
+            val reason: String,
+        ) : Tailscale {
+            override fun toDisplayString(): String =
+                "Tailscale device $deviceId (the control node) was not removed from the tailnet: $reason"
+
+            override fun isError(): Boolean = true
         }
 
         @Serializable

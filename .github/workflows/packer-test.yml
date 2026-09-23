@@ -113,6 +113,29 @@ jobs:
           cd packer
           ./test-script.sh ${{ matrix.script }}
 
+  # The same check as `./gradlew testAxonSudoers`: the baked /etc/sudoers.d/axonops must pass the
+  # image's own visudo (sudo-rs on Ubuntu 26.04 rejects wildcard arguments). It needs the packer
+  # test image, so it is not in pr-checks' Docker-free `testScripts`; this was its only CI gate gap.
+  test-axon-sudoers:
+    name: Test axonops sudoers rules
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build test image
+        run: |
+          cd packer
+          docker build -t easy-db-lab-packer-test .
+
+      - name: Validate sudoers rules with the image's visudo
+        run: |
+          docker run --rm -v "$PWD/packer:/packer:ro" --user ubuntu \
+            easy-db-lab-packer-test bash /packer/cassandra/install/install_axon.test.sh
+
   test-changed-scripts:
     name: Test Changed Scripts
     runs-on: ubuntu-latest

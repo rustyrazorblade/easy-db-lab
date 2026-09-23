@@ -37,13 +37,11 @@ jobs:
         uses: actions/checkout@v7
 
       # Not `snap install yq`: the snap is strictly confined and gets a private /tmp, so it
-      # cannot read the mktemp -d fixtures these tests build. Pinned to the version the AMI
-      # bakes (packer/base/install/install_yq.sh) so CI exercises the same yq the nodes run.
+      # cannot read the mktemp -d fixtures these tests build. Installed by the AMI's own
+      # installer (packer/base/install/install_yq.sh, the only place the version is written down)
+      # so CI exercises the same yq the nodes run.
       - name: Install yq
-        run: |
-          curl -fsSL --retry 3 \
-            https://github.com/mikefarah/yq/releases/download/v4.41.1/yq_linux_amd64 -o /tmp/yq
-          sudo install -m 0755 /tmp/yq /usr/local/bin/yq
+        run: ARCH=amd64 bash packer/base/install/install_yq.sh
 
       - name: Test install-cassandra-version
         run: bash packer/cassandra/bin/install-cassandra-version.test.sh
@@ -64,12 +62,11 @@ jobs:
       # The reconciler parses JSON with mikefarah's Go yq, which is what the node AMI carries. The
       # python `yq` wrapper answers to the same name and takes different flags, so the version is
       # pinned and verified rather than assumed — a wrong yq would fail every test for a reason
-      # that has nothing to do with the change under test.
+      # that has nothing to do with the change under test. The AMI's own installer
+      # (packer/base/install/install_yq.sh, the only place the version is written down) does the
+      # install, so CI runs the yq version the nodes run.
       - name: Install mikefarah yq
-        run: |
-          sudo curl -fsSL -o /usr/local/bin/yq \
-            https://github.com/mikefarah/yq/releases/download/v4.45.1/yq_linux_amd64
-          sudo chmod +x /usr/local/bin/yq
+        run: ARCH=amd64 bash packer/base/install/install_yq.sh
 
       - name: Verify node tooling
         run: |

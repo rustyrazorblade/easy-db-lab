@@ -33,12 +33,12 @@ jobs:
 
       # The shell-script tests (`testScripts`) parse YAML/JSON with mikefarah's Go yq, which is
       # what the node AMI carries. The python `yq` wrapper answers to the same name and takes
-      # different flags, so the version is pinned and verified rather than assumed.
+      # different flags, so the version is pinned and verified rather than assumed. The AMI's own
+      # installer does the install, so CI runs the yq version the nodes run
+      # (packer/base/install/install_yq.sh is the only place that version is written down).
       - name: Install mikefarah yq
         run: |
-          sudo curl -fsSL --retry 3 -o /usr/local/bin/yq \
-            https://github.com/mikefarah/yq/releases/download/v4.45.1/yq_linux_amd64
-          sudo chmod +x /usr/local/bin/yq
+          ARCH=amd64 bash packer/base/install/install_yq.sh
           yq --version | grep -q 'mikefarah' || {
             echo "yq on PATH is not mikefarah's Go implementation; the script tests need that one."
             exit 1

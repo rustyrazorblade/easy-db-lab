@@ -49,7 +49,8 @@ CI is a real test gate. Two jobs run in parallel on every pull request and every
 
 - `test` — `./gradlew test integrationTest testScripts koverXmlReport` on JDK 21. GitHub's
   ubuntu runners ship a running Docker daemon, so the integration tier runs for real.
-  `testScripts` is every Docker-free shell-script test (bash, jq, pinned mikefarah yq);
+  `testScripts` is every Docker-free shell-script test (bash, jq, and mikefarah yq at the
+  AMI's version, installed by `packer/base/install/install_yq.sh`);
   `check` depends on it too. Docker-backed script tests (`testPacker`, `testAxonSudoers`,
   `testFluentBitFilter`) are not in it.
 - `quality` — `./gradlew ktlintCheck` then `./gradlew detekt` on JDK 21.

@@ -6,6 +6,7 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.koin.test.get
 import org.mockito.kotlin.any
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.never
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
@@ -220,6 +221,49 @@ class KitRunnerCommandTypedPhaseTest : KitRunnerCommandTestBase() {
         )
         command("mydb", "start").call()
         verify(mockClusterStateManager).addRunningWorkload("mydb")
+    }
+
+    /**
+     * Uninstalling a kit that is still running must not leave its metrics ConfigMap (labelled
+     * `easydblab.com/kit`, so the kit's own label-scoped deletes miss it), its OTel scrape job,
+     * or its `runningKits` entry behind: uninstall releases it the way `stop` does.
+     */
+    @Test
+    fun `uninstalling a running kit deregisters its metrics and forgets it is running`() {
+        clusterState.runningKits = setOf("mydb")
+        writeKitYaml(
+            "mydb",
+            """
+            name: mydb
+            uninstall:
+              - type: shell
+                script: echo uninstall
+            """.trimIndent(),
+        )
+
+        assertThat(command("mydb", "uninstall").call()).isEqualTo(0)
+
+        verify(mockMetricsRegistryService).deregister(any(), eq("mydb"))
+        verify(mockClusterStateManager).removeRunningWorkload("mydb")
+        verify(mockKitHookExecutor).firePostKitStop("mydb")
+    }
+
+    @Test
+    fun `uninstalling a kit that is not running leaves the metrics and running kits alone`() {
+        writeKitYaml(
+            "mydb",
+            """
+            name: mydb
+            uninstall:
+              - type: shell
+                script: echo uninstall
+            """.trimIndent(),
+        )
+
+        assertThat(command("mydb", "uninstall").call()).isEqualTo(0)
+
+        verify(mockMetricsRegistryService, never()).deregister(any(), any())
+        verify(mockClusterStateManager, never()).removeRunningWorkload(any())
     }
 
     @Test

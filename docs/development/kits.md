@@ -81,8 +81,8 @@ restore:  []   # steps to run on `easy-db-lab <name> restore <backup-name>`
 |-------|---------|----------------------------|
 | `install` | `easy-db-lab kit install <name>` | Kit directory written to working dir |
 | `start` | `easy-db-lab <name> start` | Metrics registered, dashboards installed, hooks fired |
-| `stop` | `easy-db-lab <name> stop` | Metrics deregistered, hooks fired |
-| `uninstall` | `easy-db-lab <name> uninstall` | Kit directory deleted from working dir |
+| `stop` | `easy-db-lab <name> stop` | Waits for the runtime's pods to go, metrics deregistered, kit dropped from `runningKits`, hooks fired |
+| `uninstall` | `easy-db-lab <name> uninstall` or `kit uninstall <name>` | Kit directory deleted from working dir; a kit still running is also released as `stop` releases it (metrics deregistered, dropped from `runningKits`, hooks fired) |
 | `backup` | `easy-db-lab <name> backup <name>` | `BACKUP_NAME` env var set to first argument |
 | `restore` | `easy-db-lab <name> restore <name>` | `BACKUP_NAME` env var set to first argument |
 

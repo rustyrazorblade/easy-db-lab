@@ -65,7 +65,7 @@ abstract class KitRunnerCommandTestBase : BaseKoinTest() {
             instanceId = "i-db0",
         )
 
-    private val clusterState =
+    protected val clusterState =
         ClusterState(
             name = "test-cluster",
             versions = mutableMapOf(),

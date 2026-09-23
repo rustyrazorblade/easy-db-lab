@@ -328,14 +328,25 @@ class KitRunnerCommand(
                 installDashboards(config.dashboards)
                 reportEndpoints(config)
             }
-            Constants.Kit.PHASE_STOP -> {
-                clusterStateManager.removeRunningWorkload(kitName)
-                kitHookExecutor.firePostKitStop(kitName)
-                metricsRegistryService
-                    .deregister(controlHost = controlHost, kitName = kitName)
-                    .onFailure { e -> log.warn(e) { "Failed to deregister metrics for $kitName" } }
-            }
+            Constants.Kit.PHASE_STOP -> releaseWorkload(controlHost)
+            // Uninstalling a kit that is still running removes it just as `stop` would. Its
+            // metrics ConfigMaps carry `easydblab.com/kit`, which the kit's own label-scoped
+            // deletes (`easydblab/kit`) do not match, so without this they, their OTel scrape
+            // jobs and the runningKits entry would outlive the kit.
+            Constants.Kit.PHASE_UNINSTALL -> if (kitName in clusterState.runningKits) releaseWorkload(controlHost)
         }
+    }
+
+    /**
+     * Records that [kitName] no longer runs: drops it from `runningKits`, fires the other running
+     * kits' post-stop hooks, and deregisters its metrics, which also resyncs the OTel collector.
+     */
+    private fun releaseWorkload(controlHost: ClusterHost) {
+        clusterStateManager.removeRunningWorkload(kitName)
+        kitHookExecutor.firePostKitStop(kitName)
+        metricsRegistryService
+            .deregister(controlHost = controlHost, kitName = kitName)
+            .onFailure { e -> log.warn(e) { "Failed to deregister metrics for $kitName" } }
     }
 
     /**

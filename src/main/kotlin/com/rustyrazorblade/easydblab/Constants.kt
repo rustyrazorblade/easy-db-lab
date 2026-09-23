@@ -610,6 +610,17 @@ object Constants {
          * surface the real ssh error (e.g. a changed host key or refused connection).
          */
         const val SOCKS5_PROXY_LOG_FILE = "socks5-proxy.log"
+
+        /**
+         * How many times a SOCKS5 proxy start launches `ssh -D`, each on a freshly selected port,
+         * when the previous attempt died because its local port was already bound. Two workspaces
+         * starting a proxy at the same moment can both find the same port free; the loser's ssh
+         * exits with "Address already in use" and the next attempt picks another port.
+         */
+        const val PORT_BIND_MAX_ATTEMPTS = 3
+
+        /** Pause between those attempts, long enough for the winning ssh to hold its port. */
+        const val PORT_BIND_RETRY_INTERVAL_MS = 100L
     }
 
     // Tailscale VPN configuration

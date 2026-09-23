@@ -11,6 +11,7 @@ import software.amazon.awssdk.services.iam.model.EntityAlreadyExistsException
 import software.amazon.awssdk.services.iam.model.IamException
 import software.amazon.awssdk.services.s3.model.S3Exception
 import java.io.IOException
+import java.net.BindException
 import java.time.Duration
 
 /**
@@ -258,6 +259,28 @@ object RetryUtil {
             .maxAttempts(Constants.Tailscale.REACHABILITY_MAX_ATTEMPTS)
             .intervalFunction { _ -> retryInterval.toMillis() }
             .retryOnResult { reachable -> !reachable }
+            .build()
+
+    /**
+     * Creates retry configuration for starting a local listener whose port can be taken between
+     * choosing it and binding it — the SOCKS5 proxy's `ssh -D`, when two workspaces start a proxy
+     * at the same moment.
+     *
+     * Retries only on [BindException]: the caller selects a new port on every attempt, so a
+     * collision is resolved by the next one. Any other failure is not a port collision and is not
+     * retried.
+     *
+     * Fixed interval: [Constants.Proxy.PORT_BIND_RETRY_INTERVAL_MS] between attempts, up to
+     * [Constants.Proxy.PORT_BIND_MAX_ATTEMPTS] attempts
+     *
+     * @return RetryConfig configured for a local port bind collision
+     */
+    fun createLocalPortBindRetryConfig(): RetryConfig =
+        RetryConfig
+            .custom<Any>()
+            .maxAttempts(Constants.Proxy.PORT_BIND_MAX_ATTEMPTS)
+            .waitDuration(Duration.ofMillis(Constants.Proxy.PORT_BIND_RETRY_INTERVAL_MS))
+            .retryExceptions(BindException::class.java)
             .build()
 
     /**

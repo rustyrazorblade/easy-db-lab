@@ -124,7 +124,7 @@ If you don't want to set up Tailscale, the SOCKS proxy provides connectivity via
 ```
 ┌─────────────────┐     SSH Tunnel      ┌──────────────┐
 │  Your Machine   │ ──────────────────► │ Control Node │
-│  localhost:1080 │                     │  (control0)  │
+│ localhost:<port>│                     │  (control0)  │
 └────────┬────────┘                     └──────┬───────┘
          │                                     │
     SOCKS5 Proxy                         Private VPC
@@ -142,6 +142,11 @@ curl http://control0:9428/health
 ```
 
 The proxy starts automatically when you load the environment.
+
+The proxy listens on port 1080 when it is free. When another process already holds 1080 — most
+often the proxy of another cluster workspace you are running at the same time — the proxy picks a
+free port instead. Each workspace records its own port in `.socks5-proxy-state`, and the shell
+wrappers in `env.sh` read it from there, so several clusters can run side by side.
 
 ### Proxied Commands
 
@@ -201,7 +206,7 @@ Configure your browser's SOCKS5 proxy:
 | Setting | Value |
 |---------|-------|
 | SOCKS Host | `localhost` |
-| SOCKS Port | `1080` |
+| SOCKS Port | the workspace's proxy port (`1080` unless it was taken; `socks5-status` shows it) |
 | SOCKS Version | 5 |
 
 Then access cluster services:
@@ -267,7 +272,7 @@ source env.sh
 
 **Port already in use:**
 ```bash
-lsof -i :1080         # Check what's using it
+lsof -i :1080         # Check what's using the default port
 start-socks5 1081     # Use different port
 ```
 

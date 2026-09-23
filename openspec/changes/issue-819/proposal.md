@@ -29,12 +29,15 @@ expose client ports through a NodePort Service, never `hostPort` or `hostNetwork
   Service on 31211 declared as a `native` endpoint, a `--memory` arg (MB, default 1024),
   `collision-check: true`, a `memcached-exporter` sidecar on 9150 scraped through
   `KitMetrics.Scrape` pod-selector discovery, a Grafana dashboard, `METRICS.md`, and
-  `metrics-catalog.json`. No persistent volumes.
+  `metrics-catalog.json`. No persistent volumes unless extstore is enabled: `--extstore-size`
+  turns on memcached extstore on a platform PV on the db node's NVMe, mounted at `/data`, with
+  optional `--extstore-page-size`, `--extstore-wbuf-size`, `--extstore-threads`, and
+  `--extstore-item-size`. The `platform-pvs` step gains `if-set` and `storage-size` for this.
 - **New `neo4j` kit** (`kits/neo4j/`): a one-replica Neo4j Community StatefulSet on a db node,
   backed by a platform PV; `--version` accepts 5.x and the calendar-versioned releases (2025.x onward); `NEO4J_AUTH=none`; Bolt NodePort
   30687 (`native`) and HTTP NodePort 30474 (`http`); metrics pushed over OTLP by the OpenTelemetry
   Java agent mounted from the base AMI, arriving as `job="neo4j"`; a Neo4j Grafana folder;
-  `METRICS.md` and `metrics-catalog.json`.
+  `METRICS.md` and `metrics-catalog.json`. The pod is Ready only once Bolt answers a Cypher query.
 - **Kit port convention.** `CLAUDE.md` (Kit Development) and `docs/development/kits.md` gain a
   rule: kits expose client ports through a NodePort Service in 30000-32767, never `hostPort` or
   `hostNetwork` (precedent: postgres 30432, clickhouse 30123).
@@ -48,6 +51,25 @@ expose client ports through a NodePort Service, never `hostPort` or `hostNetwork
 - **ICMP inside the VPC.** The cluster security group allows ICMP (all types) from the VPC CIDR,
   so ping works between nodes and pods and Cilium's health checker sees every node. Found during
   live validation; the rule is described to the user as "all ICMP types".
+- **Fixes found during live validation** (owner rule: bugs found here are fixed here):
+  - hostPort on Cilium: `portmap` chained, and the K3s start scripts link K3s's bundled
+    `portmap` into `/opt/cni/bin`.
+  - `up` fails fast (`Cilium.NodeImageMissingFixes`) on a Cilium cluster whose nodes lack the
+    Cilium node fixes.
+  - Collision check: a second install and a start over a running workload fail non-zero; the
+    map form of `collision-check` is implemented; `stop` waits until the workload is gone
+    (`typed-install-steps` delta). kafka, postgres, and sysbench runtime selectors corrected;
+    `KitWorkloadProbe` ignores finished pods.
+  - `kit install` exits non-zero on `RequirementNotMet`.
+  - The generated launcher: OTLP exporters are off unless an endpoint is configured, and
+    class-data sharing is off; `bin/easy-db-lab` docker mode exports to the OTLP/HTTP port.
+  - OTel collector drops `process.command_args` and `container.id`, and span-derived metrics
+    drop SDK metadata; pods report the node as `host.name`.
+  - `export-workload-metrics` exports only series live in the last 5 minutes.
+  - `kit-resolved-args.env` writes `STORAGE_SIZE` only for kits that use it.
+  - Packer: the AxonOps sudoers file is valid for sudo-rs (Ubuntu 26.04); `testPackerScript
+    -Pscript` works.
+  - `start` reports endpoints through a typed `Kit.EndpointsAvailable` event.
 
 ## Capabilities
 
@@ -87,5 +109,16 @@ expose client ports through a NodePort Service, never `hostPort` or `hostNetwork
 - `src/main/kotlin/com/rustyrazorblade/easydblab/services/aws/AwsInfrastructureService.kt`,
   `EC2VpcService.kt`, `Constants.kt` — ICMP ingress rule from the VPC CIDR (found in live
   validation; Cilium health reported peers unreachable without it).
+- Fixes from live validation: `services/CiliumService.kt`, `services/start-k3s-*.sh`,
+  `services/CiliumNodeImageCheck.kt`, `commands/Up.kt`, `commands/install/KitInstallCommand.kt`,
+  `commands/install/KitRunnerCommand.kt`, `services/KitWorkloadProbe.kt`,
+  `services/CollisionCheck.kt`, `services/KitEndpointAddresses.kt`, `services/InstallStep.kt`,
+  `services/WorkloadStepExecutor.kt`, `events/Event.kt`, `Constants.kt`,
+  `configuration/otel/otel-collector-config.yaml`, `kits/{kafka,postgres,sysbench}/kit.yaml`,
+  `bin/easy-db-lab`, `bin/export-workload-metrics`, `build.gradle.kts`,
+  `packer/cassandra/install/install_axon.sh`, `packer/cassandra/cassandra.pkr.hcl`, and their tests
+  and docs (`docs/development/kits.md`, `docs/user-guide/sysbench.md`,
+  `docs/reference/opentelemetry.md`, `events/CLAUDE.md`).
+- Spec: `typed-install-steps` MODIFIED (collision check).
 - Ordering: `cilium-native-routing` is archived (PR 959). This change MODIFIES the requirements it
   added, which are now in `openspec/specs/networking/spec.md`.

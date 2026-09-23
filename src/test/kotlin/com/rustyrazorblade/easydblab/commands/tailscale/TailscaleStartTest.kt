@@ -242,6 +242,15 @@ class TailscaleStartTest : BaseKoinTest() {
             assertThat(TailscaleStart().call()).isEqualTo(Constants.ExitCodes.ERROR)
         }
 
+        /** The scopes named here are the ones start needs and `down`/`stop` report when missing. */
+        @Test
+        fun `the missing-credentials help names the OAuth scopes by their current names`() {
+            TailscaleStart().call()
+
+            val errorOutput = outputHandler.errors.joinToString("\n") { it.first }
+            assertThat(errorOutput).contains("auth_keys").contains("devices:core").doesNotContain("Devices: write")
+        }
+
         @Test
         fun `execute shows ACL hint when error mentions tags`() {
             whenever(mockTailscaleService.generateAuthKey(any(), any(), any()))

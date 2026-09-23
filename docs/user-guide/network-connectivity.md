@@ -55,7 +55,7 @@ The `autoApprovers` section automatically approves subnet routes, so you don't n
 2. Click **Generate OAuth Client**
 3. Configure:
    - **Description**: easy-db-lab
-   - **Scopes**: Select **Devices: Write** (on the newer, granular scope list: **Auth Keys** write, to create the control node's key, and **Devices › Core** write, `devices:core`, so `down` and `tailscale stop` can remove the control node's device)
+   - **Scopes**: **Auth Keys** write (`auth_keys`), to create the control node's key, and **Devices › Core** write (`devices:core`), so `down` and `tailscale stop` can remove the control node's device
    - **Tags**: Add `tag:easy-db-lab`
 4. Click **Generate** and save the **Client ID** and **Client Secret**
 

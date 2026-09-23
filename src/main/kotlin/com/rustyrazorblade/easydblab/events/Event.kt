@@ -4975,7 +4975,7 @@ sealed interface Event {
                 |     "$defaultTag": ["autogroup:admin"]
                 |   }
                 |3. Go to https://login.tailscale.com/admin/settings/oauth
-                |4. Create OAuth client with 'Devices: Write' scope
+                |4. Create OAuth client with the '${Constants.Tailscale.AUTH_KEYS_SCOPE}' and '${Constants.Tailscale.DEVICES_SCOPE}' write scopes
                 |5. Under 'Add tags', add: $defaultTag
                 |
                 """.trimMargin()
@@ -5003,7 +5003,7 @@ sealed interface Event {
                 |     "$defaultTag": ["autogroup:admin"]
                 |   }
                 |3. Go to https://login.tailscale.com/admin/settings/oauth
-                |4. Create OAuth client with 'Devices: Write' scope
+                |4. Create OAuth client with the '${Constants.Tailscale.AUTH_KEYS_SCOPE}' and '${Constants.Tailscale.DEVICES_SCOPE}' write scopes
                 |5. Under 'Add tags', add: $defaultTag
                 """.trimMargin()
         }

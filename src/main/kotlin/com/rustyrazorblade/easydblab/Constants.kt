@@ -636,6 +636,9 @@ object Constants {
 
         /** OAuth scope a client needs to delete devices, named in the error when it lacks it. */
         const val DEVICES_SCOPE = "devices:core"
+
+        /** OAuth scope a client needs to create the control node's auth key in `tailscale start`. */
+        const val AUTH_KEYS_SCOPE = "auth_keys"
         const val CONNECTION_TIMEOUT_SECONDS = 30L
         const val READ_TIMEOUT_SECONDS = 30L
         const val AUTH_KEY_EXPIRY_SECONDS = 604800

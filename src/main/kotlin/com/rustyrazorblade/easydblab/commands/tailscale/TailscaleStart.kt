@@ -104,7 +104,7 @@ class TailscaleStart : PicoBaseCommand() {
 
                 To get OAuth credentials:
                 1. Go to https://login.tailscale.com/admin/settings/oauth
-                2. Generate an OAuth client with "Devices: write" scope
+                2. Generate an OAuth client with the '${Constants.Tailscale.AUTH_KEYS_SCOPE}' and '${Constants.Tailscale.DEVICES_SCOPE}' write scopes
                 3. Copy the client ID and secret
                 """.trimIndent(),
             ),

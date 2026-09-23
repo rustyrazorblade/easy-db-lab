@@ -182,6 +182,8 @@ easy-db-lab down [vpc-id] [options]
 
 **`--force` skips the backup.** Pass `--force` to skip the pre-teardown backup and tear down anyway. Use it only when the backup source is already gone, or when you do not need the data. `--force` is the sole escape from the abort-on-failure behavior.
 
+**Exit status.** `down` exits 0 only when the teardown succeeds. It exits non-zero when the backup aborts the teardown, when the teardown completes with errors, and when you decline the confirmation prompt.
+
 ### clean
 
 Clean up generated files from the current directory.

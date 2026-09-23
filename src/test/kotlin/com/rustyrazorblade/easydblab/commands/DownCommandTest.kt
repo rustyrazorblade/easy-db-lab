@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -21,8 +22,10 @@ import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import java.io.ByteArrayInputStream
 
 class DownCommandTest : BaseKoinTest() {
     private lateinit var mockTeardownService: AwsInfrastructureService
@@ -287,6 +290,56 @@ class DownCommandTest : BaseKoinTest() {
             assertThat(output).contains("completed with errors")
             assertThat(output).contains("Failed to delete SG")
             assertThat(output).contains("Timeout on instance")
+        }
+    }
+
+    /**
+     * `down`'s exit status must reflect whether the infrastructure was actually removed, so a
+     * script driving it can tell a failed or declined teardown from a successful one.
+     */
+    @Nested
+    inner class ExitCode {
+        @Test
+        fun `a teardown that completes with errors exits non-zero`() {
+            whenever(mockTeardownService.teardownVpc(eq("vpc-test123"), eq(true)))
+                .thenReturn(TeardownResult.success(testDiscoveredResources))
+            whenever(mockTeardownService.teardownVpc(eq("vpc-test123"), eq(false)))
+                .thenReturn(TeardownResult.failure(listOf("Failed to delete SG")))
+
+            val exitCode = Down().apply { autoApprove = true }.call()
+
+            assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+        }
+
+        @Test
+        fun `a teardown the user declines at the prompt exits non-zero`() {
+            whenever(mockTeardownService.teardownVpc(eq("vpc-test123"), eq(true)))
+                .thenReturn(TeardownResult.success(testDiscoveredResources))
+
+            val originalIn = System.`in`
+            val exitCode =
+                try {
+                    System.setIn(ByteArrayInputStream("no\n".toByteArray()))
+                    Down().call()
+                } finally {
+                    System.setIn(originalIn)
+                }
+
+            assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+            verify(mockTeardownService, never()).teardownVpc("vpc-test123", false)
+            assertThat(outputHandler.messages.joinToString("\n")).contains("Teardown cancelled by user")
+        }
+
+        @Test
+        fun `a successful teardown exits zero`() {
+            whenever(mockTeardownService.teardownVpc(eq("vpc-test123"), eq(true)))
+                .thenReturn(TeardownResult.success(testDiscoveredResources))
+            whenever(mockTeardownService.teardownVpc(eq("vpc-test123"), eq(false)))
+                .thenReturn(TeardownResult.success(testDiscoveredResources))
+
+            val exitCode = Down().apply { autoApprove = true }.call()
+
+            assertThat(exitCode).isEqualTo(0)
         }
     }
 }

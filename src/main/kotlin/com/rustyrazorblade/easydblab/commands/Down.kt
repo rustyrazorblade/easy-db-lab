@@ -97,7 +97,8 @@ class Down : PicoBaseCommand() {
 
     /**
      * The process exit code. Set to [Constants.ExitCodes.ERROR] when the pre-teardown backup aborts
-     * the teardown, so a caller scripting `down` sees that nothing was removed instead of success.
+     * the teardown, when the teardown completes with errors, or when the user declines the
+     * confirmation prompt, so a caller scripting `down` never mistakes those for success.
      */
     private var exitCode = 0
 
@@ -370,13 +371,15 @@ class Down : PicoBaseCommand() {
     }
 
     /**
-     * Reports the result of the teardown operation.
+     * Reports the result of the teardown operation and sets the exit code from it, so a teardown
+     * that failed or that the user declined at the prompt exits non-zero.
      */
     private fun reportResult(result: TeardownResult) {
         if (result.success) {
             eventBus.emit(Event.Teardown.CompletedSuccessfully)
         } else {
             eventBus.emit(Event.Teardown.CompletedWithErrors(result.errors))
+            exitCode = Constants.ExitCodes.ERROR
         }
     }
 

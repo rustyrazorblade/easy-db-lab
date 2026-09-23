@@ -232,8 +232,8 @@ class DefaultTailscaleService(
         httpClient.newCall(request).execute().use { response ->
             when {
                 response.isSuccessful -> log.info { "Tailscale device $deviceId deleted" }
-                response.code == HTTP_NOT_FOUND -> log.info { "Tailscale device $deviceId is already gone" }
-                response.code == HTTP_FORBIDDEN ->
+                response.code == Constants.HttpStatus.NOT_FOUND -> log.info { "Tailscale device $deviceId is already gone" }
+                response.code == Constants.HttpStatus.FORBIDDEN ->
                     throw TailscaleApiException(
                         "The Tailscale OAuth client is not allowed to delete device $deviceId " +
                             "(HTTP 403: ${response.body.string()}). Grant it the '${Constants.Tailscale.DEVICES_SCOPE}' " +
@@ -445,9 +445,6 @@ class DefaultTailscaleService(
         }
 
     private companion object {
-        const val HTTP_FORBIDDEN = 403
-        const val HTTP_NOT_FOUND = 404
-
         /** Writes the forwarding sysctl drop-in (overwriting, so reruns are idempotent) and loads it. */
         val ENABLE_IP_FORWARDING =
             "printf 'net.ipv4.ip_forward = 1\\nnet.ipv6.conf.all.forwarding = 1\\n' | " +

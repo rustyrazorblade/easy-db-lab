@@ -58,7 +58,9 @@ class DaemonSetRestartTest {
                 .endSpec()
                 .build()
 
-        val annotations = withRestartedAt(ds, now).spec.template.metadata.annotations
+        val annotations =
+            withRestartedAt(ds, now)
+                .spec.template.metadata.annotations
 
         assertThat(annotations)
             .containsEntry("checksum/config", "abc")

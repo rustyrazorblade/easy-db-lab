@@ -14,7 +14,7 @@ cluster running the `TopSpeedWindowing` example job).
 | `cluster` | easy-db-lab cluster name |
 | `job` | Always `flink` |
 | `host_name` | App node the pod runs on (`app0`, `app1`, …) |
-| `instance` | `<host>:9249` scrape target |
+| `instance` | the Flink pod's name (JobManager or TaskManager), found by pod discovery |
 | `job_name` | Flink job name (task/operator metrics only) |
 | `task_name` | Operator/task name (task metrics only) |
 | `subtask_index` | Parallel subtask index (task metrics only) |

@@ -639,6 +639,27 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         assertThat(yaml).contains("username: \"trino\"")
     }
 
+    /** Trino's coordinator is found by pod discovery and still needs its basic-auth user. */
+    @Test
+    fun `a pod-discovered scrape job keeps its basic_auth user`() {
+        val scrapeConfigs =
+            listOf(
+                WorkloadScrapeConfig(
+                    kitName = "trino",
+                    jobName = "trino",
+                    port = 8080,
+                    path = "/metrics",
+                    username = "trino",
+                    podSelector = "app.kubernetes.io/name=trino,app.kubernetes.io/component=coordinator",
+                ),
+            )
+
+        val job = jobBlock(yamlFrom(builder.buildConfigMap(scrapeConfigs)), "trino-trino")
+
+        assertThat(job).contains("kubernetes_sd_configs").doesNotContain("static_configs").doesNotContain("localhost:8080")
+        assertThat(job).contains("basic_auth:").contains("username: \"trino\"")
+    }
+
     @Test
     fun `buildConfigMap without username omits basic_auth block`() {
         val scrapeConfigs =

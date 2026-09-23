@@ -7,6 +7,10 @@ metrics:
     port: 8080
     path: /metrics
     username: trino
+    # Pod discovery, so only the collector on the pod's own node scrapes it. A static job
+    # would have every collector scrape localhost:8080, and every node without the pod
+    # would report the job down.
+    pod-selector: "app.kubernetes.io/name=trino,app.kubernetes.io/component=coordinator"
 runtime:
   type: helm
   release: trino

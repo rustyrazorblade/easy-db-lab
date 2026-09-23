@@ -45,6 +45,41 @@ class KitWorkloadProbeTest {
             .isEqualTo(WorkloadPresence.Present(namespace = "default", resources = listOf("helm-release/presto")))
     }
 
+    private val helmRuntime = KitRuntime(type = KitRuntime.RuntimeType.HELM, release = "trino", namespace = "analytics")
+
+    private fun releasePods(vararg pods: KubernetesPod) {
+        whenever(kubeService.listPodsByLabel(any(), any())).thenReturn(Result.success(emptyList()))
+        whenever(kubeService.listPodsByLabel(eq("app.kubernetes.io/instance=trino"), eq("analytics")))
+            .thenReturn(Result.success(pods.toList()))
+    }
+
+    /**
+     * `helm uninstall` returns once the release record is gone, while the release's pods are still
+     * terminating for their grace period. A `start` right after would race them, so the stop wait
+     * holds until no pod of the release is left either.
+     */
+    @Test
+    fun `the stop wait for a helm runtime holds while pods of the uninstalled release are still terminating`() {
+        whenever(helmService.releaseExists(any(), any(), any())).thenReturn(false)
+        releasePods(pod("trino-coordinator-0", "Running").copy(namespace = "analytics", terminating = true))
+        val impatient = KitWorkloadProbe(kubeService, helmService, pollInterval = Duration.ZERO, maxPolls = 2)
+
+        assertThat(impatient.awaitGone("trino", helmRuntime, controlHost).getOrThrow())
+            .isEqualTo(WorkloadPresence.Present(namespace = "analytics", resources = listOf("pod/trino-coordinator-0")))
+    }
+
+    @Test
+    fun `the stop wait for a helm runtime ends once the release and its pods are both gone`() {
+        whenever(helmService.releaseExists(any(), any(), any())).thenReturn(true, false, false)
+        whenever(kubeService.listPodsByLabel(eq("app.kubernetes.io/instance=trino"), eq("analytics")))
+            .thenReturn(Result.success(listOf(pod("trino-worker-0", "Running").copy(terminating = true))))
+            .thenReturn(Result.success(emptyList()))
+        val waiting = KitWorkloadProbe(kubeService, helmService, pollInterval = Duration.ZERO, maxPolls = 5)
+
+        assertThat(waiting.awaitGone("trino", helmRuntime, controlHost).getOrThrow()).isEqualTo(WorkloadPresence.Absent)
+        verify(helmService, times(3)).releaseExists(any(), any(), any())
+    }
+
     private fun pod(
         name: String,
         phase: String,

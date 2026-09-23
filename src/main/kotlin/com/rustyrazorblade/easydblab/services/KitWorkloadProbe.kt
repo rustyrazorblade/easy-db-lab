@@ -58,7 +58,9 @@ class KitWorkloadProbe(
 
     /**
      * Waits for [kitName]'s workload to leave the cluster: every pod its [runtime] selects,
-     * terminating ones included, or its helm release. Looks up to `maxPolls` times, `pollInterval`
+     * terminating ones included; for a helm runtime, the release and then every pod labelled
+     * `app.kubernetes.io/instance=<release>` in the runtime's namespace, terminating ones included.
+     * Looks up to `maxPolls` times, `pollInterval`
      * apart, and returns [WorkloadPresence.Absent] once nothing is left, or what was still there at
      * the last look. A failed cluster query is retried like a present workload; it fails the result
      * only on the last look.
@@ -89,18 +91,29 @@ class KitWorkloadProbe(
         countTerminating: Boolean,
     ): WorkloadPresence =
         when (runtime?.type) {
-            KitRuntime.RuntimeType.HELM -> findHelmRelease(kitName, runtime, controlHost)
+            KitRuntime.RuntimeType.HELM -> findHelmRelease(kitName, runtime, controlHost, countTerminating)
             else -> findPods(podSelector(kitName, runtime), runtime?.namespace ?: DEFAULT_NAMESPACE, countTerminating)
         }
 
+    /**
+     * A helm runtime is present while its release exists in the runtime's namespace, and, once the
+     * release is gone, while any pod labelled `app.kubernetes.io/instance=<release>` (the label helm
+     * charts put on a release's pods) is left there. `helm uninstall` removes the release record in
+     * seconds while those pods run out their termination grace period.
+     */
     private fun findHelmRelease(
         kitName: String,
         runtime: KitRuntime,
         controlHost: ClusterHost,
+        countTerminating: Boolean,
     ): WorkloadPresence {
         val release = runtime.release.ifBlank { kitName }
         val exists = helmService.releaseExists(host = controlHost.toHost(), release = release, namespace = runtime.namespace)
-        return if (exists) WorkloadPresence.Present(runtime.namespace, listOf("helm-release/$release")) else WorkloadPresence.Absent
+        return if (exists) {
+            WorkloadPresence.Present(runtime.namespace, listOf("helm-release/$release"))
+        } else {
+            findPods("$HELM_INSTANCE_LABEL=$release", runtime.namespace, countTerminating)
+        }
     }
 
     /**
@@ -131,6 +144,9 @@ class KitWorkloadProbe(
         val log = KotlinLogging.logger {}
 
         const val DEFAULT_NAMESPACE = "default"
+
+        /** The standard label helm charts put on every object of a release, valued with the release name. */
+        const val HELM_INSTANCE_LABEL = "app.kubernetes.io/instance"
 
         /** Pod phases a pod never leaves: its containers have all exited for good. */
         val FINISHED_POD_PHASES = setOf("Succeeded", "Failed")

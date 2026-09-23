@@ -111,6 +111,19 @@ class KitWorkloadProbeTest {
         assertThat(impatient.awaitGone("sysbench-tidb", runPods, controlHost).getOrThrow()).isEqualTo(WorkloadPresence.Absent)
     }
 
+    /**
+     * A pod left terminating by a manual `kubectl delete` is still cleaning up. Starting over it
+     * would reapply manifests onto that state, so the start check counts it.
+     */
+    @Test
+    fun `a terminating pod blocks start`() {
+        whenever(kubeService.listPodsByLabel(any(), any()))
+            .thenReturn(Result.success(listOf(pod("run-1", "Running").copy(terminating = true))))
+
+        assertThat(probe.find("sysbench-tidb", runPods, controlHost).getOrThrow())
+            .isEqualTo(WorkloadPresence.Present(namespace = "default", resources = listOf("pod/run-1")))
+    }
+
     @Test
     fun `a pending pod is part of the running workload`() {
         whenever(kubeService.listPodsByLabel(any(), any())).thenReturn(Result.success(listOf(pod("run-1", "Pending"))))

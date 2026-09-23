@@ -74,6 +74,21 @@ class KitRunnerCommandCollisionCheckTest : KitRunnerCommandTestBase() {
     }
 
     @Test
+    fun `start refuses a kit whose pods are still terminating, naming them`() {
+        writeCollisionCheckedKit()
+        podsInCluster(runningPod.copy(terminating = true))
+
+        var exitCode = 0
+        val events = captureEvents { exitCode = command("mydb", "start").call() }
+
+        assertThat(exitCode).isNotEqualTo(0)
+        verify(mockWorkloadStepExecutor, never()).execute(any(), any(), any())
+        assertThat(events.filterIsInstance<Event.Kit.CollisionDetected>().single().toDisplayString())
+            .startsWith("Error:")
+            .contains("mydb", "pod/mydb-0")
+    }
+
+    @Test
     fun `start runs when nothing of the kit is in the cluster`() {
         writeCollisionCheckedKit()
         podsInCluster()

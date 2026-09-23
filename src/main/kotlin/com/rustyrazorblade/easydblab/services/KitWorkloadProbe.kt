@@ -24,7 +24,7 @@ sealed interface WorkloadPresence {
  * Looks in the cluster for a kit's running workload.
  *
  * `start` asks it before running a collision-checked kit's start phase, so that starting a kit that
- * is already running fails instead of re-applying over the live objects. `stop` asks it to wait for
+ * is already running, or still terminating, fails instead of re-applying over the live objects. `stop` asks it to wait for
  * that workload to leave: deleting a StatefulSet, Deployment or operator resource returns before
  * its pods are even marked for deletion, and a `start` right after would be refused.
  */
@@ -49,12 +49,18 @@ class KitWorkloadProbe(
             .retryOnException { true }
             .build()
 
-    /** Finds [kitName]'s workload as its [runtime] declares it; a failed cluster query fails the result. */
+    /**
+     * Finds [kitName]'s workload as its [runtime] declares it: the pods it selects, terminating
+     * ones included — a pod still cleaning up after a manual `kubectl delete` would otherwise have
+     * manifests reapplied over it — or, for a helm runtime, its release and then that release's
+     * pods. A kit whose own `stop` waited with [awaitGone] leaves nothing behind to find. A failed
+     * cluster query fails the result.
+     */
     fun find(
         kitName: String,
         runtime: KitRuntime?,
         controlHost: ClusterHost,
-    ): Result<WorkloadPresence> = runCatching { lookUp(kitName, runtime, controlHost, countTerminating = false) }
+    ): Result<WorkloadPresence> = runCatching { lookUp(kitName, runtime, controlHost) }
 
     /**
      * Waits for [kitName]'s workload to leave the cluster: every pod its [runtime] selects,
@@ -78,7 +84,7 @@ class KitWorkloadProbe(
             }
             Retry
                 .decorateSupplier(retry) {
-                    remaining = lookUp(kitName, runtime, controlHost, countTerminating = true)
+                    remaining = lookUp(kitName, runtime, controlHost)
                     remaining == WorkloadPresence.Absent
                 }.get()
             remaining
@@ -88,11 +94,10 @@ class KitWorkloadProbe(
         kitName: String,
         runtime: KitRuntime?,
         controlHost: ClusterHost,
-        countTerminating: Boolean,
     ): WorkloadPresence =
         when (runtime?.type) {
-            KitRuntime.RuntimeType.HELM -> findHelmRelease(kitName, runtime, controlHost, countTerminating)
-            else -> findPods(podSelector(kitName, runtime), runtime?.namespace ?: DEFAULT_NAMESPACE, countTerminating)
+            KitRuntime.RuntimeType.HELM -> findHelmRelease(kitName, runtime, controlHost)
+            else -> findPods(podSelector(kitName, runtime), runtime?.namespace ?: DEFAULT_NAMESPACE)
         }
 
     /**
@@ -105,34 +110,30 @@ class KitWorkloadProbe(
         kitName: String,
         runtime: KitRuntime,
         controlHost: ClusterHost,
-        countTerminating: Boolean,
     ): WorkloadPresence {
         val release = runtime.release.ifBlank { kitName }
         val exists = helmService.releaseExists(host = controlHost.toHost(), release = release, namespace = runtime.namespace)
         return if (exists) {
             WorkloadPresence.Present(runtime.namespace, listOf("helm-release/$release"))
         } else {
-            findPods("$HELM_INSTANCE_LABEL=$release", runtime.namespace, countTerminating)
+            findPods("$HELM_INSTANCE_LABEL=$release", runtime.namespace)
         }
     }
 
     /**
-     * The pods [selector] matches in [namespace]. A pod already being deleted is on its way out, so
-     * it counts only when [countTerminating] is set — when waiting for the workload to be gone. A
-     * pod that has finished (Succeeded or Failed, as a completed sysbench run leaves behind) is not
-     * running and never counts.
+     * The pods [selector] matches in [namespace], terminating ones included. A pod that has
+     * finished (Succeeded or Failed, as a completed sysbench run leaves behind) is not running and
+     * never counts.
      */
     private fun findPods(
         selector: String,
         namespace: String,
-        countTerminating: Boolean,
     ): WorkloadPresence {
         val pods =
             kubeService
                 .listPodsByLabel(selector, namespace)
                 .getOrThrow()
                 .filter { it.status !in FINISHED_POD_PHASES }
-                .filter { countTerminating || !it.terminating }
         return if (pods.isEmpty()) {
             WorkloadPresence.Absent
         } else {

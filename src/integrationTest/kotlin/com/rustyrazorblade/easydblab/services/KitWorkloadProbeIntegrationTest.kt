@@ -28,8 +28,8 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Runs [KitWorkloadProbe] against a real K3s cluster: the start-phase collision check must find
- * exactly the pods a kit's runtime selector matches, in the runtime's namespace, and must not count
- * pods that are already being deleted — the ones a `stop` just before `start` leaves terminating.
+ * exactly the pods a kit's runtime selector matches, in the runtime's namespace, including pods that
+ * are still being deleted: starting over a pod that is cleaning up would reapply onto that state.
  *
  * Pods are created as API objects only; whether their image ever runs does not matter here. Each
  * test uses its own kit name so the tests share one cluster without seeing each other's pods.
@@ -140,8 +140,8 @@ class KitWorkloadProbeIntegrationTest {
     }
 
     @Test
-    fun `ignores pods that are already being deleted`() {
-        // A finalizer holds the deleted pod in Terminating, as a slow shutdown after `stop` would.
+    fun `counts pods that are still being deleted`() {
+        // A finalizer holds the deleted pod in Terminating, as a slow manual `kubectl delete` would.
         createPod("stopping-0", mapOf("easydblab/kit" to "stopping"), finalizers = listOf("easydblab.test/hold"))
         client
             .pods()
@@ -155,7 +155,7 @@ class KitWorkloadProbeIntegrationTest {
             .waitUntilCondition({ it?.metadata?.deletionTimestamp != null }, WAIT_SECONDS, TimeUnit.SECONDS)
 
         assertThat(probe.find("stopping", podsRuntime("stopping"), controlHost).getOrThrow())
-            .isEqualTo(WorkloadPresence.Absent)
+            .isEqualTo(WorkloadPresence.Present(namespace = "default", resources = listOf("pod/stopping-0")))
     }
 
     @Test

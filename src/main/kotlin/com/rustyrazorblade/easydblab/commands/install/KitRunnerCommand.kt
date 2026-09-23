@@ -217,11 +217,35 @@ class KitRunnerCommand(
             throw error
         }
 
-        processExitCode = if (stoppedWorkloadIsGone(config, controlHost)) 0 else Constants.ExitCodes.ERROR
+        finishPhase(config, controlHost, phaseExitCode = 0)
+    }
+
+    /**
+     * Completes a phase that ran with [phaseExitCode], the same way for typed and script kits.
+     * A phase that succeeded still fails when it was a `stop` whose workload did not leave (see
+     * [stoppedWorkloadIsGone]); without a [controlHost] there is nothing to wait on. Reports the
+     * result, and on success removes the kit directory after `uninstall` and runs the post-phase
+     * actions, which need the [controlHost].
+     */
+    private fun finishPhase(
+        config: KitConfig,
+        controlHost: ClusterHost?,
+        phaseExitCode: Int,
+    ) {
+        processExitCode =
+            when {
+                phaseExitCode != 0 -> phaseExitCode
+                controlHost == null || stoppedWorkloadIsGone(config, controlHost) -> 0
+                else -> Constants.ExitCodes.ERROR
+            }
         eventBus.emit(Event.Kit.ScriptFinished(kit = kitName, script = phaseName, exitCode = processExitCode))
         if (processExitCode != 0) return
         if (phaseName == Constants.Kit.PHASE_UNINSTALL) {
             kitDir.deleteRecursively()
+        }
+        if (controlHost == null) {
+            log.warn { "No control node found; skipping post-phase actions for $kitName" }
+            return
         }
         handlePostPhase(config, controlHost)
     }
@@ -270,25 +294,7 @@ class KitRunnerCommand(
                 .also { pb -> pb.environment().putAll(envVars) }
                 .start()
 
-        processExitCode = process.waitFor()
-        val controlHost = clusterState.getControlHost()
-        if (processExitCode == 0 && controlHost != null && !stoppedWorkloadIsGone(config, controlHost)) {
-            processExitCode = Constants.ExitCodes.ERROR
-        }
-        eventBus.emit(
-            Event.Kit.ScriptFinished(kit = kitName, script = phaseName, exitCode = processExitCode),
-        )
-
-        if (processExitCode == 0) {
-            if (phaseName == Constants.Kit.PHASE_UNINSTALL) {
-                kitDir.deleteRecursively()
-            }
-            if (controlHost == null) {
-                log.warn { "No control node found; skipping post-phase actions for $kitName" }
-                return
-            }
-            handlePostPhase(config, controlHost)
-        }
+        finishPhase(config, clusterState.getControlHost(), phaseExitCode = process.waitFor())
     }
 
     private fun handlePostPhase(

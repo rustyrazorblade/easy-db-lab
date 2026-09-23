@@ -405,6 +405,16 @@ tasks.named("check") {
     dependsOn(testing.suites.named("integrationTest"))
     // Pure-bash tiers: no Docker, no network, seconds to run.
     dependsOn("testProfilingReconcile")
+    dependsOn("testExportWorkloadMetrics")
+}
+
+// Unit-test bin/export-workload-metrics: it must export only series live in its window, not the
+// day's worth VictoriaMetrics' /api/v1/series returns. curl is stubbed; no cluster, no network.
+tasks.register<Exec>("testExportWorkloadMetrics") {
+    group = "Verification"
+    description = "Unit-test the export-workload-metrics catalog script"
+    workingDir = file(".")
+    commandLine = listOf("bash", "bin/export-workload-metrics.test.sh")
 }
 
 // Packer testing tasks

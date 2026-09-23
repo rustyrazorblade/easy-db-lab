@@ -368,6 +368,10 @@ See `kits/presto/METRICS.md` for an example.
 `job="<kit>"`. It is exported from a live cluster by `bin/export-workload-metrics`, and the
 committed copy is what `METRICS.md` and the kit's dashboards are built from.
 
+Only series with a sample in the last five minutes are exported, so series left behind by pods
+that have since been replaced do not end up in the catalog. Export while the kit is running and
+being scraped.
+
 The script sources `env.sh`, so run it **from the cluster workspace** (the directory holding
 `env.sh`, `state.json` and `kubeconfig`), calling it by its path in your checkout:
 

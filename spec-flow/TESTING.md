@@ -47,8 +47,11 @@ TestContainers failure as pre-existing or environment-specific.
 CI is a real test gate. Two jobs run in parallel on every pull request and every push to
 `main`:
 
-- `test` — `./gradlew test integrationTest koverXmlReport` on JDK 21. GitHub's ubuntu
-  runners ship a running Docker daemon, so the integration tier runs for real.
+- `test` — `./gradlew test integrationTest testScripts koverXmlReport` on JDK 21. GitHub's
+  ubuntu runners ship a running Docker daemon, so the integration tier runs for real.
+  `testScripts` is every Docker-free shell-script test (bash, jq, pinned mikefarah yq);
+  `check` depends on it too. Docker-backed script tests (`testPacker`, `testAxonSudoers`,
+  `testFluentBitFilter`) are not in it.
 - `quality` — `./gradlew ktlintCheck` then `./gradlew detekt` on JDK 21.
 
 Kover reports coverage to the PR with an 80% floor, overall and on changed files.

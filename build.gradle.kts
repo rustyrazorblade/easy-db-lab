@@ -404,8 +404,22 @@ tasks.named<Test>("test") {
 tasks.named("check") {
     dependsOn(testing.suites.named("integrationTest"))
     // Pure-bash tiers: no Docker, no network, seconds to run.
-    dependsOn("testProfilingReconcile")
-    dependsOn("testExportWorkloadMetrics")
+    dependsOn("testScripts")
+}
+
+// Every Docker-free shell-script test, in one task so CI (pr-checks.yml) and `check` run the same
+// set. Needs bash, dash, jq and mikefarah's Go yq on PATH. The Docker-backed script tests
+// (testPacker, testAxonSudoers, testFluentBitFilter) are deliberately not here.
+tasks.register("testScripts") {
+    group = "Verification"
+    description = "Run every Docker-free shell script unit test"
+    dependsOn(
+        "testProfilingReconcile",
+        "testExportWorkloadMetrics",
+        "testCassandraScripts",
+        "testCassandraBuildPlan",
+        "testCassandraResolveRef",
+    )
 }
 
 // Unit-test bin/export-workload-metrics: it must export only series live in its window, not the

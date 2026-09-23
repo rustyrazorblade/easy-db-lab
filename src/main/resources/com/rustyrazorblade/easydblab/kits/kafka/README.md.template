@@ -20,7 +20,16 @@ __CONTROL_HOST_PRIVATE__:32100
 
 ## Metrics
 
-JMX exporter: `__CONTROL_HOST_PRIVATE__:32404/metrics`
+The OTel collector scrapes the broker JMX exporters (`job="kafka-jmx"`) and the Kafka Exporter
+(`job="kafka-exporter"`) directly on each pod's port 9404, by pod discovery. Query them in
+Grafana; see `METRICS.md` for the metric names.
+
+The same endpoints stay exposed on NodePorts for manual inspection:
+
+```bash
+curl http://__CONTROL_HOST_PRIVATE__:32404/metrics   # broker JMX exporter
+curl http://__CONTROL_HOST_PRIVATE__:32309/metrics   # Kafka Exporter
+```
 
 ## Use cases
 

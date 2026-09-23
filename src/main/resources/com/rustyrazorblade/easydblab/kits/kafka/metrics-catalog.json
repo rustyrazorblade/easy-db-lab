@@ -1,6 +1,6 @@
 {
   "workload": "kafka",
-  "note": "Two scrape jobs: kafka-exporter (NodePort 32309) for consumer lag and topic health; kafka-jmx (NodePort 32404) for broker JMX metrics via Strimzi. Metric names are lowercase (lowercaseOutputName: true in JMX config).",
+  "note": "Two scrape jobs, both by pod discovery on container port 9404: kafka-exporter for consumer lag and topic health; kafka-jmx for broker JMX metrics via Strimzi. Metric names are lowercase (lowercaseOutputName: true in JMX config).",
   "series": [
     {
       "name": "kafka_brokers",

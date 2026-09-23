@@ -470,13 +470,16 @@ the kit is loaded. Each guarded phase fails with an error event and exits non-ze
 - **`kit install`** refuses when the kit's scaffold directory already exists and is not empty. The
   event is `Install.CollisionDetected`. Pass `--force` to overwrite the scaffold.
 - **`<kit> start`** refuses when the workload the kit's `runtime` block declares is already in the
-  cluster: pods matching the runtime `selector` in its namespace, or the helm release for a `helm`
-  runtime. The event is `Kit.CollisionDetected`, naming the objects it found, and no start step runs.
-  Run `<kit> stop` first. Pods that are already terminating do not count.
+  cluster: pods matching the runtime `selector` in its namespace, or, for a `helm` runtime, the
+  helm release and then any pod labelled `app.kubernetes.io/instance=<release>` in the runtime's
+  namespace. Pods that are still terminating count too, so a pod left cleaning up by a manual
+  `kubectl delete` blocks `start` until it is gone. The event is `Kit.CollisionDetected`, naming
+  the objects it found, and no start step runs. Run `<kit> stop` first.
 - **`<kit> stop`**, once its steps succeed, waits until nothing the runtime selects is left —
-  terminating pods included — so a `start` straight after it is not refused. Deleting a
-  StatefulSet, Deployment or operator resource returns before its pods are even marked for
-  deletion, so this wait is what makes `stop` followed by `start` work. It gives up after 5
+  terminating pods included, and for a `helm` runtime the release's pods as well as the release,
+  since `helm uninstall` returns while those pods are still terminating — so a `start` straight
+  after it is not refused. Deleting a StatefulSet, Deployment or operator resource returns before
+  its pods are even marked for deletion, so this wait is what makes `stop` followed by `start` work. It gives up after 5
   minutes with a `Kit.StopIncomplete` error event naming what is left. A failed cluster query
   during the wait is retried; if the last look still fails, `stop` exits non-zero with a
   `Kit.StopUnverified` error event carrying the cause.

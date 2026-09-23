@@ -177,8 +177,9 @@ directory on the node.
 
 ### Stopping and uninstalling
 
-Stop it, or uninstall it to also remove the kit directory. Both delete every object labelled
-`easydblab/kit=memcached`:
+Stop it, or uninstall it to also remove the kit directory. `stop` deletes the Deployment, its
+ReplicaSet and pods, the Service and the ConfigMap labelled `easydblab/kit=memcached`; `uninstall`
+deletes those plus the extstore volume claim, then the extstore PersistentVolume:
 
 ```bash
 easy-db-lab memcached stop

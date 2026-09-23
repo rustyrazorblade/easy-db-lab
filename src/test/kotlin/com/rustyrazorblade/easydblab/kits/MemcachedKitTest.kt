@@ -148,6 +148,31 @@ class MemcachedKitTest : BaseKoinTest() {
 
         private fun deletes() = stub.invocations().filter { it.startsWith("delete") }
 
+        /** The kinds a phase's `kubectl get <kinds> -l ...` lookup selects. */
+        private fun kinds(steps: List<InstallStep>): Set<String> =
+            Regex("""kubectl get (\S+) -l""")
+                .find(steps.filterIsInstance<InstallStep.Shell>().joinToString("\n") { it.script })
+                ?.groupValues
+                ?.get(1)
+                ?.split(",")
+                ?.toSet()
+                .orEmpty()
+
+        @Test
+        fun `stop removes every kind the kit creates except the extstore claim, which uninstall adds`() {
+            val created =
+                (
+                    kit.render("memcached.yaml.template") + kit.render("memcached-extstore.yaml.template") +
+                        kit.render("nodeport-service.yaml.template")
+                ).map { it.kind.lowercase() }
+                    .toSet() - "persistentvolumeclaim"
+            // The pods and their ReplicaSet come from the Deployment; the ConfigMap from the start step.
+            val stopKinds = kinds(kit.config.stop)
+
+            assertThat(stopKinds).containsAll(created + setOf("replicaset", "pod", "configmap"))
+            assertThat(kinds(kit.config.uninstall)).isEqualTo(stopKinds + "pvc")
+        }
+
         @Test
         fun `stop and uninstall print nothing and delete nothing once the kit is gone`() {
             stub.respondToGet("")

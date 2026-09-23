@@ -107,7 +107,7 @@ stop:
     script: |
       #!/usr/bin/env bash
       set -euo pipefail
-      KIT_OBJECTS=$(kubectl get deployment,service,pod -l easydblab/kit=memcached --namespace default -o name --ignore-not-found)
+      KIT_OBJECTS=$(kubectl get deployment,replicaset,pod,service,configmap -l easydblab/kit=memcached --namespace default -o name --ignore-not-found)
       if [[ -n "${KIT_OBJECTS}" ]]; then
         # shellcheck disable=SC2086 # one TYPE/NAME per word
         kubectl delete ${KIT_OBJECTS} --namespace default --ignore-not-found=true
@@ -118,7 +118,7 @@ uninstall:
     script: |
       #!/usr/bin/env bash
       set -euo pipefail
-      KIT_OBJECTS=$(kubectl get all,configmap,pvc -l easydblab/kit=memcached --namespace default -o name --ignore-not-found)
+      KIT_OBJECTS=$(kubectl get deployment,replicaset,pod,service,configmap,pvc -l easydblab/kit=memcached --namespace default -o name --ignore-not-found)
       if [[ -n "${KIT_OBJECTS}" ]]; then
         # shellcheck disable=SC2086 # one TYPE/NAME per word
         kubectl delete ${KIT_OBJECTS} --namespace default --ignore-not-found=true

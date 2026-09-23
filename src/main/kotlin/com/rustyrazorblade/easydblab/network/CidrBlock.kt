@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.network
 
 import com.rustyrazorblade.easydblab.Constants
+import kotlin.random.Random
 
 /**
  * A value class representing a CIDR block for VPC networking.
@@ -85,25 +86,31 @@ value class CidrBlock(
         private const val MAX_SECOND_OCTET = 254
 
         /**
-         * Selects the first available `10.X.0.0/16` CIDR not already used by an existing VPC.
+         * Selects a random `10.X.0.0/16` CIDR not already used by an existing VPC.
          *
-         * Scans second octets 0–254 in order and returns the first that does not appear in any
-         * of the provided CIDR strings. Only `10.x.x.x` CIDRs in [existingCidrs] are considered.
+         * Picks uniformly among the second octets 0–254 that do not appear in any of the provided
+         * CIDR strings, so two workspaces running `up` at the same moment are unlikely to choose
+         * the same block. Only `10.x.x.x` CIDRs in [existingCidrs] are considered.
          *
-         * @param existingCidrs CIDR blocks of all VPCs already present in the region
+         * @param existingCidrs CIDR blocks of all VPCs already present in the region, plus any
+         *   block the caller wants excluded (e.g. one whose VPC creation just failed)
+         * @param random source of randomness; tests inject a seeded one
          * @throws IllegalStateException if all second octets 0–254 are occupied
          */
-        fun selectAvailable(existingCidrs: List<String>): CidrBlock {
+        fun selectAvailable(
+            existingCidrs: List<String>,
+            random: Random,
+        ): CidrBlock {
             val usedOctets =
                 existingCidrs
                     .filter { it.startsWith("10.") }
                     .mapNotNull { it.split(".").getOrNull(1)?.toIntOrNull() }
                     .toSet()
-            val secondOctet =
-                (0..MAX_SECOND_OCTET).firstOrNull { it !in usedOctets }
-                    ?: error(
-                        "No available CIDR blocks in 10.x.0.0/16 range — all second octets 0–254 are in use",
-                    )
+            val freeOctets = (0..MAX_SECOND_OCTET).filterNot { it in usedOctets }
+            check(freeOctets.isNotEmpty()) {
+                "No available CIDR blocks in 10.x.0.0/16 range — all second octets 0–254 are in use"
+            }
+            val secondOctet = freeOctets.random(random)
             return CidrBlock("10.$secondOctet.0.0/16")
         }
 

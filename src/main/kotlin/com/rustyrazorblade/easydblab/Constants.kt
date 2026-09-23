@@ -709,6 +709,12 @@ object Constants {
         /** VPC tag key for the S3 bucket name */
         const val BUCKET_TAG_KEY = "bucket"
 
+        /**
+         * Attempts at creating a VPC on an auto-selected CIDR; each retry picks a new random
+         * unused block, excluding the ones that already failed.
+         */
+        const val CIDR_AUTO_SELECT_MAX_ATTEMPTS = 3
+
         /** SOCKS5 proxy state file name */
         const val SOCKS5_PROXY_STATE_FILE = ".socks5-proxy-state"
 

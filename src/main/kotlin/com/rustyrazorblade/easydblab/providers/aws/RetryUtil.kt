@@ -6,6 +6,7 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.RetryConfig
 import org.apache.sshd.common.SshException
 import software.amazon.awssdk.awscore.exception.AwsServiceException
+import software.amazon.awssdk.core.exception.SdkException
 import software.amazon.awssdk.services.ec2.model.Ec2Exception
 import software.amazon.awssdk.services.iam.model.EntityAlreadyExistsException
 import software.amazon.awssdk.services.iam.model.IamException
@@ -259,6 +260,26 @@ object RetryUtil {
             .maxAttempts(Constants.Tailscale.REACHABILITY_MAX_ATTEMPTS)
             .intervalFunction { _ -> retryInterval.toMillis() }
             .retryOnResult { reachable -> !reachable }
+            .build()
+
+    /**
+     * Creates retry configuration for creating a VPC on an auto-selected CIDR.
+     *
+     * Each attempt picks a new random unused block, excluding the ones already tried, so there is
+     * nothing to wait for between attempts; transient AWS errors are already retried with backoff
+     * inside `createVpc`. Only AWS failures ([SdkException]) are retried — running out of free
+     * blocks is final.
+     *
+     * No wait, up to [Constants.Vpc.CIDR_AUTO_SELECT_MAX_ATTEMPTS] attempts
+     *
+     * @return RetryConfig configured for VPC creation on an auto-selected CIDR
+     */
+    fun createVpcAutoCidrRetryConfig(): RetryConfig =
+        RetryConfig
+            .custom<Any>()
+            .maxAttempts(Constants.Vpc.CIDR_AUTO_SELECT_MAX_ATTEMPTS)
+            .waitDuration(Duration.ZERO)
+            .retryExceptions(SdkException::class.java)
             .build()
 
     /**

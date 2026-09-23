@@ -56,6 +56,7 @@ import org.koin.core.component.inject
 import picocli.CommandLine
 import java.io.File
 import java.time.Duration
+import kotlin.random.Random
 
 /**
  * Provisions and configures the complete cluster infrastructure.
@@ -89,6 +90,7 @@ import java.time.Duration
 class Up(
     private val sshStartupDelay: Duration = SSH_STARTUP_DELAY,
     private val tailnetRetryInterval: Duration = TAILNET_RETRY_INTERVAL,
+    private val random: Random = Random.Default,
 ) : PicoBaseCommand() {
     private val userConfig: User by inject()
     private val s3BucketService: AwsS3BucketService by inject()
@@ -303,6 +305,61 @@ class Up(
     }
 
     /**
+     * Resolves the cluster's VPC and its CIDR.
+     *
+     * A CIDR given with `--cidr` is used as-is. Without one, a new VPC is created on a random
+     * unused block (see [createVpcOnRandomCidr]).
+     *
+     * @return the VPC ID and the CIDR it uses
+     */
+    private fun resolveVpc(initConfig: InitConfig): Pair<String, String> {
+        val explicitCidr = initConfig.cidr
+        return when {
+            explicitCidr != null -> createOrValidateVpc(initConfig, explicitCidr) to explicitCidr
+            workingState.vpcId == null -> createVpcOnRandomCidr(initConfig)
+            else -> {
+                val cidr = autoSelectCidr(excluded = emptyList())
+                persistAutoSelectedCidr(initConfig, cidr)
+                createOrValidateVpc(initConfig, cidr) to cidr
+            }
+        }
+    }
+
+    /**
+     * Creates the VPC on a random unused `10.X.0.0/16`. If creation fails, a new random block is
+     * chosen — excluding every block already tried — up to
+     * [Constants.Vpc.CIDR_AUTO_SELECT_MAX_ATTEMPTS] attempts. The CIDR is persisted only once a
+     * VPC exists on it, so a failed attempt never becomes the cluster's CIDR.
+     */
+    private fun createVpcOnRandomCidr(initConfig: InitConfig): Pair<String, String> {
+        val attempted = mutableListOf<String>()
+        val retry = Retry.of("create-vpc-auto-cidr", RetryUtil.createVpcAutoCidrRetryConfig())
+        val created =
+            Retry
+                .decorateSupplier(retry) {
+                    val cidr = autoSelectCidr(excluded = attempted)
+                    attempted += cidr
+                    createOrValidateVpc(initConfig, cidr) to cidr
+                }.get()
+        persistAutoSelectedCidr(initConfig, created.second)
+        return created
+    }
+
+    private fun autoSelectCidr(excluded: List<String>): String {
+        val selected = CidrBlock.selectAvailable(vpcService.listAllVpcCidrs() + excluded, random)
+        eventBus.emit(Event.Setup.AutoSelectedCidr(selected.value))
+        return selected.value
+    }
+
+    private fun persistAutoSelectedCidr(
+        initConfig: InitConfig,
+        cidr: String,
+    ) {
+        workingState.initConfig = initConfig.copy(cidr = cidr)
+        clusterStateManager.save(workingState)
+    }
+
+    /**
      * Creates a new VPC or validates an existing one.
      *
      * If no VPC ID is stored in state, creates a new VPC with appropriate tags.
@@ -311,14 +368,6 @@ class Up(
      * @param initConfig Configuration containing cluster name and tags
      * @return The VPC ID to use for infrastructure
      */
-    private fun resolveCidr(cidr: String?): String {
-        if (cidr != null) return cidr
-        val existingCidrs = vpcService.listAllVpcCidrs()
-        val selected = CidrBlock.selectAvailable(existingCidrs)
-        eventBus.emit(Event.Setup.AutoSelectedCidr(selected.value))
-        return selected.value
-    }
-
     private fun createOrValidateVpc(
         initConfig: InitConfig,
         resolvedCidr: String,
@@ -380,12 +429,7 @@ class Up(
     private fun provisionInfrastructure(initConfig: InitConfig) {
         eventBus.emit(Event.Provision.InfrastructureStarting)
 
-        val resolvedCidr = resolveCidr(initConfig.cidr)
-        if (initConfig.cidr == null) {
-            workingState.initConfig = initConfig.copy(cidr = resolvedCidr)
-            clusterStateManager.save(workingState)
-        }
-        val vpcId = createOrValidateVpc(initConfig, resolvedCidr)
+        val (vpcId, resolvedCidr) = resolveVpc(initConfig)
         val vpcInfra = setupVpcNetworking(initConfig, vpcId, resolvedCidr)
         val subnetIds = vpcInfra.subnetIds
         val securityGroupId = vpcInfra.securityGroupId

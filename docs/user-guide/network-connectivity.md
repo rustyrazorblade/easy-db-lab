@@ -4,7 +4,7 @@ This guide covers how to connect to your easy-db-lab cluster from your local mac
 
 ## Overview
 
-easy-db-lab clusters run in a private AWS VPC. By default, the VPC uses `10.0.0.0/16`, but you can customize this:
+easy-db-lab clusters run in a private AWS VPC. By default, `up` picks a random `10.X.0.0/16` block that no existing VPC in the region uses, and prints the one it chose. If creating the VPC fails, it retries a few times, each time on a new random unused block. To choose the block yourself, pass `--cidr`; it is used as-is and not retried:
 
 ```bash
 easy-db-lab init --cidr 10.14.0.0/20 ...

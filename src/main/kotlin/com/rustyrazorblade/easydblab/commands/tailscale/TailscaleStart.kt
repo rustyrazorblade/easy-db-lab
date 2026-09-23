@@ -177,8 +177,9 @@ class TailscaleStart : PicoBaseCommand() {
      * Removes the device an earlier start recorded when the control node has registered as a new
      * one, so the old device does not stay in the tailnet once its ID is overwritten. A device
      * already gone counts as removed. Any other failure is reported, naming the old device so it
-     * can be removed by hand, and makes the command exit non-zero; the new device is still
-     * recorded, because it is the live one `down` must remove.
+     * can be removed by hand, but does not fail the command: Tailscale is up, and `up` reads a
+     * non-zero exit as Tailscale not starting. The new device is still recorded, because it is the
+     * live one `down` must remove.
      */
     @Suppress("TooGenericExceptionCaught")
     private fun removeReplacedDevice(
@@ -193,7 +194,6 @@ class TailscaleStart : PicoBaseCommand() {
             eventBus.emit(Event.Tailscale.DeviceDeleted(oldDeviceId))
         } catch (e: Exception) {
             eventBus.emit(Event.Tailscale.DeviceNotRemoved(oldDeviceId, e.message ?: e::class.simpleName.orEmpty()))
-            exitCode = Constants.ExitCodes.ERROR
         }
     }
 

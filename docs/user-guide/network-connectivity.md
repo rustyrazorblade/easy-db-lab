@@ -92,7 +92,7 @@ kubectl get pods
 # http://10.0.1.50:3000 (Grafana)
 ```
 
-`easy-db-lab down` and `easy-db-lab tailscale stop` remove the cluster's control node from the tailnet, using the device ID recorded when Tailscale started on it (`tailscale stop` does this even when Tailscale is already down), so a later `tailscale start` does not leave the old device beside the new one. If the OAuth client is not allowed to delete devices, or no credentials are configured, the command exits non-zero and says so; the device ID stays in the cluster state, so running it again once the scope is granted removes it. `tailscale start` likewise removes a previously recorded device when the control node registers as a new one; if that removal fails it exits non-zero, names the old device, and records the new one.
+`easy-db-lab down` and `easy-db-lab tailscale stop` remove the cluster's control node from the tailnet, using the device ID recorded when Tailscale started on it (`tailscale stop` does this even when Tailscale is already down), so a later `tailscale start` does not leave the old device beside the new one. If the OAuth client is not allowed to delete devices, or no credentials are configured, the command exits non-zero and says so; the device ID stays in the cluster state, so running it again once the scope is granted removes it. `tailscale start` likewise removes a previously recorded device when the control node registers as a new one; if that removal fails it reports the old device (and the `devices:core` scope, when the OAuth client lacks it) so you can remove it by hand, records the new one, and still succeeds, so `up` carries on.
 
 ### Manual Control
 

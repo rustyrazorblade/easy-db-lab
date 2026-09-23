@@ -251,11 +251,12 @@ class TailscaleStartTest : BaseKoinTest() {
         }
 
         /**
-         * The new device is the live one, so it is recorded for `down`; the old one is named in the
-         * error so it can be removed by hand.
+         * Tailscale came up, so the command succeeds: `up` treats a non-zero exit as Tailscale not
+         * starting. The new device is the live one, so it is recorded for `down`; the old one is
+         * named in the error so it can be removed by hand.
          */
         @Test
-        fun `a failed removal of the old device is reported and exits non-zero, recording the live device`() {
+        fun `a failed removal of the old device is reported but still succeeds, recording the live device`() {
             testClusterState.tailscaleDeviceId = "nOldCNTRL"
             stubSuccessfulStart("nNewCNTRL")
             whenever(mockTailscaleService.deleteDevice(any(), any(), any()))
@@ -263,7 +264,7 @@ class TailscaleStartTest : BaseKoinTest() {
 
             val exitCode = startCommand().call()
 
-            assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+            assertThat(exitCode).isEqualTo(0)
             assertThat(testClusterState.tailscaleDeviceId).isEqualTo("nNewCNTRL")
             verify(mockClusterStateManager, atLeastOnce()).save(testClusterState)
             val errorOutput = outputHandler.errors.joinToString("\n") { it.first }

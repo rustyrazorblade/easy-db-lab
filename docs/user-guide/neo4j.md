@@ -75,14 +75,15 @@ series land in VictoriaMetrics under `job="neo4j"`.
 ## Lifecycle
 
 ```bash
-# Stop: deletes the StatefulSet, Services, and pods labelled easydblab/kit=neo4j.
+# Stop: deletes the StatefulSet, Services, pods, and ConfigMap labelled easydblab/kit=neo4j.
 # The data volume is kept.
 easy-db-lab neo4j stop
 
 # Start again with the existing data
 easy-db-lab neo4j start
 
-# Uninstall: also deletes the PVC and the kit's persistent volumes
+# Uninstall: deletes those plus the data volume claim, then the PersistentVolume and its
+# directory on the db node
 easy-db-lab neo4j uninstall
 ```
 

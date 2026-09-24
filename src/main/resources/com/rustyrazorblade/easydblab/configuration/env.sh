@@ -415,9 +415,19 @@ socks5-status() {
 alias socks5-start="start-socks5"
 alias socks5-stop="stop-socks5"
 
-# ClickHouse client helper (interactive)
+# ClickHouse client helper (interactive). Extra arguments go to clickhouse-client.
+# The Altinity operator names server pods chi-clickhouse-clickhouse-<shard>-<replica>-0, so the
+# first Running pod of the CHI is found by label. The kit's default user has no password.
 clickhouse-client() {
-  ssh -t control0 kubectl exec -it clickhouse-0 -c clickhouse -- clickhouse-client --user default --password default
+  local pod
+  pod=$(ssh control0 'kubectl get pods -n default -l clickhouse.altinity.com/chi=clickhouse --field-selector=status.phase=Running -o jsonpath="{.items[0].metadata.name}"')
+  if [ -z "$pod" ]; then
+    echo "No running ClickHouse server pod found (label clickhouse.altinity.com/chi=clickhouse)." >&2
+    return 1
+  fi
+  local args=""
+  [ $# -gt 0 ] && args=$(printf '%q ' "$@")
+  ssh -t control0 "kubectl exec -it -n default $pod -c clickhouse -- clickhouse-client $args"
 }
 
 # ClickHouse query helper (non-interactive, sends query via HTTP POST)

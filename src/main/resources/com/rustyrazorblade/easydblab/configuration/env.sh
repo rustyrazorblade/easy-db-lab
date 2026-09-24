@@ -432,10 +432,12 @@ clickhouse-client() {
 
 # ClickHouse query helper (non-interactive, sends query via HTTP POST)
 # Usage: clickhouse-query "SELECT 1" or clickhouse-query <<< "SELECT 1"
+# The kit exposes HTTP on NodePort 30123 of every db node (clickhouse-nodeport); container
+# port 8123 is not bound on the host. The kit's default user has no password.
 clickhouse-query() {
   local query="${1:-$(cat)}"
-  local control_ip=$(easy-db-lab ip db0 --private)
-  curl -s -u "default:default" "http://${control_ip}:8123/" -d "$query"
+  local db_ip=$(easy-db-lab ip db0 --private)
+  curl -s "http://${db_ip}:30123/" -d "$query"
 }
 
 # SOCKS5 proxy is started automatically by the easy-db-lab CLI before each command.

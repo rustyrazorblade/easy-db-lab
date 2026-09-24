@@ -100,9 +100,13 @@ start:
     template: clickhouseinstallation.yaml
   - type: shell
     script: |
-      echo "Waiting for ClickHouse pod to be created..."
-      until kubectl get pods -l clickhouse.altinity.com/chi=clickhouse -n default --no-headers 2>/dev/null | grep -q .; do sleep 5; done
-      echo "Pod exists, waiting for Ready..."
+      # The operator creates the replicas one at a time and reports the installation Completed
+      # only once all of them are up; waiting for the pods that exist returned after the first.
+      echo "Waiting for the ClickHouseInstallation to complete..."
+      kubectl wait --for=jsonpath='{.status.status}'=Completed chi/clickhouse \
+        --namespace default \
+        --timeout=900s || exit 1
+      echo "Installation complete, waiting for every replica to be Ready..."
       kubectl wait --for=condition=Ready pods \
         -l clickhouse.altinity.com/chi=clickhouse \
         --namespace default \

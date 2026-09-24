@@ -50,6 +50,19 @@ class KitDashboardInstanceTest {
         assertThat(instance.rendered().single()).isEqualTo(overview)
     }
 
+    /**
+     * Each instance's metrics carry its own job (`job="postgres-duckdb"`), while the kit's
+     * dashboards select the kit's (`job="postgres"`). An extension instance's copies select its job.
+     */
+    @Test
+    fun `an extension instance's dashboards select its own scrape job`() {
+        val instance = KitDashboardInstance(kitName = "postgres-duckdb", kitType = "postgres", dashboards = listOf(overview))
+
+        val rendered = instance.rendered().single()
+
+        assertThat(rendered).contains("""pg_up{job=\"postgres-duckdb\"}""").doesNotContain("""job=\"postgres\"""")
+    }
+
     @Test
     fun `an extension instance gets its own uids, and its links point at its own copies`() {
         val instance = KitDashboardInstance(kitName = "postgres-duckdb", kitType = "postgres", dashboards = listOf(overview, duckdb))

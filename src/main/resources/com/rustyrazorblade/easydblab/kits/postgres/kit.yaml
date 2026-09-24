@@ -7,11 +7,11 @@ metrics:
   # Pod discovery on this instance's primary, the pod the metrics NodePort selected, scraped once
   # by the collector on its node with instance = the pod name. A static job on the NodePort was
   # run by every collector, duplicating the series once per node. Port is CNPG's metrics
-  # container port, the same for every instance; ${KIT_NAME} is the instance name.
+  # container port, the same for every instance; ${KIT_NAME} is the instance name. No fixed job:
+  # the job is the instance name (postgres, postgres-duckdb, ...), as for every other kit.
   - type: scrape
     port: 9187
     path: /metrics
-    job: postgres
     pod-selector: "cnpg.io/cluster=${KIT_NAME},cnpg.io/instanceRole=primary"
 # Every instance installs the overview; an extension instance adds only its own extension's
 # dashboard. An instance other than plain postgres installs them under uids of its own, so it

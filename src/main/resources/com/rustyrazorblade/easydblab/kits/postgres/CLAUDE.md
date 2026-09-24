@@ -32,7 +32,12 @@ Known UIDs:
 
 ## Metrics Scrape
 
-The `postgres` scrape job uses pod discovery on `cnpg.io/cluster=${KIT_NAME},cnpg.io/instanceRole=primary`
+Each instance's scrape job is named after the instance (`job="postgres"`, `job="postgres-duckdb"`):
+the scrape entry declares no fixed `job`. The dashboards select `job="postgres"`; an extension
+instance installs them with that selector rewritten to its own job (`KitDashboardInstance`), so
+keep job selectors in the dashboards in exactly the form `job="postgres"`.
+
+The scrape uses pod discovery on `cnpg.io/cluster=${KIT_NAME},cnpg.io/instanceRole=primary`
 at CNPG's metrics container port 9187 — the same pod the metrics NodePort selects, scraped once by
 the collector on its node. `${KIT_NAME}` is filled in with the instance name at `start`, so
 `postgres` and `postgres-<extension>` each scrape their own primary. The extension's

@@ -23,8 +23,10 @@ fun selectInstanceDashboards(
  * of a kit (postgres-duckdb beside postgres) installing a dashboard under the kit's uid would move
  * the first instance's dashboard into its own folder. The kit's own instance ([kitName] equal to
  * [kitType]) installs its [dashboards] unchanged; any other instance gets each uid suffixed with
- * what its name adds to the kit's (`postgres-overview` becomes `postgres-overview-duckdb`), and
- * links between the dashboards it installs point at its own copies.
+ * what its name adds to the kit's (`postgres-overview` becomes `postgres-overview-duckdb`), links
+ * between the dashboards it installs point at its own copies, and queries selecting the kit's
+ * scrape job (`job="postgres"`) select the instance's (`job="postgres-duckdb"`): a kit's scrape
+ * job is named after the instance that registered it.
  */
 class KitDashboardInstance(
     private val kitName: String,
@@ -40,7 +42,7 @@ class KitDashboardInstance(
         val parsed = dashboards.map { Json.parseToJsonElement(it).jsonObject }
         val renamed = parsed.mapNotNull { uidOf(it) }.associateWith { "$it-$suffix" }
         return parsed.map { dashboard ->
-            val body = rewriteStrings(dashboard) { value -> relink(value, renamed) }.jsonObject
+            val body = rewriteStrings(dashboard) { value -> ownJob(relink(value, renamed)) }.jsonObject
             val uid = uidOf(dashboard)
             val withUid = if (uid == null) body else JsonObject(body + ("uid" to JsonPrimitive(renamed.getValue(uid))))
             Json.encodeToString(JsonObject.serializer(), withUid)
@@ -57,6 +59,9 @@ class KitDashboardInstance(
         renamed.entries.fold(value) { text, (from, to) ->
             text.replace(Regex("/d/${Regex.escape(from)}(?![A-Za-z0-9_-])"), "/d/$to")
         }
+
+    /** Makes a selector of the kit's scrape job select this instance's. */
+    private fun ownJob(value: String): String = value.replace("job=\"$kitType\"", "job=\"$kitName\"")
 
     private fun rewriteStrings(
         element: JsonElement,

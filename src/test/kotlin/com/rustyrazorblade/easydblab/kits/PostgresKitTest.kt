@@ -45,6 +45,15 @@ class PostgresKitTest : BaseKoinTest() {
     }
 
     /**
+     * postgres and postgres-duckdb both reported job="postgres", told apart only by instance. A
+     * scrape with no fixed job is named after the kit instance, as every other kit's is.
+     */
+    @Test
+    fun `the scrape job is named after the kit instance`() {
+        assertThat(kit.scrapeMetrics.single().job).isBlank()
+    }
+
+    /**
      * Plain postgres and every postgres-<extension> instance share one CNPG operator release, so
      * uninstalling one instance keeps the operator while any CNPG Cluster is left.
      */

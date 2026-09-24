@@ -131,6 +131,13 @@ uninstall:
         echo "Error: TiDB cluster is still running. Run 'tidb stop' before uninstalling." >&2
         exit 1
       fi
+  # TiDB Operator keeps the local-path PVCs of PD, TiKV and TiFlash after the TidbCluster is
+  # deleted; it labels them with the cluster's instance. Deleting them lets local-path remove the
+  # volumes.
+  - type: delete
+    kinds: [PersistentVolumeClaim]
+    selector: app.kubernetes.io/instance=tidb
+    namespace: default
   - type: helm-uninstall
     release: tidb-operator
     namespace: tidb-admin

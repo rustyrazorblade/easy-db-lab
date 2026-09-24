@@ -4,13 +4,14 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import java.time.Duration
+import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * [pollUntil] over [RetryUtil.createPollUntilRetryConfig]: polls at a fixed interval until the
  * result satisfies a condition, treats a thrown look as transient within the same budget, returns
- * the last result when the budget runs out, and fails only when the last look throws. Runs with a
- * zero interval so it does not sleep.
+ * the last result when the budget (attempts, or an optional wall-clock deadline) runs out, and
+ * fails only when the last look throws. Runs with a zero interval so it does not sleep.
  */
 class RetryUtilPollUntilTest {
     private val looks = AtomicInteger(0)
@@ -56,5 +57,38 @@ class RetryUtilPollUntilTest {
             poll(maxAttempts = 2, results = listOf({ "pending" }, { error("connection reset") }))
         }.isInstanceOf(IllegalStateException::class.java).hasMessage("connection reset")
         assertThat(looks.get()).isEqualTo(2)
+    }
+
+    /** A wall-clock deadline bounds the poll however many attempts remain: a slow look cannot stretch it. */
+    @Test
+    fun `a passed deadline ends the poll with the last result however many attempts remain`() {
+        val result =
+            pollUntil<String>(
+                operationName = "test-poll",
+                maxAttempts = Int.MAX_VALUE,
+                interval = Duration.ZERO,
+                deadline = Instant.now(),
+                done = { it == "ready" },
+            ) { listOf("pending", "ready")[looks.getAndIncrement()] }
+
+        assertThat(result).isEqualTo("pending")
+        assertThat(looks.get()).isEqualTo(1)
+    }
+
+    @Test
+    fun `a look that throws after the deadline fails the poll`() {
+        assertThatThrownBy {
+            pollUntil<String>(
+                operationName = "test-poll",
+                maxAttempts = Int.MAX_VALUE,
+                interval = Duration.ZERO,
+                deadline = Instant.now(),
+                done = { it == "ready" },
+            ) {
+                looks.incrementAndGet()
+                error("connection reset")
+            }
+        }.isInstanceOf(IllegalStateException::class.java).hasMessage("connection reset")
+        assertThat(looks.get()).isEqualTo(1)
     }
 }

@@ -14,6 +14,7 @@ import software.amazon.awssdk.services.s3.model.S3Exception
 import java.io.IOException
 import java.net.BindException
 import java.time.Duration
+import java.time.Instant
 
 /**
  * Utility for creating standardized retry configurations for remote service operations.
@@ -431,21 +432,28 @@ object RetryUtil {
      *   during a wait that lasts minutes) and retried within the same budget; the poll fails
      *   only when the last look throws
      *
+     * - When [deadline] is set, nothing is retried once it has passed, so the wait is bounded by the
+     *   wall clock rather than by how long each look takes
+     *
      * @param maxAttempts the most looks to make
      * @param interval how long to wait between looks
      * @param done whether a look's result ends the poll
+     * @param deadline when set, the instant after which no further look is made
      * @return RetryConfig configured for a fixed-interval poll
      */
     fun <T> createPollUntilRetryConfig(
         maxAttempts: Int,
         interval: Duration,
         done: (T) -> Boolean,
-    ): RetryConfig =
-        RetryConfig
+        deadline: Instant? = null,
+    ): RetryConfig {
+        fun beforeDeadline() = deadline == null || Instant.now().isBefore(deadline)
+        return RetryConfig
             .custom<T>()
             .maxAttempts(maxAttempts)
             .intervalFunction { _ -> interval.toMillis() }
-            .retryOnResult { result -> !done(result) }
-            .retryOnException { true }
+            .retryOnResult { result -> !done(result) && beforeDeadline() }
+            .retryOnException { beforeDeadline() }
             .build()
+    }
 }

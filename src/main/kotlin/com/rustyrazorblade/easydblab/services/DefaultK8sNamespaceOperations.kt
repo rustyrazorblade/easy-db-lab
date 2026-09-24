@@ -4,14 +4,13 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.providers.aws.pollUntil
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.Pod
 import io.fabric8.kubernetes.api.model.apps.DaemonSet
 import io.fabric8.kubernetes.api.model.apps.DaemonSetBuilder
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.github.oshai.kotlinlogging.KotlinLogging
-import io.github.resilience4j.retry.Retry
-import io.github.resilience4j.retry.RetryConfig
 import java.time.Duration
 import java.time.Instant
 
@@ -198,19 +197,14 @@ class DefaultK8sNamespaceOperations(
             clientProvider.createClient(controlHost).use { client ->
                 // Poll until nothing is pending or the deadline passes. The deadline, not an
                 // attempt count, bounds the wait, so a slow API server cannot stretch it.
-                val deadline = Instant.now().plusSeconds(timeoutSeconds.toLong())
-                val config =
-                    RetryConfig
-                        .custom<List<String>>()
-                        .maxAttempts(Int.MAX_VALUE)
-                        .intervalFunction { _ -> podPollInterval.toMillis() }
-                        .retryOnResult { pending -> pending.isNotEmpty() && Instant.now().isBefore(deadline) }
-                        .retryOnException { false }
-                        .build()
                 val pending =
-                    Retry
-                        .of("rollout-status", config)
-                        .executeSupplier { pendingRollouts(client, namespace, workloads) }
+                    pollUntil(
+                        operationName = "rollout-status",
+                        maxAttempts = Int.MAX_VALUE,
+                        interval = podPollInterval,
+                        deadline = Instant.now().plusSeconds(timeoutSeconds.toLong()),
+                        done = { it.isEmpty() },
+                    ) { pendingRollouts(client, namespace, workloads) }
                 check(pending.isEmpty()) {
                     "Timed out after ${timeoutSeconds}s waiting for rollouts to complete: ${pending.joinToString("; ")}"
                 }

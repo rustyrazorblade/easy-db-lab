@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.services.TailscaleApiException
 import com.rustyrazorblade.easydblab.services.TailscaleService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
@@ -103,7 +104,6 @@ class TailscaleStop : PicoBaseCommand() {
      * (a missing `devices:core` scope, no OAuth credentials) is reported, makes the command exit
      * non-zero, and leaves the ID recorded so a later `stop` or `down` retries.
      */
-    @Suppress("TooGenericExceptionCaught")
     private fun removeTailscaleDevice() {
         val deviceId = clusterState.tailscaleDeviceId
         if (deviceId.isNullOrBlank()) return
@@ -119,7 +119,7 @@ class TailscaleStop : PicoBaseCommand() {
                 try {
                     tailscaleService.deleteDevice(clientId, clientSecret, deviceId)
                     null
-                } catch (e: Exception) {
+                } catch (e: TailscaleApiException) {
                     e.message ?: e::class.simpleName.orEmpty()
                 }
             }

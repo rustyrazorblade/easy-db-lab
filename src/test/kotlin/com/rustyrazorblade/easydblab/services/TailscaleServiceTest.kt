@@ -24,6 +24,7 @@ import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import java.io.IOException
 import java.time.Duration
 import okhttp3.Response as OkHttpResponse
 
@@ -435,6 +436,17 @@ class TailscaleServiceTest : BaseKoinTest() {
             .hasMessageContaining("500")
     }
 
+    @Test
+    fun `deleteDevice reports an unreachable API as a Tailscale API failure`() {
+        assertThatThrownBy {
+            serviceWith(FakeTailscaleApi(deleteStatus = 200, deleteFailure = IOException("connection reset")))
+                .deleteDevice("client-id", "client-secret", "nSelf123CNTRL")
+        }.isInstanceOf(TailscaleApiException::class.java)
+            .hasMessageContaining("nSelf123CNTRL")
+            .hasMessageContaining("connection reset")
+            .hasCauseInstanceOf(IOException::class.java)
+    }
+
     private fun serviceWith(api: FakeTailscaleApi) =
         DefaultTailscaleService(
             mockRemoteOps,
@@ -445,16 +457,19 @@ class TailscaleServiceTest : BaseKoinTest() {
 
     /**
      * Stands in for the Tailscale API at the OkHttp boundary: answers the OAuth token exchange with
-     * a fixed token and every device DELETE with [deleteStatus], and records each request.
+     * a fixed token and every DELETE with [deleteStatus] (or, when set, throws [deleteFailure] as a
+     * transport failure), and records each request.
      */
     private class FakeTailscaleApi(
         private val deleteStatus: Int,
+        private val deleteFailure: IOException? = null,
     ) : Interceptor {
         val requests = mutableListOf<Request>()
 
         override fun intercept(chain: Interceptor.Chain): OkHttpResponse {
             val request = chain.request()
             requests += request
+            if (request.method == "DELETE" && deleteFailure != null) throw deleteFailure
             val (code, body) =
                 when (request.method) {
                     "POST" -> 200 to """{"access_token":"token-abc"}"""

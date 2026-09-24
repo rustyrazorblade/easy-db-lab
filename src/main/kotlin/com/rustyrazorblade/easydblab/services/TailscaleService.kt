@@ -15,6 +15,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
+import java.io.IOException
 import java.time.Duration
 import java.util.concurrent.TimeUnit
 
@@ -29,7 +30,9 @@ data class TailscaleAuthKey(
 )
 
 /**
- * Exception thrown when Tailscale API operations fail.
+ * Exception thrown when Tailscale API operations fail: an error response, or an API that could not
+ * be reached (the transport's [java.io.IOException] is the cause). The API methods of
+ * [TailscaleService] throw nothing else, so callers catch only this.
  */
 class TailscaleApiException(
     message: String,
@@ -174,21 +177,22 @@ class DefaultTailscaleService(
         clientId: String,
         clientSecret: String,
         tag: String,
-    ): TailscaleAuthKey {
-        log.info { "Generating Tailscale auth key with tag: $tag" }
+    ): TailscaleAuthKey =
+        reachingApi("generate an auth key") {
+            log.info { "Generating Tailscale auth key with tag: $tag" }
 
-        // Step 1: Exchange client credentials for access token
-        val accessToken = getAccessToken(clientId, clientSecret)
+            // Step 1: Exchange client credentials for access token
+            val accessToken = getAccessToken(clientId, clientSecret)
 
-        // Step 2: Generate ephemeral auth key
-        return createAuthKey(accessToken, tag)
-    }
+            // Step 2: Generate ephemeral auth key
+            createAuthKey(accessToken, tag)
+        }
 
     override fun deleteAuthKey(
         clientId: String,
         clientSecret: String,
         keyId: String,
-    ) {
+    ) = reachingApi("delete auth key $keyId") {
         log.info { "Deleting Tailscale auth key: $keyId" }
 
         val accessToken = getAccessToken(clientId, clientSecret)
@@ -215,7 +219,7 @@ class DefaultTailscaleService(
         clientId: String,
         clientSecret: String,
         deviceId: String,
-    ) {
+    ) = reachingApi("delete Tailscale device $deviceId") {
         log.info { "Deleting Tailscale device: $deviceId" }
 
         val accessToken = getAccessToken(clientId, clientSecret)
@@ -257,6 +261,20 @@ class DefaultTailscaleService(
                     "Tailscale on ${host.alias} reported no device ID of its own " +
                         "(BackendState ${status["BackendState"]}); it has not joined the tailnet.",
                 )
+        }
+
+    /**
+     * Runs a Tailscale API call, reporting an API that could not be reached as a
+     * [TailscaleApiException] like any other API failure.
+     */
+    private inline fun <T> reachingApi(
+        operation: String,
+        call: () -> T,
+    ): T =
+        try {
+            call()
+        } catch (e: IOException) {
+            throw TailscaleApiException("Failed to $operation: ${e.message}", e)
         }
 
     /**

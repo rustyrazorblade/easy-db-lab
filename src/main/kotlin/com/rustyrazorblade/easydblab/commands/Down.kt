@@ -11,6 +11,7 @@ import com.rustyrazorblade.easydblab.providers.aws.TeardownMode
 import com.rustyrazorblade.easydblab.providers.aws.TeardownResult
 import com.rustyrazorblade.easydblab.proxy.Socks5ProxyStateFile
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
+import com.rustyrazorblade.easydblab.services.TailscaleApiException
 import com.rustyrazorblade.easydblab.services.TailscaleService
 import com.rustyrazorblade.easydblab.services.TeardownBackupService
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
@@ -490,7 +491,6 @@ class Down : PicoBaseCommand() {
      * @return [result] unchanged when there was nothing to remove or it was removed; otherwise a
      *   failed result carrying the reason.
      */
-    @Suppress("TooGenericExceptionCaught")
     private fun removeTailscaleDevice(result: TeardownResult): TeardownResult {
         if (!clusterStateManager.exists()) return result
         val clusterState = clusterStateManager.load()
@@ -509,7 +509,7 @@ class Down : PicoBaseCommand() {
                 try {
                     tailscaleService.deleteDevice(clientId, clientSecret, deviceId)
                     null
-                } catch (e: Exception) {
+                } catch (e: TailscaleApiException) {
                     "Tailscale device $deviceId (the control node) was not removed from the tailnet: ${e.message}"
                 }
             }

@@ -181,7 +181,6 @@ class TailscaleStart : PicoBaseCommand() {
      * non-zero exit as Tailscale not starting. The new device is still recorded, because it is the
      * live one `down` must remove.
      */
-    @Suppress("TooGenericExceptionCaught")
     private fun removeReplacedDevice(
         credentials: TailscaleCredentials,
         newDeviceId: String,
@@ -192,7 +191,7 @@ class TailscaleStart : PicoBaseCommand() {
         try {
             tailscaleService.deleteDevice(credentials.clientId, credentials.clientSecret, oldDeviceId)
             eventBus.emit(Event.Tailscale.DeviceDeleted(oldDeviceId))
-        } catch (e: Exception) {
+        } catch (e: TailscaleApiException) {
             eventBus.emit(Event.Tailscale.DeviceNotRemoved(oldDeviceId, e.message ?: e::class.simpleName.orEmpty()))
         }
     }

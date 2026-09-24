@@ -223,6 +223,10 @@ class Down : PicoBaseCommand() {
 
     /**
      * Tears down the current cluster using VPC ID from cluster state.
+     *
+     * A cluster whose VPC is already gone but whose tailnet device is still recorded is a previous
+     * `down` that removed the infrastructure and failed only the device removal. There is no VPC
+     * left to tear down, so this succeeds with nothing deleted and lets the device removal retry.
      */
     private fun teardownCurrentCluster(): TeardownResult {
         // Get the VPC ID from cluster state
@@ -233,6 +237,10 @@ class Down : PicoBaseCommand() {
 
         val clusterState = clusterStateManager.load()
         val currentVpcId = clusterState.vpcId
+
+        if (currentVpcId == null && !clusterState.tailscaleDeviceId.isNullOrBlank()) {
+            return TeardownResult.success(emptyList())
+        }
 
         if (currentVpcId == null) {
             eventBus.emit(Event.Teardown.NoVpcId(clusterState.name))
@@ -475,7 +483,9 @@ class Down : PicoBaseCommand() {
      *
      * Unlike the auth key, a device left behind is visible clutter that keeps advertising this
      * cluster's subnet route, so a failure here fails `down` (non-zero exit, the reason listed
-     * with the teardown errors) and the ID stays in state for the next `down` to retry.
+     * with the teardown errors) and the ID stays in state for the next `down` to retry. The rest
+     * of the cluster state is still cleared; [teardownCurrentCluster] retries on the recorded ID
+     * alone, without a VPC ID.
      *
      * @return [result] unchanged when there was nothing to remove or it was removed; otherwise a
      *   failed result carrying the reason.

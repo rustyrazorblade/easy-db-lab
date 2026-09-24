@@ -19,9 +19,11 @@ import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
+import org.mockito.kotlin.doThrow
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
+import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.io.File
@@ -117,6 +119,37 @@ class DownTailscaleDeviceTest : BaseKoinTest() {
         assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
         assertThat(output()).contains("nControl0CNTRL").contains("devices:core")
         assertThat(stateManager.load().tailscaleDeviceId).isEqualTo("nControl0CNTRL")
+    }
+
+    @Test
+    fun `the next down retries a device delete that failed, after the cluster state was cleared`() {
+        saveState("nControl0CNTRL")
+        withTailscaleCredentials()
+        doThrow(TailscaleApiException("tailnet unreachable"))
+            .doNothing()
+            .whenever(tailscaleService)
+            .deleteDevice(any(), any(), any())
+
+        val firstExit = runDown()
+        val secondExit = runDown()
+
+        assertThat(firstExit).isEqualTo(Constants.ExitCodes.ERROR)
+        verify(tailscaleService, times(2)).deleteDevice("client-id", "client-secret", "nControl0CNTRL")
+        assertThat(secondExit).isEqualTo(0)
+        assertThat(stateManager.load().tailscaleDeviceId).isNull()
+    }
+
+    @Test
+    fun `a successful device delete leaves the cluster state cleared`() {
+        saveState("nControl0CNTRL")
+        withTailscaleCredentials()
+
+        runDown()
+
+        val state = stateManager.load()
+        assertThat(state.vpcId).isNull()
+        assertThat(state.tailscaleDeviceId).isNull()
+        assertThat(state.isInfrastructureUp()).isFalse()
     }
 
     @Test

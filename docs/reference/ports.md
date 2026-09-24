@@ -51,6 +51,17 @@ Kits publish client ports through NodePort Services, reachable on any node's pri
 | 9150 | memcached | memcached-exporter metrics (pod port, scraped by pod discovery) |
 | 30687 | neo4j | Bolt (NodePort → 7687) |
 | 30474 | neo4j | HTTP (NodePort → 7474) |
+| 30432 | postgres | PostgreSQL (NodePort → 5432) |
+| 30987 | postgres | metrics (NodePort → 9187, for manual inspection; scraped by pod discovery) |
+| 30435 | postgres-duckdb | PostgreSQL (NodePort → 5432) |
+| 30990 | postgres-duckdb | metrics (NodePort → 9187) |
+| 30433 | postgres-postgis | PostgreSQL (NodePort → 5432) |
+| 30988 | postgres-postgis | metrics (NodePort → 9187) |
+| 30434 | postgres-timescaledb | PostgreSQL (NodePort → 5432) |
+| 30989 | postgres-timescaledb | metrics (NodePort → 9187) |
+
+Every built-in kit's NodePorts, each postgres instance's, and the Hubble UI's 31234 are distinct,
+so any combination of kits can run at once.
 
 ## Server
 

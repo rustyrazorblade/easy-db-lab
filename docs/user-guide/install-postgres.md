@@ -87,11 +87,14 @@ Outputs a table of alias names, image templates, shared_preload_libraries, and C
 
 ### Built-in aliases
 
-| Alias | Description |
-|---|---|
-| `duckdb` | DuckDB analytical query engine via pg_duckdb |
-| `postgis` | Geospatial types and functions |
-| `timescaledb` | Time-series storage and query optimization |
+| Alias | Description | PostgreSQL NodePort | Metrics NodePort |
+|---|---|---|---|
+| `duckdb` | DuckDB analytical query engine via pg_duckdb | 30435 | 30990 |
+| `postgis` | Geospatial types and functions | 30433 | 30988 |
+| `timescaledb` | Time-series storage and query optimization | 30434 | 30989 |
+
+Each instance has its own NodePorts, so plain `postgres` (30432 / 30987) and every extension
+instance can run at the same time.
 
 ### Example
 

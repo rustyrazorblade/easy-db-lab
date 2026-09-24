@@ -1,0 +1,124 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  # platform-pvs names the PV data-<kit>-0; the StatefulSet's claim takes the same name only
+  # when the StatefulSet is named after the kit and its claim template is `data`.
+  name: neo4j
+  namespace: default
+  labels:
+    app: neo4j
+    easydblab/kit: neo4j
+spec:
+  replicas: 1
+  # No governing headless Service is created. It would only give the pod a DNS name
+  # (neo4j-0.neo4j), which nothing dials: a single Community server has no cluster discovery,
+  # clients reach it through neo4j-nodeport, and the Bolt advertised address is set explicitly.
+  serviceName: neo4j
+  selector:
+    matchLabels:
+      app: neo4j
+  template:
+    metadata:
+      labels:
+        app: neo4j
+        easydblab/kit: neo4j
+    spec:
+      # The image entrypoint turns every NEO4J_* env var into a config key and strict validation
+      # rejects unknown keys. Service links would inject NEO4J_NODEPORT_SERVICE_PORT and friends
+      # for the kit's own neo4j-nodeport Service and crash-loop the pod. The official Helm chart
+      # turns them off for the same reason.
+      enableServiceLinks: false
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: type
+                    operator: In
+                    values:
+                      - db
+      containers:
+        - name: neo4j
+          image: neo4j:__NEO4J_VERSION__-community
+          imagePullPolicy: IfNotPresent
+          # Clients dial the node, not the pod. The kit's start step publishes the Bolt advertised
+          # address (first db node IP and the Bolt NodePort) in this ConfigMap, keyed by the Neo4j
+          # env var itself. The env var name is not written here: it contains a double
+          # underscore, which this template's placeholder syntax would consume.
+          envFrom:
+            - configMapRef:
+                name: neo4j-advertised
+          env:
+            - name: NEO4J_AUTH
+              value: none
+            # The base AMI installs the OpenTelemetry Java agent; it is mounted from the host below.
+            - name: NEO4J_server_jvm_additional
+              value: "-javaagent:/usr/local/otel/opentelemetry-javaagent.jar"
+            - name: OTEL_SERVICE_NAME
+              value: neo4j
+            # HOST_IP must precede the endpoint that references it.
+            - name: HOST_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            # Port 4318 is the collector's OTLP http/protobuf receiver, the agent's default protocol.
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://$(HOST_IP):4318"
+            - name: OTEL_METRIC_EXPORT_INTERVAL
+              value: "5000"
+            # The agent would report the pod hostname (neo4j-0) as host.name. The collector's
+            # metrics pipeline overwrites it with the node, but its logs and traces pipelines do
+            # not, so log- and span-derived series would miss node-keyed dashboard filters.
+            # NODE_NAME must precede the variable that references it.
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "host.name=$(NODE_NAME)"
+          ports:
+            - name: bolt
+              containerPort: 7687
+            - name: http
+              containerPort: 7474
+          # Neo4j accepts TCP on 7687 before it can serve Cypher, so readiness runs a query over
+          # Bolt (auth is off). cypher-shell is a JVM client, hence the 10s timeout; 30 x 10s
+          # gives first start five minutes.
+          readinessProbe:
+            exec:
+              command:
+                - cypher-shell
+                - -a
+                - bolt://localhost:7687
+                - RETURN 1
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 30
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: otel-agent
+              mountPath: /usr/local/otel
+              readOnly: true
+      volumes:
+        - name: otel-agent
+          hostPath:
+            path: /usr/local/otel
+            type: Directory
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          app: neo4j
+          easydblab/kit: neo4j
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: __STORAGE_CLASS_WFC__
+        # Binds only this kit's platform PVs; every kit's PVs share the storage class.
+        selector:
+          matchLabels:
+            app.kubernetes.io/name: __KIT_NAME__
+        resources:
+          requests:
+            storage: __STORAGE_SIZE__

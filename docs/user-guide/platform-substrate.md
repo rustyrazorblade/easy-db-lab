@@ -53,7 +53,8 @@ easy-db-lab platform create-pvs --kit clickhouse --size 100Gi
 This creates one PV per db node with:
 - **Path**: `/mnt/db1/<kit>` on each host
 - **StorageClass**: `local-storage-wfc`
-- **Node affinity**: `easydblab.com/node-ordinal=N` for deterministic binding
+- **Node affinity**: `type=<node-type>` and `easydblab.com/node-ordinal=N` for deterministic binding.
+  Both pools carry ordinals, so the node type keeps a db PV off the app node with the same ordinal.
 - **ClaimRef**: pre-bound to `<volumeClaimTemplateName>-<kit>-N`
 
 The command is safe to re-run. If a PV exists with a stale claimRef (the PVC was deleted), the UID is cleared and the PV is returned to `Available`.
@@ -82,7 +83,7 @@ Displays StorageClasses, available PV counts per node pool, node selector labels
 easy-db-lab platform cni
 ```
 
-Shows the pod-network datapath. On a Cilium cluster it reads the `cilium-config` ConfigMap and the `CiliumNode` objects from the control node and prints the routing mode, IPAM mode, kube-proxy replacement, masquerade interfaces, native routing CIDR, the Hubble UI URL, and per node the ENI count, subnet CIDRs, and IPs allocated, used, and available. On a Flannel cluster it prints one line that names Flannel. Read-only. See [Pod Networking (CNI)](networking.md).
+Shows the pod-network datapath. On a Cilium cluster it reads the `cilium-config` ConfigMap and the `CiliumNode` objects from the control node and prints the routing mode, IPAM mode, kube-proxy replacement, masquerade interfaces, native routing CIDR, the Hubble UI URL, and per node the ENI count, subnet CIDRs, and IPs allocated, used, and available. On a Flannel cluster it prints one line that names Flannel. Cilium is the default datapath; `init --cni=flannel` selects Flannel. Read-only. See [Pod Networking (CNI)](networking.md).
 
 ## Custom Templates
 
@@ -150,7 +151,7 @@ Kits use **standard pod networking** (not `hostNetwork`). Client and metrics por
 
 ### Why ports must reach the host
 
-The OTel collector DaemonSet runs with `hostNetwork: true` so it can scrape host processes and kit metrics endpoints, and so host JVMs such as Cassandra can push OTLP to it at `localhost:4318`. It scrapes each kit's declared metrics port at `localhost:<port>`, so that port must be reachable on every node's host network — which both NodePort (listens on all nodes) and hostPort provide. This also avoids conflicts with host processes: a NodePort-range port can never collide with a database listening on its native port on the host.
+The OTel collector DaemonSet runs with `hostNetwork: true` so it can scrape host processes and kit metrics endpoints, and so host JVMs such as Cassandra can push OTLP to it at `localhost:4318`. Built-in kits are scraped by pod discovery: each collector scrapes the kit pods on its own node directly, on the pod IP and container metrics port, so a metrics port does not need to reach the host for the collector (see [Kit Observability](#kit-observability)). The NodePorts and hostPorts that still expose metrics ports are there for manual inspection (`curl <node-ip>:<port>/metrics`). Client ports do need to reach the host, and a NodePort-range port can never collide with a database listening on its native port on the host.
 
 ### Port Assignments
 
@@ -160,14 +161,14 @@ The OTel collector DaemonSet runs with `hostNetwork: true` so it can scrape host
 | ClickHouse | Native TCP | 9000 | 30900 | NodePort |
 | ClickHouse | MySQL wire | 9004 | 30904 | NodePort |
 | ClickHouse | PostgreSQL wire | 9005 | 30905 | NodePort |
-| ClickHouse | Prometheus | 9363 | 30936 | NodePort |
+| ClickHouse | Prometheus | 9363 | 30936 | pod SD (per-replica); NodePort also exposed |
 | TiDB | MySQL (SQL layer) | 4000 | 30400 | NodePort |
-| TiDB | Prometheus (tidb-sql) | — | 31080 | NodePort |
+| TiDB | Prometheus (tidb-sql) | 10080 | 31080 | pod SD (per-pod); NodePort also exposed |
 | TiDB | Prometheus (tikv) | 20180 | — | pod SD (per-store) |
-| TiDB | Prometheus (pd) | — | 32379 | NodePort |
-| TiDB | Prometheus (tiflash) | — | 32234 | NodePort |
+| TiDB | Prometheus (pd) | 2379 | 32379 | pod SD (per-pod); NodePort also exposed |
+| TiDB | Prometheus (tiflash) | 8234 | 32234 | pod SD (per-pod); NodePort also exposed |
 | Presto | HTTP (coordinator) | 8080 | 8080 | hostPort |
-| Presto | Prometheus | 9090 | 9090 | hostPort |
+| Presto | Prometheus | 9090 | 9090 | pod SD; hostPort also exposed |
 | Trino | HTTP (coordinator) | 8080 | 8080 | hostPort |
 
 When adding a new kit, choose ports that do not conflict with any host process or existing kit in the table above. Each kit's ports are declared in its `kit.yaml` (`metrics` and `endpoints` sections).
@@ -178,14 +179,15 @@ Each kit declares its metrics targets in `kit.yaml`. `metrics` is a list — kit
 
 ```yaml
 metrics:
-  - type: scrape     # Prometheus endpoint — OTel DaemonSet scrapes it at localhost:<port>
-    port: 31080
-    path: /metrics
-    job: tidb-sql
   - type: scrape     # pod service discovery — each pod scraped directly, per-pod `instance`
+    job: tidb-sql
+    pod-selector: "app.kubernetes.io/component=tidb,app.kubernetes.io/instance=tidb"
+    port: 10080      # container metrics port, not a NodePort
+    path: /metrics
+  - type: scrape
     job: tikv
     pod-selector: "app.kubernetes.io/component=tikv,app.kubernetes.io/instance=tidb"
-    port: 20180      # container metrics port, not a NodePort
+    port: 20180
     path: /metrics
 ```
 
@@ -198,7 +200,9 @@ Prometheus pod service discovery (`kubernetes_sd_configs`, role: pod): each coll
 the matching pods co-located on its own node, and `instance` becomes the pod name. Use this when a
 component has multiple pods behind one service and you need per-pod attribution — a NodePort
 load-balances scrapes across all pods, so a single store/pod cannot be distinguished. TiKV uses this
-so each of the 3 stores reports under its own `instance` (e.g. `tidb-tikv-0`).
+so each of the 3 stores reports under its own `instance` (e.g. `tidb-tikv-0`). Every built-in kit
+uses pod discovery: a static job runs on every collector, so even a single-instance kit behind a
+NodePort reports one duplicate series per node.
 
 Three modes are supported:
 

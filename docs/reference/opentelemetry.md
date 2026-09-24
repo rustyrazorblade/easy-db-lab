@@ -16,13 +16,21 @@ The easy-db-lab CLI tool runs with the OpenTelemetry Java Agent, which automatic
 Set the `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable to your OTLP collector endpoint:
 
 ```bash
-export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 easy-db-lab up
 ```
 
 When this environment variable is:
-- **Set**: Traces and metrics are exported via gRPC to the specified endpoint
-- **Not set**: The agent is still loaded but no telemetry is exported (minimal overhead)
+- **Set**: Traces, metrics and logs are exported to the specified endpoint. The agent's default protocol is `http/protobuf`, which collectors serve on port 4318. To use a gRPC endpoint (port 4317), also set `OTEL_EXPORTER_OTLP_PROTOCOL=grpc`.
+- **Not set**: The agent is still loaded, but it exports nothing and prints nothing.
+
+The `easy-db-lab` launcher decides this before the JVM starts. The agent's own default is to export to `localhost:4318`, so without a collector there every export fails and prints a stack trace to stderr. When none of the following variables is set, the launcher passes `-Dotel.traces.exporter=none`, `-Dotel.metrics.exporter=none` and `-Dotel.logs.exporter=none`, plus `-Dotel.javaagent.logging=none` unless `OTEL_JAVAAGENT_LOGGING` is set:
+
+- `OTEL_EXPORTER_OTLP_ENDPOINT`
+- `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`, `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`, `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`
+- `OTEL_TRACES_EXPORTER`, `OTEL_METRICS_EXPORTER`, `OTEL_LOGS_EXPORTER`
+
+Setting any of them leaves every export setting to the agent, including its error reporting, so a misconfigured collector still shows up as export errors. The check has to happen in the launcher because the agent gives system properties priority over environment variables: an unconditional `-D` would override the user's `OTEL_*` settings.
 
 The agent uses automatic instrumentation only - there is no custom manual instrumentation in the CLI tool code.
 
@@ -233,7 +241,8 @@ The following environment variables are supported:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP gRPC endpoint | None (no export) |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP endpoint | None (no export) |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/protobuf` or `grpc` | `http/protobuf` |
 | `OTEL_SERVICE_NAME` | Override service name | `easy-db-lab` |
 | `OTEL_RESOURCE_ATTRIBUTES` | Additional resource attributes | None |
 
@@ -254,6 +263,7 @@ Export traces to Jaeger:
 
 ```bash
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
 easy-db-lab up
 ```
 
@@ -265,6 +275,7 @@ If you have Grafana Tempo running with OTLP gRPC ingestion:
 
 ```bash
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4317
+export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
 easy-db-lab up
 ```
 
@@ -272,9 +283,9 @@ easy-db-lab up
 
 ### No Traces Appearing
 
-1. Verify the endpoint is correct and reachable
-2. Check that the collector accepts gRPC OTLP (port 4317 is standard)
-3. Look for OpenTelemetry agent logs on startup (use `-Dotel.javaagent.debug=true` to enable debug logging)
+1. Verify `OTEL_EXPORTER_OTLP_ENDPOINT` is set. Without it the launcher turns every exporter off.
+2. Verify the endpoint is correct and reachable, and that the protocol matches the port: `http/protobuf` (the default) on 4318, `grpc` on 4317
+3. Look for OpenTelemetry agent logs on startup (set `JAVA_OPTS=-Dotel.javaagent.debug=true` to enable debug logging)
 
 ### High Latency
 

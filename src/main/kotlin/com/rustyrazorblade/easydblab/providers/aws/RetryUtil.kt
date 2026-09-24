@@ -3,16 +3,18 @@ package com.rustyrazorblade.easydblab.providers.aws
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.DockerException
 import io.github.oshai.kotlinlogging.KotlinLogging
-import io.github.resilience4j.retry.Retry
 import io.github.resilience4j.retry.RetryConfig
 import org.apache.sshd.common.SshException
 import software.amazon.awssdk.awscore.exception.AwsServiceException
+import software.amazon.awssdk.core.exception.SdkException
 import software.amazon.awssdk.services.ec2.model.Ec2Exception
 import software.amazon.awssdk.services.iam.model.EntityAlreadyExistsException
 import software.amazon.awssdk.services.iam.model.IamException
 import software.amazon.awssdk.services.s3.model.S3Exception
 import java.io.IOException
+import java.net.BindException
 import java.time.Duration
+import java.time.Instant
 
 /**
  * Utility for creating standardized retry configurations for remote service operations.
@@ -262,6 +264,48 @@ object RetryUtil {
             .build()
 
     /**
+     * Creates retry configuration for creating a VPC on an auto-selected CIDR.
+     *
+     * Each attempt picks a new random unused block, excluding the ones already tried, so there is
+     * nothing to wait for between attempts; transient AWS errors are already retried with backoff
+     * inside `createVpc`. Only AWS failures ([SdkException]) are retried — running out of free
+     * blocks is final.
+     *
+     * No wait, up to [Constants.Vpc.CIDR_AUTO_SELECT_MAX_ATTEMPTS] attempts
+     *
+     * @return RetryConfig configured for VPC creation on an auto-selected CIDR
+     */
+    fun createVpcAutoCidrRetryConfig(): RetryConfig =
+        RetryConfig
+            .custom<Any>()
+            .maxAttempts(Constants.Vpc.CIDR_AUTO_SELECT_MAX_ATTEMPTS)
+            .waitDuration(Duration.ZERO)
+            .retryExceptions(SdkException::class.java)
+            .build()
+
+    /**
+     * Creates retry configuration for starting a local listener whose port can be taken between
+     * choosing it and binding it — the SOCKS5 proxy's `ssh -D`, when two workspaces start a proxy
+     * at the same moment.
+     *
+     * Retries only on [BindException]: the caller selects a new port on every attempt, so a
+     * collision is resolved by the next one. Any other failure is not a port collision and is not
+     * retried.
+     *
+     * Fixed interval: [Constants.Proxy.PORT_BIND_RETRY_INTERVAL_MS] between attempts, up to
+     * [Constants.Proxy.PORT_BIND_MAX_ATTEMPTS] attempts
+     *
+     * @return RetryConfig configured for a local port bind collision
+     */
+    fun createLocalPortBindRetryConfig(): RetryConfig =
+        RetryConfig
+            .custom<Any>()
+            .maxAttempts(Constants.Proxy.PORT_BIND_MAX_ATTEMPTS)
+            .waitDuration(Duration.ofMillis(Constants.Proxy.PORT_BIND_RETRY_INTERVAL_MS))
+            .retryExceptions(BindException::class.java)
+            .build()
+
+    /**
      * Creates retry configuration for S3 log retrieval with eventual consistency.
      *
      * EMR logs may not be immediately available after job completion:
@@ -379,74 +423,37 @@ object RetryUtil {
                 }
             }.build()
 
-    // ==================== Helper Functions ====================
-
     /**
-     * Executes an operation with standard AWS retry logic.
+     * Creates retry configuration for polling a condition at a fixed interval.
      *
-     * This is a convenience function that wraps the common pattern of:
-     * 1. Creating an AWS retry config
-     * 2. Creating a Retry instance
-     * 3. Decorating and executing the operation
+     * - A result for which [done] is false is retried, [interval] apart, up to [maxAttempts]
+     *   looks; after the last look that result is returned, not thrown
+     * - Any exception from a look is treated as transient (a dropped API call, a SOCKS hiccup
+     *   during a wait that lasts minutes) and retried within the same budget; the poll fails
+     *   only when the last look throws
      *
-     * @param operationName Name of the operation for logging and metrics
-     * @param operation The operation to execute with retry logic
-     * @return The result of the operation
+     * - When [deadline] is set, nothing is retried once it has passed, so the wait is bounded by the
+     *   wall clock rather than by how long each look takes
+     *
+     * @param maxAttempts the most looks to make
+     * @param interval how long to wait between looks
+     * @param done whether a look's result ends the poll
+     * @param deadline when set, the instant after which no further look is made
+     * @return RetryConfig configured for a fixed-interval poll
      */
-    fun <T> withAwsRetry(
-        operationName: String,
-        operation: () -> T,
-    ): T {
-        val retryConfig = createAwsRetryConfig<T>()
-        val retry = Retry.of(operationName, retryConfig)
-        return Retry.decorateSupplier(retry, operation).get()
-    }
-
-    /**
-     * Executes an operation with EC2 instance retry logic (handles eventual consistency).
-     *
-     * @param operationName Name of the operation for logging and metrics
-     * @param operation The operation to execute with retry logic
-     * @return The result of the operation
-     */
-    fun <T> withEc2InstanceRetry(
-        operationName: String,
-        operation: () -> T,
-    ): T {
-        val retryConfig = createEC2InstanceRetryConfig<T>()
-        val retry = Retry.of(operationName, retryConfig)
-        return Retry.decorateSupplier(retry, operation).get()
-    }
-
-    /**
-     * Executes an operation with VPC teardown retry logic (handles DependencyViolation).
-     *
-     * @param operationName Name of the operation for logging and metrics
-     * @param operation The operation to execute with retry logic
-     * @return The result of the operation
-     */
-    fun <T> withVpcTeardownRetry(
-        operationName: String,
-        operation: () -> T,
-    ): T {
-        val retryConfig = createVpcTeardownRetryConfig<T>()
-        val retry = Retry.of(operationName, retryConfig)
-        return Retry.decorateSupplier(retry, operation).get()
-    }
-
-    /**
-     * Executes an operation with S3 bucket policy retry logic (handles IAM eventual consistency).
-     *
-     * @param operationName Name of the operation for logging and metrics
-     * @param operation The operation to execute with retry logic
-     * @return The result of the operation
-     */
-    fun <T> withS3BucketPolicyRetry(
-        operationName: String,
-        operation: () -> T,
-    ): T {
-        val retryConfig = createS3BucketPolicyRetryConfig<T>()
-        val retry = Retry.of(operationName, retryConfig)
-        return Retry.decorateSupplier(retry, operation).get()
+    fun <T> createPollUntilRetryConfig(
+        maxAttempts: Int,
+        interval: Duration,
+        done: (T) -> Boolean,
+        deadline: Instant? = null,
+    ): RetryConfig {
+        fun beforeDeadline() = deadline == null || Instant.now().isBefore(deadline)
+        return RetryConfig
+            .custom<T>()
+            .maxAttempts(maxAttempts)
+            .intervalFunction { _ -> interval.toMillis() }
+            .retryOnResult { result -> !done(result) && beforeDeadline() }
+            .retryOnException { beforeDeadline() }
+            .build()
     }
 }

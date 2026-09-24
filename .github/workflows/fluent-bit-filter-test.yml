@@ -1,0 +1,30 @@
+name: Fluent Bit Filter Testing
+
+# The Fluent Bit journald Lua filter's unit tests (`./gradlew testFluentBitFilter`). They run Lua in
+# Docker, so they are not in pr-checks' Docker-free `testScripts`; this workflow is their CI gate.
+on:
+  pull_request:
+    paths:
+      - 'src/main/resources/com/rustyrazorblade/easydblab/configuration/otel/fluent-bit-severity-mapper*.lua'
+      - '.github/workflows/fluent-bit-filter-test.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/main/resources/com/rustyrazorblade/easydblab/configuration/otel/fluent-bit-severity-mapper*.lua'
+      - '.github/workflows/fluent-bit-filter-test.yml'
+  workflow_dispatch:
+
+jobs:
+  test-fluent-bit-filter:
+    name: Test Fluent Bit journald Lua filter
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      # The same command as `./gradlew testFluentBitFilter`.
+      - name: Run Lua filter unit tests
+        run: |
+          docker run --rm -v "$PWD:/w:ro" -w /w nickblah/lua:5.4-alpine \
+            lua src/main/resources/com/rustyrazorblade/easydblab/configuration/otel/fluent-bit-severity-mapper.test.lua

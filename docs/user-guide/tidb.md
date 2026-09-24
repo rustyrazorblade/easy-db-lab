@@ -74,10 +74,11 @@ SELECT /*+ read_from_storage(tiflash[my_table]) */ count(*) FROM my_table;
 easy-db-lab tidb start       # deploy the TiDB cluster
 easy-db-lab tidb status      # show running state and endpoints
 easy-db-lab tidb stop        # tear down the TiDB cluster
-easy-db-lab tidb uninstall   # remove the TiDB Operator (requires stop first)
+easy-db-lab tidb uninstall   # stop the cluster if running, delete its PVCs, remove the TiDB Operator
 ```
 
-`uninstall` refuses to run while the TiDB cluster is still up — run `tidb stop` first.
+`uninstall` of a running TiDB kit runs `tidb stop` first. It still refuses to run when a
+`TidbCluster` exists that the kit does not know is running — run `tidb stop` first.
 
 ## Monitoring
 

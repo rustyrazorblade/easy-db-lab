@@ -15,10 +15,16 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.koin.test.inject
 import java.io.File
+import java.time.Duration
 
 class McpMessageFlowTest : BaseKoinTest() {
     companion object {
         private val log = KotlinLogging.logger {}
+
+        // Failure ceiling only: awaitUntil returns as soon as the condition holds. Generous so a
+        // loaded CI machine never flakes.
+        private val AWAIT_TIMEOUT = Duration.ofSeconds(10)
+        private const val POLL_INTERVAL_MS = 5L
     }
 
     // tempDir is provided by BaseKoinTest and set by @TempDir before KoinTestExtension fires
@@ -55,6 +61,22 @@ class McpMessageFlowTest : BaseKoinTest() {
         registry = McpToolRegistry()
     }
 
+    /**
+     * Polls [condition] until it holds or [AWAIT_TIMEOUT] elapses. The message buffer drains its
+     * channel on a background consumer thread, so the tests wait on observable buffer state rather
+     * than a fixed sleep that a descheduled consumer can overrun.
+     */
+    private fun awaitUntil(
+        description: String,
+        condition: () -> Boolean,
+    ) {
+        val deadline = System.nanoTime() + AWAIT_TIMEOUT.toNanos()
+        while (!condition() && System.nanoTime() < deadline) {
+            Thread.sleep(POLL_INTERVAL_MS)
+        }
+        assertThat(condition()).describedAs(description).isTrue()
+    }
+
     @Test
     fun `test message flow through server`() {
         val messageBufferField = McpServer::class.java.getDeclaredField("messageBuffer")
@@ -71,7 +93,11 @@ class McpMessageFlowTest : BaseKoinTest() {
         compositeHandler.handleMessage("Test message 2")
         compositeHandler.handleError("Test error", null)
 
-        Thread.sleep(500)
+        val expected = listOf("Test message 1", "Test message 2", "ERROR: Test error")
+        awaitUntil("all three messages are buffered") {
+            val buffered = messageBuffer.getMessages()
+            expected.all { text -> buffered.any { it.contains(text) } }
+        }
 
         val messages = messageBuffer.getMessages()
         log.info { "Messages in buffer: $messages" }
@@ -103,7 +129,7 @@ class McpMessageFlowTest : BaseKoinTest() {
         assertThat(outputChannel.trySend(OutputEvent.ErrorEvent("Warning: High memory usage", null)).isSuccess).isTrue()
         assertThat(outputChannel.trySend(OutputEvent.MessageEvent("Tool execution completed")).isSuccess).isTrue()
 
-        Thread.sleep(100)
+        awaitUntil("all four messages are buffered") { messageBuffer.size() >= 4 }
 
         assertThat(messageBuffer.getMessages()).hasSize(4)
 

@@ -45,6 +45,22 @@
         "query": "prometheus",
         "refresh": 1,
         "type": "datasource"
+      },
+      {
+        "current": {},
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "definition": "label_values(cnpg_collector_up{job=\"postgres\",k8s_app_instance=\"postgres-duckdb\"}, instance)",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Instance",
+        "multi": false,
+        "name": "instance",
+        "options": [],
+        "query": { "query": "label_values(cnpg_collector_up{job=\"postgres\",k8s_app_instance=\"postgres-duckdb\"}, instance)", "refId": "StandardVariableQuery" },
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
       }
     ]
   },
@@ -83,7 +99,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "cnpg_pg_stat_database_temp_files_total{job=\"postgres\",host_name=\"db0\",datname=\"postgres\"}",
+          "expr": "cnpg_pg_stat_database_temp_files_total{job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}",
           "refId": "A",
           "legendFormat": "temp files"
         }
@@ -115,7 +131,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "cnpg_pg_stat_database_temp_bytes_total{job=\"postgres\",host_name=\"db0\",datname=\"postgres\"}",
+          "expr": "cnpg_pg_stat_database_temp_bytes_total{job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}",
           "refId": "A",
           "legendFormat": "temp bytes"
         }
@@ -147,7 +163,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum(rate(cnpg_pg_stat_database_tup_returned_total{job=\"postgres\",host_name=\"db0\",datname=\"postgres\"}[2m])) / clamp_min(sum(rate(cnpg_pg_stat_database_tup_fetched_total{job=\"postgres\",host_name=\"db0\",datname=\"postgres\"}[2m])), 1)",
+          "expr": "sum(rate(cnpg_pg_stat_database_tup_returned_total{job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])) / clamp_min(sum(rate(cnpg_pg_stat_database_tup_fetched_total{job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])), 1)",
           "refId": "A",
           "legendFormat": "ratio"
         }
@@ -178,7 +194,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum(rate(cnpg_pg_stat_database_blks_hit_total{job=\"postgres\",host_name=\"db0\",datname=\"postgres\"}[2m])) / (sum(rate(cnpg_pg_stat_database_blks_hit_total{job=\"postgres\",host_name=\"db0\",datname=\"postgres\"}[2m])) + sum(rate(cnpg_pg_stat_database_blks_read_total{job=\"postgres\",host_name=\"db0\",datname=\"postgres\"}[2m])))",
+          "expr": "sum(rate(cnpg_pg_stat_database_blks_hit_total{job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])) / (sum(rate(cnpg_pg_stat_database_blks_hit_total{job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])) + sum(rate(cnpg_pg_stat_database_blks_read_total{job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])))",
           "refId": "A",
           "legendFormat": ""
         }
@@ -223,13 +239,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum(rate(cnpg_pg_stat_database_tup_returned_total{job=\"postgres\",host_name=\"db0\",datname=\"postgres\"}[2m]))",
+          "expr": "sum(rate(cnpg_pg_stat_database_tup_returned_total{job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m]))",
           "refId": "A",
           "legendFormat": "seq scan (tup_returned/s)"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum(rate(cnpg_pg_stat_database_tup_fetched_total{job=\"postgres\",host_name=\"db0\",datname=\"postgres\"}[2m]))",
+          "expr": "sum(rate(cnpg_pg_stat_database_tup_fetched_total{job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m]))",
           "refId": "B",
           "legendFormat": "index lookup (tup_fetched/s)"
         }
@@ -265,7 +281,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum(rate(cnpg_pg_stat_database_temp_bytes_total{job=\"postgres\",host_name=\"db0\",datname=\"postgres\"}[2m]))",
+          "expr": "sum(rate(cnpg_pg_stat_database_temp_bytes_total{job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m]))",
           "refId": "A",
           "legendFormat": "temp bytes/s"
         }
@@ -293,13 +309,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum(rate(cnpg_pg_stat_database_blks_read_total{job=\"postgres\",host_name=\"db0\",datname=\"postgres\"}[2m]))",
+          "expr": "sum(rate(cnpg_pg_stat_database_blks_read_total{job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m]))",
           "refId": "A",
           "legendFormat": "disk reads/s"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum(rate(cnpg_pg_stat_database_blks_hit_total{job=\"postgres\",host_name=\"db0\",datname=\"postgres\"}[2m]))",
+          "expr": "sum(rate(cnpg_pg_stat_database_blks_hit_total{job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m]))",
           "refId": "B",
           "legendFormat": "cache hits/s"
         }
@@ -335,13 +351,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "rate(cnpg_pg_stat_bgwriter_buffers_clean_total{job=\"postgres\",host_name=\"db0\"}[2m])",
+          "expr": "rate(cnpg_pg_stat_bgwriter_buffers_clean_total{job=\"postgres\",instance=\"$instance\"}[2m])",
           "refId": "A",
           "legendFormat": "buffers cleaned/s"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "rate(cnpg_pg_stat_bgwriter_buffers_alloc_total{job=\"postgres\",host_name=\"db0\"}[2m])",
+          "expr": "rate(cnpg_pg_stat_bgwriter_buffers_alloc_total{job=\"postgres\",instance=\"$instance\"}[2m])",
           "refId": "B",
           "legendFormat": "buffers allocated/s"
         }
@@ -369,7 +385,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "max(cnpg_backends_max_tx_duration_seconds{job=\"postgres\",host_name=\"db0\"})",
+          "expr": "max(cnpg_backends_max_tx_duration_seconds{job=\"postgres\",instance=\"$instance\"})",
           "refId": "A",
           "legendFormat": "max tx duration (s)"
         }
@@ -405,7 +421,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "rate(cnpg_collector_wal_bytes{job=\"postgres\",host_name=\"db0\"}[2m])",
+          "expr": "rate(cnpg_collector_wal_bytes{job=\"postgres\",instance=\"$instance\"}[2m])",
           "refId": "A",
           "legendFormat": "WAL bytes/s"
         }
@@ -433,13 +449,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum(rate(cnpg_pg_stat_database_xact_commit_total{job=\"postgres\",host_name=\"db0\",datname=\"postgres\"}[2m]))",
+          "expr": "sum(rate(cnpg_pg_stat_database_xact_commit_total{job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m]))",
           "refId": "A",
           "legendFormat": "commits/s"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum(rate(cnpg_pg_stat_database_xact_rollback_total{job=\"postgres\",host_name=\"db0\",datname=\"postgres\"}[2m]))",
+          "expr": "sum(rate(cnpg_pg_stat_database_xact_rollback_total{job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m]))",
           "refId": "B",
           "legendFormat": "rollbacks/s"
         }

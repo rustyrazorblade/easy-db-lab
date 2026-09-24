@@ -27,6 +27,15 @@ internal fun interpolateStepVars(
     }
 
 /**
+ * A kit `shell` step exited non-zero. Carries the [exitCode] and the last lines of the script's
+ * output, which [WorkloadStepExecutor] reports as [Event.Kit.ShellStepFailed].
+ */
+class ShellStepFailedException(
+    val exitCode: Int,
+    val outputTail: List<String>,
+) : RuntimeException("shell step exited with code $exitCode")
+
+/**
  * Bundles the per-execution context that every step needs, eliminating the
  * 7-parameter signatures on [WorkloadStepExecutor.execute] and [executeStep].
  */
@@ -63,13 +72,24 @@ class WorkloadStepExecutor(
                 )
                 executeStep(step, context).onFailure { error ->
                     eventBus.emit(
-                        Event.Kit.StepFailed(
-                            kit = context.kitName,
-                            phase = phase,
-                            stepType = stepType,
-                            stepIndex = index,
-                            error = error.message ?: error.toString(),
-                        ),
+                        when (error) {
+                            is ShellStepFailedException ->
+                                Event.Kit.ShellStepFailed(
+                                    kit = context.kitName,
+                                    phase = phase,
+                                    stepIndex = index,
+                                    exitCode = error.exitCode,
+                                    outputTail = error.outputTail,
+                                )
+                            else ->
+                                Event.Kit.StepFailed(
+                                    kit = context.kitName,
+                                    phase = phase,
+                                    stepType = stepType,
+                                    stepIndex = index,
+                                    error = error.message ?: error.toString(),
+                                )
+                        },
                     )
                     throw error
                 }
@@ -110,11 +130,18 @@ class WorkloadStepExecutor(
                 }
 
                 is InstallStep.HelmUninstall -> {
-                    helmService.uninstall(
-                        host = host,
-                        release = interp(step.release),
-                        namespace = interp(step.namespace),
-                    )
+                    val release = interp(step.release)
+                    val usedBy =
+                        if (step.keepWhileAny.isBlank()) {
+                            emptyList()
+                        } else {
+                            kubectlService.listInAllNamespaces(host = host, resource = interp(step.keepWhileAny))
+                        }
+                    if (usedBy.isEmpty()) {
+                        helmService.uninstall(host = host, release = release, namespace = interp(step.namespace))
+                    } else {
+                        eventBus.emit(Event.Kit.HelmReleaseKept(kit = ctx.kitName, release = release, usedBy = usedBy))
+                    }
                 }
 
                 is InstallStep.Namespace -> {
@@ -150,47 +177,31 @@ class WorkloadStepExecutor(
                 }
 
                 is InstallStep.Delete -> {
-                    kubectlService.delete(
-                        host = host,
-                        kind = interp(step.kind),
-                        name = interp(step.name),
-                        namespace = step.namespace?.let { interp(it) } ?: "default",
-                        ignoreNotFound = step.ignoreNotFound,
-                    )
+                    val namespace = step.namespace?.let { interp(it) } ?: "default"
+                    if (step.bySelector) {
+                        kubectlService.deleteBySelector(
+                            host = host,
+                            kinds = step.kinds.map { interp(it) },
+                            selector = interp(step.selector),
+                            namespace = namespace,
+                        )
+                    } else {
+                        kubectlService.delete(
+                            host = host,
+                            kind = interp(step.kind),
+                            name = interp(step.name),
+                            namespace = namespace,
+                            ignoreNotFound = step.ignoreNotFound,
+                        )
+                    }
                 }
 
                 is InstallStep.PlatformPvs -> {
-                    val serverType = ServerType.from(step.nodeType)
-                    val targetHosts =
-                        ctx.clusterState.hosts[serverType]
-                            ?: error("No ${step.nodeType} nodes found in cluster state for platform-pvs step")
-                    check(targetHosts.isNotEmpty()) { "No ${step.nodeType} nodes found in cluster state for platform-pvs step" }
-                    val count = step.count ?: targetHosts.size
-                    val storageSize =
-                        ctx.variables["STORAGE_SIZE"] ?: error("STORAGE_SIZE variable required for platform-pvs step")
-                    val dataPath = "${Constants.K8s.DB_MOUNT_PATH}/${ctx.kitName}"
-                    // Ensure the local data directory exists on each target node before creating
-                    // the PV objects. platform-pvs-delete removes the directory on uninstall;
-                    // without this mkdir, a start after uninstall fails with "path does not exist"
-                    // when the pod tries to mount the local PV.
-                    for (targetHost in targetHosts) {
-                        remoteOps.executeRemotely(host = targetHost.toHost(), command = "sudo mkdir -p $dataPath")
-                        log.debug { "Ensured data directory $dataPath exists on ${targetHost.alias}" }
+                    if (step.ifSet.isNotBlank() && ctx.variables[step.ifSet].isNullOrBlank()) {
+                        log.info { "Skipping platform-pvs for ${ctx.kitName}: ${step.ifSet} is not set" }
+                    } else {
+                        createPlatformPvs(step, ctx, interp(step.storageSize))
                     }
-                    k8sService
-                        .createLocalPersistentVolumes(
-                            controlHost = ctx.controlHost,
-                            config =
-                                PersistentVolumeConfig(
-                                    dbName = ctx.kitName,
-                                    localPath = dataPath,
-                                    count = count,
-                                    storageSize = storageSize,
-                                    storageClass = step.storageClass,
-                                    namespace = Constants.K8s.NAMESPACE,
-                                    volumeClaimTemplateName = step.volumeClaimTemplateName,
-                                ),
-                        ).getOrThrow()
                 }
 
                 is InstallStep.PlatformPvsDelete -> {
@@ -242,23 +253,90 @@ class WorkloadStepExecutor(
                         ).getOrThrow()
                 }
 
-                is InstallStep.Shell -> {
-                    val tmpScript = Files.createTempFile("edl-step-", ".sh").toFile()
-                    try {
-                        tmpScript.writeText("#!/bin/bash\n${step.script}\n")
-                        tmpScript.setExecutable(true)
-                        val exitCode =
-                            ProcessBuilder(tmpScript.absolutePath)
-                                .directory(ctx.kitDir)
-                                .inheritIO()
-                                .also { pb -> pb.environment().putAll(ctx.variables) }
-                                .start()
-                                .waitFor()
-                        check(exitCode == 0) { "Shell step exited with code $exitCode" }
-                    } finally {
-                        tmpScript.delete()
-                    }
-                }
+                is InstallStep.Shell -> runShellStep(step, ctx)
             }
         }
+
+    /**
+     * Runs a shell step from the kit directory with the step variables in its environment. Its
+     * output (stdout and stderr, merged) is passed through to the console as it runs, and the
+     * last [Constants.Kit.SHELL_STEP_OUTPUT_TAIL_LINES] lines are kept on the failure event for
+     * structured consumers; the console already showed them, so its rendering does not repeat them.
+     *
+     * @throws ShellStepFailedException when the script exits non-zero
+     */
+    private fun runShellStep(
+        step: InstallStep.Shell,
+        ctx: StepExecutionContext,
+    ) {
+        val tmpScript = Files.createTempFile("edl-step-", ".sh").toFile()
+        try {
+            tmpScript.writeText("#!/bin/bash\n${step.script}\n")
+            tmpScript.setExecutable(true)
+            val process =
+                ProcessBuilder(tmpScript.absolutePath)
+                    .directory(ctx.kitDir)
+                    .redirectInput(ProcessBuilder.Redirect.INHERIT)
+                    .redirectErrorStream(true)
+                    .also { pb -> pb.environment().putAll(ctx.variables) }
+                    .start()
+            val tail = ArrayDeque<String>(Constants.Kit.SHELL_STEP_OUTPUT_TAIL_LINES)
+            process.inputStream.bufferedReader().useLines { lines ->
+                lines.forEach { line ->
+                    println(line)
+                    if (tail.size == Constants.Kit.SHELL_STEP_OUTPUT_TAIL_LINES) tail.removeFirst()
+                    tail.addLast(line)
+                }
+            }
+            val exitCode = process.waitFor()
+            if (exitCode != 0) throw ShellStepFailedException(exitCode, tail.toList())
+        } finally {
+            tmpScript.delete()
+        }
+    }
+
+    /**
+     * Creates the kit's local PVs with capacity [stepStorageSize], or the `STORAGE_SIZE` variable
+     * when the step declares none. A blank capacity fails the step rather than reaching the API.
+     */
+    private fun createPlatformPvs(
+        step: InstallStep.PlatformPvs,
+        ctx: StepExecutionContext,
+        stepStorageSize: String,
+    ) {
+        val serverType = ServerType.from(step.nodeType)
+        val targetHosts =
+            ctx.clusterState.hosts[serverType]
+                ?: error("No ${step.nodeType} nodes found in cluster state for platform-pvs step")
+        check(targetHosts.isNotEmpty()) { "No ${step.nodeType} nodes found in cluster state for platform-pvs step" }
+        val count = step.count ?: targetHosts.size
+        val storageSize = stepStorageSize.ifBlank { ctx.variables["STORAGE_SIZE"].orEmpty() }
+        require(storageSize.isNotBlank()) {
+            "platform-pvs step needs a storage-size or the STORAGE_SIZE variable"
+        }
+        val dataPath = "${Constants.K8s.DB_MOUNT_PATH}/${ctx.kitName}"
+        // Ensure the local data directory exists on each target node before creating
+        // the PV objects. platform-pvs-delete removes the directory on uninstall;
+        // without this mkdir, a start after uninstall fails with "path does not exist"
+        // when the pod tries to mount the local PV.
+        for (targetHost in targetHosts) {
+            remoteOps.executeRemotely(host = targetHost.toHost(), command = "sudo mkdir -p $dataPath")
+            log.debug { "Ensured data directory $dataPath exists on ${targetHost.alias}" }
+        }
+        k8sService
+            .createLocalPersistentVolumes(
+                controlHost = ctx.controlHost,
+                config =
+                    PersistentVolumeConfig(
+                        dbName = ctx.kitName,
+                        localPath = dataPath,
+                        count = count,
+                        storageSize = storageSize,
+                        storageClass = step.storageClass,
+                        namespace = Constants.K8s.NAMESPACE,
+                        volumeClaimTemplateName = step.volumeClaimTemplateName,
+                        nodeType = step.nodeType,
+                    ),
+            ).getOrThrow()
+    }
 }

@@ -17,8 +17,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT="${SCRIPT_DIR}/use-cassandra"
 
 if ! command -v yq >/dev/null 2>&1; then
-  echo "SKIP - yq is not installed; use-cassandra reads the version list with it"
-  exit 0
+  echo "FAIL - yq is not installed; use-cassandra reads the version list with it. Install mikefarah yq (brew install yq) and re-run." >&2
+  exit 1
 fi
 
 SANDBOX="$(mktemp -d)"

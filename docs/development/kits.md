@@ -15,26 +15,27 @@ directory. The `<name> start`, `<name> stop`, etc. subcommands then drive it.
 
 ## Directory Layout
 
-```
-install/<name>/
-├── kit.yaml              # Required: kit definition
-├── bin/                     # Optional: legacy shell scripts (start.sh, stop.sh, ...)
-├── dashboards/              # Optional: Grafana dashboard JSON files
-├── <name>.yaml.template     # Optional: K8s manifest templates for typed steps
-└── METRICS.md               # Optional but recommended: documents exposed metrics
-```
+Everything for a kit lives in `src/main/resources/com/rustyrazorblade/easydblab/kits/<name>/`:
+
+- `kit.yaml` — required: the kit definition
+- `bin/` — optional: shell scripts (`start.sh.template`, `stop.sh.template`, ...) for phases that
+  have no typed steps
+- `dashboards/` — optional: Grafana dashboard JSON files
+- `<name>.yaml.template` — optional: K8s manifest templates applied by `manifest` steps
+- `METRICS.md` and `metrics-catalog.json` — recommended for any kit that exposes metrics
 
 ## kit.yaml Reference
 
 ```yaml
 name: myworkload
+type: db                 # db | app: the node pool the kit needs; install fails if it has no nodes
 description: Short description shown in help text
 version: "1.0.0"
-collision-check: false   # true = refuse to install if already present
+collision-check: false   # true = refuse a second install and a start while running; or a map per phase (see Collision check)
 
-metrics:
-  type: scrape           # see Metrics section
-  port: 9090
+metrics:                 # a list; see Metrics section
+  - type: scrape         # scrape | java-agent | helm-native
+    port: 9090
 
 runtime:
   type: helm             # see Runtime section
@@ -45,7 +46,7 @@ endpoints:
   - name: "HTTP UI"
     node-type: app       # "app" or "db"
     port: 8080
-    type: http           # http | https | jdbc | native | cql | postgresql | mysql
+    type: http           # http | https | jdbc | native | cql | postgresql | mysql | kafka
     scheme: ""           # optional: used for JDBC URLs (jdbc type only)
     path: ""             # optional: appended to URL (http/https/jdbc only)
     database: ""         # optional: logical database name (postgresql and mysql types)
@@ -54,7 +55,7 @@ args:
   - flag: --workers
     variable: WORKERS
     description: "Number of workers"
-    type: int            # string | int | float | boolean | kit-ref
+    type: int            # string | int | float | boolean | kit-ref | extension
     capability: sql      # optional: for kit-ref, declares required capability
     required: false
     default: "${APP_NODE_COUNT}"
@@ -80,8 +81,8 @@ restore:  []   # steps to run on `easy-db-lab <name> restore <backup-name>`
 |-------|---------|----------------------------|
 | `install` | `easy-db-lab kit install <name>` | Kit directory written to working dir |
 | `start` | `easy-db-lab <name> start` | Metrics registered, dashboards installed, hooks fired |
-| `stop` | `easy-db-lab <name> stop` | Metrics deregistered, hooks fired |
-| `uninstall` | `easy-db-lab <name> uninstall` | Kit directory deleted from working dir |
+| `stop` | `easy-db-lab <name> stop` | Waits for the runtime's pods to go, metrics deregistered, kit dropped from `runningKits`, hooks fired |
+| `uninstall` | `easy-db-lab <name> uninstall` or `kit uninstall <name>` | Kit directory deleted from working dir. A kit still running has its `stop` phase run first, stop wait included; if that fails, the uninstall fails without running its steps. After the uninstall steps the kit is released as `stop` releases it (metrics deregistered, dropped from `runningKits`, hooks fired) |
 | `backup` | `easy-db-lab <name> backup <name>` | `BACKUP_NAME` env var set to first argument |
 | `restore` | `easy-db-lab <name> restore <name>` | `BACKUP_NAME` env var set to first argument |
 
@@ -119,6 +120,16 @@ Uninstalls a Helm release.
 - type: helm-uninstall
   release: clickhouse-operator
   namespace: kube-system
+```
+
+When one operator serves several kit instances, `keep-while-any` names a resource type and keeps
+the release while any object of that type is left in any namespace, reporting what still uses it
+(`Kit.HelmReleaseKept`). Plain `postgres` and every `postgres-<extension>` share the CNPG operator:
+```yaml
+- type: helm-uninstall
+  release: cnpg-operator
+  namespace: cnpg-system
+  keep-while-any: clusters.postgresql.cnpg.io
 ```
 
 ### `manifest`
@@ -162,22 +173,48 @@ Waits for a K8s resource to reach a condition.
 ```
 
 ### `delete`
-Deletes a K8s resource.
+Deletes K8s resources, either one object by name or every object a label selector matches.
+Both forms run `kubectl` on the control node. A step that mixes the two forms, or has neither, is
+rejected when `kit.yaml` loads.
+
+By name — `kind` and `name` are required:
 ```yaml
 - type: delete
   kind: ClickHouseInstallation
   name: clickhouse
-  namespace: default
-  ignore-not-found: true   # default: true
+  namespace: default         # default: default
+  ignore-not-found: true     # default: true
 ```
+
+By label — `selector` and `kinds` are required:
+```yaml
+- type: delete
+  kinds: [deployment, replicaset, pod, service, configmap]
+  selector: easydblab/kit=memcached
+  namespace: default         # default: default
+```
+Every object of the listed kinds in `namespace` that `selector` matches is deleted. When nothing
+matches, the step succeeds and prints nothing. A failed cluster query fails the step. `selector`,
+`kinds` and `namespace` accept `${VAR}` interpolation. Use this form in `stop` and `uninstall` for
+kits that label every object they create, instead of a `shell` step.
 
 ### `platform-pvs`
 Creates persistent volumes on cluster nodes using the platform substrate.
 ```yaml
 - type: platform-pvs
-  node-type: db    # default: db
-  count: 3         # optional: defaults to node count
+  node-type: db          # default: db
+  count: 3               # optional: defaults to node count
+  storage-size: 10Ti     # optional: PV capacity; defaults to the STORAGE_SIZE variable
+  if-set: EXTSTORE_SIZE  # optional: skip the step unless this kit variable is non-empty
 ```
+`if-set` makes the volume optional: the memcached kit creates its extstore PV only when
+`--extstore-size` is set. Pair it with `platform-pvs-delete` in `uninstall`, which is a no-op when
+no PV was created.
+
+Every kit's PVs share one storage class, and each PV is labelled `app.kubernetes.io/name=<kit>`.
+Every claim the kit creates — its own, a StatefulSet's, or one an operator generates — must select
+that label (`selector.matchLabels`, or Strimzi's `selector`) or name the PV in `volumeName`.
+Otherwise it can bind another kit's free PV.
 
 ### `configmap`
 Creates or updates a K8s ConfigMap.
@@ -281,17 +318,35 @@ coupling with the arg.
 
 ## Metrics
 
-The `metrics` field tells easy-db-lab how to collect metrics from the kit. When `start`
-succeeds, metrics are registered. When `stop` succeeds, they are deregistered.
+The `metrics` field is a list of entries, each with a `type`, telling easy-db-lab how the kit's
+metrics reach the collector. When `start` succeeds, `scrape` entries are registered. When `stop`
+succeeds, they are deregistered.
 
 ### `scrape` — Prometheus endpoint
-The kit exposes a Prometheus endpoint. The OTel DaemonSet scrapes it.
+The kit exposes a Prometheus endpoint and the OTel collector DaemonSet scrapes it.
 ```yaml
 metrics:
-  type: scrape
-  port: 9090          # required
-  path: /metrics      # optional, default: /metrics
+  - type: scrape
+    port: 9090                    # required
+    path: /metrics                # optional, default: /metrics
+    job: myworkload               # optional, default: the kit name; unique within the kit
+    pod-selector: "app=myworkload"  # optional: scrape the matching pods directly (see below)
+    username: ""                  # optional: basic-auth user
 ```
+
+Without a `pod-selector`, every collector scrapes `localhost:<port>`, so the port must be reachable
+on the node: a NodePort, or a `hostPort` on the pod. With a `pod-selector`, the collector finds the
+matching pods through Kubernetes pod discovery and each node's collector scrapes only the pods on
+its own node, on the pod IP and `port` (the container port). Every pod gets its own `instance`
+label, and no metrics NodePort is needed. See `kits/memcached/kit.yaml`.
+
+**Use a `pod-selector`.** A job without one runs on every collector in the DaemonSet, whatever
+node the workload is on: a NodePort answers on every node, so a single-instance kit reports one
+duplicate series per node, each with a different collector's hostname as `instance`, and a hostPort
+answers only on its own node, so every other node reports the job down. Every built-in kit scrapes
+by pod discovery, and `NodePortKitScrapeTest` fails if one declares a static scrape. A kit that
+runs several instances side by side (postgres and `postgres-<extension>`) names its own with
+`${KIT_NAME}` in the selector, which is filled in with the instance name at `start`.
 
 **Before adding any reporter plumbing, check whether the workload's image already ships the
 metrics reporter** — a pre-staged plugin directory, a built-in endpoint, or a bundled jar
@@ -304,38 +359,118 @@ genuinely absent.
 image staged there. (We hit a crash copying the Flink reporter jar from an assumed path that
 did not exist, while the `emptyDir` overlay masked the real pre-staged plugin dir.)
 
-Registration creates a K8s ConfigMap named `easydblab-metrics-<kit>` labelled
-`easydblab.com/kit-metrics=true`. `OtelSyncService` watches for these ConfigMaps and
-regenerates the OTel collector config to add the new scrape job. All scraped metrics receive
-`job=<kit>` and `cluster=<cluster-name>` labels automatically.
+Registration creates one K8s ConfigMap per scrape entry, named `easydblab-metrics-<kit>-<job>` and
+labelled `easydblab.com/workload-metrics=true`. `OtelSyncService` reads these ConfigMaps and
+regenerates the OTel collector config with a scrape job for each. Scraped metrics receive the
+entry's `job` and `cluster=<cluster-name>` labels automatically.
 
-The OTel DaemonSet scrapes each target via a `hostPort` on the app node, which assumes **one
-metrics-exposing pod per node per kit**. A kit that exposes metrics from multiple pods (e.g.
-Flink serves `:9249` on the JobManager *and* every TaskManager) will collide on the hostPort
-if two land on the same node. Spread them with `podAntiAffinity` and keep replicas below the
-node count so each metrics-exposing pod gets its own node.
+A `hostPort` scrape assumes **one metrics-exposing pod per node per kit**. A kit that exposes
+metrics from multiple pods (e.g. Flink serves `:9249` on the JobManager *and* every TaskManager)
+will collide on the hostPort if two land on the same node. Prefer a `pod-selector`; otherwise
+spread them with `podAntiAffinity` and keep replicas below the node count.
 
 ### `java-agent` — OpenTelemetry Java Agent
 For JVM kits. The OTel Java agent JAR at `/usr/local/otel/opentelemetry-javaagent.jar`
 is attached to the JVM process.
 ```yaml
 metrics:
-  type: java-agent
-  service-name: myworkload
+  - type: java-agent
+    service-name: myworkload
 ```
+
+The agent pushes OTLP to the collector on the pod's own node; nothing in the collector config
+changes. Mount `/usr/local/otel` from the host read-only, load the jar through the workload's
+JVM options, and set `OTEL_SERVICE_NAME` (it becomes `job`), `HOST_IP` from `status.hostIP`, and
+`OTEL_EXPORTER_OTLP_ENDPOINT=http://$(HOST_IP):4318`. See `kits/neo4j/statefulset.yaml.template`.
+
+**Never write a double underscore in a `.template` file.** `__NAME__` is the install-time
+placeholder syntax, so a literal `__` (e.g. Neo4j's `NEO4J_server_bolt_advertised__address`)
+swallows the text up to the next `__`. Put such a name in `kit.yaml` instead — the Neo4j kit's
+start step writes it as a ConfigMap key and the pod loads it with `envFrom`.
 
 ### `helm-native` — Built-in telemetry
 The kit ships its own metrics pipeline via Helm values. No OTel config change is needed.
 ```yaml
 metrics:
-  type: helm-native
+  - type: helm-native
 ```
 
 ### Documenting Metrics
 
 Every kit that exposes metrics should include a `METRICS.md` file listing the available
 metrics, their labels, and usage notes. This is the reference for anyone building dashboards.
-See `install/presto/METRICS.md` for an example.
+See `kits/presto/METRICS.md` for an example.
+
+### Exporting the Metrics Catalog
+
+`metrics-catalog.json` lists every metric a running kit sends to VictoriaMetrics under
+`job="<kit>"`. It is exported from a live cluster by `bin/export-workload-metrics`, and the
+committed copy is what `METRICS.md` and the kit's dashboards are built from.
+
+The catalog is compact: `series` holds one entry per distinct metric name, and each entry's
+`labels` maps a label key to the sorted distinct values seen for it, at most 20 per key
+(`MAX_LABEL_VALUES` in the script). Per-pod identity labels (`k8s_pod_uid`, `k8s_pod_name`,
+`instance`, `service_instance_id`) are dropped, so the file does not grow with the number of
+pods.
+
+Label keys present on every series of the export (the collector's infrastructure labels such as
+`cluster`, `host_name`, `job` and `k8s_*`) are listed once, in the top-level `common_labels` map,
+in the same key → values form and with the same cap. They are left out of every entry, so an
+entry's `labels` holds only the labels specific to that metric, and is `{}` when it has none:
+
+```json
+{
+  "workload": "clickhouse",
+  "exported_at": "2026-09-23T12:00:00Z",
+  "common_labels": {
+    "host_name": ["db0", "db1", "db2"],
+    "job": ["clickhouse"]
+  },
+  "series": [
+    {
+      "name": "ClickHouseMetrics_Query",
+      "labels": { "service_name": ["clickhouse"] }
+    },
+    {
+      "name": "target_info",
+      "labels": {}
+    }
+  ]
+}
+```
+
+A series' full label set is its entry's `labels` plus `common_labels`.
+
+The transform lives in `bin/metrics-catalog.jq`, so a full per-series export (the older format,
+one entry per series with a single value per label) can be converted offline with the same code
+the script uses:
+
+```bash
+jq -L bin --argjson cap 20 \
+   'include "metrics-catalog"; del(.series) + (.series | compact_catalog($cap))' \
+   old-catalog.json > metrics-catalog.json
+```
+
+Only series with a sample in the last five minutes are exported, so series left behind by pods
+that have since been replaced do not end up in the catalog. Export while the kit is running and
+being scraped.
+
+The script sources `env.sh`, so run it **from the cluster workspace** (the directory holding
+`env.sh`, `state.json` and `kubeconfig`), calling it by its path in your checkout:
+
+```bash
+cd <cluster-workspace>
+<checkout>/bin/export-workload-metrics <kit>
+```
+
+It writes `<cluster-workspace>/<kit>/metrics-catalog.json`, not the kit's resource directory.
+That `<kit>/` directory is the kit's working copy, and `<kit> uninstall` deletes it, so copy the
+file into the source tree before uninstalling:
+
+```bash
+cp <cluster-workspace>/<kit>/metrics-catalog.json \
+   <checkout>/src/main/resources/com/rustyrazorblade/easydblab/kits/<kit>/metrics-catalog.json
+```
 
 ## Hooks
 
@@ -354,7 +489,7 @@ hooks:
 When `easy-db-lab cassandra start` completes, easy-db-lab scans every installed kit
 directory, finds those with a matching `post-workload-start` hook, and fires them.
 
-If `kits` is empty or omitted, the hook fires for any kit start/stop. Hooks retry up
+If `workloads` is empty or omitted, the hook fires for any kit start/stop. Hooks retry up
 to 3 times with exponential backoff (1s, 2s, 4s) on failure.
 
 **Use case**: Presto registers its Cassandra catalog after Cassandra starts. Its
@@ -377,17 +512,75 @@ dashboards:
     name: Query Details
 ```
 
+A kit with an `extension` arg (postgres) runs as several instances side by side (`postgres`,
+`postgres-duckdb`). A dashboard with `extension:` is installed only by the instance created with
+that extension; one without is installed by every instance. Grafana uids are global, so an
+instance other than the kit's own installs each dashboard under the uid suffixed with its
+extension (`postgres-overview-duckdb`), and links between the dashboards it installs point at
+its own copies; it never moves another instance's dashboard into its folder.
+```yaml
+dashboards:
+  - path: dashboards/postgres.json
+  - path: dashboards/duckdb.json
+    extension: duckdb
+```
+
 Dashboard JSON files should:
 - Use `"uid": "<kit>-kit"` to make re-installs idempotent
 - Filter by `cluster=~"$cluster"` using a template variable
 - Set datasource to `{ "type": "prometheus", "uid": "VictoriaMetrics" }`
 - Include `"tags": ["<kit>", "kit"]`
 
-Dashboards are installed with `overwrite: true` so re-running `start` is safe.
+Dashboards are installed with `overwrite: true`, so re-running `start` never duplicates them.
+
+## Collision check
+
+`collision-check` is a boolean or a map of phase to boolean. `true` guards both `install` and
+`start`; `false` (the default) guards neither. The map guards only the phases set to `true`:
+
+```yaml
+collision-check:
+  start: true     # refuse start while running
+  install: false  # a second install overwrites the scaffold without --force
+```
+
+`install` and `start` are the only phases with a collision check; any other key is rejected when
+the kit is loaded. Each guarded phase fails with an error event and exits non-zero:
+
+- **`kit install`** refuses when the kit's scaffold directory already exists and is not empty. The
+  event is `Install.CollisionDetected`. Pass `--force` to overwrite the scaffold.
+- **`<kit> start`** refuses when the workload the kit's `runtime` block declares is already in the
+  cluster: pods matching the runtime `selector` in its namespace, or, for a `helm` runtime, the
+  helm release and then any pod labelled `app.kubernetes.io/instance=<release>` in the runtime's
+  namespace. Pods that are still terminating count too, so a pod left cleaning up by a manual
+  `kubectl delete` blocks `start` until it is gone. The event is `Kit.CollisionDetected`, naming
+  the objects it found, and no start step runs. Run `<kit> stop` first.
+
+`<kit> stop` is not a collision check, and it applies to every kit that declares a `runtime`,
+guarded or not. Once its steps succeed, it waits until none of the runtime's pods is left,
+terminating pods included. For a `helm` runtime that means the pods labelled
+`app.kubernetes.io/instance=<release>`; the release itself does not count, because a kit may stop
+by scaling its release to zero (Presto, Trino) and keep it. Deleting a StatefulSet, Deployment or
+operator resource, or scaling a Deployment to zero, returns before its pods have terminated, so
+this wait is what makes `stop` return only once the workload is gone, and `stop` followed by
+`start` work. It gives up after 5 minutes with a `Kit.StopIncomplete` error event naming what is
+left. A failed cluster query during the wait is retried; if the last look still fails, `stop`
+exits non-zero with a `Kit.StopUnverified` error event carrying the cause. A kit with no `runtime`
+block does not wait.
+
+`<kit> uninstall` waits the same way after its steps succeed — a `helm uninstall` (Presto, Trino)
+also returns while the release's pods are still terminating — and reports a pod that outlives the
+wait with the same events, naming the `uninstall` phase; the kit directory is then kept.
+
+The runtime must therefore name what `start` creates and `stop` removes. A runtime pointing at
+something the `install` phase creates, such as an operator's helm release, would refuse every
+`start` after a successful install. A kit with no `runtime` block is looked up by the pod label
+`app.kubernetes.io/name=<kit>`.
 
 ## Runtime
 
-The `runtime` field tells easy-db-lab how to find running pods for status checks and log tailing.
+The `runtime` field tells easy-db-lab how to find running pods for status checks, log tailing, and
+the `start` collision check.
 
 ```yaml
 runtime:
@@ -620,6 +813,38 @@ easy-db-lab sysbench-<your-kit-name> start
 
 The capability check at install time will verify your kit exposes `sql` before writing
 any files, so misconfigured targets fail immediately with a clear error.
+
+## Exposing Client Ports
+
+A kit exposes its client ports through a **NodePort Service**, in the range 30000-32767, on a
+fixed port that no other kit uses. Never use `hostPort` or `hostNetwork` for a client port:
+
+- `hostPort` only works when the CNI chains the `portmap` plugin, which is a property of the
+  datapath rather than of the kit.
+- `hostNetwork` pins the pod to one host, and a port clash with another process shows up only
+  as a CrashLoop.
+
+A NodePort is reachable on every node's private IP, so declare the endpoint in `kit.yaml` with
+the NodePort as its `port` and the node type that `kit info` should resolve. The existing kits
+follow this: postgres serves on 30432 and clickhouse on 30123.
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mykit-nodeport
+  labels:
+    easydblab/kit: mykit
+spec:
+  type: NodePort
+  selector:
+    app: mykit
+  ports:
+    - name: client
+      port: 1234
+      targetPort: 1234
+      nodePort: 30999   # a port no other kit uses; Hubble UI owns 31234
+```
 
 ## Adding a New Kit
 

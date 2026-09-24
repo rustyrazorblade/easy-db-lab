@@ -1,7 +1,9 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.Constants
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 
 class KitConfigTest {
@@ -12,7 +14,7 @@ class KitConfigTest {
         val config = parse("name: mydb")
         assertThat(config.name).isEqualTo("mydb")
         assertThat(config.description).isEmpty()
-        assertThat(config.collisionCheck).isFalse()
+        assertThat(config.collisionCheck).isEqualTo(CollisionCheck.NONE)
         assertThat(config.args).isEmpty()
     }
 
@@ -28,7 +30,73 @@ class KitConfigTest {
         val config = parse(yaml)
         assertThat(config.name).isEqualTo("clickhouse")
         assertThat(config.description).isEqualTo("Install ClickHouse kit")
-        assertThat(config.collisionCheck).isTrue()
+        assertThat(config.collisionCheck.guards(Constants.Kit.PHASE_START)).isTrue()
+    }
+
+    /**
+     * `collision-check` is a boolean or a map of phase to boolean (typed-install-steps: "Collision
+     * detection is configurable per phase"). The boolean keeps its meaning for every existing kit:
+     * `true` refuses a second `install` and a `start` while the kit runs.
+     */
+    @Nested
+    inner class CollisionCheckForms {
+        private fun collisionCheck(value: String): CollisionCheck = parse("name: mydb\ncollision-check: $value").collisionCheck
+
+        private fun guardedPhases(check: CollisionCheck): List<String> =
+            listOf(Constants.Kit.PHASE_INSTALL, Constants.Kit.PHASE_START, Constants.Kit.PHASE_STOP, Constants.Kit.PHASE_UNINSTALL)
+                .filter { check.guards(it) }
+
+        @Test
+        fun `true guards install and start`() {
+            assertThat(guardedPhases(collisionCheck("true"))).containsExactly(Constants.Kit.PHASE_INSTALL, Constants.Kit.PHASE_START)
+        }
+
+        @Test
+        fun `false guards nothing`() {
+            assertThat(guardedPhases(collisionCheck("false"))).isEmpty()
+        }
+
+        @Test
+        fun `a phase map guards the phases set to true and no other`() {
+            assertThat(guardedPhases(collisionCheck("{start: true, install: false}"))).containsExactly(Constants.Kit.PHASE_START)
+            assertThat(guardedPhases(collisionCheck("{install: true}"))).containsExactly(Constants.Kit.PHASE_INSTALL)
+        }
+
+        @Test
+        fun `a phase map in block style decodes like the flow style`() {
+            val config =
+                parse(
+                    """
+                    name: mydb
+                    collision-check:
+                      start: true
+                      install: false
+                    """.trimIndent(),
+                )
+
+            assertThat(guardedPhases(config.collisionCheck)).containsExactly(Constants.Kit.PHASE_START)
+        }
+
+        @Test
+        fun `every form writes back to kit yaml and reads back the same`() {
+            val forms = listOf(CollisionCheck.NONE, CollisionCheck.ENABLED, CollisionCheck(setOf(Constants.Kit.PHASE_START)))
+
+            assertThat(forms).allSatisfy { form ->
+                val yaml = installConfigYaml.encodeToString(KitConfig.serializer(), KitConfig(name = "mydb", collisionCheck = form))
+                assertThat(parse(yaml).collisionCheck).isEqualTo(form)
+            }
+        }
+
+        @Test
+        fun `a phase that has no collision check is rejected`() {
+            assertThatThrownBy { collisionCheck("{stop: true}") }.hasStackTraceContaining("stop")
+        }
+
+        @Test
+        fun `a value that is neither a boolean nor a phase map is rejected`() {
+            assertThatThrownBy { collisionCheck("sometimes") }.hasStackTraceContaining("collision-check")
+            assertThatThrownBy { collisionCheck("{start: maybe}") }.hasStackTraceContaining("start")
+        }
     }
 
     @Test
@@ -348,6 +416,57 @@ class KitConfigTest {
         assertThat(step.name).isEqualTo("myapp")
         assertThat(step.namespace).isEqualTo("mynamespace")
         assertThat(step.ignoreNotFound).isFalse()
+    }
+
+    @Test
+    fun `parses a delete step that selects by label`() {
+        val config =
+            parse(
+                """
+                name: mydb
+                stop:
+                  - type: delete
+                    kinds: [deployment, pod]
+                    selector: easydblab/kit=mydb
+                    namespace: mynamespace
+                """.trimIndent(),
+            )
+        val step = config.stop.single() as InstallStep.Delete
+        assertThat(step.kinds).containsExactly("deployment", "pod")
+        assertThat(step.selector).isEqualTo("easydblab/kit=mydb")
+        assertThat(step.namespace).isEqualTo("mynamespace")
+    }
+
+    @Test
+    fun `a delete step must name one object or select by label, not both or neither`() {
+        val both =
+            """
+            name: mydb
+            stop:
+              - type: delete
+                kind: Deployment
+                name: myapp
+                kinds: [pod]
+                selector: easydblab/kit=mydb
+            """.trimIndent()
+        val selectorWithoutKinds =
+            """
+            name: mydb
+            stop:
+              - type: delete
+                selector: easydblab/kit=mydb
+            """.trimIndent()
+        val neither =
+            """
+            name: mydb
+            stop:
+              - type: delete
+                namespace: default
+            """.trimIndent()
+
+        for (yaml in listOf(both, selectorWithoutKinds, neither)) {
+            assertThatThrownBy { parse(yaml) }.hasStackTraceContaining("delete step")
+        }
     }
 
     @Test

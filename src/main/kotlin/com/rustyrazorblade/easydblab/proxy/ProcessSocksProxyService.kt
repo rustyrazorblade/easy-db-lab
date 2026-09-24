@@ -3,14 +3,15 @@ package com.rustyrazorblade.easydblab.proxy
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import io.github.oshai.kotlinlogging.KotlinLogging
+import io.github.resilience4j.retry.Retry
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
 import java.io.IOException
-import java.net.InetAddress
+import java.net.BindException
 import java.net.InetSocketAddress
-import java.net.ServerSocket
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.locks.ReentrantLock
@@ -44,6 +45,18 @@ internal fun stripSshDebugNoise(
         .takeLast(tailLines)
 
 /**
+ * What `ssh` prints when its `-D` listener cannot bind: `bind [127.0.0.1]:<port>: Address already in
+ * use` for each loopback address, then `cannot listen to port: <port>` once every address failed.
+ */
+private val LOCAL_PORT_BIND_FAILURE = Regex("""Address already in use|cannot listen to port""")
+
+/**
+ * Whether an `ssh` transcript shows the dynamic forward failed because its local port was already
+ * bound by another process — the one ssh failure a fresh port fixes.
+ */
+internal fun isLocalPortBindFailure(transcript: List<String>): Boolean = transcript.any { LOCAL_PORT_BIND_FAILURE.containsMatchIn(it) }
+
+/**
  * SOCKS5 proxy service that launches a detached `ssh -N -D` OS process.
  *
  * Unlike the previous in-process implementation, the SSH process outlives the JVM.
@@ -65,6 +78,7 @@ class ProcessSocksProxyService(
     private val reachabilityProbe: TunnelReachabilityProbe,
     private val verifyDelay: Duration = Duration.ofMillis(VERIFY_DELAY_MS),
     private val processLauncher: SshProcessLauncher = DefaultSshProcessLauncher,
+    private val portSelector: LocalPortSelector = LoopbackPortSelector(),
 ) : SocksProxyService {
     companion object {
         private const val VERIFY_RETRIES = 10
@@ -164,6 +178,11 @@ class ProcessSocksProxyService(
      * `logs/${Constants.Proxy.SOCKS5_PROXY_LOG_FILE}` and its real error is surfaced in the thrown
      * message.
      *
+     * The port is chosen per attempt. Another workspace starting its own proxy at the same moment
+     * can find the same port free and bind it first; ssh then dies with "Address already in use".
+     * That one failure is retried under [RetryUtil.createLocalPortBindRetryConfig], each attempt
+     * on a freshly selected port, so concurrent clusters never collide on the local SOCKS port.
+     *
      * @throws IllegalStateException if the tunnel never becomes reachable or ssh exits early
      */
     private fun startNewProxy(
@@ -177,28 +196,25 @@ class ProcessSocksProxyService(
         // republished by applySystemProperties() only after the proxy is verified.
         System.clearProperty(Constants.Proxy.PORT_PROPERTY)
 
-        val port = selectPort()
-        log.info { "Starting SOCKS5 proxy to ${gatewayHost.alias} (${gatewayHost.privateIp}) on port $port" }
-
         // ProcessBuilder's redirect will NOT create parent dirs; without this, ssh's stderr is
         // silently discarded and the transcript we rely on for diagnosis would be lost.
         val logDir = File(context.workingDirectory, LOGS_DIR)
         logDir.mkdirs()
         val logFile = File(logDir, Constants.Proxy.SOCKS5_PROXY_LOG_FILE)
-        val process = processLauncher.launch(buildSshCommand(port, sshConfigPath, gatewayHost.alias), logFile)
 
-        val newPid = process.pid().toInt()
-        log.info { "SSH proxy process started [PID $newPid]" }
-
-        try {
-            verifyTunnelReachable(process, port, gatewayHost.privateIp, logFile)
-        } catch (e: IllegalStateException) {
-            // Verification failed: nothing will ever record this PID (the state file write
-            // below is never reached), so it would otherwise be an untracked orphan that
-            // `down` can never find and kill. Destroy it here instead of leaking it.
-            process.destroyForcibly()
-            throw e
-        }
+        val retry = Retry.of("socks5-proxy-start", RetryUtil.createLocalPortBindRetryConfig())
+        val launched =
+            try {
+                // executeCallable, not decorateSupplier: a Supplier retries only RuntimeExceptions,
+                // and BindException is checked.
+                retry.executeCallable { launchVerifiedProxy(gatewayHost, sshConfigPath, logFile) }
+            } catch (e: BindException) {
+                // Every attempt lost its port to another process. Surface it as the same tunnel
+                // failure every other start error is, so callers handle one exception type.
+                throw IllegalStateException(e.message, e)
+            }
+        val port = launched.port
+        val newPid = launched.pid
 
         val clusterName = context.workingDirectory.name
         val fileState =
@@ -222,6 +238,46 @@ class ProcessSocksProxyService(
 
         log.info { "SOCKS5 proxy started successfully on 127.0.0.1:$port via ${gatewayHost.alias}" }
         return proxyState
+    }
+
+    /** A launched `ssh -D` process whose tunnel was verified reachable: its local [port] and [pid]. */
+    private data class LaunchedProxy(
+        val port: Int,
+        val pid: Int,
+    )
+
+    /**
+     * One start attempt: selects a port, launches `ssh -D` on it, and verifies the tunnel.
+     *
+     * A failed attempt's process is destroyed, since nothing will ever record its PID and `down`
+     * could never find it. When ssh died because its port was already bound by another process, the
+     * failure is thrown as a [BindException] so the caller's retry selects a new port; every other
+     * failure keeps its [IllegalStateException] and is not retried.
+     */
+    private fun launchVerifiedProxy(
+        gatewayHost: ClusterHost,
+        sshConfigPath: String,
+        logFile: File,
+    ): LaunchedProxy {
+        val port = portSelector.select()
+        log.info { "Starting SOCKS5 proxy to ${gatewayHost.alias} (${gatewayHost.privateIp}) on port $port" }
+        val process = processLauncher.launch(buildSshCommand(port, sshConfigPath, gatewayHost.alias), logFile)
+
+        val newPid = process.pid().toInt()
+        log.info { "SSH proxy process started [PID $newPid]" }
+
+        try {
+            verifyTunnelReachable(process, port, gatewayHost.privateIp, logFile)
+        } catch (e: IllegalStateException) {
+            val sshExited = !process.isAlive
+            process.destroyForcibly()
+            if (sshExited && isLocalPortBindFailure(readTranscript(logFile))) {
+                log.info { "SOCKS5 proxy port $port was taken by another process; selecting another port" }
+                throw BindException(e.message)
+            }
+            throw e
+        }
+        return LaunchedProxy(port, newPid)
     }
 
     /**
@@ -251,56 +307,6 @@ class ProcessSocksProxyService(
             sshConfigPath,
             alias,
         )
-
-    /**
-     * Selects the local port for the SOCKS5 listener: [preferred] if it is free, otherwise an
-     * OS-assigned ephemeral port.
-     *
-     * Internal (not private) with a [preferred] parameter purely so the fallback branch can be
-     * driven deterministically in a test by passing a port that is known to be bound, instead of
-     * having to bind the hardcoded default port (a fixed-port collision risk on CI — issue #750).
-     */
-    internal fun selectPort(preferred: Int = Constants.Proxy.DEFAULT_SOCKS5_PORT): Int =
-        if (isLoopbackPortFree(preferred)) {
-            preferred
-        } else {
-            log.debug { "Port $preferred is in use on the loopback interface, selecting an available port" }
-            ServerSocket(0).use { it.localPort }
-        }
-
-    /**
-     * Probes whether [port] is free the way `ssh -D` binds it: on the loopback interface, not the
-     * wildcard address.
-     *
-     * A plain `ServerSocket(port)` binds the wildcard address with `SO_REUSEADDR` enabled (Java's
-     * default for a server socket). Under `SO_REUSEADDR`, a wildcard bind coexists with an existing
-     * loopback-scoped listener, so the probe reports the port as free even though `ssh -D` — which
-     * binds `127.0.0.1` and `::1` — cannot use it. That made the fallback dead code against this
-     * tool's own proxy: a second datacenter kept retrying the busy port and ssh failed with
-     * "bind [::1]:<port>: Address already in use".
-     *
-     * This probe instead binds each loopback address with `SO_REUSEADDR` disabled, matching ssh. The
-     * port is free only if every loopback address binds cleanly; a live loopback listener triggers
-     * the ephemeral fallback.
-     */
-    private fun isLoopbackPortFree(port: Int): Boolean =
-        loopbackProbeAddresses().all { address ->
-            try {
-                ServerSocket().use { socket ->
-                    socket.reuseAddress = false
-                    socket.bind(InetSocketAddress(address, port))
-                    true
-                }
-            } catch (_: IOException) {
-                false
-            }
-        }
-
-    /**
-     * The loopback addresses `ssh -D` binds: the IPv4 and IPv6 loopback. Both are resolved from their
-     * literal forms, so neither depends on name resolution.
-     */
-    private fun loopbackProbeAddresses(): List<InetAddress> = listOf(InetAddress.getByName("127.0.0.1"), InetAddress.getByName("::1"))
 
     private fun applySystemProperties(port: Int) {
         // Publish ONLY the port under our private property. Never set socksProxyHost/socksProxyPort:
@@ -443,10 +449,12 @@ class ProcessSocksProxyService(
         }
     }
 
-    private fun readSshErrors(logFile: File): List<String> =
+    private fun readSshErrors(logFile: File): List<String> = stripSshDebugNoise(readTranscript(logFile), SSH_ERROR_TAIL_LINES)
+
+    private fun readTranscript(logFile: File): List<String> =
         try {
-            stripSshDebugNoise(logFile.readLines(), SSH_ERROR_TAIL_LINES)
-        } catch (e: Exception) {
+            logFile.readLines()
+        } catch (e: IOException) {
             log.debug(e) { "Could not read ssh transcript from ${logFile.absolutePath}" }
             emptyList()
         }

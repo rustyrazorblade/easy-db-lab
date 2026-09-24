@@ -15,6 +15,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
+import java.io.IOException
 import java.time.Duration
 import java.util.concurrent.TimeUnit
 
@@ -29,7 +30,9 @@ data class TailscaleAuthKey(
 )
 
 /**
- * Exception thrown when Tailscale API operations fail.
+ * Exception thrown when Tailscale API operations fail: an error response, or an API that could not
+ * be reached (the transport's [java.io.IOException] is the cause). The API methods of
+ * [TailscaleService] throw nothing else, so callers catch only this.
  */
 class TailscaleApiException(
     message: String,
@@ -68,16 +71,40 @@ interface TailscaleService : AutoCloseable {
     /**
      * Deletes a Tailscale auth key by ID.
      *
+     * Deleting a key that is already gone succeeds, so a retried teardown is harmless.
+     *
      * @param clientId Tailscale OAuth client ID
      * @param clientSecret Tailscale OAuth client secret
      * @param keyId The auth key ID to delete
-     * @throws TailscaleApiException if the API request fails
+     * @throws TailscaleApiException if the OAuth client lacks permission to delete auth keys, or
+     *   the API request otherwise fails
      */
     fun deleteAuthKey(
         clientId: String,
         clientSecret: String,
         keyId: String,
     )
+
+    /**
+     * Deletes a device from the tailnet, identified by the node ID [getDeviceId] returned for it.
+     *
+     * Deleting a device that is already gone succeeds, so a retried teardown is harmless.
+     *
+     * @throws TailscaleApiException if the OAuth client lacks permission to delete devices, or
+     *   the API request otherwise fails
+     */
+    fun deleteDevice(
+        clientId: String,
+        clientSecret: String,
+        deviceId: String,
+    )
+
+    /**
+     * Reads the tailnet node ID that [host] reports for itself (`Self.ID` of
+     * `tailscale status --json`). The ID is what [deleteDevice] takes; the hostname is not
+     * unique across clusters, since every cluster's control node registers as `control0`.
+     */
+    fun getDeviceId(host: Host): Result<String>
 
     /**
      * Starts Tailscale on the specified host and authenticates with the provided auth key.
@@ -133,61 +160,145 @@ interface TailscaleService : AutoCloseable {
  * @param daemonStartupDelay Pause after starting `tailscaled` before authenticating, giving the
  *   daemon a moment to initialize. Defaults to [Constants.Tailscale.DAEMON_STARTUP_DELAY_MS] so
  *   production timing is unchanged; tests inject [Duration.ZERO] to run instantly.
+ * @param httpClient Client for the Tailscale API. Tests inject one whose interceptor stands in
+ *   for the API.
  */
 class DefaultTailscaleService(
     private val remoteOps: RemoteOperationsService,
     private val eventBus: EventBus,
     private val daemonStartupDelay: Duration = Duration.ofMillis(Constants.Tailscale.DAEMON_STARTUP_DELAY_MS),
-) : TailscaleService {
     private val httpClient: OkHttpClient =
         OkHttpClient
             .Builder()
             .connectTimeout(Constants.Tailscale.CONNECTION_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .readTimeout(Constants.Tailscale.READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            .build()
-
+            .build(),
+) : TailscaleService {
     private val objectMapper: ObjectMapper = jacksonObjectMapper()
 
     override fun generateAuthKey(
         clientId: String,
         clientSecret: String,
         tag: String,
-    ): TailscaleAuthKey {
-        log.info { "Generating Tailscale auth key with tag: $tag" }
+    ): TailscaleAuthKey =
+        reachingApi("generate an auth key") {
+            log.info { "Generating Tailscale auth key with tag: $tag" }
 
-        // Step 1: Exchange client credentials for access token
-        val accessToken = getAccessToken(clientId, clientSecret)
+            // Step 1: Exchange client credentials for access token
+            val accessToken = getAccessToken(clientId, clientSecret)
 
-        // Step 2: Generate ephemeral auth key
-        return createAuthKey(accessToken, tag)
-    }
+            // Step 2: Generate ephemeral auth key
+            createAuthKey(accessToken, tag)
+        }
 
     override fun deleteAuthKey(
         clientId: String,
         clientSecret: String,
         keyId: String,
-    ) {
-        log.info { "Deleting Tailscale auth key: $keyId" }
+    ) = deleteResource(
+        clientId,
+        clientSecret,
+        DeletableResource(
+            url = "${Constants.Tailscale.AUTH_KEYS_ENDPOINT}/$keyId",
+            name = "Tailscale auth key $keyId",
+            scope = Constants.Tailscale.AUTH_KEYS_SCOPE,
+            manualRemoval = "revoke the key at https://login.tailscale.com/admin/settings/keys",
+        ),
+    )
+
+    override fun deleteDevice(
+        clientId: String,
+        clientSecret: String,
+        deviceId: String,
+    ) = deleteResource(
+        clientId,
+        clientSecret,
+        DeletableResource(
+            url = "${Constants.Tailscale.DEVICE_ENDPOINT}/$deviceId",
+            name = "Tailscale device $deviceId",
+            scope = Constants.Tailscale.DEVICES_SCOPE,
+            manualRemoval = "remove the device at https://login.tailscale.com/admin/machines",
+        ),
+    )
+
+    /**
+     * A Tailscale API resource [deleteResource] removes: its [url], the [name] logs and failures
+     * call it by, the OAuth [scope] deleting it needs, and how to remove it by hand
+     * ([manualRemoval]) when that scope is missing.
+     */
+    private data class DeletableResource(
+        val url: String,
+        val name: String,
+        val scope: String,
+        val manualRemoval: String,
+    )
+
+    /**
+     * Deletes one Tailscale API resource with an OAuth token. A resource already gone (HTTP 404)
+     * counts as deleted, so a retried cleanup is harmless. A 403 means the OAuth client lacks the
+     * resource's scope, and the failure says how to grant it or remove the resource by hand.
+     *
+     * @throws TailscaleApiException on any other failure
+     */
+    private fun deleteResource(
+        clientId: String,
+        clientSecret: String,
+        target: DeletableResource,
+    ) = reachingApi("delete ${target.name}") {
+        val resource = target.name
+        log.info { "Deleting $resource" }
 
         val accessToken = getAccessToken(clientId, clientSecret)
 
         val request =
             Request
                 .Builder()
-                .url("${Constants.Tailscale.AUTH_KEYS_ENDPOINT}/$keyId")
+                .url(target.url)
                 .header("Authorization", "Bearer $accessToken")
                 .delete()
                 .build()
 
         httpClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) {
-                val errorBody = response.body.string()
-                throw TailscaleApiException("Failed to delete auth key $keyId: ${response.code} - $errorBody")
+            when {
+                response.isSuccessful -> log.info { "$resource deleted" }
+                response.code == Constants.HttpStatus.NOT_FOUND -> log.info { "$resource is already gone" }
+                response.code == Constants.HttpStatus.FORBIDDEN ->
+                    throw TailscaleApiException(
+                        "The Tailscale OAuth client is not allowed to delete $resource " +
+                            "(HTTP 403: ${response.body.string()}). Grant it the '${target.scope}' write scope at " +
+                            "https://login.tailscale.com/admin/settings/oauth, or ${target.manualRemoval}.",
+                    )
+                else ->
+                    throw TailscaleApiException("Failed to delete $resource: ${response.code} - ${response.body.string()}")
             }
         }
-
-        log.info { "Tailscale auth key $keyId deleted successfully" }
     }
+
+    override fun getDeviceId(host: Host): Result<String> =
+        runCatching {
+            val response = remoteOps.executeRemotely(host, "sudo tailscale status --json", output = false)
+            val status: Map<String, Any?> = objectMapper.readValue(response.text)
+            val self = status["Self"] as? Map<*, *>
+            self?.get("ID") as? String
+                ?: throw TailscaleApiException(
+                    "Tailscale on ${host.alias} reported no device ID of its own " +
+                        "(BackendState ${status["BackendState"]}); it has not joined the tailnet.",
+                )
+        }
+
+    /**
+     * Runs a Tailscale API call, reporting an API that could not be reached as a
+     * [TailscaleApiException] like any other API failure.
+     */
+    private inline fun <T> reachingApi(
+        operation: String,
+        call: () -> T,
+    ): T =
+        try {
+            call()
+        } catch (e: IOException) {
+            throw TailscaleApiException("Failed to $operation: ${e.message}", e)
+        }
 
     /**
      * Exchanges OAuth client credentials for an access token.
@@ -306,6 +417,11 @@ class DefaultTailscaleService(
             // Give the daemon a moment to initialize
             Thread.sleep(daemonStartupDelay.toMillis())
 
+            // A subnet router forwards packets, and `tailscale up --advertise-routes` warns when
+            // forwarding is off. K3s turns it on, but only once it starts, which is after this.
+            // Persist it in a sysctl drop-in so a reboot keeps it, and apply it now.
+            remoteOps.executeRemotely(host, ENABLE_IP_FORWARDING)
+
             eventBus.emit(Event.Tailscale.Authenticating(host.alias))
 
             // Authenticate and advertise routes
@@ -367,6 +483,14 @@ class DefaultTailscaleService(
             val backendState = status["BackendState"] as? String
             backendState == "Running"
         }
+
+    private companion object {
+        /** Writes the forwarding sysctl drop-in (overwriting, so reruns are idempotent) and loads it. */
+        val ENABLE_IP_FORWARDING =
+            "printf 'net.ipv4.ip_forward = 1\\nnet.ipv6.conf.all.forwarding = 1\\n' | " +
+                "sudo tee ${Constants.Tailscale.IP_FORWARDING_SYSCTL_FILE} > /dev/null && " +
+                "sudo sysctl -p ${Constants.Tailscale.IP_FORWARDING_SYSCTL_FILE}"
+    }
 
     override fun close() {
         log.info { "Shutting down TailscaleService OkHttp client" }

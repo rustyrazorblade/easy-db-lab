@@ -4,6 +4,14 @@ description: sysbench SQL benchmarking kit — install with --target to point at
 version: "1.0.0"
 collision-check: true
 
+# The start guard and the stop wait look for the benchmark run pods bin/start.sh creates, one per
+# instance (sysbench-<target>). A finished run's pod stays behind in Succeeded; the probe ignores
+# finished pods, so it never refuses the next start.
+runtime:
+  type: pods
+  selector: "easydblab/kit=${KIT_NAME},easydblab/role=sysbench-run"
+  namespace: default
+
 args:
   - flag: --target
     variable: TARGET

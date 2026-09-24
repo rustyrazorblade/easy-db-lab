@@ -1,0 +1,118 @@
+name: memcached
+type: db
+description: memcached in-memory cache on a db node, with a Prometheus exporter sidecar
+version: "1.0.0"
+collision-check: true
+
+# The memcached-exporter sidecar serves Prometheus metrics on 9150. Pod discovery finds the
+# memcached pod by label and the collector on the pod's own node scrapes it on the pod IP, so
+# there is one series per pod and no metrics NodePort.
+metrics:
+  - type: scrape
+    job: memcached
+    pod-selector: "app=memcached"
+    port: 9150
+    path: /metrics
+
+runtime:
+  type: pods
+  selector: "easydblab/kit=memcached"
+  namespace: default
+
+endpoints:
+  - name: "memcached"
+    node-type: db
+    port: 31211
+    type: native
+
+args:
+  - flag: --memory
+    variable: MEMORY_MB
+    description: "Cache size in megabytes, passed to memcached as -m"
+    type: int
+    default: "1024"
+  # extstore: off unless --extstore-size is set. The tuning args are passed to memcached only when
+  # set (memcached's own default applies otherwise) and are ignored without --extstore-size.
+  - flag: --extstore-size
+    variable: EXTSTORE_SIZE
+    description: "Turns on extstore with this much flash on the db node's NVMe, e.g. 100G (M, G or T suffix)"
+    type: string
+  - flag: --extstore-page-size
+    variable: EXTSTORE_PAGE_SIZE
+    description: "extstore page size in MB (ext_page_size)"
+    type: int
+  - flag: --extstore-wbuf-size
+    variable: EXTSTORE_WBUF_SIZE
+    description: "extstore write buffer size in MB (ext_wbuf_size)"
+    type: int
+  - flag: --extstore-threads
+    variable: EXTSTORE_THREADS
+    description: "extstore IO threads (ext_threads)"
+    type: int
+  - flag: --extstore-item-size
+    variable: EXTSTORE_ITEM_SIZE
+    description: "Smallest item in bytes that goes to extstore (ext_item_size)"
+    type: int
+
+# The extstore PV exists only when --extstore-size is set. local-storage ignores capacity; the
+# extstore claim requests the same 10Ti.
+install:
+  - type: platform-pvs
+    node-type: db
+    count: 1
+    volume-claim-template-name: data
+    storage-size: 10Ti
+    if-set: EXTSTORE_SIZE
+
+start:
+  # RAM only unless --extstore-size is set. With extstore, publish memcached's -o options (the
+  # ext_path on the PV mounted at /data, plus each tuning option that was set) in a ConfigMap the
+  # extstore Deployment reads, and apply that Deployment and its claim instead.
+  - type: shell
+    script: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      EXTSTORE_SIZE="${EXTSTORE_SIZE:-}"
+      if [[ -z "${EXTSTORE_SIZE}" ]]; then
+        kubectl apply -f memcached.yaml
+        exit 0
+      fi
+      if [[ ! "${EXTSTORE_SIZE}" =~ ^[1-9][0-9]*[MGT]$ ]]; then
+        echo "ERROR: --extstore-size '${EXTSTORE_SIZE}' is not a size memcached accepts; use a whole number with an M, G or T suffix, such as 100G." >&2
+        exit 1
+      fi
+      OPTIONS="ext_path=/data/extstore:${EXTSTORE_SIZE}"
+      for OPTION in "ext_page_size=${EXTSTORE_PAGE_SIZE:-}" "ext_wbuf_size=${EXTSTORE_WBUF_SIZE:-}" \
+        "ext_threads=${EXTSTORE_THREADS:-}" "ext_item_size=${EXTSTORE_ITEM_SIZE:-}"; do
+        if [[ -n "${OPTION#*=}" ]]; then
+          OPTIONS="${OPTIONS},${OPTION}"
+        fi
+      done
+      kubectl create configmap memcached-extstore-options --namespace default \
+        --from-literal=EXTSTORE_OPTIONS="${OPTIONS}" \
+        --dry-run=client -o yaml \
+        | kubectl label --local -f - easydblab/kit=memcached -o yaml \
+        | kubectl apply -f -
+      kubectl apply -f memcached-extstore.yaml
+  - type: manifest
+    template: nodeport-service.yaml
+  - type: wait
+    kind: deployment
+    name: memcached
+    condition: Available
+    timeout: 300s
+
+stop:
+  - type: delete
+    kinds: [deployment, replicaset, pod, service, configmap]
+    selector: easydblab/kit=memcached
+    namespace: default
+
+uninstall:
+  - type: delete
+    kinds: [deployment, replicaset, pod, service, configmap, pvc]
+    selector: easydblab/kit=memcached
+    namespace: default
+  # Deletes the extstore PV and its directory on the node; a no-op when extstore was never on.
+  - type: platform-pvs-delete
+    node-type: db

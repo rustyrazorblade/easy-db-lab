@@ -47,9 +47,21 @@ TestContainers failure as pre-existing or environment-specific.
 CI is a real test gate. Two jobs run in parallel on every pull request and every push to
 `main`:
 
-- `test` — `./gradlew test integrationTest koverXmlReport` on JDK 21. GitHub's ubuntu
-  runners ship a running Docker daemon, so the integration tier runs for real.
+- `test` — `./gradlew test integrationTest testScripts koverXmlReport` on JDK 21. GitHub's
+  ubuntu runners ship a running Docker daemon, so the integration tier runs for real.
+  `testScripts` is every Docker-free shell-script test (bash, jq, and mikefarah yq at the
+  AMI's version, installed by `packer/base/install/install_yq.sh`);
+  `check` depends on it too. Docker-backed script tests (`testPacker`, `testAxonSudoers`,
+  `testFluentBitFilter`) are not in it.
 - `quality` — `./gradlew ktlintCheck` then `./gradlew detekt` on JDK 21.
+
+The Docker-backed script tests have their own path-filtered workflows, which run the same
+commands as their Gradle tasks:
+
+- `.github/workflows/packer-test.yml`, on `packer/**` changes: the base and Cassandra
+  provisioning sequences (`testPackerBase`, `testPackerCassandra`) and `testAxonSudoers`.
+- `.github/workflows/fluent-bit-filter-test.yml`, on changes to
+  `fluent-bit-severity-mapper*.lua`: `testFluentBitFilter`.
 
 Kover reports coverage to the PR with an 80% floor, overall and on changed files.
 
@@ -57,6 +69,12 @@ On any test failure the `test` job writes every failing test id, one
 `com.example.FooTest.method` per line across both tiers, and uploads it as the
 `spec-flow-failures` artifact. `/spec-flow:sync-ci` pulls that into the branch's flagged
 set. This contract is already wired. Do not break it when editing the workflow.
+
+Script tests are Gradle `Exec` tasks, not JUnit tests. `build.gradle.kts` has every `Exec`
+task named `test*` write a one-testcase JUnit report to `build/test-results/scripts/`, so a
+failing script test reaches the same artifact as `scripts.<task>`, for example
+`scripts.testCassandraUseScript`. To run a `scripts.` id, run the task:
+`./gradlew testCassandraUseScript`.
 
 ## Merge gate
 

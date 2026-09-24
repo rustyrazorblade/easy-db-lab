@@ -21,6 +21,12 @@ object Constants {
     // Kubernetes labels
     const val NODE_ORDINAL_LABEL = "easydblab.com/node-ordinal"
 
+    /** The node label naming the node's pool (`db`, `app`, `control`), set when the node joins. */
+    const val NODE_TYPE_LABEL = "type"
+
+    /** The label on a platform local PV naming the kit instance it is for; the kit's PVCs select it. */
+    const val PV_KIT_LABEL = "app.kubernetes.io/name"
+
     // Time-related constants
     object Time {
         const val SECONDS_PER_MINUTE = 60
@@ -112,6 +118,12 @@ object Constants {
         const val MIN_PORT = 0
         const val MAX_PORT = 65535
         const val SSH_PORT = 22
+
+        /** EC2 IP protocol name for ICMP security group rules. */
+        const val ICMP_PROTOCOL = "icmp"
+
+        /** EC2 port value meaning "all ICMP types/codes" when used as both fromPort and toPort. */
+        const val ALL_ICMP_TYPES = -1
     }
 
     // HTTP Status Codes
@@ -272,9 +284,18 @@ object Constants {
         const val PHASE_BACKUP = "backup"
         const val PHASE_RESTORE = "restore"
 
+        /** Lines of a failed shell step's output repeated in its failure report. */
+        const val SHELL_STEP_OUTPUT_TAIL_LINES = 20
+
         // File written by kit install to record the resolved arg values; read by subsequent
         // phases (start, stop, etc.) so they use the installed values instead of kit defaults.
         const val RESOLVED_ARGS_FILE = "kit-resolved-args.env"
+
+        // After the stop of a kit that declares a runtime, how often and how many times to look for its
+        // pods before reporting the stop incomplete: 2s x 150 = 5 minutes, enough for a
+        // StatefulSet's or operator's cascading delete plus each pod's termination grace period.
+        val STOP_WAIT_POLL_INTERVAL: java.time.Duration = java.time.Duration.ofSeconds(2)
+        const val STOP_WAIT_MAX_POLLS = 150
 
         val SHELL_VAR_PATTERN = Regex("""\$\{(\w+)}""")
     }
@@ -294,7 +315,7 @@ object Constants {
         const val DEPLOYMENT_NAME = "yace"
     }
 
-    // Cilium CNI (selected with `init --cni=cilium`; see CiliumService and PlatformCni)
+    // Cilium CNI (the default; `init --cni=flannel` opts out; see CiliumService and PlatformCni)
     object Cilium {
         const val VERSION = "1.19.4"
         const val NAMESPACE = "kube-system"
@@ -320,6 +341,16 @@ object Constants {
 
         // Tag on the Grafana annotations that mark the Cilium install window.
         const val ANNOTATION_TAG = "cilium"
+
+        // The node fixes packer/base/install/configure_cilium_eni_networkd.sh bakes into the base
+        // AMI. A node launched from an older AMI lacks them, and Cilium's runtime-attached ENIs
+        // then take the node off the network. `up` checks for them before installing Cilium.
+        val NODE_FIX_FILES =
+            listOf(
+                "/etc/systemd/network/05-cilium-eni-primary.network",
+                "/etc/systemd/network/06-cilium-eni-unmanaged.network",
+                "/etc/cloud/cloud.cfg.d/90-easydblab-no-network-hotplug.cfg",
+            )
     }
 
     // kube-state-metrics (K8s object state as Prometheus metrics, scraped by the OTel collector)
@@ -588,18 +619,46 @@ object Constants {
          * surface the real ssh error (e.g. a changed host key or refused connection).
          */
         const val SOCKS5_PROXY_LOG_FILE = "socks5-proxy.log"
+
+        /**
+         * How many times a SOCKS5 proxy start launches `ssh -D`, each on a freshly selected port,
+         * when the previous attempt died because its local port was already bound. Two workspaces
+         * starting a proxy at the same moment can both find the same port free; the loser's ssh
+         * exits with "Address already in use" and the next attempt picks another port.
+         */
+        const val PORT_BIND_MAX_ATTEMPTS = 3
+
+        /** Pause between those attempts, long enough for the winning ssh to hold its port. */
+        const val PORT_BIND_RETRY_INTERVAL_MS = 100L
     }
 
     // Tailscale VPN configuration
     object Tailscale {
         const val OAUTH_TOKEN_ENDPOINT = "https://api.tailscale.com/api/v2/oauth/token"
         const val AUTH_KEYS_ENDPOINT = "https://api.tailscale.com/api/v2/tailnet/-/keys"
+
+        /** Device endpoint; `DELETE {DEVICE_ENDPOINT}/{nodeId}` removes a device from the tailnet. */
+        const val DEVICE_ENDPOINT = "https://api.tailscale.com/api/v2/device"
+
+        /** OAuth scope a client needs to delete devices, named in the error when it lacks it. */
+        const val DEVICES_SCOPE = "devices:core"
+
+        /** OAuth scope a client needs to create the control node's auth key in `tailscale start`. */
+        const val AUTH_KEYS_SCOPE = "auth_keys"
         const val CONNECTION_TIMEOUT_SECONDS = 30L
         const val READ_TIMEOUT_SECONDS = 30L
         const val AUTH_KEY_EXPIRY_SECONDS = 604800
         const val DAEMON_STARTUP_DELAY_MS = 2000L
         const val DEFAULT_DEVICE_TAG = "tag:easy-db-lab"
         const val STATUS_TIMEOUT_SECONDS = 5L
+
+        /**
+         * sysctl drop-in that turns on IP forwarding on the control node. A subnet router needs
+         * it, and `tailscale up --advertise-routes` checks it: without it Tailscale warns that
+         * subnet routing will not work. It is written before `tailscale up`, not left to K3s,
+         * which enables forwarding only once it starts, after Tailscale has authenticated.
+         */
+        const val IP_FORWARDING_SYSCTL_FILE = "/etc/sysctl.d/99-tailscale.conf"
 
         /** How long to wait for the local `tailscale status` process before killing it. */
         const val LOCAL_STATUS_TIMEOUT_SECONDS = 5L
@@ -658,6 +717,12 @@ object Constants {
 
         /** VPC tag key for the S3 bucket name */
         const val BUCKET_TAG_KEY = "bucket"
+
+        /**
+         * Attempts at creating a VPC on an auto-selected CIDR; each retry picks a new random
+         * unused block, excluding the ones that already failed.
+         */
+        const val CIDR_AUTO_SELECT_MAX_ATTEMPTS = 3
 
         /** SOCKS5 proxy state file name */
         const val SOCKS5_PROXY_STATE_FILE = ".socks5-proxy-state"

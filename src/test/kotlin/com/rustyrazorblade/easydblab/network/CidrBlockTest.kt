@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import kotlin.random.Random
 
 class CidrBlockTest {
     @Test
@@ -69,39 +70,40 @@ class CidrBlockTest {
         assertThat(CidrBlock.DEFAULT.subnetCidr(0)).isEqualTo("10.0.1.0/24")
     }
 
+    /** Every second octet 0–254 in use except [free]. */
+    private fun allTakenExcept(vararg free: Int): List<String> = (0..254).filterNot { it in free }.map { "10.$it.0.0/16" }
+
     @Test
-    fun `selectAvailable returns first unused second octet as 10-x-0-0 slash 16`() {
+    fun `selectAvailable picks a random unused second octet, never a used one`() {
         val existing = listOf("10.0.0.0/16", "10.1.0.0/16")
-        assertThat(CidrBlock.selectAvailable(existing).value).isEqualTo("10.2.0.0/16")
+        val selected = (0 until 200).map { seed -> CidrBlock.selectAvailable(existing, Random(seed)).value }
+
+        assertThat(selected).allMatch { it.matches(Regex("""10\.\d+\.0\.0/16""")) }
+        assertThat(selected).doesNotContain("10.0.0.0/16", "10.1.0.0/16")
+        assertThat(selected.toSet()).hasSizeGreaterThan(1)
     }
 
     @Test
-    fun `selectAvailable skips gaps and returns first available`() {
-        val existing = listOf("10.0.0.0/16", "10.2.0.0/16", "10.3.0.0/16")
-        assertThat(CidrBlock.selectAvailable(existing).value).isEqualTo("10.1.0.0/16")
+    fun `selectAvailable returns the only unused block when one remains`() {
+        assertThat(CidrBlock.selectAvailable(allTakenExcept(7), Random(42)).value).isEqualTo("10.7.0.0/16")
     }
 
     @Test
     fun `selectAvailable ignores non-10-x VPC CIDRs`() {
-        val existing = listOf("172.16.0.0/16", "192.168.0.0/16")
-        assertThat(CidrBlock.selectAvailable(existing).value).isEqualTo("10.0.0.0/16")
+        val existing = allTakenExcept(0) + listOf("172.16.0.0/16", "192.168.0.0/16")
+        assertThat(CidrBlock.selectAvailable(existing, Random(42)).value).isEqualTo("10.0.0.0/16")
     }
 
     @Test
     fun `selectAvailable ignores CIDRs with non-integer second octet`() {
-        val existing = listOf("10.abc.0.0/16")
-        assertThat(CidrBlock.selectAvailable(existing).value).isEqualTo("10.0.0.0/16")
-    }
-
-    @Test
-    fun `selectAvailable returns 10-0-0-0 slash 16 when no existing VPCs`() {
-        assertThat(CidrBlock.selectAvailable(emptyList()).value).isEqualTo("10.0.0.0/16")
+        val existing = allTakenExcept(0) + "10.abc.0.0/16"
+        assertThat(CidrBlock.selectAvailable(existing, Random(42)).value).isEqualTo("10.0.0.0/16")
     }
 
     @Test
     fun `selectAvailable throws when all second octets 0-254 are taken`() {
         val existing = (0..254).map { "10.$it.0.0/16" }
-        assertThatThrownBy { CidrBlock.selectAvailable(existing) }
+        assertThatThrownBy { CidrBlock.selectAvailable(existing, Random(42)) }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("No available CIDR blocks")
     }

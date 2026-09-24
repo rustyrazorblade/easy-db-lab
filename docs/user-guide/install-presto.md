@@ -54,7 +54,7 @@ easy-db-lab presto stop
 ### start
 
 ```bash
-helm upgrade --install presto prestodb/presto -f values.yaml
+helm upgrade --install presto prestodb/presto --version 0.4.0 -f values.yaml
 # update-catalogs.sh runs automatically after helm install
 kubectl wait --for=condition=Ready pods -l app=presto,component=coordinator --timeout=180s
 ```

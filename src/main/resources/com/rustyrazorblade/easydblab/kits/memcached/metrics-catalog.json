@@ -1,0 +1,2141 @@
+{
+  "workload": "memcached",
+  "exported_at": "2026-09-23T00:48:20Z",
+  "common_labels": {
+    "cluster": [
+      "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
+    ],
+    "host_name": [
+      "db0"
+    ],
+    "job": [
+      "memcached"
+    ],
+    "k8s_container_name": [
+      "memcached-exporter"
+    ],
+    "k8s_namespace_name": [
+      "default"
+    ],
+    "k8s_node_name": [
+      "db0"
+    ],
+    "k8s_node_uid": [
+      "4b9f5d3c-63bc-4b77-a742-38ee08a716b8"
+    ],
+    "k8s_replicaset_name": [
+      "memcached-96d587565"
+    ],
+    "node_role": [
+      "db"
+    ],
+    "os_type": [
+      "linux"
+    ],
+    "server_address": [
+      "memcached-96d587565-hmnz8"
+    ],
+    "url_scheme": [
+      "http"
+    ]
+  },
+  "series": [
+    {
+      "name": "go_gc_duration_seconds",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "quantile": [
+          "0",
+          "0.25",
+          "0.5",
+          "0.75",
+          "1"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "go_gc_duration_seconds_count",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "go_gc_duration_seconds_sum",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "go_gc_gogc_percent",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "go_gc_gomemlimit_bytes",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "go_goroutines",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "go_info",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ],
+        "version": [
+          "go1.23.3"
+        ]
+      }
+    },
+    {
+      "name": "go_memstats_alloc_bytes",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "go_memstats_alloc_bytes_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "go_memstats_buck_hash_sys_bytes",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "go_memstats_frees_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "go_memstats_gc_sys_bytes",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "go_memstats_heap_alloc_bytes",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "go_memstats_heap_idle_bytes",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "go_memstats_heap_inuse_bytes",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "go_memstats_heap_objects",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "go_memstats_heap_released_bytes",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "go_memstats_heap_sys_bytes",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "go_memstats_last_gc_time_seconds",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "go_memstats_mallocs_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "go_memstats_mcache_inuse_bytes",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "go_memstats_mcache_sys_bytes",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "go_memstats_mspan_inuse_bytes",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "go_memstats_mspan_sys_bytes",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "go_memstats_next_gc_bytes",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "go_memstats_other_sys_bytes",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "go_memstats_stack_inuse_bytes",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "go_memstats_stack_sys_bytes",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "go_memstats_sys_bytes",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "go_sched_gomaxprocs_threads",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "go_threads",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_accepting_connections",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_commands_total",
+      "labels": {
+        "command": [
+          "cas",
+          "decr",
+          "delete",
+          "flush",
+          "get",
+          "incr",
+          "set",
+          "touch"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ],
+        "status": [
+          "badval",
+          "hit",
+          "miss"
+        ]
+      }
+    },
+    {
+      "name": "memcached_connections_listener_disabled_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_connections_rejected_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_connections_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_connections_yielded_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_current_bytes",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_current_connections",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_current_items",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_direct_reclaims_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_exporter_build_info",
+      "labels": {
+        "branch": [
+          "HEAD"
+        ],
+        "goarch": [
+          "amd64"
+        ],
+        "goos": [
+          "linux"
+        ],
+        "goversion": [
+          "go1.23.3"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "revision": [
+          "ceb946ecae3aace775a0becb8233ca3890a829c3"
+        ],
+        "service_name": [
+          "memcached"
+        ],
+        "tags": [
+          "unknown"
+        ],
+        "version": [
+          "0.15.0"
+        ]
+      }
+    },
+    {
+      "name": "memcached_extstore_bytes_evicted_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_extstore_bytes_fragmented",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_extstore_bytes_limit",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_extstore_bytes_read_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_extstore_bytes_used_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_extstore_bytes_written_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_extstore_compact_lost_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_extstore_compact_rescued_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_extstore_compact_skipped_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_extstore_io_queue_depth",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_extstore_objects_evicted_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_extstore_objects_read_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_extstore_objects_used",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_extstore_objects_written_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_extstore_pages_allocated_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_extstore_pages_evicted_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_extstore_pages_free",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_extstore_pages_reclaimed_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_extstore_pages_used",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_item_no_memory_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_item_too_large_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_items_evicted_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_items_reclaimed_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_items_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_limit_bytes",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_lru_crawler_enabled",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_lru_crawler_hot_max_factor",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_lru_crawler_hot_percent",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_lru_crawler_items_checked_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_lru_crawler_maintainer_thread",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_lru_crawler_moves_to_cold_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_lru_crawler_moves_to_warm_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_lru_crawler_moves_within_lru_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_lru_crawler_reclaimed_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_lru_crawler_sleep",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_lru_crawler_starts_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_lru_crawler_to_crawl",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_lru_crawler_warm_max_factor",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_lru_crawler_warm_percent",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_malloced_bytes",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_max_connections",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_process_system_cpu_seconds_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_process_user_cpu_seconds_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_read_bytes_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_slab_chunk_size_bytes",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ],
+        "slab": [
+          "1",
+          "12"
+        ]
+      }
+    },
+    {
+      "name": "memcached_slab_chunks_free",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ],
+        "slab": [
+          "1",
+          "12"
+        ]
+      }
+    },
+    {
+      "name": "memcached_slab_chunks_free_end",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ],
+        "slab": [
+          "1",
+          "12"
+        ]
+      }
+    },
+    {
+      "name": "memcached_slab_chunks_per_page",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ],
+        "slab": [
+          "1",
+          "12"
+        ]
+      }
+    },
+    {
+      "name": "memcached_slab_chunks_used",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ],
+        "slab": [
+          "1",
+          "12"
+        ]
+      }
+    },
+    {
+      "name": "memcached_slab_cold_items",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ],
+        "slab": [
+          "1",
+          "12"
+        ]
+      }
+    },
+    {
+      "name": "memcached_slab_commands_total",
+      "labels": {
+        "command": [
+          "cas",
+          "decr",
+          "delete",
+          "get",
+          "incr",
+          "set",
+          "touch"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ],
+        "slab": [
+          "1",
+          "12"
+        ],
+        "status": [
+          "badval",
+          "hit"
+        ]
+      }
+    },
+    {
+      "name": "memcached_slab_current_chunks",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ],
+        "slab": [
+          "1",
+          "12"
+        ]
+      }
+    },
+    {
+      "name": "memcached_slab_current_items",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ],
+        "slab": [
+          "1",
+          "12"
+        ]
+      }
+    },
+    {
+      "name": "memcached_slab_current_pages",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ],
+        "slab": [
+          "1",
+          "12"
+        ]
+      }
+    },
+    {
+      "name": "memcached_slab_hot_age_seconds",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ],
+        "slab": [
+          "1",
+          "12"
+        ]
+      }
+    },
+    {
+      "name": "memcached_slab_hot_items",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ],
+        "slab": [
+          "1",
+          "12"
+        ]
+      }
+    },
+    {
+      "name": "memcached_slab_items_age_seconds",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ],
+        "slab": [
+          "1",
+          "12"
+        ]
+      }
+    },
+    {
+      "name": "memcached_slab_items_crawler_reclaimed_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ],
+        "slab": [
+          "1",
+          "12"
+        ]
+      }
+    },
+    {
+      "name": "memcached_slab_items_evicted_nonzero_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ],
+        "slab": [
+          "1",
+          "12"
+        ]
+      }
+    },
+    {
+      "name": "memcached_slab_items_evicted_time_seconds_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ],
+        "slab": [
+          "1",
+          "12"
+        ]
+      }
+    },
+    {
+      "name": "memcached_slab_items_evicted_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ],
+        "slab": [
+          "1",
+          "12"
+        ]
+      }
+    },
+    {
+      "name": "memcached_slab_items_evicted_unfetched_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ],
+        "slab": [
+          "1",
+          "12"
+        ]
+      }
+    },
+    {
+      "name": "memcached_slab_items_expired_unfetched_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ],
+        "slab": [
+          "1",
+          "12"
+        ]
+      }
+    },
+    {
+      "name": "memcached_slab_items_moves_to_cold_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ],
+        "slab": [
+          "1",
+          "12"
+        ]
+      }
+    },
+    {
+      "name": "memcached_slab_items_moves_to_warm_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ],
+        "slab": [
+          "1",
+          "12"
+        ]
+      }
+    },
+    {
+      "name": "memcached_slab_items_moves_within_lru_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ],
+        "slab": [
+          "1",
+          "12"
+        ]
+      }
+    },
+    {
+      "name": "memcached_slab_items_outofmemory_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ],
+        "slab": [
+          "1",
+          "12"
+        ]
+      }
+    },
+    {
+      "name": "memcached_slab_items_reclaimed_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ],
+        "slab": [
+          "1",
+          "12"
+        ]
+      }
+    },
+    {
+      "name": "memcached_slab_items_tailrepairs_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ],
+        "slab": [
+          "1",
+          "12"
+        ]
+      }
+    },
+    {
+      "name": "memcached_slab_lru_hits_total",
+      "labels": {
+        "lru": [
+          "cold",
+          "hot",
+          "temporary",
+          "warm"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ],
+        "slab": [
+          "1",
+          "12"
+        ]
+      }
+    },
+    {
+      "name": "memcached_slab_mem_requested_bytes_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ],
+        "slab": [
+          "1",
+          "12"
+        ]
+      }
+    },
+    {
+      "name": "memcached_slab_warm_age_seconds",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ],
+        "slab": [
+          "1",
+          "12"
+        ]
+      }
+    },
+    {
+      "name": "memcached_slab_warm_items",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ],
+        "slab": [
+          "1",
+          "12"
+        ]
+      }
+    },
+    {
+      "name": "memcached_time_seconds",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_up",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_uptime_seconds_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "memcached_version",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ],
+        "version": [
+          "1.6.45"
+        ]
+      }
+    },
+    {
+      "name": "memcached_written_bytes_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "process_cpu_seconds_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "process_max_fds",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "process_network_receive_bytes_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "process_network_transmit_bytes_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "process_open_fds",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "process_resident_memory_bytes",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "process_start_time_seconds",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "process_virtual_memory_bytes",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "process_virtual_memory_max_bytes",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "promhttp_metric_handler_requests_in_flight",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "promhttp_metric_handler_requests_total",
+      "labels": {
+        "code": [
+          "200",
+          "500",
+          "503"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "scrape_duration_seconds",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "scrape_samples_post_metric_relabeling",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "scrape_samples_scraped",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "scrape_series_added",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    },
+    {
+      "name": "target_info",
+      "labels": {}
+    },
+    {
+      "name": "up",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "memcached"
+        ]
+      }
+    }
+  ]
+}

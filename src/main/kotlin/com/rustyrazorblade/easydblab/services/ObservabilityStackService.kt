@@ -30,8 +30,8 @@ import io.github.oshai.kotlinlogging.KotlinLogging
  * This is the orchestration extracted out of the `grafana update-config` command so that both the
  * command and cluster bring-up (`up`) drive one code path. It owns the whole sequence: the runtime
  * `cluster-config` ConfigMap, every Fabric8-built resource, the Pyroscope and Grafana on-node data
- * directories, dashboard upload, the rollout-restart of the workloads it applied, and the final
- * namespace-wide readiness gate.
+ * directories, dashboard upload, the rollout-restart of the workloads it applied, the wait for those
+ * rollouts to complete, and the final namespace-wide readiness gate.
  *
  * Redirect mode is a first-class branch, not a set of skipped steps bolted on: when
  * [TelemetryRedirect] is present, the four local backends (VictoriaMetrics, VictoriaLogs, Tempo,
@@ -101,6 +101,7 @@ class DefaultObservabilityStackService(
             val clusterState = clusterStateManager.load()
             val region = clusterState.initConfig?.region ?: user.region
             // The collector scrapes the Cilium agent, operator, and Hubble only on a Cilium cluster.
+            // A cluster with no recorded CNI predates Cilium and runs Flannel.
             val cni = clusterState.initConfig?.cni ?: CniMode.Flannel
 
             createClusterConfigMap(controlNode, region)
@@ -153,7 +154,17 @@ class DefaultObservabilityStackService(
                 }
             }
 
-            restartAppliedWorkloads(controlNode, appliedResources)
+            val workloads = appliedWorkloads(appliedResources)
+            restartAppliedWorkloads(controlNode, workloads)
+
+            // Wait for every applied workload's rollout to finish before the readiness gate. Right
+            // after a rollout-restart the old pods are still Ready and the replacements may not exist
+            // yet, so a pod-readiness check alone reports the stack ready with new pods at 0/1.
+            k8sService
+                .waitForRollouts(controlNode, workloads, DEFAULT_NAMESPACE, Constants.K8s.OBSERVABILITY_READY_TIMEOUT_SECONDS)
+                .getOrElse { exception ->
+                    error("Observability stack did not finish rolling out: ${exception.message}")
+                }
 
             // Gate success on the whole stack reaching Ready. waitForPodsReady is namespace-wide and
             // fail-fast: it aborts on CrashLoopBackOff / ImagePullBackOff and on timeout, so `up`
@@ -179,30 +190,37 @@ class DefaultObservabilityStackService(
     }
 
     /**
-     * Rolling-restarts every Deployment and DaemonSet that was applied, so each picks up its new
-     * ConfigMap. Deriving the list from [appliedResources] means redirect never tries to restart a
-     * backend it did not deploy — the source of the earlier spurious failure warnings.
+     * Every Deployment and DaemonSet among [appliedResources]. Deriving the list from what was
+     * applied means redirect never restarts or waits on a backend it did not deploy — the source of
+     * the earlier spurious failure warnings.
      */
+    private fun appliedWorkloads(appliedResources: List<HasMetadata>): List<WorkloadRef> =
+        appliedResources
+            .mapNotNull { resource ->
+                val name = resource.metadata?.name ?: return@mapNotNull null
+                when (resource.kind) {
+                    "Deployment" -> WorkloadRef(WorkloadKind.Deployment, name)
+                    "DaemonSet" -> WorkloadRef(WorkloadKind.DaemonSet, name)
+                    else -> null
+                }
+            }.distinct()
+
+    /** Rolling-restarts each of [workloads], so each picks up its new ConfigMap. */
     private fun restartAppliedWorkloads(
         controlNode: ClusterHost,
-        appliedResources: List<HasMetadata>,
+        workloads: List<WorkloadRef>,
     ) {
         eventBus.emit(Event.Grafana.WorkloadsRestarting)
 
-        val deployments = appliedResources.filter { it.kind == "Deployment" }.mapNotNull { it.metadata?.name }.distinct()
-        val daemonSets = appliedResources.filter { it.kind == "DaemonSet" }.mapNotNull { it.metadata?.name }.distinct()
-
-        for (name in deployments) {
-            k8sService
-                .rolloutRestartDeployment(controlNode, name, DEFAULT_NAMESPACE)
-                .onSuccess { eventBus.emit(Event.Grafana.WorkloadRestarted("Deployment", name)) }
-                .onFailure { exception -> log.warn { "Failed to restart Deployment/$name: ${exception.message}" } }
-        }
-        for (name in daemonSets) {
-            k8sService
-                .rolloutRestartDaemonSet(controlNode, name, DEFAULT_NAMESPACE)
-                .onSuccess { eventBus.emit(Event.Grafana.WorkloadRestarted("DaemonSet", name)) }
-                .onFailure { exception -> log.warn { "Failed to restart DaemonSet/$name: ${exception.message}" } }
+        for (workload in workloads) {
+            val restart =
+                when (workload.kind) {
+                    WorkloadKind.Deployment -> k8sService.rolloutRestartDeployment(controlNode, workload.name, DEFAULT_NAMESPACE)
+                    WorkloadKind.DaemonSet -> k8sService.rolloutRestartDaemonSet(controlNode, workload.name, DEFAULT_NAMESPACE)
+                }
+            restart
+                .onSuccess { eventBus.emit(Event.Grafana.WorkloadRestarted(workload.kind.name, workload.name)) }
+                .onFailure { exception -> log.warn { "Failed to restart $workload: ${exception.message}" } }
         }
     }
 

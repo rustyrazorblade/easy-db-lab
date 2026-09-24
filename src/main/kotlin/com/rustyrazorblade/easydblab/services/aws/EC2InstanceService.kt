@@ -9,8 +9,9 @@ import com.rustyrazorblade.easydblab.providers.aws.EBSConfig
 import com.rustyrazorblade.easydblab.providers.aws.InstanceCreationConfig
 import com.rustyrazorblade.easydblab.providers.aws.InstanceDetails
 import com.rustyrazorblade.easydblab.providers.aws.InstanceId
-import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import com.rustyrazorblade.easydblab.providers.aws.SubnetId
+import com.rustyrazorblade.easydblab.providers.aws.withAwsRetry
+import com.rustyrazorblade.easydblab.providers.aws.withEc2InstanceRetry
 import io.github.oshai.kotlinlogging.KotlinLogging
 import software.amazon.awssdk.services.ec2.Ec2Client
 import software.amazon.awssdk.services.ec2.model.BlockDeviceMapping
@@ -156,7 +157,7 @@ class EC2InstanceService(
 
         val request = requestBuilder.build()
 
-        val response = RetryUtil.withAwsRetry("run-instance-$alias") { ec2Client.runInstances(request) }
+        val response = withAwsRetry("run-instance-$alias") { ec2Client.runInstances(request) }
         val instance = response.instances().first()
 
         return CreatedInstance(
@@ -344,7 +345,7 @@ class EC2InstanceService(
                 .build()
 
         val reservations =
-            RetryUtil.withEc2InstanceRetry("describe-instances") {
+            withEc2InstanceRetry("describe-instances") {
                 ec2Client.describeInstances(request).reservations()
             }
 
@@ -426,7 +427,7 @@ class EC2InstanceService(
                     .build()
 
             val response =
-                RetryUtil.withAwsRetry("describe-instance-type-$instanceType") {
+                withAwsRetry("describe-instance-type-$instanceType") {
                     ec2Client.describeInstanceTypes(request)
                 }
 
@@ -473,7 +474,7 @@ class EC2InstanceService(
                 ).build()
 
         val reservations =
-            RetryUtil.withAwsRetry("describe-instances-by-cluster") {
+            withAwsRetry("describe-instances-by-cluster") {
                 ec2Client.describeInstances(request).reservations()
             }
 

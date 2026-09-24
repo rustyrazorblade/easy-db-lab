@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.commands.tailscale
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -19,8 +20,10 @@ import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
+import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 
@@ -65,6 +68,7 @@ class TailscaleStartTest : BaseKoinTest() {
 
         whenever(mockClusterStateManager.load()).thenReturn(testClusterState)
         whenever(mockTailscaleService.isConnected(any())).thenReturn(Result.success(false))
+        whenever(mockTailscaleService.getDeviceId(any())).thenReturn(Result.success("nDefaultCNTRL"))
     }
 
     @Nested
@@ -182,7 +186,89 @@ class TailscaleStartTest : BaseKoinTest() {
             command.execute()
 
             assertThat(testClusterState.tailscaleAuthKeyId).isEqualTo("key-id-456")
-            verify(mockClusterStateManager).save(testClusterState)
+            verify(mockClusterStateManager, atLeastOnce()).save(testClusterState)
+        }
+
+        @Test
+        fun `execute records the control node's tailnet device ID so down can delete it`() {
+            whenever(mockTailscaleService.generateAuthKey(any(), any(), any()))
+                .thenReturn(TailscaleAuthKey(key = "auth-key-123", id = "key-id-456"))
+            whenever(mockTailscaleService.startTailscale(any(), any(), any(), any()))
+                .thenReturn(Result.success(Unit))
+            whenever(mockTailscaleService.getDeviceId(any())).thenReturn(Result.success("nControl0CNTRL"))
+            whenever(mockTailscaleService.getStatus(any()))
+                .thenReturn(Result.success("Connected"))
+
+            val command = TailscaleStart()
+            command.clientId = "client-id"
+            command.clientSecret = "client-secret"
+            command.execute()
+
+            assertThat(testClusterState.tailscaleDeviceId).isEqualTo("nControl0CNTRL")
+        }
+    }
+
+    /** A device recorded by an earlier start is replaced; left in place it would outlive the cluster. */
+    @Nested
+    inner class PreviouslyRecordedDevice {
+        private fun stubSuccessfulStart(newDeviceId: String) {
+            whenever(mockTailscaleService.generateAuthKey(any(), any(), any()))
+                .thenReturn(TailscaleAuthKey(key = "auth-key-123", id = "key-id-456"))
+            whenever(mockTailscaleService.startTailscale(any(), any(), any(), any()))
+                .thenReturn(Result.success(Unit))
+            whenever(mockTailscaleService.getDeviceId(any())).thenReturn(Result.success(newDeviceId))
+            whenever(mockTailscaleService.getStatus(any())).thenReturn(Result.success("Connected"))
+        }
+
+        private fun startCommand(): TailscaleStart =
+            TailscaleStart().apply {
+                clientId = "client-id"
+                clientSecret = "client-secret"
+            }
+
+        @Test
+        fun `a different previously recorded device is removed before the new one is recorded`() {
+            testClusterState.tailscaleDeviceId = "nOldCNTRL"
+            stubSuccessfulStart("nNewCNTRL")
+
+            val exitCode = startCommand().call()
+
+            assertThat(exitCode).isEqualTo(0)
+            verify(mockTailscaleService).deleteDevice(eq("client-id"), eq("client-secret"), eq("nOldCNTRL"))
+            assertThat(testClusterState.tailscaleDeviceId).isEqualTo("nNewCNTRL")
+            assertThat(outputHandler.messages.joinToString("\n")).contains("nOldCNTRL")
+        }
+
+        @Test
+        fun `the same device re-registering is not deleted`() {
+            testClusterState.tailscaleDeviceId = "nSameCNTRL"
+            stubSuccessfulStart("nSameCNTRL")
+
+            assertThat(startCommand().call()).isEqualTo(0)
+
+            verify(mockTailscaleService, never()).deleteDevice(any(), any(), any())
+            assertThat(testClusterState.tailscaleDeviceId).isEqualTo("nSameCNTRL")
+        }
+
+        /**
+         * Tailscale came up, so the command succeeds: `up` treats a non-zero exit as Tailscale not
+         * starting. The new device is the live one, so it is recorded for `down`; the old one is
+         * named in the error so it can be removed by hand.
+         */
+        @Test
+        fun `a failed removal of the old device is reported but still succeeds, recording the live device`() {
+            testClusterState.tailscaleDeviceId = "nOldCNTRL"
+            stubSuccessfulStart("nNewCNTRL")
+            whenever(mockTailscaleService.deleteDevice(any(), any(), any()))
+                .thenThrow(TailscaleApiException("not allowed to delete device nOldCNTRL; grant it the 'devices:core' write scope"))
+
+            val exitCode = startCommand().call()
+
+            assertThat(exitCode).isEqualTo(0)
+            assertThat(testClusterState.tailscaleDeviceId).isEqualTo("nNewCNTRL")
+            verify(mockClusterStateManager, atLeastOnce()).save(testClusterState)
+            val errorOutput = outputHandler.errors.joinToString("\n") { it.first }
+            assertThat(errorOutput).contains("nOldCNTRL").contains("devices:core")
         }
     }
 
@@ -201,6 +287,33 @@ class TailscaleStartTest : BaseKoinTest() {
             val errorOutput = outputHandler.errors.joinToString("\n") { it.first }
             assertThat(errorOutput).contains("Failed to start Tailscale")
             assertThat(errorOutput).contains("Invalid tags")
+        }
+
+        /** `up` checks this exit code to decide whether Tailscale came up. */
+        @Test
+        fun `a Tailscale API failure makes the command exit non-zero`() {
+            whenever(mockTailscaleService.generateAuthKey(any(), any(), any()))
+                .thenThrow(TailscaleApiException("401 unauthorized"))
+
+            val command = TailscaleStart()
+            command.clientId = "client-id"
+            command.clientSecret = "client-secret"
+
+            assertThat(command.call()).isEqualTo(Constants.ExitCodes.ERROR)
+        }
+
+        @Test
+        fun `missing credentials make the command exit non-zero`() {
+            assertThat(TailscaleStart().call()).isEqualTo(Constants.ExitCodes.ERROR)
+        }
+
+        /** The scopes named here are the ones start needs and `down`/`stop` report when missing. */
+        @Test
+        fun `the missing-credentials help names the OAuth scopes by their current names`() {
+            TailscaleStart().call()
+
+            val errorOutput = outputHandler.errors.joinToString("\n") { it.first }
+            assertThat(errorOutput).contains("auth_keys").contains("devices:core").doesNotContain("Devices: write")
         }
 
         @Test

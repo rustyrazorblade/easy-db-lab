@@ -876,6 +876,26 @@ sealed interface Event {
             override fun isError(): Boolean = true
         }
 
+        /**
+         * `up` found nodes launched from an AMI that predates the Cilium node fixes (the
+         * systemd-networkd ENI drop-ins and the cloud-init no-hotplug setting), before installing
+         * Cilium. [nodes] names them; [missingFiles] is every fix any of them lacks.
+         */
+        @Serializable
+        @SerialName("Cilium.NodeImageMissingFixes")
+        data class NodeImageMissingFixes(
+            val nodes: List<String>,
+            val missingFiles: List<String>,
+        ) : Cilium {
+            override fun toDisplayString(): String =
+                "Cannot install Cilium: ${nodes.joinToString(", ")} were launched from an AMI that predates the " +
+                    "Cilium node fixes (missing ${missingFiles.joinToString(", ")}). Rebuild the images with " +
+                    "'easy-db-lab build-image', then run 'easy-db-lab down' and 'easy-db-lab up' so the nodes launch " +
+                    "from the new AMI; or initialize the cluster with '--cni=flannel'."
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Cilium.TailscaleMasqueradeInstalling")
         data class TailscaleMasqueradeInstalling(
@@ -949,6 +969,22 @@ sealed interface Event {
             val namespace: String,
         ) : K8s {
             override fun toDisplayString(): String = "All pods in $namespace are ready"
+        }
+
+        @Serializable
+        @SerialName("K8s.RolloutsWaiting")
+        data class RolloutsWaiting(
+            val workloads: List<String>,
+        ) : K8s {
+            override fun toDisplayString(): String = "Waiting for ${workloads.size} restarted workloads to finish rolling out..."
+        }
+
+        @Serializable
+        @SerialName("K8s.RolloutsComplete")
+        data class RolloutsComplete(
+            val count: Int,
+        ) : K8s {
+            override fun toDisplayString(): String = "All $count restarted workloads have rolled out"
         }
 
         @Serializable
@@ -2915,6 +2951,31 @@ sealed interface Event {
             override fun toDisplayString(): String = "Deleted Tailscale auth key: $keyId"
         }
 
+        /** `down` or `tailscale stop` removed the control node's device from the tailnet. */
+        @Serializable
+        @SerialName("Tailscale.DeviceDeleted")
+        data class DeviceDeleted(
+            val deviceId: String,
+        ) : Tailscale {
+            override fun toDisplayString(): String = "Removed control node device $deviceId from the tailnet"
+        }
+
+        /**
+         * `tailscale stop` could not remove the control node's device from the tailnet. The device
+         * stays recorded so the next `tailscale stop` or `down` retries.
+         */
+        @Serializable
+        @SerialName("Tailscale.DeviceNotRemoved")
+        data class DeviceNotRemoved(
+            val deviceId: String,
+            val reason: String,
+        ) : Tailscale {
+            override fun toDisplayString(): String =
+                "Tailscale device $deviceId (the control node) was not removed from the tailnet: $reason"
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Tailscale.StoppedSuccessfully")
         data object StoppedSuccessfully : Tailscale {
@@ -3979,6 +4040,8 @@ sealed interface Event {
                         appendLine("  - $error")
                     }
                 }.trimEnd()
+
+            override fun isError(): Boolean = true
         }
 
         @Serializable
@@ -4912,7 +4975,7 @@ sealed interface Event {
                 |     "$defaultTag": ["autogroup:admin"]
                 |   }
                 |3. Go to https://login.tailscale.com/admin/settings/oauth
-                |4. Create OAuth client with 'Devices: Write' scope
+                |4. Create OAuth client with the '${Constants.Tailscale.AUTH_KEYS_SCOPE}' and '${Constants.Tailscale.DEVICES_SCOPE}' write scopes
                 |5. Under 'Add tags', add: $defaultTag
                 |
                 """.trimMargin()
@@ -4940,7 +5003,7 @@ sealed interface Event {
                 |     "$defaultTag": ["autogroup:admin"]
                 |   }
                 |3. Go to https://login.tailscale.com/admin/settings/oauth
-                |4. Create OAuth client with 'Devices: Write' scope
+                |4. Create OAuth client with the '${Constants.Tailscale.AUTH_KEYS_SCOPE}' and '${Constants.Tailscale.DEVICES_SCOPE}' write scopes
                 |5. Under 'Add tags', add: $defaultTag
                 """.trimMargin()
         }
@@ -5297,12 +5360,21 @@ sealed interface Event {
             override fun toDisplayString(): String = "Warning: unresolved template variables in '$kit': ${variables.joinToString(", ")}"
         }
 
+        /**
+         * `kit install` refused a collision-checked kit because its scaffold already exists in
+         * [outputDir]. Nothing was written and no install step ran; `--force` overrides.
+         */
         @Serializable
         @SerialName("Install.CollisionDetected")
         data class CollisionDetected(
             val kit: String,
+            val outputDir: String,
         ) : Install {
-            override fun toDisplayString(): String = "Warning: '$kit' appears to already be deployed. Use --force to overwrite scaffold."
+            override fun toDisplayString(): String =
+                "Error: '$kit' is already installed in $outputDir. " +
+                    "Run 'easy-db-lab $kit uninstall' first, or pass --force to overwrite the scaffold."
+
+            override fun isError(): Boolean = true
         }
 
         @Serializable
@@ -5357,6 +5429,20 @@ sealed interface Event {
             override fun toDisplayString(): String = "[$kit] $phase step ${stepIndex + 1}: $stepType"
         }
 
+        /**
+         * A `helm-uninstall` step kept [release] because objects of the type it is kept for are
+         * still in the cluster ([usedBy], `kind/name`): another kit instance still runs on it.
+         */
+        @Serializable
+        @SerialName("Kit.HelmReleaseKept")
+        data class HelmReleaseKept(
+            val kit: String,
+            val release: String,
+            val usedBy: List<String>,
+        ) : Kit {
+            override fun toDisplayString(): String = "[$kit] Keeping helm release $release: still used by ${usedBy.joinToString(", ")}"
+        }
+
         @Serializable
         @SerialName("Kit.StepFailed")
         data class StepFailed(
@@ -5371,6 +5457,24 @@ sealed interface Event {
             override fun isError(): Boolean = true
         }
 
+        /** A kit `shell` step exited non-zero; [outputTail] is the last of what it printed. */
+        @Serializable
+        @SerialName("Kit.ShellStepFailed")
+        data class ShellStepFailed(
+            val kit: String,
+            val phase: String,
+            val stepIndex: Int,
+            val exitCode: Int,
+            val outputTail: List<String>,
+        ) : Kit {
+            // The step's output was streamed to the console as it ran; repeating [outputTail] here
+            // printed every failure message twice. The tail stays on the event for structured
+            // consumers (MCP, Redis).
+            override fun toDisplayString(): String = "[$kit] $phase step ${stepIndex + 1} (shell) failed with exit code $exitCode."
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Kit.MetricsRegistered")
         data class MetricsRegistered(
@@ -5378,6 +5482,31 @@ sealed interface Event {
             val ports: List<Int>,
         ) : Kit {
             override fun toDisplayString(): String = "[$kit] metrics registered on ports ${ports.joinToString()}"
+        }
+
+        /** One declared kit endpoint resolved to a connectable [address] on one host. */
+        @Serializable
+        @SerialName("Kit.EndpointAddress")
+        data class EndpointAddress(
+            val name: String,
+            val type: String,
+            val address: String,
+        ) {
+            /** Renders this endpoint as an indented `name  type  address` line. */
+            fun displayLine(): String = "  %-20s  %-8s  %s".format(name, type, address)
+        }
+
+        /**
+         * A kit started and its declared endpoints are reachable at [endpoints] — one entry per
+         * endpoint per host of the endpoint's node type, at the host's private IP.
+         */
+        @Serializable
+        @SerialName("Kit.EndpointsAvailable")
+        data class EndpointsAvailable(
+            val kit: String,
+            val endpoints: List<EndpointAddress>,
+        ) : Kit {
+            override fun toDisplayString(): String = "Endpoints:\n" + endpoints.joinToString("\n") { it.displayLine() }
         }
 
         @Serializable
@@ -5407,8 +5536,67 @@ sealed interface Event {
             val nodeType: String,
         ) : Kit {
             override fun toDisplayString(): String =
-                "Cannot install '$kit': requires at least one $nodeType node, but none exist in this cluster. " +
+                "Error: cannot install '$kit': requires at least one $nodeType node, but none exist in this cluster. " +
                     "Re-provision with --$nodeType-instances > 0."
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * A collision-checked kit refused [phase] because its workload is already in the cluster:
+         * [resources] (`kind/name`) in [namespace], found through the kit's runtime declaration.
+         * No step of the phase ran.
+         */
+        @Serializable
+        @SerialName("Kit.CollisionDetected")
+        data class CollisionDetected(
+            val kit: String,
+            val phase: String,
+            val namespace: String,
+            val resources: List<String>,
+        ) : Kit {
+            override fun toDisplayString(): String =
+                "Error: '$kit' is already running (${resources.joinToString(", ")} in namespace $namespace). " +
+                    "Run 'easy-db-lab $kit stop' before running '$phase' again."
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * A kit's [phase] (`stop`, or `uninstall`) steps succeeded, but [resources] (`kind/name`)
+         * in [namespace] were still in the cluster when the wait for them to go ran out. A `start`
+         * now would be refused as a collision, so the phase is reported as failed.
+         */
+        @Serializable
+        @SerialName("Kit.StopIncomplete")
+        data class StopIncomplete(
+            val kit: String,
+            val namespace: String,
+            val resources: List<String>,
+            val phase: String = "stop",
+        ) : Kit {
+            override fun toDisplayString(): String =
+                "Error: '$kit' $phase ran, but ${resources.joinToString(", ")} in namespace $namespace " +
+                    "did not go away in time. Run 'easy-db-lab $kit $phase' again once they are gone."
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * A kit's [phase] (`stop`, or `uninstall`) steps succeeded, but the cluster could not be
+         * queried while waiting for its workload to leave, so whether it is gone is unknown. A
+         * `start` now may be refused as a collision, so the phase is reported as failed.
+         */
+        @Serializable
+        @SerialName("Kit.StopUnverified")
+        data class StopUnverified(
+            val kit: String,
+            val reason: String,
+            val phase: String = "stop",
+        ) : Kit {
+            override fun toDisplayString(): String =
+                "Error: '$kit' $phase ran, but the cluster could not be queried to confirm its workload is gone: " +
+                    "$reason. Run 'easy-db-lab $kit $phase' again once the cluster is reachable."
 
             override fun isError(): Boolean = true
         }

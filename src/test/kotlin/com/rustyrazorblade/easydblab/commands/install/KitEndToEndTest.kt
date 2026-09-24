@@ -1,16 +1,24 @@
 package com.rustyrazorblade.easydblab.commands.install
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.services.CollisionCheck
 import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
 import com.rustyrazorblade.easydblab.services.InstallTemplateResolver
+import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitHookExecutor
 import com.rustyrazorblade.easydblab.services.KitSourcesProvider
+import com.rustyrazorblade.easydblab.services.KitType
 import com.rustyrazorblade.easydblab.services.MetricsRegistryService
 import com.rustyrazorblade.easydblab.services.TemplateService
 import com.rustyrazorblade.easydblab.services.WorkloadStepExecutor
@@ -80,7 +88,7 @@ class KitEndToEndTest : BaseKoinTest() {
     @BeforeEach
     fun setup() {
         whenever(mockClusterStateManager.load()).thenReturn(clusterState)
-        whenever(mockGrafanaDashboardService.installDashboardFromFile(any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockGrafanaDashboardService.installDashboard(any(), any(), any())).thenReturn(Result.success(Unit))
         workingDir = get<Context>().workingDirectory
     }
 
@@ -152,21 +160,95 @@ class KitEndToEndTest : BaseKoinTest() {
         assertThat(script).contains("REPLICAS=5")
     }
 
-    @Test
-    fun `collision check blocks install when kit dir already exists`() {
+    private fun collisionCheckedTestdb(): Pair<KitConfig, InstallTemplateResolver.TemplateSource> {
         val resolver = get<InstallTemplateResolver>()
         val source = resolver.resolve("testdb")
-        val config =
-            requireNotNull(resolver.loadInstallConfig(source))
-                .copy(collisionCheck = true)
+        val config = requireNotNull(resolver.loadInstallConfig(source)).copy(collisionCheck = CollisionCheck.ENABLED)
+        return config to source
+    }
 
-        File(workingDir, "testdb").mkdirs()
-        File(workingDir, "testdb/existing.txt").writeText("occupied")
-
+    private fun install(
+        config: KitConfig,
+        source: InstallTemplateResolver.TemplateSource,
+        force: Boolean = false,
+    ): Int {
         val installCmd = KitInstallCommand(config, source)
         installCmd.argValues["STORAGE_SIZE"] = "100Gi"
-        installCmd.call()
+        installCmd.force = force
+        return installCmd.call()
+    }
 
-        assertThat(File(workingDir, "testdb/bin/start.sh")).doesNotExist()
+    private fun captureEvents(): List<Event> {
+        val captured = mutableListOf<Event>()
+        get<EventBus>().addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    captured.add(envelope.event)
+                }
+
+                override fun close() = Unit
+            },
+        )
+        return captured
+    }
+
+    @Test
+    fun `second install of a collision-checked kit fails with CollisionDetected and leaves the scaffold alone`() {
+        val (config, source) = collisionCheckedTestdb()
+        assertThat(install(config, source)).isEqualTo(0)
+        val marker = File(workingDir, "testdb/edited-by-user.txt").apply { writeText("keep me") }
+        val events = captureEvents()
+
+        val exitCode = install(config, source)
+
+        assertThat(exitCode).isNotEqualTo(0)
+        val collision = events.filterIsInstance<Event.Install.CollisionDetected>().single()
+        assertThat(collision.kit).isEqualTo("testdb")
+        assertThat(collision.isError()).isTrue()
+        assertThat(collision.toDisplayString()).startsWith("Error:").contains("testdb", "--force")
+        assertThat(events).noneMatch { it is Event.Install.ScaffoldComplete }
+        assertThat(marker).hasContent("keep me")
+    }
+
+    @Test
+    fun `install of a kit whose node pool is missing fails with an error-worded RequirementNotMet`() {
+        val resolver = get<InstallTemplateResolver>()
+        val source = resolver.resolve("testdb")
+        val config = requireNotNull(resolver.loadInstallConfig(source)).copy(type = KitType.DB)
+        val events = captureEvents()
+
+        val exitCode = install(config, source)
+
+        assertThat(exitCode).isNotEqualTo(0)
+        val requirement = events.filterIsInstance<Event.Kit.RequirementNotMet>().single()
+        assertThat(requirement.isError()).isTrue()
+        assertThat(requirement.toDisplayString()).startsWith("Error:").contains("testdb", "db")
+        assertThat(File(workingDir, "testdb")).doesNotExist()
+    }
+
+    @Test
+    fun `a kit that collision-checks only start installs over its existing scaffold`() {
+        val (enabled, source) = collisionCheckedTestdb()
+        val config = enabled.copy(collisionCheck = CollisionCheck(setOf(Constants.Kit.PHASE_START)))
+        assertThat(install(config, source)).isEqualTo(0)
+        val events = captureEvents()
+
+        assertThat(install(config, source)).isEqualTo(0)
+        assertThat(events).noneMatch { it is Event.Install.CollisionDetected }
+    }
+
+    @Test
+    fun `--force reinstalls a collision-checked kit over its existing scaffold`() {
+        val (config, source) = collisionCheckedTestdb()
+        assertThat(install(config, source)).isEqualTo(0)
+        val marker = File(workingDir, "testdb/edited-by-user.txt").apply { writeText("replaced") }
+        val events = captureEvents()
+
+        val exitCode = install(config, source, force = true)
+
+        assertThat(exitCode).isEqualTo(0)
+        assertThat(events).noneMatch { it is Event.Install.CollisionDetected }
+        assertThat(File(workingDir, "testdb/bin/start.sh")).exists()
+        assertThat(marker).doesNotExist()
     }
 }

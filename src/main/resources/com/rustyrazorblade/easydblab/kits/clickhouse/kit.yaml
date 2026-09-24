@@ -4,9 +4,21 @@ description: Scaffold ClickHouse workload files using the Altinity operator
 version: "1.0.0"
 collision-check: true
 metrics:
+  # Pod discovery, so each ClickHouse replica is scraped once, by the collector on its own node,
+  # with instance = the pod name. A static job on the metrics NodePort (30936) was run by every
+  # collector, duplicating the series once per node. Port is the container's metrics port.
   - type: scrape
-    port: 30936
+    port: 9363
     path: /metrics
+    pod-selector: "clickhouse.altinity.com/chi=clickhouse"
+  # Keeper's own endpoint (clickhouse-keeper.yaml enables it), scraped on the Keeper pods. The
+  # dashboard's Keeper panels select only cluster and instance (the pod name), so the job just
+  # has to differ from the server scrape's.
+  - type: scrape
+    port: 7000
+    path: /metrics
+    job: clickhouse-keeper
+    pod-selector: "clickhouse-keeper.altinity.com/chk=clickhouse-keeper"
 runtime:
   type: pods
   selector: "clickhouse.altinity.com/chi=clickhouse"
@@ -96,9 +108,13 @@ start:
     template: clickhouseinstallation.yaml
   - type: shell
     script: |
-      echo "Waiting for ClickHouse pod to be created..."
-      until kubectl get pods -l clickhouse.altinity.com/chi=clickhouse -n default --no-headers 2>/dev/null | grep -q .; do sleep 5; done
-      echo "Pod exists, waiting for Ready..."
+      # The operator creates the replicas one at a time and reports the installation Completed
+      # only once all of them are up; waiting for the pods that exist returned after the first.
+      echo "Waiting for the ClickHouseInstallation to complete..."
+      kubectl wait --for=jsonpath='{.status.status}'=Completed chi/clickhouse \
+        --namespace default \
+        --timeout=900s || exit 1
+      echo "Installation complete, waiting for every replica to be Ready..."
       kubectl wait --for=condition=Ready pods \
         -l clickhouse.altinity.com/chi=clickhouse \
         --namespace default \

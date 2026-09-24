@@ -91,6 +91,41 @@ class OtelManifestBuilderTest : BaseKoinTest() {
     }
 
     /**
+     * Where the agent can read the JVM's argv as a list (a JVM in a container, such as Neo4j's),
+     * it reports `process.command_args` instead of `process.command_line`. Same argv, same
+     * harm: a label kilobytes long on every series. Dropping only the one key let it through.
+     */
+    @Test
+    fun `the SDK resource drop covers the argv in both of its forms`() {
+        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+        val dropBlock = yaml.substringAfter("resource/drop_sdk_metadata:\n").substringBefore("\n  resourcedetection:")
+
+        assertThat(dropBlock).contains("key: process.command_line", "key: process.command_args")
+    }
+
+    /**
+     * A JVM in a container (Neo4j's) reports `container.id`, which is new on every pod restart, so
+     * each restart minted a whole new set of series. No dashboard selects on it.
+     */
+    @Test
+    fun `the SDK resource drop removes the per-restart container id`() {
+        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+        val dropBlock = yaml.substringAfter("resource/drop_sdk_metadata:\n").substringBefore("\n  resourcedetection:")
+
+        assertThat(dropBlock).contains("key: container.id")
+    }
+
+    /**
+     * spanmetrics keeps the span's whole resource on the metrics it derives, so without the drop
+     * `traces_spanmetrics_*` carried the argv as a label even though the metrics and logs
+     * pipelines strip it.
+     */
+    @Test
+    fun `span-derived metrics drop the SDK resource too`() {
+        assertThat(pipeline("metrics/spanmetrics:")).contains("resource/drop_sdk_metadata")
+    }
+
+    /**
      * The collector is a container. Without the node's root filesystem mounted and `root_path`
      * pointing at it, the hostmetrics scrapers describe the container, and the filesystem scraper
      * finds nothing worth reporting at all — which is why every filesystem panel was empty while
@@ -602,6 +637,27 @@ class OtelManifestBuilderTest : BaseKoinTest() {
 
         assertThat(yaml).contains("basic_auth:")
         assertThat(yaml).contains("username: \"trino\"")
+    }
+
+    /** Trino's coordinator is found by pod discovery and still needs its basic-auth user. */
+    @Test
+    fun `a pod-discovered scrape job keeps its basic_auth user`() {
+        val scrapeConfigs =
+            listOf(
+                WorkloadScrapeConfig(
+                    kitName = "trino",
+                    jobName = "trino",
+                    port = 8080,
+                    path = "/metrics",
+                    username = "trino",
+                    podSelector = "app.kubernetes.io/name=trino,app.kubernetes.io/component=coordinator",
+                ),
+            )
+
+        val job = jobBlock(yamlFrom(builder.buildConfigMap(scrapeConfigs)), "trino-trino")
+
+        assertThat(job).contains("kubernetes_sd_configs").doesNotContain("static_configs").doesNotContain("localhost:8080")
+        assertThat(job).contains("basic_auth:").contains("username: \"trino\"")
     }
 
     @Test

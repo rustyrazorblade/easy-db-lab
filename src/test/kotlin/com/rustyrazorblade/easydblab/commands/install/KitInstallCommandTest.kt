@@ -8,11 +8,13 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.services.InstallStep
 import com.rustyrazorblade.easydblab.services.InstallTemplateResolver
 import com.rustyrazorblade.easydblab.services.KitArgSpec
 import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.TemplateService
 import com.rustyrazorblade.easydblab.services.TemplateVariables
+import com.rustyrazorblade.easydblab.services.WorkloadStepExecutor
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -41,6 +43,7 @@ class KitInstallCommandTest : BaseKoinTest() {
                 single<ClusterStateManager> { mockClusterStateManager }
                 single { TemplateService(get(), get()) }
                 single<InstallTemplateResolver> { mockResolver }
+                single { WorkloadStepExecutor(mock(), mock(), mock(), get(), get()) }
             },
         )
 
@@ -242,4 +245,51 @@ class KitInstallCommandTest : BaseKoinTest() {
             .hasMessageContaining("doesnotexist")
             .hasMessageContaining("not installed")
     }
+
+    @Test
+    fun `resolved args omit STORAGE_SIZE for a kit that declares no storage arg`() {
+        val config =
+            KitConfig(
+                name = "cache",
+                type = null,
+                args = listOf(KitArgSpec(flag = "--memory", variable = "MEMORY_MB", type = KitArgSpec.ArgType.INT, default = "1024")),
+            )
+
+        buildAndRun(config, emptyMap())
+
+        assertThat(resolvedArgs("cache"))
+            .containsEntry("MEMORY_MB", "1024")
+            .doesNotContainKey("STORAGE_SIZE")
+    }
+
+    @Test
+    fun `resolved args keep the STORAGE_SIZE a kit declares`() {
+        val config =
+            KitConfig(
+                name = "store",
+                type = null,
+                args = listOf(KitArgSpec(flag = "--size", variable = "STORAGE_SIZE", type = KitArgSpec.ArgType.STRING, default = "10Ti")),
+            )
+
+        buildAndRun(config, mapOf("STORAGE_SIZE" to "100Gi"))
+
+        assertThat(resolvedArgs("store")).containsEntry("STORAGE_SIZE", "100Gi")
+    }
+
+    @Test
+    fun `a failed install step exits non-zero and removes the kit directory instead of throwing`() {
+        val config = KitConfig(name = "broken", type = null, install = listOf(InstallStep.Shell("exit 2")))
+        val cmd = factory.build(config, source).commandSpec.userObject() as KitInstallCommand
+
+        val exitCode = cmd.call()
+
+        assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+        assertThat(File(workingDir, "broken")).doesNotExist()
+    }
+
+    private fun resolvedArgs(kitDir: String): Map<String, String> =
+        File(workingDir, "$kitDir/${Constants.Kit.RESOLVED_ARGS_FILE}")
+            .readLines()
+            .filter { it.isNotBlank() }
+            .associate { it.substringBefore('=') to it.substringAfter('=') }
 }

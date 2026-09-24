@@ -30,6 +30,20 @@ Known UIDs:
 - Docker Hub `postgres` base (`pgduckdb/pgduckdb`): UID 999
 - `timescale/timescaledb-ha`: UID 1000 (Ubuntu-based, postgres user)
 
+## Metrics Scrape
+
+Each instance's scrape job is named after the instance (`job="postgres"`, `job="postgres-duckdb"`):
+the scrape entry declares no fixed `job`. The dashboards select `job="postgres"`; an extension
+instance installs them with that selector rewritten to its own job (`KitDashboardInstance`), so
+keep job selectors in the dashboards in exactly the form `job="postgres"`.
+
+The scrape uses pod discovery on `cnpg.io/cluster=${KIT_NAME},cnpg.io/instanceRole=primary`
+at CNPG's metrics container port 9187 — the same pod the metrics NodePort selects, scraped once by
+the collector on its node. `${KIT_NAME}` is filled in with the instance name at `start`, so
+`postgres` and `postgres-<extension>` each scrape their own primary. The extension's
+`metrics_port` (`METRICS_PORT`) is only the NodePort in `nodeport-service.yaml`; `KitRunnerCommand`
+does not apply it to a pod-discovered target.
+
 ## Waiting for Postgres Pods
 
-Always use `cnpg.io/podRole=instance` as the label selector when waiting for running postgres pods. **Do NOT use `cnpg.io/cluster=<name>`** — that label matches both running instance pods AND completed initdb job pods, causing `kubectl wait --for=condition=Ready` to time out on the completed job pod which can never become Ready.
+Always use `cnpg.io/cluster=${KIT_NAME},cnpg.io/podRole=instance` as the label selector when waiting for running postgres pods — the same selector as the kit's `runtime`. **Do NOT use `cnpg.io/cluster=<name>` alone** — that label matches both running instance pods AND completed initdb job pods, causing `kubectl wait --for=condition=Ready` to time out on the completed job pod which can never become Ready. **Do NOT use `cnpg.io/podRole=instance` alone** either — `postgres` and `postgres-<extension>` run side by side, and an unscoped wait can be satisfied by the other instance's pods.

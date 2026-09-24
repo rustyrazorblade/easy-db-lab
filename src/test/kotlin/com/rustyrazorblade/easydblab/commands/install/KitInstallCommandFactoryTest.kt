@@ -1,11 +1,13 @@
 package com.rustyrazorblade.easydblab.commands.install
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.services.CollisionCheck
 import com.rustyrazorblade.easydblab.services.InstallTemplateResolver
 import com.rustyrazorblade.easydblab.services.KitArgSpec
 import com.rustyrazorblade.easydblab.services.KitConfig
@@ -79,7 +81,7 @@ class KitInstallCommandFactoryTest : BaseKoinTest() {
         KitConfig(
             name = "mydb",
             description = "My kit",
-            collisionCheck = false,
+            collisionCheck = CollisionCheck.NONE,
             args = args.toList(),
         )
 
@@ -106,10 +108,22 @@ class KitInstallCommandFactoryTest : BaseKoinTest() {
 
     @Test
     fun `force option is added when collisionCheck is true`() {
-        val cfg = KitConfig(name = "mydb", collisionCheck = true)
+        val cfg = KitConfig(name = "mydb", collisionCheck = CollisionCheck.ENABLED)
         val cl = factory.build(cfg, directorySource)
         val optionNames = cl.commandSpec.options().map { it.longestName() }
         assertThat(optionNames).contains("--force")
+    }
+
+    @Test
+    fun `force option is absent when only start is collision-checked`() {
+        val cfg = KitConfig(name = "mydb", collisionCheck = CollisionCheck(setOf(Constants.Kit.PHASE_START)))
+        val optionNames =
+            factory
+                .build(cfg, directorySource)
+                .commandSpec
+                .options()
+                .map { it.longestName() }
+        assertThat(optionNames).doesNotContain("--force")
     }
 
     @Test
@@ -143,7 +157,7 @@ class KitInstallCommandFactoryTest : BaseKoinTest() {
 
     @Test
     fun `force flag sets command force to true when passed`() {
-        val cfg = KitConfig(name = "mydb", collisionCheck = true)
+        val cfg = KitConfig(name = "mydb", collisionCheck = CollisionCheck.ENABLED)
         val cl = factory.build(cfg, directorySource)
         val command = cl.commandSpec.userObject() as KitInstallCommand
         cl.parseArgs("--force")
@@ -152,7 +166,7 @@ class KitInstallCommandFactoryTest : BaseKoinTest() {
 
     @Test
     fun `force flag leaves command force false when not passed`() {
-        val cfg = KitConfig(name = "mydb", collisionCheck = true)
+        val cfg = KitConfig(name = "mydb", collisionCheck = CollisionCheck.ENABLED)
         val cl = factory.build(cfg, directorySource)
         val command = cl.commandSpec.userObject() as KitInstallCommand
         cl.parseArgs()

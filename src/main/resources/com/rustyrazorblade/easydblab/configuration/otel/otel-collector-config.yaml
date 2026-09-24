@@ -214,6 +214,13 @@ processors:
   # switch. The agent-side property otel.experimental.resource.disabled.keys does not work at
   # v2.31.1, so the drop happens here.
   #
+  # process.command_args is the same argv as a list. The agent reports it instead of
+  # process.command_line where it can read the JVM's arguments (a JVM in a container, such as
+  # Neo4j's), so both keys are dropped.
+  #
+  # container.id comes from the same containerised JVMs and is new on every pod restart, so it too
+  # would mint a fresh series set each time; no dashboard selects on it.
+  #
   # What survives is what a dashboard actually selects on: cluster, host.name, node_role, instance,
   # job, service.name, service.instance.id, and the rule-supplied keyspace, table,
   # cassandra.operation and cassandra.status.
@@ -222,9 +229,13 @@ processors:
       - action: delete
         key: process.command_line
       - action: delete
+        key: process.command_args
+      - action: delete
         key: process.executable.path
       - action: delete
         key: process.pid
+      - action: delete
+        key: container.id
       - action: delete
         key: process.runtime.description
       - action: delete
@@ -615,14 +626,17 @@ service:
       receivers: [otlp, jaeger]
       processors: [resource/cluster, batch]
       exporters: [otlp/tempo, spanmetrics, servicegraph]
-    # resource/cluster is re-applied here rather than inherited from the traces pipeline: the
-    # spanmetrics connector's resource_metrics_key_attributes ([service.name]) copies only
-    # service.name onto the derived metrics' resource, dropping the cluster attribute the spans
-    # carried. Re-stamping from ${env:CLUSTER_NAME} keeps origin identity on span-derived metrics
-    # consistent with every other metrics pipeline, so two clusters stay distinguishable.
+    # The spanmetrics connector keeps the span's resource on the metrics it derives.
+    # resource_metrics_key_attributes ([service.name]) only chooses which attributes group spans
+    # into one set of derived metrics; that set carries the whole resource of a span in the group
+    # (host.name and argv included, as seen live), not service.name alone. resource/cluster is
+    # re-applied so span-derived metrics are stamped from ${env:CLUSTER_NAME} by the same processor
+    # as every other metrics pipeline, whatever the producer's resource carried.
+    # resource/drop_sdk_metadata because that resource includes the SDK metadata, argv among it;
+    # the traces themselves keep it in Tempo.
     metrics/spanmetrics:
       receivers: [spanmetrics]
-      processors: [resource/cluster, batch]
+      processors: [resource/cluster, resource/drop_sdk_metadata, batch]
       exporters: [prometheusremotewrite]
     metrics/servicegraph:
       receivers: [servicegraph]

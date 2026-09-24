@@ -4,12 +4,13 @@ TiDB exposes Prometheus metrics across four components, each with its own scrape
 
 | Component | Job label   | Scrape target       | Description                              |
 |-----------|-------------|---------------------|------------------------------------------|
-| TiDB SQL  | `tidb-sql`  | NodePort 31080      | SQL layer — connections, queries, errors |
-| PD        | `pd`        | NodePort 32379      | Placement Driver — TSO, region scheduling |
+| TiDB SQL  | `tidb-sql`  | pod SD, port 10080  | SQL layer — connections, queries, errors |
+| PD        | `pd`        | pod SD, port 2379   | Placement Driver — TSO, region scheduling |
 | TiKV      | `tikv`      | pod SD, port 20180  | Row storage engine (RocksDB + Raft)      |
-| TiFlash   | `tiflash`   | NodePort 32234      | Columnar storage engine (MPP)            |
+| TiFlash   | `tiflash`   | pod SD, port 8234   | Columnar storage engine (MPP)            |
 
-All metrics also carry `cluster=<cluster-name>`.
+All metrics also carry `cluster=<cluster-name>`. Every component is scraped by pod discovery, so
+each pod is scraped once, by the collector on its own node, and `instance` is the pod name.
 
 ### TiKV `instance` = store identity
 

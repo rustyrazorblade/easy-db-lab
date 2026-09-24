@@ -218,6 +218,40 @@ class ClusterStateTest {
     }
 
     @Test
+    fun `saved InitConfig with no recorded cni loads as Flannel even though Cilium is the default`(
+        @TempDir tempDir: File,
+    ) {
+        // A state file written before the cni field existed describes a cluster that runs Flannel.
+        // Filling the missing field from the constructor default (Cilium) would make the
+        // observability stack render Cilium scrape jobs on a Flannel cluster.
+        val stateFile = File(tempDir, "state.json")
+        stateFile.writeText(
+            """
+            {
+              "name": "pre-cilium",
+              "initConfig": { "region": "us-west-2" }
+            }
+            """.trimIndent(),
+        )
+
+        val loaded = ClusterStateManager(stateFile).load()
+
+        assertThat(InitConfig().cni).isEqualTo(CniMode.Cilium)
+        assertThat(loaded.initConfig?.cni).isEqualTo(CniMode.Flannel)
+    }
+
+    @Test
+    fun `saved InitConfig with a recorded cni keeps it`(
+        @TempDir tempDir: File,
+    ) {
+        val stateFile = File(tempDir, "state.json")
+        val manager = ClusterStateManager(stateFile)
+        manager.save(ClusterState(name = "c", versions = mutableMapOf(), initConfig = InitConfig(cni = CniMode.Cilium)))
+
+        assertThat(manager.load().initConfig?.cni).isEqualTo(CniMode.Cilium)
+    }
+
+    @Test
     fun `ClusterState should handle state file with extra unknown fields`(
         @TempDir tempDir: File,
     ) {

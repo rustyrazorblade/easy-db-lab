@@ -15,6 +15,7 @@ import org.junit.jupiter.api.parallel.ResourceLock
 import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.mock
 import java.io.File
+import java.net.BindException
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
@@ -24,9 +25,9 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Integration-tier tests for [ProcessSocksProxyService] that genuinely require real socket I/O: the
- * reuse path (which connects to a real listening port to prove the tunnel is alive), the
- * port-fallback bind, and the zombie-port connect-refused. Every port here is OS-assigned via
- * `ServerSocket(0)` — no test binds a hardcoded port, so two of these running on a busy CI runner
+ * reuse path (which connects to a real listening port to prove the tunnel is alive) and the
+ * zombie-port connect-refused. The port-fallback bind is covered by `LoopbackPortSelectorTest`.
+ * Every port here is OS-assigned via `ServerSocket(0)` — no test binds a hardcoded port, so two of these running on a busy CI runner
  * can never collide on a fixed port (issue #750).
  *
  * The logic-only cases that used to live here (fail-fast on a dead ssh, which alias ssh dials,
@@ -153,37 +154,103 @@ class ProcessSocksProxyServiceTest {
         }
     }
 
+    /**
+     * Stands in for `ssh -D`: binds the command's `-D` port on the IPv4 loopback with SO_REUSEADDR
+     * off, the way ssh does, and holds it. When the port is already taken it writes ssh's bind error
+     * to the transcript and returns an exited process, as `ExitOnForwardFailure=yes` makes ssh do.
+     */
+    private class LoopbackBindingLauncher : SshProcessLauncher {
+        val listeners = mutableListOf<ServerSocket>()
+        val attemptedPorts = mutableListOf<Int>()
+
+        override fun launch(
+            command: List<String>,
+            logFile: File,
+        ): Process {
+            val port = command[command.indexOf("-D") + 1].toInt()
+            attemptedPorts.add(port)
+            val socket = ServerSocket().apply { reuseAddress = false }
+            return try {
+                socket.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), port))
+                listeners.add(socket)
+                mock {
+                    on { isAlive } doReturn true
+                    on { pid() } doReturn FAKE_PID
+                }
+            } catch (_: BindException) {
+                socket.close()
+                logFile.writeText("bind [127.0.0.1]:$port: Address already in use\ncannot listen to port: $port\n")
+                mock {
+                    on { isAlive } doReturn false
+                    on { exitValue() } doReturn 255
+                    on { pid() } doReturn FAKE_PID
+                }
+            }
+        }
+
+        fun close() = listeners.forEach { it.close() }
+    }
+
+    private fun workspace(name: String): File =
+        File(tempDir, name).apply {
+            mkdirs()
+            File(this, "sshConfig").writeText("Host control0\n  Hostname 10.0.1.5\n")
+        }
+
+    private fun serviceIn(
+        workspace: File,
+        launcher: SshProcessLauncher,
+        portSelector: LocalPortSelector,
+    ) = ProcessSocksProxyService(
+        Context.forCli(workspace).copy(workingDirectory = workspace),
+        TunnelReachabilityProbe { _, _, _ -> true },
+        verifyDelay = VERIFY_DELAY,
+        processLauncher = launcher,
+        portSelector = portSelector,
+    )
+
     @Test
-    fun `selectPort falls back to an OS-assigned port when the preferred port is bound`() {
-        ServerSocket(0).use { occupied ->
-            val occupiedPort = occupied.localPort
+    fun `proxies for two workspaces listen on different local ports`() {
+        val preferred = reserveFreePort()
+        val launcher = LoopbackBindingLauncher()
+        try {
+            val first = serviceIn(workspace("cluster-a"), launcher, LoopbackPortSelector(preferred)).ensureRunning(testHost)
+            val second = serviceIn(workspace("cluster-b"), launcher, LoopbackPortSelector(preferred)).ensureRunning(testHost)
 
-            // With the preferred port already bound, selectPort's loopback probe must detect the
-            // conflict and return a different, OS-assigned port rather than the occupied one.
-            val selected = service().selectPort(preferred = occupiedPort)
-
-            assertThat(selected).isNotEqualTo(occupiedPort)
-            assertThat(selected).isGreaterThan(0)
+            assertThat(first.localPort).isEqualTo(preferred)
+            assertThat(second.localPort).isNotEqualTo(first.localPort)
+        } finally {
+            launcher.close()
         }
     }
 
     @Test
-    fun `selectPort falls back when the preferred port is bound only on the loopback interface (ssh -D style)`() {
-        // Regression: ssh -D binds 127.0.0.1/::1 with SO_REUSEADDR, not the wildcard address. A
-        // wildcard probe with SO_REUSEADDR (the old behavior) coexists with that listener and wrongly
-        // reports the port as free, so the second datacenter kept retrying the busy port and ssh
-        // failed with "bind [::1]:<port>: Address already in use". selectPort must probe loopback and
-        // fall back to a different port.
-        val loopback = ServerSocket()
-        loopback.reuseAddress = true
-        loopback.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0))
-        loopback.use {
-            val occupiedPort = it.localPort
+    fun `a proxy that loses its port to a concurrent workspace relaunches on another port`() {
+        // The race: both workspaces probe the preferred port while it is free, then cluster-a's ssh
+        // binds it first. cluster-b's selector therefore hands out the taken port once, as its stale
+        // probe would, and its ssh fails to bind. The start must recover on a new port.
+        val preferred = reserveFreePort()
+        val launcher = LoopbackBindingLauncher()
+        try {
+            val first = serviceIn(workspace("cluster-a"), launcher, LoopbackPortSelector(preferred)).ensureRunning(testHost)
+            val live = LoopbackPortSelector(preferred)
+            var staleProbe = true
+            val racingSelector =
+                LocalPortSelector {
+                    if (staleProbe) {
+                        staleProbe = false
+                        preferred
+                    } else {
+                        live.select()
+                    }
+                }
 
-            val selected = service().selectPort(preferred = occupiedPort)
+            val second = serviceIn(workspace("cluster-b"), launcher, racingSelector).ensureRunning(testHost)
 
-            assertThat(selected).isNotEqualTo(occupiedPort)
-            assertThat(selected).isGreaterThan(0)
+            assertThat(launcher.attemptedPorts).containsExactly(preferred, preferred, second.localPort)
+            assertThat(second.localPort).isNotEqualTo(first.localPort)
+        } finally {
+            launcher.close()
         }
     }
 

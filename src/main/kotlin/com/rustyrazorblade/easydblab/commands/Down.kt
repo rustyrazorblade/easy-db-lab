@@ -11,6 +11,7 @@ import com.rustyrazorblade.easydblab.providers.aws.TeardownMode
 import com.rustyrazorblade.easydblab.providers.aws.TeardownResult
 import com.rustyrazorblade.easydblab.proxy.Socks5ProxyStateFile
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
+import com.rustyrazorblade.easydblab.services.TailscaleApiException
 import com.rustyrazorblade.easydblab.services.TailscaleService
 import com.rustyrazorblade.easydblab.services.TeardownBackupService
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
@@ -95,6 +96,18 @@ class Down : PicoBaseCommand() {
     private val socksProxyService: SocksProxyService by inject()
     private val log = KotlinLogging.logger {}
 
+    /**
+     * The process exit code. Set to [Constants.ExitCodes.ERROR] when the pre-teardown backup aborts
+     * the teardown, when the teardown completes with errors, or when the user declines the
+     * confirmation prompt, so a caller scripting `down` never mistakes those for success.
+     */
+    private var exitCode = 0
+
+    override fun call(): Int {
+        super.call()
+        return exitCode
+    }
+
     override fun execute() {
         val mode = determineTeardownMode()
 
@@ -104,6 +117,7 @@ class Down : PicoBaseCommand() {
         // backup fails, abort with no infrastructure removed so the data is not lost to teardown.
         // Runs before the proxy is torn down; --force skips it. See design decision D3.
         if (!backupBeforeTeardown(mode)) {
+            exitCode = Constants.ExitCodes.ERROR
             return
         }
 
@@ -113,13 +127,14 @@ class Down : PicoBaseCommand() {
         // never need the proxy — only private cluster network access does.
         clearProxySystemProperties()
 
-        val result = executeTeardown(mode)
+        var result = executeTeardown(mode)
 
         // Kill the proxy process and remove its state file after AWS operations complete.
         cleanupSocks5Proxy()
 
         // Only clear cluster state on successful teardown to preserve VPC ID for retries
         if (result.success && (mode == TeardownMode.CurrentCluster || mode is TeardownMode.SpecificVpc)) {
+            result = removeTailscaleDevice(result)
             updateClusterState()
         }
 
@@ -209,6 +224,10 @@ class Down : PicoBaseCommand() {
 
     /**
      * Tears down the current cluster using VPC ID from cluster state.
+     *
+     * A cluster whose VPC is already gone but whose tailnet device is still recorded is a previous
+     * `down` that removed the infrastructure and failed only the device removal. There is no VPC
+     * left to tear down, so this succeeds with nothing deleted and lets the device removal retry.
      */
     private fun teardownCurrentCluster(): TeardownResult {
         // Get the VPC ID from cluster state
@@ -219,6 +238,10 @@ class Down : PicoBaseCommand() {
 
         val clusterState = clusterStateManager.load()
         val currentVpcId = clusterState.vpcId
+
+        if (currentVpcId == null && !clusterState.tailscaleDeviceId.isNullOrBlank()) {
+            return TeardownResult.success(emptyList())
+        }
 
         if (currentVpcId == null) {
             eventBus.emit(Event.Teardown.NoVpcId(clusterState.name))
@@ -358,13 +381,15 @@ class Down : PicoBaseCommand() {
     }
 
     /**
-     * Reports the result of the teardown operation.
+     * Reports the result of the teardown operation and sets the exit code from it, so a teardown
+     * that failed or that the user declined at the prompt exits non-zero.
      */
     private fun reportResult(result: TeardownResult) {
         if (result.success) {
             eventBus.emit(Event.Teardown.CompletedSuccessfully)
         } else {
             eventBus.emit(Event.Teardown.CompletedWithErrors(result.errors))
+            exitCode = Constants.ExitCodes.ERROR
         }
     }
 
@@ -449,6 +474,53 @@ class Down : PicoBaseCommand() {
         } catch (e: Exception) {
             log.warn(e) { "Failed to update cluster state, continuing anyway" }
         }
+    }
+
+    /**
+     * Removes this cluster's control node from the tailnet, by the device ID `tailscale start`
+     * recorded. The instance is gone, but its tailnet device outlives it, and every cluster's
+     * control node registers under the same hostname, so the recorded ID is the only precise
+     * handle on it.
+     *
+     * Unlike the auth key, a device left behind is visible clutter that keeps advertising this
+     * cluster's subnet route, so a failure here fails `down` (non-zero exit, the reason listed
+     * with the teardown errors) and the ID stays in state for the next `down` to retry. The rest
+     * of the cluster state is still cleared; [teardownCurrentCluster] retries on the recorded ID
+     * alone, without a VPC ID.
+     *
+     * @return [result] unchanged when there was nothing to remove or it was removed; otherwise a
+     *   failed result carrying the reason.
+     */
+    private fun removeTailscaleDevice(result: TeardownResult): TeardownResult {
+        if (!clusterStateManager.exists()) return result
+        val clusterState = clusterStateManager.load()
+        val deviceId = clusterState.tailscaleDeviceId
+        if (deviceId.isNullOrBlank()) return result
+
+        val clientId = user.tailscaleClientId
+        val clientSecret = user.tailscaleClientSecret
+        val failure =
+            if (clientId.isBlank() || clientSecret.isBlank()) {
+                "Tailscale device $deviceId (the control node) was not removed from the tailnet: " +
+                    "no Tailscale OAuth credentials are configured. Configure them with " +
+                    "'easy-db-lab profile setup' and run 'easy-db-lab down' again, or remove the device at " +
+                    "https://login.tailscale.com/admin/machines."
+            } else {
+                try {
+                    tailscaleService.deleteDevice(clientId, clientSecret, deviceId)
+                    null
+                } catch (e: TailscaleApiException) {
+                    "Tailscale device $deviceId (the control node) was not removed from the tailnet: ${e.message}"
+                }
+            }
+
+        if (failure != null) {
+            return result.copy(success = false, errors = result.errors + failure)
+        }
+        eventBus.emit(Event.Tailscale.DeviceDeleted(deviceId))
+        clusterState.tailscaleDeviceId = null
+        clusterStateManager.save(clusterState)
+        return result
     }
 
     /**

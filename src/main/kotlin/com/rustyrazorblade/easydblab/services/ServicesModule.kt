@@ -38,6 +38,7 @@ import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
 import okhttp3.OkHttpClient
 import org.koin.core.module.dsl.factoryOf
 import org.koin.core.module.dsl.singleOf
+import org.koin.core.parameter.parametersOf
 import org.koin.dsl.bind
 import org.koin.dsl.module
 import java.time.Duration
@@ -61,6 +62,7 @@ val servicesModule =
         single { CiliumInstallAnnotator(get()) }
         factory<CiliumService> { DefaultCiliumService(get(), get(), get()) }
         factory<CiliumInspectionService> { DefaultCiliumInspectionService(get()) }
+        factory { CiliumNodeImageCheck(get()) }
         factory<HelmService> { DefaultHelmService(get()) }
         factory<KubectlService> { DefaultKubectlService(get()) }
         // Explicit factory (not factoryOf) so the daemonStartupDelay constructor default applies
@@ -109,6 +111,8 @@ val servicesModule =
         factoryOf(::InstallTemplateResolver)
         factoryOf(::WorkloadStepExecutor)
         factory<KitHookExecutor> { DefaultKitHookExecutor(get(), get(), get()) }
+        // Takes the workspace kubeconfig path, which the Fabric8-backed KubernetesService needs.
+        factory { (kubeconfigPath: String) -> KitWorkloadProbe(get { parametersOf(kubeconfigPath) }, get()) }
         singleOf(::DefaultKitEndpointResolver) bind KitEndpointResolver::class
         factoryOf(::DefaultOtelSyncService) bind OtelSyncService::class
         factoryOf(::DefaultObservabilityStackService) bind ObservabilityStackService::class

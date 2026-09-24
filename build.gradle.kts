@@ -72,6 +72,10 @@ application {
             // every `$`, so a `$APP_HOME` reference would reach java as a literal path and the
             // VM would abort on a missing agent jar. The agent flag is appended in the
             // `startScripts` doLast below, where `$APP_HOME` is expanded before that pipeline.
+            // Class-data sharing off. The OTel agent appends to the bootstrap classpath, and with
+            // CDS on the JVM prints "Sharing is only supported for boot loader classes because
+            // bootstrap classpath has been appended" on every run.
+            "-Xshare:off",
             "-Deasydblab.ami.name=rustyrazorblade/images/easy-db-lab-cassandra-amd64-$version",
             "-Deasydblab.version=$version",
             // Pin logback to our config by a unique name. On the installDist/distribution
@@ -102,12 +106,43 @@ tasks.named<CreateStartScripts>("startScripts") {
         // xargs|sed|eval arg-splitting pipeline runs. Args placed in `applicationDefaultJvmArgs`
         // are treated literally by that pipeline, so `$APP_HOME` cannot be referenced there —
         // both the apphome system property and the OTel java agent path are injected here.
-        val replacement =
-            "\$1 \nDEFAULT_JVM_OPTS=\"\\\$DEFAULT_JVM_OPTS -Deasydblab.apphome=\\\$APP_HOME " +
-                "-javaagent:\\\$APP_HOME/agents/opentelemetry-javaagent.jar\""
+        val agentOpts =
+            "DEFAULT_JVM_OPTS=\"\$DEFAULT_JVM_OPTS -Deasydblab.apphome=\$APP_HOME " +
+                "-javaagent:\$APP_HOME/agents/opentelemetry-javaagent.jar\""
+
+        // The agent's exporters default to OTLP on localhost:4318. With no collector there, every
+        // export fails and the agent prints a stack trace to stderr on every run — the normal case
+        // for a Homebrew user. So the exporters stay off unless the user configured an OTLP
+        // endpoint or picked exporters. The agent reads system properties ahead of environment
+        // variables, so this check must run here: an unconditional -D would override a user's
+        // OTEL_* configuration. A user who sets any of these variables gets the agent's own
+        // defaults and its own error reporting.
+        val otelExportVars =
+            listOf(
+                "OTEL_EXPORTER_OTLP_ENDPOINT",
+                "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
+                "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT",
+                "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT",
+                "OTEL_TRACES_EXPORTER",
+                "OTEL_METRICS_EXPORTER",
+                "OTEL_LOGS_EXPORTER",
+            ).joinToString("") { "\${$it}" }
+        val otelExportDefaults =
+            listOf(
+                "# No OTLP endpoint or exporter configured: load the agent but export nothing, and",
+                "# silence its logger (the version banner), instead of failing against localhost:4318.",
+                "if [ -z \"$otelExportVars\" ]; then",
+                "    DEFAULT_JVM_OPTS=\"\$DEFAULT_JVM_OPTS -Dotel.traces.exporter=none " +
+                    "-Dotel.metrics.exporter=none -Dotel.logs.exporter=none\"",
+                "    if [ -z \"\$OTEL_JAVAAGENT_LOGGING\" ]; then",
+                "        DEFAULT_JVM_OPTS=\"\$DEFAULT_JVM_OPTS -Dotel.javaagent.logging=none\"",
+                "    fi",
+                "fi",
+            ).joinToString("\n")
+
         val regex = "^(DEFAULT_JVM_OPTS=.*)".toRegex(RegexOption.MULTILINE)
         val body = unixScript.readText()
-        val newBody = regex.replace(body, replacement)
+        val newBody = regex.replace(body) { match -> "${match.value}\n$agentOpts\n$otelExportDefaults" }
         unixScript.writeText(newBody)
 
         // This needs to be updated for windows
@@ -342,13 +377,58 @@ tasks.named<Test>("test") {
         .file("docs/user-guide/sysbench.md")
         .withPropertyName("sysbenchUserGuide")
         .withPathSensitivity(PathSensitivity.RELATIVE)
+
+    // DevLauncherTelemetryTest runs the dev wrapper against a stub docker and launcher.
+    inputs
+        .file("bin/easy-db-lab")
+        .withPropertyName("devLauncher")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+
+    // StartScriptTelemetryTest runs the generated Unix start script, the launcher a Homebrew
+    // user runs, to check which OpenTelemetry exporter settings it hands the JVM.
+    val startScript = layout.buildDirectory.file("scripts/easy-db-lab")
+    dependsOn(tasks.named("startScripts"))
+    inputs
+        .file(startScript)
+        .withPropertyName("unixStartScript")
+        .withPathSensitivity(PathSensitivity.NONE)
+    systemProperty(
+        "easydblab.startScript",
+        startScript
+            .get()
+            .asFile.absolutePath,
+    )
 }
 
 // `./gradlew check` must run BOTH tiers; `./gradlew test` stays UNIT-ONLY (fast, no Docker).
 tasks.named("check") {
     dependsOn(testing.suites.named("integrationTest"))
     // Pure-bash tiers: no Docker, no network, seconds to run.
-    dependsOn("testProfilingReconcile")
+    dependsOn("testScripts")
+}
+
+// Every Docker-free shell-script test, in one task so CI (pr-checks.yml) and `check` run the same
+// set. Needs bash, dash, jq and mikefarah's Go yq on PATH. The Docker-backed script tests
+// (testPacker, testAxonSudoers, testFluentBitFilter) are deliberately not here.
+tasks.register("testScripts") {
+    group = "Verification"
+    description = "Run every Docker-free shell script unit test"
+    dependsOn(
+        "testProfilingReconcile",
+        "testExportWorkloadMetrics",
+        "testCassandraScripts",
+        "testCassandraBuildPlan",
+        "testCassandraResolveRef",
+    )
+}
+
+// Unit-test bin/export-workload-metrics: it must export only series live in its window, not the
+// day's worth VictoriaMetrics' /api/v1/series returns. curl is stubbed; no cluster, no network.
+tasks.register<Exec>("testExportWorkloadMetrics") {
+    group = "Verification"
+    description = "Unit-test the export-workload-metrics catalog script"
+    workingDir = file(".")
+    commandLine = listOf("bash", "bin/export-workload-metrics.test.sh")
 }
 
 // Packer testing tasks
@@ -365,6 +445,38 @@ tasks.register<Exec>("testPackerCassandra") {
     workingDir = file("packer")
     commandLine =
         listOf("docker", "compose", "up", "--force-recreate", "--remove-orphans", "--exit-code-from", "test-cassandra", "test-cassandra")
+}
+
+// (Re)build the packer test image from packer/Dockerfile. Layer caching makes this cheap when
+// nothing changed, and it keeps a stale image (an older Ubuntu, classic sudo) from standing in for
+// the AMI's sudo-rs.
+tasks.register<Exec>("buildPackerTestImage") {
+    group = "Verification"
+    description = "Build the Docker image the packer script tests run in"
+    workingDir = file("packer")
+    commandLine = listOf("docker", "build", "-q", "-t", "easy-db-lab-packer-test", ".")
+}
+
+// Check the baked /etc/sudoers.d/axonops against the AMI's own visudo (sudo-rs on Ubuntu 26.04,
+// which rejects wildcard arguments). Runs in the packer test image; no network.
+tasks.register<Exec>("testAxonSudoers") {
+    group = "Verification"
+    description = "Validate the axonops sudoers rules with the image's visudo"
+    dependsOn("buildPackerTestImage")
+    workingDir = file("packer")
+    commandLine =
+        listOf(
+            "docker",
+            "run",
+            "--rm",
+            "-v",
+            "${file("packer").absolutePath}:/packer:ro",
+            "--user",
+            "ubuntu",
+            "easy-db-lab-packer-test",
+            "bash",
+            "/packer/cassandra/install/install_axon.test.sh",
+        )
 }
 
 // Unit-test the Fluent Bit journald filter's drop rule: Cassandra's logback lines are duplicates of
@@ -392,7 +504,7 @@ tasks.register<Exec>("testFluentBitFilter") {
 tasks.register("testPacker") {
     group = "Verification"
     description = "Run all packer provisioning tests"
-    dependsOn("testPackerBase", "testPackerCassandra")
+    dependsOn("testPackerBase", "testPackerCassandra", "testAxonSudoers")
 }
 
 // Unit-test the pure build-plan logic behind the build-cassandra-ref workflow
@@ -488,11 +600,52 @@ tasks.register<Exec>("testPackerScript") {
     group = "Verification"
     description = "Test a specific packer script (use -Pscript=path/to/script.sh)"
     workingDir = file("packer")
-    doFirst {
-        val scriptPath =
-            project.findProperty("script")?.toString()
-                ?: throw GradleException("Please specify script path with -Pscript=path/to/script.sh")
-        commandLine = listOf("./test-script.sh", scriptPath)
+    // Read -Pscript as a Gradle property provider. Looking it up with project.findProperty at
+    // execution time does not see the -P value (it resolved to the literal "false"), so the
+    // script was always "packer/false".
+    val scriptPath = providers.gradleProperty("script")
+    executable = "./test-script.sh"
+    argumentProviders.add(
+        CommandLineArgumentProvider {
+            listOf(
+                scriptPath.orNull
+                    ?: throw GradleException("Please specify script path with -Pscript=path/to/script.sh"),
+            )
+        },
+    )
+}
+
+// Script tests are Exec tasks, which write no JUnit XML, so a failing one never reached the
+// spec-flow-failures artifact pr-checks.yml builds from **/build/test-results/**/*.xml. Each one
+// now records its outcome as a one-testcase report, id `scripts.<task>` (rerun it with
+// `./gradlew <task>`), and then fails the build exactly as before.
+tasks.withType<Exec>().matching { it.name.startsWith("test") }.configureEach {
+    val taskName = name
+    val report = layout.buildDirectory.file("test-results/scripts/TEST-scripts.$taskName.xml")
+    isIgnoreExitValue = true
+    doLast {
+        val exitCode = executionResult.get().exitValue
+        val outcome =
+            if (exitCode == 0) {
+                ""
+            } else {
+                "<failure message=\"$taskName exited with code $exitCode\"/>"
+            }
+        val failures = if (exitCode == 0) 0 else 1
+        report.get().asFile.apply {
+            parentFile.mkdirs()
+            writeText(
+                """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <testsuite name="scripts.$taskName" tests="1" failures="$failures" errors="0" skipped="0">
+                  <testcase classname="scripts" name="$taskName">$outcome</testcase>
+                </testsuite>
+                """.trimIndent() + "\n",
+            )
+        }
+        if (exitCode != 0) {
+            throw GradleException("$taskName failed with exit code $exitCode")
+        }
     }
 }
 
@@ -523,15 +676,10 @@ tasks.distTar {
     archiveExtension.set("tar.gz")
 }
 
+// The OTel agent reaches install/easy-db-lab/agents through the `main` distribution's contents
+// above (`from(copyOtelAgent) { into("agents") }`), which installDist syncs.
 tasks.named("installDist") {
     dependsOn(tasks.named("shadowJar"), copyOtelAgent)
-    doLast {
-        // Copy agent to installDist location
-        copy {
-            from("${project.layout.buildDirectory.get()}/otel-agent")
-            into(layout.buildDirectory.dir("install/easy-db-lab/agents"))
-        }
-    }
 }
 
 tasks.assemble {
@@ -646,6 +794,8 @@ jib {
         appRoot = "/app"
         jvmFlags =
             listOf(
+                // CDS off: see applicationDefaultJvmArgs. The agent would trigger the same warning.
+                "-Xshare:off",
                 "-javaagent:/agents/opentelemetry-javaagent.jar",
                 "-Deasydblab.ami.name=rustyrazorblade/images/easy-db-lab-cassandra-amd64-$version",
                 "-Deasydblab.version=$version",

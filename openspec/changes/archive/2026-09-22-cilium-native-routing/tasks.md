@@ -36,7 +36,7 @@
 ## 6. Verification
 
 - [x] 6.1 Run `./gradlew ktlintFormat && ./gradlew test && ./gradlew detekt` on JDK 21 — all pass
-- [ ] 6.2 Live cross-AZ validation (1 control + 2 db nodes in different AZs) — see acceptance scenarios: default `up` → native (no VXLAN), all agents Ready, `ciliumnode` shows ENIs+IPs per node, each pod IP in its node's AZ subnet, cross-AZ pod→pod by pod IP (curl/nc), pod→ClusterIP, pod→external URL, Hubble flows; operator-on-db-node allocates ENIs (IMDS fix)
+- [x] 6.2 Live cross-AZ validation (1 control + 2 db nodes in different AZs) — see acceptance scenarios: default `up` → native (no VXLAN), all agents Ready, `ciliumnode` shows ENIs+IPs per node, each pod IP in its node's AZ subnet, cross-AZ pod→pod by pod IP (curl/nc), pod→ClusterIP, pod→external URL, Hubble flows; operator-on-db-node allocates ENIs (IMDS fix)
 
 ## 7. Cilium observability
 
@@ -54,6 +54,6 @@
 - [x] 8.1 `start-k3s-server.sh`: Cilium branch adds `--disable=traefik,servicelb` (ServiceLB node-IP LoadBalancer ingress + Cilium port-0 wildcard rejected every pod→node packet; live-proven); Flannel branch unchanged; `CiliumServiceTest` asserts both branches
 - [x] 8.2 `CiliumService`: `--set devices=ens+` so `tailscale0` (MTU 1280) is not a Cilium device and the MTU updater leaves ens5/ens6 at 9001; asserted in `CiliumServiceTest`
 - [x] 8.3 `configure_cilium_eni_networkd.sh`: `06-cilium-eni-unmanaged.network` matches `Driver=ena` (catches the ENI under its pre-rename `eth0` name); new `/etc/cloud/cloud.cfg.d/90-easydblab-no-network-hotplug.cfg` sets `updates.network.when: [boot-new-instance, boot]`; self-verify greps updated; `packer/README.md` updated
-- [ ] 8.4 Validate 8.3 live: `build-image`, then bring up a `--cni=cilium` cluster, force a second ENI, and confirm `ens6` has no address, no second default route, and `/etc/netplan/50-cloud-init.yaml` is not re-rendered
+- [x] 8.4 Validate 8.3 live: `build-image`, then bring up a `--cni=cilium` cluster, force a second ENI, and confirm `ens6` has no OS/DHCP-assigned address (networkd reports it `unmanaged`; Cilium itself sets the ENI's primary IP on it), no second default route in the main table, and `/etc/netplan/50-cloud-init.yaml` is not re-rendered. (Validated live in issue 819 on control0's second ENI.)
 - [x] 8.5 `CiliumService.installTailscaleMasquerade` + `services/install-tailscale-masquerade.sh`: nft `edl_tailscale` NAT chain at priority 90 masquerading Tailscale's forward mark on `ens*`, idempotent (declare/delete/recreate) and boot-persistent (`edl-tailscale-masquerade.service` oneshot); `Up.installCilium` runs it after the Cilium install when Tailscale is enabled; `CiliumServiceTest` asserts the upload path, the exact `sudo bash` command, and the script contents; `UpTest` covers ordering, the no-Tailscale skip, and the abort on failure
 - [x] 8.6 `DefaultCiliumService.install` converges on re-run: probes `helm status cilium -n kube-system` (exit-0 wrapper), then `cilium upgrade` with the identical `--set` list when the release exists, `cilium install` otherwise; `Cilium.Upgrading` event; `CiliumServiceTest` asserts the probe, the verb, the identical flag list, and probe-failure propagation

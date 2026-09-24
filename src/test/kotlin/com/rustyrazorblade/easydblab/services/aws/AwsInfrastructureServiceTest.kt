@@ -4,12 +4,15 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.providers.aws.InfrastructureConfig
+import com.rustyrazorblade.easydblab.providers.aws.VpcNetworkingConfig
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
@@ -778,6 +781,49 @@ class AwsInfrastructureServiceTest {
             assertThat(result.resourcesDeleted).hasSize(1)
             // Should NOT delete anything in dryRun mode
             verify(vpcService, never()).deleteVpc(any())
+        }
+    }
+
+    @Nested
+    inner class SetupVpcNetworking {
+        private val securityGroupId = "sg-cluster"
+        private val vpcCidr = "10.42.0.0/16"
+
+        @Test
+        fun `security group allows ICMP of every type from within the VPC`() {
+            whenever(vpcService.findOrCreateSubnet(any(), any(), any(), any(), any())).thenReturn("subnet-1")
+            whenever(vpcService.findOrCreateInternetGateway(any(), any(), any())).thenReturn("igw-1")
+            whenever(vpcService.findOrCreateSecurityGroup(any(), any(), any(), any())).thenReturn(securityGroupId)
+
+            service.setupVpcNetworking(
+                VpcNetworkingConfig(
+                    vpcId = "vpc-1",
+                    clusterName = "test",
+                    clusterId = "id-1",
+                    region = "us-west-2",
+                    availabilityZones = listOf("a"),
+                    isOpen = false,
+                    vpcCidr = vpcCidr,
+                ),
+            ) { "203.0.113.7" }
+
+            val protocols = argumentCaptor<String>()
+            val fromPorts = argumentCaptor<Int>()
+            val toPorts = argumentCaptor<Int>()
+            val cidrs = argumentCaptor<String>()
+            verify(vpcService, atLeastOnce()).authorizeSecurityGroupIngress(
+                eq(securityGroupId),
+                fromPorts.capture(),
+                toPorts.capture(),
+                cidrs.capture(),
+                protocols.capture(),
+            )
+            val rules =
+                protocols.allValues.indices.map { i ->
+                    listOf(protocols.allValues[i], fromPorts.allValues[i], toPorts.allValues[i], cidrs.allValues[i])
+                }
+
+            assertThat(rules).contains(listOf("icmp", -1, -1, vpcCidr))
         }
     }
 

@@ -158,6 +158,11 @@ interface VpcDiscoveryOperations {
     fun getVpcName(vpcId: VpcId): String?
 
     /**
+     * Gets the primary CIDR block of a VPC, or null when the VPC does not exist.
+     */
+    fun getVpcCidr(vpcId: VpcId): String?
+
+    /**
      * Gets all tags on a VPC.
      */
     fun getVpcTags(vpcId: VpcId): Map<String, String>

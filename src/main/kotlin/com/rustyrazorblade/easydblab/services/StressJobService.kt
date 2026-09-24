@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import com.rustyrazorblade.easydblab.profiling.pyroscopeIngestBaseUrl
+import com.rustyrazorblade.easydblab.providers.aws.pollUntil
 import io.fabric8.kubernetes.api.model.Container
 import io.fabric8.kubernetes.api.model.ContainerBuilder
 import io.fabric8.kubernetes.api.model.EnvVarBuilder
@@ -19,8 +20,6 @@ import io.fabric8.kubernetes.api.model.VolumeMountBuilder
 import io.fabric8.kubernetes.api.model.batch.v1.Job
 import io.fabric8.kubernetes.api.model.batch.v1.JobBuilder
 import io.github.oshai.kotlinlogging.KotlinLogging
-import io.github.resilience4j.retry.Retry
-import io.github.resilience4j.retry.RetryConfig
 import java.time.Duration
 
 /**
@@ -131,6 +130,8 @@ interface StressJobService {
  *
  * @param jobPollInterval How long to wait between job-completion polls. Defaults to
  *   [JOB_POLL_INTERVAL_MS] so production timing is unchanged; tests inject [Duration.ZERO].
+ * @param podReadyPollInterval How long to wait between polls for a started job's pod to run.
+ *   Defaults to [POD_READY_POLL_INTERVAL_MS]; tests inject [Duration.ZERO].
  */
 class DefaultStressJobService(
     private val k8sService: K8sService,
@@ -139,6 +140,7 @@ class DefaultStressJobService(
     private val templateService: TemplateService,
     private val ecrPullSecrets: EcrPullSecretService,
     private val jobPollInterval: Duration = Duration.ofMillis(JOB_POLL_INTERVAL_MS),
+    private val podReadyPollInterval: Duration = Duration.ofMillis(POD_READY_POLL_INTERVAL_MS),
 ) : StressJobService {
     private val log = KotlinLogging.logger {}
 
@@ -149,6 +151,9 @@ class DefaultStressJobService(
         private const val TTL_COMMAND_JOB_SECONDS = 300
         private const val POD_READY_MAX_ATTEMPTS = 10
         private const val POD_READY_POLL_INTERVAL_MS = 3000L
+
+        /** Pod phases that end the wait for a started job's pod. */
+        private val POD_RUNNING_PHASES = setOf("Running", "Succeeded")
         private const val SIDECAR_CONFIG_MAP_NAME = "otel-stress-sidecar-config"
         private const val SIDECAR_CONFIG_FILE_NAME = "otel-stress-sidecar-config.yaml"
         private const val PYROSCOPE_VOLUME_NAME = "pyroscope-agent"
@@ -184,38 +189,29 @@ class DefaultStressJobService(
         }
 
     /**
-     * Polls until at least one pod for the job is Running or Succeeded.
-     * Throws if no pod reaches a running state within 30 seconds.
+     * Polls until the job's first pod is Running or Succeeded. No pod yet, another phase, a Failed
+     * pod and a failed query are all polled again; if the pod is not running within
+     * [POD_READY_MAX_ATTEMPTS] looks, fails with the last look's outcome.
      */
     private fun waitForPodRunning(
         controlHost: ClusterHost,
         jobName: String,
     ): String {
-        val retryConfig =
-            RetryConfig
-                .custom<String>()
-                .maxAttempts(POD_READY_MAX_ATTEMPTS)
-                .intervalFunction { _ -> POD_READY_POLL_INTERVAL_MS }
-                .retryOnException { true }
-                .build()
-        val retry = Retry.of("wait-for-stress-pod-$jobName", retryConfig)
-
-        return Retry
-            .decorateSupplier(retry) {
-                val pods = getPodsForJob(controlHost, jobName).getOrThrow()
-                if (pods.isEmpty()) {
-                    error("No pods created yet for job $jobName")
+        val pods =
+            pollUntil(
+                operationName = "wait-for-stress-pod-$jobName",
+                maxAttempts = POD_READY_MAX_ATTEMPTS,
+                interval = podReadyPollInterval,
+                done = { found -> found.firstOrNull()?.status in POD_RUNNING_PHASES },
+            ) {
+                getPodsForJob(controlHost, jobName).getOrThrow().also { found ->
+                    found.firstOrNull()?.let { pod -> check(pod.status != "Failed") { "Pod ${pod.name} failed" } }
                 }
-                val pod = pods.first()
-                when (pod.status) {
-                    "Running", "Succeeded" -> {
-                        eventBus.emit(Event.Stress.PodStatus(pod.name, pod.status))
-                        jobName
-                    }
-                    "Failed" -> error("Pod ${pod.name} failed")
-                    else -> error("Pod ${pod.name} is ${pod.status}, waiting for Running")
-                }
-            }.get()
+            }
+        val pod = pods.firstOrNull() ?: error("No pods created yet for job $jobName")
+        check(pod.status in POD_RUNNING_PHASES) { "Pod ${pod.name} is ${pod.status}, waiting for Running" }
+        eventBus.emit(Event.Stress.PodStatus(pod.name, pod.status))
+        return jobName
     }
 
     /**

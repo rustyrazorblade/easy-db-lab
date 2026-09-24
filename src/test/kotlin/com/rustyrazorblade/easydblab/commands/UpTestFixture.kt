@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Version
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
@@ -19,6 +20,7 @@ import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.services.CiliumInstallAnnotator
+import com.rustyrazorblade.easydblab.services.CiliumNodeImageCheck
 import com.rustyrazorblade.easydblab.services.CiliumService
 import com.rustyrazorblade.easydblab.services.ClusterConfigurationService
 import com.rustyrazorblade.easydblab.services.ClusterProvisioningService
@@ -103,6 +105,10 @@ abstract class UpTestFixture : BaseKoinTest() {
     protected var sshFailureException: Exception? = null
     protected val sshCheckedAliases = mutableListOf<String>()
 
+    /** Cilium node-fix paths the fake SSH reports missing, by host alias, and every alias asked */
+    protected val missingCiliumFixes = mutableMapOf<String, List<String>>()
+    protected val ciliumFixCheckedAliases = mutableListOf<String>()
+
     protected val testControlHost =
         ClusterHost(
             publicIp = "54.1.1.1",
@@ -144,6 +150,7 @@ abstract class UpTestFixture : BaseKoinTest() {
                 single<ClusterConfigurationService> { mock<ClusterConfigurationService>().also { mockClusterConfigurationService = it } }
                 single<K3sClusterService> { mock<K3sClusterService>().also { mockK3sClusterService = it } }
                 single<CiliumService> { mock<CiliumService>().also { mockCiliumService = it } }
+                single { CiliumNodeImageCheck(get()) }
                 single<K8sService> { mock<K8sService>().also { mockK8sService = it } }
                 single<RegistryService> { mock<RegistryService>() }
                 single<SocksProxyService> { mock<SocksProxyService>() }
@@ -165,69 +172,99 @@ abstract class UpTestFixture : BaseKoinTest() {
                     }
                 }
 
-                factory<RemoteOperationsService> {
-                    object : RemoteOperationsService {
-                        override fun executeRemotely(
-                            host: Host,
-                            command: String,
-                            output: Boolean,
-                            secret: Boolean,
-                        ): Response {
-                            if (command == "echo 1") sshCheckedAliases.add(host.alias)
-                            val failingAlias = sshFailureAlias
-                            val failure = sshFailureException
-                            if (failingAlias != null && failure != null && host.alias == failingAlias) {
-                                throw failure
-                            }
-                            return Response("")
-                        }
-
-                        override fun upload(
-                            host: Host,
-                            local: Path,
-                            remote: String,
-                        ) = Unit
-
-                        override fun uploadDirectory(
-                            host: Host,
-                            localDir: File,
-                            remoteDir: String,
-                        ) = Unit
-
-                        override fun uploadDirectory(
-                            host: Host,
-                            version: Version,
-                        ) = Unit
-
-                        override fun replaceDirectory(
-                            host: Host,
-                            localDir: File,
-                            remoteDir: String,
-                            owner: String,
-                        ) = Unit
-
-                        override fun download(
-                            host: Host,
-                            remote: String,
-                            local: Path,
-                        ) = Unit
-
-                        override fun downloadDirectory(
-                            host: Host,
-                            remoteDir: String,
-                            localDir: File,
-                            includeFilters: List<String>,
-                            excludeFilters: List<String>,
-                        ) = Unit
-
-                        override fun getRemoteVersion(
-                            host: Host,
-                            inputVersion: String,
-                        ): Version = Version.fromString("5.0")
-                    }
-                }
+                factory<RemoteOperationsService> { fakeRemoteOperations() }
             },
         )
+
+    /** An SSH layer that runs nothing and answers through [fakeRemoteResponse]. */
+    private fun fakeRemoteOperations(): RemoteOperationsService =
+        object : RemoteOperationsService {
+            override fun executeRemotely(
+                host: Host,
+                command: String,
+                output: Boolean,
+                secret: Boolean,
+            ): Response = fakeRemoteResponse(host, command)
+
+            override fun upload(
+                host: Host,
+                local: Path,
+                remote: String,
+            ) = Unit
+
+            override fun uploadDirectory(
+                host: Host,
+                localDir: File,
+                remoteDir: String,
+            ) = Unit
+
+            override fun uploadDirectory(
+                host: Host,
+                version: Version,
+            ) = Unit
+
+            override fun replaceDirectory(
+                host: Host,
+                localDir: File,
+                remoteDir: String,
+                owner: String,
+            ) = Unit
+
+            override fun download(
+                host: Host,
+                remote: String,
+                local: Path,
+            ) = Unit
+
+            override fun downloadDirectory(
+                host: Host,
+                remoteDir: String,
+                localDir: File,
+                includeFilters: List<String>,
+                excludeFilters: List<String>,
+            ) = Unit
+
+            override fun getRemoteVersion(
+                host: Host,
+                inputVersion: String,
+            ): Version = Version.fromString("5.0")
+        }
+
+    /**
+     * What the fake SSH answers: it records readiness probes (`echo 1`) and Cilium node-fix checks
+     * by alias, throws [sshFailureException] for [sshFailureAlias], and reports [missingCiliumFixes].
+     */
+    private fun fakeRemoteResponse(
+        host: Host,
+        command: String,
+    ): Response {
+        if (command == "echo 1") sshCheckedAliases.add(host.alias)
+        val failingAlias = sshFailureAlias
+        val failure = sshFailureException
+        if (failingAlias != null && failure != null && host.alias == failingAlias) {
+            throw failure
+        }
+        if (command.contains(Constants.Cilium.NODE_FIX_FILES.first())) {
+            ciliumFixCheckedAliases.add(host.alias)
+            return Response(missingCiliumFixes[host.alias].orEmpty().joinToString(separator = "") { "$it\n" })
+        }
+        return Response("")
+    }
+
+    /** Clears what the fakes recorded and restores their default answers. */
+    private fun resetFakes() {
+        nestedCommandExitCodes.clear()
+        invokedCommandNames.clear()
+        localTailscaleState = LocalTailscaleState.Connected
+        localTailscaleQueries = 0
+        tailnetReachable = true
+        probedTargets.clear()
+        sshFailureAlias = null
+        sshFailureException = null
+        sshCheckedAliases.clear()
+        missingCiliumFixes.clear()
+        ciliumFixCheckedAliases.clear()
+    }
 
     @BeforeEach
     fun setupMocks() {
@@ -246,16 +283,7 @@ abstract class UpTestFixture : BaseKoinTest() {
         mockCommandExecutor = getKoin().get()
         mockObservabilityStackService = getKoin().get()
         outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
-
-        nestedCommandExitCodes.clear()
-        invokedCommandNames.clear()
-        localTailscaleState = LocalTailscaleState.Connected
-        localTailscaleQueries = 0
-        tailnetReachable = true
-        probedTargets.clear()
-        sshFailureAlias = null
-        sshFailureException = null
-        sshCheckedAliases.clear()
+        resetFakes()
 
         whenever(mockClusterStateManager.load()).thenReturn(happyState())
 

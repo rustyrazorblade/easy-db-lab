@@ -177,7 +177,7 @@ The OTel collector scrapes it once, through pod discovery on the control node, s
 
 ## Cilium metrics
 
-On a cluster provisioned with `--cni cilium`, the OTel collector also scrapes the Cilium agent (`localhost:9962` on every node), Hubble (`localhost:9965` on every node), and the Cilium operator (port 9963 on the node that runs it). A Flannel cluster has none of these jobs. See [Pod Networking (CNI)](networking.md) for the job definitions, the Hubble UI NodePort, and `platform cni`.
+On a Cilium cluster (the default CNI), the OTel collector also scrapes the Cilium agent (`localhost:9962` on every node), Hubble (`localhost:9965` on every node), and the Cilium operator (port 9963 on the node that runs it). A Flannel cluster has none of these jobs. See [Pod Networking (CNI)](networking.md) for the job definitions, the Hubble UI NodePort, and `platform cni`.
 
 See [Profiling](profiling.md) for continuous profiling with Pyroscope.
 

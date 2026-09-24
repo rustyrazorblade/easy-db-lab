@@ -8,15 +8,28 @@
 # Queries VictoriaMetrics and writes <workload>/metrics-catalog.json.
 # Requires env.sh (for cluster context) and easy-db-lab in PATH.
 #
+# Only series with a sample in the last LIVE_WINDOW are exported. /api/v1/series is not used:
+# VictoriaMetrics answers it from a day-granular index, so it returns series from pods that died
+# hours ago even with a start time minutes back.
+#
+# The catalog is compact: one entry per metric name, its labels mapped to the sorted distinct
+# values seen (at most MAX_LABEL_VALUES per key), per-pod identity labels dropped, and label keys
+# present on every series listed once under common_labels. The transform lives in
+# bin/metrics-catalog.jq.
+#
 set -euo pipefail
+
+LIVE_WINDOW="5m"
+MAX_LABEL_VALUES=20
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
     cat <<EOF
 Usage: bin/export-workload-metrics <workload-name>
 
-Queries VictoriaMetrics for all metric series with job="<workload>"
-and writes <workload>/metrics-catalog.json in the current cluster
-working directory.
+Queries VictoriaMetrics for the metric series with job="<workload>"
+that have a sample in the last ${LIVE_WINDOW}, and writes
+<workload>/metrics-catalog.json in the current cluster working directory.
 
 The workload must be running and its metrics must be flowing to
 VictoriaMetrics before running this script.
@@ -49,9 +62,12 @@ OUTPUT_FILE="${OUTPUT_DIR}/metrics-catalog.json"
 
 mkdir -p "$OUTPUT_DIR"
 
-echo "Querying VictoriaMetrics at ${VM_URL} for job=\"${WORKLOAD}\"..."
+echo "Querying VictoriaMetrics at ${VM_URL} for job=\"${WORKLOAD}\" series live in the last ${LIVE_WINDOW}..."
 
-RAW=$(curl -sf "${VM_URL}/api/v1/series" --data-urlencode "match[]={job=\"${WORKLOAD}\"}")
+# An instant query returns one result per series with a sample in the window. keep_metric_names
+# (MetricsQL) keeps __name__, which a rollup function would otherwise drop.
+QUERY="last_over_time({job=\"${WORKLOAD}\"}[${LIVE_WINDOW}]) keep_metric_names"
+RAW=$(curl -sf "${VM_URL}/api/v1/query" --data-urlencode "query=${QUERY}")
 
 STATUS=$(echo "$RAW" | jq -r '.status')
 if [ "$STATUS" != "success" ]; then
@@ -60,7 +76,7 @@ if [ "$STATUS" != "success" ]; then
     exit 1
 fi
 
-SERIES_COUNT=$(echo "$RAW" | jq '.data | length')
+SERIES_COUNT=$(echo "$RAW" | jq '.data.result | length')
 if [ "$SERIES_COUNT" -eq 0 ]; then
     echo "Warning: no series found for job=\"${WORKLOAD}\" — is the workload running and scraping?"
     exit 1
@@ -68,10 +84,11 @@ fi
 
 EXPORTED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-echo "$RAW" | jq --arg workload "$WORKLOAD" --arg ts "$EXPORTED_AT" '{
-  workload: $workload,
-  exported_at: $ts,
-  series: [.data[] | {name: .__name__, labels: (del(.__name__))}]
-}' > "$OUTPUT_FILE"
+echo "$RAW" | jq -L "$SCRIPT_DIR" --arg workload "$WORKLOAD" --arg ts "$EXPORTED_AT" \
+    --argjson cap "$MAX_LABEL_VALUES" 'include "metrics-catalog";
+  {workload: $workload, exported_at: $ts}
+  + ([.data.result[].metric | {name: .__name__, labels: .}] | compact_catalog($cap))
+' > "$OUTPUT_FILE"
 
-echo "Wrote ${SERIES_COUNT} series to ${OUTPUT_FILE}"
+METRIC_COUNT=$(jq '.series | length' "$OUTPUT_FILE")
+echo "Wrote ${METRIC_COUNT} metrics (from ${SERIES_COUNT} series) to ${OUTPUT_FILE}"

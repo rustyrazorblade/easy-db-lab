@@ -23,6 +23,13 @@ if mountpoint -q /mnt/db1 && [ ! -L /var/lib/rancher/k3s ]; then
     echo "K3s data relocated to NVMe"
 fi
 
+# Cilium chains the portmap CNI plugin for hostPort. With --flannel-backend=none, K3s leaves
+# containerd on its default CNI bin dir, /opt/cni/bin, where Cilium installs only cilium-cni.
+# Link K3s's bundled portmap (its stable data/cni dir, populated when K3s starts) there so every
+# pod sandbox finds it. Inert under Flannel, whose containerd uses K3s's own bin dir.
+mkdir -p /opt/cni/bin
+ln -sfn /var/lib/rancher/k3s/data/cni/portmap /opt/cni/bin/portmap
+
 # Note: Registry TLS configuration is handled by configure_registry_tls.sh
 # which runs before K3s startup to configure /etc/rancher/k3s/registries.yaml with HTTPS
 

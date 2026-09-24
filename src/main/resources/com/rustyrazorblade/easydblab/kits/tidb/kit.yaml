@@ -4,10 +4,14 @@ description: Deploy a TiDB HTAP cluster (TiKV row store + TiFlash columnar store
 version: "1.0.0"
 collision-check: true
 metrics:
+  # Every component is scraped per pod, once, by the collector on the pod's own node, with
+  # instance = the pod name. Static jobs on the metrics NodePorts were run by every collector,
+  # duplicating the series once per node. Each `port` is the component's container metrics port.
   - type: scrape
-    port: 31080
+    port: 10080
     path: /metrics
     job: tidb-sql
+    pod-selector: "app.kubernetes.io/component=tidb,app.kubernetes.io/instance=tidb"
   # TiKV is scraped per-pod (not via a shared NodePort) so `instance` carries the store's
   # pod name. A NodePort load-balances each scrape across all stores, making per-store
   # attribution (leader hotspots, per-store CPU/compaction) impossible. `port` here is the
@@ -18,13 +22,15 @@ metrics:
     port: 20180
     path: /metrics
   - type: scrape
-    port: 32379
+    port: 2379
     path: /metrics
     job: pd
+    pod-selector: "app.kubernetes.io/component=pd,app.kubernetes.io/instance=tidb"
   - type: scrape
-    port: 32234
+    port: 8234
     path: /metrics
     job: tiflash
+    pod-selector: "app.kubernetes.io/component=tiflash,app.kubernetes.io/instance=tidb"
 runtime:
   type: pods
   selector: "app.kubernetes.io/instance=tidb"
@@ -125,6 +131,13 @@ uninstall:
         echo "Error: TiDB cluster is still running. Run 'tidb stop' before uninstalling." >&2
         exit 1
       fi
+  # TiDB Operator keeps the local-path PVCs of PD, TiKV and TiFlash after the TidbCluster is
+  # deleted; it labels them with the cluster's instance. Deleting them lets local-path remove the
+  # volumes.
+  - type: delete
+    kinds: [PersistentVolumeClaim]
+    selector: app.kubernetes.io/instance=tidb
+    namespace: default
   - type: helm-uninstall
     release: tidb-operator
     namespace: tidb-admin

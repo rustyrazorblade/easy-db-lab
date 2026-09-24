@@ -14,7 +14,7 @@ cluster running the `TopSpeedWindowing` example job).
 | `cluster` | easy-db-lab cluster name |
 | `job` | Always `flink` |
 | `host_name` | App node the pod runs on (`app0`, `app1`, …) |
-| `instance` | `<host>:9249` scrape target |
+| `instance` | the Flink pod's name (JobManager or TaskManager), found by pod discovery |
 | `job_name` | Flink job name (task/operator metrics only) |
 | `task_name` | Operator/task name (task metrics only) |
 | `subtask_index` | Parallel subtask index (task metrics only) |
@@ -87,5 +87,5 @@ Available with both `flink_taskmanager_Status_JVM_*` and `flink_jobmanager_Statu
 | `flink_taskmanager_job_task_buffers_inputQueueLength` | Input queue length (buffers) |
 | `flink_taskmanager_job_task_buffers_outputQueueLength` | Output queue length (buffers) |
 
-See `metrics-catalog.json` for the full set of 300+ series, including per-operator
+See `metrics-catalog.json` for the full set of 180+ metrics, including per-operator
 (`flink_taskmanager_job_task_operator_*`) and Netty shuffle (`*_Shuffle_Netty_*`) metrics.

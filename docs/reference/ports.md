@@ -32,7 +32,7 @@ This page documents the ports used by easy-db-lab and the services it provisions
 | 9400 | Beyla eBPF metrics (Prometheus) |
 | 9435 | ebpf_exporter metrics (Prometheus) |
 
-## Cilium Ports (`--cni cilium` clusters only)
+## Cilium Ports (Cilium clusters only; the default CNI)
 
 | Port | Service |
 |------|---------|
@@ -40,6 +40,28 @@ This page documents the ports used by easy-db-lab and the services it provisions
 | 9963 | Cilium operator metrics (Prometheus, the node that runs the operator) |
 | 9965 | Hubble metrics (Prometheus, every node) |
 | 31234 | Hubble UI (NodePort, any node's private IP) |
+
+## Kit Ports
+
+Kits publish client ports through NodePort Services, reachable on any node's private IP.
+
+| Port | Kit | Service |
+|------|-----|---------|
+| 31211 | memcached | memcached client port (NodePort → 11211) |
+| 9150 | memcached | memcached-exporter metrics (pod port, scraped by pod discovery) |
+| 30687 | neo4j | Bolt (NodePort → 7687) |
+| 30474 | neo4j | HTTP (NodePort → 7474) |
+| 30432 | postgres | PostgreSQL (NodePort → 5432) |
+| 30987 | postgres | metrics (NodePort → 9187, for manual inspection; scraped by pod discovery) |
+| 30435 | postgres-duckdb | PostgreSQL (NodePort → 5432) |
+| 30990 | postgres-duckdb | metrics (NodePort → 9187) |
+| 30433 | postgres-postgis | PostgreSQL (NodePort → 5432) |
+| 30988 | postgres-postgis | metrics (NodePort → 9187) |
+| 30434 | postgres-timescaledb | PostgreSQL (NodePort → 5432) |
+| 30989 | postgres-timescaledb | metrics (NodePort → 9187) |
+
+Every built-in kit's NodePorts, each postgres instance's, and the Hubble UI's 31234 are distinct,
+so any combination of kits can run at once.
 
 ## Server
 

@@ -4,18 +4,29 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.ssh.Response
+import okhttp3.Interceptor
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Protocol
+import okhttp3.Request
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argThat
+import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import java.io.IOException
 import java.time.Duration
+import okhttp3.Response as OkHttpResponse
 
 /**
  * Test suite for TailscaleService.
@@ -93,6 +104,31 @@ class TailscaleServiceTest : BaseKoinTest() {
             any(),
             eq(true), // secret=true
         )
+    }
+
+    @Test
+    fun `startTailscale enables and persists IP forwarding before advertising routes`() {
+        val successResponse = Response(text = "", stderr = "")
+        whenever(mockRemoteOps.executeRemotely(any(), any(), any(), any())).thenReturn(successResponse)
+
+        val result = tailscaleService.startTailscale(testHost, "tskey-auth-xxx", "control0", "10.0.0.0/16")
+
+        assertThat(result.isSuccess).isTrue()
+        val commands = argumentCaptor<String>()
+        verify(mockRemoteOps, atLeastOnce()).executeRemotely(eq(testHost), commands.capture(), any(), any())
+        val forwarding = commands.allValues.indexOfFirst { it.contains("net.ipv4.ip_forward") }
+        val tailscaleUp = commands.allValues.indexOfFirst { it.contains("tailscale up") }
+        assertThat(forwarding)
+            .describedAs("IP forwarding must be enabled before tailscale up: %s", commands.allValues)
+            .isNotNegative()
+            .isLessThan(tailscaleUp)
+        val forwardingCommand = commands.allValues[forwarding]
+        // Persisted, so it survives a reboot, and applied now, so `tailscale up` sees it.
+        assertThat(forwardingCommand)
+            .contains("/etc/sysctl.d/")
+            .contains("net.ipv4.ip_forward = 1")
+            .contains("net.ipv6.conf.all.forwarding = 1")
+            .contains("sysctl -p")
     }
 
     @Test
@@ -338,5 +374,149 @@ class TailscaleServiceTest : BaseKoinTest() {
             any(),
             eq(false),
         )
+    }
+
+    // ========== DEVICE IDENTITY AND REMOVAL ==========
+
+    @Test
+    fun `getDeviceId reads the stable node ID the control node reports for itself`() {
+        whenever(mockRemoteOps.executeRemotely(eq(testHost), eq("sudo tailscale status --json"), eq(false), any()))
+            .thenReturn(
+                Response(
+                    text =
+                        """{"BackendState":"Running","Self":{"ID":"nSelf123CNTRL","HostName":"control0"},""" +
+                            """"Peer":{"k":{"ID":"nPeer456CNTRL","HostName":"control0"}}}""",
+                    stderr = "",
+                ),
+            )
+
+        assertThat(tailscaleService.getDeviceId(testHost).getOrThrow()).isEqualTo("nSelf123CNTRL")
+    }
+
+    @Test
+    fun `getDeviceId fails when the node reports no identity of its own`() {
+        whenever(mockRemoteOps.executeRemotely(eq(testHost), eq("sudo tailscale status --json"), eq(false), any()))
+            .thenReturn(Response(text = """{"BackendState":"NeedsLogin"}""", stderr = ""))
+
+        assertThat(tailscaleService.getDeviceId(testHost).exceptionOrNull())
+            .isInstanceOf(TailscaleApiException::class.java)
+            .hasMessageContaining("control0")
+    }
+
+    @Test
+    fun `deleteDevice deletes exactly the recorded device with the OAuth token`() {
+        val api = FakeTailscaleApi(deleteStatus = 200)
+
+        serviceWith(api).deleteDevice("client-id", "client-secret", "nSelf123CNTRL")
+
+        val delete = api.requests.single { it.method == "DELETE" }
+        assertThat(delete.url.toString()).isEqualTo("https://api.tailscale.com/api/v2/device/nSelf123CNTRL")
+        assertThat(delete.header("Authorization")).isEqualTo("Bearer token-abc")
+    }
+
+    @Test
+    fun `deleteDevice treats a device that is already gone as deleted`() {
+        serviceWith(FakeTailscaleApi(deleteStatus = 404)).deleteDevice("client-id", "client-secret", "nGone")
+    }
+
+    @Test
+    fun `deleteDevice without device-delete permission fails naming the missing scope`() {
+        assertThatThrownBy {
+            serviceWith(FakeTailscaleApi(deleteStatus = 403)).deleteDevice("client-id", "client-secret", "nSelf123CNTRL")
+        }.isInstanceOf(TailscaleApiException::class.java)
+            .hasMessageContaining("nSelf123CNTRL")
+            .hasMessageContaining("devices:core")
+    }
+
+    @Test
+    fun `deleteDevice fails on any other API error`() {
+        assertThatThrownBy {
+            serviceWith(FakeTailscaleApi(deleteStatus = 500)).deleteDevice("client-id", "client-secret", "nSelf123CNTRL")
+        }.isInstanceOf(TailscaleApiException::class.java)
+            .hasMessageContaining("500")
+    }
+
+    @Test
+    fun `deleteDevice reports an unreachable API as a Tailscale API failure`() {
+        assertThatThrownBy {
+            serviceWith(FakeTailscaleApi(deleteStatus = 200, deleteFailure = IOException("connection reset")))
+                .deleteDevice("client-id", "client-secret", "nSelf123CNTRL")
+        }.isInstanceOf(TailscaleApiException::class.java)
+            .hasMessageContaining("nSelf123CNTRL")
+            .hasMessageContaining("connection reset")
+            .hasCauseInstanceOf(IOException::class.java)
+    }
+
+    @Test
+    fun `deleteAuthKey deletes exactly the recorded key with the OAuth token`() {
+        val api = FakeTailscaleApi(deleteStatus = 200)
+
+        serviceWith(api).deleteAuthKey("client-id", "client-secret", "kKey123")
+
+        val delete = api.requests.single { it.method == "DELETE" }
+        assertThat(delete.url.toString()).isEqualTo("https://api.tailscale.com/api/v2/tailnet/-/keys/kKey123")
+        assertThat(delete.header("Authorization")).isEqualTo("Bearer token-abc")
+    }
+
+    @Test
+    fun `deleteAuthKey treats a key that is already gone as deleted`() {
+        serviceWith(FakeTailscaleApi(deleteStatus = 404)).deleteAuthKey("client-id", "client-secret", "kGone")
+    }
+
+    @Test
+    fun `deleteAuthKey without key-delete permission fails naming the missing scope`() {
+        assertThatThrownBy {
+            serviceWith(FakeTailscaleApi(deleteStatus = 403)).deleteAuthKey("client-id", "client-secret", "kKey123")
+        }.isInstanceOf(TailscaleApiException::class.java)
+            .hasMessageContaining("kKey123")
+            .hasMessageContaining("'auth_keys'")
+    }
+
+    @Test
+    fun `deleteAuthKey fails on any other API error`() {
+        assertThatThrownBy {
+            serviceWith(FakeTailscaleApi(deleteStatus = 500)).deleteAuthKey("client-id", "client-secret", "kKey123")
+        }.isInstanceOf(TailscaleApiException::class.java)
+            .hasMessageContaining("kKey123")
+            .hasMessageContaining("500")
+    }
+
+    private fun serviceWith(api: FakeTailscaleApi) =
+        DefaultTailscaleService(
+            mockRemoteOps,
+            getKoin().get(),
+            daemonStartupDelay = Duration.ZERO,
+            httpClient = OkHttpClient.Builder().addInterceptor(api).build(),
+        )
+
+    /**
+     * Stands in for the Tailscale API at the OkHttp boundary: answers the OAuth token exchange with
+     * a fixed token and every DELETE with [deleteStatus] (or, when set, throws [deleteFailure] as a
+     * transport failure), and records each request.
+     */
+    private class FakeTailscaleApi(
+        private val deleteStatus: Int,
+        private val deleteFailure: IOException? = null,
+    ) : Interceptor {
+        val requests = mutableListOf<Request>()
+
+        override fun intercept(chain: Interceptor.Chain): OkHttpResponse {
+            val request = chain.request()
+            requests += request
+            if (request.method == "DELETE" && deleteFailure != null) throw deleteFailure
+            val (code, body) =
+                when (request.method) {
+                    "POST" -> 200 to """{"access_token":"token-abc"}"""
+                    else -> deleteStatus to """{"message":"status $deleteStatus"}"""
+                }
+            return OkHttpResponse
+                .Builder()
+                .request(request)
+                .protocol(Protocol.HTTP_1_1)
+                .code(code)
+                .message("status $code")
+                .body(body.toResponseBody("application/json".toMediaType()))
+                .build()
+        }
     }
 }

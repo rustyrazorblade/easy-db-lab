@@ -28,6 +28,7 @@ class DefaultOtelSyncService(
             val initConfig = clusterStateManager.load().initConfig
             val telemetryRedirect = initConfig?.telemetryRedirect
             // Likewise the CNI: a regenerated ConfigMap must keep the Cilium scrape jobs it had.
+            // A cluster with no recorded CNI predates Cilium and runs Flannel.
             val cni = initConfig?.cni ?: CniMode.Flannel
             k8sClientProvider.createClient(controlHost).use { client ->
                 val scrapeConfigs = otelManifestBuilder.listWorkloadScrapeConfigs(client)

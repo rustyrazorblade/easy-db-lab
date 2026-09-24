@@ -36,6 +36,19 @@ class InstallTemplateResolverTest : BaseKoinTest() {
     }
 
     @Test
+    fun `kit list includes the memcached and neo4j built-in kits`() {
+        val templates = resolver.listAvailableTemplates()
+        assertThat(templates).contains("memcached", "neo4j")
+    }
+
+    @Test
+    fun `kit list details parse the memcached and neo4j kit descriptors`() {
+        val details = resolver.listAvailableTemplateDetails().associateBy { it.name }
+        assertThat(details["memcached"]?.description).contains("memcached")
+        assertThat(details["neo4j"]?.description).contains("Neo4j")
+    }
+
+    @Test
     fun `lists profile-directory templates alongside built-ins`() {
         createProfileTemplate("mydb")
 
@@ -200,7 +213,7 @@ class InstallTemplateResolverTest : BaseKoinTest() {
         File(profileDir, Constants.Kit.CONFIG_FILE).writeText("name: mydb\ncollision-check: true")
         val source = InstallTemplateResolver.TemplateSource.Directory(profileDir)
         val config = requireNotNull(resolver.loadInstallConfig(source))
-        assertThat(config.collisionCheck).isTrue()
+        assertThat(config.collisionCheck).isEqualTo(CollisionCheck.ENABLED)
     }
 
     @Test

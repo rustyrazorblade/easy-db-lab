@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import software.amazon.awssdk.services.ec2.Ec2Client
 import java.time.Duration
+import kotlin.random.Random
 
 /**
  * Integration tests for EC2VpcService using LocalStack.
@@ -315,7 +316,7 @@ class EC2VpcServiceIntegrationTest {
             val existingCidrs = vpcService.listAllVpcCidrs()
             val selected =
                 CidrBlock
-                    .selectAvailable(existingCidrs)
+                    .selectAvailable(existingCidrs, Random.Default)
 
             assertThat(existingCidrs).doesNotContain(selected.value)
         }

@@ -1,10 +1,17 @@
 package com.rustyrazorblade.easydblab.services.aws
 
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.services.aws.EC2VpcService
+import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import software.amazon.awssdk.services.ec2.Ec2Client
@@ -15,6 +22,8 @@ import software.amazon.awssdk.services.ec2.model.DescribeRouteTablesResponse
 import software.amazon.awssdk.services.ec2.model.DescribeSecurityGroupsRequest
 import software.amazon.awssdk.services.ec2.model.DescribeSecurityGroupsResponse
 import software.amazon.awssdk.services.ec2.model.Ec2Exception
+import software.amazon.awssdk.services.ec2.model.IpPermission
+import software.amazon.awssdk.services.ec2.model.IpRange
 import software.amazon.awssdk.services.ec2.model.RouteTable
 import software.amazon.awssdk.services.ec2.model.SecurityGroup
 
@@ -26,12 +35,8 @@ import software.amazon.awssdk.services.ec2.model.SecurityGroup
  */
 internal class EC2VpcServiceTest {
     private val mockEc2Client: Ec2Client = mock()
-    private val vpcService =
-        EC2VpcService(
-            mockEc2Client,
-            com.rustyrazorblade.easydblab.events
-                .EventBus(),
-        )
+    private val eventBus = EventBus()
+    private val vpcService = EC2VpcService(mockEc2Client, eventBus)
 
     @Test
     fun `ensureRouteTable should throw exception when no main route table found`() {
@@ -84,6 +89,105 @@ internal class EC2VpcServiceTest {
         vpcService.authorizeSecurityGroupIngress("sg-12345", 22, 22, "0.0.0.0/0", "tcp")
 
         verify(mockEc2Client).authorizeSecurityGroupIngress(any<AuthorizeSecurityGroupIngressRequest>())
+    }
+
+    @Test
+    fun `authorizeSecurityGroupIngress skips an ICMP rule that already exists`() {
+        val existingIcmpRule =
+            IpPermission
+                .builder()
+                .ipProtocol("icmp")
+                .fromPort(-1)
+                .toPort(-1)
+                .ipRanges(IpRange.builder().cidrIp("10.0.0.0/16").build())
+                .build()
+        val securityGroup =
+            SecurityGroup
+                .builder()
+                .groupId("sg-12345")
+                .ipPermissions(existingIcmpRule)
+                .build()
+        whenever(mockEc2Client.describeSecurityGroups(any<DescribeSecurityGroupsRequest>())).thenReturn(
+            DescribeSecurityGroupsResponse.builder().securityGroups(securityGroup).build(),
+        )
+
+        vpcService.authorizeSecurityGroupIngress("sg-12345", -1, -1, "10.0.0.0/16", "icmp")
+
+        verify(mockEc2Client, never()).authorizeSecurityGroupIngress(any<AuthorizeSecurityGroupIngressRequest>())
+    }
+
+    @Test
+    fun `authorizeSecurityGroupIngress builds an all-types ICMP permission`() {
+        val securityGroup =
+            SecurityGroup
+                .builder()
+                .groupId("sg-12345")
+                .ipPermissions(emptyList())
+                .build()
+        whenever(mockEc2Client.describeSecurityGroups(any<DescribeSecurityGroupsRequest>())).thenReturn(
+            DescribeSecurityGroupsResponse.builder().securityGroups(securityGroup).build(),
+        )
+
+        vpcService.authorizeSecurityGroupIngress("sg-12345", -1, -1, "10.0.0.0/16", "icmp")
+
+        val request = argumentCaptor<AuthorizeSecurityGroupIngressRequest>()
+        verify(mockEc2Client).authorizeSecurityGroupIngress(request.capture())
+        val permission = request.firstValue.ipPermissions().single()
+        assertThat(permission.ipProtocol()).isEqualTo("icmp")
+        assertThat(permission.fromPort()).isEqualTo(-1)
+        assertThat(permission.toPort()).isEqualTo(-1)
+        assertThat(permission.ipRanges().map { it.cidrIp() }).containsExactly("10.0.0.0/16")
+    }
+
+    @Test
+    fun `authorizeSecurityGroupIngress reports an ICMP rule as all ICMP types`() {
+        assertThat(configuredRuleText(-1, -1, "icmp"))
+            .isEqualTo("Configured security group ingress rule for all ICMP types")
+    }
+
+    @Test
+    fun `authorizeSecurityGroupIngress reports a TCP range as a port range`() {
+        assertThat(configuredRuleText(9000, 9100, "tcp"))
+            .isEqualTo("Configured security group ingress rule for ports 9000-9100")
+    }
+
+    @Test
+    fun `authorizeSecurityGroupIngress reports a single TCP port`() {
+        assertThat(configuredRuleText(22, 22, "tcp"))
+            .isEqualTo("Configured security group ingress rule for port 22")
+    }
+
+    private fun configuredRuleText(
+        fromPort: Int,
+        toPort: Int,
+        protocol: String,
+    ): String {
+        val securityGroup =
+            SecurityGroup
+                .builder()
+                .groupId("sg-12345")
+                .ipPermissions(emptyList())
+                .build()
+        whenever(mockEc2Client.describeSecurityGroups(any<DescribeSecurityGroupsRequest>())).thenReturn(
+            DescribeSecurityGroupsResponse.builder().securityGroups(securityGroup).build(),
+        )
+        val events = mutableListOf<Event>()
+        eventBus.addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    events.add(envelope.event)
+                }
+
+                override fun close() = Unit
+            },
+        )
+
+        vpcService.authorizeSecurityGroupIngress("sg-12345", fromPort, toPort, "10.0.0.0/16", protocol)
+
+        return events
+            .filterIsInstance<Event.Infra.SecurityGroupRuleConfigured>()
+            .single()
+            .toDisplayString()
     }
 
     @Test

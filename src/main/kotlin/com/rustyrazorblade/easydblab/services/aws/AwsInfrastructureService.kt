@@ -276,6 +276,15 @@ class AwsInfrastructureService(
             config.vpcCidr,
             "udp",
         )
+        // ICMP (all types/codes) within the VPC: ping between nodes and pods, and Cilium's
+        // health checker, which probes every node with ICMP echo.
+        vpcService.authorizeSecurityGroupIngress(
+            securityGroupId,
+            Constants.Network.ALL_ICMP_TYPES,
+            Constants.Network.ALL_ICMP_TYPES,
+            config.vpcCidr,
+            Constants.Network.ICMP_PROTOCOL,
+        )
 
         val infrastructure = VpcInfrastructure(config.vpcId, subnetIds, securityGroupId, igwId)
 

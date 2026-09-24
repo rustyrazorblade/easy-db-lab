@@ -34,8 +34,8 @@ import java.time.Instant
  * `ssh` against a fixed loopback port, which was non-deterministic across host network stacks
  * (issue #750). Driving the service's decisions through the injected process seam proves the same
  * behavioral contracts with no timing dependence. The tests that genuinely need a real listening
- * socket (proxy reuse, the port-fallback bind, the zombie-port connect) remain in the integration
- * tier in `ProcessSocksProxyServiceTest`.
+ * socket (proxy reuse, the zombie-port connect) remain in the integration tier in
+ * `ProcessSocksProxyServiceTest`; the port-fallback bind is in `LoopbackPortSelectorTest`.
  */
 @ResourceLock(Constants.Proxy.PORT_PROPERTY)
 class ProcessSocksProxyServiceUnitTest {
@@ -45,6 +45,9 @@ class ProcessSocksProxyServiceUnitTest {
 
         /** Arbitrary PID returned by fake processes; never inspected for liveness by these tests. */
         const val FAKE_PID = 4242L
+
+        /** Port the default fake selector hands out; nothing ever binds it. */
+        const val DEFAULT_TEST_PORT = 1080
     }
 
     @TempDir
@@ -81,12 +84,32 @@ class ProcessSocksProxyServiceUnitTest {
         probe: TunnelReachabilityProbe = TunnelReachabilityProbe { _, _, _ -> false },
         launcher: SshProcessLauncher =
             SshProcessLauncher { _, _ -> error("ssh launch not expected in this test") },
+        portSelector: LocalPortSelector = LocalPortSelector { DEFAULT_TEST_PORT },
     ) = ProcessSocksProxyService(
         Context.forCli(tempDir).copy(workingDirectory = tempDir),
         probe,
         verifyDelay = VERIFY_DELAY,
         processLauncher = launcher,
+        portSelector = portSelector,
     )
+
+    /** The `-D` port each launched ssh command was handed, in launch order. */
+    private fun dynamicForwardPorts(launched: List<List<String>>): List<Int> = launched.map { it[it.indexOf("-D") + 1].toInt() }
+
+    /** Writes what ssh prints when another process already holds its `-D` port. */
+    private fun writeBindFailureTranscript(
+        logFile: File,
+        port: Int,
+    ) {
+        logFile.writeText(
+            """
+            debug1: Local connections to LOCALHOST:$port forwarded to remote address socks:0
+            bind [127.0.0.1]:$port: Address already in use
+            channel_setup_fwd_listener_tcpip: cannot listen to port: $port
+            Could not request local forwarding.
+            """.trimIndent(),
+        )
+    }
 
     private fun writeStateFile(
         pid: Int,
@@ -210,6 +233,84 @@ class ProcessSocksProxyServiceUnitTest {
             .hasMessageContaining("ssh exited with code 255")
         // A failed start must never advertise a dead port — clients fall back to no-proxy.
         assertThat(System.getProperty(Constants.Proxy.PORT_PROPERTY)).isNull()
+    }
+
+    @Test
+    fun `a local port bind failure relaunches ssh on a newly selected port`() {
+        // Two workspaces starting a proxy at once can both find the same port free; the loser's ssh
+        // dies with "Address already in use". The service must pick a new port and relaunch, not
+        // fail the command.
+        val ports = ArrayDeque(listOf(1080, 41234))
+        val launched = mutableListOf<List<String>>()
+        val launcher =
+            SshProcessLauncher { command, logFile ->
+                launched.add(command)
+                if (launched.size == 1) {
+                    writeBindFailureTranscript(logFile, port = 1080)
+                    deadProcess(exitCode = 255)
+                } else {
+                    aliveProcess()
+                }
+            }
+
+        val state =
+            service(
+                probe = { _, _, _ -> true },
+                launcher = launcher,
+                portSelector = { ports.removeFirst() },
+            ).ensureRunning(testHost)
+
+        assertThat(dynamicForwardPorts(launched)).containsExactly(1080, 41234)
+        assertThat(state.localPort).isEqualTo(41234)
+        assertThat(System.getProperty(Constants.Proxy.PORT_PROPERTY)).isEqualTo("41234")
+        val recorded =
+            json.decodeFromString<Socks5ProxyStateFile>(File(tempDir, Constants.Vpc.SOCKS5_PROXY_STATE_FILE).readText())
+        assertThat(recorded.port).isEqualTo(41234)
+    }
+
+    @Test
+    fun `an ssh failure that is not a local port bind failure is not retried`() {
+        val launched = mutableListOf<List<String>>()
+        val launcher =
+            SshProcessLauncher { command, logFile ->
+                launched.add(command)
+                logFile.writeText("Permission denied (publickey).\n")
+                deadProcess(exitCode = 255)
+            }
+
+        assertThatThrownBy { service(launcher = launcher).ensureRunning(testHost) }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("Permission denied")
+
+        assertThat(launched).hasSize(1)
+    }
+
+    @Test
+    fun `a local port bind failure on every attempt gives up after the retry budget`() {
+        val nextPort = generateSequence(42000) { it + 1 }.iterator()
+        val launched = mutableListOf<List<String>>()
+        val launcher =
+            SshProcessLauncher { command, logFile ->
+                launched.add(command)
+                writeBindFailureTranscript(logFile, port = dynamicForwardPorts(listOf(command)).single())
+                deadProcess(exitCode = 255)
+            }
+
+        assertThatThrownBy {
+            service(launcher = launcher, portSelector = { nextPort.next() }).ensureRunning(testHost)
+        }.isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("Address already in use")
+
+        assertThat(launched).hasSize(Constants.Proxy.PORT_BIND_MAX_ATTEMPTS)
+        assertThat(System.getProperty(Constants.Proxy.PORT_PROPERTY)).isNull()
+    }
+
+    @Test
+    fun `isLocalPortBindFailure recognizes ssh's dynamic-forward bind errors`() {
+        assertThat(isLocalPortBindFailure(listOf("bind [127.0.0.1]:1080: Address already in use"))).isTrue()
+        assertThat(isLocalPortBindFailure(listOf("channel_setup_fwd_listener_tcpip: cannot listen to port: 1080"))).isTrue()
+        assertThat(isLocalPortBindFailure(listOf("Permission denied (publickey).", "Connection refused"))).isFalse()
+        assertThat(isLocalPortBindFailure(emptyList())).isFalse()
     }
 
     @Test

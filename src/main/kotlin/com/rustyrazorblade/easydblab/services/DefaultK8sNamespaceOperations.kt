@@ -4,8 +4,11 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.providers.aws.pollUntil
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.Pod
+import io.fabric8.kubernetes.api.model.apps.DaemonSet
+import io.fabric8.kubernetes.api.model.apps.DaemonSetBuilder
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.time.Duration
@@ -17,7 +20,7 @@ private val log = KotlinLogging.logger {}
  * Implementation of namespace-related K8s operations: observability status,
  * pod readiness, namespace deletion, resource deletion by label, and rollout restarts.
  *
- * @param podPollInterval How long to wait between pod-readiness polls. Defaults to
+ * @param podPollInterval How long to wait between pod-readiness and rollout-status polls. Defaults to
  *   [POD_POLL_INTERVAL_MS] so production timing is unchanged; integration tests inject a tiny
  *   value so they do not busy-wait a live cluster at 5s granularity.
  */
@@ -176,23 +179,70 @@ class DefaultK8sNamespaceOperations(
                     .daemonSets()
                     .inNamespace(namespace)
                     .withName(name)
-                    .edit { ds ->
-                        val annotations =
-                            ds.spec
-                                ?.template
-                                ?.metadata
-                                ?.annotations
-                                ?.toMutableMap()
-                                ?: mutableMapOf()
-                        annotations["kubectl.kubernetes.io/restartedAt"] = Instant.now().toString()
-                        ds.spec
-                            ?.template
-                            ?.metadata
-                            ?.annotations = annotations
-                        ds
-                    }
+                    .edit { ds -> withRestartedAt(ds, Instant.now()) }
             }
             log.info { "Rolling restart initiated for DaemonSet/$name" }
+        }
+
+    override fun waitForRollouts(
+        controlHost: ClusterHost,
+        workloads: List<WorkloadRef>,
+        namespace: String,
+        timeoutSeconds: Int,
+    ): Result<Unit> =
+        runCatching {
+            if (workloads.isEmpty()) return@runCatching
+            eventBus.emit(Event.K8s.RolloutsWaiting(workloads.map { it.toString() }))
+
+            clientProvider.createClient(controlHost).use { client ->
+                // Poll until nothing is pending or the deadline passes. The deadline, not an
+                // attempt count, bounds the wait, so a slow API server cannot stretch it.
+                val pending =
+                    pollUntil(
+                        operationName = "rollout-status",
+                        maxAttempts = Int.MAX_VALUE,
+                        interval = podPollInterval,
+                        deadline = Instant.now().plusSeconds(timeoutSeconds.toLong()),
+                        done = { it.isEmpty() },
+                    ) { pendingRollouts(client, namespace, workloads) }
+                check(pending.isEmpty()) {
+                    "Timed out after ${timeoutSeconds}s waiting for rollouts to complete: ${pending.joinToString("; ")}"
+                }
+            }
+
+            eventBus.emit(Event.K8s.RolloutsComplete(workloads.size))
+        }
+
+    /** What each unfinished workload is waiting on; empty once every rollout is complete. */
+    private fun pendingRollouts(
+        client: KubernetesClient,
+        namespace: String,
+        workloads: List<WorkloadRef>,
+    ): List<String> =
+        workloads.mapNotNull { ref ->
+            val progress =
+                when (ref.kind) {
+                    WorkloadKind.Deployment ->
+                        client
+                            .apps()
+                            .deployments()
+                            .inNamespace(namespace)
+                            .withName(ref.name)
+                            .get()
+                            ?.let(RolloutStatus::of)
+                    WorkloadKind.DaemonSet ->
+                        client
+                            .apps()
+                            .daemonSets()
+                            .inNamespace(namespace)
+                            .withName(ref.name)
+                            .get()
+                            ?.let(RolloutStatus::of)
+                } ?: RolloutProgress.Pending("$ref not found")
+            when (progress) {
+                RolloutProgress.Complete -> null
+                is RolloutProgress.Pending -> progress.reason.also { log.debug { it } }
+            }
         }
 
     private fun formatPodStatus(
@@ -493,3 +543,29 @@ class DefaultK8sNamespaceOperations(
 }
 
 private const val POD_POLL_INTERVAL_MS = 5000L
+
+/** The pod-template annotation whose change makes a workload controller roll its pods. */
+internal const val RESTARTED_AT_ANNOTATION = "kubectl.kubernetes.io/restartedAt"
+
+/**
+ * [ds] with its pod template stamped [RESTARTED_AT_ANNOTATION] = [at], as `kubectl rollout restart`
+ * does. A template without metadata gets it; a DaemonSet with no pod template at all cannot be
+ * restarted, and fails rather than being edited into a no-op.
+ */
+internal fun withRestartedAt(
+    ds: DaemonSet,
+    at: Instant,
+): DaemonSet {
+    checkNotNull(ds.spec?.template) {
+        "DaemonSet ${ds.metadata?.namespace}/${ds.metadata?.name} has no pod template to restart"
+    }
+    return DaemonSetBuilder(ds)
+        .editSpec()
+        .editTemplate()
+        .editOrNewMetadata()
+        .addToAnnotations(RESTARTED_AT_ANNOTATION, at.toString())
+        .endMetadata()
+        .endTemplate()
+        .endSpec()
+        .build()
+}

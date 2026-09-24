@@ -5,7 +5,7 @@
 - **Never assume the source checkout is available.** Most people install this tool with Homebrew. They have no repo, no working tree, and no `build/` directory. Any feature that scaffolds, generates, or reads files must work entirely from resources packaged in the distribution. Never bind-mount a repo directory, read a path inside the repo at runtime, or design a workflow that only works for someone with a clone.
 - **Never encode a personal or machine-specific path.** Any directory outside this repo — where a user keeps a database checkout, a scaffolded workspace, or test output — is a parameter, never a constant. A path named in conversation is an example of usage, not a requirement to hardcode. Take it as an argument and default it to the current directory.
 - This is a command line tool.  The user interacts by reading the output.  Do not suggest replacing print statements with logging, because it breaks the UX.
-- **Structured user-facing output** uses `eventBus.emit(Event.Domain.Type(...))` with domain-specific typed events. Events are defined as sealed data classes in `events/Event.kt` across 28 domain interfaces. See [`events/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/events/CLAUDE.md). **Events are for things an external system would need to be aware of** — lifecycle transitions, state changes, failures. If an MCP client or Redis subscriber would have no reason to care, it is not an event.
+- **Structured user-facing output** uses `eventBus.emit(Event.Domain.Type(...))` with domain-specific typed events. Events are defined as sealed data classes in `events/Event.kt` across 34 domain interfaces. See [`events/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/events/CLAUDE.md). **Events are for things an external system would need to be aware of** — lifecycle transitions, state changes, failures. If an MCP client or Redis subscriber would have no reason to care, it is not an event.
 - **For pure informational output** with no associated event type (e.g. help text, plain status lines), use Kotlin's `println()`. **Never use `System.out` directly** — `println()` is the idiomatic Kotlin equivalent and writes to stdout.
 - **Read-only display commands** (`info`, `list`, `show`, `describe`, and equivalents) produce pure output — no state changes, no domain facts occurred. Use `println()` directly in `execute()`; do **not** model the output as an event. A useful heuristic: if the command's name is a noun or `show`/`info`/`list`/`describe`, it almost certainly belongs in this category. Examples: `kit info`, `kit list`.
 - **Do NOT use `Event.Message` or `Event.Error`** — these generic types exist only for test convenience. When emitting events, always use domain-specific typed events with structured data fields.
@@ -210,6 +210,7 @@ When developing a new kit, the following is essential:
 - Full integration with the observability stack.
 - Use the open telemetry agant for JVM workloads
 - Dashboards
+- **Kits expose client ports through a NodePort Service** (range 30000-32767) on a fixed port no other kit uses — never `hostPort` or `hostNetwork`. `hostPort` depends on the CNI chaining the `portmap` plugin, and `hostNetwork` pins the pod to a host and turns a port clash into a CrashLoop. Follow postgres (30432) and clickhouse (30123). See `docs/development/kits.md`.
 
 ## Development Setup
 
@@ -260,6 +261,11 @@ The hook automatically runs `ktlintCheck` on staged Kotlin files before each com
 The project uses Gradle configuration cache for faster builds, enabled via `gradle.properties`:
 - `org.gradle.configuration-cache=true` - Enables configuration caching
 - `org.gradle.caching=true` - Enables build caching
+
+A build that uses it ends with `Configuration cache entry stored.` or `... reused.` A task action
+must not reach `project` (e.g. the script-level `copy {}` in a `doLast`) — Gradle rejects the
+cache entry. The Jib plugin's `jib`/`jibDockerBuild` tasks declare themselves incompatible, so a
+build that runs them discards the entry and runs uncached; every other task caches.
 
 **When to clear the cache**:
 - After modifying `.editorconfig` or ktlint rules
@@ -356,7 +362,7 @@ The cluster runs a full observability stack on the control node. When modifying 
 
 All observability K8s resources are built programmatically using Fabric8 manifest builders in `configuration/` subpackages. No raw YAML files remain in the core observability stack. See [`configuration/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/configuration/CLAUDE.md) for detailed builder documentation.
 
-**CNI**: K3s uses its built-in Flannel overlay by default. Cilium ENI native routing (no encapsulation; pods get VPC-routable ENI secondary IPs) is selectable via `--cni=cilium` at init. When Cilium is selected, Hubble is enabled for L7 network visibility, Hubble UI is a NodePort on `Constants.Cilium.HUBBLE_UI_NODE_PORT` (31234), and the collector scrapes the Cilium agent (`localhost:9962`), Hubble (`localhost:9965`), and the operator (port 9963, node-local pod discovery in `kube-system`). `OtelManifestBuilder.buildCniScrapeJobs(cni)` renders those three jobs only for `CniMode.Cilium`; `ObservabilityStackService` and `OtelSyncService` read the CNI from cluster state. `platform cni` reads the datapath back (`CiliumInspectionService`). `up` marks the install window with Grafana annotations tagged `cilium`, recorded by `CiliumInstallAnnotator` at install time and posted after the stack is up.
+**CNI**: Cilium ENI native routing (no encapsulation; pods get VPC-routable ENI secondary IPs) is the default. `--cni=flannel` at init selects K3s's built-in Flannel overlay instead. A saved state with no recorded CNI predates Cilium and is read as Flannel (`ClusterStateManager.load`). When Cilium is selected, Hubble is enabled for L7 network visibility, Hubble UI is a NodePort on `Constants.Cilium.HUBBLE_UI_NODE_PORT` (31234), and the collector scrapes the Cilium agent (`localhost:9962`), Hubble (`localhost:9965`), and the operator (port 9963, node-local pod discovery in `kube-system`). `OtelManifestBuilder.buildCniScrapeJobs(cni)` renders those three jobs only for `CniMode.Cilium`; `ObservabilityStackService` and `OtelSyncService` read the CNI from cluster state. `platform cni` reads the datapath back (`CiliumInspectionService`). `up` marks the install window with Grafana annotations tagged `cilium`, recorded by `CiliumInstallAnnotator` at install time and posted after the stack is up. Before starting K3s on a Cilium cluster, `up` checks every node over SSH for the base AMI's Cilium node fixes (`Constants.Cilium.NODE_FIX_FILES`, via `CiliumNodeImageCheck`) and fails with `Cilium.NodeImageMissingFixes` if any node lacks them.
 
 **Collectors** (run on cluster nodes): OTel Collector, Fluent Bit (journald), Grafana Alloy (eBPF profiling), Beyla (L7 RED metrics), ebpf_exporter (TCP/block I/O/VFS), YACE (CloudWatch), kube-state-metrics (K8s object state, control node, scraped by node-local pod discovery), OpenTelemetry Java agent (Cassandra metrics, over OTLP), Cilium agent/operator/Hubble scrapes (Cilium clusters only)
 
@@ -365,7 +371,7 @@ All observability K8s resources are built programmatically using Fabric8 manifes
 **Storage backends** (control node): VictoriaMetrics (metrics, port 8428), VictoriaLogs (logs, port 9428), Tempo (traces, port 3200), Pyroscope (profiles, port 4040)
 
 **Grafana** (port 3000): Two dashboard sources:
-- **Kit dashboards**: JSON files in `src/main/resources/.../kits/<name>/dashboards/`. `KitRunnerCommand` auto-installs them into a Grafana folder named after the kit after a successful `start`. Adding a JSON file is all that's required.
+- **Kit dashboards**: JSON files in `src/main/resources/.../kits/<name>/dashboards/`. `KitRunnerCommand` auto-installs them into a Grafana folder named after the kit after a successful `start`. Adding a JSON file is all that's required, unless the kit declares a `dashboards:` list in `kit.yaml` (postgres does, to install each extension's dashboard only in that extension's instance) — then the file must be listed there too.
 - **Core dashboards**: JSON files in the top-level `dashboards/<folder>/` tree, one subdirectory per Grafana folder; adding a dashboard is dropping a JSON file into a folder directory, and the mechanism that gets the tree to Grafana is described once, in [`dashboards/CLAUDE.md`](dashboards/CLAUDE.md). **Do NOT add kit dashboards here** — they belong with their kit.
 
 **Always use the `dashboard-editor` agent for any dashboard change** — editing a panel query, fixing a wrong-looking graph, changing units, adding a panel or a dashboard. The agent enforces the full edit → deploy → read-back-from-Grafana sequence, and knows the metric traps (notably that `system_cpu_time_seconds_total` has no per-core label, which made four dashboards render CPU at -190%). See [`dashboards/CLAUDE.md`](dashboards/CLAUDE.md).

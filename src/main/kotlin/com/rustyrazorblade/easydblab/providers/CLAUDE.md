@@ -11,6 +11,7 @@ providers/
 │   ├── AWS.kt              # Low-level IAM, S3, STS operations
 │   ├── EC2.kt              # Low-level EC2 operations
 │   ├── RetryUtil.kt        # Centralized retry configuration
+│   ├── PollUntil.kt        # pollUntil: fixed-interval poll over createPollUntilRetryConfig
 │   ├── AWSPolicy.kt        # Policy definitions and templates
 │   ├── IamPolicy.kt        # IAM policy data model
 │   ├── IamPolicySerializers.kt # IAM policy serialization
@@ -59,14 +60,27 @@ Always use factory methods instead of creating manual retry configurations.
 | `createSshConnectionRetryConfig()` | 30 | Fixed 10s | SSH boot-up (~5 min total) |
 | `createS3LogRetrievalRetryConfig<T>()` | 10 | Fixed 3s | S3 log retrieval (eventual consistency) |
 | `createVpcTeardownRetryConfig<T>()` | 5 | Exponential 5s→40s | VPC teardown DependencyViolation |
+| `createVpcAutoCidrRetryConfig()` | 3 | None | VPC creation on an auto-selected CIDR (`SdkException` only); `up` picks a new random unused block per attempt |
+| `createLocalPortBindRetryConfig()` | 3 | Fixed 100ms | Local listener lost its port between selection and bind (`BindException` only); the SOCKS proxy selects a new port per attempt |
+| `createPollUntilRetryConfig<T>(maxAttempts, interval, done, deadline?)` | caller | Fixed `interval` | Poll until a result condition holds; any exception is retried within the budget, only the last look's exception fails; an unmet condition returns the last result. An optional wall-clock `deadline` ends the poll however many attempts remain (`waitForRollouts` passes `Int.MAX_VALUE` attempts and a deadline) |
 
 ### Convenience Wrappers
 
+The `with*Retry` wrappers are top-level functions in `RetryWrappers.kt`, beside `RetryUtil`, not
+members of it; `RetryUtil` holds only the config factories.
+
 ```kotlin
-// Short-hand for common patterns
-val result = RetryUtil.withAwsRetry("describe-cluster") { emrClient.describeCluster(request) }
-val result = RetryUtil.withEc2InstanceRetry("describe") { ec2Client.describeInstances(request) }
-RetryUtil.withVpcTeardownRetry("delete-sg") { ec2Client.deleteSecurityGroup(request) }
+// Short-hand for common patterns (top-level functions in RetryWrappers.kt)
+val result = withAwsRetry("describe-cluster") { emrClient.describeCluster(request) }
+val result = withEc2InstanceRetry("describe") { ec2Client.describeInstances(request) }
+withVpcTeardownRetry("delete-sg") { ec2Client.deleteSecurityGroup(request) }
+withS3BucketPolicyRetry("put-bucket-policy") { s3Client.putBucketPolicy(request) }
+
+// Poll until a condition holds (top-level pollUntil in PollUntil.kt, over createPollUntilRetryConfig);
+// returns the last result if it never does
+val pods = pollUntil("wait-for-pod", maxAttempts = 10, interval = Duration.ofSeconds(3), done = { it.isNotEmpty() }) {
+    k8sService.getPods().getOrThrow()
+}
 ```
 
 ## AWSModule.kt Registration

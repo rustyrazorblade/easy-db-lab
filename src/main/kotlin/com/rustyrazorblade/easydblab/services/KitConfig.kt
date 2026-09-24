@@ -14,7 +14,9 @@ import kotlinx.serialization.modules.subclass
  * Declares how a kit's metrics reach the OTel collector.
  *
  * - [Scrape]: kit exposes a Prometheus endpoint; OTel DaemonSet scrapes it via hostPort
- * - [JavaAgent]: JVM kit uses the OTel Java agent JAR at /usr/local/otel/opentelemetry-javaagent.jar
+ * - [JavaAgent]: declarative — the JVM kit loads the OTel Java agent, which pushes OTLP to the
+ *   collector on its node; no OTel ConfigMap changes. The jar is
+ *   `/usr/local/otel/opentelemetry-javaagent.jar`, mounted from the host (baked into the base AMI).
  * - [HelmNative]: kit has built-in telemetry via helm values; no OTel config change needed
  */
 @Serializable
@@ -230,7 +232,7 @@ data class KitConfig(
     val description: String = "",
     val version: String = "",
     @SerialName("collision-check")
-    val collisionCheck: Boolean = false,
+    val collisionCheck: CollisionCheck = CollisionCheck.NONE,
     val dashboards: List<DashboardRef> = emptyList(),
     val args: List<KitArgSpec> = emptyList(),
     val metrics: List<KitMetrics> = emptyList(),
@@ -266,10 +268,16 @@ data class KitConfig(
         }
 }
 
+/**
+ * A dashboard a kit installs into its Grafana folder after `start`. A dashboard with an
+ * [extension] is installed only by the instance created with that extension (postgres-duckdb
+ * installs `duckdb.json`, not PostGIS's); one with none is installed by every instance.
+ */
 @Serializable
 data class DashboardRef(
     val path: String,
     val name: String = "",
+    val extension: String = "",
 )
 
 @Serializable

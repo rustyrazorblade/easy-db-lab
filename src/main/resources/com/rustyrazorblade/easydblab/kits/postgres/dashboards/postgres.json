@@ -37,6 +37,21 @@
         "query": "prometheus",
         "refresh": 1,
         "type": "datasource"
+      },
+      {
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "definition": "label_values(cnpg_collector_up{job=\"postgres\"}, k8s_app_instance)",
+        "description": "The instance whose logs the logs panel shows. Its job selector is rewritten at install to the instance's own scrape job, so it resolves to that instance.",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "app_instance",
+        "options": [],
+        "query": { "query": "label_values(cnpg_collector_up{job=\"postgres\"}, k8s_app_instance)", "refId": "StandardVariableQuery" },
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
       }
     ]
   },
@@ -453,7 +468,7 @@
       "targets": [
         {
           "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
-          "expr": "log.file.name:postgres",
+          "expr": "k8s.app.instance:=\"$app_instance\" k8s.container.name:=postgres",
           "refId": "A",
           "legendFormat": ""
         }

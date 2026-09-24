@@ -1,21 +1,28 @@
 package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.commands.tailscale.TailscaleStart
 import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
+import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.services.K3sSetupResult
 import com.rustyrazorblade.easydblab.services.LocalTailscaleState
 import com.rustyrazorblade.easydblab.services.ProvisioningResult
+import com.rustyrazorblade.easydblab.services.TailscaleApiException
+import com.rustyrazorblade.easydblab.services.TailscaleAuthKey
+import com.rustyrazorblade.easydblab.services.TailscaleService
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatCode
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.eq
+import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
@@ -312,6 +319,39 @@ class UpTest : UpTestFixture() {
             .hasMessageContaining("easy-db-lab tailscale start")
 
         verify(mockK3sClusterService, never()).setupCluster(any())
+    }
+
+    /**
+     * Runs the real [TailscaleStart] under `up`, against a tailnet that refuses to delete the
+     * device an earlier start recorded. Tailscale itself came up, so `up` carries on; only the
+     * stale device is left for the user to remove by hand.
+     */
+    @Test
+    fun `up continues when Tailscale starts but the previously recorded device cannot be removed`() {
+        overrideUser(tailscaleUser())
+        val state = happyState().apply { tailscaleDeviceId = "nOldCNTRL" }
+        whenever(mockClusterStateManager.load()).thenReturn(state)
+        val tailscaleService = mock<TailscaleService>()
+        whenever(tailscaleService.isConnected(any())).thenReturn(Result.success(false))
+        whenever(tailscaleService.generateAuthKey(any(), any(), any()))
+            .thenReturn(TailscaleAuthKey(key = "auth-key", id = "key-id"))
+        whenever(tailscaleService.startTailscale(any(), any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(tailscaleService.getDeviceId(any())).thenReturn(Result.success("nNewCNTRL"))
+        whenever(tailscaleService.getStatus(any())).thenReturn(Result.success("Connected"))
+        whenever(tailscaleService.deleteDevice(any(), any(), any()))
+            .thenThrow(TailscaleApiException("not allowed to delete device nOldCNTRL"))
+        getKoin().loadModules(listOf(module { single<TailscaleService> { tailscaleService } }), allowOverride = true)
+        whenever(mockCommandExecutor.execute<PicoCommand>(any())).thenAnswer { invocation ->
+            @Suppress("UNCHECKED_CAST")
+            val command = (invocation.arguments[0] as () -> PicoCommand)()
+            if (command is TailscaleStart) command.call() else 0
+        }
+
+        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
+
+        assertThat(state.tailscaleDeviceId).isEqualTo("nNewCNTRL")
+        assertThat(outputHandler.errors.joinToString("\n") { it.first }).contains("nOldCNTRL")
+        verify(mockK3sClusterService).setupCluster(any())
     }
 
     @Test

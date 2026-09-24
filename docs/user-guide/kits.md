@@ -4,7 +4,7 @@ A kit is a self-contained package of configuration and scripts that installs, st
 and optionally backs up a workload on your cluster. Each kit defines its full lifecycle in a
 `kit.yaml` file using typed steps — no Kubernetes YAML wrangling required.
 
-easy-db-lab ships with built-in kits (ClickHouse, Presto, Trino, TiDB, sysbench). You can
+easy-db-lab ships with built-in kits (ClickHouse, Presto, Trino, TiDB, memcached, Neo4j, sysbench). You can
 also create your own kits for any workload you want to benchmark or test.
 
 ## Discovering kits
@@ -20,6 +20,9 @@ Inspect a kit before installing it — see its args, endpoints, and available co
 ```bash
 easy-db-lab kit info clickhouse
 ```
+
+Run from a cluster workspace, `kit info` lists each endpoint at its node's private IP. Before
+the cluster has hosts of that node type, it lists the bare NodePort (`:30123`).
 
 ## Installing a kit
 
@@ -102,6 +105,91 @@ easy-db-lab clickhouse backup --name my-backup   # back up data
 easy-db-lab clickhouse restore --name my-backup  # restore from backup
 easy-db-lab clickhouse uninstall   # stop and remove all kit resources
 ```
+
+## memcached
+
+The `memcached` kit runs one memcached pod on a db node. By default it runs from RAM only and
+creates no persistent volumes; `--extstore-size` adds extstore on the db node's NVMe (see
+[extstore](#memcached-extstore) below).
+
+Install it, optionally setting the cache size in megabytes with `--memory` (default 1024,
+passed to memcached as `-m`):
+
+```bash
+easy-db-lab kit install memcached --memory 4096
+```
+
+Start it:
+
+```bash
+easy-db-lab memcached start
+```
+
+memcached is published on NodePort **31211**, so it is reachable on any node's private IP.
+`memcached start`, `memcached status` and `kit info memcached` all print the endpoint resolved
+to each db node's private IP:
+
+```bash
+easy-db-lab kit info memcached
+# Endpoints:
+#   memcached  db  <db node private IP>:31211  native
+```
+
+Connect from a pod in the cluster, or from your machine over Tailscale:
+
+```bash
+printf 'set greeting 0 0 5\r\nhello\r\nget greeting\r\nquit\r\n' | nc <db node private IP> 31211
+```
+
+A `memcached-exporter` sidecar serves Prometheus metrics on port 9150. The collector finds the
+pod by label and scrapes it, so the series land in VictoriaMetrics under `job="memcached"`. The
+kit's `METRICS.md` lists them.
+
+### memcached extstore
+
+extstore lets memcached keep item values on flash once RAM is full. It is off unless you pass
+`--extstore-size`, which sets the size of the extstore file (a whole number with an `M`, `G` or `T`
+suffix):
+
+```bash
+easy-db-lab kit install memcached --memory 4096 --extstore-size 100G
+```
+
+With extstore on, `kit install` creates a local PersistentVolume on the db node's NVMe, and the
+memcached container mounts it at `/data` and runs with `-o ext_path=/data/extstore:<size>`.
+
+These install options tune extstore. Each one is passed to memcached only when you set it, so
+memcached's own default applies otherwise. Without `--extstore-size` they are ignored.
+
+| Option | memcached option | Meaning |
+|--------|------------------|---------|
+| `--extstore-page-size` | `ext_page_size` | Page size in MB |
+| `--extstore-wbuf-size` | `ext_wbuf_size` | Write buffer size in MB |
+| `--extstore-threads` | `ext_threads` | IO threads |
+| `--extstore-item-size` | `ext_item_size` | Smallest item, in bytes, that goes to flash |
+
+```bash
+easy-db-lab kit install memcached --extstore-size 100G --extstore-threads 8 --extstore-item-size 512
+```
+
+`memcached uninstall` also deletes the extstore volume claim, the PersistentVolume, and its
+directory on the node.
+
+### Stopping and uninstalling
+
+Stop it, or uninstall it to also remove the kit directory. `stop` deletes the Deployment, its
+ReplicaSet and pods, the Service and the ConfigMap labelled `easydblab/kit=memcached`; `uninstall`
+deletes those plus the extstore volume claim, then the extstore PersistentVolume:
+
+```bash
+easy-db-lab memcached stop
+easy-db-lab memcached uninstall
+```
+
+Installing memcached a second time fails with a collision error and exits non-zero, leaving the
+running kit untouched. Pass `--force` to overwrite the scaffold. Running `memcached start` while
+memcached is already running also fails with a collision error; run `memcached stop` first.
+`stop` returns once the memcached pod is gone, so `start` can follow it straight away.
 
 ## Installing a custom kit
 

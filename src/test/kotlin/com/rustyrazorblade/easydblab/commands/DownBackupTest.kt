@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -128,6 +129,45 @@ class DownBackupTest : BaseKoinTest() {
         // The teardown must never be attempted: no infrastructure was removed.
         verify(teardownService, never()).teardownVpc(any(), any())
         assertThat(errorOutput()).contains("no infrastructure was removed")
+    }
+
+    @Test
+    fun `a failed backup makes down exit non-zero`() {
+        whenever(clusterStateManager.exists()).thenReturn(true)
+        whenever(clusterStateManager.load()).thenReturn(upClusterState())
+        whenever(teardownBackupService.backupBeforeTeardown(any(), any()))
+            .thenReturn(Result.failure(IllegalStateException("grafana unreachable")))
+
+        val exitCode = Down().apply { autoApprove = true }.call()
+
+        // Nothing was torn down, so a script driving `down` must see a failure, not success.
+        assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+        verify(teardownService, never()).teardownVpc(any(), any())
+    }
+
+    @Test
+    fun `a tunnel-setup failure makes down exit non-zero`() {
+        whenever(clusterStateManager.exists()).thenReturn(true)
+        whenever(clusterStateManager.load()).thenReturn(upClusterState())
+        whenever(socksProxyService.ensureRunning(any()))
+            .thenThrow(IllegalStateException("SOCKS5 proxy failed to establish a working tunnel"))
+
+        val exitCode = Down().apply { autoApprove = true }.call()
+
+        assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+        assertThat(errorOutput()).contains("no infrastructure was removed")
+    }
+
+    @Test
+    fun `a successful backup and teardown exits zero`() {
+        whenever(clusterStateManager.exists()).thenReturn(true)
+        whenever(clusterStateManager.load()).thenReturn(upClusterState())
+        whenever(teardownBackupService.backupBeforeTeardown(any(), any())).thenReturn(Result.success(Unit))
+        whenever(teardownService.teardownVpc(any(), eq(true))).thenReturn(TeardownResult.success(emptyList()))
+
+        val exitCode = Down().apply { autoApprove = true }.call()
+
+        assertThat(exitCode).isEqualTo(0)
     }
 
     @Test

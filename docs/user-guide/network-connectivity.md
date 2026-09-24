@@ -4,7 +4,7 @@ This guide covers how to connect to your easy-db-lab cluster from your local mac
 
 ## Overview
 
-easy-db-lab clusters run in a private AWS VPC. By default, the VPC uses `10.0.0.0/16`, but you can customize this:
+easy-db-lab clusters run in a private AWS VPC. By default, `up` picks a random `10.X.0.0/16` block that no existing VPC in the region uses, and prints the one it chose. If creating the VPC fails, it retries a few times, each time on a new random unused block. To choose the block yourself, pass `--cidr`; it is used as-is and not retried:
 
 ```bash
 easy-db-lab init --cidr 10.14.0.0/20 ...
@@ -55,7 +55,7 @@ The `autoApprovers` section automatically approves subnet routes, so you don't n
 2. Click **Generate OAuth Client**
 3. Configure:
    - **Description**: easy-db-lab
-   - **Scopes**: Select **Devices: Write**
+   - **Scopes**: **Auth Keys** write (`auth_keys`), to create the control node's key, and **Devices › Core** write (`devices:core`), so `down` and `tailscale stop` can remove the control node's device
    - **Tags**: Add `tag:easy-db-lab`
 4. Click **Generate** and save the **Client ID** and **Client Secret**
 
@@ -92,6 +92,8 @@ kubectl get pods
 # http://10.0.1.50:3000 (Grafana)
 ```
 
+`easy-db-lab down` and `easy-db-lab tailscale stop` remove the cluster's control node from the tailnet, using the device ID recorded when Tailscale started on it (`tailscale stop` does this even when Tailscale is already down), so a later `tailscale start` does not leave the old device beside the new one. If the OAuth client is not allowed to delete devices, or no credentials are configured, the command exits non-zero and says so; the device ID stays in the cluster state, so running it again once the scope is granted removes it. `tailscale start` likewise removes a previously recorded device when the control node registers as a new one; if that removal fails it reports the old device (and the `devices:core` scope, when the OAuth client lacks it) so you can remove it by hand, records the new one, and still succeeds, so `up` carries on.
+
 ### Manual Control
 
 ```bash
@@ -124,7 +126,7 @@ If you don't want to set up Tailscale, the SOCKS proxy provides connectivity via
 ```
 ┌─────────────────┐     SSH Tunnel      ┌──────────────┐
 │  Your Machine   │ ──────────────────► │ Control Node │
-│  localhost:1080 │                     │  (control0)  │
+│ localhost:<port>│                     │  (control0)  │
 └────────┬────────┘                     └──────┬───────┘
          │                                     │
     SOCKS5 Proxy                         Private VPC
@@ -141,7 +143,15 @@ kubectl get pods
 curl http://control0:9428/health
 ```
 
-The proxy starts automatically when you load the environment.
+The `easy-db-lab` CLI starts the proxy: any command that needs to reach the cluster starts it, or
+reuses the one already running, before the command does its work. Sourcing `env.sh` does not start
+the proxy. Its wrappers only read the proxy's port from `.socks5-proxy-state`. If no command has
+started the proxy yet, run `start-socks5` before using the wrappers.
+
+The proxy listens on port 1080 when it is free. When another process already holds 1080 — most
+often the proxy of another cluster workspace you are running at the same time — the proxy picks a
+free port instead. Each workspace records its own port in `.socks5-proxy-state`, and the shell
+wrappers in `env.sh` read it from there, so several clusters can run side by side.
 
 ### Proxied Commands
 
@@ -201,7 +211,7 @@ Configure your browser's SOCKS5 proxy:
 | Setting | Value |
 |---------|-------|
 | SOCKS Host | `localhost` |
-| SOCKS Port | `1080` |
+| SOCKS Port | the workspace's proxy port (`1080` unless it was taken; `socks5-status` shows it) |
 | SOCKS Version | 5 |
 
 Then access cluster services:
@@ -267,7 +277,7 @@ source env.sh
 
 **Port already in use:**
 ```bash
-lsof -i :1080         # Check what's using it
+lsof -i :1080         # Check what's using the default port
 start-socks5 1081     # Use different port
 ```
 

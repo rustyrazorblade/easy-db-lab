@@ -7,6 +7,10 @@ CATALOGS_DIR="${SCRIPT_DIR}/../catalogs"
 CATALOG_YAML="${SCRIPT_DIR}/../.catalogs-override.yaml"
 export KUBECONFIG="${SCRIPT_DIR}/../../__KUBECONFIG__"
 
+# Pinned: KitWorkloadProbe finds the release's pods by the
+# app.kubernetes.io/instance=<release> label, verified for this chart version.
+PRESTO_CHART_VERSION="0.4.0"
+
 catalog_content=""
 
 # Add a catalog entry from a properties file
@@ -43,6 +47,7 @@ done
 if [ -n "$catalog_content" ]; then
     printf "catalog:\n%s" "$catalog_content" > "$CATALOG_YAML"
     helm upgrade --install presto prestodb/presto \
+      --version "${PRESTO_CHART_VERSION}" \
       --namespace default \
       --create-namespace \
       --values "${SCRIPT_DIR}/../values.yaml" \
@@ -50,6 +55,7 @@ if [ -n "$catalog_content" ]; then
       --wait
 else
     helm upgrade --install presto prestodb/presto \
+      --version "${PRESTO_CHART_VERSION}" \
       --namespace default \
       --create-namespace \
       --values "${SCRIPT_DIR}/../values.yaml" \

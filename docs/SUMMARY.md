@@ -16,7 +16,6 @@
   - [Spark](user-guide/spark.md)
 - [Kits](user-guide/kits.md)
   - [ClickHouse](user-guide/clickhouse.md)
-    - [Backup & Restore](user-guide/clickhouse-backup-restore.md)
   - [Kafka](user-guide/kafka.md)
   - [Apache Ignite 3](user-guide/ignite3.md)
   - [Neo4j](user-guide/neo4j.md)

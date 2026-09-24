@@ -403,9 +403,36 @@ See `kits/presto/METRICS.md` for an example.
 
 ### Exporting the Metrics Catalog
 
-`metrics-catalog.json` lists every series a running kit sends to VictoriaMetrics under
+`metrics-catalog.json` lists every metric a running kit sends to VictoriaMetrics under
 `job="<kit>"`. It is exported from a live cluster by `bin/export-workload-metrics`, and the
 committed copy is what `METRICS.md` and the kit's dashboards are built from.
+
+The catalog is compact: `series` holds one entry per distinct metric name, and each entry's
+`labels` maps a label key to the sorted distinct values seen for it, at most 20 per key
+(`MAX_LABEL_VALUES` in the script). Per-pod identity labels (`k8s_pod_uid`, `k8s_pod_name`,
+`instance`, `service_instance_id`) are dropped, so the file does not grow with the number of
+pods:
+
+```json
+{
+  "workload": "clickhouse",
+  "exported_at": "2026-09-23T12:00:00Z",
+  "series": [
+    {
+      "name": "ClickHouseMetrics_Query",
+      "labels": { "job": ["clickhouse"], "host_name": ["db0", "db1", "db2"] }
+    }
+  ]
+}
+```
+
+The transform lives in `bin/metrics-catalog.jq`, so an older catalog can be converted offline
+with the same code the script uses:
+
+```bash
+jq -L bin --argjson cap 20 'include "metrics-catalog"; .series |= compact_series($cap)' \
+   old-catalog.json > metrics-catalog.json
+```
 
 Only series with a sample in the last five minutes are exported, so series left behind by pods
 that have since been replaced do not end up in the catalog. Export while the kit is running and

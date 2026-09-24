@@ -87,5 +87,5 @@ Available with both `flink_taskmanager_Status_JVM_*` and `flink_jobmanager_Statu
 | `flink_taskmanager_job_task_buffers_inputQueueLength` | Input queue length (buffers) |
 | `flink_taskmanager_job_task_buffers_outputQueueLength` | Output queue length (buffers) |
 
-See `metrics-catalog.json` for the full set of 300+ series, including per-operator
+See `metrics-catalog.json` for the full set of 180+ metrics, including per-operator
 (`flink_taskmanager_job_task_operator_*`) and Netty shuffle (`*_Shuffle_Netty_*`) metrics.

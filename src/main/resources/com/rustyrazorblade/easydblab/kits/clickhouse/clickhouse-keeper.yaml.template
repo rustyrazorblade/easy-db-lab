@@ -10,6 +10,14 @@ spec:
     templates:
       podTemplate: clickhouse-keeper-pod
   configuration:
+    settings:
+      # Keeper serves no Prometheus endpoint unless enabled. 7000 is clear of its client (2181),
+      # raft (9444) and http_control (9182) ports; kit.yaml scrapes it by pod discovery.
+      prometheus/endpoint: /metrics
+      prometheus/port: 7000
+      prometheus/metrics: true
+      prometheus/events: true
+      prometheus/asynchronous_metrics: true
     clusters:
       - name: keeper
         layout:

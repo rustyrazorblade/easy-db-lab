@@ -386,7 +386,7 @@ This removes all ClickHouse pods, services, and associated resources from Kubern
 ClickHouse metrics are automatically integrated with the observability stack:
 
 - **Grafana Dashboard**: Pre-configured dashboard for ClickHouse metrics
-- **Metrics Port**: `9363` for Prometheus-compatible metrics
+- **Metrics Port**: `9363` for Prometheus-compatible metrics; Keeper serves its own on `7000`
 - **Logs Dashboard**: Dedicated dashboard for ClickHouse logs
 
 ## Architecture
@@ -425,4 +425,5 @@ This ensures `clickhouse-X` always runs on `dbX`, providing:
 | 9009 | Inter-server communication |
 | 9363 | Metrics |
 | 2181 | Keeper client |
-| 9234 | Keeper Raft |
+| 9444 | Keeper Raft |
+| 7000 | Keeper metrics |

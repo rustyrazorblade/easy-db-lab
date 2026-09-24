@@ -62,6 +62,10 @@ class ClickHouseKitTest : BaseKoinTest() {
 
     private companion object {
         const val SCRIPT_TIMEOUT_SECONDS = 20L
+        const val KEEPER_METRICS_PORT = 7000
+
+        /** The ports a Keeper pod already listens on: client, raft and http_control. */
+        val KEEPER_LISTEN_PORTS = listOf(2181, 9444, 9182)
     }
 
     @Test
@@ -119,5 +123,28 @@ class ClickHouseKitTest : BaseKoinTest() {
             )
         assertThat(terms.flatMap { it["matchExpressions"] as List<*> })
             .containsExactly(mapOf("key" to "type", "operator" to "In", "values" to listOf("db")))
+    }
+
+    /** The CHK's `spec.configuration.settings`, each value as a string. */
+    private fun keeperSettings(): Map<String, String> =
+        keeper()
+            .get<Map<String, Any>>("spec", "configuration", "settings")
+            .mapValues { it.value.toString() }
+
+    /**
+     * Keeper serves no Prometheus endpoint unless its config enables one, so the dashboard's Keeper
+     * panels had nothing to show. The port must not be one Keeper already listens on: 2181
+     * (client), 9444 (raft) or 9182 (http_control).
+     */
+    @Test
+    fun `keeper serves its metrics, events and asynchronous metrics over Prometheus on a free port`() {
+        val settings = keeperSettings()
+
+        assertThat(settings).containsEntry("prometheus/endpoint", "/metrics")
+        assertThat(settings).containsEntry("prometheus/metrics", "true")
+        assertThat(settings).containsEntry("prometheus/events", "true")
+        assertThat(settings).containsEntry("prometheus/asynchronous_metrics", "true")
+        assertThat(settings["prometheus/port"]).isEqualTo(KEEPER_METRICS_PORT.toString())
+        assertThat(KEEPER_METRICS_PORT).isNotIn(KEEPER_LISTEN_PORTS)
     }
 }

@@ -66,18 +66,101 @@ test_queries_only_series_live_in_the_window() {
   fi
 }
 
-test_writes_each_live_series_as_name_and_labels() {
+test_writes_one_entry_per_metric_name_with_label_values() {
   tests_run=$((tests_run + 1))
   setup "${LIVE_RESPONSE}"
   run_script memcached || { fail "script exited non-zero: $(cat "${WORK}/out.txt")"; return; }
 
   local catalog="${WORK}/memcached/metrics-catalog.json"
   [ "$(jq -r '.workload' "${catalog}")" = "memcached" ] || fail "workload field is wrong"
-  [ "$(jq -c '[.series[].name]' "${catalog}")" = '["memcached_up","memcached_current_items"]' ] \
+  jq -e '.exported_at | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")' "${catalog}" > /dev/null \
+    || fail "exported_at must be ISO-8601 UTC: $(jq -c '.exported_at' "${catalog}")"
+  [ "$(jq -c '[.series[].name]' "${catalog}")" = '["memcached_current_items","memcached_up"]' ] \
     || fail "series names are wrong: $(jq -c '.series' "${catalog}")"
-  [ "$(jq -c '.series[0].labels' "${catalog}")" = '{"job":"memcached","instance":"memcached-abc"}' ] \
-    || fail "labels must be the metric's labels without __name__: $(jq -c '.series[0]' "${catalog}")"
-  grep -q "Wrote 2 series" "${WORK}/out.txt" || fail "expected 'Wrote 2 series', got: $(cat "${WORK}/out.txt")"
+  [ "$(jq -c '.series[1].labels' "${catalog}")" = '{"job":["memcached"]}' ] \
+    || fail "labels must map each key to its values: $(jq -c '.series[1]' "${catalog}")"
+  grep -q "Wrote 2 metrics" "${WORK}/out.txt" || fail "expected 'Wrote 2 metrics', got: $(cat "${WORK}/out.txt")"
+}
+
+# The same metric from three pods: one entry, the pods' label values merged, and none of the
+# per-pod identity labels that make the file grow with the number of pods.
+MULTI_POD_RESPONSE='{"status":"success","data":{"resultType":"vector","result":[
+  {"metric":{"__name__":"ch_queries","job":"clickhouse","shard":"1","instance":"10.0.0.1:9363","k8s_pod_name":"ch-0","k8s_pod_uid":"u0","service_instance_id":"s0"},"value":[1,"1"]},
+  {"metric":{"__name__":"ch_queries","job":"clickhouse","shard":"2","instance":"10.0.0.2:9363","k8s_pod_name":"ch-1","k8s_pod_uid":"u1","service_instance_id":"s1"},"value":[1,"1"]},
+  {"metric":{"__name__":"ch_queries","job":"clickhouse","shard":"1","instance":"10.0.0.3:9363","k8s_pod_name":"ch-2","k8s_pod_uid":"u2","service_instance_id":"s2"},"value":[1,"1"]}
+]}}'
+
+test_merges_pods_into_one_entry_per_metric_name() {
+  tests_run=$((tests_run + 1))
+  setup "${MULTI_POD_RESPONSE}"
+  run_script clickhouse || { fail "script exited non-zero: $(cat "${WORK}/out.txt")"; return; }
+
+  local catalog="${WORK}/clickhouse/metrics-catalog.json"
+  [ "$(jq -c '.series' "${catalog}")" = '[{"name":"ch_queries","labels":{"job":["clickhouse"],"shard":["1","2"]}}]' ] \
+    || fail "expected one entry with merged values and no identity labels: $(jq -c '.series' "${catalog}")"
+}
+
+test_drops_per_pod_identity_labels() {
+  tests_run=$((tests_run + 1))
+  setup "${MULTI_POD_RESPONSE}"
+  run_script clickhouse || { fail "script exited non-zero: $(cat "${WORK}/out.txt")"; return; }
+
+  local catalog="${WORK}/clickhouse/metrics-catalog.json"
+  local key
+  for key in k8s_pod_uid k8s_pod_name instance service_instance_id __name__; do
+    if jq -e --arg k "${key}" '[.series[].labels | has($k)] | any' "${catalog}" > /dev/null; then
+      fail "label ${key} must be dropped: $(jq -c '.series' "${catalog}")"
+    fi
+  done
+}
+
+# 25 distinct values for one label key, in reverse order; only the first 20 in sorted order are kept.
+many_values_response() {
+  local i entries=""
+  for i in $(seq 25 -1 1); do
+    entries="${entries}${entries:+,}{\"metric\":{\"__name__\":\"m\",\"job\":\"k\",\"table\":\"t$(printf '%02d' "${i}")\"},\"value\":[1,\"1\"]}"
+  done
+  printf '{"status":"success","data":{"resultType":"vector","result":[%s]}}' "${entries}"
+}
+
+test_caps_distinct_values_per_label_key() {
+  tests_run=$((tests_run + 1))
+  setup "$(many_values_response)"
+  run_script k || { fail "script exited non-zero: $(cat "${WORK}/out.txt")"; return; }
+
+  local catalog="${WORK}/k/metrics-catalog.json"
+  local expected
+  expected="$(for i in $(seq 1 20); do printf 't%02d\n' "${i}"; done | jq -R . | jq -sc .)"
+  [ "$(jq -c '.series[0].labels.table' "${catalog}")" = "${expected}" ] \
+    || fail "expected the first 20 sorted values, got: $(jq -c '.series[0].labels.table' "${catalog}")"
+}
+
+# The same series in two different orders must produce identical series arrays: names, label
+# keys and label values all sorted.
+ORDERED_RESPONSE='{"status":"success","data":{"resultType":"vector","result":[
+  {"metric":{"__name__":"a_metric","job":"k","zone":"b","role":"x"},"value":[1,"1"]},
+  {"metric":{"__name__":"b_metric","job":"k"},"value":[1,"1"]},
+  {"metric":{"__name__":"a_metric","role":"w","zone":"a","job":"k"},"value":[1,"1"]}
+]}}'
+SHUFFLED_RESPONSE='{"status":"success","data":{"resultType":"vector","result":[
+  {"metric":{"__name__":"b_metric","job":"k"},"value":[1,"1"]},
+  {"metric":{"role":"w","__name__":"a_metric","job":"k","zone":"a"},"value":[1,"1"]},
+  {"metric":{"zone":"b","job":"k","__name__":"a_metric","role":"x"},"value":[1,"1"]}
+]}}'
+
+test_output_order_is_deterministic() {
+  tests_run=$((tests_run + 1))
+  local first second
+  setup "${ORDERED_RESPONSE}"
+  run_script k || { fail "script exited non-zero: $(cat "${WORK}/out.txt")"; return; }
+  first="$(jq -c '.series' "${WORK}/k/metrics-catalog.json")"
+  setup "${SHUFFLED_RESPONSE}"
+  run_script k || { fail "script exited non-zero: $(cat "${WORK}/out.txt")"; return; }
+  second="$(jq -c '.series' "${WORK}/k/metrics-catalog.json")"
+
+  local expected='[{"name":"a_metric","labels":{"job":["k"],"role":["w","x"],"zone":["a","b"]}},{"name":"b_metric","labels":{"job":["k"]}}]'
+  [ "${first}" = "${expected}" ] || fail "expected sorted names, keys and values, got: ${first}"
+  [ "${first}" = "${second}" ] || fail "input order changed the output: ${first} vs ${second}"
 }
 
 test_no_live_series_fails_without_writing_a_catalog() {
@@ -107,7 +190,11 @@ test_workload_name_is_required() {
 }
 
 test_queries_only_series_live_in_the_window
-test_writes_each_live_series_as_name_and_labels
+test_writes_one_entry_per_metric_name_with_label_values
+test_merges_pods_into_one_entry_per_metric_name
+test_drops_per_pod_identity_labels
+test_caps_distinct_values_per_label_key
+test_output_order_is_deterministic
 test_no_live_series_fails_without_writing_a_catalog
 test_error_status_fails
 test_workload_name_is_required

@@ -12,9 +12,15 @@
 # VictoriaMetrics answers it from a day-granular index, so it returns series from pods that died
 # hours ago even with a start time minutes back.
 #
+# The catalog is compact: one entry per metric name, its labels mapped to the sorted distinct
+# values seen (at most MAX_LABEL_VALUES per key), per-pod identity labels dropped. The transform
+# lives in bin/metrics-catalog.jq.
+#
 set -euo pipefail
 
 LIVE_WINDOW="5m"
+MAX_LABEL_VALUES=20
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
     cat <<EOF
@@ -77,10 +83,12 @@ fi
 
 EXPORTED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-echo "$RAW" | jq --arg workload "$WORKLOAD" --arg ts "$EXPORTED_AT" '{
+echo "$RAW" | jq -L "$SCRIPT_DIR" --arg workload "$WORKLOAD" --arg ts "$EXPORTED_AT" \
+    --argjson cap "$MAX_LABEL_VALUES" 'include "metrics-catalog"; {
   workload: $workload,
   exported_at: $ts,
-  series: [.data.result[].metric | {name: .__name__, labels: (del(.__name__))}]
+  series: ([.data.result[].metric | {name: .__name__, labels: .}] | compact_series($cap))
 }' > "$OUTPUT_FILE"
 
-echo "Wrote ${SERIES_COUNT} series to ${OUTPUT_FILE}"
+METRIC_COUNT=$(jq '.series | length' "$OUTPUT_FILE")
+echo "Wrote ${METRIC_COUNT} metrics (from ${SERIES_COUNT} series) to ${OUTPUT_FILE}"

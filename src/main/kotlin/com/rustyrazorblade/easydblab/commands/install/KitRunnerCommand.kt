@@ -22,6 +22,7 @@ import com.rustyrazorblade.easydblab.services.WorkloadPresence
 import com.rustyrazorblade.easydblab.services.WorkloadStepExecutor
 import com.rustyrazorblade.easydblab.services.installConfigYaml
 import com.rustyrazorblade.easydblab.services.selectInstanceDashboards
+import com.rustyrazorblade.easydblab.services.withKitName
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
 import org.koin.core.parameter.parametersOf
@@ -359,7 +360,7 @@ class KitRunnerCommand(
                     config.metrics.filterIsInstance<KitMetrics.Scrape>().map { target ->
                         when {
                             target.podSelector.isNotBlank() ->
-                                target.copy(podSelector = target.podSelector.replace("\${KIT_NAME}", kitName))
+                                target.copy(podSelector = withKitName(target.podSelector, kitName))
                             metricsPortOverride != null -> target.copy(port = metricsPortOverride)
                             else -> target
                         }

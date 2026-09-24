@@ -138,6 +138,37 @@ class KitRunnerCommandTypedPhaseTest : KitRunnerCommandTestBase() {
             .isEqualTo("cnpg.io/cluster=postgres-duckdb,cnpg.io/instanceRole=primary")
     }
 
+    /**
+     * A blank scrape pod-selector is what makes a target a static `localhost:<port>` job, so it
+     * stays blank: the runtime selector's `app.kubernetes.io/name=<kit>` default (see
+     * [com.rustyrazorblade.easydblab.services.podSelector]) is for finding the kit's pods, and
+     * applying it here would turn every static job into pod discovery.
+     */
+    @Test
+    fun `a scrape target without a pod-selector stays a static job`() {
+        writeKitYaml(
+            "mydb",
+            """
+            name: mydb
+            runtime:
+              type: pods
+              selector: "easydblab/kit=${'$'}{KIT_NAME}"
+            metrics:
+              - type: scrape
+                port: 30987
+            start:
+              - type: shell
+                script: echo hello
+            """.trimIndent(),
+        )
+
+        command("mydb", "start").call()
+
+        val targets = argumentCaptor<List<KitMetrics.Scrape>>()
+        verify(mockMetricsRegistryService).register(any(), eq("mydb"), targets.capture())
+        assertThat(targets.firstValue.single().podSelector).isEmpty()
+    }
+
     @Test
     fun `typed start phase skips metrics registration when no metrics config`() {
         writeKitYaml(

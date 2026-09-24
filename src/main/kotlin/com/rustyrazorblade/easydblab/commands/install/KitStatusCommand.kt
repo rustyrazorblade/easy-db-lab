@@ -11,6 +11,7 @@ import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitEndpointAddresses
 import com.rustyrazorblade.easydblab.services.KitRuntime
 import com.rustyrazorblade.easydblab.services.podSelector
+import com.rustyrazorblade.easydblab.services.withKitName
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
 import org.koin.core.parameter.parametersOf
@@ -86,10 +87,7 @@ class KitStatusCommand(
                 ) {
                     return KitRunningState.Stopped
                 }
-                val podSelector =
-                    runtime.selector
-                        .replace("\${KIT_NAME}", kitName)
-                        .ifBlank { "app.kubernetes.io/instance=$release" }
+                val podSelector = withKitName(runtime.selector, kitName).ifBlank { "app.kubernetes.io/instance=$release" }
                 stateOfPods(kubeService, podSelector, namespace) { pods ->
                     KitRunningState.Running(readyPods = countReadyPods(pods), totalPods = pods.size)
                 }

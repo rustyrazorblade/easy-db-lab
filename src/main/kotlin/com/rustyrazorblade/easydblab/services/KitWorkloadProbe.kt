@@ -158,9 +158,14 @@ class KitWorkloadProbe(
 fun podSelector(
     kitName: String,
     runtime: KitRuntime?,
-): String =
-    runtime
-        ?.selector
-        .orEmpty()
-        .replace("\${KIT_NAME}", kitName)
-        .ifBlank { "app.kubernetes.io/name=$kitName" }
+): String = withKitName(runtime?.selector.orEmpty(), kitName).ifBlank { "app.kubernetes.io/name=$kitName" }
+
+/**
+ * Fills `${KIT_NAME}` in a kit-declared label [selector] with this instance's [kitName], so several
+ * instances of one kit (postgres and postgres-duckdb) each select only their own pods. A blank
+ * selector stays blank: each caller decides what no selector means.
+ */
+fun withKitName(
+    selector: String,
+    kitName: String,
+): String = selector.replace("\${KIT_NAME}", kitName)

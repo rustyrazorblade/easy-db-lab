@@ -4,6 +4,11 @@ metadata:
   name: clickhouse-keeper
   namespace: default
 spec:
+  # The operator applies a pod template only when one is referenced; without this the Keeper
+  # pods got neither the db-only affinity nor the instance label below.
+  defaults:
+    templates:
+      podTemplate: clickhouse-keeper-pod
   configuration:
     clusters:
       - name: keeper

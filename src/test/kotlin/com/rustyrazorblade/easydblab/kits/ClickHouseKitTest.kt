@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.services.InstallStep
 import com.rustyrazorblade.easydblab.services.TemplateService
+import io.fabric8.kubernetes.api.model.GenericKubernetesResource
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.io.File
@@ -82,5 +83,41 @@ class ClickHouseKitTest : BaseKoinTest() {
         assertThat(runAgainstStub(failOn = "{.status.status}=Completed")).isNotEqualTo(0)
 
         assertThat(calls.readLines()).noneSatisfy { assertThat(it).contains("condition=Ready") }
+    }
+
+    private fun keeper(): GenericKubernetesResource =
+        kit.render("clickhouse-keeper.yaml.template").filterIsInstance<GenericKubernetesResource>().single()
+
+    /**
+     * The Keeper pod template carries Keeper's db-only node affinity and the
+     * `app.kubernetes.io/instance` label. Declaring it under `templates.podTemplates` is not
+     * enough: the operator applies a pod template only when one is referenced, so Keeper pods ran
+     * without the label and one was scheduled on app0.
+     */
+    @Test
+    fun `keeper pods use the pod template that pins them to db nodes and labels them`() {
+        val chk = keeper()
+        val applied = chk.get<String>("spec", "defaults", "templates", "podTemplate")
+        val podTemplate =
+            GenericKubernetesResource().apply {
+                additionalProperties["template"] =
+                    chk
+                        .get<List<Map<String, Any>>>("spec", "templates", "podTemplates")
+                        .single { it["name"] == applied }
+            }
+
+        assertThat(podTemplate.get<Map<String, String>>("template", "metadata", "labels"))
+            .containsEntry("app.kubernetes.io/instance", "clickhouse")
+        val terms =
+            podTemplate.get<List<Map<String, Any>>>(
+                "template",
+                "spec",
+                "affinity",
+                "nodeAffinity",
+                "requiredDuringSchedulingIgnoredDuringExecution",
+                "nodeSelectorTerms",
+            )
+        assertThat(terms.flatMap { it["matchExpressions"] as List<*> })
+            .containsExactly(mapOf("key" to "type", "operator" to "In", "values" to listOf("db")))
     }
 }

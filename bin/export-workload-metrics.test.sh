@@ -77,17 +77,19 @@ test_writes_one_entry_per_metric_name_with_label_values() {
     || fail "exported_at must be ISO-8601 UTC: $(jq -c '.exported_at' "${catalog}")"
   [ "$(jq -c '[.series[].name]' "${catalog}")" = '["memcached_current_items","memcached_up"]' ] \
     || fail "series names are wrong: $(jq -c '.series' "${catalog}")"
-  [ "$(jq -c '.series[1].labels' "${catalog}")" = '{"job":["memcached"]}' ] \
-    || fail "labels must map each key to its values: $(jq -c '.series[1]' "${catalog}")"
+  [ "$(jq -c 'keys_unsorted' "${catalog}")" = '["workload","exported_at","common_labels","series"]' ] \
+    || fail "expected keys workload, exported_at, common_labels, series: $(jq -c 'keys_unsorted' "${catalog}")"
   grep -q "Wrote 2 metrics" "${WORK}/out.txt" || fail "expected 'Wrote 2 metrics', got: $(cat "${WORK}/out.txt")"
 }
 
 # The same metric from three pods: one entry, the pods' label values merged, and none of the
-# per-pod identity labels that make the file grow with the number of pods.
+# per-pod identity labels that make the file grow with the number of pods. ch_up has no shard, so
+# shard is specific to ch_queries; job and host_name are on every series.
 MULTI_POD_RESPONSE='{"status":"success","data":{"resultType":"vector","result":[
-  {"metric":{"__name__":"ch_queries","job":"clickhouse","shard":"1","instance":"10.0.0.1:9363","k8s_pod_name":"ch-0","k8s_pod_uid":"u0","service_instance_id":"s0"},"value":[1,"1"]},
-  {"metric":{"__name__":"ch_queries","job":"clickhouse","shard":"2","instance":"10.0.0.2:9363","k8s_pod_name":"ch-1","k8s_pod_uid":"u1","service_instance_id":"s1"},"value":[1,"1"]},
-  {"metric":{"__name__":"ch_queries","job":"clickhouse","shard":"1","instance":"10.0.0.3:9363","k8s_pod_name":"ch-2","k8s_pod_uid":"u2","service_instance_id":"s2"},"value":[1,"1"]}
+  {"metric":{"__name__":"ch_queries","job":"clickhouse","host_name":"db0","shard":"1","instance":"10.0.0.1:9363","k8s_pod_name":"ch-0","k8s_pod_uid":"u0","service_instance_id":"s0"},"value":[1,"1"]},
+  {"metric":{"__name__":"ch_queries","job":"clickhouse","host_name":"db1","shard":"2","instance":"10.0.0.2:9363","k8s_pod_name":"ch-1","k8s_pod_uid":"u1","service_instance_id":"s1"},"value":[1,"1"]},
+  {"metric":{"__name__":"ch_queries","job":"clickhouse","host_name":"db2","shard":"1","instance":"10.0.0.3:9363","k8s_pod_name":"ch-2","k8s_pod_uid":"u2","service_instance_id":"s2"},"value":[1,"1"]},
+  {"metric":{"__name__":"ch_up","job":"clickhouse","host_name":"db0","instance":"10.0.0.1:9363","k8s_pod_name":"ch-0","k8s_pod_uid":"u0","service_instance_id":"s0"},"value":[1,"1"]}
 ]}}'
 
 test_merges_pods_into_one_entry_per_metric_name() {
@@ -96,8 +98,23 @@ test_merges_pods_into_one_entry_per_metric_name() {
   run_script clickhouse || { fail "script exited non-zero: $(cat "${WORK}/out.txt")"; return; }
 
   local catalog="${WORK}/clickhouse/metrics-catalog.json"
-  [ "$(jq -c '.series' "${catalog}")" = '[{"name":"ch_queries","labels":{"job":["clickhouse"],"shard":["1","2"]}}]' ] \
-    || fail "expected one entry with merged values and no identity labels: $(jq -c '.series' "${catalog}")"
+  [ "$(jq -c '.series' "${catalog}")" = '[{"name":"ch_queries","labels":{"shard":["1","2"]}},{"name":"ch_up","labels":{}}]' ] \
+    || fail "expected one entry per name with merged values and no identity labels: $(jq -c '.series' "${catalog}")"
+}
+
+test_labels_on_every_series_are_listed_once_under_common_labels() {
+  tests_run=$((tests_run + 1))
+  setup "${MULTI_POD_RESPONSE}"
+  run_script clickhouse || { fail "script exited non-zero: $(cat "${WORK}/out.txt")"; return; }
+
+  local catalog="${WORK}/clickhouse/metrics-catalog.json"
+  [ "$(jq -c '.common_labels' "${catalog}")" = '{"host_name":["db0","db1","db2"],"job":["clickhouse"]}' ] \
+    || fail "keys on every series belong in common_labels: $(jq -c '.common_labels' "${catalog}")"
+  if jq -e '[.series[].labels | has("job") or has("host_name")] | any' "${catalog}" > /dev/null; then
+    fail "common keys must not repeat on entries: $(jq -c '.series' "${catalog}")"
+  fi
+  [ "$(jq -c '.series[] | select(.name == "ch_queries") | .labels.shard' "${catalog}")" = '["1","2"]' ] \
+    || fail "a key on only some series stays on those entries: $(jq -c '.series' "${catalog}")"
 }
 
 test_drops_per_pod_identity_labels() {
@@ -108,18 +125,21 @@ test_drops_per_pod_identity_labels() {
   local catalog="${WORK}/clickhouse/metrics-catalog.json"
   local key
   for key in k8s_pod_uid k8s_pod_name instance service_instance_id __name__; do
-    if jq -e --arg k "${key}" '[.series[].labels | has($k)] | any' "${catalog}" > /dev/null; then
+    if jq -e --arg k "${key}" '[.series[].labels, .common_labels | has($k)] | any' "${catalog}" > /dev/null; then
       fail "label ${key} must be dropped: $(jq -c '.series' "${catalog}")"
     fi
   done
 }
 
-# 25 distinct values for one label key, in reverse order; only the first 20 in sorted order are kept.
+# 25 distinct values each for an entry label (table, only on m) and a common label (host, on every
+# series), in reverse order; only the first 20 in sorted order are kept for either.
 many_values_response() {
-  local i entries=""
+  local i n entries=""
   for i in $(seq 25 -1 1); do
-    entries="${entries}${entries:+,}{\"metric\":{\"__name__\":\"m\",\"job\":\"k\",\"table\":\"t$(printf '%02d' "${i}")\"},\"value\":[1,\"1\"]}"
+    n="$(printf '%02d' "${i}")"
+    entries="${entries}${entries:+,}{\"metric\":{\"__name__\":\"m\",\"job\":\"k\",\"host\":\"h${n}\",\"table\":\"t${n}\"},\"value\":[1,\"1\"]}"
   done
+  entries="${entries},{\"metric\":{\"__name__\":\"other\",\"job\":\"k\",\"host\":\"h01\"},\"value\":[1,\"1\"]}"
   printf '{"status":"success","data":{"resultType":"vector","result":[%s]}}' "${entries}"
 }
 
@@ -132,7 +152,10 @@ test_caps_distinct_values_per_label_key() {
   local expected
   expected="$(for i in $(seq 1 20); do printf 't%02d\n' "${i}"; done | jq -R . | jq -sc .)"
   [ "$(jq -c '.series[0].labels.table' "${catalog}")" = "${expected}" ] \
-    || fail "expected the first 20 sorted values, got: $(jq -c '.series[0].labels.table' "${catalog}")"
+    || fail "expected the first 20 sorted entry values, got: $(jq -c '.series[0].labels.table' "${catalog}")"
+  expected="$(for i in $(seq 1 20); do printf 'h%02d\n' "${i}"; done | jq -R . | jq -sc .)"
+  [ "$(jq -c '.common_labels.host' "${catalog}")" = "${expected}" ] \
+    || fail "expected the first 20 sorted common values, got: $(jq -c '.common_labels.host' "${catalog}")"
 }
 
 # The same series in two different orders must produce identical series arrays: names, label
@@ -153,12 +176,12 @@ test_output_order_is_deterministic() {
   local first second
   setup "${ORDERED_RESPONSE}"
   run_script k || { fail "script exited non-zero: $(cat "${WORK}/out.txt")"; return; }
-  first="$(jq -c '.series' "${WORK}/k/metrics-catalog.json")"
+  first="$(jq -c '{common_labels, series}' "${WORK}/k/metrics-catalog.json")"
   setup "${SHUFFLED_RESPONSE}"
   run_script k || { fail "script exited non-zero: $(cat "${WORK}/out.txt")"; return; }
-  second="$(jq -c '.series' "${WORK}/k/metrics-catalog.json")"
+  second="$(jq -c '{common_labels, series}' "${WORK}/k/metrics-catalog.json")"
 
-  local expected='[{"name":"a_metric","labels":{"job":["k"],"role":["w","x"],"zone":["a","b"]}},{"name":"b_metric","labels":{"job":["k"]}}]'
+  local expected='{"common_labels":{"job":["k"]},"series":[{"name":"a_metric","labels":{"role":["w","x"],"zone":["a","b"]}},{"name":"b_metric","labels":{}}]}'
   [ "${first}" = "${expected}" ] || fail "expected sorted names, keys and values, got: ${first}"
   [ "${first}" = "${second}" ] || fail "input order changed the output: ${first} vs ${second}"
 }
@@ -192,6 +215,7 @@ test_workload_name_is_required() {
 test_queries_only_series_live_in_the_window
 test_writes_one_entry_per_metric_name_with_label_values
 test_merges_pods_into_one_entry_per_metric_name
+test_labels_on_every_series_are_listed_once_under_common_labels
 test_drops_per_pod_identity_labels
 test_caps_distinct_values_per_label_key
 test_output_order_is_deterministic

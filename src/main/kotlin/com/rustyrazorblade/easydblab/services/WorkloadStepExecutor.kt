@@ -253,8 +253,8 @@ class WorkloadStepExecutor(
     /**
      * Runs a shell step from the kit directory with the step variables in its environment. Its
      * output (stdout and stderr, merged) is passed through to the console as it runs, and the
-     * last [Constants.Kit.SHELL_STEP_OUTPUT_TAIL_LINES] lines are kept so a failure can repeat
-     * them next to the exit code.
+     * last [Constants.Kit.SHELL_STEP_OUTPUT_TAIL_LINES] lines are kept on the failure event for
+     * structured consumers; the console already showed them, so its rendering does not repeat them.
      *
      * @throws ShellStepFailedException when the script exits non-zero
      */

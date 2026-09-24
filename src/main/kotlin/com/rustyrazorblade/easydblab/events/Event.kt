@@ -5453,14 +5453,10 @@ sealed interface Event {
             val exitCode: Int,
             val outputTail: List<String>,
         ) : Kit {
-            override fun toDisplayString(): String =
-                buildString {
-                    append("[$kit] $phase step ${stepIndex + 1} (shell) failed with exit code $exitCode.")
-                    if (outputTail.isNotEmpty()) {
-                        append(" Last output:")
-                        outputTail.forEach { append("\n  ").append(it) }
-                    }
-                }
+            // The step's output was streamed to the console as it ran; repeating [outputTail] here
+            // printed every failure message twice. The tail stays on the event for structured
+            // consumers (MCP, Redis).
+            override fun toDisplayString(): String = "[$kit] $phase step ${stepIndex + 1} (shell) failed with exit code $exitCode."
 
             override fun isError(): Boolean = true
         }

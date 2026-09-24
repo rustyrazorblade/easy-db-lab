@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.github.dockerjava.api.model.Ulimit
+import com.rustyrazorblade.easydblab.K3sPreloadedImages.withPreloadedImages
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.events.EventBus
 import io.fabric8.kubernetes.api.model.PodSpec
@@ -31,6 +32,9 @@ import java.time.Duration
  * at 0/1. Each workload here has a readiness probe with an initial delay, so a replacement pod is
  * deliberately not Ready for a few seconds after it starts. `waitForRollouts` must not return until
  * the replacement is Ready and the old pod is gone.
+ *
+ * The pod image is preloaded into K3s and never pulled, so a registry stall cannot eat the wait's
+ * budget; a timeout here is the rollout's, and its message carries the cluster's pod and event state.
  */
 @Testcontainers
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -51,7 +55,8 @@ class RolloutWaitIntegrationTest {
                     cmd.hostConfig!!
                         .withCgroupnsMode("host")
                         .withUlimits(listOf(Ulimit("nofile", 65536L, 65536L)))
-                }.withEnv("K3S_SNAPSHOTTER", "native") as K3sContainer
+                }.withEnv("K3S_SNAPSHOTTER", "native")
+                .let { (it as K3sContainer).withPreloadedImages(IMAGE) }
     }
 
     private val controlHost =
@@ -83,6 +88,8 @@ class RolloutWaitIntegrationTest {
             .addNewContainer()
             .withName("main")
             .withImage(IMAGE)
+            // Preloaded into K3s; never pulling makes a missing preload fail fast, not flake.
+            .withImagePullPolicy("Never")
             .withCommand("sh", "-c", "sleep 3600")
             .withNewReadinessProbe()
             .withNewExec()
@@ -156,17 +163,67 @@ class RolloutWaitIntegrationTest {
                 pod.metadata.name to (pod.status?.conditions?.any { it.type == "Ready" && it.status == "True" } == true)
             }
 
+    /**
+     * Waits for [ref] to roll out, and on failure rethrows with the cluster's node, pod and event
+     * state appended, so a timeout says whether the pod was unscheduled, pulling, or unready.
+     */
+    private fun awaitRollout(ref: WorkloadRef) {
+        ops.waitForRollouts(controlHost, listOf(ref), NAMESPACE, TIMEOUT_SECONDS).getOrElse { e ->
+            throw AssertionError("${e.message}\n${clusterDiagnostics()}", e)
+        }
+    }
+
+    /** Node conditions, pod and container states, and events in [NAMESPACE], one per line. */
+    private fun clusterDiagnostics(): String {
+        val nodes =
+            client.nodes().list().items.map { node ->
+                val conditions =
+                    node.status
+                        ?.conditions
+                        .orEmpty()
+                        .joinToString { "${it.type}=${it.status}" }
+                "node ${node.metadata.name}: $conditions"
+            }
+        val pods =
+            client.pods().inNamespace(NAMESPACE).list().items.flatMap { pod ->
+                val conditions =
+                    pod.status
+                        ?.conditions
+                        .orEmpty()
+                        .joinToString { "${it.type}=${it.status}(${it.reason ?: ""})" }
+                val containers =
+                    pod.status?.containerStatuses.orEmpty().map { cs ->
+                        val state =
+                            cs.state?.waiting?.let { "waiting ${it.reason}: ${it.message}" }
+                                ?: cs.state?.terminated?.let { "terminated ${it.reason}: ${it.message}" }
+                                ?: cs.state?.running?.let { "running since ${it.startedAt}" }
+                        "  container ${cs.name} image=${cs.image} ready=${cs.ready} restarts=${cs.restartCount} $state"
+                    }
+                listOf("pod ${pod.metadata.name} phase=${pod.status?.phase} $conditions") + containers
+            }
+        val events =
+            client
+                .v1()
+                .events()
+                .inNamespace(NAMESPACE)
+                .list()
+                .items
+                .sortedBy { it.lastTimestamp ?: it.eventTime?.time ?: "" }
+                .map { "event ${it.lastTimestamp} ${it.involvedObject?.name} ${it.reason} x${it.count}: ${it.message}" }
+        return (nodes + pods + events).joinToString("\n")
+    }
+
     @Test
     fun `waits until a restarted Deployment's replacement pod is ready and the old pod is gone`() {
         val name = "rollout-deploy"
         val ref = WorkloadRef(WorkloadKind.Deployment, name)
         createDeployment(name)
-        ops.waitForRollouts(controlHost, listOf(ref), NAMESPACE, TIMEOUT_SECONDS).getOrThrow()
+        awaitRollout(ref)
         val before = livePods(name).keys
         assertThat(before).hasSize(1)
 
         ops.rolloutRestartDeployment(controlHost, name, NAMESPACE).getOrThrow()
-        ops.waitForRollouts(controlHost, listOf(ref), NAMESPACE, TIMEOUT_SECONDS).getOrThrow()
+        awaitRollout(ref)
 
         val after = livePods(name)
         assertThat(after).hasSize(1)
@@ -179,12 +236,12 @@ class RolloutWaitIntegrationTest {
         val name = "rollout-ds"
         val ref = WorkloadRef(WorkloadKind.DaemonSet, name)
         createDaemonSet(name)
-        ops.waitForRollouts(controlHost, listOf(ref), NAMESPACE, TIMEOUT_SECONDS).getOrThrow()
+        awaitRollout(ref)
         val before = livePods(name).keys
         assertThat(before).hasSize(1)
 
         ops.rolloutRestartDaemonSet(controlHost, name, NAMESPACE).getOrThrow()
-        ops.waitForRollouts(controlHost, listOf(ref), NAMESPACE, TIMEOUT_SECONDS).getOrThrow()
+        awaitRollout(ref)
 
         val after = livePods(name)
         assertThat(after).hasSize(1)

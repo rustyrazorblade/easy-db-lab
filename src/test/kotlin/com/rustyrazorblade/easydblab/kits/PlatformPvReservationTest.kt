@@ -67,10 +67,25 @@ class PlatformPvReservationTest : BaseKoinTest() {
     private fun claims(obj: HasMetadata): List<Claim> {
         val owner = "${obj.kind}/${obj.metadata.name}"
         return when (obj) {
-            is PersistentVolumeClaim -> listOf(Claim(owner, obj.spec.selector?.matchLabels.orEmpty(), obj.spec.volumeName))
+            is PersistentVolumeClaim ->
+                listOf(
+                    Claim(
+                        owner,
+                        obj.spec.selector
+                            ?.matchLabels
+                            .orEmpty(),
+                        obj.spec.volumeName,
+                    ),
+                )
             is StatefulSet ->
                 obj.spec.volumeClaimTemplates.orEmpty().map {
-                    Claim("$owner/${it.metadata.name}", it.spec.selector?.matchLabels.orEmpty(), it.spec.volumeName)
+                    Claim(
+                        "$owner/${it.metadata.name}",
+                        it.spec.selector
+                            ?.matchLabels
+                            .orEmpty(),
+                        it.spec.volumeName,
+                    )
                 }
             is GenericKubernetesResource -> operatorClaims(owner, obj)
             else -> emptyList()

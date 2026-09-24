@@ -164,7 +164,11 @@ class ClickHouseKitTest : BaseKoinTest() {
         assertThat(keeperScrape.port.toString()).isEqualTo(settings["prometheus/port"])
         assertThat(keeperScrape.path).isEqualTo(settings["prometheus/endpoint"])
         assertThat(kit.scrapeMetrics.map { it.job.ifBlank { kit.config.name } }).doesNotHaveDuplicates()
-        assertThat(kit.config.start.filterIsInstance<InstallStep.Shell>().first().script)
-            .contains("-l $KEEPER_POD_SELECTOR")
+        assertThat(
+            kit.config.start
+                .filterIsInstance<InstallStep.Shell>()
+                .first()
+                .script,
+        ).contains("-l $KEEPER_POD_SELECTOR")
     }
 }

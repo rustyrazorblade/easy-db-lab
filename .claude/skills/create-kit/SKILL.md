@@ -241,7 +241,7 @@ If the kit declares a `scrape` metrics entry, three additional files SHOULD be c
    cd <cluster-workspace>
    <checkout>/bin/export-workload-metrics <name>
    ```
-   This writes `<cluster-workspace>/<name>/metrics-catalog.json` (workload name, export timestamp, and a `series` array with one entry per metric name whose `labels` maps each label key to its sorted distinct values, at most 20 per key, per-pod identity labels dropped) — not the kit's resource directory. That `<name>/` directory is deleted by `<name> uninstall`, so copy the file into `src/main/resources/com/rustyrazorblade/easydblab/kits/<name>/metrics-catalog.json` before uninstalling.
+   This writes `<cluster-workspace>/<name>/metrics-catalog.json` (workload name, export timestamp, a `common_labels` map of the label keys present on every series, and a `series` array with one entry per metric name whose `labels` holds only that metric's other label keys; each key maps to its sorted distinct values, at most 20 per key, and per-pod identity labels are dropped) — not the kit's resource directory. That `<name>/` directory is deleted by `<name> uninstall`, so copy the file into `src/main/resources/com/rustyrazorblade/easydblab/kits/<name>/metrics-catalog.json` before uninstalling.
 3. **Author `METRICS.md`** — a machine-readable markdown table of the key metrics. Copy the file to the workload's resource directory. Format:
    ```markdown
    # <WorkloadName> Metrics

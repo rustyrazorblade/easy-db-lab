@@ -411,26 +411,43 @@ The catalog is compact: `series` holds one entry per distinct metric name, and e
 `labels` maps a label key to the sorted distinct values seen for it, at most 20 per key
 (`MAX_LABEL_VALUES` in the script). Per-pod identity labels (`k8s_pod_uid`, `k8s_pod_name`,
 `instance`, `service_instance_id`) are dropped, so the file does not grow with the number of
-pods:
+pods.
+
+Label keys present on every series of the export (the collector's infrastructure labels such as
+`cluster`, `host_name`, `job` and `k8s_*`) are listed once, in the top-level `common_labels` map,
+in the same key → values form and with the same cap. They are left out of every entry, so an
+entry's `labels` holds only the labels specific to that metric, and is `{}` when it has none:
 
 ```json
 {
   "workload": "clickhouse",
   "exported_at": "2026-09-23T12:00:00Z",
+  "common_labels": {
+    "host_name": ["db0", "db1", "db2"],
+    "job": ["clickhouse"]
+  },
   "series": [
     {
       "name": "ClickHouseMetrics_Query",
-      "labels": { "job": ["clickhouse"], "host_name": ["db0", "db1", "db2"] }
+      "labels": { "service_name": ["clickhouse"] }
+    },
+    {
+      "name": "target_info",
+      "labels": {}
     }
   ]
 }
 ```
 
-The transform lives in `bin/metrics-catalog.jq`, so an older catalog can be converted offline
-with the same code the script uses:
+A series' full label set is its entry's `labels` plus `common_labels`.
+
+The transform lives in `bin/metrics-catalog.jq`, so a full per-series export (the older format,
+one entry per series with a single value per label) can be converted offline with the same code
+the script uses:
 
 ```bash
-jq -L bin --argjson cap 20 'include "metrics-catalog"; .series |= compact_series($cap)' \
+jq -L bin --argjson cap 20 \
+   'include "metrics-catalog"; del(.series) + (.series | compact_catalog($cap))' \
    old-catalog.json > metrics-catalog.json
 ```
 

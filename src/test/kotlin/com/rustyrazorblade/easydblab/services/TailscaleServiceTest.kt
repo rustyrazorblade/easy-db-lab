@@ -447,6 +447,40 @@ class TailscaleServiceTest : BaseKoinTest() {
             .hasCauseInstanceOf(IOException::class.java)
     }
 
+    @Test
+    fun `deleteAuthKey deletes exactly the recorded key with the OAuth token`() {
+        val api = FakeTailscaleApi(deleteStatus = 200)
+
+        serviceWith(api).deleteAuthKey("client-id", "client-secret", "kKey123")
+
+        val delete = api.requests.single { it.method == "DELETE" }
+        assertThat(delete.url.toString()).isEqualTo("https://api.tailscale.com/api/v2/tailnet/-/keys/kKey123")
+        assertThat(delete.header("Authorization")).isEqualTo("Bearer token-abc")
+    }
+
+    @Test
+    fun `deleteAuthKey treats a key that is already gone as deleted`() {
+        serviceWith(FakeTailscaleApi(deleteStatus = 404)).deleteAuthKey("client-id", "client-secret", "kGone")
+    }
+
+    @Test
+    fun `deleteAuthKey without key-delete permission fails naming the missing scope`() {
+        assertThatThrownBy {
+            serviceWith(FakeTailscaleApi(deleteStatus = 403)).deleteAuthKey("client-id", "client-secret", "kKey123")
+        }.isInstanceOf(TailscaleApiException::class.java)
+            .hasMessageContaining("kKey123")
+            .hasMessageContaining("'auth_keys'")
+    }
+
+    @Test
+    fun `deleteAuthKey fails on any other API error`() {
+        assertThatThrownBy {
+            serviceWith(FakeTailscaleApi(deleteStatus = 500)).deleteAuthKey("client-id", "client-secret", "kKey123")
+        }.isInstanceOf(TailscaleApiException::class.java)
+            .hasMessageContaining("kKey123")
+            .hasMessageContaining("500")
+    }
+
     private fun serviceWith(api: FakeTailscaleApi) =
         DefaultTailscaleService(
             mockRemoteOps,

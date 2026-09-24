@@ -71,10 +71,13 @@ interface TailscaleService : AutoCloseable {
     /**
      * Deletes a Tailscale auth key by ID.
      *
+     * Deleting a key that is already gone succeeds, so a retried teardown is harmless.
+     *
      * @param clientId Tailscale OAuth client ID
      * @param clientSecret Tailscale OAuth client secret
      * @param keyId The auth key ID to delete
-     * @throws TailscaleApiException if the API request fails
+     * @throws TailscaleApiException if the OAuth client lacks permission to delete auth keys, or
+     *   the API request otherwise fails
      */
     fun deleteAuthKey(
         clientId: String,
@@ -192,61 +195,81 @@ class DefaultTailscaleService(
         clientId: String,
         clientSecret: String,
         keyId: String,
-    ) = reachingApi("delete auth key $keyId") {
-        log.info { "Deleting Tailscale auth key: $keyId" }
-
-        val accessToken = getAccessToken(clientId, clientSecret)
-
-        val request =
-            Request
-                .Builder()
-                .url("${Constants.Tailscale.AUTH_KEYS_ENDPOINT}/$keyId")
-                .header("Authorization", "Bearer $accessToken")
-                .delete()
-                .build()
-
-        httpClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) {
-                val errorBody = response.body.string()
-                throw TailscaleApiException("Failed to delete auth key $keyId: ${response.code} - $errorBody")
-            }
-        }
-
-        log.info { "Tailscale auth key $keyId deleted successfully" }
-    }
+    ) = deleteResource(
+        clientId,
+        clientSecret,
+        DeletableResource(
+            url = "${Constants.Tailscale.AUTH_KEYS_ENDPOINT}/$keyId",
+            name = "Tailscale auth key $keyId",
+            scope = Constants.Tailscale.AUTH_KEYS_SCOPE,
+            manualRemoval = "revoke the key at https://login.tailscale.com/admin/settings/keys",
+        ),
+    )
 
     override fun deleteDevice(
         clientId: String,
         clientSecret: String,
         deviceId: String,
-    ) = reachingApi("delete Tailscale device $deviceId") {
-        log.info { "Deleting Tailscale device: $deviceId" }
+    ) = deleteResource(
+        clientId,
+        clientSecret,
+        DeletableResource(
+            url = "${Constants.Tailscale.DEVICE_ENDPOINT}/$deviceId",
+            name = "Tailscale device $deviceId",
+            scope = Constants.Tailscale.DEVICES_SCOPE,
+            manualRemoval = "remove the device at https://login.tailscale.com/admin/machines",
+        ),
+    )
+
+    /**
+     * A Tailscale API resource [deleteResource] removes: its [url], the [name] logs and failures
+     * call it by, the OAuth [scope] deleting it needs, and how to remove it by hand
+     * ([manualRemoval]) when that scope is missing.
+     */
+    private data class DeletableResource(
+        val url: String,
+        val name: String,
+        val scope: String,
+        val manualRemoval: String,
+    )
+
+    /**
+     * Deletes one Tailscale API resource with an OAuth token. A resource already gone (HTTP 404)
+     * counts as deleted, so a retried cleanup is harmless. A 403 means the OAuth client lacks the
+     * resource's scope, and the failure says how to grant it or remove the resource by hand.
+     *
+     * @throws TailscaleApiException on any other failure
+     */
+    private fun deleteResource(
+        clientId: String,
+        clientSecret: String,
+        target: DeletableResource,
+    ) = reachingApi("delete ${target.name}") {
+        val resource = target.name
+        log.info { "Deleting $resource" }
 
         val accessToken = getAccessToken(clientId, clientSecret)
 
         val request =
             Request
                 .Builder()
-                .url("${Constants.Tailscale.DEVICE_ENDPOINT}/$deviceId")
+                .url(target.url)
                 .header("Authorization", "Bearer $accessToken")
                 .delete()
                 .build()
 
         httpClient.newCall(request).execute().use { response ->
             when {
-                response.isSuccessful -> log.info { "Tailscale device $deviceId deleted" }
-                response.code == Constants.HttpStatus.NOT_FOUND -> log.info { "Tailscale device $deviceId is already gone" }
+                response.isSuccessful -> log.info { "$resource deleted" }
+                response.code == Constants.HttpStatus.NOT_FOUND -> log.info { "$resource is already gone" }
                 response.code == Constants.HttpStatus.FORBIDDEN ->
                     throw TailscaleApiException(
-                        "The Tailscale OAuth client is not allowed to delete device $deviceId " +
-                            "(HTTP 403: ${response.body.string()}). Grant it the '${Constants.Tailscale.DEVICES_SCOPE}' " +
-                            "write scope at https://login.tailscale.com/admin/settings/oauth, or remove the device " +
-                            "at https://login.tailscale.com/admin/machines.",
+                        "The Tailscale OAuth client is not allowed to delete $resource " +
+                            "(HTTP 403: ${response.body.string()}). Grant it the '${target.scope}' write scope at " +
+                            "https://login.tailscale.com/admin/settings/oauth, or ${target.manualRemoval}.",
                     )
                 else ->
-                    throw TailscaleApiException(
-                        "Failed to delete Tailscale device $deviceId: ${response.code} - ${response.body.string()}",
-                    )
+                    throw TailscaleApiException("Failed to delete $resource: ${response.code} - ${response.body.string()}")
             }
         }
     }

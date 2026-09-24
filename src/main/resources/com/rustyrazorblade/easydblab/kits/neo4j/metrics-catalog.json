@@ -5,1605 +5,874 @@
     {
       "name": "cassandra_log_records_total",
       "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "logger": "io.netty.bootstrap.Bootstrap",
-        "otel_scope_name": "github.com/open-telemetry/opentelemetry-collector-contrib/connector/countconnector",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "severity": "WARN"
-      }
-    },
-    {
-      "name": "cassandra_log_records_total",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "logger": "io.netty.bootstrap.ServerBootstrap",
-        "otel_scope_name": "github.com/open-telemetry/opentelemetry-collector-contrib/connector/countconnector",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "severity": "WARN"
-      }
-    },
-    {
-      "name": "cassandra_log_records_total",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "logger": "org.neo4j.kernel.impl.store.MetaDataStore",
-        "otel_scope_name": "github.com/open-telemetry/opentelemetry-collector-contrib/connector/countconnector",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "severity": "WARN"
+        "cluster": [
+          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
+        ],
+        "host_name": [
+          "db0"
+        ],
+        "job": [
+          "neo4j"
+        ],
+        "logger": [
+          "io.netty.bootstrap.Bootstrap",
+          "io.netty.bootstrap.ServerBootstrap",
+          "org.neo4j.kernel.impl.store.MetaDataStore"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/connector/countconnector"
+        ],
+        "service_name": [
+          "neo4j"
+        ],
+        "severity": [
+          "WARN"
+        ]
       }
     },
     {
       "name": "http_server_request_duration_seconds_bucket",
       "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "http_request_method": "POST",
-        "http_response_status_code": "202",
-        "http_route": "/db/{databaseName}/query/v2",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "le": "+Inf",
-        "network_protocol_version": "1.1",
-        "otel_scope_name": "io.opentelemetry.jetty-12.0",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "url_scheme": "http"
-      }
-    },
-    {
-      "name": "http_server_request_duration_seconds_bucket",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "http_request_method": "POST",
-        "http_response_status_code": "202",
-        "http_route": "/db/{databaseName}/query/v2",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "le": "0.005",
-        "network_protocol_version": "1.1",
-        "otel_scope_name": "io.opentelemetry.jetty-12.0",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "url_scheme": "http"
-      }
-    },
-    {
-      "name": "http_server_request_duration_seconds_bucket",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "http_request_method": "POST",
-        "http_response_status_code": "202",
-        "http_route": "/db/{databaseName}/query/v2",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "le": "0.01",
-        "network_protocol_version": "1.1",
-        "otel_scope_name": "io.opentelemetry.jetty-12.0",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "url_scheme": "http"
-      }
-    },
-    {
-      "name": "http_server_request_duration_seconds_bucket",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "http_request_method": "POST",
-        "http_response_status_code": "202",
-        "http_route": "/db/{databaseName}/query/v2",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "le": "0.025",
-        "network_protocol_version": "1.1",
-        "otel_scope_name": "io.opentelemetry.jetty-12.0",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "url_scheme": "http"
-      }
-    },
-    {
-      "name": "http_server_request_duration_seconds_bucket",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "http_request_method": "POST",
-        "http_response_status_code": "202",
-        "http_route": "/db/{databaseName}/query/v2",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "le": "0.05",
-        "network_protocol_version": "1.1",
-        "otel_scope_name": "io.opentelemetry.jetty-12.0",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "url_scheme": "http"
-      }
-    },
-    {
-      "name": "http_server_request_duration_seconds_bucket",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "http_request_method": "POST",
-        "http_response_status_code": "202",
-        "http_route": "/db/{databaseName}/query/v2",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "le": "0.075",
-        "network_protocol_version": "1.1",
-        "otel_scope_name": "io.opentelemetry.jetty-12.0",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "url_scheme": "http"
-      }
-    },
-    {
-      "name": "http_server_request_duration_seconds_bucket",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "http_request_method": "POST",
-        "http_response_status_code": "202",
-        "http_route": "/db/{databaseName}/query/v2",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "le": "0.1",
-        "network_protocol_version": "1.1",
-        "otel_scope_name": "io.opentelemetry.jetty-12.0",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "url_scheme": "http"
-      }
-    },
-    {
-      "name": "http_server_request_duration_seconds_bucket",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "http_request_method": "POST",
-        "http_response_status_code": "202",
-        "http_route": "/db/{databaseName}/query/v2",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "le": "0.25",
-        "network_protocol_version": "1.1",
-        "otel_scope_name": "io.opentelemetry.jetty-12.0",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "url_scheme": "http"
-      }
-    },
-    {
-      "name": "http_server_request_duration_seconds_bucket",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "http_request_method": "POST",
-        "http_response_status_code": "202",
-        "http_route": "/db/{databaseName}/query/v2",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "le": "0.5",
-        "network_protocol_version": "1.1",
-        "otel_scope_name": "io.opentelemetry.jetty-12.0",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "url_scheme": "http"
-      }
-    },
-    {
-      "name": "http_server_request_duration_seconds_bucket",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "http_request_method": "POST",
-        "http_response_status_code": "202",
-        "http_route": "/db/{databaseName}/query/v2",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "le": "0.75",
-        "network_protocol_version": "1.1",
-        "otel_scope_name": "io.opentelemetry.jetty-12.0",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "url_scheme": "http"
-      }
-    },
-    {
-      "name": "http_server_request_duration_seconds_bucket",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "http_request_method": "POST",
-        "http_response_status_code": "202",
-        "http_route": "/db/{databaseName}/query/v2",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "le": "1",
-        "network_protocol_version": "1.1",
-        "otel_scope_name": "io.opentelemetry.jetty-12.0",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "url_scheme": "http"
-      }
-    },
-    {
-      "name": "http_server_request_duration_seconds_bucket",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "http_request_method": "POST",
-        "http_response_status_code": "202",
-        "http_route": "/db/{databaseName}/query/v2",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "le": "10",
-        "network_protocol_version": "1.1",
-        "otel_scope_name": "io.opentelemetry.jetty-12.0",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "url_scheme": "http"
-      }
-    },
-    {
-      "name": "http_server_request_duration_seconds_bucket",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "http_request_method": "POST",
-        "http_response_status_code": "202",
-        "http_route": "/db/{databaseName}/query/v2",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "le": "2.5",
-        "network_protocol_version": "1.1",
-        "otel_scope_name": "io.opentelemetry.jetty-12.0",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "url_scheme": "http"
-      }
-    },
-    {
-      "name": "http_server_request_duration_seconds_bucket",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "http_request_method": "POST",
-        "http_response_status_code": "202",
-        "http_route": "/db/{databaseName}/query/v2",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "le": "5",
-        "network_protocol_version": "1.1",
-        "otel_scope_name": "io.opentelemetry.jetty-12.0",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "url_scheme": "http"
-      }
-    },
-    {
-      "name": "http_server_request_duration_seconds_bucket",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "http_request_method": "POST",
-        "http_response_status_code": "202",
-        "http_route": "/db/{databaseName}/query/v2",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "le": "7.5",
-        "network_protocol_version": "1.1",
-        "otel_scope_name": "io.opentelemetry.jetty-12.0",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "url_scheme": "http"
+        "cluster": [
+          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
+        ],
+        "host_name": [
+          "db0"
+        ],
+        "http_request_method": [
+          "POST"
+        ],
+        "http_response_status_code": [
+          "202"
+        ],
+        "http_route": [
+          "/db/{databaseName}/query/v2"
+        ],
+        "job": [
+          "neo4j"
+        ],
+        "le": [
+          "+Inf",
+          "0.005",
+          "0.01",
+          "0.025",
+          "0.05",
+          "0.075",
+          "0.1",
+          "0.25",
+          "0.5",
+          "0.75",
+          "1",
+          "10",
+          "2.5",
+          "5",
+          "7.5"
+        ],
+        "network_protocol_version": [
+          "1.1"
+        ],
+        "otel_scope_name": [
+          "io.opentelemetry.jetty-12.0"
+        ],
+        "otel_scope_version": [
+          "2.31.1-alpha"
+        ],
+        "service_name": [
+          "neo4j"
+        ],
+        "url_scheme": [
+          "http"
+        ]
       }
     },
     {
       "name": "http_server_request_duration_seconds_count",
       "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "http_request_method": "POST",
-        "http_response_status_code": "202",
-        "http_route": "/db/{databaseName}/query/v2",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "network_protocol_version": "1.1",
-        "otel_scope_name": "io.opentelemetry.jetty-12.0",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "url_scheme": "http"
+        "cluster": [
+          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
+        ],
+        "host_name": [
+          "db0"
+        ],
+        "http_request_method": [
+          "POST"
+        ],
+        "http_response_status_code": [
+          "202"
+        ],
+        "http_route": [
+          "/db/{databaseName}/query/v2"
+        ],
+        "job": [
+          "neo4j"
+        ],
+        "network_protocol_version": [
+          "1.1"
+        ],
+        "otel_scope_name": [
+          "io.opentelemetry.jetty-12.0"
+        ],
+        "otel_scope_version": [
+          "2.31.1-alpha"
+        ],
+        "service_name": [
+          "neo4j"
+        ],
+        "url_scheme": [
+          "http"
+        ]
       }
     },
     {
       "name": "http_server_request_duration_seconds_sum",
       "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "http_request_method": "POST",
-        "http_response_status_code": "202",
-        "http_route": "/db/{databaseName}/query/v2",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "network_protocol_version": "1.1",
-        "otel_scope_name": "io.opentelemetry.jetty-12.0",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "url_scheme": "http"
+        "cluster": [
+          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
+        ],
+        "host_name": [
+          "db0"
+        ],
+        "http_request_method": [
+          "POST"
+        ],
+        "http_response_status_code": [
+          "202"
+        ],
+        "http_route": [
+          "/db/{databaseName}/query/v2"
+        ],
+        "job": [
+          "neo4j"
+        ],
+        "network_protocol_version": [
+          "1.1"
+        ],
+        "otel_scope_name": [
+          "io.opentelemetry.jetty-12.0"
+        ],
+        "otel_scope_version": [
+          "2.31.1-alpha"
+        ],
+        "service_name": [
+          "neo4j"
+        ],
+        "url_scheme": [
+          "http"
+        ]
       }
     },
     {
       "name": "jvm_class_count",
       "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
+        "cluster": [
+          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
+        ],
+        "host_name": [
+          "db0"
+        ],
+        "job": [
+          "neo4j"
+        ],
+        "otel_scope_name": [
+          "io.opentelemetry.runtime-telemetry-java8"
+        ],
+        "otel_scope_version": [
+          "2.31.1-alpha"
+        ],
+        "service_name": [
+          "neo4j"
+        ]
       }
     },
     {
       "name": "jvm_class_loaded_total",
       "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
+        "cluster": [
+          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
+        ],
+        "host_name": [
+          "db0"
+        ],
+        "job": [
+          "neo4j"
+        ],
+        "otel_scope_name": [
+          "io.opentelemetry.runtime-telemetry-java8"
+        ],
+        "otel_scope_version": [
+          "2.31.1-alpha"
+        ],
+        "service_name": [
+          "neo4j"
+        ]
       }
     },
     {
       "name": "jvm_class_unloaded_total",
       "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
+        "cluster": [
+          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
+        ],
+        "host_name": [
+          "db0"
+        ],
+        "job": [
+          "neo4j"
+        ],
+        "otel_scope_name": [
+          "io.opentelemetry.runtime-telemetry-java8"
+        ],
+        "otel_scope_version": [
+          "2.31.1-alpha"
+        ],
+        "service_name": [
+          "neo4j"
+        ]
       }
     },
     {
       "name": "jvm_cpu_count",
       "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
+        "cluster": [
+          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
+        ],
+        "host_name": [
+          "db0"
+        ],
+        "job": [
+          "neo4j"
+        ],
+        "otel_scope_name": [
+          "io.opentelemetry.runtime-telemetry-java8"
+        ],
+        "otel_scope_version": [
+          "2.31.1-alpha"
+        ],
+        "service_name": [
+          "neo4j"
+        ]
       }
     },
     {
       "name": "jvm_cpu_recent_utilization_ratio",
       "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
+        "cluster": [
+          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
+        ],
+        "host_name": [
+          "db0"
+        ],
+        "job": [
+          "neo4j"
+        ],
+        "otel_scope_name": [
+          "io.opentelemetry.runtime-telemetry-java8"
+        ],
+        "otel_scope_version": [
+          "2.31.1-alpha"
+        ],
+        "service_name": [
+          "neo4j"
+        ]
       }
     },
     {
       "name": "jvm_cpu_time_seconds_total",
       "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
+        "cluster": [
+          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
+        ],
+        "host_name": [
+          "db0"
+        ],
+        "job": [
+          "neo4j"
+        ],
+        "otel_scope_name": [
+          "io.opentelemetry.runtime-telemetry-java8"
+        ],
+        "otel_scope_version": [
+          "2.31.1-alpha"
+        ],
+        "service_name": [
+          "neo4j"
+        ]
       }
     },
     {
       "name": "jvm_gc_duration_seconds_bucket",
       "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_gc_action": "end of concurrent GC pause",
-        "jvm_gc_name": "G1 Concurrent GC",
-        "le": "+Inf",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
-      }
-    },
-    {
-      "name": "jvm_gc_duration_seconds_bucket",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_gc_action": "end of concurrent GC pause",
-        "jvm_gc_name": "G1 Concurrent GC",
-        "le": "0.01",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
-      }
-    },
-    {
-      "name": "jvm_gc_duration_seconds_bucket",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_gc_action": "end of concurrent GC pause",
-        "jvm_gc_name": "G1 Concurrent GC",
-        "le": "0.1",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
-      }
-    },
-    {
-      "name": "jvm_gc_duration_seconds_bucket",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_gc_action": "end of concurrent GC pause",
-        "jvm_gc_name": "G1 Concurrent GC",
-        "le": "1",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
-      }
-    },
-    {
-      "name": "jvm_gc_duration_seconds_bucket",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_gc_action": "end of concurrent GC pause",
-        "jvm_gc_name": "G1 Concurrent GC",
-        "le": "10",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
-      }
-    },
-    {
-      "name": "jvm_gc_duration_seconds_bucket",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_gc_action": "end of minor GC",
-        "jvm_gc_name": "G1 Young Generation",
-        "le": "+Inf",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
-      }
-    },
-    {
-      "name": "jvm_gc_duration_seconds_bucket",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_gc_action": "end of minor GC",
-        "jvm_gc_name": "G1 Young Generation",
-        "le": "0.01",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
-      }
-    },
-    {
-      "name": "jvm_gc_duration_seconds_bucket",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_gc_action": "end of minor GC",
-        "jvm_gc_name": "G1 Young Generation",
-        "le": "0.1",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
-      }
-    },
-    {
-      "name": "jvm_gc_duration_seconds_bucket",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_gc_action": "end of minor GC",
-        "jvm_gc_name": "G1 Young Generation",
-        "le": "1",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
-      }
-    },
-    {
-      "name": "jvm_gc_duration_seconds_bucket",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_gc_action": "end of minor GC",
-        "jvm_gc_name": "G1 Young Generation",
-        "le": "10",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
+        "cluster": [
+          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
+        ],
+        "host_name": [
+          "db0"
+        ],
+        "job": [
+          "neo4j"
+        ],
+        "jvm_gc_action": [
+          "end of concurrent GC pause",
+          "end of minor GC"
+        ],
+        "jvm_gc_name": [
+          "G1 Concurrent GC",
+          "G1 Young Generation"
+        ],
+        "le": [
+          "+Inf",
+          "0.01",
+          "0.1",
+          "1",
+          "10"
+        ],
+        "otel_scope_name": [
+          "io.opentelemetry.runtime-telemetry-java8"
+        ],
+        "otel_scope_version": [
+          "2.31.1-alpha"
+        ],
+        "service_name": [
+          "neo4j"
+        ]
       }
     },
     {
       "name": "jvm_gc_duration_seconds_count",
       "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_gc_action": "end of concurrent GC pause",
-        "jvm_gc_name": "G1 Concurrent GC",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
-      }
-    },
-    {
-      "name": "jvm_gc_duration_seconds_count",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_gc_action": "end of minor GC",
-        "jvm_gc_name": "G1 Young Generation",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
-      }
-    },
-    {
-      "name": "jvm_gc_duration_seconds_sum",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_gc_action": "end of concurrent GC pause",
-        "jvm_gc_name": "G1 Concurrent GC",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
+        "cluster": [
+          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
+        ],
+        "host_name": [
+          "db0"
+        ],
+        "job": [
+          "neo4j"
+        ],
+        "jvm_gc_action": [
+          "end of concurrent GC pause",
+          "end of minor GC"
+        ],
+        "jvm_gc_name": [
+          "G1 Concurrent GC",
+          "G1 Young Generation"
+        ],
+        "otel_scope_name": [
+          "io.opentelemetry.runtime-telemetry-java8"
+        ],
+        "otel_scope_version": [
+          "2.31.1-alpha"
+        ],
+        "service_name": [
+          "neo4j"
+        ]
       }
     },
     {
       "name": "jvm_gc_duration_seconds_sum",
       "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_gc_action": "end of minor GC",
-        "jvm_gc_name": "G1 Young Generation",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
+        "cluster": [
+          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
+        ],
+        "host_name": [
+          "db0"
+        ],
+        "job": [
+          "neo4j"
+        ],
+        "jvm_gc_action": [
+          "end of concurrent GC pause",
+          "end of minor GC"
+        ],
+        "jvm_gc_name": [
+          "G1 Concurrent GC",
+          "G1 Young Generation"
+        ],
+        "otel_scope_name": [
+          "io.opentelemetry.runtime-telemetry-java8"
+        ],
+        "otel_scope_version": [
+          "2.31.1-alpha"
+        ],
+        "service_name": [
+          "neo4j"
+        ]
       }
     },
     {
       "name": "jvm_memory_committed_bytes",
       "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_memory_pool_name": "CodeHeap 'non-nmethods'",
-        "jvm_memory_type": "non_heap",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
-      }
-    },
-    {
-      "name": "jvm_memory_committed_bytes",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_memory_pool_name": "CodeHeap 'non-profiled nmethods'",
-        "jvm_memory_type": "non_heap",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
-      }
-    },
-    {
-      "name": "jvm_memory_committed_bytes",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_memory_pool_name": "CodeHeap 'profiled nmethods'",
-        "jvm_memory_type": "non_heap",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
-      }
-    },
-    {
-      "name": "jvm_memory_committed_bytes",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_memory_pool_name": "Compressed Class Space",
-        "jvm_memory_type": "non_heap",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
-      }
-    },
-    {
-      "name": "jvm_memory_committed_bytes",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_memory_pool_name": "G1 Eden Space",
-        "jvm_memory_type": "heap",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
-      }
-    },
-    {
-      "name": "jvm_memory_committed_bytes",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_memory_pool_name": "G1 Old Gen",
-        "jvm_memory_type": "heap",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
-      }
-    },
-    {
-      "name": "jvm_memory_committed_bytes",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_memory_pool_name": "G1 Survivor Space",
-        "jvm_memory_type": "heap",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
-      }
-    },
-    {
-      "name": "jvm_memory_committed_bytes",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_memory_pool_name": "Metaspace",
-        "jvm_memory_type": "non_heap",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
+        "cluster": [
+          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
+        ],
+        "host_name": [
+          "db0"
+        ],
+        "job": [
+          "neo4j"
+        ],
+        "jvm_memory_pool_name": [
+          "CodeHeap 'non-nmethods'",
+          "CodeHeap 'non-profiled nmethods'",
+          "CodeHeap 'profiled nmethods'",
+          "Compressed Class Space",
+          "G1 Eden Space",
+          "G1 Old Gen",
+          "G1 Survivor Space",
+          "Metaspace"
+        ],
+        "jvm_memory_type": [
+          "heap",
+          "non_heap"
+        ],
+        "otel_scope_name": [
+          "io.opentelemetry.runtime-telemetry-java8"
+        ],
+        "otel_scope_version": [
+          "2.31.1-alpha"
+        ],
+        "service_name": [
+          "neo4j"
+        ]
       }
     },
     {
       "name": "jvm_memory_limit_bytes",
       "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_memory_pool_name": "CodeHeap 'non-nmethods'",
-        "jvm_memory_type": "non_heap",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
-      }
-    },
-    {
-      "name": "jvm_memory_limit_bytes",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_memory_pool_name": "CodeHeap 'non-profiled nmethods'",
-        "jvm_memory_type": "non_heap",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
-      }
-    },
-    {
-      "name": "jvm_memory_limit_bytes",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_memory_pool_name": "CodeHeap 'profiled nmethods'",
-        "jvm_memory_type": "non_heap",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
-      }
-    },
-    {
-      "name": "jvm_memory_limit_bytes",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_memory_pool_name": "Compressed Class Space",
-        "jvm_memory_type": "non_heap",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
-      }
-    },
-    {
-      "name": "jvm_memory_limit_bytes",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_memory_pool_name": "G1 Old Gen",
-        "jvm_memory_type": "heap",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
+        "cluster": [
+          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
+        ],
+        "host_name": [
+          "db0"
+        ],
+        "job": [
+          "neo4j"
+        ],
+        "jvm_memory_pool_name": [
+          "CodeHeap 'non-nmethods'",
+          "CodeHeap 'non-profiled nmethods'",
+          "CodeHeap 'profiled nmethods'",
+          "Compressed Class Space",
+          "G1 Old Gen"
+        ],
+        "jvm_memory_type": [
+          "heap",
+          "non_heap"
+        ],
+        "otel_scope_name": [
+          "io.opentelemetry.runtime-telemetry-java8"
+        ],
+        "otel_scope_version": [
+          "2.31.1-alpha"
+        ],
+        "service_name": [
+          "neo4j"
+        ]
       }
     },
     {
       "name": "jvm_memory_used_after_last_gc_bytes",
       "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_memory_pool_name": "G1 Eden Space",
-        "jvm_memory_type": "heap",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
-      }
-    },
-    {
-      "name": "jvm_memory_used_after_last_gc_bytes",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_memory_pool_name": "G1 Old Gen",
-        "jvm_memory_type": "heap",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
-      }
-    },
-    {
-      "name": "jvm_memory_used_after_last_gc_bytes",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_memory_pool_name": "G1 Survivor Space",
-        "jvm_memory_type": "heap",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
+        "cluster": [
+          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
+        ],
+        "host_name": [
+          "db0"
+        ],
+        "job": [
+          "neo4j"
+        ],
+        "jvm_memory_pool_name": [
+          "G1 Eden Space",
+          "G1 Old Gen",
+          "G1 Survivor Space"
+        ],
+        "jvm_memory_type": [
+          "heap"
+        ],
+        "otel_scope_name": [
+          "io.opentelemetry.runtime-telemetry-java8"
+        ],
+        "otel_scope_version": [
+          "2.31.1-alpha"
+        ],
+        "service_name": [
+          "neo4j"
+        ]
       }
     },
     {
       "name": "jvm_memory_used_bytes",
       "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_memory_pool_name": "CodeHeap 'non-nmethods'",
-        "jvm_memory_type": "non_heap",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
-      }
-    },
-    {
-      "name": "jvm_memory_used_bytes",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_memory_pool_name": "CodeHeap 'non-profiled nmethods'",
-        "jvm_memory_type": "non_heap",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
-      }
-    },
-    {
-      "name": "jvm_memory_used_bytes",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_memory_pool_name": "CodeHeap 'profiled nmethods'",
-        "jvm_memory_type": "non_heap",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
-      }
-    },
-    {
-      "name": "jvm_memory_used_bytes",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_memory_pool_name": "Compressed Class Space",
-        "jvm_memory_type": "non_heap",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
-      }
-    },
-    {
-      "name": "jvm_memory_used_bytes",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_memory_pool_name": "G1 Eden Space",
-        "jvm_memory_type": "heap",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
-      }
-    },
-    {
-      "name": "jvm_memory_used_bytes",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_memory_pool_name": "G1 Old Gen",
-        "jvm_memory_type": "heap",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
-      }
-    },
-    {
-      "name": "jvm_memory_used_bytes",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_memory_pool_name": "G1 Survivor Space",
-        "jvm_memory_type": "heap",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
-      }
-    },
-    {
-      "name": "jvm_memory_used_bytes",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_memory_pool_name": "Metaspace",
-        "jvm_memory_type": "non_heap",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
+        "cluster": [
+          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
+        ],
+        "host_name": [
+          "db0"
+        ],
+        "job": [
+          "neo4j"
+        ],
+        "jvm_memory_pool_name": [
+          "CodeHeap 'non-nmethods'",
+          "CodeHeap 'non-profiled nmethods'",
+          "CodeHeap 'profiled nmethods'",
+          "Compressed Class Space",
+          "G1 Eden Space",
+          "G1 Old Gen",
+          "G1 Survivor Space",
+          "Metaspace"
+        ],
+        "jvm_memory_type": [
+          "heap",
+          "non_heap"
+        ],
+        "otel_scope_name": [
+          "io.opentelemetry.runtime-telemetry-java8"
+        ],
+        "otel_scope_version": [
+          "2.31.1-alpha"
+        ],
+        "service_name": [
+          "neo4j"
+        ]
       }
     },
     {
       "name": "jvm_thread_count",
       "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_thread_daemon": "false",
-        "jvm_thread_state": "runnable",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
-      }
-    },
-    {
-      "name": "jvm_thread_count",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_thread_daemon": "false",
-        "jvm_thread_state": "timed_waiting",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
-      }
-    },
-    {
-      "name": "jvm_thread_count",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_thread_daemon": "false",
-        "jvm_thread_state": "waiting",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
-      }
-    },
-    {
-      "name": "jvm_thread_count",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_thread_daemon": "true",
-        "jvm_thread_state": "runnable",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
-      }
-    },
-    {
-      "name": "jvm_thread_count",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_thread_daemon": "true",
-        "jvm_thread_state": "timed_waiting",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
-      }
-    },
-    {
-      "name": "jvm_thread_count",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "jvm_thread_daemon": "true",
-        "jvm_thread_state": "waiting",
-        "otel_scope_name": "io.opentelemetry.runtime-telemetry-java8",
-        "otel_scope_version": "2.31.1-alpha",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
+        "cluster": [
+          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
+        ],
+        "host_name": [
+          "db0"
+        ],
+        "job": [
+          "neo4j"
+        ],
+        "jvm_thread_daemon": [
+          "false",
+          "true"
+        ],
+        "jvm_thread_state": [
+          "runnable",
+          "timed_waiting",
+          "waiting"
+        ],
+        "otel_scope_name": [
+          "io.opentelemetry.runtime-telemetry-java8"
+        ],
+        "otel_scope_version": [
+          "2.31.1-alpha"
+        ],
+        "service_name": [
+          "neo4j"
+        ]
       }
     },
     {
       "name": "otlp_exporter_exported_total",
       "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "otel_scope_name": "io.opentelemetry.exporters.otlp-http",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "success": "true",
-        "type": "log"
-      }
-    },
-    {
-      "name": "otlp_exporter_exported_total",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "otel_scope_name": "io.opentelemetry.exporters.otlp-http",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "success": "true",
-        "type": "metric"
-      }
-    },
-    {
-      "name": "otlp_exporter_exported_total",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "otel_scope_name": "io.opentelemetry.exporters.otlp-http",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "success": "true",
-        "type": "span"
+        "cluster": [
+          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
+        ],
+        "host_name": [
+          "db0"
+        ],
+        "job": [
+          "neo4j"
+        ],
+        "otel_scope_name": [
+          "io.opentelemetry.exporters.otlp-http"
+        ],
+        "service_name": [
+          "neo4j"
+        ],
+        "success": [
+          "true"
+        ],
+        "type": [
+          "log",
+          "metric",
+          "span"
+        ]
       }
     },
     {
       "name": "otlp_exporter_seen_total",
       "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "otel_scope_name": "io.opentelemetry.exporters.otlp-http",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "type": "log"
-      }
-    },
-    {
-      "name": "otlp_exporter_seen_total",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "otel_scope_name": "io.opentelemetry.exporters.otlp-http",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "type": "metric"
-      }
-    },
-    {
-      "name": "otlp_exporter_seen_total",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "otel_scope_name": "io.opentelemetry.exporters.otlp-http",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "type": "span"
+        "cluster": [
+          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
+        ],
+        "host_name": [
+          "db0"
+        ],
+        "job": [
+          "neo4j"
+        ],
+        "otel_scope_name": [
+          "io.opentelemetry.exporters.otlp-http"
+        ],
+        "service_name": [
+          "neo4j"
+        ],
+        "type": [
+          "log",
+          "metric",
+          "span"
+        ]
       }
     },
     {
       "name": "processedLogs_total",
       "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "dropped": "false",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "otel_scope_name": "io.opentelemetry.sdk.logs",
-        "processorType": "BatchLogRecordProcessor",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
+        "cluster": [
+          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
+        ],
+        "dropped": [
+          "false"
+        ],
+        "host_name": [
+          "db0"
+        ],
+        "job": [
+          "neo4j"
+        ],
+        "otel_scope_name": [
+          "io.opentelemetry.sdk.logs"
+        ],
+        "processorType": [
+          "BatchLogRecordProcessor"
+        ],
+        "service_name": [
+          "neo4j"
+        ]
       }
     },
     {
       "name": "processedSpans_total",
       "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "dropped": "false",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "otel_scope_name": "io.opentelemetry.sdk.trace",
-        "processorType": "BatchSpanProcessor",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
+        "cluster": [
+          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
+        ],
+        "dropped": [
+          "false"
+        ],
+        "host_name": [
+          "db0"
+        ],
+        "job": [
+          "neo4j"
+        ],
+        "otel_scope_name": [
+          "io.opentelemetry.sdk.trace"
+        ],
+        "processorType": [
+          "BatchSpanProcessor"
+        ],
+        "service_name": [
+          "neo4j"
+        ]
       }
     },
     {
       "name": "queueSize_ratio",
       "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "otel_scope_name": "io.opentelemetry.sdk.logs",
-        "processorType": "BatchLogRecordProcessor",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
-      }
-    },
-    {
-      "name": "queueSize_ratio",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "otel_scope_name": "io.opentelemetry.sdk.trace",
-        "processorType": "BatchSpanProcessor",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j"
-      }
-    },
-    {
-      "name": "target_info",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j"
+        "cluster": [
+          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
+        ],
+        "host_name": [
+          "db0"
+        ],
+        "job": [
+          "neo4j"
+        ],
+        "otel_scope_name": [
+          "io.opentelemetry.sdk.logs",
+          "io.opentelemetry.sdk.trace"
+        ],
+        "processorType": [
+          "BatchLogRecordProcessor",
+          "BatchSpanProcessor"
+        ],
+        "service_name": [
+          "neo4j"
+        ]
       }
     },
     {
       "name": "target_info",
       "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "host_name": "db0",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "service_name": "neo4j"
+        "cluster": [
+          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
+        ],
+        "host_name": [
+          "db0"
+        ],
+        "job": [
+          "neo4j"
+        ],
+        "service_name": [
+          "neo4j"
+        ]
       }
     },
     {
       "name": "traces_spanmetrics_calls_total",
       "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "collector_instance_id": "e51a2b51-42f3-4ec5-b09c-32472015c6bc",
-        "host_name": "db0",
-        "http_route": "/db/{databaseName}/query/v2",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "otel_scope_name": "spanmetricsconnector",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "span_kind": "SPAN_KIND_SERVER",
-        "span_name": "POST /db/{databaseName}/query/v2",
-        "status_code": "STATUS_CODE_UNSET"
+        "cluster": [
+          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
+        ],
+        "collector_instance_id": [
+          "e51a2b51-42f3-4ec5-b09c-32472015c6bc"
+        ],
+        "host_name": [
+          "db0"
+        ],
+        "http_route": [
+          "/db/{databaseName}/query/v2"
+        ],
+        "job": [
+          "neo4j"
+        ],
+        "otel_scope_name": [
+          "spanmetricsconnector"
+        ],
+        "service_name": [
+          "neo4j"
+        ],
+        "span_kind": [
+          "SPAN_KIND_SERVER"
+        ],
+        "span_name": [
+          "POST /db/{databaseName}/query/v2"
+        ],
+        "status_code": [
+          "STATUS_CODE_UNSET"
+        ]
       }
     },
     {
       "name": "traces_spanmetrics_duration_milliseconds_bucket",
       "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "collector_instance_id": "e51a2b51-42f3-4ec5-b09c-32472015c6bc",
-        "host_name": "db0",
-        "http_route": "/db/{databaseName}/query/v2",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "le": "+Inf",
-        "otel_scope_name": "spanmetricsconnector",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "span_kind": "SPAN_KIND_SERVER",
-        "span_name": "POST /db/{databaseName}/query/v2",
-        "status_code": "STATUS_CODE_UNSET"
-      }
-    },
-    {
-      "name": "traces_spanmetrics_duration_milliseconds_bucket",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "collector_instance_id": "e51a2b51-42f3-4ec5-b09c-32472015c6bc",
-        "host_name": "db0",
-        "http_route": "/db/{databaseName}/query/v2",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "le": "10",
-        "otel_scope_name": "spanmetricsconnector",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "span_kind": "SPAN_KIND_SERVER",
-        "span_name": "POST /db/{databaseName}/query/v2",
-        "status_code": "STATUS_CODE_UNSET"
-      }
-    },
-    {
-      "name": "traces_spanmetrics_duration_milliseconds_bucket",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "collector_instance_id": "e51a2b51-42f3-4ec5-b09c-32472015c6bc",
-        "host_name": "db0",
-        "http_route": "/db/{databaseName}/query/v2",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "le": "100",
-        "otel_scope_name": "spanmetricsconnector",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "span_kind": "SPAN_KIND_SERVER",
-        "span_name": "POST /db/{databaseName}/query/v2",
-        "status_code": "STATUS_CODE_UNSET"
-      }
-    },
-    {
-      "name": "traces_spanmetrics_duration_milliseconds_bucket",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "collector_instance_id": "e51a2b51-42f3-4ec5-b09c-32472015c6bc",
-        "host_name": "db0",
-        "http_route": "/db/{databaseName}/query/v2",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "le": "1000",
-        "otel_scope_name": "spanmetricsconnector",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "span_kind": "SPAN_KIND_SERVER",
-        "span_name": "POST /db/{databaseName}/query/v2",
-        "status_code": "STATUS_CODE_UNSET"
-      }
-    },
-    {
-      "name": "traces_spanmetrics_duration_milliseconds_bucket",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "collector_instance_id": "e51a2b51-42f3-4ec5-b09c-32472015c6bc",
-        "host_name": "db0",
-        "http_route": "/db/{databaseName}/query/v2",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "le": "10000",
-        "otel_scope_name": "spanmetricsconnector",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "span_kind": "SPAN_KIND_SERVER",
-        "span_name": "POST /db/{databaseName}/query/v2",
-        "status_code": "STATUS_CODE_UNSET"
-      }
-    },
-    {
-      "name": "traces_spanmetrics_duration_milliseconds_bucket",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "collector_instance_id": "e51a2b51-42f3-4ec5-b09c-32472015c6bc",
-        "host_name": "db0",
-        "http_route": "/db/{databaseName}/query/v2",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "le": "1400",
-        "otel_scope_name": "spanmetricsconnector",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "span_kind": "SPAN_KIND_SERVER",
-        "span_name": "POST /db/{databaseName}/query/v2",
-        "status_code": "STATUS_CODE_UNSET"
-      }
-    },
-    {
-      "name": "traces_spanmetrics_duration_milliseconds_bucket",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "collector_instance_id": "e51a2b51-42f3-4ec5-b09c-32472015c6bc",
-        "host_name": "db0",
-        "http_route": "/db/{databaseName}/query/v2",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "le": "2",
-        "otel_scope_name": "spanmetricsconnector",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "span_kind": "SPAN_KIND_SERVER",
-        "span_name": "POST /db/{databaseName}/query/v2",
-        "status_code": "STATUS_CODE_UNSET"
-      }
-    },
-    {
-      "name": "traces_spanmetrics_duration_milliseconds_bucket",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "collector_instance_id": "e51a2b51-42f3-4ec5-b09c-32472015c6bc",
-        "host_name": "db0",
-        "http_route": "/db/{databaseName}/query/v2",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "le": "200",
-        "otel_scope_name": "spanmetricsconnector",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "span_kind": "SPAN_KIND_SERVER",
-        "span_name": "POST /db/{databaseName}/query/v2",
-        "status_code": "STATUS_CODE_UNSET"
-      }
-    },
-    {
-      "name": "traces_spanmetrics_duration_milliseconds_bucket",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "collector_instance_id": "e51a2b51-42f3-4ec5-b09c-32472015c6bc",
-        "host_name": "db0",
-        "http_route": "/db/{databaseName}/query/v2",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "le": "2000",
-        "otel_scope_name": "spanmetricsconnector",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "span_kind": "SPAN_KIND_SERVER",
-        "span_name": "POST /db/{databaseName}/query/v2",
-        "status_code": "STATUS_CODE_UNSET"
-      }
-    },
-    {
-      "name": "traces_spanmetrics_duration_milliseconds_bucket",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "collector_instance_id": "e51a2b51-42f3-4ec5-b09c-32472015c6bc",
-        "host_name": "db0",
-        "http_route": "/db/{databaseName}/query/v2",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "le": "4",
-        "otel_scope_name": "spanmetricsconnector",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "span_kind": "SPAN_KIND_SERVER",
-        "span_name": "POST /db/{databaseName}/query/v2",
-        "status_code": "STATUS_CODE_UNSET"
-      }
-    },
-    {
-      "name": "traces_spanmetrics_duration_milliseconds_bucket",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "collector_instance_id": "e51a2b51-42f3-4ec5-b09c-32472015c6bc",
-        "host_name": "db0",
-        "http_route": "/db/{databaseName}/query/v2",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "le": "400",
-        "otel_scope_name": "spanmetricsconnector",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "span_kind": "SPAN_KIND_SERVER",
-        "span_name": "POST /db/{databaseName}/query/v2",
-        "status_code": "STATUS_CODE_UNSET"
-      }
-    },
-    {
-      "name": "traces_spanmetrics_duration_milliseconds_bucket",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "collector_instance_id": "e51a2b51-42f3-4ec5-b09c-32472015c6bc",
-        "host_name": "db0",
-        "http_route": "/db/{databaseName}/query/v2",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "le": "50",
-        "otel_scope_name": "spanmetricsconnector",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "span_kind": "SPAN_KIND_SERVER",
-        "span_name": "POST /db/{databaseName}/query/v2",
-        "status_code": "STATUS_CODE_UNSET"
-      }
-    },
-    {
-      "name": "traces_spanmetrics_duration_milliseconds_bucket",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "collector_instance_id": "e51a2b51-42f3-4ec5-b09c-32472015c6bc",
-        "host_name": "db0",
-        "http_route": "/db/{databaseName}/query/v2",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "le": "5000",
-        "otel_scope_name": "spanmetricsconnector",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "span_kind": "SPAN_KIND_SERVER",
-        "span_name": "POST /db/{databaseName}/query/v2",
-        "status_code": "STATUS_CODE_UNSET"
-      }
-    },
-    {
-      "name": "traces_spanmetrics_duration_milliseconds_bucket",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "collector_instance_id": "e51a2b51-42f3-4ec5-b09c-32472015c6bc",
-        "host_name": "db0",
-        "http_route": "/db/{databaseName}/query/v2",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "le": "6",
-        "otel_scope_name": "spanmetricsconnector",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "span_kind": "SPAN_KIND_SERVER",
-        "span_name": "POST /db/{databaseName}/query/v2",
-        "status_code": "STATUS_CODE_UNSET"
-      }
-    },
-    {
-      "name": "traces_spanmetrics_duration_milliseconds_bucket",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "collector_instance_id": "e51a2b51-42f3-4ec5-b09c-32472015c6bc",
-        "host_name": "db0",
-        "http_route": "/db/{databaseName}/query/v2",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "le": "8",
-        "otel_scope_name": "spanmetricsconnector",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "span_kind": "SPAN_KIND_SERVER",
-        "span_name": "POST /db/{databaseName}/query/v2",
-        "status_code": "STATUS_CODE_UNSET"
-      }
-    },
-    {
-      "name": "traces_spanmetrics_duration_milliseconds_bucket",
-      "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "collector_instance_id": "e51a2b51-42f3-4ec5-b09c-32472015c6bc",
-        "host_name": "db0",
-        "http_route": "/db/{databaseName}/query/v2",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "le": "800",
-        "otel_scope_name": "spanmetricsconnector",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "span_kind": "SPAN_KIND_SERVER",
-        "span_name": "POST /db/{databaseName}/query/v2",
-        "status_code": "STATUS_CODE_UNSET"
+        "cluster": [
+          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
+        ],
+        "collector_instance_id": [
+          "e51a2b51-42f3-4ec5-b09c-32472015c6bc"
+        ],
+        "host_name": [
+          "db0"
+        ],
+        "http_route": [
+          "/db/{databaseName}/query/v2"
+        ],
+        "job": [
+          "neo4j"
+        ],
+        "le": [
+          "+Inf",
+          "10",
+          "100",
+          "1000",
+          "10000",
+          "1400",
+          "2",
+          "200",
+          "2000",
+          "4",
+          "400",
+          "50",
+          "5000",
+          "6",
+          "8",
+          "800"
+        ],
+        "otel_scope_name": [
+          "spanmetricsconnector"
+        ],
+        "service_name": [
+          "neo4j"
+        ],
+        "span_kind": [
+          "SPAN_KIND_SERVER"
+        ],
+        "span_name": [
+          "POST /db/{databaseName}/query/v2"
+        ],
+        "status_code": [
+          "STATUS_CODE_UNSET"
+        ]
       }
     },
     {
       "name": "traces_spanmetrics_duration_milliseconds_count",
       "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "collector_instance_id": "e51a2b51-42f3-4ec5-b09c-32472015c6bc",
-        "host_name": "db0",
-        "http_route": "/db/{databaseName}/query/v2",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "otel_scope_name": "spanmetricsconnector",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "span_kind": "SPAN_KIND_SERVER",
-        "span_name": "POST /db/{databaseName}/query/v2",
-        "status_code": "STATUS_CODE_UNSET"
+        "cluster": [
+          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
+        ],
+        "collector_instance_id": [
+          "e51a2b51-42f3-4ec5-b09c-32472015c6bc"
+        ],
+        "host_name": [
+          "db0"
+        ],
+        "http_route": [
+          "/db/{databaseName}/query/v2"
+        ],
+        "job": [
+          "neo4j"
+        ],
+        "otel_scope_name": [
+          "spanmetricsconnector"
+        ],
+        "service_name": [
+          "neo4j"
+        ],
+        "span_kind": [
+          "SPAN_KIND_SERVER"
+        ],
+        "span_name": [
+          "POST /db/{databaseName}/query/v2"
+        ],
+        "status_code": [
+          "STATUS_CODE_UNSET"
+        ]
       }
     },
     {
       "name": "traces_spanmetrics_duration_milliseconds_sum",
       "labels": {
-        "cluster": "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab",
-        "collector_instance_id": "e51a2b51-42f3-4ec5-b09c-32472015c6bc",
-        "host_name": "db0",
-        "http_route": "/db/{databaseName}/query/v2",
-        "instance": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "job": "neo4j",
-        "otel_scope_name": "spanmetricsconnector",
-        "service_instance_id": "47660b7f-7fd5-4e6b-a9e7-de3a94f85948",
-        "service_name": "neo4j",
-        "span_kind": "SPAN_KIND_SERVER",
-        "span_name": "POST /db/{databaseName}/query/v2",
-        "status_code": "STATUS_CODE_UNSET"
+        "cluster": [
+          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
+        ],
+        "collector_instance_id": [
+          "e51a2b51-42f3-4ec5-b09c-32472015c6bc"
+        ],
+        "host_name": [
+          "db0"
+        ],
+        "http_route": [
+          "/db/{databaseName}/query/v2"
+        ],
+        "job": [
+          "neo4j"
+        ],
+        "otel_scope_name": [
+          "spanmetricsconnector"
+        ],
+        "service_name": [
+          "neo4j"
+        ],
+        "span_kind": [
+          "SPAN_KIND_SERVER"
+        ],
+        "span_name": [
+          "POST /db/{databaseName}/query/v2"
+        ],
+        "status_code": [
+          "STATUS_CODE_UNSET"
+        ]
       }
     }
   ]

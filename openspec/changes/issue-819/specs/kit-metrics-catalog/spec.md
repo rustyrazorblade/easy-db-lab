@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Global export script queries VictoriaMetrics for any scrape-type kit
-A single script `bin/export-workload-metrics` SHALL accept a kit name as its only argument, read `CONTROL_HOST_PRIVATE` from `env.sh` in the current directory, query VictoriaMetrics at `http://$CONTROL_HOST_PRIVATE:8428` for the kit's series that were live in the last 5 minutes (an instant `last_over_time({job="<kit>"}[5m])` query, so series from pods that are gone are not included), and write `<kit>/metrics-catalog.json` in the current cluster working directory. The catalog SHALL be compact: one entry per distinct metric name, whose `labels` maps each label key to the sorted distinct values seen for it, capped at a small fixed number of values per key. Per-pod identity labels (`k8s_pod_uid`, `k8s_pod_name`, `instance`, `service_instance_id`) SHALL be dropped, because they carry no information for dashboards or `METRICS.md` and make the file grow with the number of pods.
+A single script `bin/export-workload-metrics` SHALL accept a kit name as its only argument, read `CONTROL_HOST_PRIVATE` from `env.sh` in the current directory, query VictoriaMetrics at `http://$CONTROL_HOST_PRIVATE:8428` for the kit's series that were live in the last 5 minutes (an instant `last_over_time({job="<kit>"}[5m])` query, so series from pods that are gone are not included), and write `<kit>/metrics-catalog.json` in the current cluster working directory. The catalog SHALL be compact: one entry per distinct metric name, whose `labels` maps each label key to the sorted distinct values seen for it, capped at a small fixed number of values per key. Per-pod identity labels (`k8s_pod_uid`, `k8s_pod_name`, `instance`, `service_instance_id`) SHALL be dropped, because they carry no information for dashboards or `METRICS.md` and make the file grow with the number of pods. Label keys present on every series of the export (the collector's infrastructure labels such as `cluster`, `host_name`, `job`, `k8s_*`, `otel_scope_*`) SHALL be listed once, in a top-level `common_labels` map (key → capped sorted distinct values), and omitted from each entry, so an entry's `labels` holds only the labels specific to that metric.
 
 #### Scenario: Export produces metrics-catalog.json for a running kit
 - **WHEN** a scrape-type kit is running and `bin/export-workload-metrics <kit>` is executed from the cluster working directory
@@ -11,6 +11,10 @@ A single script `bin/export-workload-metrics` SHALL accept a kit name as its onl
 #### Scenario: Catalog size does not grow with the number of pods
 - **WHEN** the same kit is exported with 1 pod and with 3 pods
 - **THEN** both catalogs have the same metric names AND neither contains `k8s_pod_uid`, `k8s_pod_name`, `instance`, or `service_instance_id`
+
+#### Scenario: Labels common to every series are listed once
+- **WHEN** a label key appears on every series of the export
+- **THEN** it appears once under the top-level `common_labels` AND not in any entry's `labels`
 
 #### Scenario: Export script fails if the kit argument is missing
 - **WHEN** `bin/export-workload-metrics` is called with no arguments

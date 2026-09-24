@@ -64,6 +64,9 @@ class ClickHouseKitTest : BaseKoinTest() {
         const val SCRIPT_TIMEOUT_SECONDS = 20L
         const val KEEPER_METRICS_PORT = 7000
 
+        /** The label the Altinity operator puts on every pod of the `clickhouse-keeper` CHK. */
+        const val KEEPER_POD_SELECTOR = "clickhouse-keeper.altinity.com/chk=clickhouse-keeper"
+
         /** The ports a Keeper pod already listens on: client, raft and http_control. */
         val KEEPER_LISTEN_PORTS = listOf(2181, 9444, 9182)
     }
@@ -146,5 +149,22 @@ class ClickHouseKitTest : BaseKoinTest() {
         assertThat(settings).containsEntry("prometheus/asynchronous_metrics", "true")
         assertThat(settings["prometheus/port"]).isEqualTo(KEEPER_METRICS_PORT.toString())
         assertThat(KEEPER_METRICS_PORT).isNotIn(KEEPER_LISTEN_PORTS)
+    }
+
+    /**
+     * Keeper's endpoint is scraped by pod discovery on the Keeper pods — the ones the start step
+     * waits on — at the port and path its settings serve. Its job must differ from the server
+     * scrape's (the kit name), since the metrics registry refuses two targets with one job.
+     */
+    @Test
+    fun `keeper is scraped on its own pods at the endpoint its settings serve, under a job of its own`() {
+        val settings = keeperSettings()
+        val keeperScrape = kit.scrapeMetrics.single { it.podSelector == KEEPER_POD_SELECTOR }
+
+        assertThat(keeperScrape.port.toString()).isEqualTo(settings["prometheus/port"])
+        assertThat(keeperScrape.path).isEqualTo(settings["prometheus/endpoint"])
+        assertThat(kit.scrapeMetrics.map { it.job.ifBlank { kit.config.name } }).doesNotHaveDuplicates()
+        assertThat(kit.config.start.filterIsInstance<InstallStep.Shell>().first().script)
+            .contains("-l $KEEPER_POD_SELECTOR")
     }
 }

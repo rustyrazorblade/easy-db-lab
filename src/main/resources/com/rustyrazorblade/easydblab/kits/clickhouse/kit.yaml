@@ -11,6 +11,14 @@ metrics:
     port: 9363
     path: /metrics
     pod-selector: "clickhouse.altinity.com/chi=clickhouse"
+  # Keeper's own endpoint (clickhouse-keeper.yaml enables it), scraped on the Keeper pods. The
+  # dashboard's Keeper panels select only cluster and instance (the pod name), so the job just
+  # has to differ from the server scrape's.
+  - type: scrape
+    port: 7000
+    path: /metrics
+    job: clickhouse-keeper
+    pod-selector: "clickhouse-keeper.altinity.com/chk=clickhouse-keeper"
 runtime:
   type: pods
   selector: "clickhouse.altinity.com/chi=clickhouse"

@@ -308,22 +308,31 @@ class Up(
      * Resolves the cluster's VPC and its CIDR.
      *
      * A CIDR given with `--cidr` is used as-is. Without one, a new VPC is created on a random
-     * unused block (see [createVpcOnRandomCidr]).
+     * unused block (see [createVpcOnRandomCidr]). A VPC already recorded with no CIDR is an `up`
+     * interrupted between creating the VPC and persisting its CIDR; the VPC's own CIDR is read
+     * from AWS and persisted, so subnets and the CNI use the block the VPC actually has.
      *
      * @return the VPC ID and the CIDR it uses
      */
     private fun resolveVpc(initConfig: InitConfig): Pair<String, String> {
         val explicitCidr = initConfig.cidr
+        val existingVpcId = workingState.vpcId
         return when {
             explicitCidr != null -> createOrValidateVpc(initConfig, explicitCidr) to explicitCidr
-            workingState.vpcId == null -> createVpcOnRandomCidr(initConfig)
+            existingVpcId == null -> createVpcOnRandomCidr(initConfig)
             else -> {
-                val cidr = autoSelectCidr(excluded = emptyList())
-                persistAutoSelectedCidr(initConfig, cidr)
+                val cidr = vpcService.getVpcCidr(existingVpcId) ?: vpcNotFound(existingVpcId)
+                persistCidr(initConfig, cidr)
                 createOrValidateVpc(initConfig, cidr) to cidr
             }
         }
     }
+
+    private fun vpcNotFound(vpcId: String): Nothing =
+        error(
+            "VPC $vpcId not found in AWS. It may have been deleted. " +
+                "Please run 'easy-db-lab clean' and 'easy-db-lab init' to recreate.",
+        )
 
     /**
      * Creates the VPC on a random unused `10.X.0.0/16`. If creation fails, a new random block is
@@ -341,7 +350,7 @@ class Up(
                     attempted += cidr
                     createOrValidateVpc(initConfig, cidr) to cidr
                 }.get()
-        persistAutoSelectedCidr(initConfig, created.second)
+        persistCidr(initConfig, created.second)
         return created
     }
 
@@ -351,7 +360,7 @@ class Up(
         return selected.value
     }
 
-    private fun persistAutoSelectedCidr(
+    private fun persistCidr(
         initConfig: InitConfig,
         cidr: String,
     ) {
@@ -376,13 +385,7 @@ class Up(
 
         if (existingVpcId != null) {
             // Validate existing VPC still exists
-            val vpcName = vpcService.getVpcName(existingVpcId)
-            if (vpcName == null) {
-                error(
-                    "VPC $existingVpcId not found in AWS. It may have been deleted. " +
-                        "Please run 'easy-db-lab clean' and 'easy-db-lab init' to recreate.",
-                )
-            }
+            val vpcName = vpcService.getVpcName(existingVpcId) ?: vpcNotFound(existingVpcId)
             // Backfill bucket tag on VPCs created before this tag was added
             val bucket = workingState.s3Bucket
             if (bucket != null) {

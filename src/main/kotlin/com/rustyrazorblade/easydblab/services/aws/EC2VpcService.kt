@@ -596,6 +596,17 @@ class EC2VpcService(
         return vpc.tags().firstOrNull { it.key() == "Name" }?.value()
     }
 
+    override fun getVpcCidr(vpcId: VpcId): String? {
+        val describeRequest =
+            DescribeVpcsRequest
+                .builder()
+                .vpcIds(vpcId)
+                .build()
+
+        val vpcs = withAwsRetry("get-vpc-cidr") { ec2Client.describeVpcs(describeRequest).vpcs() }
+        return vpcs.firstOrNull()?.cidrBlock()
+    }
+
     override fun getVpcTags(vpcId: VpcId): Map<String, String> {
         log.debug { "Getting tags for VPC: $vpcId" }
 

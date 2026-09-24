@@ -14,6 +14,7 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.clearInvocations
 import org.mockito.kotlin.eq
+import org.mockito.kotlin.never
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
@@ -110,6 +111,24 @@ class UpVpcCidrTest : UpTestFixture() {
 
         val attempted = attemptedCidrs(Constants.Vpc.CIDR_AUTO_SELECT_MAX_ATTEMPTS)
         assertThat(attempted).doesNotHaveDuplicates().doesNotContainAnyElementsOf(usedCidrs)
+    }
+
+    @Test
+    fun `resuming with a recorded VPC but no recorded CIDR adopts the VPC's actual CIDR`() {
+        val state = happyState(cidr = null).apply { vpcId = "vpc-existing" }
+        whenever(mockClusterStateManager.load()).thenReturn(state)
+        whenever(mockVpcService.getVpcName("vpc-existing")).thenReturn("test-cluster")
+        whenever(mockVpcService.getVpcCidr("vpc-existing")).thenReturn("10.42.0.0/16")
+
+        newUp(seed = 7).execute()
+
+        assertThat(state.initConfig?.cidr).isEqualTo("10.42.0.0/16")
+        val networking = argumentCaptor<VpcNetworkingConfig>()
+        verify(mockAwsInfrastructureService).setupVpcNetworking(networking.capture(), any())
+        assertThat(networking.firstValue.vpcId).isEqualTo("vpc-existing")
+        assertThat(networking.firstValue.vpcCidr).isEqualTo("10.42.0.0/16")
+        verify(mockVpcService, never()).createVpc(any(), any(), any())
+        assertThat(emitted.filterIsInstance<Event.Setup.AutoSelectedCidr>()).isEmpty()
     }
 
     @Test

@@ -68,45 +68,47 @@ easy-db-lab clickhouse start --replicas 9 --replicas-per-shard 3
 
 ## Cluster Topology
 
-ClickHouse is deployed with a sharded, replicated architecture. The total number of replicas must be divisible by `--replicas-per-shard`.
+ClickHouse is deployed by the Altinity ClickHouse operator as a ClickHouseInstallation named
+`clickhouse`, with one shard and `--replicas` replicas (default: one per db node). The ClickHouse
+cluster is also named `clickhouse`, which is the name to use in `ON CLUSTER` DDL.
 
-### Shard and Replica Assignment
+### Pod Names
 
-The cluster named `easy_db_lab` is automatically configured based on your replica count:
+The operator names each server pod `chi-clickhouse-clickhouse-<shard>-<replica>-0`, with shard
+and replica counted from 0. A 3-replica deployment runs:
 
-| Configuration | Shards | Replicas/Shard | Total Nodes |
-|--------------|--------|----------------|-------------|
-| Default (3 nodes) | 1 | 3 | 3 |
-| 6 nodes, 3/shard | 2 | 3 | 6 |
-| 9 nodes, 3/shard | 3 | 3 | 9 |
-| 6 nodes, 2/shard | 3 | 2 | 6 |
+| Pod | Shard | Replica |
+|-----|-------|---------|
+| `chi-clickhouse-clickhouse-0-0-0` | 0 | 0 |
+| `chi-clickhouse-clickhouse-0-1-0` | 0 | 1 |
+| `chi-clickhouse-clickhouse-0-2-0` | 0 | 2 |
 
-### Pod-to-Node Pinning
+List them with:
 
-Each ClickHouse pod is pinned to a specific database node using Local PersistentVolumes with node affinity:
+```bash
+kubectl get pods -l clickhouse.altinity.com/chi=clickhouse -o wide
+```
 
-- `clickhouse-0` always runs on `db0`
-- `clickhouse-1` always runs on `db1`
-- `clickhouse-N` always runs on `dbN`
+### Pod-to-Node Placement
 
-This guarantees:
+Server pods run only on db nodes, each on a Local PersistentVolume. A replica is placed on a db
+node when it first starts, and its volume keeps it on that node across pod restarts, so data stays
+local and does not move. Which db node a given replica lands on is chosen by the scheduler, not by
+its replica number; use `kubectl get pods -o wide` (above) to see the mapping.
 
-1. **Consistent shard assignment** - A pod's shard is calculated from its ordinal: `shard = (ordinal / replicas_per_shard) + 1`
-2. **Data locality** - Data stored on a node stays with that node across pod restarts
-3. **Predictable performance** - No data movement when pods restart
+### Shell Helpers
 
-### Shard Calculation Example
+After `source env.sh`, two helpers connect to ClickHouse without looking up pod names or IPs:
 
-With 6 replicas and 3 replicas per shard:
+```bash
+# Interactive clickhouse-client in the first running server pod; extra args are passed through
+clickhouse-client
+clickhouse-client --query "SELECT version()"
 
-| Pod | Ordinal | Shard | Node |
-|-----|---------|-------|------|
-| clickhouse-0 | 0 | 1 | db0 |
-| clickhouse-1 | 1 | 1 | db1 |
-| clickhouse-2 | 2 | 1 | db2 |
-| clickhouse-3 | 3 | 2 | db3 |
-| clickhouse-4 | 4 | 2 | db4 |
-| clickhouse-5 | 5 | 2 | db5 |
+# Send one query over HTTP to db0 (NodePort 30123)
+clickhouse-query "SELECT 1"
+clickhouse-query <<< "SELECT count() FROM system.tables"
+```
 
 ## Checking Status
 
@@ -124,15 +126,16 @@ This displays:
 
 ## Accessing ClickHouse
 
-After deployment, ClickHouse is accessible via:
+After deployment, ClickHouse is accessible on NodePorts of every db node. The `default` user has
+no password.
 
 | Interface | URL/Port | Description |
 |-----------|----------|-------------|
-| Play UI | `http://<db-node-ip>:8123/play` | Interactive web query interface |
-| HTTP API | `http://<db-node-ip>:8123` | REST API for queries |
-| Native Protocol | `<db-node-ip>:9000` | High-performance binary protocol |
-| MySQL wire | `<db-node-ip>:9004` | MySQL-compatible protocol (`mysql -h <ip> -P 9004 -u default`) |
-| PostgreSQL wire | `<db-node-ip>:9005` | PostgreSQL-compatible protocol (`psql -h <ip> -p 9005 -U default`) |
+| Play UI | `http://<db-node-ip>:30123/play` | Interactive web query interface |
+| HTTP API | `http://<db-node-ip>:30123` | REST API for queries |
+| Native Protocol | `<db-node-ip>:30900` | High-performance binary protocol |
+| MySQL wire | `<db-node-ip>:30904` | MySQL-compatible protocol (`mysql -h <ip> -P 30904 -u default`) |
+| PostgreSQL wire | `<db-node-ip>:30905` | PostgreSQL-compatible protocol (`psql -h <ip> -p 30905 -U default`) |
 
 The MySQL and PostgreSQL interfaces are protocol-compatible, not dialect-compatible:
 queries sent over them are parsed as ClickHouse SQL. They are handy for connecting
@@ -408,11 +411,13 @@ ClickHouse uses Local PersistentVolumes to guarantee pod-to-node pinning:
 3. Each PV is labelled `app.kubernetes.io/name=clickhouse`, and the claims select that label, so they never bind another kit's PV
 4. The installation's volumeClaimTemplate requests storage from these PVs
 
-This ensures `clickhouse-X` always runs on `dbX`, providing:
+Once a replica's claim binds a PV, that replica always runs on the PV's db node, providing:
 
-- Consistent shard assignments across restarts
 - Data locality (no network storage overhead)
-- Predictable failover behavior
+- No data movement when pods restart
+
+The binding is made when the replica first starts, so replica numbers do not map to node numbers;
+see [Pod-to-Node Placement](#pod-to-node-placement).
 
 ### Ports
 

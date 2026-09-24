@@ -880,7 +880,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "  label_replace(\n    {__name__=~\"ClickHouseAsyncMetrics_DiskAvailable_.*\", cluster=~\"$cluster\", instance=~\"($Instance)\"},\n    \"disk\", \"$1\", \"__name__\", \"ClickHouseAsyncMetrics_DiskAvailable_(.*)\"\n  )",
+          "expr": "  ClickHouseAsyncMetrics_DiskAvailable{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
           "format": "table",
           "hide": false,
           "instant": true,
@@ -895,7 +895,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "  label_replace(\n    {__name__=~\"ClickHouseAsyncMetrics_DiskUsed_.*\", cluster=~\"$cluster\", instance=~\"($Instance)\"},\n    \"disk\", \"$1\", \"__name__\", \"ClickHouseAsyncMetrics_DiskUsed_(.*)\"\n  )",
+          "expr": "  ClickHouseAsyncMetrics_DiskUsed{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
           "format": "table",
           "hide": false,
           "instant": true,
@@ -910,7 +910,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "  label_replace(\n    {__name__=~\"ClickHouseAsyncMetrics_DiskTotal_.*\", cluster=~\"$cluster\", instance=~\"($Instance)\"},\n    \"disk\", \"$1\", \"__name__\", \"ClickHouseAsyncMetrics_DiskTotal_(.*)\"\n  )",
+          "expr": "  ClickHouseAsyncMetrics_DiskTotal{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
           "format": "table",
           "hide": false,
           "instant": true,
@@ -925,7 +925,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "  label_replace(\n    {__name__=~\"ClickHouseAsyncMetrics_DiskUnreserved_.*\", cluster=~\"$cluster\", instance=~\"($Instance)\"},\n    \"disk\", \"$1\", \"__name__\", \"ClickHouseAsyncMetrics_DiskUnreserved_(.*)\"\n  )",
+          "expr": "  ClickHouseAsyncMetrics_DiskUnreserved{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
           "format": "table",
           "hide": false,
           "instant": true,
@@ -940,7 +940,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "(\n  label_replace(\n    {__name__=~\"ClickHouseAsyncMetrics_DiskTotal_.*\", cluster=~\"$cluster\", instance=~\"($Instance)\"},\n    \"disk\", \"$1\", \"__name__\", \"ClickHouseAsyncMetrics_DiskTotal_(.*)\"\n  )\n  -\n  label_replace(\n    {__name__=~\"ClickHouseAsyncMetrics_DiskAvailable_.*\", cluster=~\"$cluster\", instance=~\"($Instance)\"},\n    \"disk\", \"$1\", \"__name__\", \"ClickHouseAsyncMetrics_DiskAvailable_(.*)\"\n  )\n)\n/\nlabel_replace(\n  {__name__=~\"ClickHouseAsyncMetrics_DiskTotal_.*\", cluster=~\"$cluster\", instance=~\"($Instance)\"},\n  \"disk\", \"$1\", \"__name__\", \"ClickHouseAsyncMetrics_DiskTotal_(.*)\"\n)\n* 100\n",
+          "expr": "(\n  ClickHouseAsyncMetrics_DiskTotal{cluster=~\"$cluster\", instance=~\"($Instance)\"}\n  -\n  ClickHouseAsyncMetrics_DiskAvailable{cluster=~\"$cluster\", instance=~\"($Instance)\"}\n)\n/\nClickHouseAsyncMetrics_DiskTotal{cluster=~\"$cluster\", instance=~\"($Instance)\"}\n* 100\n",
           "format": "table",
           "hide": false,
           "instant": true,
@@ -1130,7 +1130,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "  label_replace(\n    {__name__=~\"ClickHouseAsyncMetrics_DiskUsed_.*\", cluster=~\"$cluster\", instance=~\"($Instance)\"},\n    \"disk\", \"$1\", \"__name__\", \"ClickHouseAsyncMetrics_DiskUsed_(.*)\"\n  ) \n  - \n  label_replace(\n    {__name__=~\"ClickHouseAsyncMetrics_DiskUsed_.*\", cluster=~\"$cluster\", instance=~\"($Instance)\"} offset 10m,\n    \"disk\", \"$1\", \"__name__\", \"ClickHouseAsyncMetrics_DiskUsed_(.*)\"\n  )\n",
+          "expr": "  ClickHouseAsyncMetrics_DiskUsed{cluster=~\"$cluster\", instance=~\"($Instance)\"} \n  - \n  ClickHouseAsyncMetrics_DiskUsed{cluster=~\"$cluster\", instance=~\"($Instance)\"} offset 10m\n",
           "interval": "",
           "legendFormat": "{{instance}}-{{disk}}",
           "range": true,
@@ -1921,7 +1921,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (instance) ({__name__=~\"ClickHouseAsyncMetrics_NetworkSendBytes_.*\", cluster=~\"$cluster\", instance=~\"($Instance)\"})",
+          "expr": "sum by (instance) (ClickHouseAsyncMetrics_NetworkSendBytes{cluster=~\"$cluster\", instance=~\"($Instance)\"})",
           "legendFormat": "{{instance}}",
           "refId": "A"
         }
@@ -2016,7 +2016,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (instance) ({__name__=~\"ClickHouseAsyncMetrics_NetworkReceiveBytes_.*\", cluster=~\"$cluster\", instance=~\"($Instance)\"})",
+          "expr": "sum by (instance) (ClickHouseAsyncMetrics_NetworkReceiveBytes{cluster=~\"$cluster\", instance=~\"($Instance)\"})",
           "legendFormat": "{{instance}}",
           "refId": "A"
         }
@@ -2212,7 +2212,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "  label_replace(\n    {__name__=~\"ClickHouseAsyncMetrics_DiskUnreserved_.*\", cluster=~\"$cluster\", instance=~\"($Instance)\"},\n    \"disk\", \"$1\", \"__name__\", \"ClickHouseAsyncMetrics_DiskUnreserved_(.*)\"\n  )",
+          "expr": "  ClickHouseAsyncMetrics_DiskUnreserved{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
           "interval": "",
           "legendFormat": "{{instance}}-{{disk}}",
           "range": true,
@@ -2311,7 +2311,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "  label_replace(\n    {__name__=~\"ClickHouseAsyncMetrics_DiskUsed_.*\", cluster=~\"$cluster\", instance=~\"($Instance)\"},\n    \"disk\", \"$1\", \"__name__\", \"ClickHouseAsyncMetrics_DiskUsed_(.*)\"\n  )",
+          "expr": "  ClickHouseAsyncMetrics_DiskUsed{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
           "interval": "",
           "legendFormat": "{{instance}}-{{disk}}",
           "range": true,
@@ -2410,7 +2410,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "  label_replace(\n    {__name__=~\"ClickHouseAsyncMetrics_DiskAvailable_.*\", cluster=~\"$cluster\", instance=~\"($Instance)\"},\n    \"disk\", \"$1\", \"__name__\", \"ClickHouseAsyncMetrics_DiskAvailable_(.*)\"\n  )",
+          "expr": "  ClickHouseAsyncMetrics_DiskAvailable{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
           "interval": "",
           "legendFormat": "{{instance}}-{{disk}}",
           "range": true,
@@ -3618,7 +3618,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "ClickHouseErrorMetric_ACCESS_STORAGE_READONLY{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
+          "expr": "increase(ClickHouseErrorMetric_ACCESS_STORAGE_READONLY_total{cluster=~\"$cluster\", instance=~\"($Instance)\"}[$__rate_interval])",
           "hide": false,
           "interval": "",
           "legendFormat": "{{instance}}",
@@ -5670,7 +5670,7 @@
                   }
                 ]
               },
-              "unit": "\u00b5s"
+              "unit": "ms"
             },
             "overrides": []
           },
@@ -8725,7 +8725,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "max_over_time( (irate(ClickHouseProfileEvents_MutatedColumns_total{cluster=~\"$cluster\", instance=~\"($Instance)\"}[2m]))[$__rate_interval:15s] ) ",
+              "expr": "max_over_time( (irate(ClickHouseProfileEvents_MutationSomePartColumns_total{cluster=~\"$cluster\", instance=~\"($Instance)\"}[2m]))[$__rate_interval:15s] ) ",
               "hide": true,
               "interval": "",
               "legendFormat": "peaks - {{instance}}",
@@ -15398,7 +15398,7 @@
                   }
                 ]
               },
-              "unit": "\u00b5s"
+              "unit": "ms"
             },
             "overrides": []
           },
@@ -18989,7 +18989,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_CachedReadBufferCacheHit_total{cluster=~\"$cluster\", instance=~\"($Instance)\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_CachedReadBufferReadFromCacheHits_total{cluster=~\"$cluster\", instance=~\"($Instance)\"}[$__rate_interval])",
               "interval": "",
               "legendFormat": "Hits - {{instance}}",
               "refId": "A"
@@ -19000,7 +19000,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "rate(ClickHouseProfileEvents_CachedReadBufferCacheMiss_total{cluster=~\"$cluster\", instance=~\"($Instance)\"}[$__rate_interval])",
+              "expr": "rate(ClickHouseProfileEvents_CachedReadBufferReadFromCacheMisses_total{cluster=~\"$cluster\", instance=~\"($Instance)\"}[$__rate_interval])",
               "interval": "",
               "legendFormat": "Misses - {{instance}}",
               "refId": "B"
@@ -19306,7 +19306,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_PSICPUSome10{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
+              "expr": "ClickHouseAsyncMetrics_PSI_CPU_some{cluster=~\"$cluster\", instance=~\"($Instance)\"} / 10000",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -19402,7 +19402,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_PSICPUFull10{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
+              "expr": "ClickHouseAsyncMetrics_PSI_CPU_full{cluster=~\"$cluster\", instance=~\"($Instance)\"} / 10000",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -19498,7 +19498,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_PSIIOSome10{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
+              "expr": "ClickHouseAsyncMetrics_PSI_IO_some{cluster=~\"$cluster\", instance=~\"($Instance)\"} / 10000",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -19594,7 +19594,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_PSIIOFull10{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
+              "expr": "ClickHouseAsyncMetrics_PSI_IO_full{cluster=~\"$cluster\", instance=~\"($Instance)\"} / 10000",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -19690,7 +19690,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_PSIMemorySome10{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
+              "expr": "ClickHouseAsyncMetrics_PSI_MEM_some{cluster=~\"$cluster\", instance=~\"($Instance)\"} / 10000",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -19786,7 +19786,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_PSIMemoryFull10{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
+              "expr": "ClickHouseAsyncMetrics_PSI_MEM_full{cluster=~\"$cluster\", instance=~\"($Instance)\"} / 10000",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -19900,9 +19900,9 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "{__name__=~\"ClickHouseAsyncMetrics_BlockReadOps_.*\", cluster=~\"$cluster\", instance=~\"($Instance)\"}",
+              "expr": "ClickHouseAsyncMetrics_BlockReadOps{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
               "interval": "",
-              "legendFormat": "{{__name__}} - {{instance}}",
+              "legendFormat": "{{device}} - {{instance}}",
               "refId": "A"
             }
           ],
@@ -19996,9 +19996,9 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "{__name__=~\"ClickHouseAsyncMetrics_BlockWriteOps_.*\", cluster=~\"$cluster\", instance=~\"($Instance)\"}",
+              "expr": "ClickHouseAsyncMetrics_BlockWriteOps{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
               "interval": "",
-              "legendFormat": "{{__name__}} - {{instance}}",
+              "legendFormat": "{{device}} - {{instance}}",
               "refId": "A"
             }
           ],
@@ -20092,9 +20092,9 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "{__name__=~\"ClickHouseAsyncMetrics_BlockReadBytes_.*\", cluster=~\"$cluster\", instance=~\"($Instance)\"}",
+              "expr": "ClickHouseAsyncMetrics_BlockReadBytes{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
               "interval": "",
-              "legendFormat": "{{__name__}} - {{instance}}",
+              "legendFormat": "{{device}} - {{instance}}",
               "refId": "A"
             }
           ],
@@ -20188,9 +20188,9 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "{__name__=~\"ClickHouseAsyncMetrics_BlockWriteBytes_.*\", cluster=~\"$cluster\", instance=~\"($Instance)\"}",
+              "expr": "ClickHouseAsyncMetrics_BlockWriteBytes{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
               "interval": "",
-              "legendFormat": "{{__name__}} - {{instance}}",
+              "legendFormat": "{{device}} - {{instance}}",
               "refId": "A"
             }
           ],
@@ -20284,9 +20284,9 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "{__name__=~\"ClickHouseAsyncMetrics_BlockQueueTime_.*\", cluster=~\"$cluster\", instance=~\"($Instance)\"}",
+              "expr": "ClickHouseAsyncMetrics_BlockQueueTime{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
               "interval": "",
-              "legendFormat": "{{__name__}} - {{instance}}",
+              "legendFormat": "{{device}} - {{instance}}",
               "refId": "A"
             }
           ],
@@ -20398,7 +20398,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_jemalloc.active{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
+              "expr": "ClickHouseAsyncMetrics_jemalloc_active{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -20494,7 +20494,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_jemalloc.allocated{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
+              "expr": "ClickHouseAsyncMetrics_jemalloc_allocated{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -20590,7 +20590,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_jemalloc.resident{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
+              "expr": "ClickHouseAsyncMetrics_jemalloc_resident{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -20686,7 +20686,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_jemalloc.mapped{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
+              "expr": "ClickHouseAsyncMetrics_jemalloc_mapped{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -20782,7 +20782,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_jemalloc.retained{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
+              "expr": "ClickHouseAsyncMetrics_jemalloc_retained{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -20878,7 +20878,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_jemalloc.metadata{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
+              "expr": "ClickHouseAsyncMetrics_jemalloc_metadata{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -20992,7 +20992,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_TCPCount_ESTABLISHED{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
+              "expr": "ClickHouseAsyncMetrics_NetworkTCPSockets_ESTABLISHED{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
               "interval": "",
               "legendFormat": "ESTABLISHED - {{instance}}",
               "refId": "A"
@@ -21003,7 +21003,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_TCPCount_LISTEN{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
+              "expr": "ClickHouseAsyncMetrics_NetworkTCPSockets_LISTEN{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
               "interval": "",
               "legendFormat": "LISTEN - {{instance}}",
               "refId": "B"
@@ -21014,7 +21014,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_TCPCount_TIME_WAIT{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
+              "expr": "ClickHouseAsyncMetrics_NetworkTCPSockets_TIME_WAIT{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
               "interval": "",
               "legendFormat": "TIME_WAIT - {{instance}}",
               "refId": "C"
@@ -21025,7 +21025,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_TCPCount_CLOSE_WAIT{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
+              "expr": "ClickHouseAsyncMetrics_NetworkTCPSockets_CLOSE_WAIT{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
               "interval": "",
               "legendFormat": "CLOSE_WAIT - {{instance}}",
               "refId": "D"
@@ -21036,7 +21036,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseAsyncMetrics_TCPCount_FIN_WAIT1{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
+              "expr": "ClickHouseAsyncMetrics_NetworkTCPSockets_FIN_WAIT1{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
               "interval": "",
               "legendFormat": "FIN_WAIT1 - {{instance}}",
               "refId": "E"
@@ -21239,9 +21239,9 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "{__name__=~\"ClickHouseAsyncMetrics_Network(Receive|Send)(Errors|Drop)_ens3\", cluster=~\"$cluster\", instance=~\"($Instance)\"}",
+              "expr": "{__name__=~\"ClickHouseAsyncMetrics_Network(Receive|Send)(Errors|Drop)\", cluster=~\"$cluster\", instance=~\"($Instance)\"}",
               "interval": "",
-              "legendFormat": "{{__name__}} - {{instance}}",
+              "legendFormat": "{{__name__}} {{interface}} - {{instance}}",
               "refId": "A"
             }
           ],
@@ -23676,7 +23676,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": false,
-              "expr": "ClickHouseMetrics_TrackedMemory{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
+              "expr": "ClickHouseAsyncMetrics_TrackedMemory{cluster=~\"$cluster\", instance=~\"($Instance)\"}",
               "interval": "",
               "legendFormat": "{{instance}}",
               "refId": "A"
@@ -28781,124 +28781,6 @@
           "gridPos": {
             "h": 8,
             "w": 12,
-            "x": 0,
-            "y": 1
-          },
-          "id": 346,
-          "maxDataPoints": 200,
-          "options": {
-            "legend": {
-              "calcs": [],
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "pluginVersion": "9.1.4",
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${KeeperDatasource}"
-              },
-              "exemplar": false,
-              "expr": "histogram_quantile(0.5, rate(ClickHouseHistogramMetrics_keeper_client_roundtrip_duration_milliseconds_bucket{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"}[$__rate_interval]))",
-              "interval": "",
-              "legendFormat": "p50 - {{instance}}",
-              "refId": "A"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${KeeperDatasource}"
-              },
-              "exemplar": false,
-              "expr": "histogram_quantile(0.95, rate(ClickHouseHistogramMetrics_keeper_client_roundtrip_duration_milliseconds_bucket{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"}[$__rate_interval]))",
-              "interval": "",
-              "legendFormat": "p95 - {{instance}}",
-              "refId": "B"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${KeeperDatasource}"
-              },
-              "exemplar": false,
-              "expr": "histogram_quantile(0.99, rate(ClickHouseHistogramMetrics_keeper_client_roundtrip_duration_milliseconds_bucket{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"}[$__rate_interval]))",
-              "interval": "",
-              "legendFormat": "p99 - {{instance}}",
-              "refId": "C"
-            }
-          ],
-          "title": "Keeper Client Roundtrip Duration",
-          "transparent": true,
-          "type": "timeseries"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${KeeperDatasource}"
-          },
-          "description": "",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "drawStyle": "line",
-                "fillOpacity": 0,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "lineInterpolation": "linear",
-                "lineWidth": 2,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "never",
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green"
-                  },
-                  {
-                    "color": "red",
-                    "value": 80
-                  }
-                ]
-              },
-              "unit": "ms"
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
             "x": 12,
             "y": 1
           },
@@ -28924,7 +28806,7 @@
                 "uid": "${KeeperDatasource}"
               },
               "exemplar": false,
-              "expr": "histogram_quantile(0.5, rate(ClickHouseHistogramMetrics_keeper_client_queue_duration_milliseconds_bucket{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.5, rate(ClickHouseHistogramMetrics_keeper_client_queue_duration_milliseconds_bucket{cluster=~\"$cluster\", instance=~\"($Instance)\"}[$__rate_interval]))",
               "interval": "",
               "legendFormat": "p50 - {{instance}}",
               "refId": "A"
@@ -28935,7 +28817,7 @@
                 "uid": "${KeeperDatasource}"
               },
               "exemplar": false,
-              "expr": "histogram_quantile(0.95, rate(ClickHouseHistogramMetrics_keeper_client_queue_duration_milliseconds_bucket{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.95, rate(ClickHouseHistogramMetrics_keeper_client_queue_duration_milliseconds_bucket{cluster=~\"$cluster\", instance=~\"($Instance)\"}[$__rate_interval]))",
               "interval": "",
               "legendFormat": "p95 - {{instance}}",
               "refId": "B"
@@ -28946,7 +28828,7 @@
                 "uid": "${KeeperDatasource}"
               },
               "exemplar": false,
-              "expr": "histogram_quantile(0.99, rate(ClickHouseHistogramMetrics_keeper_client_queue_duration_milliseconds_bucket{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.99, rate(ClickHouseHistogramMetrics_keeper_client_queue_duration_milliseconds_bucket{cluster=~\"$cluster\", instance=~\"($Instance)\"}[$__rate_interval]))",
               "interval": "",
               "legendFormat": "p99 - {{instance}}",
               "refId": "C"
@@ -29042,7 +28924,7 @@
                 "uid": "${KeeperDatasource}"
               },
               "exemplar": false,
-              "expr": "histogram_quantile(0.5, rate(ClickHouseHistogramMetrics_keeper_response_time_ms_bucket{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.5, rate(ClickHouseHistogramMetrics_keeper_response_time_ms_bucket{cluster=~\"$cluster\", instance=~\"($Instance)\"}[$__rate_interval]))",
               "interval": "",
               "legendFormat": "p50 - {{instance}}",
               "refId": "A"
@@ -29053,7 +28935,7 @@
                 "uid": "${KeeperDatasource}"
               },
               "exemplar": false,
-              "expr": "histogram_quantile(0.95, rate(ClickHouseHistogramMetrics_keeper_response_time_ms_bucket{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.95, rate(ClickHouseHistogramMetrics_keeper_response_time_ms_bucket{cluster=~\"$cluster\", instance=~\"($Instance)\"}[$__rate_interval]))",
               "interval": "",
               "legendFormat": "p95 - {{instance}}",
               "refId": "B"
@@ -29064,7 +28946,7 @@
                 "uid": "${KeeperDatasource}"
               },
               "exemplar": false,
-              "expr": "histogram_quantile(0.99, rate(ClickHouseHistogramMetrics_keeper_response_time_ms_bucket{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.99, rate(ClickHouseHistogramMetrics_keeper_response_time_ms_bucket{cluster=~\"$cluster\", instance=~\"($Instance)\"}[$__rate_interval]))",
               "interval": "",
               "legendFormat": "p99 - {{instance}}",
               "refId": "C"
@@ -29160,7 +29042,7 @@
                 "uid": "${KeeperDatasource}"
               },
               "exemplar": false,
-              "expr": "histogram_quantile(0.5, rate(ClickHouseHistogramMetrics_keeper_server_preprocess_request_duration_milliseconds_bucket{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.5, rate(ClickHouseHistogramMetrics_keeper_write_pre_commit_time_milliseconds_bucket{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"}[$__rate_interval]))",
               "interval": "",
               "legendFormat": "p50 - {{instance}}",
               "refId": "A"
@@ -29171,7 +29053,7 @@
                 "uid": "${KeeperDatasource}"
               },
               "exemplar": false,
-              "expr": "histogram_quantile(0.95, rate(ClickHouseHistogramMetrics_keeper_server_preprocess_request_duration_milliseconds_bucket{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.95, rate(ClickHouseHistogramMetrics_keeper_write_pre_commit_time_milliseconds_bucket{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"}[$__rate_interval]))",
               "interval": "",
               "legendFormat": "p95 - {{instance}}",
               "refId": "B"
@@ -29182,7 +29064,7 @@
                 "uid": "${KeeperDatasource}"
               },
               "exemplar": false,
-              "expr": "histogram_quantile(0.99, rate(ClickHouseHistogramMetrics_keeper_server_preprocess_request_duration_milliseconds_bucket{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.99, rate(ClickHouseHistogramMetrics_keeper_write_pre_commit_time_milliseconds_bucket{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"}[$__rate_interval]))",
               "interval": "",
               "legendFormat": "p99 - {{instance}}",
               "refId": "C"
@@ -29278,7 +29160,7 @@
                 "uid": "${KeeperDatasource}"
               },
               "exemplar": false,
-              "expr": "histogram_quantile(0.5, rate(ClickHouseHistogramMetrics_keeper_server_queue_duration_milliseconds_bucket{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.5, rate(ClickHouseHistogramMetrics_keeper_dispatcher_requests_queue_time_milliseconds_bucket{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"}[$__rate_interval]))",
               "interval": "",
               "legendFormat": "p50 - {{instance}}",
               "refId": "A"
@@ -29289,7 +29171,7 @@
                 "uid": "${KeeperDatasource}"
               },
               "exemplar": false,
-              "expr": "histogram_quantile(0.95, rate(ClickHouseHistogramMetrics_keeper_server_queue_duration_milliseconds_bucket{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.95, rate(ClickHouseHistogramMetrics_keeper_dispatcher_requests_queue_time_milliseconds_bucket{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"}[$__rate_interval]))",
               "interval": "",
               "legendFormat": "p95 - {{instance}}",
               "refId": "B"
@@ -29300,7 +29182,7 @@
                 "uid": "${KeeperDatasource}"
               },
               "exemplar": false,
-              "expr": "histogram_quantile(0.99, rate(ClickHouseHistogramMetrics_keeper_server_queue_duration_milliseconds_bucket{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.99, rate(ClickHouseHistogramMetrics_keeper_dispatcher_requests_queue_time_milliseconds_bucket{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"}[$__rate_interval]))",
               "interval": "",
               "legendFormat": "p99 - {{instance}}",
               "refId": "C"
@@ -29441,7 +29323,7 @@
           "type": "prometheus",
           "uid": "${datasource}"
         },
-        "definition": "label_values(ClickHouseMetrics_KeeperAliveConnections{cluster=~\"$KeeperCluster\"}, instance)",
+        "definition": "label_values(ClickHouseAsyncMetrics_KeeperZnodeCount{cluster=~\"$KeeperCluster\"}, instance)",
         "hide": 0,
         "includeAll": true,
         "label": "Keeper Instance",
@@ -29449,7 +29331,7 @@
         "name": "KeeperInstance",
         "options": [],
         "query": {
-          "query": "label_values(ClickHouseMetrics_KeeperAliveConnections{cluster=~\"$KeeperCluster\"}, instance)",
+          "query": "label_values(ClickHouseAsyncMetrics_KeeperZnodeCount{cluster=~\"$KeeperCluster\"}, instance)",
           "refId": "StandardVariableQuery"
         },
         "refresh": 1,

@@ -69,9 +69,9 @@ The most important indicator of MergeTree health is `MaxPartCountForPartition`. 
 | `ClickHouseAsyncMetrics_MemoryVirtual` | gauge | Virtual memory size of the ClickHouse process |
 | `ClickHouseMetrics_MemoryTracking` | gauge | Bytes tracked by the ClickHouse memory accounting system |
 | `ClickHouseMetrics_MergesMutationsMemoryTracking` | gauge | Memory used by active merges and mutations |
-| `ClickHouseAsyncMetrics_jemalloc.resident` | gauge | jemalloc resident memory (physical pages mapped) |
-| `ClickHouseAsyncMetrics_jemalloc.allocated` | gauge | jemalloc bytes allocated by the application |
-| `ClickHouseAsyncMetrics_jemalloc.active` | gauge | jemalloc active bytes (allocated rounded to page size) |
+| `ClickHouseAsyncMetrics_jemalloc_resident` | gauge | jemalloc resident memory (physical pages mapped) |
+| `ClickHouseAsyncMetrics_jemalloc_allocated` | gauge | jemalloc bytes allocated by the application |
+| `ClickHouseAsyncMetrics_jemalloc_active` | gauge | jemalloc active bytes (allocated rounded to page size) |
 
 ## Caches
 

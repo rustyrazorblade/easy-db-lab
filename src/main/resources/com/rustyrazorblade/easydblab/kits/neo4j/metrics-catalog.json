@@ -1,19 +1,21 @@
 {
   "workload": "neo4j",
   "exported_at": "2026-09-23T00:53:06Z",
+  "common_labels": {
+    "cluster": [
+      "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
+    ],
+    "host_name": [
+      "db0"
+    ],
+    "job": [
+      "neo4j"
+    ]
+  },
   "series": [
     {
       "name": "cassandra_log_records_total",
       "labels": {
-        "cluster": [
-          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
-        ],
-        "host_name": [
-          "db0"
-        ],
-        "job": [
-          "neo4j"
-        ],
         "logger": [
           "io.netty.bootstrap.Bootstrap",
           "io.netty.bootstrap.ServerBootstrap",
@@ -33,12 +35,6 @@
     {
       "name": "http_server_request_duration_seconds_bucket",
       "labels": {
-        "cluster": [
-          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
-        ],
-        "host_name": [
-          "db0"
-        ],
         "http_request_method": [
           "POST"
         ],
@@ -47,9 +43,6 @@
         ],
         "http_route": [
           "/db/{databaseName}/query/v2"
-        ],
-        "job": [
-          "neo4j"
         ],
         "le": [
           "+Inf",
@@ -88,12 +81,6 @@
     {
       "name": "http_server_request_duration_seconds_count",
       "labels": {
-        "cluster": [
-          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
-        ],
-        "host_name": [
-          "db0"
-        ],
         "http_request_method": [
           "POST"
         ],
@@ -102,9 +89,6 @@
         ],
         "http_route": [
           "/db/{databaseName}/query/v2"
-        ],
-        "job": [
-          "neo4j"
         ],
         "network_protocol_version": [
           "1.1"
@@ -126,12 +110,6 @@
     {
       "name": "http_server_request_duration_seconds_sum",
       "labels": {
-        "cluster": [
-          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
-        ],
-        "host_name": [
-          "db0"
-        ],
         "http_request_method": [
           "POST"
         ],
@@ -140,9 +118,6 @@
         ],
         "http_route": [
           "/db/{databaseName}/query/v2"
-        ],
-        "job": [
-          "neo4j"
         ],
         "network_protocol_version": [
           "1.1"
@@ -164,15 +139,6 @@
     {
       "name": "jvm_class_count",
       "labels": {
-        "cluster": [
-          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
-        ],
-        "host_name": [
-          "db0"
-        ],
-        "job": [
-          "neo4j"
-        ],
         "otel_scope_name": [
           "io.opentelemetry.runtime-telemetry-java8"
         ],
@@ -187,15 +153,6 @@
     {
       "name": "jvm_class_loaded_total",
       "labels": {
-        "cluster": [
-          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
-        ],
-        "host_name": [
-          "db0"
-        ],
-        "job": [
-          "neo4j"
-        ],
         "otel_scope_name": [
           "io.opentelemetry.runtime-telemetry-java8"
         ],
@@ -210,15 +167,6 @@
     {
       "name": "jvm_class_unloaded_total",
       "labels": {
-        "cluster": [
-          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
-        ],
-        "host_name": [
-          "db0"
-        ],
-        "job": [
-          "neo4j"
-        ],
         "otel_scope_name": [
           "io.opentelemetry.runtime-telemetry-java8"
         ],
@@ -233,15 +181,6 @@
     {
       "name": "jvm_cpu_count",
       "labels": {
-        "cluster": [
-          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
-        ],
-        "host_name": [
-          "db0"
-        ],
-        "job": [
-          "neo4j"
-        ],
         "otel_scope_name": [
           "io.opentelemetry.runtime-telemetry-java8"
         ],
@@ -256,15 +195,6 @@
     {
       "name": "jvm_cpu_recent_utilization_ratio",
       "labels": {
-        "cluster": [
-          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
-        ],
-        "host_name": [
-          "db0"
-        ],
-        "job": [
-          "neo4j"
-        ],
         "otel_scope_name": [
           "io.opentelemetry.runtime-telemetry-java8"
         ],
@@ -279,15 +209,6 @@
     {
       "name": "jvm_cpu_time_seconds_total",
       "labels": {
-        "cluster": [
-          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
-        ],
-        "host_name": [
-          "db0"
-        ],
-        "job": [
-          "neo4j"
-        ],
         "otel_scope_name": [
           "io.opentelemetry.runtime-telemetry-java8"
         ],
@@ -302,15 +223,6 @@
     {
       "name": "jvm_gc_duration_seconds_bucket",
       "labels": {
-        "cluster": [
-          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
-        ],
-        "host_name": [
-          "db0"
-        ],
-        "job": [
-          "neo4j"
-        ],
         "jvm_gc_action": [
           "end of concurrent GC pause",
           "end of minor GC"
@@ -340,15 +252,6 @@
     {
       "name": "jvm_gc_duration_seconds_count",
       "labels": {
-        "cluster": [
-          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
-        ],
-        "host_name": [
-          "db0"
-        ],
-        "job": [
-          "neo4j"
-        ],
         "jvm_gc_action": [
           "end of concurrent GC pause",
           "end of minor GC"
@@ -371,15 +274,6 @@
     {
       "name": "jvm_gc_duration_seconds_sum",
       "labels": {
-        "cluster": [
-          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
-        ],
-        "host_name": [
-          "db0"
-        ],
-        "job": [
-          "neo4j"
-        ],
         "jvm_gc_action": [
           "end of concurrent GC pause",
           "end of minor GC"
@@ -402,15 +296,6 @@
     {
       "name": "jvm_memory_committed_bytes",
       "labels": {
-        "cluster": [
-          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
-        ],
-        "host_name": [
-          "db0"
-        ],
-        "job": [
-          "neo4j"
-        ],
         "jvm_memory_pool_name": [
           "CodeHeap 'non-nmethods'",
           "CodeHeap 'non-profiled nmethods'",
@@ -439,15 +324,6 @@
     {
       "name": "jvm_memory_limit_bytes",
       "labels": {
-        "cluster": [
-          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
-        ],
-        "host_name": [
-          "db0"
-        ],
-        "job": [
-          "neo4j"
-        ],
         "jvm_memory_pool_name": [
           "CodeHeap 'non-nmethods'",
           "CodeHeap 'non-profiled nmethods'",
@@ -473,15 +349,6 @@
     {
       "name": "jvm_memory_used_after_last_gc_bytes",
       "labels": {
-        "cluster": [
-          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
-        ],
-        "host_name": [
-          "db0"
-        ],
-        "job": [
-          "neo4j"
-        ],
         "jvm_memory_pool_name": [
           "G1 Eden Space",
           "G1 Old Gen",
@@ -504,15 +371,6 @@
     {
       "name": "jvm_memory_used_bytes",
       "labels": {
-        "cluster": [
-          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
-        ],
-        "host_name": [
-          "db0"
-        ],
-        "job": [
-          "neo4j"
-        ],
         "jvm_memory_pool_name": [
           "CodeHeap 'non-nmethods'",
           "CodeHeap 'non-profiled nmethods'",
@@ -541,15 +399,6 @@
     {
       "name": "jvm_thread_count",
       "labels": {
-        "cluster": [
-          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
-        ],
-        "host_name": [
-          "db0"
-        ],
-        "job": [
-          "neo4j"
-        ],
         "jvm_thread_daemon": [
           "false",
           "true"
@@ -573,15 +422,6 @@
     {
       "name": "otlp_exporter_exported_total",
       "labels": {
-        "cluster": [
-          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
-        ],
-        "host_name": [
-          "db0"
-        ],
-        "job": [
-          "neo4j"
-        ],
         "otel_scope_name": [
           "io.opentelemetry.exporters.otlp-http"
         ],
@@ -601,15 +441,6 @@
     {
       "name": "otlp_exporter_seen_total",
       "labels": {
-        "cluster": [
-          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
-        ],
-        "host_name": [
-          "db0"
-        ],
-        "job": [
-          "neo4j"
-        ],
         "otel_scope_name": [
           "io.opentelemetry.exporters.otlp-http"
         ],
@@ -626,17 +457,8 @@
     {
       "name": "processedLogs_total",
       "labels": {
-        "cluster": [
-          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
-        ],
         "dropped": [
           "false"
-        ],
-        "host_name": [
-          "db0"
-        ],
-        "job": [
-          "neo4j"
         ],
         "otel_scope_name": [
           "io.opentelemetry.sdk.logs"
@@ -652,17 +474,8 @@
     {
       "name": "processedSpans_total",
       "labels": {
-        "cluster": [
-          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
-        ],
         "dropped": [
           "false"
-        ],
-        "host_name": [
-          "db0"
-        ],
-        "job": [
-          "neo4j"
         ],
         "otel_scope_name": [
           "io.opentelemetry.sdk.trace"
@@ -678,15 +491,6 @@
     {
       "name": "queueSize_ratio",
       "labels": {
-        "cluster": [
-          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
-        ],
-        "host_name": [
-          "db0"
-        ],
-        "job": [
-          "neo4j"
-        ],
         "otel_scope_name": [
           "io.opentelemetry.sdk.logs",
           "io.opentelemetry.sdk.trace"
@@ -703,15 +507,6 @@
     {
       "name": "target_info",
       "labels": {
-        "cluster": [
-          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
-        ],
-        "host_name": [
-          "db0"
-        ],
-        "job": [
-          "neo4j"
-        ],
         "service_name": [
           "neo4j"
         ]
@@ -720,20 +515,11 @@
     {
       "name": "traces_spanmetrics_calls_total",
       "labels": {
-        "cluster": [
-          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
-        ],
         "collector_instance_id": [
           "e51a2b51-42f3-4ec5-b09c-32472015c6bc"
         ],
-        "host_name": [
-          "db0"
-        ],
         "http_route": [
           "/db/{databaseName}/query/v2"
-        ],
-        "job": [
-          "neo4j"
         ],
         "otel_scope_name": [
           "spanmetricsconnector"
@@ -755,20 +541,11 @@
     {
       "name": "traces_spanmetrics_duration_milliseconds_bucket",
       "labels": {
-        "cluster": [
-          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
-        ],
         "collector_instance_id": [
           "e51a2b51-42f3-4ec5-b09c-32472015c6bc"
         ],
-        "host_name": [
-          "db0"
-        ],
         "http_route": [
           "/db/{databaseName}/query/v2"
-        ],
-        "job": [
-          "neo4j"
         ],
         "le": [
           "+Inf",
@@ -808,20 +585,11 @@
     {
       "name": "traces_spanmetrics_duration_milliseconds_count",
       "labels": {
-        "cluster": [
-          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
-        ],
         "collector_instance_id": [
           "e51a2b51-42f3-4ec5-b09c-32472015c6bc"
         ],
-        "host_name": [
-          "db0"
-        ],
         "http_route": [
           "/db/{databaseName}/query/v2"
-        ],
-        "job": [
-          "neo4j"
         ],
         "otel_scope_name": [
           "spanmetricsconnector"
@@ -843,20 +611,11 @@
     {
       "name": "traces_spanmetrics_duration_milliseconds_sum",
       "labels": {
-        "cluster": [
-          "issue-819-default-6f9e2b02-c796-4633-830a-7b15ce1320ab"
-        ],
         "collector_instance_id": [
           "e51a2b51-42f3-4ec5-b09c-32472015c6bc"
         ],
-        "host_name": [
-          "db0"
-        ],
         "http_route": [
           "/db/{databaseName}/query/v2"
-        ],
-        "job": [
-          "neo4j"
         ],
         "otel_scope_name": [
           "spanmetricsconnector"

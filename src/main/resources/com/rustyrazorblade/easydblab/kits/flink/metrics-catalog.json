@@ -1,24 +1,41 @@
 {
   "workload": "flink",
   "exported_at": "2026-06-16T20:36:45Z",
+  "common_labels": {
+    "cluster": [
+      "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
+    ],
+    "host_name": [
+      "app0",
+      "app1",
+      "control0",
+      "db0"
+    ],
+    "job": [
+      "flink"
+    ],
+    "os_type": [
+      "linux"
+    ],
+    "server_address": [
+      "app0",
+      "app1",
+      "control0",
+      "db0"
+    ],
+    "server_port": [
+      "9249"
+    ],
+    "url_scheme": [
+      "http"
+    ]
+  },
   "series": [
     {
       "name": "flink_jobmanager_Status_JVM_CPU_Load",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -26,37 +43,16 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_Status_JVM_CPU_Time",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -64,37 +60,16 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_Status_JVM_ClassLoader_ClassesLoaded",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -102,37 +77,16 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_Status_JVM_ClassLoader_ClassesUnloaded",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -140,37 +94,16 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_Status_JVM_GarbageCollector_All_Count",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -178,37 +111,16 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_Status_JVM_GarbageCollector_All_Time",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -216,37 +128,16 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_Status_JVM_GarbageCollector_All_TimeMsPerSecond",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -254,37 +145,16 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_Status_JVM_GarbageCollector_G1_Old_Generation_Count",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -292,37 +162,16 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_Status_JVM_GarbageCollector_G1_Old_Generation_Time",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -330,37 +179,16 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_Status_JVM_GarbageCollector_G1_Old_Generation_TimeMsPerSecond",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -368,37 +196,16 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_Status_JVM_GarbageCollector_G1_Young_Generation_Count",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -406,37 +213,16 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_Status_JVM_GarbageCollector_G1_Young_Generation_Time",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -444,37 +230,16 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_Status_JVM_GarbageCollector_G1_Young_Generation_TimeMsPerSecond",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -482,37 +247,16 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_Status_JVM_Memory_Direct_Count",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -520,37 +264,16 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_Status_JVM_Memory_Direct_MemoryUsed",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -558,37 +281,16 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_Status_JVM_Memory_Direct_TotalCapacity",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -596,37 +298,16 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_Status_JVM_Memory_Heap_Committed",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -634,37 +315,16 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_Status_JVM_Memory_Heap_Max",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -672,37 +332,16 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_Status_JVM_Memory_Heap_Used",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -710,37 +349,16 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_Status_JVM_Memory_Mapped_Count",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -748,37 +366,16 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_Status_JVM_Memory_Mapped_MemoryUsed",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -786,37 +383,16 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_Status_JVM_Memory_Mapped_TotalCapacity",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -824,37 +400,16 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_Status_JVM_Memory_Metaspace_Committed",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -862,37 +417,16 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_Status_JVM_Memory_Metaspace_Max",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -900,37 +434,16 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_Status_JVM_Memory_Metaspace_Used",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -938,37 +451,16 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_Status_JVM_Memory_NonHeap_Committed",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -976,37 +468,16 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_Status_JVM_Memory_NonHeap_Max",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -1014,37 +485,16 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_Status_JVM_Memory_NonHeap_Used",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -1052,37 +502,16 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_Status_JVM_Threads_Count",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -1090,34 +519,16 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_job_cancellingTime",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -1125,43 +536,22 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_job_createdTime",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -1169,43 +559,22 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_job_deployingTime",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -1213,43 +582,22 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_job_downtime",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -1257,43 +605,22 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_job_failingTime",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -1301,43 +628,22 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_job_fullRestarts",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -1345,43 +651,22 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_job_initializingTime",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -1389,43 +674,22 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_job_lastCheckpointDuration",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -1433,43 +697,22 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_job_lastCheckpointExternalPath",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -1477,43 +720,22 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_job_lastCheckpointFullSize",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -1521,43 +743,22 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_job_lastCheckpointPersistedData",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -1565,43 +766,22 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_job_lastCheckpointProcessedData",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -1609,43 +789,22 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_job_lastCheckpointRestoreTimestamp",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -1653,43 +812,22 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_job_lastCheckpointSize",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -1697,43 +835,22 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_job_lastCompletedCheckpointId",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -1741,43 +858,22 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_job_numRestarts",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -1785,43 +881,22 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_job_numberOfCompletedCheckpoints",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -1829,43 +904,22 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_job_numberOfFailedCheckpoints",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -1873,43 +927,22 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_job_numberOfInProgressCheckpoints",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -1917,43 +950,22 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_job_operator_coordinator_enumerator_unassignedSplits",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -1967,20 +979,11 @@
         "operator_name": [
           "Source:_Car_data_generator_source____Timestamps_Watermarks"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -1990,26 +993,14 @@
         ],
         "task_name": [
           "Source:_Car_data_generator_source____Timestamps_Watermarks"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_job_restartingTime",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -2017,43 +1008,22 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_job_runningTime",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -2061,43 +1031,22 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_job_totalNumberOfCheckpoints",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -2105,43 +1054,22 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_job_uptime",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -2149,46 +1077,22 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_numPendingTaskManagers",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -2196,37 +1100,16 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_numRegisteredTaskManagers",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -2234,37 +1117,16 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_numRunningJobs",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -2272,37 +1134,16 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_startWorkFailurePerSecond",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -2310,37 +1151,16 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_taskSlotsAvailable",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -2348,37 +1168,16 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_jobmanager_taskSlotsTotal",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "flink_session_default"
-        ],
-        "host_name": [
-          "app0"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -2386,37 +1185,16 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_Status_Flink_Memory_Managed_Total",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -2424,40 +1202,19 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_Status_Flink_Memory_Managed_Used",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -2465,40 +1222,19 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_Status_JVM_CPU_Load",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -2506,40 +1242,19 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_Status_JVM_CPU_Time",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -2547,40 +1262,19 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_Status_JVM_ClassLoader_ClassesLoaded",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -2588,40 +1282,19 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_Status_JVM_ClassLoader_ClassesUnloaded",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -2629,40 +1302,19 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_Status_JVM_GarbageCollector_All_Count",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -2670,40 +1322,19 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_Status_JVM_GarbageCollector_All_Time",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -2711,40 +1342,19 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_Status_JVM_GarbageCollector_All_TimeMsPerSecond",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -2752,40 +1362,19 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_Status_JVM_GarbageCollector_G1_Old_Generation_Count",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -2793,40 +1382,19 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_Status_JVM_GarbageCollector_G1_Old_Generation_Time",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -2834,40 +1402,19 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_Status_JVM_GarbageCollector_G1_Old_Generation_TimeMsPerSecond",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -2875,40 +1422,19 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_Status_JVM_GarbageCollector_G1_Young_Generation_Count",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -2916,40 +1442,19 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_Status_JVM_GarbageCollector_G1_Young_Generation_Time",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -2957,40 +1462,19 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_Status_JVM_GarbageCollector_G1_Young_Generation_TimeMsPerSecond",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -2998,40 +1482,19 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_Status_JVM_Memory_Direct_Count",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -3039,40 +1502,19 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_Status_JVM_Memory_Direct_MemoryUsed",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -3080,40 +1522,19 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_Status_JVM_Memory_Direct_TotalCapacity",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -3121,40 +1542,19 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_Status_JVM_Memory_Heap_Committed",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -3162,40 +1562,19 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_Status_JVM_Memory_Heap_Max",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -3203,40 +1582,19 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_Status_JVM_Memory_Heap_Used",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -3244,40 +1602,19 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_Status_JVM_Memory_Mapped_Count",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -3285,40 +1622,19 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_Status_JVM_Memory_Mapped_MemoryUsed",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -3326,40 +1642,19 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_Status_JVM_Memory_Mapped_TotalCapacity",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -3367,40 +1662,19 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_Status_JVM_Memory_Metaspace_Committed",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -3408,40 +1682,19 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_Status_JVM_Memory_Metaspace_Max",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -3449,40 +1702,19 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_Status_JVM_Memory_Metaspace_Used",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -3490,40 +1722,19 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_Status_JVM_Memory_NonHeap_Committed",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -3531,40 +1742,19 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_Status_JVM_Memory_NonHeap_Max",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -3572,40 +1762,19 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_Status_JVM_Memory_NonHeap_Used",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -3613,40 +1782,19 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_Status_JVM_Threads_Count",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -3654,40 +1802,19 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_Status_Network_AvailableMemorySegments",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -3695,40 +1822,19 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_Status_Network_TotalMemorySegments",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -3736,40 +1842,19 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_Status_Shuffle_Netty_AvailableMemory",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -3777,40 +1862,19 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_Status_Shuffle_Netty_AvailableMemorySegments",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -3818,40 +1882,19 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_Status_Shuffle_Netty_RequestedMemoryUsage",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -3859,40 +1902,19 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_Status_Shuffle_Netty_TotalMemory",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -3900,40 +1922,19 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_Status_Shuffle_Netty_TotalMemorySegments",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -3941,40 +1942,19 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_Status_Shuffle_Netty_UsedMemory",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -3982,40 +1962,19 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_Status_Shuffle_Netty_UsedMemorySegments",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -4023,37 +1982,19 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_Shuffle_Netty_Input_Buffers_inPoolUsage",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -4061,20 +2002,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -4099,26 +2031,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_Shuffle_Netty_Input_Buffers_inputExclusiveBuffersUsage",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -4126,20 +2046,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -4164,26 +2075,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_Shuffle_Netty_Input_Buffers_inputFloatingBuffersUsage",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -4191,20 +2090,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -4229,26 +2119,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_Shuffle_Netty_Input_Buffers_inputQueueLength",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -4256,20 +2134,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -4294,26 +2163,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_Shuffle_Netty_Input_Buffers_inputQueueSize",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -4321,20 +2178,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -4359,26 +2207,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_Shuffle_Netty_Input_numBuffersInLocal",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -4386,20 +2222,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -4424,26 +2251,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_Shuffle_Netty_Input_numBuffersInLocalPerSecond",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -4451,20 +2266,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -4489,26 +2295,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_Shuffle_Netty_Input_numBuffersInRemote",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -4516,20 +2310,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -4554,26 +2339,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_Shuffle_Netty_Input_numBuffersInRemotePerSecond",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -4581,20 +2354,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -4619,26 +2383,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_Shuffle_Netty_Input_numBytesInLocal",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -4646,20 +2398,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -4684,26 +2427,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_Shuffle_Netty_Input_numBytesInLocalPerSecond",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -4711,20 +2442,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -4749,26 +2471,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_Shuffle_Netty_Input_numBytesInRemote",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -4776,20 +2486,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -4814,26 +2515,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_Shuffle_Netty_Input_numBytesInRemotePerSecond",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -4841,20 +2530,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -4879,26 +2559,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_Shuffle_Netty_Output_Buffers_outPoolUsage",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -4906,20 +2574,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -4944,26 +2603,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_Shuffle_Netty_Output_Buffers_outputQueueLength",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -4971,20 +2618,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -5009,26 +2647,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_Shuffle_Netty_Output_Buffers_outputQueueSize",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -5036,20 +2662,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -5074,26 +2691,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_accumulateBackPressuredTimeMs",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -5101,20 +2706,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -5139,26 +2735,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_accumulateBusyTimeMs",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -5166,20 +2750,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -5204,26 +2779,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_accumulateIdleTimeMs",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -5231,20 +2794,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -5269,26 +2823,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_backPressuredTimeMsPerSecond",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -5296,20 +2838,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -5334,26 +2867,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_buffers_inPoolUsage",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -5361,20 +2882,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -5399,26 +2911,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_buffers_inputExclusiveBuffersUsage",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -5426,20 +2926,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -5464,26 +2955,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_buffers_inputFloatingBuffersUsage",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -5491,20 +2970,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -5529,26 +2999,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_buffers_inputQueueLength",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -5556,20 +3014,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -5594,26 +3043,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_buffers_inputQueueSize",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -5621,20 +3058,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -5659,26 +3087,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_buffers_outPoolUsage",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -5686,20 +3102,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -5724,26 +3131,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_buffers_outputQueueLength",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -5751,20 +3146,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -5789,26 +3175,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_buffers_outputQueueSize",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -5816,20 +3190,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -5854,26 +3219,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_busyTimeMsPerSecond",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -5881,20 +3234,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -5919,26 +3263,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_changelogBusyTimeMsPerSecond",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -5946,20 +3278,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -5984,26 +3307,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_checkpointAlignmentTime",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -6011,20 +3322,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -6046,26 +3348,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_checkpointStartDelayNanos",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -6073,20 +3363,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -6111,26 +3392,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_currentInputWatermark",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -6138,20 +3407,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -6173,26 +3433,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_hardBackPressuredTimeMsPerSecond",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -6200,20 +3448,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -6238,26 +3477,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_idleTimeMsPerSecond",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -6265,20 +3492,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -6303,26 +3521,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_initializationTime",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -6330,20 +3536,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -6368,26 +3565,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_isBackPressured",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -6395,20 +3580,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -6433,35 +3609,20 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_mailboxLatencyMs",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
         ],
         "job_name": [
           "CarTopSpeedWindowingExample"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -6477,12 +3638,6 @@
           "0.99",
           "0.999"
         ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
         ],
@@ -6506,26 +3661,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_mailboxLatencyMs_count",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -6533,20 +3676,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -6571,26 +3705,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_mailboxLatencyMs_sum",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -6598,20 +3720,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -6636,26 +3749,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_mailboxMailsPerSecond",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -6663,20 +3764,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -6701,26 +3793,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_mailboxQueueSize",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -6728,20 +3808,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -6766,26 +3837,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_maxHardBackPressureTimeMs",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -6793,20 +3852,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -6831,26 +3881,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_maxSoftBackPressureTimeMs",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -6858,20 +3896,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -6896,26 +3925,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_numBuffersInLocal",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -6923,20 +3940,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -6961,26 +3969,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_numBuffersInLocalPerSecond",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -6988,20 +3984,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -7026,26 +4013,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_numBuffersInRemote",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -7053,20 +4028,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -7091,26 +4057,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_numBuffersInRemotePerSecond",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -7118,20 +4072,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -7156,26 +4101,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_numBuffersOut",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -7183,20 +4116,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -7221,26 +4145,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_numBuffersOutPerSecond",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -7248,20 +4160,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -7286,26 +4189,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_numBytesIn",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -7313,20 +4204,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -7351,26 +4233,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_numBytesInLocal",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -7378,20 +4248,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -7416,26 +4277,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_numBytesInLocalPerSecond",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -7443,20 +4292,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -7481,26 +4321,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_numBytesInPerSecond",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -7508,20 +4336,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -7546,26 +4365,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_numBytesInRemote",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -7573,20 +4380,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -7611,26 +4409,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_numBytesInRemotePerSecond",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -7638,20 +4424,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -7676,26 +4453,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_numBytesOut",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -7703,20 +4468,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -7741,26 +4497,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_numBytesOutPerSecond",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -7768,20 +4512,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -7806,26 +4541,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_numFiredTimers",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -7833,20 +4556,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -7871,26 +4585,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_numFiredTimersPerSecond",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -7898,20 +4600,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -7936,26 +4629,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_numRecordsIn",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -7963,20 +4644,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -8001,26 +4673,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_numRecordsInPerSecond",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -8028,20 +4688,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -8066,26 +4717,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_numRecordsOut",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -8093,20 +4732,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -8131,26 +4761,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_numRecordsOutPerSecond",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -8158,20 +4776,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -8196,26 +4805,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_operator_currentEmitEventTimeLag",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -8229,20 +4826,11 @@
         "operator_name": [
           "Source:_Car_data_generator_source"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -8264,26 +4852,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_operator_currentInputWatermark",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -8301,20 +4877,11 @@
           "Sink:_Print_to_Std__Out",
           "Timestamps_Watermarks"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -8339,26 +4906,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_operator_currentOutputWatermark",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -8378,20 +4933,11 @@
           "Source:_Car_data_generator_source",
           "Timestamps_Watermarks"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -8416,26 +4962,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_operator_numBytesIn",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -8455,20 +4989,11 @@
           "Source:_Car_data_generator_source",
           "Timestamps_Watermarks"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -8493,26 +5018,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_operator_numBytesInPerSecond",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -8532,20 +5045,11 @@
           "Source:_Car_data_generator_source",
           "Timestamps_Watermarks"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -8570,26 +5074,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_operator_numBytesOut",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -8609,20 +5101,11 @@
           "Source:_Car_data_generator_source",
           "Timestamps_Watermarks"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -8647,26 +5130,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_operator_numBytesOutPerSecond",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -8686,20 +5157,11 @@
           "Source:_Car_data_generator_source",
           "Timestamps_Watermarks"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -8724,26 +5186,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_operator_numLateRecordsDropped",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -8757,20 +5207,11 @@
         "operator_name": [
           "GlobalWindows"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -8792,26 +5233,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_operator_numRecordsIn",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -8831,20 +5260,11 @@
           "Source:_Car_data_generator_source",
           "Timestamps_Watermarks"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -8869,26 +5289,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_operator_numRecordsInErrors",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -8902,20 +5310,11 @@
         "operator_name": [
           "Source:_Car_data_generator_source"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -8937,26 +5336,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_operator_numRecordsInPerSecond",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -8976,20 +5363,11 @@
           "Source:_Car_data_generator_source",
           "Timestamps_Watermarks"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -9014,26 +5392,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_operator_numRecordsOut",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -9053,20 +5419,11 @@
           "Source:_Car_data_generator_source",
           "Timestamps_Watermarks"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -9091,26 +5448,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_operator_numRecordsOutPerSecond",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -9130,20 +5475,11 @@
           "Source:_Car_data_generator_source",
           "Timestamps_Watermarks"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -9168,26 +5504,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_operator_sourceIdleTime",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -9201,20 +5525,11 @@
         "operator_name": [
           "Source:_Car_data_generator_source"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -9236,26 +5551,14 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "flink_taskmanager_job_task_softBackPressuredTimeMsPerSecond",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
         "host": [
           "10_42_5_4"
-        ],
-        "host_name": [
-          "app1"
-        ],
-        "job": [
-          "flink"
         ],
         "job_id": [
           "18d964434e21b96ee51f4a255be091d5"
@@ -9263,20 +5566,11 @@
         "job_name": [
           "CarTopSpeedWindowingExample"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "app1"
-        ],
-        "server_port": [
-          "9249"
         ],
         "service_name": [
           "flink"
@@ -9301,246 +5595,80 @@
         ],
         "tm_id": [
           "flink_session_taskmanager_1_1"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "scrape_duration_seconds",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
-        "host_name": [
-          "app0",
-          "app1",
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0",
-          "app1",
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "scrape_samples_post_metric_relabeling",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
-        "host_name": [
-          "app0",
-          "app1",
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0",
-          "app1",
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "scrape_samples_scraped",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
-        "host_name": [
-          "app0",
-          "app1",
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0",
-          "app1",
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "scrape_series_added",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
-        "host_name": [
-          "app0",
-          "app1",
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0",
-          "app1",
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "target_info",
-      "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
-        "host_name": [
-          "app0",
-          "app1",
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
-        ],
-        "server_address": [
-          "app0",
-          "app1",
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "9249"
-        ],
-        "url_scheme": [
-          "http"
-        ]
-      }
+      "labels": {}
     },
     {
       "name": "up",
       "labels": {
-        "cluster": [
-          "flink-val-b15f23e1-84c4-477d-b6eb-ce7c96141700"
-        ],
-        "host_name": [
-          "app0",
-          "app1",
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "flink"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "app0",
-          "app1",
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "9249"
-        ],
         "service_name": [
           "flink"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     }

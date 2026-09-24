@@ -1,6 +1,31 @@
 {
   "workload": "postgres",
   "exported_at": "2026-06-09T23:40:48Z",
+  "common_labels": {
+    "cluster": [
+      "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
+    ],
+    "host_name": [
+      "control0",
+      "db0"
+    ],
+    "job": [
+      "postgres"
+    ],
+    "os_type": [
+      "linux"
+    ],
+    "server_address": [
+      "control0",
+      "db0"
+    ],
+    "server_port": [
+      "30987"
+    ],
+    "url_scheme": [
+      "http"
+    ]
+  },
   "series": [
     {
       "name": "cnpg_backends_max_tx_duration_seconds",
@@ -8,21 +33,8 @@
         "application_name": [
           "cnpg_metrics_exporter"
         ],
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
         "datname": [
           "postgres"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -30,21 +42,11 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
         ],
         "state": [
           "active"
-        ],
-        "url_scheme": [
-          "http"
         ],
         "usename": [
           "cnpg_metrics_exporter"
@@ -57,21 +59,8 @@
         "application_name": [
           "cnpg_metrics_exporter"
         ],
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
         "datname": [
           "postgres"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -79,21 +68,11 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
         ],
         "state": [
           "active"
-        ],
-        "url_scheme": [
-          "http"
         ],
         "usename": [
           "cnpg_metrics_exporter"
@@ -103,133 +82,51 @@
     {
       "name": "cnpg_backends_waiting_total",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_cache_hits",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_cache_miss",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_collector_collection_duration_seconds",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
         "collector": [
           "Collect.cnpg",
           "Collect.up"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -237,261 +134,100 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_collector_collections_total",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_collector_fencing_on",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_collector_first_recoverability_point",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_collector_last_available_backup_timestamp",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_collector_last_collection_error",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_collector_last_failed_backup_timestamp",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_collector_lo_pages",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
         "datname": [
           "postgres"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -499,129 +235,50 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_collector_manual_switchover_required",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_collector_nodes_used",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_collector_pg_wal",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ],
         "value": [
           "count",
@@ -635,37 +292,14 @@
     {
       "name": "cnpg_collector_pg_wal_archive_status",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ],
         "value": [
           "done",
@@ -676,117 +310,48 @@
     {
       "name": "cnpg_collector_postgres_version",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
         "exported_cluster": [
           "postgres"
         ],
         "full": [
           "17.10"
         ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_collector_replica_mode",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_collector_sync_replicas",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ],
         "value": [
           "expected",
@@ -799,21 +364,8 @@
     {
       "name": "cnpg_collector_up",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
         "exported_cluster": [
           "postgres"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -821,434 +373,181 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_collector_wal_buffers_full",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
         ],
         "stats_reset": [
           "2026-06-09T23:39:46.444152Z"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_collector_wal_bytes",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
         ],
         "stats_reset": [
           "2026-06-09T23:39:46.444152Z"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_collector_wal_fpi",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
         ],
         "stats_reset": [
           "2026-06-09T23:39:46.444152Z"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_collector_wal_records",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
         ],
         "stats_reset": [
           "2026-06-09T23:39:46.444152Z"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_collector_wal_sync",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
         ],
         "stats_reset": [
           "2026-06-09T23:39:46.444152Z"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_collector_wal_sync_time",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
         ],
         "stats_reset": [
           "2026-06-09T23:39:46.444152Z"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_collector_wal_write",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
         ],
         "stats_reset": [
           "2026-06-09T23:39:46.444152Z"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_collector_wal_write_time",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
-        ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
         ],
         "service_name": [
           "postgres"
         ],
         "stats_reset": [
           "2026-06-09T23:39:46.444152Z"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_last_error",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_last_update_timestamp",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_database_mxid_age",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
         "datname": [
           "postgres",
           "template1"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -1256,40 +555,17 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_database_size_bytes",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
         "datname": [
           "postgres",
           "template1"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -1297,40 +573,17 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_database_xid_age",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
         "datname": [
           "postgres",
           "template1"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -1338,27 +591,14 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_extensions_update_available",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
         "datname": [
           "postgres"
         ],
@@ -1368,18 +608,8 @@
         "extname": [
           "plpgsql"
         ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
         "installed_version": [
           "1.0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -1387,219 +617,84 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_postmaster_start_time",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_replication_in_recovery",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_replication_is_wal_receiver_up",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_replication_lag",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_replication_streaming_replicas",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_settings_setting",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
         "name": [
           "allow_alter_system",
           "allow_in_place_tablespaces",
@@ -1622,864 +717,332 @@
           "autovacuum_vacuum_threshold",
           "autovacuum_work_mem"
         ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_stat_archiver_archived_count_total",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_stat_archiver_failed_count_total",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_stat_archiver_last_archived_time",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_stat_archiver_last_archived_wal_start_lsn",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_stat_archiver_last_failed_time",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_stat_archiver_last_failed_wal_start_lsn",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_stat_archiver_seconds_since_last_archival",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_stat_archiver_seconds_since_last_failure",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_stat_archiver_stats_reset_time",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_stat_bgwriter_buffers_alloc_total",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_stat_bgwriter_buffers_clean_total",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_stat_bgwriter_maxwritten_clean_total",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_stat_bgwriter_stats_reset_time",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_stat_checkpointer_buffers_written_total",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_stat_checkpointer_checkpoints_req_total",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_stat_checkpointer_checkpoints_timed_total",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_stat_checkpointer_restartpoints_done_total",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_stat_checkpointer_restartpoints_req_total",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_stat_checkpointer_restartpoints_timed_total",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_stat_checkpointer_stats_reset_time",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_stat_checkpointer_sync_time_total",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_stat_checkpointer_write_time_total",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_stat_database_blk_read_time_total",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
         "datname": [
           "postgres",
           "template0",
           "template1"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -2487,41 +1050,18 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_stat_database_blk_write_time_total",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
         "datname": [
           "postgres",
           "template0",
           "template1"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -2529,41 +1069,18 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_stat_database_blks_hit_total",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
         "datname": [
           "postgres",
           "template0",
           "template1"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -2571,41 +1088,18 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_stat_database_blks_read_total",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
         "datname": [
           "postgres",
           "template0",
           "template1"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -2613,41 +1107,18 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_stat_database_conflicts_total",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
         "datname": [
           "postgres",
           "template0",
           "template1"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -2655,41 +1126,18 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_stat_database_deadlocks_total",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
         "datname": [
           "postgres",
           "template0",
           "template1"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -2697,41 +1145,18 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_stat_database_temp_bytes_total",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
         "datname": [
           "postgres",
           "template0",
           "template1"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -2739,41 +1164,18 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_stat_database_temp_files_total",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
         "datname": [
           "postgres",
           "template0",
           "template1"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -2781,41 +1183,18 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_stat_database_tup_deleted_total",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
         "datname": [
           "postgres",
           "template0",
           "template1"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -2823,41 +1202,18 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_stat_database_tup_fetched_total",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
         "datname": [
           "postgres",
           "template0",
           "template1"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -2865,41 +1221,18 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_stat_database_tup_inserted_total",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
         "datname": [
           "postgres",
           "template0",
           "template1"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -2907,41 +1240,18 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_stat_database_tup_returned_total",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
         "datname": [
           "postgres",
           "template0",
           "template1"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -2949,41 +1259,18 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_stat_database_tup_updated_total",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
         "datname": [
           "postgres",
           "template0",
           "template1"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -2991,41 +1278,18 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_stat_database_xact_commit_total",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
         "datname": [
           "postgres",
           "template0",
           "template1"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -3033,41 +1297,18 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "cnpg_pg_stat_database_xact_rollback_total",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
         "datname": [
           "postgres",
           "template0",
           "template1"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
         ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
@@ -3075,37 +1316,14 @@
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "go_gc_duration_seconds",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
@@ -3119,240 +1337,92 @@
           "0.75",
           "1"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "go_gc_duration_seconds_count",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "go_gc_duration_seconds_sum",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "go_gc_gogc_percent",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "go_gc_gomemlimit_bytes",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "go_goroutines",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "go_info",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ],
         "version": [
           "go1.26.3"
@@ -3362,1101 +1432,410 @@
     {
       "name": "go_memstats_alloc_bytes",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "go_memstats_alloc_bytes_total",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "go_memstats_buck_hash_sys_bytes",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "go_memstats_frees_total",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "go_memstats_gc_sys_bytes",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "go_memstats_heap_alloc_bytes",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "go_memstats_heap_idle_bytes",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "go_memstats_heap_inuse_bytes",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "go_memstats_heap_objects",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "go_memstats_heap_released_bytes",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "go_memstats_heap_sys_bytes",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "go_memstats_last_gc_time_seconds",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "go_memstats_mallocs_total",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "go_memstats_mcache_inuse_bytes",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "go_memstats_mcache_sys_bytes",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "go_memstats_mspan_inuse_bytes",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "go_memstats_mspan_sys_bytes",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "go_memstats_next_gc_bytes",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "go_memstats_other_sys_bytes",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "go_memstats_stack_inuse_bytes",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "go_memstats_stack_sys_bytes",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "go_memstats_sys_bytes",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "go_sched_gomaxprocs_threads",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "go_threads",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "scrape_duration_seconds",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "scrape_samples_post_metric_relabeling",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "scrape_samples_scraped",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "scrape_series_added",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     },
     {
       "name": "target_info",
-      "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
-        "url_scheme": [
-          "http"
-        ]
-      }
+      "labels": {}
     },
     {
       "name": "up",
       "labels": {
-        "cluster": [
-          "test-98ff79e3-9be5-4d8a-9ce1-8aa3d949f869"
-        ],
-        "host_name": [
-          "control0",
-          "db0"
-        ],
-        "job": [
-          "postgres"
-        ],
-        "os_type": [
-          "linux"
-        ],
         "otel_scope_name": [
           "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
         ],
         "otel_scope_version": [
           "0.154.0"
         ],
-        "server_address": [
-          "control0",
-          "db0"
-        ],
-        "server_port": [
-          "30987"
-        ],
         "service_name": [
           "postgres"
-        ],
-        "url_scheme": [
-          "http"
         ]
       }
     }

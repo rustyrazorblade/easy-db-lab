@@ -2,6 +2,9 @@ package com.rustyrazorblade.easydblab.services
 
 import com.github.dockerjava.api.model.Ulimit
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.K3sDiagnostics.clusterDiagnostics
+import com.rustyrazorblade.easydblab.K3sPreloadedImages.PAUSE_IMAGE
+import com.rustyrazorblade.easydblab.K3sPreloadedImages.withPreloadedImages
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -73,7 +76,8 @@ class K8sServiceIntegrationTest {
                         .withCgroupnsMode("host")
                         .withUlimits(listOf(Ulimit("nofile", 65536L, 65536L)))
                 }.withLogConsumer(Slf4jLogConsumer(LoggerFactory.getLogger("k3s")))
-                .withEnv("K3S_SNAPSHOTTER", "native") as K3sContainer
+                .withEnv("K3S_SNAPSHOTTER", "native")
+                .let { (it as K3sContainer).withPreloadedImages() }
     }
 
     private lateinit var client: KubernetesClient
@@ -814,7 +818,8 @@ class K8sServiceIntegrationTest {
                 .withName(pvcName)
                 .get()
         throw AssertionError(
-            "PVC '$pvcName' did not bind within ${timeoutSeconds}s. Phase: ${pvc?.status?.phase}",
+            "PVC '$pvcName' did not bind within ${timeoutSeconds}s. Phase: ${pvc?.status?.phase}\n" +
+                clusterDiagnostics(client, DEFAULT_NAMESPACE),
         )
     }
 
@@ -903,7 +908,9 @@ class K8sServiceIntegrationTest {
                 .withNewSpec()
                 .addNewContainer()
                 .withName("pause")
-                .withImage("rancher/mirrored-pause:3.6")
+                .withImage(PAUSE_IMAGE)
+                // Preloaded into K3s; never pulling makes a missing preload fail fast, not flake.
+                .withImagePullPolicy("Never")
                 .addNewVolumeMount()
                 .withName("data")
                 .withMountPath("/data")

@@ -46,7 +46,7 @@ class KitRunnerCommandScriptTest : KitRunnerCommandTestBase() {
 
         command("mydb", "start").call()
 
-        verify(mockGrafanaDashboardService).installDashboardFromFile(any(), any(), any())
+        verify(mockGrafanaDashboardService).installDashboard(any(), any(), any())
     }
 
     @Test
@@ -57,7 +57,7 @@ class KitRunnerCommandScriptTest : KitRunnerCommandTestBase() {
 
         command("mydb", "start").call()
 
-        verify(mockGrafanaDashboardService, never()).installDashboardFromFile(any(), any(), any())
+        verify(mockGrafanaDashboardService, never()).installDashboard(any(), any(), any())
     }
 
     @Test
@@ -68,7 +68,7 @@ class KitRunnerCommandScriptTest : KitRunnerCommandTestBase() {
 
         command("mydb", "stop").call()
 
-        verify(mockGrafanaDashboardService, never()).installDashboardFromFile(any(), any(), any())
+        verify(mockGrafanaDashboardService, never()).installDashboard(any(), any(), any())
     }
 
     @Test
@@ -77,7 +77,7 @@ class KitRunnerCommandScriptTest : KitRunnerCommandTestBase() {
 
         command("mydb", "start").call()
 
-        verify(mockGrafanaDashboardService, never()).installDashboardFromFile(any(), any(), any())
+        verify(mockGrafanaDashboardService, never()).installDashboard(any(), any(), any())
     }
 
     @Test

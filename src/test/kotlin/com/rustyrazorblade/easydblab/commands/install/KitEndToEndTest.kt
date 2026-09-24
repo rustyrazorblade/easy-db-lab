@@ -88,7 +88,7 @@ class KitEndToEndTest : BaseKoinTest() {
     @BeforeEach
     fun setup() {
         whenever(mockClusterStateManager.load()).thenReturn(clusterState)
-        whenever(mockGrafanaDashboardService.installDashboardFromFile(any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockGrafanaDashboardService.installDashboard(any(), any(), any())).thenReturn(Result.success(Unit))
         workingDir = get<Context>().workingDirectory
     }
 

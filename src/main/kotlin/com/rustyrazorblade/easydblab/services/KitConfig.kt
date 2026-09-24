@@ -268,10 +268,16 @@ data class KitConfig(
         }
 }
 
+/**
+ * A dashboard a kit installs into its Grafana folder after `start`. A dashboard with an
+ * [extension] is installed only by the instance created with that extension (postgres-duckdb
+ * installs `duckdb.json`, not PostGIS's); one with none is installed by every instance.
+ */
 @Serializable
 data class DashboardRef(
     val path: String,
     val name: String = "",
+    val extension: String = "",
 )
 
 @Serializable

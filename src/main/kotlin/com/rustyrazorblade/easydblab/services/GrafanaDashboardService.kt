@@ -61,6 +61,16 @@ interface GrafanaDashboardService {
     ): Result<Unit>
 
     /**
+     * Uploads one dashboard, given as its JSON, into [folderName] of the running Grafana. A
+     * dashboard whose uid already exists is overwritten, and moved into [folderName].
+     */
+    fun installDashboard(
+        dashboardJson: String,
+        controlHost: ClusterHost,
+        folderName: String,
+    ): Result<Unit>
+
+    /**
      * Creates a Grafana annotation via `POST /api/annotations` on the control node.
      *
      * The call goes over the injected proxied [OkHttpClient]. It throws (it does NOT return a
@@ -178,14 +188,20 @@ class DefaultGrafanaDashboardService(
         file: File,
         controlHost: ClusterHost,
         folderName: String,
+    ): Result<Unit> = runCatching { file.readText() }.mapCatching { installDashboard(it, controlHost, folderName).getOrThrow() }
+
+    override fun installDashboard(
+        dashboardJson: String,
+        controlHost: ClusterHost,
+        folderName: String,
     ): Result<Unit> =
         runCatching {
             val folderUid = findOrCreateFolder(controlHost, folderName)
-            val dashboardJson = Json.parseToJsonElement(file.readText()).jsonObject
-            val title = dashboardJson["title"]?.jsonPrimitive?.contentOrNull ?: "(unknown)"
+            val dashboard = Json.parseToJsonElement(dashboardJson).jsonObject
+            val title = dashboard["title"]?.jsonPrimitive?.contentOrNull ?: "(unknown)"
             val payload =
                 buildJsonObject {
-                    put("dashboard", dashboardJson)
+                    put("dashboard", dashboard)
                     put("overwrite", true)
                     put("folderUid", folderUid)
                 }

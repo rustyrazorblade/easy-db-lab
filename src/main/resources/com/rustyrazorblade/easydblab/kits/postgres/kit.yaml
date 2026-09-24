@@ -13,6 +13,17 @@ metrics:
     path: /metrics
     job: postgres
     pod-selector: "cnpg.io/cluster=${KIT_NAME},cnpg.io/instanceRole=primary"
+# Every instance installs the overview; an extension instance adds only its own extension's
+# dashboard. An instance other than plain postgres installs them under uids of its own, so it
+# never moves plain postgres's dashboards into its folder.
+dashboards:
+  - path: dashboards/postgres.json
+  - path: dashboards/duckdb.json
+    extension: duckdb
+  - path: dashboards/postgis.json
+    extension: postgis
+  - path: dashboards/timescaledb.json
+    extension: timescaledb
 runtime:
   type: pods
   # Scoped to this instance: postgres and postgres-<extension> run side by side, and the start

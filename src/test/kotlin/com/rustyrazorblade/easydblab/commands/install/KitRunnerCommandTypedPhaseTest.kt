@@ -184,7 +184,48 @@ class KitRunnerCommandTypedPhaseTest : KitRunnerCommandTestBase() {
             """.trimIndent(),
         )
         command("mydb", "start").call()
-        verify(mockGrafanaDashboardService).installDashboardFromFile(any(), any(), any())
+        verify(mockGrafanaDashboardService).installDashboard(any(), any(), any())
+    }
+
+    /**
+     * postgres-duckdb installed every postgres dashboard into its folder, PostGIS and TimescaleDB
+     * included, and took uid postgres-overview away from the postgres folder. An instance installs
+     * the extension-free dashboards and its own extension's, under uids of its own.
+     */
+    @Test
+    fun `an extension instance installs only its own dashboards, under its own uids, into its folder`() {
+        val kitDir = File(workingDir, "postgres-duckdb/dashboards").also { it.mkdirs() }.parentFile
+        File(kitDir, "dashboards/postgres.json").writeText("""{"uid":"postgres-overview","title":"PostgreSQL Overview"}""")
+        File(kitDir, "dashboards/duckdb.json").writeText("""{"uid":"postgres-duckdb","title":"DuckDB"}""")
+        File(kitDir, "dashboards/postgis.json").writeText("""{"uid":"postgres-postgis","title":"PostGIS"}""")
+        writeKitYaml(
+            "postgres-duckdb",
+            """
+            name: postgres
+            args:
+              - flag: --extension
+                variable: EXTENSION
+                type: extension
+                default: ""
+            dashboards:
+              - path: dashboards/postgres.json
+              - path: dashboards/duckdb.json
+                extension: duckdb
+              - path: dashboards/postgis.json
+                extension: postgis
+            start:
+              - type: shell
+                script: echo hello
+            """.trimIndent(),
+        )
+        writeResolvedArgs("postgres-duckdb", mapOf("EXTENSION" to "duckdb"))
+
+        command("postgres-duckdb", "start").call()
+
+        val installed = argumentCaptor<String>()
+        verify(mockGrafanaDashboardService, times(2)).installDashboard(installed.capture(), any(), eq("postgres-duckdb"))
+        assertThat(installed.allValues.map { Regex("\"uid\":\"([^\"]+)\"").find(it)?.groupValues?.get(1) })
+            .containsExactly("postgres-overview-duckdb", "postgres-duckdb-duckdb")
     }
 
     @Test

@@ -463,6 +463,19 @@ dashboards:
     name: Query Details
 ```
 
+A kit with an `extension` arg (postgres) runs as several instances side by side (`postgres`,
+`postgres-duckdb`). A dashboard with `extension:` is installed only by the instance created with
+that extension; one without is installed by every instance. Grafana uids are global, so an
+instance other than the kit's own installs each dashboard under the uid suffixed with its
+extension (`postgres-overview-duckdb`), and links between the dashboards it installs point at
+its own copies; it never moves another instance's dashboard into its folder.
+```yaml
+dashboards:
+  - path: dashboards/postgres.json
+  - path: dashboards/duckdb.json
+    extension: duckdb
+```
+
 Dashboard JSON files should:
 - Use `"uid": "<kit>-kit"` to make re-installs idempotent
 - Filter by `cluster=~"$cluster"` using a template variable

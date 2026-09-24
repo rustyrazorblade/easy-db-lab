@@ -5,10 +5,10 @@ import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.events.Event
-import com.rustyrazorblade.easydblab.services.DashboardRef
 import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
 import com.rustyrazorblade.easydblab.services.InstallStep
 import com.rustyrazorblade.easydblab.services.KitConfig
+import com.rustyrazorblade.easydblab.services.KitDashboardInstance
 import com.rustyrazorblade.easydblab.services.KitEndpointAddresses
 import com.rustyrazorblade.easydblab.services.KitEndpointResolver
 import com.rustyrazorblade.easydblab.services.KitHookExecutor
@@ -21,6 +21,7 @@ import com.rustyrazorblade.easydblab.services.TemplateVariables
 import com.rustyrazorblade.easydblab.services.WorkloadPresence
 import com.rustyrazorblade.easydblab.services.WorkloadStepExecutor
 import com.rustyrazorblade.easydblab.services.installConfigYaml
+import com.rustyrazorblade.easydblab.services.selectInstanceDashboards
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
 import org.koin.core.parameter.parametersOf
@@ -367,7 +368,7 @@ class KitRunnerCommand(
                             targets = scrapeTargets,
                         ).onFailure { e -> log.warn(e) { "Failed to register metrics for $kitName" } }
                 }
-                installDashboards(config.dashboards)
+                installDashboards(config)
                 reportEndpoints(config)
             }
             Constants.Kit.PHASE_STOP -> releaseWorkload(controlHost)
@@ -409,7 +410,7 @@ class KitRunnerCommand(
         }.onFailure { e -> log.warn(e) { "Failed to report endpoints for $kitName" } }
     }
 
-    private fun installDashboards(dashboards: List<DashboardRef>) {
+    private fun installDashboards(config: KitConfig) {
         // A telemetry-redirect cluster has no local Grafana — dashboards live on the external stack.
         // Skip cleanly so a successful `start` is not turned into a failure by a missing Grafana.
         if (clusterState.initConfig?.telemetryRedirect != null) {
@@ -423,30 +424,38 @@ class KitRunnerCommand(
                 return
             }
 
-        if (dashboards.isNotEmpty()) {
-            dashboards.forEach { dashRef ->
-                val file = File(kitDir, dashRef.path)
-                if (!file.isFile) {
-                    log.warn { "Dashboard file not found: ${file.absolutePath}" }
-                    return@forEach
-                }
-                grafanaDashboardService
-                    .installDashboardFromFile(file = file, controlHost = controlHost, folderName = kitName)
-                    .onFailure { log.warn(it) { "Failed to install dashboard ${file.name}" } }
+        val files = dashboardFiles(config)
+        val rendered =
+            runCatching {
+                KitDashboardInstance(kitName = kitName, kitType = config.name, dashboards = files.map { it.readText() }).rendered()
+            }.getOrElse { e ->
+                log.warn(e) { "Failed to read the dashboards of $kitName" }
+                return
             }
-        } else {
-            val dashboardsDir = File(kitDir, "dashboards")
-            if (!dashboardsDir.isDirectory) return
-            dashboardsDir
+        files.zip(rendered).forEach { (file, dashboardJson) ->
+            grafanaDashboardService
+                .installDashboard(dashboardJson = dashboardJson, controlHost = controlHost, folderName = kitName)
+                .onFailure { log.warn(it) { "Failed to install dashboard ${file.name}" } }
+        }
+    }
+
+    /**
+     * The dashboard files this instance installs: the kit's declared `dashboards` it selects (see
+     * [selectInstanceDashboards]), or, when it declares none, every JSON file in `dashboards/`.
+     */
+    private fun dashboardFiles(config: KitConfig): List<File> {
+        if (config.dashboards.isEmpty()) {
+            return File(kitDir, "dashboards")
                 .listFiles { _, name -> name.endsWith(".json") }
                 .orEmpty()
                 .sortedBy { it.name }
-                .forEach { file ->
-                    grafanaDashboardService
-                        .installDashboardFromFile(file = file, controlHost = controlHost, folderName = kitName)
-                        .onFailure { log.warn(it) { "Failed to install dashboard ${file.name}" } }
-                }
         }
+        val extension = config.extensionArg?.let { readResolvedArgs()[it.variable] }.orEmpty()
+        return selectInstanceDashboards(config.dashboards, extension)
+            .map { File(kitDir, it.path) }
+            .filter { file ->
+                file.isFile.also { found -> if (!found) log.warn { "Dashboard file not found: ${file.absolutePath}" } }
+            }
     }
 
     companion object {

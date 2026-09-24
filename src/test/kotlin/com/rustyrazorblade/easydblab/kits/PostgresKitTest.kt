@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.kits
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.services.ExtensionRegistry
 import com.rustyrazorblade.easydblab.services.InstallStep
 import com.rustyrazorblade.easydblab.services.TemplateService
 import org.assertj.core.api.Assertions.assertThat
@@ -60,6 +61,23 @@ class PostgresKitTest : BaseKoinTest() {
 
         assertThat(operator.release).isEqualTo(installed.release)
         assertThat(operator.keepWhileAny).isEqualTo("clusters.postgresql.cnpg.io")
+    }
+
+    /**
+     * Each postgres instance installs the overview plus its own extension's dashboard. A declared
+     * `dashboards` list replaces the scan of `dashboards/`, so a dashboard file left undeclared
+     * would never be installed.
+     */
+    @Test
+    fun `every dashboard is declared, the overview for all instances and each other for its extension`() {
+        val dir = requireNotNull(javaClass.classLoader.getResource("com/rustyrazorblade/easydblab/kits/postgres/dashboards"))
+        val files = File(dir.toURI()).listFiles { _, name -> name.endsWith(".json") }.orEmpty().map { "dashboards/${it.name}" }
+        val declared = kit.config.dashboards
+
+        assertThat(declared.map { it.path }).containsExactlyInAnyOrderElementsOf(files)
+        assertThat(declared.filter { it.extension.isBlank() }.map { it.path }).containsExactly("dashboards/postgres.json")
+        assertThat(declared.map { it.extension }.filter { it.isNotBlank() })
+            .containsExactlyInAnyOrderElementsOf(ExtensionRegistry.fromClasspath("postgres").all().keys)
     }
 
     private companion object {

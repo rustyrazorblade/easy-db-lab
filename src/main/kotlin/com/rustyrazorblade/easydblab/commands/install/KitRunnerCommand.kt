@@ -55,7 +55,6 @@ class KitRunnerCommand(
 
     override fun execute() {
         val config = loadInstallConfig()
-        val typedSteps = config?.stepsForPhase(phaseName)?.takeIf { it.isNotEmpty() }
 
         val startIsGuarded = config?.collisionCheck?.guards(Constants.Kit.PHASE_START) == true
         if (phaseName == Constants.Kit.PHASE_START && startIsGuarded && isAlreadyRunning(requireNotNull(config))) {
@@ -68,19 +67,40 @@ class KitRunnerCommand(
         // temp file (if any) is deleted when the block exits, on both success and failure.
         kubeconfigProxyResolver.resolve(workspaceKubeconfig).use { resolvedKubeconfig ->
             val augmentedEnv = buildAugmentedEnv(config, resolvedKubeconfig.path)
+            val kitConfig = config ?: KitConfig(name = kitName)
 
-            if (typedSteps != null) {
-                executeTypedPhase(config, typedSteps, augmentedEnv)
-            } else {
-                val scriptFile = findScriptFile()
-                when {
-                    scriptFile != null -> executeScript(scriptFile, augmentedEnv, config ?: KitConfig(name = kitName))
-                    phaseName == Constants.Kit.PHASE_UNINSTALL -> removeKitDirectory()
-                    else -> error("No typed phase or script found for '$phaseName' in kit '$kitName'")
+            if (stopsBeforeUninstall(kitConfig)) {
+                processExitCode = runPhase(Constants.Kit.PHASE_STOP, kitConfig, augmentedEnv)
+                if (processExitCode != 0) return
+            }
+
+            when {
+                hasPhase(kitConfig, phaseName) -> {
+                    processExitCode = runPhase(phaseName, kitConfig, augmentedEnv)
+                    if (processExitCode == 0) completePhase(kitConfig)
                 }
+                phaseName == Constants.Kit.PHASE_UNINSTALL -> removeKitDirectory()
+                else -> error("No typed phase or script found for '$phaseName' in kit '$kitName'")
             }
         }
     }
+
+    /**
+     * Uninstalling a kit that is still running first runs its `stop` phase, stop wait included.
+     * A kit's uninstall steps remove what `install` created — an operator, Keeper — not the
+     * workload `start` created, whose objects would otherwise be orphaned, with finalizers that
+     * a removed operator can no longer process.
+     */
+    private fun stopsBeforeUninstall(config: KitConfig): Boolean =
+        phaseName == Constants.Kit.PHASE_UNINSTALL &&
+            kitName in clusterState.runningKits &&
+            hasPhase(config, Constants.Kit.PHASE_STOP)
+
+    /** True when the kit declares [phase] as typed steps or ships a script for it. */
+    private fun hasPhase(
+        config: KitConfig,
+        phase: String,
+    ): Boolean = config.stepsForPhase(phase).isNotEmpty() || findScriptFile(phase) != null
 
     /**
      * Collision check for `start` (typed-install-steps: `collision-check: true`, or a phase map with
@@ -177,31 +197,61 @@ class KitRunnerCommand(
         return installConfigYaml.decodeFromString(KitConfig.serializer(), configYaml.readText())
     }
 
-    private fun findScriptFile(): File? {
+    private fun findScriptFile(phase: String): File? {
         val binDir = File(kitDir, "bin")
         if (!binDir.isDirectory) return null
-        val withSuffix = File(binDir, "$phaseName.sh")
+        val withSuffix = File(binDir, "$phase.sh")
         if (withSuffix.isFile) return withSuffix
-        val bare = File(binDir, phaseName)
+        val bare = File(binDir, phase)
         if (bare.isFile && bare.canExecute()) return bare
         return null
     }
 
-    private fun executeTypedPhase(
+    /**
+     * Runs [phase] — its typed steps, or else its script, the same way for both — reports it,
+     * and returns its exit code. A phase that succeeded still fails when it was a `stop` whose
+     * workload did not leave (see [stoppedWorkloadIsGone]); without a control node there is
+     * nothing to wait on.
+     */
+    private fun runPhase(
+        phase: String,
         config: KitConfig,
+        envVars: Map<String, String>,
+    ): Int {
+        eventBus.emit(Event.Kit.ScriptStarted(kit = kitName, script = phase))
+        val typedSteps = config.stepsForPhase(phase)
+        val stepsExitCode =
+            if (typedSteps.isNotEmpty()) {
+                executeTypedSteps(phase, typedSteps, envVars)
+            } else {
+                executeScript(requireNotNull(findScriptFile(phase)) { "No script for '$phase' in kit '$kitName'" }, envVars)
+            }
+        val controlHost = clusterState.getControlHost()
+        val exitCode =
+            when {
+                stepsExitCode != 0 -> stepsExitCode
+                controlHost == null || stoppedWorkloadIsGone(phase, config, controlHost) -> 0
+                else -> Constants.ExitCodes.ERROR
+            }
+        eventBus.emit(Event.Kit.ScriptFinished(kit = kitName, script = phase, exitCode = exitCode))
+        return exitCode
+    }
+
+    private fun executeTypedSteps(
+        phase: String,
         steps: List<InstallStep>,
         envVars: Map<String, String>,
-    ) {
-        eventBus.emit(Event.Kit.ScriptStarted(kit = kitName, script = phaseName))
-
+    ): Int {
         val controlHost =
             clusterState.getControlHost()
                 ?: error("No control node found in cluster state")
 
-        val result =
-            workloadStepExecutor.execute(
+        // The step executor has already reported a failed step as a typed event; rethrowing it
+        // would have the command executor print it again as a raw exception.
+        return workloadStepExecutor
+            .execute(
                 steps = steps,
-                phase = phaseName,
+                phase = phase,
                 context =
                     StepExecutionContext(
                         kitName = kitName,
@@ -210,47 +260,28 @@ class KitRunnerCommand(
                         variables = envVars,
                         kitDir = kitDir,
                     ),
+            ).fold(
+                onSuccess = { 0 },
+                onFailure = { e ->
+                    log.debug(e) { "$kitName $phase failed" }
+                    Constants.ExitCodes.ERROR
+                },
             )
-
-        // The step executor has already reported the failed step as a typed event; rethrowing it
-        // would have the command executor print it again as a raw exception.
-        if (result.isFailure) {
-            log.debug(result.exceptionOrNull()) { "$kitName $phaseName failed" }
-            processExitCode = Constants.ExitCodes.ERROR
-            eventBus.emit(Event.Kit.ScriptFinished(kit = kitName, script = phaseName, exitCode = processExitCode))
-            return
-        }
-
-        finishPhase(config, controlHost, phaseExitCode = 0)
     }
 
     /**
-     * Completes a phase that ran with [phaseExitCode], the same way for typed and script kits.
-     * A phase that succeeded still fails when it was a `stop` whose workload did not leave (see
-     * [stoppedWorkloadIsGone]); without a [controlHost] there is nothing to wait on. Reports the
-     * result, and on success removes the kit directory after `uninstall` and runs the post-phase
-     * actions, which need the [controlHost].
+     * Completes the command's phase after it succeeded: removes the kit directory after
+     * `uninstall`, and runs the post-phase actions, which need the control node.
      */
-    private fun finishPhase(
-        config: KitConfig,
-        controlHost: ClusterHost?,
-        phaseExitCode: Int,
-    ) {
-        processExitCode =
-            when {
-                phaseExitCode != 0 -> phaseExitCode
-                controlHost == null || stoppedWorkloadIsGone(config, controlHost) -> 0
-                else -> Constants.ExitCodes.ERROR
-            }
-        eventBus.emit(Event.Kit.ScriptFinished(kit = kitName, script = phaseName, exitCode = processExitCode))
-        if (processExitCode != 0) return
+    private fun completePhase(config: KitConfig) {
         if (phaseName == Constants.Kit.PHASE_UNINSTALL) {
             kitDir.deleteRecursively()
         }
-        if (controlHost == null) {
-            log.warn { "No control node found; skipping post-phase actions for $kitName" }
-            return
-        }
+        val controlHost =
+            clusterState.getControlHost() ?: run {
+                log.warn { "No control node found; skipping post-phase actions for $kitName" }
+                return
+            }
         handlePostPhase(config, controlHost)
     }
 
@@ -265,10 +296,11 @@ class KitRunnerCommand(
      * steps already ran, so the caller still reports the phase finished.
      */
     private fun stoppedWorkloadIsGone(
+        phase: String,
         config: KitConfig,
         controlHost: ClusterHost,
     ): Boolean {
-        if (phaseName != Constants.Kit.PHASE_STOP || config.runtime == null) return true
+        if (phase != Constants.Kit.PHASE_STOP || config.runtime == null) return true
         val remaining =
             workloadProbe.awaitGone(kitName, config.runtime, controlHost).getOrElse { e ->
                 log.warn(e) { "Could not confirm $kitName's workload left the cluster after stop" }
@@ -289,19 +321,13 @@ class KitRunnerCommand(
     private fun executeScript(
         scriptFile: File,
         envVars: Map<String, String>,
-        config: KitConfig,
-    ) {
-        eventBus.emit(Event.Kit.ScriptStarted(kit = kitName, script = phaseName))
-
-        val process =
-            ProcessBuilder(scriptFile.absolutePath)
-                .directory(context.workingDirectory)
-                .inheritIO()
-                .also { pb -> pb.environment().putAll(envVars) }
-                .start()
-
-        finishPhase(config, clusterState.getControlHost(), phaseExitCode = process.waitFor())
-    }
+    ): Int =
+        ProcessBuilder(scriptFile.absolutePath)
+            .directory(context.workingDirectory)
+            .inheritIO()
+            .also { pb -> pb.environment().putAll(envVars) }
+            .start()
+            .waitFor()
 
     private fun handlePostPhase(
         config: KitConfig,

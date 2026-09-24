@@ -5553,9 +5553,9 @@ sealed interface Event {
         }
 
         /**
-         * A collision-checked kit's `stop` steps succeeded, but [resources] (`kind/name`) in
-         * [namespace] were still in the cluster when the wait for them to go ran out. A `start` now
-         * would be refused as a collision, so the stop is reported as failed.
+         * A kit's [phase] (`stop`, or `uninstall`) steps succeeded, but [resources] (`kind/name`)
+         * in [namespace] were still in the cluster when the wait for them to go ran out. A `start`
+         * now would be refused as a collision, so the phase is reported as failed.
          */
         @Serializable
         @SerialName("Kit.StopIncomplete")
@@ -5563,28 +5563,30 @@ sealed interface Event {
             val kit: String,
             val namespace: String,
             val resources: List<String>,
+            val phase: String = "stop",
         ) : Kit {
             override fun toDisplayString(): String =
-                "Error: '$kit' stop ran, but ${resources.joinToString(", ")} in namespace $namespace " +
-                    "did not go away in time. Run 'easy-db-lab $kit stop' again once they are gone."
+                "Error: '$kit' $phase ran, but ${resources.joinToString(", ")} in namespace $namespace " +
+                    "did not go away in time. Run 'easy-db-lab $kit $phase' again once they are gone."
 
             override fun isError(): Boolean = true
         }
 
         /**
-         * A collision-checked kit's `stop` steps succeeded, but the cluster could not be queried
-         * while waiting for its workload to leave, so whether it is gone is unknown. A `start` now
-         * may be refused as a collision, so the stop is reported as failed.
+         * A kit's [phase] (`stop`, or `uninstall`) steps succeeded, but the cluster could not be
+         * queried while waiting for its workload to leave, so whether it is gone is unknown. A
+         * `start` now may be refused as a collision, so the phase is reported as failed.
          */
         @Serializable
         @SerialName("Kit.StopUnverified")
         data class StopUnverified(
             val kit: String,
             val reason: String,
+            val phase: String = "stop",
         ) : Kit {
             override fun toDisplayString(): String =
-                "Error: '$kit' stop ran, but the cluster could not be queried to confirm its workload is gone: " +
-                    "$reason. Run 'easy-db-lab $kit stop' again once the cluster is reachable."
+                "Error: '$kit' $phase ran, but the cluster could not be queried to confirm its workload is gone: " +
+                    "$reason. Run 'easy-db-lab $kit $phase' again once the cluster is reachable."
 
             override fun isError(): Boolean = true
         }

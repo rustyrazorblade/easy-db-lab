@@ -23,9 +23,10 @@ sealed interface WorkloadPresence {
  *
  * `start` asks it before running a collision-checked kit's start phase, so that starting a kit that
  * is already running, or still terminating, fails instead of re-applying over the live objects.
- * `stop` asks it, for every kit that declares a runtime, to wait for that workload's pods to leave:
- * deleting a StatefulSet, Deployment or operator resource, or scaling a Deployment to zero, returns
- * before its pods have terminated, and a `start` right after would be refused.
+ * `stop` and `uninstall` ask it, for every kit that declares a runtime, to wait for that
+ * workload's pods to leave: deleting a StatefulSet, Deployment or operator resource, scaling a
+ * Deployment to zero, or `helm uninstall`, returns before its pods have terminated, and a
+ * `start` right after would be refused.
  */
 class KitWorkloadProbe(
     private val kubeService: KubernetesService,

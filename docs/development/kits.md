@@ -496,6 +496,10 @@ left. A failed cluster query during the wait is retried; if the last look still 
 exits non-zero with a `Kit.StopUnverified` error event carrying the cause. A kit with no `runtime`
 block does not wait.
 
+`<kit> uninstall` waits the same way after its steps succeed — a `helm uninstall` (Presto, Trino)
+also returns while the release's pods are still terminating — and reports a pod that outlives the
+wait with the same events, naming the `uninstall` phase; the kit directory is then kept.
+
 The runtime must therefore name what `start` creates and `stop` removes. A runtime pointing at
 something the `install` phase creates, such as an operator's helm release, would refuse every
 `start` after a successful install. A kit with no `runtime` block is looked up by the pod label

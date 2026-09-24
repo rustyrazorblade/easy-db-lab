@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.commands.install
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -8,6 +9,7 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.inOrder
 import org.mockito.kotlin.never
+import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.io.File
@@ -89,6 +91,37 @@ class KitRunnerCommandUninstallTest : KitRunnerCommandTestBase() {
 
         verify(mockWorkloadStepExecutor, never()).execute(any(), eq(Constants.Kit.PHASE_STOP), any())
         verify(mockWorkloadStepExecutor).execute(any(), eq(Constants.Kit.PHASE_UNINSTALL), any())
+    }
+
+    /**
+     * Presto's and Trino's uninstall is a `helm uninstall`, which returns while the release's
+     * pods are still terminating. Uninstall waits for the kit's pods the way `stop` does.
+     */
+    @Test
+    fun `uninstall waits until the kit's pods are gone`() {
+        writeKitYaml("mydb", typedKit)
+        whenever(mockKubeService.listPodsByLabel("easydblab/kit=mydb", "db"))
+            .thenReturn(Result.success(listOf(runningPod.copy(terminating = true))), Result.success(emptyList()))
+
+        assertThat(command("mydb", "uninstall").call()).isEqualTo(0)
+
+        verify(mockKubeService, times(2)).listPodsByLabel("easydblab/kit=mydb", "db")
+        assertThat(File(workingDir, "mydb")).doesNotExist()
+    }
+
+    @Test
+    fun `uninstall fails naming what is left, and keeps the kit directory, when the pods outlive the wait`() {
+        writeKitYaml("mydb", typedKit)
+        whenever(mockKubeService.listPodsByLabel("easydblab/kit=mydb", "db")).thenReturn(Result.success(listOf(runningPod)))
+
+        var exitCode = 0
+        val events = captureEvents { exitCode = command("mydb", "uninstall").call() }
+
+        assertThat(exitCode).isNotEqualTo(0)
+        val incomplete = events.filterIsInstance<Event.Kit.StopIncomplete>().single()
+        assertThat(incomplete.phase).isEqualTo(Constants.Kit.PHASE_UNINSTALL)
+        assertThat(incomplete.toDisplayString()).contains("'mydb' uninstall ran", "pod/mydb-0", "easy-db-lab mydb uninstall")
+        assertThat(File(workingDir, "mydb")).isDirectory()
     }
 
     @Test

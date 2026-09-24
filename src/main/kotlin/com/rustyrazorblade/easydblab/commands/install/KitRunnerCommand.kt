@@ -286,32 +286,40 @@ class KitRunnerCommand(
     }
 
     /**
-     * After a successful `stop` of a kit that declares a `runtime`, waits for the kit's pods to
-     * leave the cluster. Deleting a StatefulSet, Deployment or operator resource, or scaling a
-     * Deployment to zero (Presto, Trino), returns before its pods have terminated, so without the
-     * wait `stop` would return with the workload still running, and a collision-checked `start`
-     * right after would find it and be refused. A kit with no runtime declares no selector to wait
-     * on. Returns false, after reporting what is left, when the workload outlives the wait, and
-     * false, after reporting the stop as unverified, when the cluster cannot be queried: the stop
-     * steps already ran, so the caller still reports the phase finished.
+     * After a successful `stop` or `uninstall` of a kit that declares a `runtime`, waits for the
+     * kit's pods to leave the cluster. Deleting a StatefulSet, Deployment or operator resource,
+     * scaling a Deployment to zero, or `helm uninstall` (Presto, Trino), returns before its pods
+     * have terminated, so without the wait the phase would return with the workload still
+     * running, and a collision-checked `start` right after would find it and be refused. A kit
+     * with no runtime declares no selector to wait on. Returns false, after reporting what is
+     * left, when the workload outlives the wait, and false, after reporting the phase as
+     * unverified, when the cluster cannot be queried: the steps already ran, so the caller still
+     * reports the phase finished.
      */
     private fun stoppedWorkloadIsGone(
         phase: String,
         config: KitConfig,
         controlHost: ClusterHost,
     ): Boolean {
-        if (phase != Constants.Kit.PHASE_STOP || config.runtime == null) return true
+        if (phase !in PHASES_THAT_REMOVE_THE_WORKLOAD || config.runtime == null) return true
         val remaining =
             workloadProbe.awaitGone(kitName, config.runtime, controlHost).getOrElse { e ->
-                log.warn(e) { "Could not confirm $kitName's workload left the cluster after stop" }
-                eventBus.emit(Event.Kit.StopUnverified(kit = kitName, reason = e.message ?: e.javaClass.simpleName))
+                log.warn(e) { "Could not confirm $kitName's workload left the cluster after $phase" }
+                eventBus.emit(
+                    Event.Kit.StopUnverified(kit = kitName, reason = e.message ?: e.javaClass.simpleName, phase = phase),
+                )
                 return false
             }
         return when (remaining) {
             is WorkloadPresence.Absent -> true
             is WorkloadPresence.Present -> {
                 eventBus.emit(
-                    Event.Kit.StopIncomplete(kit = kitName, namespace = remaining.namespace, resources = remaining.resources),
+                    Event.Kit.StopIncomplete(
+                        kit = kitName,
+                        namespace = remaining.namespace,
+                        resources = remaining.resources,
+                        phase = phase,
+                    ),
                 )
                 false
             }
@@ -443,5 +451,8 @@ class KitRunnerCommand(
 
     companion object {
         private val log = KotlinLogging.logger {}
+
+        /** The phases that take the kit's workload out of the cluster, and so wait for its pods to go. */
+        private val PHASES_THAT_REMOVE_THE_WORKLOAD = setOf(Constants.Kit.PHASE_STOP, Constants.Kit.PHASE_UNINSTALL)
     }
 }

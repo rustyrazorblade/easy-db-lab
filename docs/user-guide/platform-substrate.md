@@ -53,7 +53,8 @@ easy-db-lab platform create-pvs --kit clickhouse --size 100Gi
 This creates one PV per db node with:
 - **Path**: `/mnt/db1/<kit>` on each host
 - **StorageClass**: `local-storage-wfc`
-- **Node affinity**: `easydblab.com/node-ordinal=N` for deterministic binding
+- **Node affinity**: `type=<node-type>` and `easydblab.com/node-ordinal=N` for deterministic binding.
+  Both pools carry ordinals, so the node type keeps a db PV off the app node with the same ordinal.
 - **ClaimRef**: pre-bound to `<volumeClaimTemplateName>-<kit>-N`
 
 The command is safe to re-run. If a PV exists with a stale claimRef (the PVC was deleted), the UID is cleared and the PV is returned to `Available`.

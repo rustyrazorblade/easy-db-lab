@@ -23,6 +23,7 @@ import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.PersistentVolumeBuilder
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaimBuilder
+import io.fabric8.kubernetes.api.model.PodBuilder
 import io.fabric8.kubernetes.api.model.Quantity
 import io.fabric8.kubernetes.api.model.apps.DaemonSet
 import io.fabric8.kubernetes.api.model.apps.Deployment
@@ -500,6 +501,66 @@ class K8sServiceIntegrationTest {
         client.persistentVolumes().withName(pvName).delete()
     }
 
+    /**
+     * db and app nodes both carry `easydblab.com/node-ordinal`, so a db PV pinned only by ordinal
+     * was satisfiable on app0: a 3-broker Kafka put a broker there, which then failed to mount
+     * `/mnt/db1/kafka`. A platform PV requires its node pool (`type`) as well as its ordinal.
+     */
+    @Test
+    @Order(25)
+    fun `a db platform PV binds only on a db node with its ordinal, not an app node with the same ordinal`() {
+        val storageOps = createStorageOperations()
+        storageOps.ensureLocalStorageWfcClass(testHost).getOrThrow()
+        val nodeName =
+            client
+                .nodes()
+                .list()
+                .items
+                .single()
+                .metadata.name
+        val kit = "affinitytest"
+        val pvName = "data-$kit-0"
+        k3s.execInContainer("mkdir", "-p", "/tmp/$kit")
+        val labelKeys = listOf(Constants.NODE_ORDINAL_LABEL, Constants.NODE_TYPE_LABEL)
+        val originalLabels =
+            client
+                .nodes()
+                .withName(nodeName)
+                .get()
+                .metadata.labels
+                .filterKeys { it in labelKeys }
+        labelNode(nodeName, mapOf(Constants.NODE_ORDINAL_LABEL to "0", Constants.NODE_TYPE_LABEL to "app"))
+        try {
+            storageOps
+                .createLocalPersistentVolumes(
+                    testHost,
+                    PersistentVolumeConfig(
+                        dbName = kit,
+                        localPath = "/tmp/$kit",
+                        count = 1,
+                        storageSize = "1Gi",
+                        storageClass = Constants.K8s.LOCAL_STORAGE_WFC_CLASS,
+                        namespace = DEFAULT_NAMESPACE,
+                        nodeType = "db",
+                    ),
+                ).getOrThrow()
+            createClaimAndConsumer(kit, storageClass = Constants.K8s.LOCAL_STORAGE_WFC_CLASS)
+
+            // The only node is an app node with ordinal 0: the scheduler must not place the pod there.
+            Thread.sleep(UNSCHEDULABLE_WAIT_MS)
+            assertThat(pvcPhase(pvName)).isEqualTo("Pending")
+
+            labelNode(nodeName, mapOf(Constants.NODE_TYPE_LABEL to "db"))
+            waitForPvcBound(pvName, timeoutSeconds = 90)
+        } finally {
+            deleteClaimAndConsumer(kit)
+            client.persistentVolumes().withName(pvName).delete()
+            // Restore what the earlier setup test labelled the node with for the tests that follow.
+            unlabelNode(nodeName, labelKeys)
+            labelNode(nodeName, originalLabels)
+        }
+    }
+
     // -----------------------------------------------------------------------
     // Phase 3: Resource limits and structural checks
     // -----------------------------------------------------------------------
@@ -704,6 +765,105 @@ class K8sServiceIntegrationTest {
         )
     }
 
+    private val testHost =
+        ClusterHost(publicIp = "unused", privateIp = "unused", alias = "test", availabilityZone = "us-west-2a")
+
+    private fun labelNode(
+        nodeName: String,
+        labels: Map<String, String>,
+    ) {
+        client.nodes().withName(nodeName).edit { node ->
+            node.metadata.labels.putAll(labels)
+            node
+        }
+    }
+
+    private fun unlabelNode(
+        nodeName: String,
+        keys: List<String>,
+    ) {
+        client.nodes().withName(nodeName).edit { node ->
+            keys.forEach { node.metadata.labels.remove(it) }
+            node
+        }
+    }
+
+    private fun pvcPhase(pvcName: String): String? =
+        client
+            .persistentVolumeClaims()
+            .inNamespace(DEFAULT_NAMESPACE)
+            .withName(pvcName)
+            .get()
+            ?.status
+            ?.phase
+
+    /**
+     * A claim `data-<kit>-0` selecting [kit]'s PVs, and a pod that consumes it: with a
+     * WaitForFirstConsumer class the claim binds only when the scheduler places the pod.
+     */
+    private fun createClaimAndConsumer(
+        kit: String,
+        storageClass: String,
+    ) {
+        val claimName = "data-$kit-0"
+        val claim =
+            PersistentVolumeClaimBuilder()
+                .withNewMetadata()
+                .withName(claimName)
+                .withNamespace(DEFAULT_NAMESPACE)
+                .endMetadata()
+                .withNewSpec()
+                .withAccessModes("ReadWriteOnce")
+                .withStorageClassName(storageClass)
+                .withNewSelector()
+                .addToMatchLabels(Constants.PV_KIT_LABEL, kit)
+                .endSelector()
+                .withNewResources()
+                .addToRequests("storage", Quantity("1Gi"))
+                .endResources()
+                .endSpec()
+                .build()
+        client.persistentVolumeClaims().resource(claim).create()
+        val pod =
+            PodBuilder()
+                .withNewMetadata()
+                .withName("consumer-$kit")
+                .withNamespace(DEFAULT_NAMESPACE)
+                .endMetadata()
+                .withNewSpec()
+                .addNewContainer()
+                .withName("pause")
+                .withImage("rancher/mirrored-pause:3.6")
+                .addNewVolumeMount()
+                .withName("data")
+                .withMountPath("/data")
+                .endVolumeMount()
+                .endContainer()
+                .addNewVolume()
+                .withName("data")
+                .withNewPersistentVolumeClaim()
+                .withClaimName(claimName)
+                .endPersistentVolumeClaim()
+                .endVolume()
+                .endSpec()
+                .build()
+        client.pods().resource(pod).create()
+    }
+
+    private fun deleteClaimAndConsumer(kit: String) {
+        client
+            .pods()
+            .inNamespace(DEFAULT_NAMESPACE)
+            .withName("consumer-$kit")
+            .withGracePeriod(0)
+            .delete()
+        client
+            .persistentVolumeClaims()
+            .inNamespace(DEFAULT_NAMESPACE)
+            .withName("data-$kit-0")
+            .delete()
+    }
+
     private fun createStorageOperations(): DefaultK8sStorageOperations {
         val mockClientProvider = mock<K8sClientProvider>()
         whenever(mockClientProvider.createClient(any())).thenAnswer {
@@ -743,3 +903,6 @@ class K8sServiceIntegrationTest {
 
 private const val MILLIS_PER_SECOND = 1000L
 private const val POLL_INTERVAL_MS = 2000L
+
+/** How long a pod the scheduler must not place is given before its claim is checked still Pending. */
+private const val UNSCHEDULABLE_WAIT_MS = 15_000L

@@ -69,6 +69,7 @@ class PlatformCreatePvs : PicoBaseCommand() {
                         storageClass = Constants.K8s.LOCAL_STORAGE_WFC_CLASS,
                         namespace = Constants.K8s.NAMESPACE,
                         volumeClaimTemplateName = pvcTemplateName,
+                        nodeType = nodeType,
                     ),
             ).getOrElse { exception ->
                 error("Failed to create PVs for $kit: ${exception.message}")

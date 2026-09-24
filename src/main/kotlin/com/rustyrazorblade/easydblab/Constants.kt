@@ -21,6 +21,12 @@ object Constants {
     // Kubernetes labels
     const val NODE_ORDINAL_LABEL = "easydblab.com/node-ordinal"
 
+    /** The node label naming the node's pool (`db`, `app`, `control`), set when the node joins. */
+    const val NODE_TYPE_LABEL = "type"
+
+    /** The label on a platform local PV naming the kit instance it is for; the kit's PVCs select it. */
+    const val PV_KIT_LABEL = "app.kubernetes.io/name"
+
     // Time-related constants
     object Time {
         const val SECONDS_PER_MINUTE = 60

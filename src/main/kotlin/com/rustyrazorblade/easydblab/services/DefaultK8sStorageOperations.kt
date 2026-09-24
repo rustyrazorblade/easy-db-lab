@@ -169,7 +169,7 @@ class DefaultK8sStorageOperations(
                         PersistentVolumeBuilder()
                             .withNewMetadata()
                             .withName(pvName)
-                            .addToLabels("app.kubernetes.io/name", config.dbName)
+                            .addToLabels(Constants.PV_KIT_LABEL, config.dbName)
                             .addToLabels("app.kubernetes.io/component", "data")
                             .endMetadata()
                             .withNewSpec()
@@ -180,9 +180,16 @@ class DefaultK8sStorageOperations(
                             .withNewLocal()
                             .withPath(config.localPath)
                             .endLocal()
+                            // db and app nodes both carry ordinals, so the ordinal alone would let
+                            // a db PV bind on the app node with the same ordinal.
                             .withNewNodeAffinity()
                             .withNewRequired()
                             .addNewNodeSelectorTerm()
+                            .addNewMatchExpression()
+                            .withKey(Constants.NODE_TYPE_LABEL)
+                            .withOperator("In")
+                            .withValues(config.nodeType)
+                            .endMatchExpression()
                             .addNewMatchExpression()
                             .withKey(Constants.NODE_ORDINAL_LABEL)
                             .withOperator("In")
@@ -211,7 +218,7 @@ class DefaultK8sStorageOperations(
                 val deleted =
                     client
                         .persistentVolumes()
-                        .withLabel("app.kubernetes.io/name", dbName)
+                        .withLabel(Constants.PV_KIT_LABEL, dbName)
                         .delete()
                 eventBus.emit(Event.K8s.LocalPvsDeleted(count = deleted.size, dbName = dbName))
             }

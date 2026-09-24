@@ -335,6 +335,7 @@ class WorkloadStepExecutor(
                         storageClass = step.storageClass,
                         namespace = Constants.K8s.NAMESPACE,
                         volumeClaimTemplateName = step.volumeClaimTemplateName,
+                        nodeType = step.nodeType,
                     ),
             ).getOrThrow()
     }

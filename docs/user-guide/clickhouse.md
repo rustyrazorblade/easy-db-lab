@@ -404,7 +404,7 @@ The ClickHouse deployment includes:
 ClickHouse uses Local PersistentVolumes to guarantee pod-to-node pinning:
 
 1. During cluster creation, each `db` node is labeled with its ordinal (`easydblab.com/node-ordinal=0`, etc.)
-2. Local PVs are created with node affinity matching these ordinals
+2. Local PVs are created with node affinity matching these ordinals and the `type=db` label
 3. PVs are pre-bound to specific PVCs (e.g., `data-clickhouse-0` binds to the PV on `db0`)
 4. The StatefulSet's volumeClaimTemplate requests storage from these pre-bound PVs
 

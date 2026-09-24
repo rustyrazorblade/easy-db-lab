@@ -54,7 +54,7 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
         ClusterState(
             name = "test-cluster",
             versions = mutableMapOf(),
-            hosts = mapOf(ServerType.Cassandra to listOf(dbHost)),
+            hosts = mapOf(ServerType.Cassandra to listOf(dbHost), ServerType.Stress to listOf(dbHost.copy(alias = "app0"))),
         )
 
     override fun additionalTestModules(): List<Module> =
@@ -285,6 +285,18 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
             val config = argumentCaptor<PersistentVolumeConfig>()
             verify(k8sService).createLocalPersistentVolumes(any(), config.capture())
             assertThat(config.firstValue.storageSize).isEqualTo("10Ti")
+        }
+
+        /** db and app nodes both carry ordinals; a PV must also require the pool its step names. */
+        @Test
+        fun `the PVs are pinned to the node pool the step names`() {
+            whenever(k8sService.createLocalPersistentVolumes(any(), any())).thenReturn(Result.success(Unit))
+
+            execute(steps = listOf(InstallStep.PlatformPvs(nodeType = "app")), variables = mapOf("STORAGE_SIZE" to "1Gi"))
+
+            val config = argumentCaptor<PersistentVolumeConfig>()
+            verify(k8sService).createLocalPersistentVolumes(any(), config.capture())
+            assertThat(config.firstValue.nodeType).isEqualTo("app")
         }
 
         @Test

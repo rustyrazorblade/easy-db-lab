@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
@@ -19,6 +20,8 @@ import java.nio.file.Path
  * @property storageClass StorageClass name
  * @property namespace Namespace for PVC binding
  * @property volumeClaimTemplateName Name of the volume claim template
+ * @property nodeType The node pool (`db`, `app`) the PVs are on; each PV requires that pool as well
+ *   as its ordinal, since db and app nodes both carry ordinals
  */
 data class PersistentVolumeConfig(
     val dbName: String,
@@ -28,6 +31,7 @@ data class PersistentVolumeConfig(
     val storageClass: String = Constants.K8s.LOCAL_STORAGE_CLASS,
     val namespace: String = "default",
     val volumeClaimTemplateName: String = "data",
+    val nodeType: String = ServerType.Cassandra.serverType,
 )
 
 /**

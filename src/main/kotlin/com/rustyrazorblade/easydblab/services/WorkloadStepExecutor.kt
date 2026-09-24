@@ -130,11 +130,18 @@ class WorkloadStepExecutor(
                 }
 
                 is InstallStep.HelmUninstall -> {
-                    helmService.uninstall(
-                        host = host,
-                        release = interp(step.release),
-                        namespace = interp(step.namespace),
-                    )
+                    val release = interp(step.release)
+                    val usedBy =
+                        if (step.keepWhileAny.isBlank()) {
+                            emptyList()
+                        } else {
+                            kubectlService.listInAllNamespaces(host = host, resource = interp(step.keepWhileAny))
+                        }
+                    if (usedBy.isEmpty()) {
+                        helmService.uninstall(host = host, release = release, namespace = interp(step.namespace))
+                    } else {
+                        eventBus.emit(Event.Kit.HelmReleaseKept(kit = ctx.kitName, release = release, usedBy = usedBy))
+                    }
                 }
 
                 is InstallStep.Namespace -> {

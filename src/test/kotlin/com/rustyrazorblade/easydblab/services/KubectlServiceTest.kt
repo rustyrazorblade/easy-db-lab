@@ -133,6 +133,20 @@ class KubectlServiceTest : BaseKoinTest() {
         assertThat(command).doesNotContain("--ignore-not-found")
     }
 
+    @Test
+    fun `listInAllNamespaces returns every object of the type in any namespace, without echoing them`() {
+        lookupReturns("cluster.postgresql.cnpg.io/postgres-duckdb\n\ncluster.postgresql.cnpg.io/postgres-postgis\n")
+
+        val found = makeService().listInAllNamespaces(host = testHost, resource = "clusters.postgresql.cnpg.io")
+
+        assertThat(found).containsExactly("cluster.postgresql.cnpg.io/postgres-duckdb", "cluster.postgresql.cnpg.io/postgres-postgis")
+        val commands = argumentCaptor<String>()
+        verify(mockRemoteOps).executeRemotely(eq(testHost), commands.capture(), eq(false), any())
+        assertThat(commands.firstValue)
+            .startsWith("KUBECONFIG=${Constants.K3s.REMOTE_KUBECONFIG}")
+            .contains("kubectl get clusters.postgresql.cnpg.io --all-namespaces -o name")
+    }
+
     private fun lookupReturns(names: String) {
         whenever(mockRemoteOps.executeRemotely(any(), argThat { contains("kubectl get") }, any(), any()))
             .doReturn(Response(names))

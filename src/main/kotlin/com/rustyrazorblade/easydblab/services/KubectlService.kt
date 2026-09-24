@@ -62,6 +62,15 @@ interface KubectlService {
         namespace: String,
     )
 
+    /**
+     * The `kind/name` of every object of [resource] (a resource type such as
+     * `clusters.postgresql.cnpg.io`) in any namespace. A failed lookup throws.
+     */
+    fun listInAllNamespaces(
+        host: Host,
+        resource: String,
+    ): List<String>
+
     companion object {
         /** Prepend KUBECONFIG env var so remote CLI tools (helm, kubectl) find the cluster. */
         fun withKubeconfig(command: String) = "KUBECONFIG=${Constants.K3s.REMOTE_KUBECONFIG} $command"
@@ -164,6 +173,20 @@ class DefaultKubectlService(
         if (found.isEmpty()) return
         run(host, listOf("delete") + found.map(::shellQuote) + listOf("-n", namespace, "--ignore-not-found"))
     }
+
+    override fun listInAllNamespaces(
+        host: Host,
+        resource: String,
+    ): List<String> =
+        remoteOps
+            .executeRemotely(
+                host,
+                KubectlService.withKubeconfig("kubectl get $resource --all-namespaces -o name"),
+                output = false,
+            ).text
+            .lines()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
 
     /** Single-quotes [value] for the remote shell, so a selector like `tier in (a, b)` stays one word. */
     private fun shellQuote(value: String): String = "'" + value.replace("'", "'\\''") + "'"

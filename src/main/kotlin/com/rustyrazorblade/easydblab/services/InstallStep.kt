@@ -25,11 +25,19 @@ sealed interface InstallStep {
         val valuesFile: String = "",
     ) : InstallStep
 
+    /**
+     * Removes the Helm [release] from [namespace]. When [keepWhileAny] names a resource type
+     * (e.g. `clusters.postgresql.cnpg.io`), the release is kept while any object of that type is
+     * left in any namespace: one operator can serve several kit instances, and uninstalling one
+     * must not remove the operator the others still run on.
+     */
     @Serializable
     @SerialName("helm-uninstall")
     data class HelmUninstall(
         val release: String,
         val namespace: String = "default",
+        @SerialName("keep-while-any")
+        val keepWhileAny: String = "",
     ) : InstallStep
 
     @Serializable

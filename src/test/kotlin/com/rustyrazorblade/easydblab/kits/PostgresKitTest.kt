@@ -43,6 +43,25 @@ class PostgresKitTest : BaseKoinTest() {
         assertThat(shellSelectors(kit.config.start)).allSatisfy { assertThat(it).isEqualTo(runtime) }
     }
 
+    /**
+     * Plain postgres and every postgres-<extension> instance share one CNPG operator release, so
+     * uninstalling one instance keeps the operator while any CNPG Cluster is left.
+     */
+    @Test
+    fun `uninstall keeps the CNPG operator while any CNPG Cluster is left`() {
+        val operator =
+            kit.config.uninstall
+                .filterIsInstance<InstallStep.HelmUninstall>()
+                .single()
+        val installed =
+            kit.config.install
+                .filterIsInstance<InstallStep.Helm>()
+                .single()
+
+        assertThat(operator.release).isEqualTo(installed.release)
+        assertThat(operator.keepWhileAny).isEqualTo("clusters.postgresql.cnpg.io")
+    }
+
     private companion object {
         const val KIT_NAME_PLACEHOLDER = "\${KIT_NAME}"
 

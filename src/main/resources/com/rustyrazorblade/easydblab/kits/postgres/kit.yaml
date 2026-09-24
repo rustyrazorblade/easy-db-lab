@@ -101,9 +101,12 @@ stop:
 
 uninstall:
   - type: platform-pvs-delete
+  # postgres and every postgres-<extension> instance run on this one operator; it is removed only
+  # once no CNPG Cluster is left.
   - type: helm-uninstall
     release: cnpg-operator
     namespace: cnpg-system
+    keep-while-any: clusters.postgresql.cnpg.io
 
 capabilities:
   - type: sql

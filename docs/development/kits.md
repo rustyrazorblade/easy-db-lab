@@ -122,6 +122,16 @@ Uninstalls a Helm release.
   namespace: kube-system
 ```
 
+When one operator serves several kit instances, `keep-while-any` names a resource type and keeps
+the release while any object of that type is left in any namespace, reporting what still uses it
+(`Kit.HelmReleaseKept`). Plain `postgres` and every `postgres-<extension>` share the CNPG operator:
+```yaml
+- type: helm-uninstall
+  release: cnpg-operator
+  namespace: cnpg-system
+  keep-while-any: clusters.postgresql.cnpg.io
+```
+
 ### `manifest`
 Applies a K8s manifest template. The template file must exist in the kit's resource
 directory. Template variables (see below) are substituted before applying.

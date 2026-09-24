@@ -47,7 +47,9 @@ Deletes the CNPG `Cluster` CR and the NodePort service. PersistentVolumes are re
 
 ### uninstall
 
-Deletes PersistentVolumes and uninstalls the CNPG operator Helm release.
+Deletes PersistentVolumes and uninstalls the CNPG operator Helm release. The operator is shared by
+`postgres` and every `postgres-<extension>` instance, so it is kept while any CNPG `Cluster` is
+left and removed with the last one.
 
 ## Connecting
 

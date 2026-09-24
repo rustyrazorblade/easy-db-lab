@@ -101,6 +101,59 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
                 ),
         )
 
+    /**
+     * One operator can serve several kit instances: plain `postgres` and every `postgres-<extension>`
+     * share the CNPG operator release. `keep-while-any` keeps the release while any object of that
+     * type (a CNPG Cluster) is left, so uninstalling one instance does not remove the operator the
+     * others still run on.
+     */
+    @Nested
+    inner class HelmUninstallStep {
+        private val operatorUninstall =
+            InstallStep.HelmUninstall(release = "cnpg-operator", namespace = "cnpg-system", keepWhileAny = "clusters.postgresql.cnpg.io")
+
+        @Test
+        fun `keeps the release, and says what still uses it, while an object of the type is left`() {
+            whenever(kubectlService.listInAllNamespaces(any(), any())).thenReturn(listOf("cluster.postgresql.cnpg.io/postgres-duckdb"))
+            val events = mutableListOf<Event>()
+            get<EventBus>().addListener(
+                object : EventListener {
+                    override fun onEvent(envelope: EventEnvelope) {
+                        events += envelope.event
+                    }
+
+                    override fun close() = Unit
+                },
+            )
+
+            assertThat(execute(listOf(operatorUninstall)).isSuccess).isTrue()
+
+            verify(helmService, never()).uninstall(any(), any(), any())
+            verify(kubectlService).listInAllNamespaces(any(), org.mockito.kotlin.eq("clusters.postgresql.cnpg.io"))
+            val kept = events.filterIsInstance<Event.Kit.HelmReleaseKept>().single()
+            assertThat(kept.release).isEqualTo("cnpg-operator")
+            assertThat(kept.usedBy).containsExactly("cluster.postgresql.cnpg.io/postgres-duckdb")
+            assertThat(kept.toDisplayString()).contains("cnpg-operator", "cluster.postgresql.cnpg.io/postgres-duckdb")
+        }
+
+        @Test
+        fun `uninstalls the release when no object of the type is left`() {
+            whenever(kubectlService.listInAllNamespaces(any(), any())).thenReturn(emptyList())
+
+            assertThat(execute(listOf(operatorUninstall)).isSuccess).isTrue()
+
+            verify(helmService).uninstall(any(), org.mockito.kotlin.eq("cnpg-operator"), org.mockito.kotlin.eq("cnpg-system"))
+        }
+
+        @Test
+        fun `a release with no keep-while-any is uninstalled without looking in the cluster`() {
+            execute(listOf(InstallStep.HelmUninstall(release = "strimzi-operator", namespace = "strimzi")))
+
+            verify(kubectlService, never()).listInAllNamespaces(any(), any())
+            verify(helmService).uninstall(any(), org.mockito.kotlin.eq("strimzi-operator"), org.mockito.kotlin.eq("strimzi"))
+        }
+    }
+
     @Nested
     inner class ShellStep {
         @Test

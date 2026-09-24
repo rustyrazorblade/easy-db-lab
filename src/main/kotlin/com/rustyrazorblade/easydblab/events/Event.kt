@@ -5429,6 +5429,20 @@ sealed interface Event {
             override fun toDisplayString(): String = "[$kit] $phase step ${stepIndex + 1}: $stepType"
         }
 
+        /**
+         * A `helm-uninstall` step kept [release] because objects of the type it is kept for are
+         * still in the cluster ([usedBy], `kind/name`): another kit instance still runs on it.
+         */
+        @Serializable
+        @SerialName("Kit.HelmReleaseKept")
+        data class HelmReleaseKept(
+            val kit: String,
+            val release: String,
+            val usedBy: List<String>,
+        ) : Kit {
+            override fun toDisplayString(): String = "[$kit] Keeping helm release $release: still used by ${usedBy.joinToString(", ")}"
+        }
+
         @Serializable
         @SerialName("Kit.StepFailed")
         data class StepFailed(

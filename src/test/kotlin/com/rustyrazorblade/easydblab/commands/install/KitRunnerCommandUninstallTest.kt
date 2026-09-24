@@ -83,6 +83,40 @@ class KitRunnerCommandUninstallTest : KitRunnerCommandTestBase() {
     }
 
     @Test
+    fun `uninstalling a running kit with a stop phase but no uninstall phase stops it and releases it`() {
+        clusterState.runningKits = setOf("mydb")
+        writeKitYaml(
+            "mydb",
+            """
+            name: mydb
+            stop:
+              - type: shell
+                script: echo stop
+            """.trimIndent(),
+        )
+
+        assertThat(command("mydb", "uninstall").call()).isEqualTo(0)
+
+        verify(mockWorkloadStepExecutor).execute(any(), eq(Constants.Kit.PHASE_STOP), any())
+        verify(mockClusterStateManager).removeRunningWorkload("mydb")
+        verify(mockMetricsRegistryService).deregister(any(), eq("mydb"))
+        verify(mockKitHookExecutor).firePostKitStop("mydb")
+        assertThat(File(workingDir, "mydb")).doesNotExist()
+    }
+
+    @Test
+    fun `uninstalling a running kit with neither a stop nor an uninstall phase still releases it`() {
+        clusterState.runningKits = setOf("mydb")
+        writeKitYaml("mydb", "name: mydb")
+
+        assertThat(command("mydb", "uninstall").call()).isEqualTo(0)
+
+        verify(mockClusterStateManager).removeRunningWorkload("mydb")
+        verify(mockMetricsRegistryService).deregister(any(), eq("mydb"))
+        assertThat(File(workingDir, "mydb")).doesNotExist()
+    }
+
+    @Test
     fun `uninstalling a kit that is not running does not run its stop steps`() {
         writeKitYaml("mydb", typedKit)
         whenever(mockKubeService.listPodsByLabel("easydblab/kit=mydb", "db")).thenReturn(Result.success(emptyList()))

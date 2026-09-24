@@ -80,7 +80,11 @@ class KitRunnerCommand(
                     processExitCode = runPhase(phaseName, kitConfig, augmentedEnv)
                     if (processExitCode == 0) completePhase(kitConfig)
                 }
-                phaseName == Constants.Kit.PHASE_UNINSTALL -> removeKitDirectory()
+                // Without an uninstall phase, a running kit is still released (see handlePostPhase).
+                phaseName == Constants.Kit.PHASE_UNINSTALL -> {
+                    removeKitDirectory()
+                    completePhase(kitConfig)
+                }
                 else -> error("No typed phase or script found for '$phaseName' in kit '$kitName'")
             }
         }

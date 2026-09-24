@@ -211,6 +211,11 @@ Creates persistent volumes on cluster nodes using the platform substrate.
 `--extstore-size` is set. Pair it with `platform-pvs-delete` in `uninstall`, which is a no-op when
 no PV was created.
 
+Every kit's PVs share one storage class, and each PV is labelled `app.kubernetes.io/name=<kit>`.
+Every claim the kit creates — its own, a StatefulSet's, or one an operator generates — must select
+that label (`selector.matchLabels`, or Strimzi's `selector`) or name the PV in `volumeName`.
+Otherwise it can bind another kit's free PV.
+
 ### `configmap`
 Creates or updates a K8s ConfigMap.
 ```yaml

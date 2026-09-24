@@ -133,6 +133,10 @@ spec:
       - name: data
         spec:
           storageClassName: __STORAGE_CLASS_WFC__
+          # Binds only this kit's platform PVs; every kit's PVs share the storage class.
+          selector:
+            matchLabels:
+              app.kubernetes.io/name: __KIT_NAME__
           accessModes:
             - ReadWriteOnce
           resources:

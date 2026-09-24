@@ -561,6 +561,76 @@ class K8sServiceIntegrationTest {
         }
     }
 
+    /**
+     * Every kit's platform PVs share one storage class, so neo4j's PVC bound postgres-duckdb's PV.
+     * A platform PV carries its kit's label, and a kit's PVC selecting that label binds only its
+     * own kit's PV, even when another kit's PV is Available first.
+     */
+    @Test
+    @Order(26)
+    fun `a kit's claim selecting its kit label binds its own PV, not another kit's available PV`() {
+        val storageOps = createStorageOperations()
+        val kits = listOf("reservedother", "reservedown")
+        kits.forEach { kit ->
+            k3s.execInContainer("mkdir", "-p", "/tmp/$kit")
+            storageOps
+                .createLocalPersistentVolumes(
+                    testHost,
+                    PersistentVolumeConfig(
+                        dbName = kit,
+                        localPath = "/tmp/$kit",
+                        count = 1,
+                        storageSize = "1Gi",
+                        namespace = DEFAULT_NAMESPACE,
+                    ),
+                ).getOrThrow()
+        }
+        try {
+            val claim =
+                PersistentVolumeClaimBuilder()
+                    .withNewMetadata()
+                    .withName("claim-reservedown")
+                    .withNamespace(DEFAULT_NAMESPACE)
+                    .endMetadata()
+                    .withNewSpec()
+                    .withAccessModes("ReadWriteOnce")
+                    .withStorageClassName(Constants.K8s.LOCAL_STORAGE_CLASS)
+                    .withNewSelector()
+                    .addToMatchLabels(Constants.PV_KIT_LABEL, "reservedown")
+                    .endSelector()
+                    .withNewResources()
+                    .addToRequests("storage", Quantity("1Gi"))
+                    .endResources()
+                    .endSpec()
+                    .build()
+            client.persistentVolumeClaims().resource(claim).create()
+            waitForPvcBound("claim-reservedown", timeoutSeconds = 30)
+
+            assertThat(
+                client
+                    .persistentVolumeClaims()
+                    .inNamespace(DEFAULT_NAMESPACE)
+                    .withName("claim-reservedown")
+                    .get()
+                    .spec.volumeName,
+            ).isEqualTo("data-reservedown-0")
+            assertThat(
+                client
+                    .persistentVolumes()
+                    .withName("data-reservedother-0")
+                    .get()
+                    .status.phase,
+            ).isEqualTo("Available")
+        } finally {
+            client
+                .persistentVolumeClaims()
+                .inNamespace(DEFAULT_NAMESPACE)
+                .withName("claim-reservedown")
+                .delete()
+            kits.forEach { client.persistentVolumes().withName("data-$it-0").delete() }
+        }
+    }
+
     // -----------------------------------------------------------------------
     // Phase 3: Resource limits and structural checks
     // -----------------------------------------------------------------------

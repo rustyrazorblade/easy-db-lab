@@ -232,7 +232,7 @@ Telemetry from the CLI tool and cluster nodes carries these resource attributes:
 - `service.instance.id`: instance identifier, mapped to the Prometheus label `instance`. Cassandra pins it to the hostname, because the agent default is a fresh UUID per JVM start and would mint a new series on every restart.
 - `service.version`: application version (CLI tool only)
 - `host.name`: hostname
-- `node_role`: node type — `db`, `app`, `control` or `spark`
+- `node_role`: node type — `db`, `app`, `control`, `spark-master` or `spark-worker`
 - `cassandra_build`: the build a Cassandra node is running, read from its own `current` symlink (Cassandra JVM only)
 
 ## Configuration

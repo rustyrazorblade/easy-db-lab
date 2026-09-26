@@ -1632,7 +1632,7 @@
       "type": "timeseries",
       "id": 21,
       "title": "Service Graph Health (collector service_graph connector) \u2014 edges built, expired edges, dropped spans",
-      "description": "The OTel collector's service_graph connector on each node, per collector. Edges built is edges the connector completed and turned into service-graph metrics. Expired edges waited longer than the store's TTL for their matching span; dropped spans could not be added because the edge store was full (max_items). Either one non-zero means the graph is incomplete: read the delta panels above with suspicion. Tempo's metrics generator is off (processors: [] in tempo.yaml), so none of this comes from Tempo.",
+      "description": "The OTel collector's service_graph connector on each node, per collector. Edges built is edges the connector completed and turned into service-graph metrics. Expired edges waited longer than the store's TTL for their matching span; dropped spans could not be added because the edge store was full (max_items). The collector exports the dropped-spans counter only after its first drop, so until then the query falls back to 0 for every host that builds edges. Either one non-zero means the graph is incomplete: read the delta panels above with suspicion. Tempo's metrics generator is off (processors: [] in tempo.yaml), so none of this comes from Tempo.",
       "datasource": {
         "type": "prometheus",
         "uid": "mimir"
@@ -1736,7 +1736,7 @@
             "uid": "mimir"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (rate(otelcol_connector_servicegraph_dropped_spans_total[$__rate_interval]))",
+          "expr": "sum by (host_name) (rate(otelcol_connector_servicegraph_dropped_spans_total[$__rate_interval])) or 0 * sum by (host_name) (rate(otelcol_connector_servicegraph_edges_total[$__rate_interval]))",
           "legendFormat": "{{host_name}} dropped spans/s",
           "range": true,
           "instant": false,

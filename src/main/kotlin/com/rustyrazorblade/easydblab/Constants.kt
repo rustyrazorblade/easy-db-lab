@@ -707,6 +707,19 @@ object Constants {
 
         /** How far inside Loki's window an entry must fall to be pushed, so the clock between the tool and Loki cannot tip it out. */
         const val ENTRY_WINDOW_MARGIN_MINUTES = 1L
+
+        /**
+         * Loki's querier asks its ingester only for about the last `ingester.max_chunk_age` (Loki's
+         * default, 2h, left unset in `loki.yaml`); an older entry is answered from the store alone,
+         * so it is invisible until its chunk is flushed.
+         */
+        const val INGESTER_QUERY_WINDOW_HOURS = 2L
+
+        /** How many times the mirror looks for a flushed backdated annotation before it fails. */
+        const val QUERYABLE_LOOKS = 60
+
+        /** Seconds between two looks for a flushed backdated annotation. */
+        const val QUERYABLE_INTERVAL_SECONDS = 1L
     }
 
     /** The MCP server's live metrics stream. */

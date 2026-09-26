@@ -42,6 +42,7 @@ import java.util.UUID
  *
  * - mirroring the same annotation twice leaves one line in Loki;
  * - an annotation backdated two hours is accepted after newer ones;
+ * - an annotation backdated past the ingester's query window is queryable once the mirror returns;
  * - [AnnotationMirror.syncAll] copies an annotation made directly in Grafana, as a UI one is;
  * - a region annotation keeps its end time.
  */
@@ -198,6 +199,21 @@ class AnnotationMirrorIntegrationTest : BaseKoinTest() {
             ).getOrThrow()
 
         assertThat(mirrored(expected = 2).map { it.second }).containsExactlyInAnyOrder("newer", "backdated")
+    }
+
+    /**
+     * Loki's querier asks its ingester only for about the last `max_chunk_age` (2h by default); an
+     * older line is answered from the store alone, so without a flush it would stay invisible until
+     * its chunk went idle (`chunk_idle_period`, 30m). One look, no wait: the mirror's return is the
+     * promise.
+     */
+    @Test
+    fun `an annotation backdated five hours is queryable as soon as the mirror returns`() {
+        val fiveHoursAgo = System.currentTimeMillis() - Duration.ofHours(5).toMillis()
+
+        mirror.push(MirroredAnnotation(id = 3, text = "five hours old", tags = emptyList(), time = fiveHoursAgo)).getOrThrow()
+
+        assertThat(mirroredNow(hours = 6).map { it.second }).containsExactly("five hours old")
     }
 
     @Test

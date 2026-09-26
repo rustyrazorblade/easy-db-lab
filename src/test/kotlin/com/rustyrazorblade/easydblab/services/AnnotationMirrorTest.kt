@@ -17,6 +17,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
+import java.net.URLDecoder
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -54,7 +55,24 @@ class AnnotationMirrorTest {
     private fun mirror(
         http: RecordingObservabilityHttp,
         grafana: String = "[]",
-    ) = DefaultAnnotationMirror(LokiPushClient(http), GrafanaListing(grafana), stateManager, eventBus, clock)
+    ) = DefaultAnnotationMirror(
+        LokiPushClient(http),
+        GrafanaListing(grafana),
+        stateManager,
+        eventBus,
+        clock,
+        QueryableWait(looks = LOOKS, interval = Duration.ZERO),
+    )
+
+    /** Loki's `query_range` answer holding one entry: the annotation was found. */
+    private val found = ObservabilityResponse(200, """{"status":"success","data":{"result":[{"stream":{},"values":[["1","x"]]}]}}""")
+
+    /** Loki's `query_range` answer holding nothing: the annotation is not queryable yet. */
+    private val notFound = ObservabilityResponse(200, """{"status":"success","data":{"result":[]}}""")
+
+    private val accepted = ObservabilityResponse(204, "")
+
+    private fun decoded(path: String): String = URLDecoder.decode(path, Charsets.UTF_8)
 
     private fun ago(duration: Duration): Long = now.minus(duration).toEpochMilli()
 
@@ -75,7 +93,7 @@ class AnnotationMirrorTest {
         val http = RecordingObservabilityHttp(ObservabilityResponse(204, ""))
 
         mirror(http)
-            .push(MirroredAnnotation(id = 42, text = "concurrent_reads 64->128", tags = listOf("ab", "easydblab"), time = 1_000))
+            .push(MirroredAnnotation(id = 42, text = "concurrent_reads 64->128", tags = listOf("ab", "easydblab"), time = ago(MINUTE)))
             .getOrThrow()
 
         val call = http.calls.single()
@@ -87,7 +105,7 @@ class AnnotationMirrorTest {
             mapOf("cluster" to "lab-c1", "source" to "annotation", "annotation_id" to "42"),
         )
         val entry = stream.entry()
-        assertThat(entry[0].jsonPrimitive.content).isEqualTo("1000000000")
+        assertThat(entry[0].jsonPrimitive.content).isEqualTo("${ago(MINUTE)}000000")
         assertThat(entry[1].jsonPrimitive.content).isEqualTo("concurrent_reads 64->128")
         assertThat(
             entry[2].jsonObject.mapValues { it.value.jsonPrimitive.content },
@@ -104,8 +122,8 @@ class AnnotationMirrorTest {
                     id = 7,
                     text = "load",
                     tags = emptyList(),
-                    time = 1_000,
-                    timeEnd = 5_000,
+                    time = ago(MINUTE),
+                    timeEnd = ago(MINUTE) + 4_000,
                     dashboardUid = "abc",
                     panelId = 3,
                 ),
@@ -117,7 +135,62 @@ class AnnotationMirrorTest {
                 .entry()[2]
                 .jsonObject
                 .mapValues { it.value.jsonPrimitive.content }
-        assertThat(metadata).containsExactlyInAnyOrderEntriesOf(mapOf("dashboard_uid" to "abc", "panel_id" to "3", "time_end" to "5000"))
+        assertThat(metadata).containsExactlyInAnyOrderEntriesOf(
+            mapOf(
+                "dashboard_uid" to "abc",
+                "panel_id" to "3",
+                "time_end" to (ago(MINUTE) + 4_000).toString(),
+            ),
+        )
+    }
+
+    @Test
+    fun `an annotation older than the ingester's query window is flushed to the store and read back before push returns`() {
+        val time = ago(Duration.ofHours(3))
+        val http = RecordingObservabilityHttp(accepted, accepted, notFound, found)
+
+        mirror(http).push(MirroredAnnotation(id = 42, text = "backdated", tags = emptyList(), time = time)).getOrThrow()
+
+        assertThat(http.calls.map { it.method to it.path.substringBefore('?') }).containsExactly(
+            "POST" to "/loki/api/v1/push",
+            "POST" to "/flush",
+            "GET" to "/loki/api/v1/query_range",
+            "GET" to "/loki/api/v1/query_range",
+        )
+        val query = decoded(http.calls.last().path)
+        assertThat(query)
+            .contains("""annotation_id="42"""")
+            .contains("""cluster="lab-c1"""")
+            .contains("""source="annotation"""")
+            .contains("start=${time}000000")
+    }
+
+    @Test
+    fun `an annotation inside the ingester's query window is answered by the ingester, so nothing is flushed`() {
+        val http = RecordingObservabilityHttp(accepted)
+
+        mirror(http).push(MirroredAnnotation(id = 1, text = "recent", tags = emptyList(), time = ago(Duration.ofMinutes(119)))).getOrThrow()
+
+        assertThat(http.calls.map { it.path }).containsExactly("/loki/api/v1/push")
+    }
+
+    @Test
+    fun `a refused flush fails the mirror with Loki's answer`() {
+        val http = RecordingObservabilityHttp(accepted, ObservabilityResponse(500, "ingester not ready"))
+
+        val result = mirror(http).push(MirroredAnnotation(id = 1, text = "x", tags = emptyList(), time = ago(Duration.ofHours(5))))
+
+        assertThat(result.exceptionOrNull()).hasMessageContaining("500").hasMessageContaining("ingester not ready")
+    }
+
+    @Test
+    fun `a backdated annotation Loki still does not answer after the wait fails the mirror, naming it`() {
+        val http = RecordingObservabilityHttp(accepted, accepted, *Array(LOOKS) { notFound })
+
+        val result = mirror(http).push(MirroredAnnotation(id = 77, text = "x", tags = emptyList(), time = ago(Duration.ofHours(5))))
+
+        assertThat(result.exceptionOrNull()).hasMessageContaining("77")
+        assertThat(http.calls.count { it.method == "GET" }).isEqualTo(LOOKS)
     }
 
     @Test
@@ -178,7 +251,7 @@ class AnnotationMirrorTest {
 
     @Test
     fun `syncAll keeps an annotation just inside either edge of Loki's window`() {
-        val http = RecordingObservabilityHttp(ObservabilityResponse(204, ""))
+        val http = RecordingObservabilityHttp(accepted, accepted, found)
         val grafana =
             """
             [{"id":1,"text":"old","tags":[],"time":${ago(Duration.ofHours(8759))}},
@@ -210,5 +283,6 @@ class AnnotationMirrorTest {
     private companion object {
         val HOUR: Duration = Duration.ofHours(1)
         val MINUTE: Duration = Duration.ofMinutes(1)
+        const val LOOKS = 3
     }
 }

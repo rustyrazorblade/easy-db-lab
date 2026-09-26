@@ -52,6 +52,9 @@ object LogQl {
      */
     fun traceToLogs(traceId: String): String = """{cluster=~".+"} | trace_id="$traceId""""
 
+    /** The selector matching exactly the stream with [labels]. */
+    fun stream(labels: Map<String, String>): String = streamSelector(labels.toList())
+
     /**
      * The stream label a `--source` value selects. Cassandra's application logs arrive only over
      * OTLP from the Java agent, which names its service `cassandra` and sets no `source`; every

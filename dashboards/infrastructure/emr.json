@@ -103,7 +103,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "100 * (1 - sum by(host_name) (rate(system_cpu_time_seconds_total{state=\"idle\", node_role=\"spark\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[1m])) / sum by(host_name) (rate(system_cpu_time_seconds_total{node_role=\"spark\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[1m])))",
+          "expr": "100 * (1 - sum by(host_name) (rate(system_cpu_time_seconds_total{state=\"idle\", node_role=~\"spark-.*\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[1m])) / sum by(host_name) (rate(system_cpu_time_seconds_total{node_role=~\"spark-.*\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[1m])))",
           "legendFormat": "{{host_name}}",
           "refId": "A"
         }
@@ -193,7 +193,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "system_memory_usage_bytes{state=\"used\", node_role=\"spark\", host_name=~\"$hostname\", cluster=~\"$cluster\"}",
+          "expr": "system_memory_usage_bytes{state=\"used\", node_role=~\"spark-.*\", host_name=~\"$hostname\", cluster=~\"$cluster\"}",
           "legendFormat": "{{host_name}} used",
           "refId": "A"
         },
@@ -202,7 +202,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "system_memory_usage_bytes{state=\"cached\", node_role=\"spark\", host_name=~\"$hostname\", cluster=~\"$cluster\"}",
+          "expr": "system_memory_usage_bytes{state=\"cached\", node_role=~\"spark-.*\", host_name=~\"$hostname\", cluster=~\"$cluster\"}",
           "legendFormat": "{{host_name}} cached",
           "refId": "B"
         }
@@ -305,7 +305,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "rate(system_disk_io_bytes_total{direction=\"read\", node_role=\"spark\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[1m])",
+          "expr": "rate(system_disk_io_bytes_total{direction=\"read\", node_role=~\"spark-.*\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[1m])",
           "legendFormat": "{{host_name}} read",
           "refId": "A"
         },
@@ -314,7 +314,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "rate(system_disk_io_bytes_total{direction=\"write\", node_role=\"spark\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[1m])",
+          "expr": "rate(system_disk_io_bytes_total{direction=\"write\", node_role=~\"spark-.*\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[1m])",
           "legendFormat": "{{host_name}} write",
           "refId": "B"
         }
@@ -417,7 +417,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "rate(system_network_io_bytes_total{direction=\"receive\", node_role=\"spark\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[1m])",
+          "expr": "rate(system_network_io_bytes_total{direction=\"receive\", node_role=~\"spark-.*\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[1m])",
           "legendFormat": "{{host_name}} receive",
           "refId": "A"
         },
@@ -426,7 +426,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "rate(system_network_io_bytes_total{direction=\"transmit\", node_role=\"spark\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[1m])",
+          "expr": "rate(system_network_io_bytes_total{direction=\"transmit\", node_role=~\"spark-.*\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[1m])",
           "legendFormat": "{{host_name}} transmit",
           "refId": "B"
         }
@@ -516,7 +516,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "system_cpu_load_average_1m{node_role=\"spark\", host_name=~\"$hostname\", cluster=~\"$cluster\"}",
+          "expr": "system_cpu_load_average_1m{node_role=~\"spark-.*\", host_name=~\"$hostname\", cluster=~\"$cluster\"}",
           "legendFormat": "{{host_name}} 1m",
           "refId": "A"
         },
@@ -525,7 +525,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "system_cpu_load_average_5m{node_role=\"spark\", host_name=~\"$hostname\", cluster=~\"$cluster\"}",
+          "expr": "system_cpu_load_average_5m{node_role=~\"spark-.*\", host_name=~\"$hostname\", cluster=~\"$cluster\"}",
           "legendFormat": "{{host_name}} 5m",
           "refId": "B"
         }
@@ -615,7 +615,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "system_filesystem_usage_bytes{state=\"used\", node_role=\"spark\", mountpoint=\"/\", cluster=~\"$cluster\"} / on(host_name) system_filesystem_usage_bytes{state=\"free\", node_role=\"spark\", mountpoint=\"/\", cluster=~\"$cluster\"}",
+          "expr": "system_filesystem_usage_bytes{state=\"used\", node_role=~\"spark-.*\", mountpoint=\"/\", cluster=~\"$cluster\"} / on(host_name) system_filesystem_usage_bytes{state=\"free\", node_role=~\"spark-.*\", mountpoint=\"/\", cluster=~\"$cluster\"}",
           "legendFormat": "{{host_name}} /",
           "refId": "A"
         }
@@ -717,7 +717,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "jvm_memory_used_bytes{jvm_memory_type=\"heap\", node_role=\"spark\", host_name=~\"$hostname\", cluster=~\"$cluster\"}",
+          "expr": "jvm_memory_used_bytes{jvm_memory_type=\"heap\", node_role=~\"spark-.*\", host_name=~\"$hostname\", cluster=~\"$cluster\"}",
           "legendFormat": "{{host_name}} {{jvm_memory_pool_name}} used",
           "refId": "A"
         },
@@ -726,7 +726,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "jvm_memory_committed_bytes{jvm_memory_type=\"heap\", node_role=\"spark\", host_name=~\"$hostname\", cluster=~\"$cluster\"}",
+          "expr": "jvm_memory_committed_bytes{jvm_memory_type=\"heap\", node_role=~\"spark-.*\", host_name=~\"$hostname\", cluster=~\"$cluster\"}",
           "legendFormat": "{{host_name}} {{jvm_memory_pool_name}} committed",
           "refId": "B"
         }
@@ -816,7 +816,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "rate(jvm_gc_duration_seconds_sum{node_role=\"spark\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[1m])",
+          "expr": "rate(jvm_gc_duration_seconds_sum{node_role=~\"spark-.*\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[1m])",
           "legendFormat": "{{host_name}} {{jvm_gc_name}} duration",
           "refId": "A"
         }
@@ -906,7 +906,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "jvm_thread_count{node_role=\"spark\", host_name=~\"$hostname\", cluster=~\"$cluster\"}",
+          "expr": "jvm_thread_count{node_role=~\"spark-.*\", host_name=~\"$hostname\", cluster=~\"$cluster\"}",
           "legendFormat": "{{host_name}} threads",
           "refId": "A"
         }
@@ -996,7 +996,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "jvm_class_count{node_role=\"spark\", host_name=~\"$hostname\", cluster=~\"$cluster\"}",
+          "expr": "jvm_class_count{node_role=~\"spark-.*\", host_name=~\"$hostname\", cluster=~\"$cluster\"}",
           "legendFormat": "{{host_name}} loaded",
           "refId": "A"
         }
@@ -1065,7 +1065,7 @@
           "type": "prometheus",
           "uid": "${datasource}"
         },
-        "definition": "label_values(system_cpu_time_seconds_total{node_role=\"spark\"}, host_name)",
+        "definition": "label_values(system_cpu_time_seconds_total{node_role=~\"spark-.*\"}, host_name)",
         "hide": 0,
         "includeAll": true,
         "label": "Hostname",
@@ -1074,7 +1074,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(system_cpu_time_seconds_total{node_role=\"spark\"}, host_name)",
+          "query": "label_values(system_cpu_time_seconds_total{node_role=~\"spark-.*\"}, host_name)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 2,

@@ -1570,7 +1570,7 @@
         "type": "prometheus",
         "uid": "${datasource}"
       },
-      "description": "Change in bytes allocated per second per node. Negative is better only at equal throughput: allocating less for the same work means less garbage to collect. Always read it beside the Throughput tile, because a cluster doing more work allocates more. jvm_memory_allocation_bytes is a histogram, so this is the _sum series, never a _total.",
+      "description": "Change in bytes allocated per second per node. Negative is better only at equal throughput: allocating less for the same work means less garbage to collect. Always read it beside the Throughput tile, because a cluster doing more work allocates more. jvm_memory_allocation_bytes is a histogram, so this is the _sum series, never a _total. Needs Java 17 or newer: the OpenTelemetry agent derives allocation from JFR and emits no jvm_memory_allocation on Java 11, the default for Cassandra 4.x and 5.0 (run `cassandra use <version> --java 17`).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2607,7 +2607,7 @@
         "type": "prometheus",
         "uid": "${datasource}"
       },
-      "description": "Bytes allocated per second, split into TLAB (thread-local, the fast path) and Main (allocated straight from the heap). Allocation rate is what drives collection frequency, so it is the upstream cause of most GC differences. jvm_memory_allocation_bytes is a histogram; this is the _sum series, and there is no _total.",
+      "description": "Bytes allocated per second, split into TLAB (thread-local, the fast path) and Main (allocated straight from the heap). Allocation rate is what drives collection frequency, so it is the upstream cause of most GC differences. jvm_memory_allocation_bytes is a histogram; this is the _sum series, and there is no _total. Needs Java 17 or newer: the OpenTelemetry agent derives allocation from JFR and emits no jvm_memory_allocation on Java 11, the default for Cassandra 4.x and 5.0 (run `cassandra use <version> --java 17`).",
       "fieldConfig": {
         "defaults": {
           "color": {

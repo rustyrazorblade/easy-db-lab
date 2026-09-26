@@ -2388,7 +2388,7 @@
         "type": "prometheus",
         "uid": "mimir"
       },
-      "description": "JVM ONLY. Bytes allocated per second, summed over every arena and averaged per host. Allocation pressure sets GC frequency, so it belongs beside the CPU panels. On a non-JVM engine this panel is empty, which is the correct reading rather than a fault.",
+      "description": "JVM ONLY. Bytes allocated per second, summed over every arena and averaged per host. Allocation pressure sets GC frequency, so it belongs beside the CPU panels. On a non-JVM engine this panel is empty, which is the correct reading rather than a fault. Needs Java 17 or newer: the OpenTelemetry agent derives allocation from JFR and emits no jvm_memory_allocation on Java 11, the default for Cassandra 4.x and 5.0 (run `cassandra use <version> --java 17`).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2577,7 +2577,7 @@
         "type": "prometheus",
         "uid": "mimir"
       },
-      "description": "JVM ONLY. The same allocation rate split by arena. TLAB is the fast thread-local path; Main is the slow path taken by objects too large for a TLAB. A shift from TLAB to Main means bigger objects. Empty on a non-JVM engine.",
+      "description": "JVM ONLY. The same allocation rate split by arena. TLAB is the fast thread-local path; Main is the slow path taken by objects too large for a TLAB. A shift from TLAB to Main means bigger objects. Empty on a non-JVM engine. Needs Java 17 or newer: the OpenTelemetry agent derives allocation from JFR and emits no jvm_memory_allocation on Java 11, the default for Cassandra 4.x and 5.0 (run `cassandra use <version> --java 17`).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -6775,7 +6775,7 @@
         "type": "prometheus",
         "uid": "mimir"
       },
-      "description": "JVM ONLY. Grouped by ${groupby} across every host, ignoring the baseline and candidate selection. Honours host_name, cluster and arena. Empty on a non-JVM engine, which is the correct reading rather than a fault. cassandra_build is optional and joined in: on a cluster without that label the panel collapses to one unlabelled series rather than going blank.",
+      "description": "JVM ONLY. Grouped by ${groupby} across every host, ignoring the baseline and candidate selection. Honours host_name, cluster and arena. Empty on a non-JVM engine, which is the correct reading rather than a fault. Needs Java 17 or newer: the OpenTelemetry agent derives allocation from JFR and emits no jvm_memory_allocation on Java 11, the default for Cassandra 4.x and 5.0 (run `cassandra use <version> --java 17`). cassandra_build is optional and joined in: on a cluster without that label the panel collapses to one unlabelled series rather than going blank.",
       "fieldConfig": {
         "defaults": {
           "color": {

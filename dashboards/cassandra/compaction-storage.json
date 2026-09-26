@@ -2376,7 +2376,7 @@
       "id": 201,
       "type": "timeseries",
       "title": "Compaction throughput vs JVM allocation rate",
-      "description": "The relationship. Left axis: bytes fed to compaction per second per node (rate of cassandra_compaction_bytes_compacted_total). Right axis: whole-JVM allocation per second per node (rate of jvm_memory_allocation_bytes_sum). The two rise together — allocation tracks compaction. Under the identical workload the difference between the allocation lines is the compaction strategy: a cursor-compaction node allocates less for the same bytes compacted. Whole-JVM allocation includes read/flush/messaging, so read it as the trend, not an exact compaction-only figure; the clean compaction-only number lives in Pyroscope.",
+      "description": "The relationship. Left axis: bytes fed to compaction per second per node (rate of cassandra_compaction_bytes_compacted_total). Right axis: whole-JVM allocation per second per node (rate of jvm_memory_allocation_bytes_sum). The two rise together — allocation tracks compaction. Under the identical workload the difference between the allocation lines is the compaction strategy: a cursor-compaction node allocates less for the same bytes compacted. Whole-JVM allocation includes read/flush/messaging, so read it as the trend, not an exact compaction-only figure; the clean compaction-only number lives in Pyroscope. Needs Java 17 or newer: the OpenTelemetry agent derives allocation from JFR and emits no jvm_memory_allocation on Java 11, the default for Cassandra 4.x and 5.0 (run `cassandra use <version> --java 17`).",
       "gridPos": {
         "h": 9,
         "w": 12,
@@ -2513,7 +2513,7 @@
       "id": 202,
       "type": "bargauge",
       "title": "Allocation per byte compacted (this range)",
-      "description": "The verdict, normalized for work done. Bytes the JVM allocated divided by bytes compacted, over the dashboard range, per node. Dividing by compaction work cancels the fact that nodes compact different amounts, so the bars are directly comparable. A lower bar is a cheaper compaction path. min is pinned to 0 so bar length is proportional to the true value, not the min-max spread. Reads near-infinite until compaction has run enough to make the denominator non-zero. Whole-JVM allocation, comparable across nodes only under an identical workload.",
+      "description": "The verdict, normalized for work done. Bytes the JVM allocated divided by bytes compacted, over the dashboard range, per node. Dividing by compaction work cancels the fact that nodes compact different amounts, so the bars are directly comparable. A lower bar is a cheaper compaction path. min is pinned to 0 so bar length is proportional to the true value, not the min-max spread. Reads near-infinite until compaction has run enough to make the denominator non-zero. Whole-JVM allocation, comparable across nodes only under an identical workload. Needs Java 17 or newer: the OpenTelemetry agent derives allocation from JFR and emits no jvm_memory_allocation on Java 11, the default for Cassandra 4.x and 5.0 (run `cassandra use <version> --java 17`).",
       "gridPos": {
         "h": 9,
         "w": 12,

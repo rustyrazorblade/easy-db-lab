@@ -28,7 +28,6 @@ import java.net.URI
 import java.net.URLEncoder
 import java.net.http.HttpRequest
 import java.time.Duration
-import java.time.Instant
 import java.util.UUID
 
 /**
@@ -103,9 +102,8 @@ class LokiIntegrationTest : BaseKoinTest() {
         tenant: String,
         cluster: String,
         line: String,
-        at: Instant = Instant.now(),
     ) {
-        val nanos = at.epochSecond * 1_000_000_000 + at.nano
+        val nanos = System.currentTimeMillis() * 1_000_000
         val body =
             """
             {"resourceLogs":[{"resource":{"attributes":[
@@ -127,16 +125,14 @@ class LokiIntegrationTest : BaseKoinTest() {
         assertThat(response.statusCode()).describedAs(response.body()).isEqualTo(204)
     }
 
-    /** Every stream a LogQL [query] over the last [since] (a Loki duration) returns for [tenant]. */
+    /** Every stream a LogQL [query] over the last hour returns for [tenant]. */
     private fun streams(
         loki: GenericContainer<*>,
         tenant: String,
         query: String,
-        since: String = "1h",
     ): List<JsonObject> {
         val encoded = URLEncoder.encode(query, Charsets.UTF_8)
-        val response =
-            ObservabilityBackends.get("${url(loki)}/loki/api/v1/query_range?query=$encoded&since=$since&limit=1000", tenant)
+        val response = ObservabilityBackends.get("${url(loki)}/loki/api/v1/query_range?query=$encoded&since=1h&limit=1000", tenant)
         assertThat(response.statusCode()).describedAs(response.body()).isEqualTo(200)
         return Json
             .parseToJsonElement(response.body())
@@ -157,13 +153,12 @@ class LokiIntegrationTest : BaseKoinTest() {
         tenant: String,
         query: String,
         expected: Int,
-        since: String = "1h",
     ): List<JsonObject> {
         val deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos()
-        var found = streams(loki, tenant, query, since)
+        var found = streams(loki, tenant, query)
         while (lines(found).size < expected && System.nanoTime() < deadline) {
             Thread.sleep(Duration.ofSeconds(1).toMillis())
-            found = streams(loki, tenant, query, since)
+            found = streams(loki, tenant, query)
         }
         return found
     }
@@ -226,20 +221,6 @@ class LokiIntegrationTest : BaseKoinTest() {
         assertThat(lines(federated)).containsExactlyInAnyOrder("line from a", "line from b")
         assertThat(federated.map { streamLabels(it)["__tenant_id__"] to streamLabels(it)["cluster"] })
             .containsExactlyInAnyOrder("a" to "lab-a", "b" to "lab-b")
-    }
-
-    /**
-     * A backdated line (a mirrored annotation, a replayed log) sits in the ingester until its chunk
-     * is flushed. The querier must ask the ingester for it at once, not only after the flush.
-     */
-    @Test
-    fun `a line timestamped five hours ago is answered at once, before its chunk is flushed`() {
-        val loki = startLoki(newVolume(), "acme", "lab-x")
-        push(loki, "acme", "lab-x", "five hours old", Instant.now().minus(Duration.ofHours(5)))
-
-        val found = awaitStreams(loki, "acme", """{cluster="lab-x"}""", expected = 1, since = "6h")
-
-        assertThat(lines(found)).containsExactly("five hours old")
     }
 
     @Test

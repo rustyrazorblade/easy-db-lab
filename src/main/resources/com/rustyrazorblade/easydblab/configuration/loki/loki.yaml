@@ -58,12 +58,6 @@ ingester:
     dir: /loki/wal
     # A graceful stop flushes every chunk in memory to S3.
     flush_on_shutdown: true
-  # Under target: all the querier asks the ingester only for the last max_chunk_age (plus the index
-  # upload delay); querier.query_ingesters_within is overridden, and query_store_max_look_back_period
-  # cannot be set on S3. A backdated line older than that window stays invisible until its chunk is
-  # flushed (chunk_idle_period, 30m). Matching reject_old_samples_max_age makes every accepted line
-  # answerable at once. Chunks are still cut by size and idleness, and flushed on shutdown.
-  max_chunk_age: 8760h
   lifecycler:
     # The ingester's name is part of every index file it uploads, so each file names its tenant and
     # cluster, and two clusters in one tenant never write the same file.

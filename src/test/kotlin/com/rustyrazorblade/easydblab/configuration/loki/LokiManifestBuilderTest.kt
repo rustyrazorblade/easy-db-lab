@@ -141,20 +141,6 @@ class LokiManifestBuilderTest : BaseKoinTest() {
         assertThat(scalarAt(yaml, "limits_config", "max_label_names_per_series")?.toInt()).isGreaterThan(DEFAULT_LABEL_NAMES)
     }
 
-    /**
-     * Under `target: all` the querier asks the ingester only for the last `max_chunk_age` (plus the
-     * index upload delay); `query_ingesters_within` is overridden. A backdated line older than that
-     * window would stay invisible until its chunk is flushed, so the window covers every line Loki
-     * accepts.
-     */
-    @Test
-    fun `the querier asks the ingester for every line Loki accepts, however backdated`() {
-        val yaml = config()
-
-        assertThat(scalarAt(yaml, "ingester", "max_chunk_age")).isEqualTo("${Constants.Loki.MAX_ENTRY_AGE_HOURS}h")
-        assertThat(scalarAt(yaml, "limits_config", "reject_old_samples_max_age")).isEqualTo("${Constants.Loki.MAX_ENTRY_AGE_HOURS}h")
-    }
-
     @Test
     fun `the WAL, index and compactor directories live on the control node's disk`() {
         val yaml = config()

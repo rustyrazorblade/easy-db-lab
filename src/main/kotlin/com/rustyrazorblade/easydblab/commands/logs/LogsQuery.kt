@@ -15,7 +15,8 @@ import picocli.CommandLine.Option
  * Query logs from Loki.
  *
  * This command provides a unified interface to query logs from all sources:
- * - Cassandra logs (/var/log/cassandra/)
+ * - Cassandra application logs (OTLP from the Java agent, `service_name="cassandra"`)
+ * - Cassandra JVM GC log (/mnt/db1/cassandra/logs/gc.log, source `cassandra-gc`)
  * - ClickHouse logs (/mnt/db1/clickhouse/logs/)
  * - systemd/journald (cassandra.service, docker.service, etc.)
  * - System logs (/var/log/)
@@ -30,7 +31,9 @@ import picocli.CommandLine.Option
  * easy-db-lab logs query
  *
  * # Filter by source
+ * # `cassandra` selects the Java agent's OTLP stream; `cassandra-gc` the JVM GC log
  * easy-db-lab logs query --source cassandra
+ * easy-db-lab logs query --source cassandra-gc
  * easy-db-lab logs query --source emr
  *
  * # Filter by host
@@ -46,7 +49,7 @@ import picocli.CommandLine.Option
  * easy-db-lab logs query --since 30m --limit 500
  *
  * # Raw LogQL query, sent unchanged
- * easy-db-lab logs query -q '{source="cassandra"} |= "timed out"'
+ * easy-db-lab logs query -q '{service_name="cassandra"} |= "timed out"'
  * ```
  */
 @McpCommand
@@ -61,7 +64,7 @@ class LogsQuery : PicoBaseCommand() {
 
     @Option(
         names = ["--source", "-s"],
-        description = ["Log source: cassandra, journald, system, tool-runner, emr"],
+        description = ["Log source: cassandra (application logs), cassandra-gc (JVM GC log), journald, system, tool-runner, emr"],
     )
     var source: String? = null
 

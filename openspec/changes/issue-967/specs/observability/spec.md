@@ -93,15 +93,22 @@ The K3s cluster SHALL use Cilium as its CNI plugin with `kube-proxy` replacement
 
 ### Requirement: OTel Collector collects logs from multiple sources including K8s pods
 The OTel Collector SHALL collect logs from the following sources, each in a dedicated pipeline, and SHALL export them to Loki:
-- **`logs/local`**: Host file-based logs — system (`/var/log/**`), tools (`/var/log/easydblab/tools/`), Cassandra (`/mnt/db1/cassandra/logs/`), ClickHouse server and keeper logs.
+- **`logs/local`**: Host file-based logs — system (`/var/log/**`), tools (`/var/log/easydblab/tools/`), and the Cassandra JVM GC log (`/mnt/db1/cassandra/logs/gc.log*`, with `source: cassandra-gc`).
 - **`logs/containers`**: K8s pod stdout/stderr via `/var/log/containers/*.log`, enriched with Kubernetes metadata.
-- **`logs/otlp`**: OTLP-pushed logs from remote sources (e.g. Spark nodes).
+- **`logs/otlp`**: OTLP-pushed logs — Cassandra's application logs from the OpenTelemetry Java agent (`service_name="cassandra"`), Fluent Bit's journald lines, and remote sources (e.g. Spark nodes).
 
 The `file_log/system` receiver in `logs/local` SHALL explicitly exclude `/var/log/containers/**` and `/var/log/pods/**` to prevent duplication with `logs/containers`.
 
+Cassandra's application logs (`system.log`, `debug.log`) SHALL reach Loki only over OTLP. The `file_log/cassandra` receiver SHALL tail only the JVM GC log, which the JVM writes directly and the Java agent never sees.
+
 #### Scenario: Host file logs reach Loki
-- **WHEN** a Cassandra or ClickHouse process writes to its log file on the host filesystem
-- **THEN** that log entry SHALL appear in Loki via the `logs/local` pipeline
+- **WHEN** the Cassandra JVM writes to its GC log on the host filesystem
+- **THEN** that log entry SHALL appear in Loki via the `logs/local` pipeline with `source="cassandra-gc"`
+
+#### Scenario: Cassandra application logs are stored once
+- **WHEN** Cassandra logs a line to `system.log`
+- **THEN** that line SHALL appear in Loki once, via the `logs/otlp` pipeline with `service_name="cassandra"`
+- **AND** it SHALL NOT also appear as a file entry from `file_log/cassandra`
 
 #### Scenario: K8s pod logs reach Loki with metadata
 - **WHEN** a K8s-native kit pod writes to stdout or stderr

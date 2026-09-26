@@ -23,7 +23,7 @@ object LogQl {
         unit: String? = null,
         grep: String? = null,
     ): String {
-        val selector = listOfNotNull("cluster" to cluster, source?.let { "source" to it })
+        val selector = listOfNotNull("cluster" to cluster, source?.let(::sourceMatcher))
         val filters =
             listOfNotNull(
                 host?.let { "| host_name=${quote(it)}" },
@@ -51,6 +51,17 @@ object LogQl {
      * @param traceId the id, or the placeholder Grafana substitutes, e.g. `${'$'}{__trace.traceId}`.
      */
     fun traceToLogs(traceId: String): String = """{cluster=~".+"} | trace_id="$traceId""""
+
+    /**
+     * The stream label a `--source` value selects. Cassandra's application logs arrive only over
+     * OTLP from the Java agent, which names its service `cassandra` and sets no `source`; every
+     * other source, `cassandra-gc` (the JVM GC log file) among them, is the `source` label.
+     */
+    private fun sourceMatcher(source: String): Pair<String, String> =
+        when (source) {
+            Constants.Loki.CASSANDRA_SOURCE -> "service_name" to Constants.Loki.CASSANDRA_SERVICE_NAME
+            else -> "source" to source
+        }
 
     private fun streamSelector(labels: List<Pair<String, String>>): String =
         labels.joinToString(", ", prefix = "{", postfix = "}") { (name, value) -> "$name=${quote(value)}" }

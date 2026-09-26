@@ -74,6 +74,7 @@ class LogQlCompatibilityIntegrationTest : BaseKoinTest() {
                     "cassandra.service",
                     "timed \"out\"",
                 ),
+            "logs query --source cassandra-gc" to LogQl.logsQuery("lab-x", source = "cassandra-gc"),
             "spark logs" to LogQl.sparkStep("lab-x", "s-ABC"),
             "EMR step lookup" to LogQl.sparkJobs("lab-x"),
             "trace-to-logs link" to traceToLogs(),

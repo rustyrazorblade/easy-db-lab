@@ -177,16 +177,23 @@ __KIT_SCRAPE_JOBS__
     include_file_name: true
     resource:
       source: tool-runner
+  # The JVM GC log only. Cassandra's application logs (system.log, debug.log) reach the collector
+  # over OTLP from the OpenTelemetry Java agent (logs/otlp, service_name="cassandra"); tailing the
+  # files too stored every Cassandra line twice. The GC log is written by the JVM itself
+  # (-Xlog:gc in cassandra.in.sh), so the agent never sees it. -Xlog rotation keeps gc.log plus
+  # gc.log.0..9 (filecount=10); the rotated files are included so lines written just before a
+  # rotation are not lost, and the file fingerprint keeps a renamed file from being read twice.
+  # `source: cassandra-gc` keeps it apart from the OTLP Cassandra stream.
   file_log/cassandra:
     include:
-      - /mnt/db1/cassandra/logs/*.log
+      - /mnt/db1/cassandra/logs/gc.log*
     exclude:
-      - /mnt/db1/cassandra/logs/*.gz
+      - /mnt/db1/cassandra/logs/gc.log*.gz
     start_at: end
     include_file_path: true
     include_file_name: true
     resource:
-      source: cassandra
+      source: cassandra-gc
   # NOTE: ClickHouse logs via container stdout/stderr (K8s pod),
   # collected by file_log/containers. File-based receivers are not used.
 
@@ -623,6 +630,8 @@ service:
       receivers: [otlp]
       processors: [resource/cluster, resource_detection, resource/drop_sdk_metadata, batch]
       exporters: [prometheus_remote_write]
+    # Host log files: system logs, tool-runner output and the Cassandra JVM GC log. Cassandra's
+    # application logs are not here; they arrive once, over OTLP, in logs/otlp.
     logs/local:
       receivers: [file_log/system, file_log/tools, file_log/cassandra]
       processors: [resource/cluster, resource_detection, k8s_attributes, batch]
@@ -631,7 +640,8 @@ service:
       receivers: [file_log/containers, file_log/clickhouse-containers]
       processors: [k8s_attributes, transform/add_service, resource/cluster, batch]
       exporters: [otlp_http/logs]
-    # OTLP logs — the Cassandra JVM agent and Fluent Bit's journald lines. resource/drop_sdk_metadata
+    # OTLP logs — the Cassandra JVM agent (the only path for Cassandra's application logs) and
+    # Fluent Bit's journald lines. resource/drop_sdk_metadata
     # matters even more here than on metrics: process.command_line is kilobytes of argv on EVERY
     # record, so it would bloat every stored line and change on a `cassandra use`.
     # transform/source_to_resource lifts journald's `source` onto the resource so Loki indexes it.

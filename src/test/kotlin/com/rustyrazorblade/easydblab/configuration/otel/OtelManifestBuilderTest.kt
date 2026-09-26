@@ -886,4 +886,20 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         assertThat(listAt(yaml, "processors", "transform/source_to_resource", "log_statements").plus(yaml))
             .anyMatch { it.contains("set(resource.attributes[\"source\"], attributes[\"source\"])") }
     }
+
+    /**
+     * Cassandra's application logs reach Loki once, over OTLP from the Java agent. The file
+     * receiver tails only the JVM GC log, which the JVM writes itself and the agent never sees;
+     * tailing system.log or debug.log as well stored every Cassandra line twice.
+     */
+    @Test
+    fun `the Cassandra file receiver tails only the JVM GC log, under its own source`() {
+        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+
+        assertThat(listAt(yaml, "receivers", "file_log/cassandra", "include"))
+            .containsExactly("/mnt/db1/cassandra/logs/gc.log*")
+        assertThat(listAt(yaml, "receivers", "file_log/cassandra", "exclude"))
+            .contains("/mnt/db1/cassandra/logs/gc.log*.gz")
+        assertThat(scalarAt(yaml, "receivers", "file_log/cassandra", "resource", "source")).isEqualTo("cassandra-gc")
+    }
 }

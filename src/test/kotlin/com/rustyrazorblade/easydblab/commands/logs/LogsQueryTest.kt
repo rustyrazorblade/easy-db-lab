@@ -86,14 +86,14 @@ class LogsQueryTest : BaseKoinTest() {
 
         @Test
         fun `execute builds query with source filter`() {
-            whenever(mockLokiQueryService.query(eq("""{cluster="test-cluster-c1", source="cassandra"}"""), any(), any()))
+            whenever(mockLokiQueryService.query(eq("""{cluster="test-cluster-c1", service_name="cassandra"}"""), any(), any()))
                 .thenReturn(Result.success(emptyList()))
 
             val command = LogsQuery()
             command.source = "cassandra"
             command.execute()
 
-            verify(mockLokiQueryService).query(eq("""{cluster="test-cluster-c1", source="cassandra"}"""), any(), any())
+            verify(mockLokiQueryService).query(eq("""{cluster="test-cluster-c1", service_name="cassandra"}"""), any(), any())
         }
 
         @Test
@@ -110,7 +110,7 @@ class LogsQueryTest : BaseKoinTest() {
 
         @Test
         fun `execute builds query with multiple filters`() {
-            val expected = """{cluster="test-cluster-c1", source="cassandra"} | host_name="db0""""
+            val expected = """{cluster="test-cluster-c1", service_name="cassandra"} | host_name="db0""""
             whenever(mockLokiQueryService.query(eq(expected), any(), any()))
                 .thenReturn(Result.success(emptyList()))
 

@@ -9,7 +9,7 @@ This page documents the centralized logging infrastructure in easy-db-lab, inclu
 │                          All Nodes                                │
 ├──────────────────────────────────────────────────────────────────┤
 │  /var/log/system logs     │  /mnt/db1/container-logs/ (NVMe)     │
-│  /mnt/db1/cassandra/logs/ │    K8s pod stdout/stderr             │
+│  cassandra gc.log*        │    K8s pod stdout/stderr             │
 │  journald                 │    (symlinked from /var/log/pods)    │
 │                           │                                       │
 └──────────────┬────────────────────────────┬──────────────────────┘
@@ -18,7 +18,7 @@ This page documents the centralized logging infrastructure in easy-db-lab, inclu
               ┌────────────────────────────────────────┐
               │  OTel Collector (DaemonSet)             │      ┌──────────────────┐
               │  file_log/system  file_log/containers    │◀─────│  EMR Spark JVMs  │
-              │  file_log/cassandra                      │ OTLP │  (OTel Java Agent│
+              │  file_log/cassandra (GC log)             │ OTLP │  (OTel Java Agent│
               │  + OTLP receiver                        │      │   v2.25.0)       │
               └───────────────────┬─────────────────────┘      └──────────────────┘
                                   │
@@ -48,9 +48,9 @@ The OpenTelemetry Collector runs on all nodes as a DaemonSet, collecting logs fr
 - **`logs/local`** — host file-based logs:
   - System logs: `/var/log/**/*.log`, `/var/log/messages`, `/var/log/syslog` (excludes container log paths)
   - Tool runner logs: `/var/log/easydblab/tools/*.log`
-  - Cassandra logs: `/mnt/db1/cassandra/logs/*.log`
+  - Cassandra JVM GC log: `/mnt/db1/cassandra/logs/gc.log*` (`source="cassandra-gc"`). The JVM writes it directly, so the Java agent never sees it.
 - **`logs/containers`** — K8s pod stdout/stderr from all running pods, enriched with Kubernetes metadata (pod name, namespace, container name, kit label). Automatically covers any K8s-native kit without per-kit configuration. Logs are stored on NVMe at `/mnt/db1/container-logs/` (symlinked from `/var/log/pods`) to keep the boot volume free.
-- **`logs/otlp`** — logs pushed via OTLP from remote applications (e.g. EMR Spark JVMs)
+- **`logs/otlp`** — logs pushed via OTLP: Cassandra's application logs from the OpenTelemetry Java agent in the Cassandra JVM (`service_name="cassandra"`), Fluent Bit's journald lines, and remote applications (e.g. EMR Spark JVMs). This is the only path for Cassandra's `system.log` and `debug.log`; the collector does not tail those files, so each line is stored once.
 - **systemd journal** — collected via a separate Fluent Bit DaemonSet (`fluent-bit-journald`)
 
 All pipelines forward to Loki's OTLP endpoint on the control node, with the cluster's tenant in the `X-Scope-OrgID` header. Loki writes chunks and index to the account bucket under `observability/logs/`.
@@ -79,8 +79,9 @@ Loki runs on the control node as a single process and provides:
 # Query all logs from last hour
 easy-db-lab logs query
 
-# Filter by source
+# Filter by source (`cassandra` is the application log over OTLP, `cassandra-gc` the JVM GC log)
 easy-db-lab logs query --source cassandra
+easy-db-lab logs query --source cassandra-gc
 easy-db-lab logs query --source journald
 
 # Filter by host
@@ -96,7 +97,7 @@ easy-db-lab logs query --grep "OutOfMemory"
 easy-db-lab logs query --since 30m --limit 500
 
 # Raw LogQL query, sent unchanged
-easy-db-lab logs query -q '{source="cassandra", host_name="db0"}'
+easy-db-lab logs query -q '{service_name="cassandra", host_name="db0"}'
 ```
 
 ### Labels and Structured Metadata
@@ -106,7 +107,7 @@ easy-db-lab logs query -q '{source="cassandra", host_name="db0"}'
 | Label | Description |
 |-------|-------------|
 | `cluster` | `<name>-<clusterId>`; every stream carries it |
-| `source` | Log source: `cassandra`, `system`, `tool-runner`, `journald`, `annotation` |
+| `source` | Log source: `cassandra-gc`, `system`, `tool-runner`, `journald`, `annotation` |
 | `host_name` | Hostname (db0, app0, control0) |
 | `node_role` | `db`, `app` or `control` |
 | `service_name` | OTel service name; `unknown_service` when the sender sets none |

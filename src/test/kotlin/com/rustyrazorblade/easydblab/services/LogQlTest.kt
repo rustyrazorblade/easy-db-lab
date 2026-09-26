@@ -13,11 +13,24 @@ class LogQlTest {
 
     @Test
     fun `the source is a stream label, host and unit filter lines, and grep matches text`() {
-        val query = LogQl.logsQuery(cluster, source = "cassandra", host = "db0", unit = "cassandra.service", grep = "OutOfMemory")
+        val query = LogQl.logsQuery(cluster, source = "journald", host = "db0", unit = "cassandra.service", grep = "OutOfMemory")
 
         assertThat(query).isEqualTo(
-            """{cluster="lab-0f1e2d3c", source="cassandra"} | host_name="db0" | systemd_unit="cassandra.service" |= "OutOfMemory"""",
+            """{cluster="lab-0f1e2d3c", source="journald"} | host_name="db0" | systemd_unit="cassandra.service" |= "OutOfMemory"""",
         )
+    }
+
+    @Test
+    fun `the cassandra source is the Java agent's OTLP stream, not a log file`() {
+        val query = LogQl.logsQuery(cluster, source = "cassandra", host = "db0")
+
+        assertThat(query).isEqualTo("""{cluster="lab-0f1e2d3c", service_name="cassandra"} | host_name="db0"""")
+    }
+
+    @Test
+    fun `the cassandra-gc source is the JVM GC log the file receiver tails`() {
+        assertThat(LogQl.logsQuery(cluster, source = "cassandra-gc"))
+            .isEqualTo("""{cluster="lab-0f1e2d3c", source="cassandra-gc"}""")
     }
 
     @Test

@@ -740,7 +740,7 @@ easy-db-lab logs query [options]
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--source`, `-s` | Log source: `cassandra`, `journald`, `system`, `tool-runner`, `emr` | All sources |
+| `--source`, `-s` | Log source: `cassandra` (application logs, selects `service_name="cassandra"`), `cassandra-gc` (JVM GC log), `journald`, `system`, `tool-runner`, `emr` | All sources |
 | `--host`, `-H` | Hostname (`db0`, `app0`, `control0`) | All hosts |
 | `--unit` | systemd unit | All units |
 | `--since` | Time range (`1h`, `30m`, `1d`) | `1h` |

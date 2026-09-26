@@ -690,6 +690,15 @@ object Constants {
         /** The `source` stream label of the Grafana annotations mirrored into Loki. */
         const val ANNOTATION_SOURCE = "annotation"
 
+        /**
+         * The `logs query --source` value for Cassandra's application logs. They arrive only over
+         * OTLP from the Java agent, so it selects [CASSANDRA_SERVICE_NAME], not a `source` label.
+         */
+        const val CASSANDRA_SOURCE = "cassandra"
+
+        /** The `service_name` the Cassandra JVM's Java agent logs under (`-Dotel.service.name`). */
+        const val CASSANDRA_SERVICE_NAME = "cassandra"
+
         /** Loki refuses an entry older than this many hours (`reject_old_samples_max_age` in `loki.yaml`). */
         const val MAX_ENTRY_AGE_HOURS = 8760L
 

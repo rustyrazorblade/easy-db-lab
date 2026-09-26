@@ -8,12 +8,14 @@ The OpenTelemetry Collector runs on every node and reads:
 
 | Source | Path | `source` label |
 |--------|------|----------------|
-| Cassandra | `/mnt/db1/cassandra/logs/*.log` | `cassandra` |
+| Cassandra JVM GC log | `/mnt/db1/cassandra/logs/gc.log*` | `cassandra-gc` |
 | System logs | `/var/log/**/*.log`, `/var/log/messages`, `/var/log/syslog` | `system` |
 | Tools run with `exec run` | `/var/log/easydblab/tools/*.log` | `tool-runner` |
 | Pod stdout and stderr (including ClickHouse) | `/var/log/pods/**` | none |
 
 Fluent Bit reads the systemd journal on every node and forwards it to the collector with `source="journald"`. OTLP logs (the OpenTelemetry Java agent, Spark jobs) arrive at the collector directly.
+
+Cassandra's application logs (`system.log`, `debug.log`) reach Loki only over OTLP, from the OpenTelemetry Java agent in the Cassandra JVM. They carry `service_name="cassandra"` and no `source` label, and are stored once. The collector tails only the JVM GC log from disk, because the JVM writes it directly and the agent never sees it.
 
 The collector sends everything to Loki's OTLP endpoint, `http://loki.default.svc.cluster.local:3100/otlp`, with the cluster's tenant in the `X-Scope-OrgID` header.
 
@@ -54,8 +56,9 @@ Loki uploads its index to S3 as it rotates it, and reads the other clusters' ind
 # The last hour
 easy-db-lab logs query
 
-# By source, host or systemd unit
+# By source, host or systemd unit (`cassandra` is the application log, `cassandra-gc` the JVM GC log)
 easy-db-lab logs query --source cassandra --host db0
+easy-db-lab logs query --source cassandra-gc --host db0
 easy-db-lab logs query --source journald --unit docker.service
 
 # Lines containing text
@@ -65,12 +68,12 @@ easy-db-lab logs query --grep "OutOfMemory"
 easy-db-lab logs query --since 30m --limit 500
 
 # A raw LogQL query, sent unchanged
-easy-db-lab logs query -q '{source="cassandra"} |= "Exception"'
+easy-db-lab logs query -q '{service_name="cassandra"} |= "Exception"'
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--source`, `-s` | Log source: `cassandra`, `journald`, `system`, `tool-runner`, `emr` | All sources |
+| `--source`, `-s` | Log source: `cassandra` (application logs, selects `service_name="cassandra"`), `cassandra-gc` (JVM GC log), `journald`, `system`, `tool-runner`, `emr` | All sources |
 | `--host`, `-H` | Hostname (`db0`, `app0`, `control0`) | All hosts |
 | `--unit` | systemd unit | All units |
 | `--since` | Time range (`1h`, `30m`, `1d`) | `1h` |
@@ -98,7 +101,7 @@ The **Log Investigation** dashboard (Dashboards → Log Investigation) filters b
 For anything else, open **Explore**, choose the **Loki** datasource, and write LogQL:
 
 ```
-{cluster="<name>-<clusterId>", source="cassandra"} |= "Exception"
+{cluster="<name>-<clusterId>", service_name="cassandra"} |= "Exception"
 {cluster=~".+", host_name="db0"} | systemd_unit="cassandra.service"
 sum by (source) (count_over_time({cluster="<name>-<clusterId>"}[5m]))
 ```
@@ -114,7 +117,7 @@ A query that carries no tenant reads nothing, so always send `X-Scope-OrgID`:
 ```bash
 source env.sh
 with-proxy curl -G -H 'X-Scope-OrgID: <tenant>' \
-  --data-urlencode 'query={source="cassandra"}' \
+  --data-urlencode 'query={service_name="cassandra"}' \
   "http://control0:3100/loki/api/v1/query_range"
 ```
 

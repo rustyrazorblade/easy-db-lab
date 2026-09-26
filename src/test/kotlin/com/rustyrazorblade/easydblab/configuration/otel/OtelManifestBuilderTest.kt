@@ -129,6 +129,22 @@ class OtelManifestBuilderTest : BaseKoinTest() {
     }
 
     /**
+     * The service_graph connector emits its metrics on an empty resource. Every node runs a
+     * collector, and each counts the database edges of its own spans (a database edge is complete
+     * from one client span), so without the collector's host.name the db nodes wrote one series
+     * together: Mimir saw its value jump between writers and read each drop as a counter reset.
+     */
+    @Test
+    fun `service-graph series name the collector that computed them`() {
+        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+
+        assertThat(listAt(yaml, "service", "pipelines", "metrics/servicegraph", "processors"))
+            .containsSubsequence("resource_detection", "batch")
+        assertThat(scalarAt(yaml, "processors", "resource_detection", "system", "resource_attributes", "host.name", "enabled"))
+            .isEqualTo("true")
+    }
+
+    /**
      * The collector is a container. Without the node's root filesystem mounted and `root_path`
      * pointing at it, the hostmetrics scrapers describe the container, and the filesystem scraper
      * finds nothing worth reporting at all — which is why every filesystem panel was empty while

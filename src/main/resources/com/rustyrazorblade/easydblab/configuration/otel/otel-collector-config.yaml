@@ -676,7 +676,12 @@ service:
       receivers: [span_metrics]
       processors: [resource/cluster, resource/drop_sdk_metadata, batch]
       exporters: [prometheus_remote_write]
+    # The service_graph connector emits on an EMPTY resource: it keeps none of the spans'. Every
+    # node runs this collector, and each counts the edges of the spans it receives (a database edge
+    # is complete from one client span, so no edge is split). Without resource_detection's host.name
+    # the db nodes' collectors wrote one series together, and Mimir read the jumps between writers
+    # as counter resets. Dashboards sum by (client, server) across hosts.
     metrics/servicegraph:
       receivers: [service_graph]
-      processors: [resource/cluster, batch]
+      processors: [resource/cluster, resource_detection, batch]
       exporters: [prometheus_remote_write]

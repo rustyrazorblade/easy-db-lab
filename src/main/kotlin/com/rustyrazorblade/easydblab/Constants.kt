@@ -743,6 +743,15 @@ object Constants {
         const val ANNOTATION_FETCH_LIMIT = 5000
 
         /**
+         * The Mimir datasource's `timeInterval`: the slowest cadence at which a series reaches
+         * Mimir. The collector's service graph flushes every 60s (the connector's default
+         * `metrics_flush_interval`) and `edl-profiling-reconcile.timer` pushes the `edl_jfr_*`
+         * counters every 60s. Grafana makes `$__rate_interval` at least four times this, so a
+         * `rate()` window always holds two of those samples; Mimir's `rate()` needs two.
+         */
+        const val MIMIR_TIME_INTERVAL = "60s"
+
+        /**
          * The uids of the provisioned datasources. Dashboards, links between datasources and the
          * annotation queries name a datasource by its uid, so these are part of every dashboard.
          */

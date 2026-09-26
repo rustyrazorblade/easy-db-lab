@@ -167,7 +167,7 @@ All Grafana K8s resources are built programmatically using Fabric8:
 
 - **`GrafanaDashboard`**, **`GrafanaDashboardCatalog`**, **`GrafanaDashboardTreeWriter`**, **`GrafanaDashboardProvisioningConfig`** — the core dashboard tree, discovered from the classpath and copied to the control node as files; the mechanism is described once, in [`dashboards/CLAUDE.md`](../../../../../../dashboards/CLAUDE.md).
 - **`GrafanaManifestBuilder`** — builds the Grafana K8s resources (provisioning ConfigMap and Deployment) as typed Fabric8 objects; nothing it builds varies with the dashboard tree. Uses `TemplateService` only for the cluster name. The Deployment mounts the `/mnt/db1/grafana` hostPath at `/var/lib/grafana`, which is how the copied tree reaches the pod, and includes a `grafana-image-renderer` sidecar container (port 8081) for server-side panel rendering.
-- **`GrafanaDatasourceConfig`** — datasource provisioning YAML generation.
+- **`GrafanaDatasourceConfig`** — datasource provisioning YAML generation. The Mimir datasource sets `timeInterval: 60s` (`Constants.Grafana.MIMIR_TIME_INTERVAL`), the slowest cadence a series reaches Mimir (service-graph flush, `edl_jfr_*` reconciler push), so `$__rate_interval` (at least 4× it) always holds the two samples Mimir's `rate()` needs.
 - **Dashboard JSON files** — stored in the top-level `dashboards/<folder>/` tree at the project root. `processResources` in `build.gradle.kts` copies the tree onto the classpath under a `dashboards/` prefix at build time. Also published as a standalone zip via GitHub Actions for consumption by other projects.
 
 ## Observability Store (`ObservabilityStore.kt`, `ConfigHashAnnotator.kt`)

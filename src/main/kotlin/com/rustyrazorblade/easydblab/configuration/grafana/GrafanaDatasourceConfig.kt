@@ -64,11 +64,7 @@ data class GrafanaDatasourceConfig(
                             uid = Uid.MIMIR,
                             url = "http://localhost:${Constants.K8s.MIMIR_HTTP_PORT}/prometheus",
                             isDefault = true,
-                            jsonData =
-                                tenantHeader.copy(
-                                    httpMethod = "POST",
-                                    timeInterval = Constants.Grafana.MIMIR_TIME_INTERVAL,
-                                ),
+                            jsonData = tenantHeader.copy(httpMethod = "POST"),
                             secureJsonData = tenantValue,
                         ),
                         GrafanaDatasource(
@@ -174,8 +170,6 @@ data class GrafanaDatasource(
 @Serializable
 data class GrafanaDatasourceJsonData(
     val httpMethod: String? = null,
-    /** A Prometheus datasource's scrape interval: the floor of `$__interval`; `$__rate_interval` is at least 4× it. */
-    val timeInterval: String? = null,
     /** Name of the first custom HTTP header sent on every query; its value is in secureJsonData. */
     val httpHeaderName1: String? = null,
     val serviceMap: GrafanaServiceMapConfig? = null,

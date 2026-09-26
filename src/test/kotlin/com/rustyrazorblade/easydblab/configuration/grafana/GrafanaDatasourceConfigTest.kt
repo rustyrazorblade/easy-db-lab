@@ -31,19 +31,6 @@ class GrafanaDatasourceConfigTest {
         assertThat(yaml).doesNotContainIgnoringCase("victoria")
     }
 
-    /**
-     * Some series reach Mimir once a minute: the collector's service graph flushes every 60s and the
-     * profiling reconciler pushes its `edl_jfr_*` counters on a 60s timer. Mimir's `rate()` needs two
-     * samples inside the window, so `$__rate_interval` (at least 4 × `timeInterval`) must span several
-     * minutes; with no `timeInterval` it is 60s and those panels show no data.
-     */
-    @Test
-    fun `Mimir's rate interval spans several once-a-minute samples`() {
-        val mimir = provisioned(GrafanaDatasourceConfig.create("acme").toYaml(), "Mimir")
-
-        assertThat(mimir.scalar("jsonData", "timeInterval")).isEqualTo("60s")
-    }
-
     /** A log line's trace_id (structured metadata) links to the trace in Tempo. */
     @Test
     fun `a log line's trace id links to Tempo`() {

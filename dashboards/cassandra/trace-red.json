@@ -1631,8 +1631,8 @@
     {
       "type": "timeseries",
       "id": 21,
-      "title": "Service Graph Health \u2014 edges tracked, expired edges, dropped spans",
-      "description": "Expired edges and dropped spans mean the graph is incomplete: a client span arrived with no matching server span inside the generator's wait window. Read the delta panels above with suspicion whenever these are non-zero.",
+      "title": "Service Graph Health (collector service_graph connector) \u2014 edges built, expired edges, dropped spans",
+      "description": "The OTel collector's service_graph connector on each node, per collector. Edges built is edges the connector completed and turned into service-graph metrics. Expired edges waited longer than the store's TTL for their matching span; dropped spans could not be added because the edge store was full (max_items). Either one non-zero means the graph is incomplete: read the delta panels above with suspicion. Tempo's metrics generator is off (processors: [] in tempo.yaml), so none of this comes from Tempo.",
       "datasource": {
         "type": "prometheus",
         "uid": "mimir"
@@ -1712,8 +1712,8 @@
             "uid": "mimir"
           },
           "editorMode": "code",
-          "expr": "sum(tempo_metrics_generator_processor_service_graphs_edges)",
-          "legendFormat": "edges tracked",
+          "expr": "sum by (host_name) (rate(otelcol_connector_servicegraph_edges_total[$__rate_interval]))",
+          "legendFormat": "{{host_name}} edges built/s",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -1724,8 +1724,8 @@
             "uid": "mimir"
           },
           "editorMode": "code",
-          "expr": "sum(rate(tempo_metrics_generator_processor_service_graphs_expired_edges[$__rate_interval]))",
-          "legendFormat": "expired edges/s",
+          "expr": "sum by (host_name) (rate(otelcol_connector_servicegraph_expired_edges_total[$__rate_interval]))",
+          "legendFormat": "{{host_name}} expired edges/s",
           "range": true,
           "instant": false,
           "refId": "B"
@@ -1736,8 +1736,8 @@
             "uid": "mimir"
           },
           "editorMode": "code",
-          "expr": "sum(rate(tempo_metrics_generator_processor_service_graphs_dropped_spans[$__rate_interval]))",
-          "legendFormat": "dropped spans/s",
+          "expr": "sum by (host_name) (rate(otelcol_connector_servicegraph_dropped_spans_total[$__rate_interval]))",
+          "legendFormat": "{{host_name}} dropped spans/s",
           "range": true,
           "instant": false,
           "refId": "C"
@@ -1859,8 +1859,8 @@
             "uid": "mimir"
           },
           "editorMode": "code",
-          "expr": "sum(rate(tempo_metrics_generator_spans_received_total[$__rate_interval]))",
-          "legendFormat": "generator received",
+          "expr": "sum by (host_name) (rate(otelcol_receiver_accepted_spans_total[$__rate_interval]))",
+          "legendFormat": "{{host_name}} collector accepted (fed to connectors)",
           "range": true,
           "instant": false,
           "refId": "B"
@@ -1889,7 +1889,7 @@
       "type": "timeseries",
       "id": 24,
       "title": "Spans Discarded, Refused and Truncated (per second)",
-      "description": "Loss inside Tempo. Anything non-zero here means the RED numbers above are computed from a sample, not from every request.",
+      "description": "Loss inside Tempo, plus spans each node's OTel collector refused or failed before its span_metrics and service_graph connectors saw them. Anything non-zero here means the RED numbers above are computed from a sample, not from every request.",
       "datasource": {
         "type": "prometheus",
         "uid": "mimir"
@@ -1993,8 +1993,8 @@
             "uid": "mimir"
           },
           "editorMode": "code",
-          "expr": "sum(rate(tempo_metrics_generator_spans_discarded_total[$__rate_interval]))",
-          "legendFormat": "generator discarded",
+          "expr": "sum by (host_name) (rate(otelcol_receiver_refused_spans_total[$__rate_interval])) + sum by (host_name) (rate(otelcol_receiver_failed_spans_total[$__rate_interval]))",
+          "legendFormat": "{{host_name}} collector refused/failed",
           "range": true,
           "instant": false,
           "refId": "C"
@@ -2022,8 +2022,8 @@
     {
       "type": "timeseries",
       "id": 25,
-      "title": "Metrics Generator Active Series",
-      "description": "The generator holds one series per span name and edge. If active series hits the limit, new span names stop appearing on this dashboard entirely.",
+      "title": "Connector Series (collector span_metrics and service_graph)",
+      "description": "Series the OTel collector's span_metrics and service_graph connectors produce, counted in Mimir per host. Each span name, status and dimension combination is a series, and each service-graph edge is a set of series. A count that keeps climbing means a label value is multiplying series. Tempo's metrics generator is off (processors: [] in tempo.yaml); these connectors are the only producer.",
       "datasource": {
         "type": "prometheus",
         "uid": "mimir"
@@ -2103,8 +2103,8 @@
             "uid": "mimir"
           },
           "editorMode": "code",
-          "expr": "sum(tempo_metrics_generator_registry_active_series)",
-          "legendFormat": "active series",
+          "expr": "count by (host_name) ({__name__=~\"traces_spanmetrics_.+\"})",
+          "legendFormat": "{{host_name}} span_metrics",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -2115,23 +2115,11 @@
             "uid": "mimir"
           },
           "editorMode": "code",
-          "expr": "max(tempo_metrics_generator_registry_max_active_series)",
-          "legendFormat": "limit",
+          "expr": "count by (host_name) ({__name__=~\"traces_service_graph_.+\"})",
+          "legendFormat": "{{host_name}} service_graph",
           "range": true,
           "instant": false,
           "refId": "B"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "mimir"
-          },
-          "editorMode": "code",
-          "expr": "sum(rate(tempo_metrics_generator_registry_series_limited_total[$__rate_interval]))",
-          "legendFormat": "series limited/s",
-          "range": true,
-          "instant": false,
-          "refId": "C"
         }
       ],
       "gridPos": {

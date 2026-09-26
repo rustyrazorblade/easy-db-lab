@@ -145,6 +145,20 @@ class OtelManifestBuilderTest : BaseKoinTest() {
     }
 
     /**
+     * Left unset, the service_graph connector flushes once a minute (its 60s default), so its
+     * counters reach Mimir at a quarter of the cadence of every other metric and a `rate()` over
+     * Grafana's default `$__rate_interval` holds one sample and draws nothing. Both span-derived
+     * connectors flush on the 15s cadence the collector's Prometheus scrapes use.
+     */
+    @Test
+    fun `span-derived metrics flush on the collector's scrape cadence, not once a minute`() {
+        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+
+        assertThat(scalarAt(yaml, "connectors", "service_graph", "metrics_flush_interval")).isEqualTo("15s")
+        assertThat(scalarAt(yaml, "connectors", "span_metrics", "metrics_flush_interval")).isEqualTo("15s")
+    }
+
+    /**
      * The collector is a container. Without the node's root filesystem mounted and `root_path`
      * pointing at it, the hostmetrics scrapers describe the container, and the filesystem scraper
      * finds nothing worth reporting at all — which is why every filesystem panel was empty while

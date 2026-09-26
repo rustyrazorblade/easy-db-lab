@@ -610,6 +610,10 @@ connectors:
     store:
       ttl: 2s
       max_items: 1000
+    # Unset, the connector flushes once a minute (its 60s default): a rate() over Grafana's
+    # default $__rate_interval then holds a single sample and the service-graph panels go blank.
+    # 15s is the cadence of span_metrics and the Prometheus scrapes above.
+    metrics_flush_interval: 15s
 
 extensions:
   health_check:

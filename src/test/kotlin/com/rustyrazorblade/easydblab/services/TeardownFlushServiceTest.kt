@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
@@ -65,6 +66,7 @@ class TeardownFlushServiceTest {
             timeout: Duration,
         ) {
             steps.add("scaleDown $workload")
+            order.add("scaleDown $workload")
         }
 
         override fun state(
@@ -73,6 +75,12 @@ class TeardownFlushServiceTest {
         ): BackendState = states[workload] ?: BackendState.RUNNING
     }
 
+    /** Every step that touches a backend or S3, the mirror included, in the order it ran. */
+    private val order = mutableListOf<String>()
+
+    /** When set, the annotations backup fails with it. */
+    private var backupFailure: Throwable? = null
+
     private val backups =
         object : GrafanaAnnotationBackupService {
             override fun backup(
@@ -80,9 +88,36 @@ class TeardownFlushServiceTest {
                 clusterState: ClusterState,
             ): Result<GrafanaAnnotationBackupResult> {
                 steps.add("annotations backup")
-                return Result.success(GrafanaAnnotationBackupResult(ClusterS3Path.root("acct").resolve("a.json"), 2))
+                order.add("annotations backup")
+                return backupFailure?.let { Result.failure(it) }
+                    ?: Result.success(GrafanaAnnotationBackupResult(ClusterS3Path.root("acct").resolve("a.json"), 2))
             }
         }
+
+    /** The mirror, recording in [order] when it is asked to mirror. */
+    private val orderedMirror =
+        object : AnnotationMirror by mirror {
+            override fun syncAll(controlHost: ClusterHost): Result<Int> {
+                order.add("mirror")
+                return mirror.syncAll(controlHost)
+            }
+        }
+
+    /** [http], recording each backend's ingester shutdown (its flush) in [order]. */
+    private inner class OrderedHttp(
+        private val http: RecordingObservabilityHttp,
+    ) : ObservabilityHttp by http {
+        override fun post(
+            port: Int,
+            path: String,
+            body: String,
+            contentType: String,
+            timeout: Duration,
+        ): ObservabilityResponse {
+            if (path.startsWith("/ingester/shutdown")) order.add(if (port == Constants.K8s.LOKI_HTTP_PORT) "loki flush" else "mimir flush")
+            return http.post(port, path, body, contentType, timeout)
+        }
+    }
 
     /** Answers in order: Loki metrics, Loki shutdown, Loki metrics, Mimir metrics, Mimir shutdown, Mimir metrics. */
     private fun http(
@@ -123,10 +158,10 @@ class TeardownFlushServiceTest {
         http: RecordingObservabilityHttp,
         workloads: BackendWorkloads = FakeWorkloads(),
     ) = DefaultTeardownFlushService(
-        LokiTailFlush(http, workloads, remoteOps, objectStore, timeouts),
-        MimirTailFlush(http, workloads, remoteOps, objectStore, timeouts),
+        LokiTailFlush(OrderedHttp(http), workloads, remoteOps, objectStore, timeouts),
+        MimirTailFlush(OrderedHttp(http), workloads, remoteOps, objectStore, timeouts),
         workloads,
-        mirror,
+        orderedMirror,
         backups,
         eventBus,
     )
@@ -178,6 +213,56 @@ class TeardownFlushServiceTest {
         assertThat(report).isEqualTo(FlushReport(lokiIndexFiles = 1, lokiChunksFlushed = 2, mimirBlocks = 1))
         assertThat(events.filterIsInstance<Event.Teardown.LokiFlushed>().single())
             .isEqualTo(Event.Teardown.LokiFlushed(indexFiles = 1, chunksFlushed = 2))
+    }
+
+    @Test
+    fun `the annotations are mirrored before Loki flushes, Loki before Mimir, and the backup runs last`() {
+        service(http()).saveTail(control, state).getOrThrow()
+
+        assertThat(order).containsExactly(
+            "mirror",
+            "loki flush",
+            "scaleDown loki",
+            "mimir flush",
+            "scaleDown mimir",
+            "annotations backup",
+        )
+    }
+
+    @Test
+    fun `a failed mirror stops the flush before any backend is touched, naming the step`() {
+        mirror.failure = IllegalStateException("Loki refused the push with status 500")
+        val http = http()
+
+        val failure = failure(service(http).saveTail(control, state))
+
+        assertThat(failure.step).isEqualTo(FlushStep.ANNOTATION_MIRROR)
+        assertThat(failure)
+            .hasMessageContaining(FlushStep.ANNOTATION_MIRROR.description)
+            .hasMessageContaining("Loki refused the push")
+        assertThat(failure.backends).containsExactly(
+            entry("loki", BackendState.RUNNING),
+            entry("mimir", BackendState.RUNNING),
+        )
+        assertThat(http.calls).isEmpty()
+        assertThat(steps).isEmpty()
+    }
+
+    @Test
+    fun `a failed annotations backup after both flushes names the step and both backends at 0, and scales nothing else`() {
+        backupFailure = IllegalStateException("S3 refused the annotations backup")
+
+        val failure = failure(service(http()).saveTail(control, state))
+
+        assertThat(failure.step).isEqualTo(FlushStep.ANNOTATIONS_BACKUP)
+        assertThat(failure)
+            .hasMessageContaining(FlushStep.ANNOTATIONS_BACKUP.description)
+            .hasMessageContaining("S3 refused the annotations backup")
+        assertThat(failure.backends).containsExactly(
+            entry("loki", BackendState.SCALED_TO_ZERO),
+            entry("mimir", BackendState.SCALED_TO_ZERO),
+        )
+        assertThat(steps).containsExactly("scaleDown loki", "scaleDown mimir", "annotations backup")
     }
 
     @Test
